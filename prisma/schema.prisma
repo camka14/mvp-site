@@ -367,10 +367,32 @@ model Fields {
   rentalSlotIds  String[]
   location       String?
   organizationId String?
+  facilityId     String?
   createdBy      String?
 
   @@index([organizationId])
+  @@index([facilityId])
   @@index([createdBy])
+}
+
+model Facilities {
+  id             String    @id
+  createdAt      DateTime? @default(now())
+  updatedAt      DateTime? @updatedAt
+  organizationId String
+  name           String
+  location       String
+  address        String?
+  coordinates    Json?
+  operatingHours Json?
+  timeZone       String    @default("UTC")
+  status         String    @default("ACTIVE")
+  isDefault      Boolean   @default(false)
+  sortOrder      Int?
+
+  @@index([organizationId])
+  @@index([organizationId, isDefault])
+  @@index([status])
 }
 
 model Matches {

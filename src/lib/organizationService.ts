@@ -14,6 +14,7 @@ import { buildPayload } from './utils';
 import { userService } from './userService';
 import { productService } from './productService';
 import { teamService } from './teamService';
+import { facilityService } from './facilityService';
 import {
   deriveOrganizationRoleIds,
   deriveStaffInviteTypes,
@@ -309,6 +310,7 @@ class OrganizationService {
       events: [],
       teams: [],
       fields: [],
+      facilities: [],
       officials: [],
       hosts: [],
       products: [],
@@ -521,6 +523,7 @@ class OrganizationService {
 
   private async withEventFormRelations(organization: Organization): Promise<Organization> {
     const fieldsPromise = fieldService.listFields({ organizationId: organization.$id });
+    const facilitiesPromise = facilityService.listFacilitiesByOrganization(organization.$id);
     const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
     const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
     const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));
@@ -529,8 +532,9 @@ class OrganizationService {
       ? userService.getUserById(organization.ownerId)
       : Promise.resolve(undefined);
 
-    const [fields, staffUsers, owner] = await Promise.all([
+    const [fields, facilities, staffUsers, owner] = await Promise.all([
       fieldsPromise,
+      facilitiesPromise,
       staffUsersPromise,
       ownerPromise,
     ]);
@@ -551,6 +555,7 @@ class OrganizationService {
     const activeOfficialIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'OFFICIAL');
 
     organization.fields = fields;
+    organization.facilities = facilities;
     organization.staffMembers = hydratedStaffMembers;
     organization.officials = activeOfficialIds
       .map((userId) => staffUsersById.get(userId))
@@ -565,6 +570,7 @@ class OrganizationService {
 
     private async withRelations(organization: Organization): Promise<Organization> {
       const fieldsPromise = fieldService.listFields({ organizationId: organization.$id });
+      const facilitiesPromise = facilityService.listFacilitiesByOrganization(organization.$id);
       const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
       const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
       const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));
@@ -576,8 +582,9 @@ class OrganizationService {
       const productsPromise: Promise<Product[]> = productService.listProducts(organization.$id);
       const teamsPromise: Promise<Team[]> = teamService.getTeamsByOrganizationId(organization.$id, true);
 
-      const [fields, events, staffUsers, owner, products, teams] = await Promise.all([
+      const [fields, facilities, events, staffUsers, owner, products, teams] = await Promise.all([
         fieldsPromise,
+        facilitiesPromise,
         this.fetchEventsByOrganization(organization.$id),
         staffUsersPromise,
         ownerPromise,
@@ -607,6 +614,7 @@ class OrganizationService {
         .filter((entry): entry is UserData => Boolean(entry));
 
       organization.fields = fields;
+      organization.facilities = facilities;
       organization.events = events;
       organization.staffMembers = hydratedStaffMembers;
       organization.officials = activeOfficials;

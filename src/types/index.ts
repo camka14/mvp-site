@@ -676,6 +676,40 @@ export interface SensitiveUserData {
   $updatedAt?: string;
 }
 
+export interface FacilityOperatingInterval {
+  openMinutes: number;
+  closeMinutes: number;
+}
+
+export interface FacilityOperatingDay {
+  dayOfWeek: number;
+  closed: boolean;
+  intervals: FacilityOperatingInterval[];
+}
+
+export interface FacilityOperatingHours {
+  version: 1;
+  weekly: FacilityOperatingDay[];
+}
+
+export interface Facility {
+  $id: string;
+  organizationId: string;
+  name: string;
+  location: string;
+  address?: string | null;
+  coordinates?: [number, number] | Record<string, unknown> | null;
+  operatingHours?: FacilityOperatingHours | null;
+  timeZone?: string;
+  status?: string;
+  isDefault?: boolean;
+  sortOrder?: number | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+  $createdAt?: string | null;
+  $updatedAt?: string | null;
+}
+
 // Updated Field interface
 export interface Field {
   $id: string;
@@ -689,6 +723,7 @@ export interface Field {
   $updatedAt?: string | null;
   heading?: number;
   inUse?: boolean;
+  facilityId?: string | null;
   rentalSlotIds?: string[];
 
   // Relationships
@@ -696,18 +731,20 @@ export interface Field {
   matches?: Match[];
   events?: Event[];
   organization?: Organization;
+  facility?: Facility | string | null;
   rentalSlots?: TimeSlot[];
 }
 
 export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
 
-type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
+type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'facility' | 'rentalSlots' | 'rentalSlotIds';
 
 export type FieldPayload = Omit<Field, FieldRelationKeys> & {
   divisions?: string[];
   matchIds?: string[];
   eventIds?: string[];
   organizationId?: string;
+  facilityId?: string | null;
   rentalSlotIds?: string[];
 };
 
@@ -935,6 +972,7 @@ export interface Organization {
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
+  facilities?: Facility[];
   officials?: UserData[];
   hosts?: UserData[];
   owner?: UserData;

@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 const organizationsFindUniqueMock = jest.fn();
 const fieldsFindManyMock = jest.fn();
+const facilitiesFindManyMock = jest.fn();
 const timeSlotsFindManyMock = jest.fn();
 const prismaTransactionMock = jest.fn();
 const requireSessionMock = jest.fn();
@@ -20,6 +21,9 @@ jest.mock('@/lib/prisma', () => ({
     },
     fields: {
       findMany: (...args: any[]) => fieldsFindManyMock(...args),
+    },
+    facilities: {
+      findMany: (...args: any[]) => facilitiesFindManyMock(...args),
     },
     timeSlots: {
       findMany: (...args: any[]) => timeSlotsFindManyMock(...args),
@@ -71,6 +75,7 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    facilitiesFindManyMock.mockResolvedValue([]);
     timeSlotsFindManyMock.mockResolvedValue([]);
     assertNoEventFieldSchedulingConflictsMock.mockResolvedValue(undefined);
     txEventsFindUniqueMock.mockResolvedValue(null);
@@ -182,9 +187,17 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         id: 'field_1',
         name: 'Court 1',
         rentalSlotIds: ['slot_1'],
-        location: 'Main Gym',
+        location: '',
+        facilityId: 'facility_1',
         long: -122.4,
         lat: 37.8,
+      },
+    ]);
+    facilitiesFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_1',
+        name: 'Main Gym',
+        location: 'Main Gym',
       },
     ]);
     timeSlotsFindManyMock.mockResolvedValue([
@@ -216,6 +229,7 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         id: 'event_1',
         imageId: 'file_logo_1',
         organizationId: 'org_1',
+        location: 'Main Gym',
         timeZone: 'America/Los_Angeles',
       }),
     }));

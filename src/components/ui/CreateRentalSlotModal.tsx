@@ -320,7 +320,7 @@ export default function CreateRentalSlotModal({
 
   const handleDelete = async () => {
     if (!field || !slot?.$id) {
-      setError('A field and existing rental slot are required to delete.');
+      setError('A resource and existing rental slot are required to delete.');
       return;
     }
 
@@ -348,7 +348,7 @@ export default function CreateRentalSlotModal({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!hasTargetFields) {
-      setError('At least one field is required to create a rental slot.');
+      setError('At least one resource is required to create a rental slot.');
       return;
     }
     if (!startDate) {
@@ -436,7 +436,7 @@ export default function CreateRentalSlotModal({
       let results: ManageRentalSlotResult[];
       if (slot) {
         if (!field) {
-          throw new Error('A field is required to edit this rental slot.');
+          throw new Error('A resource is required to edit this rental slot.');
         }
         const updatePayload: RentalSlotUpdateInput = {
           $id: slot.$id,
@@ -480,7 +480,7 @@ export default function CreateRentalSlotModal({
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <div>
-            <Text fw={500}>{slot ? 'Field' : 'Fields'}</Text>
+            <Text fw={500}>{slot ? 'Resource' : 'Resources'}</Text>
             {targetFields.length > 0 ? (
               <Group gap={6} mt={6}>
                 {targetFields.map((targetField) => {
@@ -523,7 +523,7 @@ export default function CreateRentalSlotModal({
               </Group>
             ) : (
               <Text size="sm" c="dimmed">
-                Select a field to continue
+                Select a resource to continue
               </Text>
             )}
           </div>

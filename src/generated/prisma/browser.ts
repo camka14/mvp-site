@@ -28,6 +28,11 @@ export type AppReleases = Prisma.AppReleasesModel
  */
 export type Fields = Prisma.FieldsModel
 /**
+ * Model Facilities
+ *
+ */
+export type Facilities = Prisma.FacilitiesModel
+/**
  * Model Matches
  *
  */

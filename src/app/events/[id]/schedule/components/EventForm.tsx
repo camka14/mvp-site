@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import { teamService } from '@/lib/teamService';
-import LocationSelector from '@/components/location/LocationSelector';
+import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
@@ -3543,7 +3543,7 @@ const eventFormSchema = z
         if (!coordinatesAreSet(values.coordinates)) {
             ctx.addIssue({
                 code: "custom",
-                message: 'Location and coordinates are required',
+                message: 'Select an event address from suggestions or the map',
                 path: ['location'],
             });
         }
@@ -11089,11 +11089,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         lat: (eventData.coordinates[1] ?? defaultLocation?.coordinates?.[1] ?? 0),
                                                         lng: (eventData.coordinates[0] ?? defaultLocation?.coordinates?.[0] ?? 0),
                                                     }}
-                                                    onChange={(location, lat, lng, address) => {
+                                                    onChange={(location, lat, lng, address, meta?: LocationSelectionMeta) => {
                                                         if (isLocationImmutable) return;
+                                                        const nextSelected = Boolean(meta?.selected);
                                                         field.onChange(location);
-                                                        setValue('coordinates', [lng, lat], { shouldDirty: true, shouldValidate: true });
-                                                        setValue('address', address ?? '', { shouldDirty: true, shouldValidate: true });
+                                                        setValue('coordinates', nextSelected ? [lng, lat] : [0, 0], { shouldDirty: true, shouldValidate: true });
+                                                        setValue('address', nextSelected ? address ?? location : '', { shouldDirty: true, shouldValidate: true });
                                                     }}
                                                     isValid={!fieldState.error}
                                                     disabled={isLocationImmutable}
@@ -11101,6 +11102,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     required
                                                     errorMessage={fieldState.error?.message as string | undefined}
                                                     showStreetViewControl={false}
+                                                    requireSelection
+                                                    selected={coordinatesAreSet(eventData.coordinates)}
+                                                    selectionErrorMessage="Select an event address from suggestions or the map"
                                                 />
                                             )}
                                         />

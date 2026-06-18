@@ -53,6 +53,7 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   AppReleases: 'AppReleases',
   Fields: 'Fields',
+  Facilities: 'Facilities',
   Matches: 'Matches',
   MatchSegments: 'MatchSegments',
   MatchIncidents: 'MatchIncidents',
@@ -157,10 +158,30 @@ export const FieldsScalarFieldEnum = {
   rentalSlotIds: 'rentalSlotIds',
   location: 'location',
   organizationId: 'organizationId',
+  facilityId: 'facilityId',
   createdBy: 'createdBy'
 } as const
 
 export type FieldsScalarFieldEnum = (typeof FieldsScalarFieldEnum)[keyof typeof FieldsScalarFieldEnum]
+
+
+export const FacilitiesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  name: 'name',
+  location: 'location',
+  address: 'address',
+  coordinates: 'coordinates',
+  operatingHours: 'operatingHours',
+  timeZone: 'timeZone',
+  status: 'status',
+  isDefault: 'isDefault',
+  sortOrder: 'sortOrder'
+} as const
+
+export type FacilitiesScalarFieldEnum = (typeof FacilitiesScalarFieldEnum)[keyof typeof FacilitiesScalarFieldEnum]
 
 
 export const MatchesScalarFieldEnum = {

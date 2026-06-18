@@ -80,12 +80,12 @@ export type PrismaVersion = {
 }
 
 /**
- * Prisma Client JS version: 7.8.0
- * Query Engine version: 3c6e192761c0362d496ed980de936e2f3cebcd3a
+ * Prisma Client JS version: 7.7.0
+ * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
  */
 export const prismaVersion: PrismaVersion = {
-  client: "7.8.0",
-  engine: "3c6e192761c0362d496ed980de936e2f3cebcd3a"
+  client: "7.7.0",
+  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
 }
 
 /**
@@ -386,6 +386,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   AppReleases: 'AppReleases',
   Fields: 'Fields',
+  Facilities: 'Facilities',
   Matches: 'Matches',
   MatchSegments: 'MatchSegments',
   MatchIncidents: 'MatchIncidents',
@@ -459,7 +460,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -608,6 +609,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.FieldsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.FieldsCountAggregateOutputType> | number
+        }
+      }
+    }
+    Facilities: {
+      payload: Prisma.$FacilitiesPayload<ExtArgs>
+      fields: Prisma.FacilitiesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FacilitiesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FacilitiesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        findFirst: {
+          args: Prisma.FacilitiesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FacilitiesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        findMany: {
+          args: Prisma.FacilitiesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>[]
+        }
+        create: {
+          args: Prisma.FacilitiesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        createMany: {
+          args: Prisma.FacilitiesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FacilitiesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>[]
+        }
+        delete: {
+          args: Prisma.FacilitiesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        update: {
+          args: Prisma.FacilitiesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        deleteMany: {
+          args: Prisma.FacilitiesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FacilitiesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FacilitiesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>[]
+        }
+        upsert: {
+          args: Prisma.FacilitiesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilitiesPayload>
+        }
+        aggregate: {
+          args: Prisma.FacilitiesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFacilities>
+        }
+        groupBy: {
+          args: Prisma.FacilitiesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilitiesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FacilitiesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilitiesCountAggregateOutputType> | number
         }
       }
     }
@@ -4970,10 +5045,30 @@ export const FieldsScalarFieldEnum = {
   rentalSlotIds: 'rentalSlotIds',
   location: 'location',
   organizationId: 'organizationId',
+  facilityId: 'facilityId',
   createdBy: 'createdBy'
 } as const
 
 export type FieldsScalarFieldEnum = (typeof FieldsScalarFieldEnum)[keyof typeof FieldsScalarFieldEnum]
+
+
+export const FacilitiesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  name: 'name',
+  location: 'location',
+  address: 'address',
+  coordinates: 'coordinates',
+  operatingHours: 'operatingHours',
+  timeZone: 'timeZone',
+  status: 'status',
+  isDefault: 'isDefault',
+  sortOrder: 'sortOrder'
+} as const
+
+export type FacilitiesScalarFieldEnum = (typeof FacilitiesScalarFieldEnum)[keyof typeof FacilitiesScalarFieldEnum]
 
 
 export const MatchesScalarFieldEnum = {
@@ -7290,25 +7385,11 @@ export type PrismaClientOptions = ({
    * ```
    */
   comments?: runtime.SqlCommenterPlugin[]
-  /**
-   * Optional maximum size for the query plan cache. If not provided, a default size will be used.
-   * A value of `0` can be used to disable the cache entirely. A higher cache size can improve
-   * performance for applications that execute a large number of unique queries, while a smaller
-   * cache size can reduce memory usage.
-   *
-   * @example
-   * ```
-   * const prisma = new PrismaClient({
-   *   adapter,
-   *   queryPlanCacheMaxSize: 100,
-   * })
-   * ```
-   */
-  queryPlanCacheMaxSize?: number
 }
 export type GlobalOmitConfig = {
   appReleases?: Prisma.AppReleasesOmit
   fields?: Prisma.FieldsOmit
+  facilities?: Prisma.FacilitiesOmit
   matches?: Prisma.MatchesOmit
   matchSegments?: Prisma.MatchSegmentsOmit
   matchIncidents?: Prisma.MatchIncidentsOmit

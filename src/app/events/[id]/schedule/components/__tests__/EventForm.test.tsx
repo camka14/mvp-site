@@ -128,7 +128,13 @@ jest.mock('@/components/location/LocationSelector', () => {
       <input
         aria-label={label}
         value={value}
-        onChange={(event) => onChange?.(event.currentTarget.value, 37.0, -122.0)}
+        onChange={(event) => onChange?.(
+          event.currentTarget.value,
+          37.0,
+          -122.0,
+          event.currentTarget.value,
+          { selected: true, source: 'prediction' },
+        )}
       />
     );
   }

@@ -1,6 +1,6 @@
 import { addMinutes } from 'date-fns';
 import type { Field, Match, Event as EventRecord, TimeSlot } from '@/types';
-import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getFacilityScopedFieldDisplayName } from '@/lib/fieldUtils';
 
 const ONE_HOUR_IN_MINUTES = 60;
 
@@ -32,6 +32,42 @@ export type FieldCalendarEntry = {
   fieldName: string;
 };
 
+export type FacilityCalendarConflict = {
+  id: string;
+  fieldId: string;
+  fieldName: string;
+  rentalEntryId: string;
+  bookingEntryId: string;
+  bookingTitle: string;
+  start: Date;
+  end: Date;
+  hours: number;
+};
+
+export type FacilityCalendarMetricTotals = {
+  fieldCount: number;
+  rentalSlotCount: number;
+  rentalInventoryHours: number;
+  bookedInventoryHours: number;
+  bookedCalendarHours: number;
+  openInventoryHours: number;
+  conflictCount: number;
+  conflictHours: number;
+  potentialRevenueCents: number;
+  revenuePerCourtHourCents: number;
+  utilizationPercent: number;
+  conflicts: FacilityCalendarConflict[];
+};
+
+export type FacilityCalendarFacilitySummary = FacilityCalendarMetricTotals & {
+  facilityId: string | null;
+  facilityName: string;
+};
+
+export type FacilityCalendarSummary = FacilityCalendarMetricTotals & {
+  facilities: FacilityCalendarFacilitySummary[];
+};
+
 const normalizeToMondayIndex = (date: Date): number => {
   return (date.getDay() + 6) % 7;
 };
@@ -56,9 +92,272 @@ const addDays = (date: Date, days: number): Date => {
 
 type CalendarRange = { start: Date; end: Date } | null;
 
+type CalendarInterval = { start: Date; end: Date };
+
+const hoursBetween = (start: Date, end: Date): number => (
+  Math.max(0, end.getTime() - start.getTime()) / (60 * 60 * 1000)
+);
+
+const clampIntervalToRange = (
+  start: Date,
+  end: Date,
+  range: CalendarRange,
+): CalendarInterval | null => {
+  const rangeStart = range?.start ?? null;
+  const rangeEnd = range?.end ?? null;
+  const clampedStart = rangeStart && rangeStart.getTime() > start.getTime()
+    ? new Date(rangeStart.getTime())
+    : new Date(start.getTime());
+  const clampedEnd = rangeEnd && rangeEnd.getTime() < end.getTime()
+    ? new Date(rangeEnd.getTime())
+    : new Date(end.getTime());
+
+  return clampedEnd.getTime() > clampedStart.getTime()
+    ? { start: clampedStart, end: clampedEnd }
+    : null;
+};
+
+const getEntryInterval = (entry: FieldCalendarEntry, range: CalendarRange): CalendarInterval | null => (
+  clampIntervalToRange(entry.start, entry.end, range)
+);
+
+const getOverlapInterval = (
+  left: CalendarInterval,
+  right: CalendarInterval,
+): CalendarInterval | null => {
+  const startMs = Math.max(left.start.getTime(), right.start.getTime());
+  const endMs = Math.min(left.end.getTime(), right.end.getTime());
+  return endMs > startMs
+    ? { start: new Date(startMs), end: new Date(endMs) }
+    : null;
+};
+
+const mergeIntervals = (intervals: CalendarInterval[]): CalendarInterval[] => {
+  if (!intervals.length) {
+    return [];
+  }
+
+  const sorted = [...intervals].sort((left, right) => left.start.getTime() - right.start.getTime());
+  const merged: CalendarInterval[] = [];
+
+  sorted.forEach((interval) => {
+    const last = merged[merged.length - 1];
+    if (!last || interval.start.getTime() > last.end.getTime()) {
+      merged.push({ start: new Date(interval.start.getTime()), end: new Date(interval.end.getTime()) });
+      return;
+    }
+
+    if (interval.end.getTime() > last.end.getTime()) {
+      last.end = new Date(interval.end.getTime());
+    }
+  });
+
+  return merged;
+};
+
+const getEntryResourceId = (entry: FieldCalendarEntry): string => {
+  const resource = entry.resource as { $id?: unknown; id?: unknown } | null | undefined;
+  const resourceId = typeof resource?.$id === 'string' && resource.$id.trim()
+    ? resource.$id.trim()
+    : typeof resource?.id === 'string'
+      ? resource.id.trim()
+      : '';
+  return resourceId || entry.id;
+};
+
+const getBookingTitle = (entry: FieldCalendarEntry): string => {
+  const resource = entry.resource as {
+    name?: unknown;
+    matchId?: unknown;
+  } | null | undefined;
+  if (typeof resource?.name === 'string' && resource.name.trim()) {
+    return resource.name.trim();
+  }
+  if (typeof resource?.matchId === 'number') {
+    return `Match #${resource.matchId}`;
+  }
+  return entry.title || 'Booked';
+};
+
+const getRentalEntryPriceCents = (entry: FieldCalendarEntry): number => {
+  const resource = entry.resource as { price?: unknown } | null | undefined;
+  return typeof resource?.price === 'number' && Number.isFinite(resource.price)
+    ? Math.max(0, resource.price)
+    : 0;
+};
+
+const emptyFacilityCalendarTotals = (fieldCount: number): FacilityCalendarMetricTotals => ({
+  fieldCount,
+  rentalSlotCount: 0,
+  rentalInventoryHours: 0,
+  bookedInventoryHours: 0,
+  bookedCalendarHours: 0,
+  openInventoryHours: 0,
+  conflictCount: 0,
+  conflictHours: 0,
+  potentialRevenueCents: 0,
+  revenuePerCourtHourCents: 0,
+  utilizationPercent: 0,
+  conflicts: [],
+});
+
+const normalizeMetricTotals = (totals: FacilityCalendarMetricTotals): FacilityCalendarMetricTotals => {
+  const rentalInventoryHours = Math.max(0, totals.rentalInventoryHours);
+  const openInventoryHours = Math.max(0, totals.openInventoryHours);
+  const bookedInventoryHours = Math.max(0, totals.bookedInventoryHours);
+
+  return {
+    ...totals,
+    rentalInventoryHours,
+    openInventoryHours,
+    bookedInventoryHours,
+    bookedCalendarHours: Math.max(0, totals.bookedCalendarHours),
+    conflictHours: Math.max(0, totals.conflictHours),
+    potentialRevenueCents: Math.round(Math.max(0, totals.potentialRevenueCents)),
+    revenuePerCourtHourCents: rentalInventoryHours > 0
+      ? Math.round(totals.potentialRevenueCents / rentalInventoryHours)
+      : 0,
+    utilizationPercent: rentalInventoryHours > 0
+      ? Math.round((bookedInventoryHours / rentalInventoryHours) * 100)
+      : 0,
+  };
+};
+
+const buildMetricTotalsForFields = (
+  fields: Field[],
+  range: CalendarRange,
+): FacilityCalendarMetricTotals => {
+  const totals = emptyFacilityCalendarTotals(fields.length);
+  const entries = buildFieldCalendarEvents(fields, range);
+  const bookedEntries = entries
+    .filter((entry) => entry.metaType === 'booked')
+    .map((entry) => ({ entry, interval: getEntryInterval(entry, range) }))
+    .filter((entry): entry is { entry: FieldCalendarEntry; interval: CalendarInterval } => Boolean(entry.interval));
+  const rentalEntries = entries
+    .filter((entry) => entry.metaType === 'rental')
+    .map((entry) => ({ entry, interval: getEntryInterval(entry, range) }))
+    .filter((entry): entry is { entry: FieldCalendarEntry; interval: CalendarInterval } => Boolean(entry.interval));
+
+  bookedEntries.forEach(({ interval }) => {
+    totals.bookedCalendarHours += hoursBetween(interval.start, interval.end);
+  });
+
+  rentalEntries.forEach(({ entry: rentalEntry, interval: rentalInterval }) => {
+    const rentalHours = hoursBetween(rentalInterval.start, rentalInterval.end);
+    totals.rentalSlotCount += 1;
+    totals.rentalInventoryHours += rentalHours;
+    totals.potentialRevenueCents += getRentalEntryPriceCents(rentalEntry) * rentalHours;
+
+    const overlappingIntervals: CalendarInterval[] = [];
+    bookedEntries.forEach(({ entry: bookedEntry, interval: bookedInterval }) => {
+      if (bookedEntry.resourceId !== rentalEntry.resourceId) {
+        return;
+      }
+
+      const overlap = getOverlapInterval(rentalInterval, bookedInterval);
+      if (!overlap) {
+        return;
+      }
+
+      const conflictHours = hoursBetween(overlap.start, overlap.end);
+      overlappingIntervals.push(overlap);
+      totals.conflicts.push({
+        id: `${rentalEntry.id}:${bookedEntry.id}:${overlap.start.getTime()}`,
+        fieldId: rentalEntry.resourceId,
+        fieldName: rentalEntry.fieldName,
+        rentalEntryId: rentalEntry.id,
+        bookingEntryId: bookedEntry.id,
+        bookingTitle: getBookingTitle(bookedEntry),
+        start: overlap.start,
+        end: overlap.end,
+        hours: conflictHours,
+      });
+    });
+
+    const bookedHours = mergeIntervals(overlappingIntervals)
+      .reduce((sum, interval) => sum + hoursBetween(interval.start, interval.end), 0);
+    totals.bookedInventoryHours += Math.min(rentalHours, bookedHours);
+    totals.openInventoryHours += Math.max(0, rentalHours - bookedHours);
+  });
+
+  totals.conflictCount = totals.conflicts.length;
+  totals.conflictHours = totals.conflicts.reduce((sum, conflict) => sum + conflict.hours, 0);
+
+  return normalizeMetricTotals(totals);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null
+);
+
+const getFieldFacilityId = (field: Field): string | null => {
+  if (typeof field.facilityId === 'string' && field.facilityId.trim()) {
+    return field.facilityId.trim();
+  }
+
+  const facility = field.facility as unknown;
+  if (typeof facility === 'string' && facility.trim()) {
+    return facility.trim();
+  }
+  if (!isRecord(facility)) {
+    return null;
+  }
+  if (typeof facility.$id === 'string' && facility.$id.trim()) {
+    return facility.$id.trim();
+  }
+  if (typeof facility.id === 'string' && facility.id.trim()) {
+    return facility.id.trim();
+  }
+  return null;
+};
+
+const getFieldFacilityName = (field: Field): string => {
+  const facility = field.facility as unknown;
+  if (typeof facility === 'string' && facility.trim()) {
+    return facility.trim();
+  }
+  if (isRecord(facility) && typeof facility.name === 'string' && facility.name.trim()) {
+    return facility.name.trim();
+  }
+  return 'Unassigned facility';
+};
+
+export const buildFacilityCalendarSummary = (
+  fields: Field[],
+  range: CalendarRange = null,
+): FacilityCalendarSummary => {
+  const totals = buildMetricTotalsForFields(fields, range);
+  const fieldsByFacility = new Map<string, { facilityId: string | null; facilityName: string; fields: Field[] }>();
+
+  fields.forEach((field) => {
+    const facilityId = getFieldFacilityId(field);
+    const facilityName = getFieldFacilityName(field);
+    const key = facilityId ?? `name:${facilityName.toLocaleLowerCase()}`;
+    const existing = fieldsByFacility.get(key);
+    if (existing) {
+      existing.fields.push(field);
+      return;
+    }
+    fieldsByFacility.set(key, { facilityId, facilityName, fields: [field] });
+  });
+
+  const facilities = Array.from(fieldsByFacility.values())
+    .map((facility) => ({
+      ...buildMetricTotalsForFields(facility.fields, range),
+      facilityId: facility.facilityId,
+      facilityName: facility.facilityName,
+    }))
+    .sort((left, right) => left.facilityName.localeCompare(right.facilityName, undefined, { numeric: true, sensitivity: 'base' }));
+
+  return {
+    ...totals,
+    facilities,
+  };
+};
+
 export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange = null): FieldCalendarEntry[] => {
   return fields.flatMap((field) => {
-    const baseTitle = getFieldDisplayName(field);
+    const baseTitle = getFacilityScopedFieldDisplayName(field);
     const events = (field.events || []).filter((evt) => {
       const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
       const hasParentWeeklyEvent = (

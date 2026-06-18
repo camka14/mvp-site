@@ -25,6 +25,9 @@ const prismaMock = {
   fields: {
     findMany: jest.fn(),
   },
+  facilities: {
+    findMany: jest.fn(),
+  },
   timeSlots: {
     findMany: jest.fn(),
   },
@@ -772,8 +775,16 @@ describe('publicOrganizationCatalog', () => {
       {
         id: 'field_1',
         name: 'Main Field',
-        location: 'Main Park',
+        location: '',
+        facilityId: 'facility_1',
         rentalSlotIds: ['slot_1'],
+      },
+    ]);
+    prismaMock.facilities.findMany.mockResolvedValue([
+      {
+        id: 'facility_1',
+        name: 'Main Park',
+        location: 'Main Park',
       },
     ]);
     prismaMock.timeSlots.findMany.mockResolvedValue([
@@ -790,6 +801,7 @@ describe('publicOrganizationCatalog', () => {
     expect(rentals).toEqual([
       expect.objectContaining({
         id: 'slot_1',
+        location: 'Main Park',
         detailsUrl: '/o/scsoccer/rentals',
       }),
     ]);

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import FieldsTabContent from '../FieldsTabContent';
@@ -7,9 +7,13 @@ const pushMock = jest.fn();
 const getOrganizationByIdMock = jest.fn();
 const getOrganizationsByOwnerMock = jest.fn();
 const getFieldEventsMatchesMock = jest.fn();
+const updateFieldMock = jest.fn();
 const updateRentalSlotMock = jest.fn();
 const getNextRentalOccurrenceMock = jest.fn();
+const createFacilityMock = jest.fn();
+const updateFacilityMock = jest.fn();
 const mockShowNotification = jest.fn();
+let mockCreateRentalSlotModalProps: any = null;
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -68,7 +72,32 @@ jest.mock('react-big-calendar/lib/addons/dragAndDrop', () => (Component: any) =>
 jest.mock('react-big-calendar/lib/css/react-big-calendar.css', () => ({}));
 jest.mock('react-big-calendar/lib/addons/dragAndDrop/styles.css', () => ({}));
 jest.mock('@/components/ui/CreateFieldModal', () => () => null);
-jest.mock('@/components/ui/CreateRentalSlotModal', () => () => null);
+jest.mock('@/components/ui/CreateRentalSlotModal', () => {
+  const React = require('react');
+  return (props: any) => {
+    mockCreateRentalSlotModalProps = props;
+    return props.opened
+      ? React.createElement('div', { 'data-testid': 'create-rental-slot-modal' })
+      : null;
+  };
+});
+jest.mock('@/components/location/LocationSelector', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: ({ value, label = 'Location', onChange, required, errorMessage, isValid }: any) =>
+      React.createElement('input', {
+        'aria-label': label,
+        value: value ?? '',
+        required,
+        'aria-invalid': isValid === false ? 'true' : undefined,
+        'aria-errormessage': isValid === false ? errorMessage : undefined,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+          onChange?.(event.target.value, 0, 0, event.target.value);
+        },
+      }),
+  };
+});
 
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
@@ -80,7 +109,15 @@ jest.mock('@/lib/organizationService', () => ({
 jest.mock('@/lib/fieldService', () => ({
   fieldService: {
     getFieldEventsMatches: (...args: any[]) => getFieldEventsMatchesMock(...args),
+    updateField: (...args: any[]) => updateFieldMock(...args),
     updateRentalSlot: (...args: any[]) => updateRentalSlotMock(...args),
+  },
+}));
+
+jest.mock('@/lib/facilityService', () => ({
+  facilityService: {
+    createFacility: (...args: any[]) => createFacilityMock(...args),
+    updateFacility: (...args: any[]) => updateFacilityMock(...args),
   },
 }));
 
@@ -176,6 +213,59 @@ const buildOrganizationWithTwoRentalFields = () => ({
   ],
 }) as any;
 
+const buildOrganizationWithFacilityRentalFields = () => {
+  const organization = buildOrganizationWithTwoRentalFields();
+  organization.facilities = [
+    {
+      $id: 'facility_river_city',
+      organizationId: 'org_test',
+      name: 'River City Sports Complex',
+      location: '100 River City Way',
+      address: '100 River City Way, Portland, OR 97201, USA',
+      coordinates: [-122.676, 45.523],
+      operatingHours: {
+        version: 1,
+        weekly: [
+          { dayOfWeek: 0, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 1, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 2, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 3, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 4, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 5, closed: true, intervals: [] },
+          { dayOfWeek: 6, closed: true, intervals: [] },
+        ],
+      },
+      isDefault: true,
+      sortOrder: 0,
+    },
+  ];
+  organization.fields[0] = {
+    ...organization.fields[0],
+    facilityId: 'facility_river_city',
+    facility: {
+      $id: 'facility_river_city',
+      organizationId: 'org_test',
+      name: 'River City Sports Complex',
+      location: '100 River City Way',
+      address: '100 River City Way, Portland, OR 97201, USA',
+      coordinates: [-122.676, 45.523],
+      operatingHours: {
+        version: 1,
+        weekly: [
+          { dayOfWeek: 0, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 1, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 2, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 3, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 4, closed: false, intervals: [{ openMinutes: 480, closeMinutes: 1320 }] },
+          { dayOfWeek: 5, closed: true, intervals: [] },
+          { dayOfWeek: 6, closed: true, intervals: [] },
+        ],
+      },
+    },
+  };
+  return organization;
+};
+
 const originalRentalRangeText = [
   new Date(2026, 2, 10, 10, 0, 0, 0).toISOString(),
   new Date(2026, 2, 10, 11, 0, 0, 0).toISOString(),
@@ -189,6 +279,7 @@ const draggedRentalRangeText = [
 describe('FieldsTabContent calendar navigation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreateRentalSlotModalProps = null;
     getOrganizationByIdMock.mockResolvedValue(null);
     getOrganizationsByOwnerMock.mockResolvedValue([]);
     updateRentalSlotMock.mockImplementation(async (field, slot) => ({
@@ -423,6 +514,292 @@ describe('FieldsTabContent calendar navigation', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('event-range-slot_2')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps booked events visible when saving a rental slot returns a lean field payload', async () => {
+    const organization = buildOrganizationWithRentalSlot();
+    const originalField = organization.fields[0];
+    const bookedEvent = {
+      $id: 'booking_1',
+      name: 'League Night',
+      eventType: 'EVENT',
+      start: '2026-03-10T09:00:00.000Z',
+      end: '2026-03-10T09:30:00.000Z',
+    };
+    const bookedMatch = {
+      $id: 'match_1',
+      matchId: 1,
+      start: '2026-03-10T09:30:00.000Z',
+      end: '2026-03-10T10:00:00.000Z',
+    };
+    const newSlot = {
+      $id: 'slot_new',
+      repeating: false,
+      dayOfWeek: 1,
+      daysOfWeek: [1],
+      startDate: '2026-03-10T12:00:00.000Z',
+      endDate: '2026-03-10T13:00:00.000Z',
+      scheduledFieldId: 'field_main',
+      scheduledFieldIds: ['field_main'],
+    };
+    organization.fields[0] = {
+      ...originalField,
+      events: [bookedEvent],
+      matches: [bookedMatch],
+    };
+
+    const leanUpdatedField = {
+      ...originalField,
+      rentalSlotIds: ['slot_1', 'slot_new'],
+      rentalSlots: [...(originalField.rentalSlots ?? []), newSlot],
+    };
+    delete (leanUpdatedField as any).events;
+    delete (leanUpdatedField as any).matches;
+
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    getOrganizationByIdMock.mockResolvedValue({
+      ...organization,
+      fields: [leanUpdatedField],
+    });
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={organization}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByTestId('event-range-booking_1')).toBeInTheDocument();
+    expect(screen.getByTestId('event-range-match_1')).toBeInTheDocument();
+    expect(mockCreateRentalSlotModalProps?.onSaved).toEqual(expect.any(Function));
+
+    await act(async () => {
+      await mockCreateRentalSlotModalProps.onSaved([leanUpdatedField]);
+    });
+
+    expect(screen.getByTestId('event-range-booking_1')).toBeInTheDocument();
+    expect(screen.getByTestId('event-range-match_1')).toBeInTheDocument();
+    expect(screen.getByTestId('event-range-slot_new')).toBeInTheDocument();
+  });
+
+  it('labels rental inventory with facility context', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'user_2' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    expect(await screen.findAllByText('River City Sports Complex - Main')).not.toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Facilities' })).toBeInTheDocument();
+  });
+
+  it('shows facility operations metrics for managers', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByText('Facilities')).toBeInTheDocument();
+    expect(screen.queryByText('Resource assignments')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show assignments' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Facility' })).toBeInTheDocument();
+    expect(screen.getByText('Weekdays 08:00-22:00')).toBeInTheDocument();
+    expect(screen.getByText('Facility operations summary')).toBeInTheDocument();
+    expect(screen.getByText('Utilization')).not.toBeVisible();
+    expect(screen.getAllByText('Unassigned resources')).not.toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Show summary' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Utilization')).toBeVisible();
+    });
+    expect(screen.getByRole('button', { name: '+ Resource' })).toBeInTheDocument();
+    expect(screen.getByText('Revenue / court-hour')).toBeInTheDocument();
+    expect(screen.getByText('Open inventory')).toBeInTheDocument();
+    expect(screen.getByText('Unresolved conflicts')).toBeInTheDocument();
+    expect(screen.getByText('No conflicts')).toBeInTheDocument();
+  });
+
+  it('opens the facility creation modal for managers', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '+ Facility' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(screen.getByRole('heading', { name: 'Create Facility' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Downtown Sports Center')).toBeInTheDocument();
+    expect(screen.getByText('Operating hours')).toBeInTheDocument();
+    expect(screen.getByLabelText('Monday opens')).toBeInTheDocument();
+    expect(screen.getByLabelText('Monday closes')).toBeInTheDocument();
+    expect(screen.getByText('Resources in this facility')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show resources' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('Search facility assignment resources')).not.toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Show resources' }));
+
+    expect(screen.getByRole('button', { name: 'Hide resources' })).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Search facility assignment resources')).toBeVisible();
+    });
+    expect(within(dialog).queryByText('Resource assignment')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Add selected' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Add unassigned' })).not.toBeInTheDocument();
+  });
+
+  it('saves facility operating hours from the edit modal', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    updateFacilityMock.mockImplementation(async (id: string, data: any) => ({
+      $id: id,
+      organizationId: 'org_test',
+      isDefault: true,
+      sortOrder: 0,
+      ...data,
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    expect(await screen.findByRole('heading', { name: 'Edit Facility' })).toBeInTheDocument();
+    const opensInput = screen.getByLabelText('Monday opens');
+    const closesInput = screen.getByLabelText('Monday closes');
+    expect(opensInput).toHaveValue('08:00');
+    expect(closesInput).toHaveValue('22:00');
+
+    await user.clear(opensInput);
+    await user.type(opensInput, '07:00');
+    await user.clear(closesInput);
+    await user.type(closesInput, '21:30');
+    await user.click(screen.getByRole('button', { name: 'Save Facility' }));
+
+    await waitFor(() => {
+      expect(updateFacilityMock).toHaveBeenCalledWith('facility_river_city', expect.objectContaining({
+        operatingHours: expect.objectContaining({
+          version: 1,
+          weekly: expect.arrayContaining([
+            {
+              dayOfWeek: 0,
+              closed: false,
+              intervals: [{ openMinutes: 420, closeMinutes: 1290 }],
+            },
+          ]),
+        }),
+      }));
+    });
+  });
+
+  it('assigns resources from the facility edit modal through field updates', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    updateFacilityMock.mockImplementation(async (id: string, data: any) => ({
+      $id: id,
+      organizationId: 'org_test',
+      isDefault: true,
+      sortOrder: 0,
+      ...data,
+    }));
+    updateFieldMock.mockImplementation(async (data: any) => ({
+      $id: data.$id,
+      name: data.$id === 'field_2' ? 'Field 2' : 'Main',
+      location: '',
+      lat: 0,
+      long: 0,
+      rentalSlotIds: [],
+      rentalSlots: [],
+      facilityId: data.facilityId,
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    expect(await screen.findByRole('heading', { name: 'Edit Facility' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    await user.click(screen.getByRole('button', { name: 'Show resources' }));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Search facility assignment resources')).toBeVisible();
+    });
+    await user.click(within(dialog).getByRole('button', { name: /Field 2/i }));
+    await user.click(screen.getByRole('button', { name: 'Save Facility' }));
+
+    await waitFor(() => {
+      expect(updateFieldMock).toHaveBeenCalledWith({
+        $id: 'field_2',
+        facilityId: 'facility_river_city',
+      });
     });
   });
 

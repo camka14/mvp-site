@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 
 import LocationSelector from '../LocationSelector';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
@@ -7,6 +8,7 @@ import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 const mockSessionToken = { token: 'places-session' };
 const mockCreatePlacesSessionToken = jest.fn(() => mockSessionToken);
 const mockGetPlacePredictions = jest.fn();
+const mockGetPlaceDetails = jest.fn();
 const mockControlElements: HTMLElement[] = [];
 const mockMapControlArray = {
   push: jest.fn((element: HTMLElement) => {
@@ -29,6 +31,7 @@ jest.mock('@/lib/locationService', () => ({
   locationService: {
     createPlacesSessionToken: (...args: unknown[]) => mockCreatePlacesSessionToken(...args),
     getPlacePredictions: (...args: unknown[]) => mockGetPlacePredictions(...args),
+    getPlaceDetails: (...args: unknown[]) => mockGetPlaceDetails(...args),
     geocodeLocation: jest.fn(),
   },
 }));
@@ -63,6 +66,12 @@ describe('LocationSelector', () => {
         placeId: 'place_address',
       },
     ]);
+    mockGetPlaceDetails.mockResolvedValue({
+      name: 'Riverside Courts',
+      formattedAddress: '2130 N Q St, Washougal, WA 98671, USA',
+      lat: 45.579,
+      lng: -122.351,
+    });
     (window as typeof window & { google?: any }).google = {
       maps: {
         ControlPosition: {
@@ -111,5 +120,56 @@ describe('LocationSelector', () => {
       );
     });
     expect(await screen.findByRole('button', { name: '2130 N Q St, Washougal, WA, USA' })).toBeInTheDocument();
+  });
+
+  it('selects a main-input address prediction and marks the location as selected', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    function ControlledLocationSelector() {
+      const [location, setLocation] = React.useState('');
+      const [coordinates, setCoordinates] = React.useState({ lat: 0, lng: 0 });
+      const [selected, setSelected] = React.useState(false);
+      return (
+        <LocationSelector
+          value={location}
+          coordinates={coordinates}
+          onChange={(nextLocation, lat, lng, address, meta) => {
+            setLocation(nextLocation);
+            setCoordinates({ lat, lng });
+            setSelected(Boolean(meta?.selected));
+            onChange(nextLocation, lat, lng, address, meta);
+          }}
+          isValid
+          requireSelection
+          selected={selected}
+        />
+      );
+    }
+
+    renderWithMantine(
+      <ControlledLocationSelector />,
+    );
+
+    const input = screen.getByLabelText('Location');
+    await user.type(input, '2130 N Q St');
+
+    expect(await screen.findByRole('button', { name: '2130 N Q St, Washougal, WA, USA' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '2130 N Q St, Washougal, WA, USA' }));
+
+    await waitFor(() => {
+      expect(mockGetPlaceDetails).toHaveBeenCalledWith('place_address', mockSessionToken);
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      'Riverside Courts',
+      45.579,
+      -122.351,
+      '2130 N Q St, Washougal, WA 98671, USA',
+      {
+        selected: true,
+        source: 'prediction',
+        placeId: 'place_address',
+        formattedAddress: '2130 N Q St, Washougal, WA 98671, USA',
+      },
+    );
   });
 });

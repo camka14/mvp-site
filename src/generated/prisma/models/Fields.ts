@@ -49,6 +49,7 @@ export type FieldsMinAggregateOutputType = {
   name: string | null
   location: string | null
   organizationId: string | null
+  facilityId: string | null
   createdBy: string | null
 }
 
@@ -63,6 +64,7 @@ export type FieldsMaxAggregateOutputType = {
   name: string | null
   location: string | null
   organizationId: string | null
+  facilityId: string | null
   createdBy: string | null
 }
 
@@ -78,6 +80,7 @@ export type FieldsCountAggregateOutputType = {
   rentalSlotIds: number
   location: number
   organizationId: number
+  facilityId: number
   createdBy: number
   _all: number
 }
@@ -106,6 +109,7 @@ export type FieldsMinAggregateInputType = {
   name?: true
   location?: true
   organizationId?: true
+  facilityId?: true
   createdBy?: true
 }
 
@@ -120,6 +124,7 @@ export type FieldsMaxAggregateInputType = {
   name?: true
   location?: true
   organizationId?: true
+  facilityId?: true
   createdBy?: true
 }
 
@@ -135,6 +140,7 @@ export type FieldsCountAggregateInputType = {
   rentalSlotIds?: true
   location?: true
   organizationId?: true
+  facilityId?: true
   createdBy?: true
   _all?: true
 }
@@ -237,6 +243,7 @@ export type FieldsGroupByOutputType = {
   rentalSlotIds: string[]
   location: string | null
   organizationId: string | null
+  facilityId: string | null
   createdBy: string | null
   _count: FieldsCountAggregateOutputType | null
   _avg: FieldsAvgAggregateOutputType | null
@@ -275,6 +282,7 @@ export type FieldsWhereInput = {
   rentalSlotIds?: Prisma.StringNullableListFilter<"Fields">
   location?: Prisma.StringNullableFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  facilityId?: Prisma.StringNullableFilter<"Fields"> | string | null
   createdBy?: Prisma.StringNullableFilter<"Fields"> | string | null
 }
 
@@ -290,6 +298,7 @@ export type FieldsOrderByWithRelationInput = {
   rentalSlotIds?: Prisma.SortOrder
   location?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
@@ -308,6 +317,7 @@ export type FieldsWhereUniqueInput = Prisma.AtLeast<{
   rentalSlotIds?: Prisma.StringNullableListFilter<"Fields">
   location?: Prisma.StringNullableFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  facilityId?: Prisma.StringNullableFilter<"Fields"> | string | null
   createdBy?: Prisma.StringNullableFilter<"Fields"> | string | null
 }, "id">
 
@@ -323,6 +333,7 @@ export type FieldsOrderByWithAggregationInput = {
   rentalSlotIds?: Prisma.SortOrder
   location?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.FieldsCountOrderByAggregateInput
   _avg?: Prisma.FieldsAvgOrderByAggregateInput
@@ -346,6 +357,7 @@ export type FieldsScalarWhereWithAggregatesInput = {
   rentalSlotIds?: Prisma.StringNullableListFilter<"Fields">
   location?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
+  facilityId?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
 }
 
@@ -361,6 +373,7 @@ export type FieldsCreateInput = {
   rentalSlotIds?: Prisma.FieldsCreaterentalSlotIdsInput | string[]
   location?: string | null
   organizationId?: string | null
+  facilityId?: string | null
   createdBy?: string | null
 }
 
@@ -376,6 +389,7 @@ export type FieldsUncheckedCreateInput = {
   rentalSlotIds?: Prisma.FieldsCreaterentalSlotIdsInput | string[]
   location?: string | null
   organizationId?: string | null
+  facilityId?: string | null
   createdBy?: string | null
 }
 
@@ -391,6 +405,7 @@ export type FieldsUpdateInput = {
   rentalSlotIds?: Prisma.FieldsUpdaterentalSlotIdsInput | string[]
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -406,6 +421,7 @@ export type FieldsUncheckedUpdateInput = {
   rentalSlotIds?: Prisma.FieldsUpdaterentalSlotIdsInput | string[]
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -421,6 +437,7 @@ export type FieldsCreateManyInput = {
   rentalSlotIds?: Prisma.FieldsCreaterentalSlotIdsInput | string[]
   location?: string | null
   organizationId?: string | null
+  facilityId?: string | null
   createdBy?: string | null
 }
 
@@ -436,6 +453,7 @@ export type FieldsUpdateManyMutationInput = {
   rentalSlotIds?: Prisma.FieldsUpdaterentalSlotIdsInput | string[]
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -451,6 +469,7 @@ export type FieldsUncheckedUpdateManyInput = {
   rentalSlotIds?: Prisma.FieldsUpdaterentalSlotIdsInput | string[]
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -466,6 +485,7 @@ export type FieldsCountOrderByAggregateInput = {
   rentalSlotIds?: Prisma.SortOrder
   location?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
 }
 
@@ -486,6 +506,7 @@ export type FieldsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder
   location?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
 }
 
@@ -500,6 +521,7 @@ export type FieldsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder
   location?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
 }
 
@@ -548,6 +570,7 @@ export type FieldsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   rentalSlotIds?: boolean
   location?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -563,6 +586,7 @@ export type FieldsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   rentalSlotIds?: boolean
   location?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -578,6 +602,7 @@ export type FieldsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   rentalSlotIds?: boolean
   location?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -593,10 +618,11 @@ export type FieldsSelectScalar = {
   rentalSlotIds?: boolean
   location?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   createdBy?: boolean
 }
 
-export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "createdBy", ExtArgs["result"]["fields"]>
+export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "facilityId" | "createdBy", ExtArgs["result"]["fields"]>
 
 export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Fields"
@@ -613,6 +639,7 @@ export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     rentalSlotIds: string[]
     location: string | null
     organizationId: string | null
+    facilityId: string | null
     createdBy: string | null
   }, ExtArgs["result"]["fields"]>
   composites: {}
@@ -1048,6 +1075,7 @@ export interface FieldsFieldRefs {
   readonly rentalSlotIds: Prisma.FieldRef<"Fields", 'String[]'>
   readonly location: Prisma.FieldRef<"Fields", 'String'>
   readonly organizationId: Prisma.FieldRef<"Fields", 'String'>
+  readonly facilityId: Prisma.FieldRef<"Fields", 'String'>
   readonly createdBy: Prisma.FieldRef<"Fields", 'String'>
 }
 

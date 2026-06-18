@@ -20,6 +20,8 @@ import {
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
 import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
+import { getFieldResolvedLocation } from '@/lib/fieldUtils';
+import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -328,9 +330,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: 'Selected sport is not available for this organization.' }, { status: 400 });
   }
 
-  const fields = await (prisma as any).fields.findMany({
+  const fieldRows = await (prisma as any).fields.findMany({
     where: { organizationId: organization.id },
   });
+  const fields = await attachFacilitiesToFieldRows(fieldRows);
   const rentalSlotIds = Array.from(new Set(fields.flatMap((field: Record<string, any>) => normalizeStringArray(field.rentalSlotIds))));
   const slots = rentalSlotIds.length
     ? await (prisma as any).timeSlots.findMany({
@@ -459,7 +462,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           winnerSetCount: null,
           loserSetCount: null,
           doubleElimination: false,
-          location: primaryField?.location ?? organization.location ?? 'Rental',
+          location: getFieldResolvedLocation(primaryField, organization.location ?? 'Rental') || 'Rental',
           address: organization.address ?? null,
           rating: null,
           teamSizeLimit: 10,

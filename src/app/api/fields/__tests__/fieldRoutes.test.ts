@@ -6,6 +6,13 @@ const prismaMock = {
   $transaction: jest.fn(),
   fields: {
     create: jest.fn(),
+    findMany: jest.fn(),
+  },
+  facilities: {
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    findMany: jest.fn(),
+    create: jest.fn(),
   },
   organizations: {
     findUnique: jest.fn(),
@@ -23,7 +30,7 @@ const requireSessionMock = jest.fn();
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
-import { POST } from '@/app/api/fields/route';
+import { GET, POST } from '@/app/api/fields/route';
 
 const jsonRequest = (body: unknown) =>
   new NextRequest('http://localhost/api/fields', {
@@ -36,6 +43,20 @@ describe('field routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    prismaMock.facilities.findFirst.mockResolvedValue({
+      id: 'facility_org_1',
+      organizationId: 'org_1',
+      name: 'Test',
+      isDefault: true,
+    });
+    prismaMock.facilities.findUnique.mockResolvedValue(null);
+    prismaMock.facilities.findMany.mockResolvedValue([]);
+    prismaMock.facilities.create.mockResolvedValue({
+      id: 'facility_org_1',
+      organizationId: 'org_1',
+      name: 'Test',
+      isDefault: true,
+    });
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
   });
@@ -56,6 +77,7 @@ describe('field routes', () => {
       heading: null,
       inUse: null,
       organizationId: 'org_1',
+      facilityId: 'facility_org_1',
       divisions: [],
       rentalSlotIds: [],
       createdAt: new Date(),
@@ -66,7 +88,95 @@ describe('field routes', () => {
 
     expect(res.status).toBe(201);
     expect(json.$id).toBe('field_1');
-    expect(prismaMock.fields.create).toHaveBeenCalled();
+    expect(prismaMock.fields.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: 'org_1',
+          facilityId: 'facility_org_1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects field creation when the provided facility is outside the organization', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+    prismaMock.facilities.findFirst.mockResolvedValueOnce(null);
+
+    const res = await POST(jsonRequest({
+      id: 'field_1',
+      name: 'Court A',
+      organizationId: 'org_1',
+      facilityId: 'facility_other',
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toBe('Facility not found for organization');
+    expect(prismaMock.fields.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects field creation with a typed location but no selected coordinates', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+
+    const res = await POST(jsonRequest({
+      id: 'field_1',
+      name: 'Court A',
+      location: 'Main Gym',
+      organizationId: 'org_1',
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toBe('Resource location must be selected from suggestions or the map');
+    expect(prismaMock.organizations.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.fields.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a field with a selected resource location', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+    prismaMock.fields.create.mockResolvedValue({
+      id: 'field_1',
+      name: 'Court A',
+      location: 'Main Gym',
+      lat: 45.582,
+      long: -122.353,
+      heading: null,
+      inUse: null,
+      organizationId: 'org_1',
+      facilityId: 'facility_org_1',
+      divisions: [],
+      rentalSlotIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await POST(jsonRequest({
+      id: 'field_1',
+      name: 'Court A',
+      location: 'Main Gym',
+      lat: 45.582,
+      long: -122.353,
+      organizationId: 'org_1',
+    }));
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.fields.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          location: 'Main Gym',
+          lat: 45.582,
+          long: -122.353,
+        }),
+      }),
+    );
   });
 
   it('rejects field creation for non-owners when organization is provided', async () => {
@@ -82,5 +192,37 @@ describe('field routes', () => {
     expect(res.status).toBe(403);
     expect(json.error).toBe('Forbidden');
     expect(prismaMock.fields.create).not.toHaveBeenCalled();
+  });
+
+  it('returns facility metadata with listed fields', async () => {
+    prismaMock.fields.findMany.mockResolvedValue([
+      {
+        id: 'field_1',
+        name: 'Court A',
+        organizationId: 'org_1',
+        facilityId: 'facility_org_1',
+        rentalSlotIds: [],
+      },
+    ]);
+    prismaMock.facilities.findMany.mockResolvedValue([
+      {
+        id: 'facility_org_1',
+        organizationId: 'org_1',
+        name: 'River City Sports Complex',
+      },
+    ]);
+
+    const res = await GET(new NextRequest('http://localhost/api/fields?ids=field_1'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.facilities.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['facility_org_1'] } },
+    });
+    expect(json.fields[0].$id).toBe('field_1');
+    expect(json.fields[0].facility).toMatchObject({
+      $id: 'facility_org_1',
+      name: 'River City Sports Complex',
+    });
   });
 });

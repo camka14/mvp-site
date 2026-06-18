@@ -750,6 +750,13 @@ svg {
   padding: 0.75rem;
 }
 
+.field-calendar-filter--unframed {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
 .field-calendar-filter__row {
   width: 100%;
   display: grid;

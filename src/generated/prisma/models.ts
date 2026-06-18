@@ -10,6 +10,7 @@
  */
 export type * from './models/AppReleases'
 export type * from './models/Fields'
+export type * from './models/Facilities'
 export type * from './models/Matches'
 export type * from './models/MatchSegments'
 export type * from './models/MatchIncidents'
