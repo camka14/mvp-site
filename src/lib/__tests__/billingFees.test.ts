@@ -19,19 +19,22 @@ describe('billingFees', () => {
     });
   });
 
-  it('uses the league and tournament fee percentage when applicable', () => {
-    expect(
-      calculateMvpAndStripeFees({
-        eventAmountCents: 1000,
-        eventType: 'LEAGUE',
-      }),
-    ).toEqual({
-      mvpFeeCents: 30,
-      stripeFeeCents: 62,
-      totalChargeCents: 1092,
-      mvpFeePercentage: 0.03,
-    });
-  });
+  it.each(['EVENT', 'LEAGUE', 'TOURNAMENT'])(
+    'uses the standard 1%% fee for %s registrations',
+    (eventType) => {
+      expect(
+        calculateMvpAndStripeFees({
+          eventAmountCents: 1000,
+          eventType,
+        }),
+      ).toEqual({
+        mvpFeeCents: 10,
+        stripeFeeCents: 61,
+        totalChargeCents: 1071,
+        mvpFeePercentage: 0.01,
+      });
+    },
+  );
 
   it('calculates a lower gross-up for ACH Direct Debit than cards', () => {
     const cardFees = calculateMvpAndStripeFeesWithTax({

@@ -12,17 +12,17 @@ describe('PriceWithFeesPreview', () => {
       <PriceWithFeesPreview amountCents={1000} eventType="LEAGUE" />,
     );
 
-    expect(screen.getByText('$10.30 + Stripe fees')).toBeInTheDocument();
+    expect(screen.getByText('$10.10 + Stripe fees')).toBeInTheDocument();
 
     await user.click(
       screen.getByRole('button', { name: /show fee breakdown/i }),
     );
 
     const dialog = await screen.findByRole('dialog', { name: /fee breakdown/i });
-    expect(within(dialog).getByText('BracketIQ fee (3%)')).toBeInTheDocument();
+    expect(within(dialog).getByText('BracketIQ fee (1%)')).toBeInTheDocument();
     expect(within(dialog).getByText('Stripe fees')).toBeInTheDocument();
     expect(within(dialog).getByText('Vary by payment method')).toBeInTheDocument();
-    expect(screen.getAllByText('$10.30 + Stripe fees')).toHaveLength(2);
+    expect(screen.getAllByText('$10.10 + Stripe fees')).toHaveLength(2);
   });
 
   it('keeps zero-priced previews at zero instead of inventing fees', async () => {

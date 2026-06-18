@@ -1,5 +1,4 @@
 export const DEFAULT_MVP_FEE_PERCENTAGE = 0.01;
-export const LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE = 0.03;
 export const STRIPE_FIXED_FEE_CENTS = 30;
 export const STRIPE_PERCENT_FEE = 0.029;
 export const DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS = 50;
@@ -16,18 +15,7 @@ export type PaymentMethodFeeType =
   | 'customer_balance'
   | 'pay_by_bank';
 
-const normalizeEventType = (eventType: unknown): string => {
-  if (typeof eventType !== 'string') {
-    return '';
-  }
-  return eventType.trim().toUpperCase();
-};
-
-export const resolveMvpFeePercentage = (eventType: unknown): number => {
-  const normalized = normalizeEventType(eventType);
-  if (normalized === 'LEAGUE' || normalized === 'TOURNAMENT') {
-    return LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE;
-  }
+export const resolveMvpFeePercentage = (_eventType: unknown): number => {
   return DEFAULT_MVP_FEE_PERCENTAGE;
 };
 

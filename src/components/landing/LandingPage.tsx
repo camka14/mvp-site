@@ -228,13 +228,13 @@ const heroScreenshots = {
 const utilitySignals = [
   { label: 'Web + mobile', detail: 'One operating layer for staff and participants.', icon: MonitorSmartphone },
   { label: 'Free app access', detail: 'Run events without a platform subscription.', icon: BadgeCheck },
-  { label: '1-3% payment fee', detail: 'Fees only apply when payments are processed.', icon: CreditCard },
+  { label: '1% payment fee', detail: 'Fees only apply when payments are processed.', icon: CreditCard },
   { label: 'Website integration included', detail: 'Publish live event data where your audience already goes.', icon: Globe2 },
 ];
 
 const commandStats = [
   { label: 'Schedules', value: 'Live', detail: 'Courts, fields, brackets' },
-  { label: 'Payments', value: '1-3%', detail: 'Only on processed payments' },
+  { label: 'Payments', value: '1%', detail: 'Only on processed payments' },
   { label: 'Documents', value: 'Signed', detail: 'Waivers and agreements' },
   { label: 'Updates', value: 'Instant', detail: 'Chat and notifications' },
 ];
@@ -384,9 +384,9 @@ const feeHighlights = [
     icon: WalletCards,
   },
   {
-    title: '1-3% payment fee',
+    title: '1% payment fee',
     detail: 'Only when BracketIQ processes payments.',
-    value: '1-3%',
+    value: '1%',
     icon: BadgeDollarSign,
   },
   {
@@ -1288,7 +1288,7 @@ export default function LandingPage({
               <p className="landing-label">Free To Use</p>
               <h2 className="landing-section-title mt-3">Free to use. Pay only on processing.</h2>
               <p className="landing-section-copy mt-4">
-                Run events, leagues, and tournaments without a subscription. BracketIQ only takes a 1-3% fee when payments are processed.
+                Run events, leagues, and tournaments without a subscription. BracketIQ only takes a 1% fee when payments are processed.
               </p>
             </div>
 
@@ -1320,7 +1320,7 @@ export default function LandingPage({
                 <div className="landing-payment-fee-row">
                   <div>
                     <p>Processing fee</p>
-                    <strong>1-3%</strong>
+                    <strong>1%</strong>
                   </div>
                   <ReceiptText aria-hidden="true" className="h-5 w-5" />
                 </div>
