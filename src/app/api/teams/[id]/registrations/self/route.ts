@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { handleApiRouteError } from '@/server/http/routeErrors';
 import { loadAndBuildRegistrationAnswerSnapshot } from '@/server/registrationQuestions';
+import { requireVerifiedEmailForTeamRegistrationIfPaid } from '@/server/paidRegistrationGate';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { leaveTeam, findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
 import {
@@ -143,6 +144,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         invite: invite ? withLegacyFields(invite) : null,
         team: withTeamRoleAliases(teamRow as Record<string, any>),
       }, { status: 200 });
+    }
+
+    const emailVerificationRequired = await requireVerifiedEmailForTeamRegistrationIfPaid({
+      userId: session.userId,
+      registrationPriceCents: (teamRow as any).registrationPriceCents,
+    });
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
     }
 
     const registrantId = session.userId;

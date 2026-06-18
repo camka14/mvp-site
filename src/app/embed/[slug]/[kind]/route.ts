@@ -234,6 +234,36 @@ const renderEventPagination = (pageInfo: PublicPaginationInfo | undefined): stri
   `;
 };
 
+const getEmbeddedEventRegistrationUrl = (
+  catalog: PublicOrganizationCatalog,
+  event: PublicOrganizationEventCard,
+): string => {
+  let registrationEventId = event.id;
+  try {
+    const detailsUrl = new URL(event.detailsUrl, 'https://bracket-iq.local');
+    const pathParts = detailsUrl.pathname.split('/').filter(Boolean);
+    const eventPathIndex = pathParts.findIndex((part) => part === 'events');
+    const detailsEventId = eventPathIndex >= 0 ? pathParts[eventPathIndex + 1] : '';
+    if (detailsEventId) {
+      registrationEventId = decodeURIComponent(detailsEventId);
+    }
+    const params = new URLSearchParams();
+    const slotId = detailsUrl.searchParams.get('slotId');
+    const occurrenceDate = detailsUrl.searchParams.get('occurrenceDate');
+    if (slotId) params.set('slotId', slotId);
+    if (occurrenceDate) params.set('occurrenceDate', occurrenceDate);
+    const query = params.toString();
+    const basePath = `/embed/${encodeURIComponent(catalog.organization.slug)}/registration/${encodeURIComponent(registrationEventId)}`;
+    return query ? `${basePath}?${query}` : basePath;
+  } catch {
+    if (registrationEventId.includes(':')) {
+      registrationEventId = registrationEventId.split(':')[0] ?? registrationEventId;
+    }
+    const basePath = `/embed/${encodeURIComponent(catalog.organization.slug)}/registration/${encodeURIComponent(registrationEventId)}`;
+    return basePath;
+  }
+};
+
 const renderEvents = (catalog: PublicOrganizationCatalog, options: WidgetRenderOptions): string => {
   const filters = renderEventFilters(catalog, options);
   const pagination = renderEventPagination(catalog.eventPageInfo);
@@ -251,11 +281,11 @@ const renderEvents = (catalog: PublicOrganizationCatalog, options: WidgetRenderO
 
   const cards = catalog.events.map((event) => {
     const eventType = event.eventType.trim().toUpperCase();
+    const registrationUrl = getEmbeddedEventRegistrationUrl(catalog, event);
     return `
       <a
         class="card media-card event-card"
-        href="${escapeHtml(event.detailsUrl)}"
-        target="_top"
+        href="${escapeHtml(registrationUrl)}"
         rel="noopener"
         data-event-card
         data-event-type="${escapeHtml(eventType)}"

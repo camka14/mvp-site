@@ -26,6 +26,7 @@
     "seed:e2e:reset": "node scripts/run-seed-e2e.mjs --force-reset",
     "gmail:oauth:url": "node scripts/gmail-oauth-url.mjs",
     "gmail:oauth:token": "node scripts/gmail-oauth-token.mjs",
+    "widget:test-server": "node scripts/widget-test-server.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

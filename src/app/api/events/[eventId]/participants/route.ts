@@ -42,6 +42,7 @@ import {
   type RefundRequestRow,
   type StripeRefundAttempt,
 } from '@/server/refunds/refundExecution';
+import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
 import {
   assignRegisteredTeamToTournamentPool,
   getTournamentPoolIdsForBracket,
@@ -1060,6 +1061,16 @@ async function updateParticipants(
   const divisionSelection = mode === 'add' && divisionSelectionResult?.ok
     ? divisionSelectionResult.selection
     : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
+  if (mode === 'add') {
+    const emailVerificationRequired = await requireVerifiedEmailForEventRegistrationIfPaid({
+      userId: session.userId,
+      event,
+      selection: divisionSelection,
+    });
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
+    }
+  }
   const eventAnswersSnapshot = mode === 'add'
     ? await loadAndBuildRegistrationAnswerSnapshot({
       scopeType: 'EVENT',

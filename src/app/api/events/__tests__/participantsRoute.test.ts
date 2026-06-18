@@ -29,6 +29,9 @@ const prismaMock = {
   signedDocuments: {
     findMany: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   userData: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
@@ -329,6 +332,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     }));
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_default', transfer_data: null });
     buildEventParticipantSnapshotMock.mockResolvedValue({
       participants: { teamIds: [], userIds: [], waitListIds: [], freeAgentIds: [], divisions: [] },
@@ -483,6 +487,42 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
+  it('blocks unverified users from joining paid events directly', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'volleyball',
+      registrationByDivisionType: false,
+      divisions: [],
+      requiredTemplateIds: [],
+      organizationId: null,
+      price: 2500,
+      teamSignup: false,
+      eventType: 'EVENT',
+      includePlayoffs: false,
+      parentEvent: null,
+      timeSlotIds: [],
+      state: 'PUBLISHED',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', { userId: 'user_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
   it('registers weekly parent joins against the selected occurrence', async () => {
     const parentEvent = {
       id: 'weekly_parent',
@@ -560,13 +600,16 @@ describe('POST /api/events/[eventId]/participants', () => {
       allowTeamSplitDefault: false,
     };
     prismaMock.events.findUnique.mockResolvedValueOnce(parentEvent);
-    prismaMock.divisions.findFirst.mockResolvedValueOnce({
+    const paidDivision = {
       id: 'div_a',
       price: 5000,
       allowPaymentPlans: true,
       installmentAmounts: [2500, 2500],
       installmentDueRelativeDays: [-1, 0],
-    });
+    };
+    prismaMock.divisions.findFirst
+      .mockResolvedValueOnce(paidDivision)
+      .mockResolvedValueOnce(paidDivision);
     prismaMock.bills.update.mockResolvedValueOnce({
       id: 'bill_weekly_1',
       ownerType: 'USER',

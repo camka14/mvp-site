@@ -10,6 +10,7 @@ import {
   deleteEventRegistration,
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
+import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
 import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
@@ -83,6 +84,7 @@ async function updateFreeAgents(
         teamSignup: true,
         requiredTemplateIds: true,
         organizationId: true,
+        price: true,
         start: true,
         eventType: true,
         parentEvent: true,
@@ -113,6 +115,16 @@ async function updateFreeAgents(
       { error: 'Free-agent signup is only available for team registration events.' },
       { status: 403 },
     );
+  }
+  if (mode === 'add') {
+    const emailVerificationRequired = await requireVerifiedEmailForEventRegistrationIfPaid({
+      userId: session.userId,
+      event,
+      includeAnyPricedDivision: true,
+    });
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
+    }
   }
 
   const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);

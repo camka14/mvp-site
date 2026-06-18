@@ -952,6 +952,25 @@ const parseCompositeDivisionTypeId = (
   };
 };
 
+export const parseDivisionAgeBracketFromId = (
+  divisionTypeId: string | null | undefined,
+): DivisionAgeBracket | null => {
+  const normalizedDivisionTypeId = normalizeDivisionIdToken(divisionTypeId);
+  if (!normalizedDivisionTypeId) {
+    return null;
+  }
+  const direct = parseDivisionAgeBracket(normalizedDivisionTypeId);
+  if (direct) {
+    return direct;
+  }
+  const composite = parseCompositeDivisionTypeId(normalizedDivisionTypeId);
+  if (composite) {
+    return parseDivisionAgeBracket(composite.ageDivisionTypeId);
+  }
+  const ageSegment = normalizedDivisionTypeId.match(/(?:^|_)age_([a-z0-9]+)(?:_|$)/)?.[1] ?? null;
+  return ageSegment ? parseDivisionAgeBracket(ageSegment) : null;
+};
+
 export const deriveDivisionTypeDisplayName = (params: {
   sportInput?: string | null;
   gender: DivisionGender;

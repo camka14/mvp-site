@@ -15,6 +15,9 @@ const prismaMock = {
   products: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
   },
@@ -106,6 +109,7 @@ describe('POST /api/billing/purchase-intent', () => {
       },
     }));
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     prismaMock.products.findUnique.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue({ id: 'team_1' });
     prismaMock.divisions.findMany.mockResolvedValue([]);
@@ -258,6 +262,24 @@ describe('POST /api/billing/purchase-intent', () => {
     expect(res.status).toBe(200);
     expect(data.paymentIntent).toBe('pi_123_secret_456');
     expect(reserveRentalCheckoutLocksMock).toHaveBeenCalled();
+  });
+
+  it('blocks unverified users before creating a paid event payment intent', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
 
   it('returns 409 when rental checkout lock reservation conflicts', async () => {

@@ -10,6 +10,9 @@ const prismaMock = {
   userData: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   templateDocuments: {
     findMany: jest.fn(),
   },
@@ -95,6 +98,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
     prismaMock.timeSlots.findUnique.mockResolvedValue(null);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
   });
 
   it('requires division selection when registering by individual division', async () => {
@@ -146,6 +150,36 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toContain('Select a division');
+    expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
+  });
+
+  it('blocks unverified users from paid event self registration', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'volleyball',
+      registrationByDivisionType: false,
+      divisions: [],
+      requiredTemplateIds: [],
+      organizationId: null,
+      price: 2500,
+    });
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/self', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
     expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
   });
 

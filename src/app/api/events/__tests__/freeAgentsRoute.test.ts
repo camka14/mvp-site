@@ -10,6 +10,9 @@ const prismaMock = {
   userData: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   parentChildLinks: {
     findFirst: jest.fn(),
   },
@@ -65,6 +68,7 @@ describe('event free-agent route', () => {
       id: 'user_1',
       dateOfBirth: new Date('1995-01-01T00:00:00.000Z'),
     });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     upsertEventRegistrationMock.mockResolvedValue({ id: 'registration_1' });
     deleteEventRegistrationMock.mockResolvedValue(undefined);
     buildEventParticipantSnapshotMock.mockResolvedValue({
@@ -95,6 +99,39 @@ describe('event free-agent route', () => {
       createdBy: 'user_1',
     }));
     expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks unverified users from free-agent signup on a paid team event', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      requiredTemplateIds: [],
+      organizationId: null,
+      price: 2500,
+      start: new Date('2026-03-01T00:00:00.000Z'),
+      eventType: 'TOURNAMENT',
+      parentEvent: null,
+      timeSlotIds: [],
+      maxParticipants: null,
+      singleDivision: true,
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('moves user from participants and waitlist when adding as free agent', async () => {

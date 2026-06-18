@@ -10,6 +10,9 @@ const prismaMock = {
   userData: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   parentChildLinks: {
     findFirst: jest.fn(),
   },
@@ -75,6 +78,7 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
     prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
     findEventRegistrationMock.mockResolvedValue(null);
@@ -126,6 +130,40 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
       status: 'STARTED',
       consentStatus: 'child_email_required',
     }));
+  });
+
+  it('blocks unverified parents from paid child event registration', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'volleyball',
+      registrationByDivisionType: false,
+      requiredTemplateIds: [],
+      organizationId: null,
+      eventType: 'EVENT',
+      includePlayoffs: false,
+      parentEvent: null,
+      timeSlotIds: [],
+      userIds: [],
+      waitListIds: [],
+      price: 2500,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/child', { childId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('creates a child registration when child email is present', async () => {

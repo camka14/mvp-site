@@ -259,6 +259,30 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('section:first-child { padding-top: 0; border-top: 0; }');
   });
 
+  it('links weekly occurrence cards to registration with the parent event id and occurrence params', async () => {
+    getPublicOrganizationCatalogMock.mockResolvedValue({
+      ...catalog,
+      events: [
+        {
+          ...catalog.events[0],
+          id: 'weekly_event_1:slot_1:2026-06-18',
+          eventType: 'WEEKLY_EVENT',
+          eventTypeLabel: 'Weekly Event',
+          detailsUrl: '/o/scsoccer/events/weekly_event_1?slotId=slot_1&occurrenceDate=2026-06-18',
+        },
+      ],
+    });
+    const req = new NextRequest('http://localhost/embed/scsoccer/events');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'events' }) });
+    const html = await res.text();
+
+    expect(html).toContain(
+      'href="/embed/scsoccer/registration/weekly_event_1?slotId=slot_1&amp;occurrenceDate=2026-06-18"',
+    );
+    expect(html).not.toContain('/registration/weekly_event_1%3Aslot_1%3A2026-06-18');
+  });
+
   it('renders event pagination controls when more events are available', async () => {
     getPublicOrganizationCatalogMock.mockResolvedValue({
       ...catalog,

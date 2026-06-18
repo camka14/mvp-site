@@ -4,6 +4,7 @@ import { calculateAgeOnDate } from '@/lib/age';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { handleApiRouteError } from '@/server/http/routeErrors';
+import { requireVerifiedEmailForTeamRegistrationIfPaid } from '@/server/paidRegistrationGate';
 import { loadAndBuildRegistrationAnswerSnapshot } from '@/server/registrationQuestions';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { reserveChildTeamRegistrationForGuardian } from '@/server/teams/teamChildRegistration';
@@ -57,6 +58,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     if (!parentLink) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const emailVerificationRequired = await requireVerifiedEmailForTeamRegistrationIfPaid({
+      userId: session.userId,
+      registrationPriceCents: (teamRow as any).registrationPriceCents,
+    });
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
     }
     const answersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
       scopeType: 'TEAM',

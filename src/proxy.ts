@@ -61,7 +61,9 @@ const firstHeaderValue = (value: string | null): string | null => {
 
 const isLocalHost = (host: string): boolean => (
   host === 'localhost'
+  || host === '10.0.2.2'
   || host === '127.0.0.1'
+  || host === '0.0.0.0'
   || host === '::1'
 );
 
@@ -108,6 +110,10 @@ const isSensitivePath = (pathname: string): boolean => (
   SENSITIVE_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 );
 
+const isEmbeddableWidgetPath = (pathname: string): boolean => (
+  pathname === '/embed' || pathname.startsWith('/embed/')
+);
+
 const allowsCrossOriginUnsafeRequest = (pathname: string): boolean => (
   CROSS_ORIGIN_ALLOWED_PATHS.some((pattern) => pattern.test(pathname))
 );
@@ -130,6 +136,9 @@ const isCrossOriginUnsafeRequest = (request: NextRequest): boolean => {
 
 const applySecurityHeaders = (response: NextResponse, request: NextRequest): NextResponse => {
   Object.entries(SECURITY_HEADERS).forEach(([name, value]) => {
+    if (name === 'X-Frame-Options' && isEmbeddableWidgetPath(request.nextUrl.pathname)) {
+      return;
+    }
     response.headers.set(name, value);
   });
   if (process.env.NODE_ENV === 'production') {

@@ -66,6 +66,7 @@ import {
   loadAndBuildRegistrationAnswerSnapshot,
   upsertRegistrationQuestionResponse,
 } from '@/server/registrationQuestions';
+import { requireVerifiedEmailForPaidRegistration } from '@/server/emailVerificationGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -964,6 +965,15 @@ export async function POST(req: NextRequest) {
 
   if (resolvedPurchase.amountCents <= 0) {
     return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+  }
+  if (
+    resolvedPurchase.purchaseType === 'event'
+    || resolvedPurchase.purchaseType === 'team_registration'
+  ) {
+    const emailVerificationRequired = await requireVerifiedEmailForPaidRegistration(session.userId);
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
+    }
   }
 
   if (taxPolicy.collectionStrategy === 'BLOCKED_NEEDS_REVIEW') {

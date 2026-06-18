@@ -212,4 +212,71 @@ describe('team registration auth route handling', () => {
     }));
     expect(teamOpenRegistrationMock.reserveTeamRegistrationSlot).not.toHaveBeenCalled();
   });
+
+  it('blocks unverified adults from paid self team registration', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    teamMembershipMock.loadCanonicalTeamById.mockResolvedValue({
+      id: 'team_1',
+      name: 'Paid Team',
+      playerIds: [],
+      pending: [],
+      teamSize: 8,
+      registrationPriceCents: 2500,
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('1990-05-20T00:00:00.000Z'),
+      firstName: 'Sam',
+      lastName: 'Player',
+    });
+    calculateAgeOnDateMock.mockReturnValue(36);
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: null });
+
+    const response = await postSelf(
+      new NextRequest('http://localhost/api/teams/team_1/registrations/self', { method: 'POST' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(teamOpenRegistrationMock.reserveTeamRegistrationSlot).not.toHaveBeenCalled();
+  });
+
+  it('blocks unverified parents from paid child team registration', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    teamMembershipMock.loadCanonicalTeamById.mockResolvedValue({
+      id: 'team_1',
+      name: 'Paid Team',
+      playerIds: [],
+      pending: [],
+      teamSize: 8,
+      registrationPriceCents: 2500,
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('1990-05-20T00:00:00.000Z'),
+    });
+    calculateAgeOnDateMock.mockReturnValue(36);
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: null });
+
+    const response = await postChild(
+      new NextRequest('http://localhost/api/teams/team_1/registrations/child', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ childId: 'child_1' }),
+      }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(teamOpenRegistrationMock.reserveTeamRegistrationSlot).not.toHaveBeenCalled();
+  });
 });

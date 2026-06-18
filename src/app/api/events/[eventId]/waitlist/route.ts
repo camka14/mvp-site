@@ -15,6 +15,7 @@ import {
   resolveWeeklyOccurrence,
   WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
 } from '@/server/events/weeklyOccurrences';
+import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,6 +88,7 @@ async function updateWaitlist(
       eventType: true,
       parentEvent: true,
       timeSlotIds: true,
+      price: true,
     },
   });
   if (!event) {
@@ -189,6 +191,15 @@ async function updateWaitlist(
   }
 
   if (mode === 'add') {
+    const emailVerificationRequired = await requireVerifiedEmailForEventRegistrationIfPaid({
+      userId: session.userId,
+      event,
+      includeAnyPricedDivision: true,
+    });
+    if (emailVerificationRequired) {
+      return emailVerificationRequired;
+    }
+
     const registrantId = (userId ?? teamId)!;
     await upsertEventRegistration({
       eventId,

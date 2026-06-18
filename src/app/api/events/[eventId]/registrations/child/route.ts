@@ -17,6 +17,7 @@ import {
   findEventRegistration,
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
+import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
 import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       registrationByDivisionType: true,
       requiredTemplateIds: true,
       organizationId: true,
+      price: true,
       eventType: true,
       includePlayoffs: true,
       parentEvent: true,
@@ -94,6 +96,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   });
   if (!divisionSelection.ok) {
     return NextResponse.json({ error: divisionSelection.error ?? 'Invalid division selection' }, { status: 400 });
+  }
+  const emailVerificationRequired = await requireVerifiedEmailForEventRegistrationIfPaid({
+    userId: session.userId,
+    event,
+    selection: divisionSelection.selection,
+  });
+  if (emailVerificationRequired) {
+    return emailVerificationRequired;
   }
   const eventAnswersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
     scopeType: 'EVENT',

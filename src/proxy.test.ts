@@ -52,6 +52,14 @@ describe('proxy', () => {
     expect(response.headers.get('X-Frame-Options')).toBe('DENY');
   });
 
+  it('allows widget embed routes to be framed', () => {
+    const response = proxy(requestFor('https://bracket-iq.com/embed/scsoccer/events', 'bracket-iq.com'));
+
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('X-Frame-Options')).toBeNull();
+  });
+
   it('adds no-store headers to sensitive app surfaces', () => {
     const response = proxy(requestFor('https://bracket-iq.com/organizations/org_1/finance', 'bracket-iq.com'));
 
@@ -105,6 +113,18 @@ describe('proxy', () => {
 
     expect(response.status).toBe(308);
     expect(response.headers.get('location')).toBe('https://bracket-iq.com/profile');
+    expect(response.headers.get('Strict-Transport-Security')).toContain('max-age=63072000');
+  });
+
+  it('does not force Android emulator bridge requests to https in local production mode', () => {
+    process.env.NODE_ENV = 'production';
+    const response = proxy(requestFor('http://localhost:3000/api/auth/me', '10.0.2.2:3000', {
+      headers: {
+        'x-forwarded-proto': 'http',
+      },
+    }));
+
+    expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('Strict-Transport-Security')).toContain('max-age=63072000');
   });
 });

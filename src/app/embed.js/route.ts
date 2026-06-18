@@ -11,7 +11,7 @@ const SCRIPT = `
 
   const normalizeKind = (value) => {
     const kind = String(value || 'events').toLowerCase();
-    return ['all', 'events', 'teams', 'rentals', 'products', 'standings', 'brackets'].includes(kind) ? kind : 'events';
+    return ['all', 'events', 'teams', 'rentals', 'products', 'standings', 'brackets', 'registration'].includes(kind) ? kind : 'events';
   };
 
   widgets.forEach((target) => {
@@ -20,21 +20,36 @@ const SCRIPT = `
     if (!org) return;
     const kind = normalizeKind(target.dataset.kind);
     const params = new URLSearchParams();
-    if (target.dataset.limit) params.set('limit', target.dataset.limit);
-    if (target.dataset.page) params.set('page', target.dataset.page);
-    if (target.dataset.showDateFilter) params.set('showDateFilter', target.dataset.showDateFilter);
-    if (target.dataset.showEventTypeFilter) params.set('showEventTypeFilter', target.dataset.showEventTypeFilter);
-    if (target.dataset.dateRule) params.set('dateRule', target.dataset.dateRule);
-    if (target.dataset.dateFrom) params.set('dateFrom', target.dataset.dateFrom);
-    if (target.dataset.dateTo) params.set('dateTo', target.dataset.dateTo);
-    if (target.dataset.eventTypes) params.set('eventTypes', target.dataset.eventTypes);
-    if (target.dataset.eventIds) params.set('eventIds', target.dataset.eventIds);
-    if (target.dataset.divisionId) params.set('divisionId', target.dataset.divisionId);
-    if (target.dataset.includeChildWeeklyEvents) params.set('includeChildWeeklyEvents', target.dataset.includeChildWeeklyEvents);
-    if (target.dataset.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', target.dataset.teamOpenRegistrationOnly);
-    if (target.dataset.productPurchaseMode) params.set('productPurchaseMode', target.dataset.productPurchaseMode);
+    let iframeSrc = '';
+    if (kind === 'registration') {
+      const eventId = String(
+        target.dataset.eventId
+          || target.dataset.event
+          || String(target.dataset.eventIds || '').split(',')[0]
+          || '',
+      ).trim();
+      if (!eventId) return;
+      if (target.dataset.slotId) params.set('slotId', target.dataset.slotId);
+      if (target.dataset.occurrenceDate) params.set('occurrenceDate', target.dataset.occurrenceDate);
+      iframeSrc = origin + '/embed/' + encodeURIComponent(org) + '/registration/' + encodeURIComponent(eventId) + (params.toString() ? '?' + params.toString() : '');
+    } else {
+      if (target.dataset.limit) params.set('limit', target.dataset.limit);
+      if (target.dataset.page) params.set('page', target.dataset.page);
+      if (target.dataset.showDateFilter) params.set('showDateFilter', target.dataset.showDateFilter);
+      if (target.dataset.showEventTypeFilter) params.set('showEventTypeFilter', target.dataset.showEventTypeFilter);
+      if (target.dataset.dateRule) params.set('dateRule', target.dataset.dateRule);
+      if (target.dataset.dateFrom) params.set('dateFrom', target.dataset.dateFrom);
+      if (target.dataset.dateTo) params.set('dateTo', target.dataset.dateTo);
+      if (target.dataset.eventTypes) params.set('eventTypes', target.dataset.eventTypes);
+      if (target.dataset.eventIds) params.set('eventIds', target.dataset.eventIds);
+      if (target.dataset.divisionId) params.set('divisionId', target.dataset.divisionId);
+      if (target.dataset.includeChildWeeklyEvents) params.set('includeChildWeeklyEvents', target.dataset.includeChildWeeklyEvents);
+      if (target.dataset.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', target.dataset.teamOpenRegistrationOnly);
+      if (target.dataset.productPurchaseMode) params.set('productPurchaseMode', target.dataset.productPurchaseMode);
+      iframeSrc = origin + '/embed/' + encodeURIComponent(org) + '/' + encodeURIComponent(kind) + (params.toString() ? '?' + params.toString() : '');
+    }
     const iframe = document.createElement('iframe');
-    iframe.src = origin + '/embed/' + encodeURIComponent(org) + '/' + encodeURIComponent(kind) + (params.toString() ? '?' + params.toString() : '');
+    iframe.src = iframeSrc;
     iframe.title = target.dataset.title || 'BracketIQ widget';
     iframe.width = '100%';
     iframe.height = target.dataset.height || '520';

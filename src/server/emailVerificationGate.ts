@@ -22,3 +22,21 @@ export const buildEmailVerificationRequiredResponse = (action: 'create_event' | 
     { status: 403 },
   );
 };
+
+export const buildPaidRegistrationEmailVerificationRequiredResponse = () => (
+  NextResponse.json(
+    {
+      error: 'Verify your email before registering for paid events or teams.',
+      code: EMAIL_VERIFICATION_REQUIRED_CODE,
+    },
+    { status: 403 },
+  )
+);
+
+export const requireVerifiedEmailForPaidRegistration = async (userId: string) => {
+  if (await isUserEmailVerified(userId)) {
+    return null;
+  }
+
+  return buildPaidRegistrationEmailVerificationRequiredResponse();
+};

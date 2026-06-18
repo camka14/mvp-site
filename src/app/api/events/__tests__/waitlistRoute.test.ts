@@ -7,6 +7,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
+  divisions: {
+    findFirst: jest.fn(),
+  },
   userData: {
     findUnique: jest.fn(),
   },
@@ -52,6 +58,8 @@ describe('event waitlist route', () => {
       id: 'event_1',
       waitListIds: ['user_1'],
     });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    prismaMock.divisions.findFirst.mockResolvedValue(null);
     upsertEventRegistrationMock.mockResolvedValue({ id: 'registration_1' });
     deleteEventRegistrationMock.mockResolvedValue(undefined);
     prismaMock.userData.findUnique.mockResolvedValue({
@@ -76,6 +84,32 @@ describe('event waitlist route', () => {
       createdBy: 'user_1',
       parentId: null,
     }));
+  });
+
+  it('blocks unverified users from joining a paid event waitlist', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-03-01T00:00:00.000Z'),
+      teamSignup: true,
+      eventType: 'EVENT',
+      parentEvent: null,
+      timeSlotIds: [],
+      price: 2500,
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/waitlist', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('allows a parent to add a linked child to waitlist', async () => {

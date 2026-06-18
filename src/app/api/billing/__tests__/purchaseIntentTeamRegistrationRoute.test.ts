@@ -27,6 +27,7 @@ const findTeamRegistrationMock = jest.fn();
 const getTeamRegistrationSignatureStateMock = jest.fn();
 const reserveTeamRegistrationSlotMock = jest.fn();
 const releaseStartedTeamRegistrationMock = jest.fn();
+const mockRequireVerifiedEmailForPaidRegistration = jest.fn();
 
 jest.mock('stripe', () => ({
   __esModule: true,
@@ -35,6 +36,9 @@ jest.mock('stripe', () => ({
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 jest.mock('@/lib/permissions', () => ({
   requireSession: (...args: unknown[]) => requireSessionMock(...args),
+}));
+jest.mock('@/server/emailVerificationGate', () => ({
+  requireVerifiedEmailForPaidRegistration: (...args: unknown[]) => mockRequireVerifiedEmailForPaidRegistration(...args),
 }));
 jest.mock('@/lib/billingAddress', () => ({
   loadUserBillingProfile: (...args: unknown[]) => loadUserBillingProfileMock(...args),
@@ -107,6 +111,7 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
       consentStatus: 'completed',
     });
     validateUsBillingAddressMock.mockImplementation((value) => value);
+    mockRequireVerifiedEmailForPaidRegistration.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     loadUserBillingProfileMock.mockResolvedValue({
       email: 'user@example.com',
@@ -235,5 +240,35 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
       }),
     }));
     expect(releaseStartedTeamRegistrationMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks unverified users before reserving paid team registration checkout', async () => {
+    findReusableIncompleteTeamRegistrationPaymentIntentMock.mockResolvedValue(null);
+    mockRequireVerifiedEmailForPaidRegistration.mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        error: 'Verify your email before registering for paid events or teams.',
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const response = await POST(jsonPost({
+      purchaseType: 'team_registration',
+      user: { $id: 'user_1' },
+      team: { $id: 'team_1', name: 'Pacific Spike Volleyball' },
+      teamRegistration: { teamId: 'team_1' },
+      organization: { $id: 'org_1', name: 'Pacific Spike' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before registering for paid events or teams.',
+    }));
+    expect(reserveTeamRegistrationSlotMock).not.toHaveBeenCalled();
+    expect(stripePaymentIntentCreateMock).not.toHaveBeenCalled();
   });
 });

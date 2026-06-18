@@ -8,6 +8,9 @@ const prismaMock = {
   products: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
   },
@@ -107,6 +110,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
 
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     loadUserBillingProfileMock.mockResolvedValue({
       email: 'user@example.com',
       billingAddress: {
@@ -261,7 +265,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
     ]);
     prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({
       id: `weekly_parent__team__team_1__slot_1__${futureOccurrenceDate}`,
-      status: 'STARTED',
+      status: 'ACTIVE',
       createdAt: new Date('2026-03-18T12:00:00.000Z'),
       divisionId: null,
       divisionTypeId: null,
