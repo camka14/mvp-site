@@ -371,6 +371,14 @@ const getSourceId = (value: unknown): string | null => {
   if (!isRecord(value)) {
     return null;
   }
+  if (
+    typeof value.sourceType === 'string'
+    && value.sourceType.toUpperCase() === 'RENTAL_BOOKING'
+    && typeof value.sourceId === 'string'
+    && value.sourceId.trim()
+  ) {
+    return value.sourceId.trim();
+  }
   if (typeof value.$id === 'string' && value.$id.trim()) {
     return value.$id.trim();
   }
@@ -414,6 +422,14 @@ const getEntryFeedItemType = (entry: FieldCalendarEntry): FacilityCalendarFeedIt
   if (entry.metaType === 'rental') {
     return 'rental';
   }
+  const resource = entry.resource as { sourceType?: unknown } | null | undefined;
+  if (
+    entry.metaType === 'booked'
+    && typeof resource?.sourceType === 'string'
+    && resource.sourceType.toUpperCase() === 'RENTAL_BOOKING'
+  ) {
+    return 'rental';
+  }
   if (isMatchCalendarResource(entry.resource)) {
     return 'game';
   }
@@ -422,7 +438,13 @@ const getEntryFeedItemType = (entry: FieldCalendarEntry): FacilityCalendarFeedIt
 
 const getEntryFeedTitle = (entry: FieldCalendarEntry, type: FacilityCalendarFeedItemType): string => {
   if (type === 'rental') {
-    return 'Rental slot';
+    const resource = entry.resource as { sourceType?: unknown } | null | undefined;
+    return (
+      typeof resource?.sourceType === 'string'
+      && resource.sourceType.toUpperCase() === 'RENTAL_BOOKING'
+    )
+      ? 'Rental reservation'
+      : 'Rental slot';
   }
   const resource = entry.resource as { name?: unknown; matchId?: unknown; event?: { name?: unknown } } | null | undefined;
   if (type === 'game') {

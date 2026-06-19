@@ -39,11 +39,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: checkoutWindow.error }, { status: checkoutWindow.status });
   }
 
+  const now = new Date();
+  if (checkoutWindow.window.start.getTime() < now.getTime()) {
+    return NextResponse.json({ error: 'Rental selections must start in the future.' }, { status: 400 });
+  }
+
   const result = await reserveRentalCheckoutLocks({
     client: prisma,
     window: checkoutWindow.window,
     userId: session.userId,
-    now: new Date(),
+    now,
   });
   if (!result.ok) {
     return NextResponse.json(

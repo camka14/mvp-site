@@ -32,6 +32,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import RentalReservationCheckout from '@/components/rentals/RentalReservationCheckout';
 import OrganizationFinancePanel from './OrganizationFinancePanel';
 import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
@@ -4232,13 +4233,22 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'fields' && org && (
-              <FieldsTabContent
+              <RentalReservationCheckout
                 organization={org}
-                organizationId={id ?? ''}
                 currentUser={user ?? null}
-                canManageFields={canManageFields}
-                showBackButton={!isOrganizationRoleMember}
-              />
+                rentalOrderSlug={org.publicSlug}
+              >
+                {({ onRentalSelectionReady }) => (
+                  <FieldsTabContent
+                    organization={org}
+                    organizationId={id ?? ''}
+                    currentUser={user ?? null}
+                    canManageFields={canManageFields}
+                    showBackButton={!isOrganizationRoleMember}
+                    onRentalSelectionReady={onRentalSelectionReady}
+                  />
+                )}
+              </RentalReservationCheckout>
             )}
             </div>
           </>

@@ -1225,12 +1225,16 @@ export async function POST(req: NextRequest) {
     if (!rentalWindowResult.ok) {
       return NextResponse.json({ error: rentalWindowResult.error }, { status: rentalWindowResult.status });
     }
+    const now = new Date();
+    if (rentalWindowResult.window.start.getTime() < now.getTime()) {
+      return NextResponse.json({ error: 'Rental selections must start in the future.' }, { status: 400 });
+    }
 
     const lockReservation = await reserveRentalCheckoutLocks({
       client: prisma,
       window: rentalWindowResult.window,
       userId: actorUserId,
-      now: new Date(),
+      now,
     });
     if (!lockReservation.ok) {
       return NextResponse.json(
@@ -1289,6 +1293,9 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'buyer_user_id', actorUserId);
     appendMetadata(metadata, 'team_id', checkoutTeamId);
     appendMetadata(metadata, 'event_id', eventId);
+    if (resolvedPurchase.purchaseType === 'rental') {
+      appendMetadata(metadata, 'rental_booking_id', eventId);
+    }
     appendMetadata(metadata, 'product_id', payload.productId ?? resolvedPurchase.product?.id);
     appendMetadata(metadata, 'organization_id', organizationId);
     appendMetadata(metadata, 'organization_name', payload.organization?.name);

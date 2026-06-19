@@ -314,4 +314,62 @@ describe('buildFieldCalendarEvents', () => {
       status: 'PLANNED',
     }));
   });
+
+  it('classifies standalone rental bookings as rental reservations in the facility feed', () => {
+    const range = {
+      start: new Date('2026-03-10T00:00:00.000Z'),
+      end: new Date('2026-03-11T00:00:00.000Z'),
+    };
+    const field = {
+      ...baseField,
+      $id: 'field_1',
+      name: 'Court 1',
+      facilityId: 'facility_river_city',
+      facility: {
+        $id: 'facility_river_city',
+        name: 'River City Sports Complex',
+      },
+      rentalSlots: [
+        {
+          $id: 'slot_1',
+          repeating: false,
+          startDate: '2026-03-10T10:00:00.000Z',
+          endDate: '2026-03-10T12:00:00.000Z',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          price: 5000,
+        },
+      ],
+      events: [
+        {
+          $id: 'rental-booking-item-booking_item_1',
+          name: 'Rental',
+          eventType: 'EVENT',
+          start: '2026-03-10T10:30:00.000Z',
+          end: '2026-03-10T11:30:00.000Z',
+          sourceType: 'RENTAL_BOOKING',
+          sourceId: 'booking_1',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+        },
+      ],
+      matches: [],
+    } as unknown as Field;
+
+    const feed = buildFacilityCalendarFeed([field], range);
+    const rentalItems = feed.items.filter((item) => item.type === 'rental');
+
+    expect(rentalItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Rental slot',
+        sourceId: 'slot_1',
+      }),
+      expect.objectContaining({
+        title: 'Rental reservation',
+        sourceId: 'booking_1',
+      }),
+    ]));
+    expect(feed.summary.bookedInventoryHours).toBe(1);
+    expect(feed.summary.conflictCount).toBe(1);
+  });
 });

@@ -10,6 +10,7 @@ datasource db {
 enum BillsOwnerTypeEnum {
   USER
   TEAM
+  ORGANIZATION
 }
 
 enum BillsStatusEnum {
@@ -599,6 +600,11 @@ model Bills {
   paymentPlanEnabled     Boolean?
   createdBy              String?
   lineItems              Json?
+  sourceType             String?
+  sourceId               String?
+
+  @@index([sourceType, sourceId])
+  @@index([organizationId, sourceType])
 }
 
 model BillPayments {
@@ -619,6 +625,61 @@ model BillPayments {
   taxAmountCents           Int                     @default(0)
   stripeProcessingFeeCents Int                     @default(0)
   stripeTaxServiceFeeCents Int                     @default(0)
+}
+
+model RentalBookings {
+  id                   String    @id
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  organizationId        String
+  renterType            String    @default("USER")
+  renterUserId          String?
+  renterOrganizationId  String?
+  createdByUserId       String?
+  billId                String?
+  eventId               String?
+  status                String    @default("PENDING_PAYMENT")
+  totalAmountCents      Int       @default(0)
+  currency              String    @default("usd")
+  paymentIntentId       String?   @unique
+  expiresAt             DateTime?
+  confirmedAt           DateTime?
+  cancelledAt           DateTime?
+  metadata              Json?
+
+  @@index([organizationId, status])
+  @@index([renterUserId, status])
+  @@index([renterOrganizationId, status])
+  @@index([billId])
+  @@index([eventId])
+}
+
+model RentalBookingItems {
+  id                       String    @id
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  bookingId                String
+  organizationId            String
+  facilityId               String?
+  fieldId                  String
+  availabilitySlotId       String?
+  eventId                  String?
+  eventTimeSlotId          String?
+  start                    DateTime
+  end                      DateTime
+  timeZone                 String    @default("UTC")
+  priceCents               Int       @default(0)
+  status                   String    @default("CONFIRMED")
+  requiredTemplateIds      String[]  @default([])
+  hostRequiredTemplateIds  String[]  @default([])
+  metadata                 Json?
+
+  @@index([bookingId])
+  @@index([organizationId, status])
+  @@index([facilityId])
+  @@index([fieldId, start, end])
+  @@index([eventId])
+  @@index([eventTimeSlotId])
 }
 
 model RefundRequests {
@@ -815,8 +876,15 @@ model TimeSlots {
   divisions           String[]  @default([])
   requiredTemplateIds String[]  @default([])
   hostRequiredTemplateIds String[] @default([])
+  sourceType          String?
+  rentalBookingId     String?
+  rentalBookingItemId String?
+  rentalLocked        Boolean   @default(false)
 
   @@index([scheduledFieldId])
+  @@index([sourceType])
+  @@index([rentalBookingId])
+  @@index([rentalBookingItemId])
 }
 
 model LeagueScoringConfigs {

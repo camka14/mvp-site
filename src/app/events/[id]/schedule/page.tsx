@@ -1035,6 +1035,7 @@ function EventScheduleContent() {
   const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
   const rentalHostRequiredTemplateIdsParam = searchParams?.get('rentalHostRequiredTemplateIds') || undefined;
   const rentalSelectionsParam = searchParams?.get('rentalSelections') || undefined;
+  const rentalBookingIdParam = searchParams?.get('rentalBookingId')?.trim() || undefined;
   const rentalRequiredTemplateIds = useMemo(
     () => (
       rentalRequiredTemplateIdsParam
@@ -1608,6 +1609,9 @@ function EventScheduleContent() {
             repeating: false,
             scheduledFieldId: selectionItem.scheduledFieldIds[0],
             scheduledFieldIds: selectionItem.scheduledFieldIds,
+            sourceType: rentalBookingIdParam ? 'RENTAL_BOOKING' : null,
+            rentalBookingId: rentalBookingIdParam ?? null,
+            rentalLocked: Boolean(rentalBookingIdParam),
           });
         });
       defaults.timeSlots = rentalTimeSlots;
@@ -1619,6 +1623,7 @@ function EventScheduleContent() {
     return defaults;
   }, [
     isCreateMode,
+    rentalBookingIdParam,
     rentalRequiredTemplateIds,
     rentalOrganization,
     rentalSelections,
@@ -1703,8 +1708,11 @@ function EventScheduleContent() {
       price,
       requiredTemplateIds: rentalRequiredTemplateIds,
       hostRequiredTemplateIds: rentalPurchaseContext.requiredTemplateIds ?? [],
+      sourceType: rentalBookingIdParam ? 'RENTAL_BOOKING' : null,
+      rentalBookingId: rentalBookingIdParam ?? null,
+      rentalLocked: Boolean(rentalBookingIdParam),
     };
-  }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext, rentalRequiredTemplateIds]);
+  }, [changesEvent?.fields, rentalBookingIdParam, rentalImmutableDefaults?.fields, rentalPurchaseContext, rentalRequiredTemplateIds]);
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;

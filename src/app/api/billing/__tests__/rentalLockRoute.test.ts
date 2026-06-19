@@ -34,8 +34,8 @@ describe('rental lock route', () => {
       window: {
         eventId: 'event_1',
         fieldIds: ['field_1'],
-        start: new Date('2026-04-01T13:30:00.000Z'),
-        end: new Date('2026-04-01T15:00:00.000Z'),
+        start: new Date('2099-04-01T13:30:00.000Z'),
+        end: new Date('2099-04-01T15:00:00.000Z'),
         noFixedEndDateTime: false,
         organizationId: null,
         eventType: 'EVENT',
@@ -46,7 +46,7 @@ describe('rental lock route', () => {
       ok: true,
       ownerToken: 'rental:user_1:event_1',
       lockIds: ['lock_1'],
-      expiresAt: new Date('2026-04-01T13:40:00.000Z'),
+      expiresAt: new Date('2099-04-01T13:40:00.000Z'),
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
   });
@@ -85,6 +85,32 @@ describe('rental lock route', () => {
     expect(res.status).toBe(409);
     expect(String(data.error ?? '')).toContain('temporarily reserved');
     expect(data.conflictFieldIds).toEqual(['field_1']);
+  });
+
+  it('rejects rental lock reservations that start in the past', async () => {
+    extractRentalCheckoutWindowMock.mockReturnValueOnce({
+      ok: true,
+      window: {
+        eventId: 'event_1',
+        fieldIds: ['field_1'],
+        start: new Date('2001-04-01T13:30:00.000Z'),
+        end: new Date('2001-04-01T15:00:00.000Z'),
+        noFixedEndDateTime: false,
+        organizationId: null,
+        eventType: 'EVENT',
+        parentEvent: null,
+      },
+    });
+
+    const res = await POST(jsonRequest('POST', {
+      event: { $id: 'event_1' },
+      timeSlot: { $id: 'slot_1' },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe('Rental selections must start in the future.');
+    expect(reserveRentalCheckoutLocksMock).not.toHaveBeenCalled();
   });
 
   it('releases a lock window', async () => {

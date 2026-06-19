@@ -92,6 +92,8 @@ const billSelect = {
   ownerId: true,
   eventId: true,
   slotId: true,
+  sourceType: true,
+  sourceId: true,
   totalAmountCents: true,
   paidAmountCents: true,
 } as const;
@@ -145,9 +147,12 @@ const attachPayments = async (
   const userOwnerIds = normalizeIds(rows
     .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'USER')
     .map((row) => row.ownerId));
+  const organizationOwnerIds = normalizeIds(rows
+    .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'ORGANIZATION')
+    .map((row) => row.ownerId));
   const payerUserIds = normalizeIds(payments.map((payment) => payment?.payerUserId));
 
-  const [eventRows, userRows, canonicalTeamRows, eventTeamRows, slotRows] = await Promise.all([
+  const [eventRows, userRows, canonicalTeamRows, eventTeamRows, organizationOwnerRows, slotRows] = await Promise.all([
     eventIds.length
       ? client.events.findMany({
         where: { id: { in: eventIds } },
@@ -177,6 +182,12 @@ const attachPayments = async (
         select: { id: true, name: true, parentTeamId: true },
       })
       : Promise.resolve([]),
+    organizationOwnerIds.length
+      ? client.organizations.findMany({
+        where: { id: { in: organizationOwnerIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
     slotIds.length
       ? client.timeSlots.findMany({
         where: { id: { in: slotIds } },
@@ -201,6 +212,9 @@ const attachPayments = async (
   const eventTeamsById = new Map<string, { name?: unknown; parentTeamId?: unknown }>(
     eventTeamRows.map((team: any) => [String(team.id), team]),
   );
+  const organizationsById = new Map<string, { name?: unknown }>(
+    organizationOwnerRows.map((organization: any) => [String(organization.id), organization]),
+  );
   const fieldIds = normalizeIds(slotRows.flatMap((slot: any) => [
     slot.scheduledFieldId,
     ...(Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : []),
@@ -224,66 +238,89 @@ const attachPayments = async (
     sourceNameBySlotId.set(String(slot.id), fieldName || 'Rental');
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    createdAt: row.createdAt,
-    organizationId: row.organizationId,
-    ownerType: row.ownerType,
-    ownerId: row.ownerId,
-    eventId: row.eventId,
-    slotId: row.slotId,
-    sourceName: row.eventId
-      ? eventNamesById.get(String(row.eventId)) || 'Event'
-      : row.slotId
-        ? sourceNameBySlotId.get(String(row.slotId)) || 'Rental'
-        : 'Organization',
-    sourceEntityType: row.eventId ? 'event' : row.slotId ? 'rental' : row.organizationId ? 'organization' : null,
-    sourceEntityId: row.eventId ?? row.slotId ?? row.organizationId ?? null,
-    customerType: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') return 'teams' as const;
-      if (ownerType === 'USER') return 'users' as const;
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return payerUserId ? 'users' as const : null;
-    })(),
-    customerId: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') {
-        const eventTeam = eventTeamsById.get(String(row.ownerId));
-        return normalizeId(eventTeam?.parentTeamId) ?? normalizeId(row.ownerId);
-      }
-      if (ownerType === 'USER') {
-        return normalizeId(row.ownerId);
-      }
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return normalizeId(payerUserId);
-    })(),
-    customerName: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') {
-        const canonicalTeam = canonicalTeamsById.get(String(row.ownerId));
-        const eventTeam = eventTeamsById.get(String(row.ownerId));
-        if (canonicalTeam?.name) {
-          return String(canonicalTeam.name);
+  return rows.map((row) => {
+    const explicitSourceType = normalizeId(row.sourceType)?.toUpperCase() ?? null;
+    const explicitSourceId = normalizeId(row.sourceId);
+    const isRentalBookingSource = explicitSourceType === 'RENTAL_BOOKING';
+    const sourceName = isRentalBookingSource
+      ? 'Rental'
+      : row.eventId
+        ? eventNamesById.get(String(row.eventId)) || 'Event'
+        : row.slotId
+          ? sourceNameBySlotId.get(String(row.slotId)) || 'Rental'
+          : 'Organization';
+    const sourceEntityType = isRentalBookingSource
+      ? 'rental'
+      : row.eventId
+        ? 'event'
+        : row.slotId
+          ? 'rental'
+          : row.organizationId
+            ? 'organization'
+            : null;
+
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      organizationId: row.organizationId,
+      ownerType: row.ownerType,
+      ownerId: row.ownerId,
+      eventId: row.eventId,
+      slotId: row.slotId,
+      sourceType: row.sourceType ?? null,
+      sourceId: row.sourceId ?? null,
+      sourceName,
+      sourceEntityType,
+      sourceEntityId: explicitSourceId ?? row.eventId ?? row.slotId ?? row.organizationId ?? null,
+      customerType: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') return 'teams' as const;
+        if (ownerType === 'USER') return 'users' as const;
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return payerUserId ? 'users' as const : null;
+      })(),
+      customerId: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') {
+          const eventTeam = eventTeamsById.get(String(row.ownerId));
+          return normalizeId(eventTeam?.parentTeamId) ?? normalizeId(row.ownerId);
         }
-        if (eventTeam?.parentTeamId) {
-          const parentTeam = canonicalTeamsById.get(String(eventTeam.parentTeamId));
-          if (parentTeam?.name) {
-            return String(parentTeam.name);
+        if (ownerType === 'USER') {
+          return normalizeId(row.ownerId);
+        }
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return normalizeId(payerUserId);
+      })(),
+      customerName: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') {
+          const canonicalTeam = canonicalTeamsById.get(String(row.ownerId));
+          const eventTeam = eventTeamsById.get(String(row.ownerId));
+          if (canonicalTeam?.name) {
+            return String(canonicalTeam.name);
           }
+          if (eventTeam?.parentTeamId) {
+            const parentTeam = canonicalTeamsById.get(String(eventTeam.parentTeamId));
+            if (parentTeam?.name) {
+              return String(parentTeam.name);
+            }
+          }
+          return eventTeam?.name ? String(eventTeam.name) : 'Team';
         }
-        return eventTeam?.name ? String(eventTeam.name) : 'Team';
-      }
-      if (ownerType === 'USER') {
-        return displayName(usersById.get(String(row.ownerId)), 'Customer');
-      }
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return payerUserId ? displayName(usersById.get(String(payerUserId)), 'Customer') : null;
-    })(),
-    totalAmountCents: row.totalAmountCents,
-    paidAmountCents: row.paidAmountCents,
-    payments: paymentsByBillId.get(row.id) ?? [],
-  }));
+        if (ownerType === 'USER') {
+          return displayName(usersById.get(String(row.ownerId)), 'Customer');
+        }
+        if (ownerType === 'ORGANIZATION') {
+          return String(organizationsById.get(String(row.ownerId))?.name ?? '').trim() || 'Organization customer';
+        }
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return payerUserId ? displayName(usersById.get(String(payerUserId)), 'Customer') : null;
+      })(),
+      totalAmountCents: row.totalAmountCents,
+      paidAmountCents: row.paidAmountCents,
+      payments: paymentsByBillId.get(row.id) ?? [],
+    };
+  });
 };
 
 const loadUsersById = async (

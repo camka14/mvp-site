@@ -166,8 +166,8 @@ describe('POST /api/billing/purchase-intent', () => {
       window: {
         eventId: 'event_1',
         fieldIds: ['field_1'],
-        start: new Date('2026-03-18T12:00:00.000Z'),
-        end: new Date('2026-03-18T13:00:00.000Z'),
+        start: new Date('2099-03-18T12:00:00.000Z'),
+        end: new Date('2099-03-18T13:00:00.000Z'),
         noFixedEndDateTime: false,
         organizationId: null,
         eventType: 'EVENT',
@@ -177,8 +177,8 @@ describe('POST /api/billing/purchase-intent', () => {
     reserveRentalCheckoutLocksMock.mockResolvedValue({
       ok: true,
       ownerToken: 'rental:user_1:event_1',
-      lockIds: ['rental-checkout:field_1:2026-03-18T12:00:00.000Z:2026-03-18T13:00:00.000Z'],
-      expiresAt: new Date('2026-03-18T12:10:00.000Z'),
+      lockIds: ['rental-checkout:field_1:2099-03-18T12:00:00.000Z:2099-03-18T13:00:00.000Z'],
+      expiresAt: new Date('2099-03-18T12:10:00.000Z'),
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
     loadUserBillingProfileMock.mockResolvedValue({
@@ -300,6 +300,34 @@ describe('POST /api/billing/purchase-intent', () => {
     expect(res.status).toBe(409);
     expect(String(data.error ?? '')).toContain('temporarily reserved');
     expect(data.conflictFieldIds).toEqual(['field_1']);
+  });
+
+  it('rejects rental checkout payment intents for past start times', async () => {
+    extractRentalCheckoutWindowMock.mockReturnValueOnce({
+      ok: true,
+      window: {
+        eventId: 'event_1',
+        fieldIds: ['field_1'],
+        start: new Date('2001-03-18T12:00:00.000Z'),
+        end: new Date('2001-03-18T13:00:00.000Z'),
+        noFixedEndDateTime: false,
+        organizationId: null,
+        eventType: 'EVENT',
+        parentEvent: null,
+      },
+    });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: { $id: 'slot_1', price: 2500 },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe('Rental selections must start in the future.');
+    expect(reserveRentalCheckoutLocksMock).not.toHaveBeenCalled();
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
 
   it('blocks rental checkout when any required rental document template is unsigned', async () => {

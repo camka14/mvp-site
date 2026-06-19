@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 const MIN_DATE = new Date(-8640000000000000);
 const MAX_DATE = new Date(8640000000000000);
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_RENTAL_BOOKING_ITEM_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
 
 type TimeSlotRow = {
   id: string;
@@ -35,6 +36,17 @@ type EventRow = {
 type TimeWindow = {
   start: Date;
   end: Date;
+};
+
+type RentalBookingItemCalendarRow = {
+  id: string;
+  bookingId: string;
+  organizationId?: string | null;
+  fieldId: string;
+  start: Date | string;
+  end: Date | string;
+  status?: string | null;
+  priceCents?: number | null;
 };
 
 const normalizeId = (value: unknown): string | null => {
@@ -372,6 +384,52 @@ const eventOverlapsRentalWindows = (
   return false;
 };
 
+const buildRentalBookingItemCalendarEvent = (
+  item: RentalBookingItemCalendarRow,
+  fieldId: string,
+) => ({
+  id: `rental-booking-item-${item.id}`,
+  name: 'Rental',
+  description: 'Confirmed rental reservation.',
+  start: item.start,
+  end: item.end,
+  timeZone: 'UTC',
+  location: '',
+  address: null,
+  coordinates: [0, 0],
+  price: typeof item.priceCents === 'number' ? item.priceCents : 0,
+  imageId: '',
+  hostId: '',
+  noFixedEndDateTime: false,
+  state: 'PRIVATE',
+  maxParticipants: 0,
+  teamSizeLimit: 0,
+  teamSignup: false,
+  singleDivision: true,
+  waitListIds: [],
+  freeAgentIds: [],
+  teamIds: [],
+  userIds: [],
+  fieldIds: [fieldId],
+  timeSlotIds: [],
+  officialIds: [],
+  assistantHostIds: [],
+  cancellationRefundHours: null,
+  registrationCutoffHours: null,
+  seedColor: 0,
+  eventType: 'EVENT',
+  sportId: 'Other',
+  organizationId: item.organizationId ?? null,
+  parentEvent: null,
+  sourceType: 'RENTAL_BOOKING',
+  sourceId: item.bookingId,
+  rentalBookingId: item.bookingId,
+  rentalBookingItemId: item.id,
+  status: item.status ?? null,
+  requiredTemplateIds: [],
+  divisions: [],
+});
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const search = req.nextUrl.searchParams;
@@ -515,13 +573,47 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
       !rentalOverlapOnly || eventOverlapsRentalWindows(event, fieldId, rentalWindows, rangeStart, rangeEnd)
     ));
 
+  const rentalBookingItems = typeof (prisma as any).rentalBookingItems?.findMany === 'function'
+    ? await (prisma as any).rentalBookingItems.findMany({
+      where: {
+        fieldId,
+        ...(organizationId ? { organizationId } : {}),
+        eventId: null,
+        status: { in: ACTIVE_RENTAL_BOOKING_ITEM_STATUSES },
+        start: { lt: rangeEnd },
+        end: { gt: rangeStart },
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        organizationId: true,
+        fieldId: true,
+        start: true,
+        end: true,
+        status: true,
+        priceCents: true,
+      },
+      orderBy: { start: 'asc' },
+    }) as RentalBookingItemCalendarRow[]
+    : [];
+  const rentalBookingEvents = rentalBookingItems
+    .filter((item) => (
+      !rentalOverlapOnly
+      || rangesOverlapAnyWindow(
+        item.start instanceof Date ? item.start : new Date(item.start),
+        item.end instanceof Date ? item.end : new Date(item.end),
+        rentalWindows,
+      )
+    ))
+    .map((item) => buildRentalBookingItemCalendarEvent(item, fieldId));
+
   const eventBoundSlotIds = new Set(
     filteredEvents.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),
   );
   const filteredRentalSlots = rentalSlotRowsInRange.filter((slot) => !eventBoundSlotIds.has(slot.id));
 
   return NextResponse.json({
-    events: filteredEvents.map((event) => withLegacyFields(event)),
+    events: [...filteredEvents, ...rentalBookingEvents].map((event) => withLegacyFields(event)),
     rentalSlots: filteredRentalSlots.map((slot) => withLegacyFields(slot)),
   }, { status: 200 });
 }

@@ -561,6 +561,10 @@ export interface TimeSlot {
   taxHandling?: RentalTaxHandling;
   requiredTemplateIds?: string[];
   hostRequiredTemplateIds?: string[];
+  sourceType?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalLocked?: boolean;
   event?: Event;
   eventId?: string;
   field?: Field;
@@ -845,6 +849,10 @@ export interface Event {
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
   parentEvent?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
   organization?: Organization | string;
   requiredTemplateIds?: string[];
   divisionFieldIds?: Record<string, string[]>;
@@ -2089,12 +2097,19 @@ export interface BillLineItem {
   quantity?: number;
 }
 
+export type BillOwnerType = 'USER' | 'TEAM' | 'ORGANIZATION';
+export type BillSourceType = 'EVENT' | 'RENTAL_BOOKING' | 'PRODUCT' | 'TEAM_REGISTRATION' | 'BILL' | string;
+
 export interface Bill {
   $id: string;
-  ownerType: 'USER' | 'TEAM';
+  ownerType: BillOwnerType;
   ownerId: string;
   organizationId?: string | null;
   eventId?: string | null;
+  slotId?: string | null;
+  occurrenceDate?: string | null;
+  sourceType?: BillSourceType | null;
+  sourceId?: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
   nextPaymentDue?: string | null;

@@ -26,7 +26,16 @@ type SharedCalendarEventProps = {
   className?: string;
   style?: CSSProperties;
   onClick?: () => void;
+  variant?: SharedCalendarEventVariant;
 };
+
+export type SharedCalendarEventVariant =
+  | 'default'
+  | 'availability'
+  | 'unavailable'
+  | 'reservation'
+  | 'booked'
+  | 'selection';
 
 const getTextLabel = (value: ReactNode): string => {
   return typeof value === 'string' ? value.trim() : '';
@@ -48,6 +57,7 @@ export default function SharedCalendarEvent({
   className = '',
   style,
   onClick,
+  variant = 'default',
 }: SharedCalendarEventProps) {
   const hasColorMatchKey = typeof colorMatchKey === 'string' && colorMatchKey.trim().length > 0;
   const resolvedColors = colors
@@ -56,10 +66,15 @@ export default function SharedCalendarEvent({
         ? getOrderedEntityColorPair(colorReferenceList, colorMatchKey)
         : getEntityColorPair(colorSeed ?? (typeof title === 'string' ? title : null))
     );
+  const usesDefaultEventColors = variant === 'default';
   const customProperties = {
-    '--shared-calendar-event-bg': resolvedColors.bg,
-    '--shared-calendar-event-text': resolvedColors.text,
-    '--shared-calendar-event-border': resolvedColors.bg,
+    '--shared-calendar-resource-bg': resolvedColors.bg,
+    '--shared-calendar-resource-text': resolvedColors.text,
+    ...(usesDefaultEventColors ? {
+      '--shared-calendar-event-bg': resolvedColors.bg,
+      '--shared-calendar-event-text': resolvedColors.text,
+      '--shared-calendar-event-border': resolvedColors.bg,
+    } : {}),
   } as CSSProperties;
 
   const classNames = [
@@ -68,6 +83,7 @@ export default function SharedCalendarEvent({
     muted ? 'shared-calendar-event--muted' : '',
     selected ? 'shared-calendar-event--selected' : '',
     conflict ? 'shared-calendar-event--conflict' : '',
+    variant !== 'default' ? `shared-calendar-event--${variant}` : '',
     onClick ? 'shared-calendar-event--clickable' : '',
     draggable ? 'shared-calendar-event--draggable' : '',
     className,

@@ -11,7 +11,8 @@
 
 export const BillsOwnerTypeEnum = {
   USER: 'USER',
-  TEAM: 'TEAM'
+  TEAM: 'TEAM',
+  ORGANIZATION: 'ORGANIZATION'
 } as const
 
 export type BillsOwnerTypeEnum = (typeof BillsOwnerTypeEnum)[keyof typeof BillsOwnerTypeEnum]

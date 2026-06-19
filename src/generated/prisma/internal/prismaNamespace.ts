@@ -80,12 +80,12 @@ export type PrismaVersion = {
 }
 
 /**
- * Prisma Client JS version: 7.7.0
- * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
+ * Prisma Client JS version: 7.8.0
+ * Query Engine version: 3c6e192761c0362d496ed980de936e2f3cebcd3a
  */
 export const prismaVersion: PrismaVersion = {
-  client: "7.7.0",
-  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
+  client: "7.8.0",
+  engine: "3c6e192761c0362d496ed980de936e2f3cebcd3a"
 }
 
 /**
@@ -425,6 +425,8 @@ export const ModelName = {
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
   BillPayments: 'BillPayments',
+  RentalBookings: 'RentalBookings',
+  RentalBookingItems: 'RentalBookingItems',
   RefundRequests: 'RefundRequests',
   OrganizationAccountingConnections: 'OrganizationAccountingConnections',
   AccountingSyncRecords: 'AccountingSyncRecords',
@@ -460,7 +462,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -3498,6 +3500,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    RentalBookings: {
+      payload: Prisma.$RentalBookingsPayload<ExtArgs>
+      fields: Prisma.RentalBookingsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.RentalBookingsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.RentalBookingsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        findFirst: {
+          args: Prisma.RentalBookingsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.RentalBookingsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        findMany: {
+          args: Prisma.RentalBookingsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>[]
+        }
+        create: {
+          args: Prisma.RentalBookingsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        createMany: {
+          args: Prisma.RentalBookingsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.RentalBookingsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>[]
+        }
+        delete: {
+          args: Prisma.RentalBookingsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        update: {
+          args: Prisma.RentalBookingsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        deleteMany: {
+          args: Prisma.RentalBookingsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.RentalBookingsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.RentalBookingsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>[]
+        }
+        upsert: {
+          args: Prisma.RentalBookingsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingsPayload>
+        }
+        aggregate: {
+          args: Prisma.RentalBookingsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRentalBookings>
+        }
+        groupBy: {
+          args: Prisma.RentalBookingsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.RentalBookingsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.RentalBookingsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.RentalBookingsCountAggregateOutputType> | number
+        }
+      }
+    }
+    RentalBookingItems: {
+      payload: Prisma.$RentalBookingItemsPayload<ExtArgs>
+      fields: Prisma.RentalBookingItemsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.RentalBookingItemsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.RentalBookingItemsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        findFirst: {
+          args: Prisma.RentalBookingItemsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.RentalBookingItemsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        findMany: {
+          args: Prisma.RentalBookingItemsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>[]
+        }
+        create: {
+          args: Prisma.RentalBookingItemsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        createMany: {
+          args: Prisma.RentalBookingItemsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.RentalBookingItemsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>[]
+        }
+        delete: {
+          args: Prisma.RentalBookingItemsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        update: {
+          args: Prisma.RentalBookingItemsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        deleteMany: {
+          args: Prisma.RentalBookingItemsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.RentalBookingItemsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.RentalBookingItemsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>[]
+        }
+        upsert: {
+          args: Prisma.RentalBookingItemsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$RentalBookingItemsPayload>
+        }
+        aggregate: {
+          args: Prisma.RentalBookingItemsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRentalBookingItems>
+        }
+        groupBy: {
+          args: Prisma.RentalBookingItemsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.RentalBookingItemsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.RentalBookingItemsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.RentalBookingItemsCountAggregateOutputType> | number
+        }
+      }
+    }
     RefundRequests: {
       payload: Prisma.$RefundRequestsPayload<ExtArgs>
       fields: Prisma.RefundRequestsFieldRefs
@@ -5865,7 +6015,9 @@ export const BillsScalarFieldEnum = {
   status: 'status',
   paymentPlanEnabled: 'paymentPlanEnabled',
   createdBy: 'createdBy',
-  lineItems: 'lineItems'
+  lineItems: 'lineItems',
+  sourceType: 'sourceType',
+  sourceId: 'sourceId'
 } as const
 
 export type BillsScalarFieldEnum = (typeof BillsScalarFieldEnum)[keyof typeof BillsScalarFieldEnum]
@@ -5892,6 +6044,54 @@ export const BillPaymentsScalarFieldEnum = {
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
+
+
+export const RentalBookingsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  renterType: 'renterType',
+  renterUserId: 'renterUserId',
+  renterOrganizationId: 'renterOrganizationId',
+  createdByUserId: 'createdByUserId',
+  billId: 'billId',
+  eventId: 'eventId',
+  status: 'status',
+  totalAmountCents: 'totalAmountCents',
+  currency: 'currency',
+  paymentIntentId: 'paymentIntentId',
+  expiresAt: 'expiresAt',
+  confirmedAt: 'confirmedAt',
+  cancelledAt: 'cancelledAt',
+  metadata: 'metadata'
+} as const
+
+export type RentalBookingsScalarFieldEnum = (typeof RentalBookingsScalarFieldEnum)[keyof typeof RentalBookingsScalarFieldEnum]
+
+
+export const RentalBookingItemsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  bookingId: 'bookingId',
+  organizationId: 'organizationId',
+  facilityId: 'facilityId',
+  fieldId: 'fieldId',
+  availabilitySlotId: 'availabilitySlotId',
+  eventId: 'eventId',
+  eventTimeSlotId: 'eventTimeSlotId',
+  start: 'start',
+  end: 'end',
+  timeZone: 'timeZone',
+  priceCents: 'priceCents',
+  status: 'status',
+  requiredTemplateIds: 'requiredTemplateIds',
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  metadata: 'metadata'
+} as const
+
+export type RentalBookingItemsScalarFieldEnum = (typeof RentalBookingItemsScalarFieldEnum)[keyof typeof RentalBookingItemsScalarFieldEnum]
 
 
 export const RefundRequestsScalarFieldEnum = {
@@ -6191,7 +6391,11 @@ export const TimeSlotsScalarFieldEnum = {
   taxHandling: 'taxHandling',
   divisions: 'divisions',
   requiredTemplateIds: 'requiredTemplateIds',
-  hostRequiredTemplateIds: 'hostRequiredTemplateIds'
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  sourceType: 'sourceType',
+  rentalBookingId: 'rentalBookingId',
+  rentalBookingItemId: 'rentalBookingItemId',
+  rentalLocked: 'rentalLocked'
 } as const
 
 export type TimeSlotsScalarFieldEnum = (typeof TimeSlotsScalarFieldEnum)[keyof typeof TimeSlotsScalarFieldEnum]
@@ -7385,6 +7589,21 @@ export type PrismaClientOptions = ({
    * ```
    */
   comments?: runtime.SqlCommenterPlugin[]
+  /**
+   * Optional maximum size for the query plan cache. If not provided, a default size will be used.
+   * A value of `0` can be used to disable the cache entirely. A higher cache size can improve
+   * performance for applications that execute a large number of unique queries, while a smaller
+   * cache size can reduce memory usage.
+   *
+   * @example
+   * ```
+   * const prisma = new PrismaClient({
+   *   adapter,
+   *   queryPlanCacheMaxSize: 100,
+   * })
+   * ```
+   */
+  queryPlanCacheMaxSize?: number
 }
 export type GlobalOmitConfig = {
   appReleases?: Prisma.AppReleasesOmit
@@ -7428,6 +7647,8 @@ export type GlobalOmitConfig = {
   paymentIntents?: Prisma.PaymentIntentsOmit
   bills?: Prisma.BillsOmit
   billPayments?: Prisma.BillPaymentsOmit
+  rentalBookings?: Prisma.RentalBookingsOmit
+  rentalBookingItems?: Prisma.RentalBookingItemsOmit
   refundRequests?: Prisma.RefundRequestsOmit
   organizationAccountingConnections?: Prisma.OrganizationAccountingConnectionsOmit
   accountingSyncRecords?: Prisma.AccountingSyncRecordsOmit

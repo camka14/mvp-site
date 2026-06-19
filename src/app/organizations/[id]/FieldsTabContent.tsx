@@ -47,12 +47,11 @@ import { facilityService } from '@/lib/facilityService';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/calendar/FieldCalendarFilter';
-import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
+import SharedCalendarEvent, { type SharedCalendarEventVariant } from '@/components/calendar/SharedCalendarEvent';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
-import { getOrderedEntityColorPair } from '@/lib/entityColors';
 
 type SelectionState = {
   fieldIds: string[];
@@ -72,6 +71,26 @@ type SelectionCalendarEntry = {
 };
 
 type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
+
+const getCalendarEventVariant = (event: CalendarEventData | null | undefined): SharedCalendarEventVariant => {
+  if (!event) {
+    return 'default';
+  }
+  if (event.metaType === 'selection') {
+    return 'selection';
+  }
+  if (event.metaType === 'rental') {
+    return isPastRentalRangeStart(event.start) ? 'unavailable' : 'availability';
+  }
+
+  const sourceType = typeof (event.resource as { sourceType?: unknown } | undefined)?.sourceType === 'string'
+    ? String((event.resource as { sourceType?: unknown }).sourceType).toUpperCase()
+    : '';
+  if (sourceType === 'RENTAL_UNAVAILABLE') {
+    return 'unavailable';
+  }
+  return sourceType === 'RENTAL_BOOKING' ? 'reservation' : 'booked';
+};
 
 type RentalDraftSelection = {
   key: string;
@@ -102,6 +121,7 @@ export type RentalSelectionCheckoutPayload = {
   manageEventUrl: string;
   organizationId: string | null;
   organizationName: string;
+  renterOrganizationId: string | null;
   facilityId: string | null;
   facilityName: string | null;
   facilityLocation: string | null;
@@ -140,9 +160,6 @@ type RentalSelectionConflictState = {
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
 const SLOT_STEP_MINUTES = 30;
-const SELECTION_COLOR = 'var(--mvp-primary-100)';
-const SELECTION_BORDER_COLOR = 'var(--mvp-primary-300)';
-const SELECTION_TEXT_COLOR = 'var(--mvp-primary-900)';
 const FIELD_CALENDAR_FORMATS = {
   dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
   dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
@@ -152,6 +169,23 @@ const FIELD_CALENDAR_FORMATS = {
   eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
     `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
 };
+
+const isPastRentalRangeStart = (start: Date, reference: Date = new Date()): boolean => (
+  start.getTime() < reference.getTime()
+);
+
+const getNextSelectableRentalStart = (reference: Date = new Date()): Date => {
+  const next = new Date(reference.getTime());
+  const hasSubMinuteOffset = next.getSeconds() > 0 || next.getMilliseconds() > 0;
+  next.setSeconds(0, 0);
+  const minutes = next.getMinutes();
+  const remainder = minutes % SLOT_STEP_MINUTES;
+  if (remainder > 0 || hasSubMinuteOffset) {
+    next.setMinutes(minutes + (remainder > 0 ? SLOT_STEP_MINUTES - remainder : SLOT_STEP_MINUTES), 0, 0);
+  }
+  return next;
+};
+
 const CALENDAR_VIEW_LABELS: Record<string, string> = {
   day: 'Day',
   week: 'Week',
@@ -367,6 +401,101 @@ const minutesToDate = (base: Date, minutes: number): Date => {
 
 const compareRanges = (startA: Date, endA: Date, startB: Date, endB: Date) =>
   Math.max(startA.getTime(), startB.getTime()) < Math.min(endA.getTime(), endB.getTime());
+
+type PublicRentalInterval = {
+  start: Date;
+  end: Date;
+};
+
+const mergePublicRentalIntervals = (intervals: PublicRentalInterval[]): PublicRentalInterval[] => {
+  const sorted = [...intervals]
+    .filter((interval) => interval.end.getTime() > interval.start.getTime())
+    .sort((left, right) => left.start.getTime() - right.start.getTime());
+  const merged: PublicRentalInterval[] = [];
+
+  sorted.forEach((interval) => {
+    const last = merged[merged.length - 1];
+    if (!last || interval.start.getTime() > last.end.getTime()) {
+      merged.push({
+        start: new Date(interval.start.getTime()),
+        end: new Date(interval.end.getTime()),
+      });
+      return;
+    }
+    if (interval.end.getTime() > last.end.getTime()) {
+      last.end = new Date(interval.end.getTime());
+    }
+  });
+
+  return merged;
+};
+
+const buildPublicRentalCalendarEvents = (events: FieldCalendarEntry[]): FieldCalendarEntry[] => {
+  const rentalEntries = events.filter((event) => event.metaType === 'rental');
+  const bookedEntries = events.filter((event) => event.metaType === 'booked');
+  const publicEntries: FieldCalendarEntry[] = [];
+
+  rentalEntries.forEach((rentalEntry) => {
+    const overlaps = mergePublicRentalIntervals(
+      bookedEntries.flatMap((bookedEntry) => {
+        if (
+          bookedEntry.resourceId !== rentalEntry.resourceId
+          || !compareRanges(rentalEntry.start, rentalEntry.end, bookedEntry.start, bookedEntry.end)
+        ) {
+          return [];
+        }
+        const start = new Date(Math.max(rentalEntry.start.getTime(), bookedEntry.start.getTime()));
+        const end = new Date(Math.min(rentalEntry.end.getTime(), bookedEntry.end.getTime()));
+        return end.getTime() > start.getTime() ? [{ start, end }] : [];
+      }),
+    );
+
+    let cursor = new Date(rentalEntry.start.getTime());
+    overlaps.forEach((overlap, index) => {
+      if (overlap.start.getTime() > cursor.getTime()) {
+        publicEntries.push({
+          ...rentalEntry,
+          id: `${rentalEntry.id}-available-${cursor.getTime()}`,
+          start: new Date(cursor.getTime()),
+          end: new Date(overlap.start.getTime()),
+        });
+      }
+
+      publicEntries.push({
+        ...rentalEntry,
+        id: `${rentalEntry.id}-unavailable-${index}-${overlap.start.getTime()}`,
+        title: 'Unavailable',
+        start: new Date(overlap.start.getTime()),
+        end: new Date(overlap.end.getTime()),
+        resource: {
+          sourceType: 'RENTAL_UNAVAILABLE',
+          sourceId: rentalEntry.id,
+        } as unknown as TimeSlot,
+        metaType: 'booked',
+      });
+
+      if (overlap.end.getTime() > cursor.getTime()) {
+        cursor = new Date(overlap.end.getTime());
+      }
+    });
+
+    if (cursor.getTime() < rentalEntry.end.getTime()) {
+      publicEntries.push({
+        ...rentalEntry,
+        id: overlaps.length ? `${rentalEntry.id}-available-${cursor.getTime()}` : rentalEntry.id,
+        start: new Date(cursor.getTime()),
+        end: new Date(rentalEntry.end.getTime()),
+      });
+    }
+  });
+
+  return publicEntries.sort((left, right) => (
+    left.start.getTime() - right.start.getTime()
+    || left.end.getTime() - right.end.getTime()
+    || left.resourceId.localeCompare(right.resourceId)
+    || left.id.localeCompare(right.id)
+  ));
+};
 
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -1021,7 +1150,7 @@ export default function FieldsTabContent({
   backHref = '/discover',
   backLabel = 'Back to Discover',
   showBackButton = true,
-  primaryActionLabel = 'Create Event',
+  primaryActionLabel = 'Reserve resources',
   canManageFields = false,
   onRentalSelectionReady,
 }: FieldsTabContentProps) {
@@ -1208,10 +1337,6 @@ export default function FieldsTabContent({
     () => buildUniqueColorReferenceList(fields.map((field) => field.$id)),
     [fields],
   );
-  const fieldLabelById = useMemo(
-    () => new Map(allFieldOptions.map((option) => [option.value, option.label])),
-    [allFieldOptions],
-  );
   const facilityFieldsByFilterValue = useMemo(() => {
     const byFilterValue = new Map<string, Field[]>();
     fields.forEach((field) => {
@@ -1222,10 +1347,6 @@ export default function FieldsTabContent({
     });
     return byFilterValue;
   }, [fields]);
-  const facilityById = useMemo(
-    () => new Map(facilities.map((facility) => [facility.$id, facility])),
-    [facilities],
-  );
 
   const rentalListings = useMemo(() => {
     if (!org) return [];
@@ -1288,19 +1409,19 @@ export default function FieldsTabContent({
       return;
     }
 
-    const fallbackStart = new Date();
-    fallbackStart.setMinutes(0, 0, 0);
+    const fallbackStart = getNextSelectableRentalStart();
     const fallbackEnd = new Date(fallbackStart.getTime() + MIN_SELECTION_MS);
 
-    const firstListingForField = rentalListings.find((listing) => listing.field.$id === firstField.$id);
-    if (firstListingForField?.nextOccurrence) {
-      const start = new Date(firstListingForField.nextOccurrence.getTime());
-      const endMinutes = typeof firstListingForField.slot.endTimeMinutes === 'number'
-        ? firstListingForField.slot.endTimeMinutes
-        : (firstListingForField.slot.startTimeMinutes ?? (start.getHours() * 60 + start.getMinutes() + 60));
+    const firstListing = rentalListings[0];
+    const firstRentalField = firstListing?.field ?? firstField;
+    if (firstListing?.nextOccurrence && firstRentalField?.$id) {
+      const start = new Date(firstListing.nextOccurrence.getTime());
+      const endMinutes = typeof firstListing.slot.endTimeMinutes === 'number'
+        ? firstListing.slot.endTimeMinutes
+        : (firstListing.slot.startTimeMinutes ?? (start.getHours() * 60 + start.getMinutes() + 60));
       const end = minutesToDate(start, endMinutes);
       setRentalSelections([
-        buildSelectionFromCalendarRange(start, end > start ? end : new Date(start.getTime() + MIN_SELECTION_MS), firstField.$id),
+        buildSelectionFromCalendarRange(start, end > start ? end : new Date(start.getTime() + MIN_SELECTION_MS), firstRentalField.$id),
       ]);
       setCalendarDate(new Date(start));
       return;
@@ -1360,9 +1481,15 @@ export default function FieldsTabContent({
     }
     setReadonlyVisibleFieldIds((prev) => {
       const validIds = prev.filter((fieldId) => facilityFilteredFieldIds.includes(fieldId));
-      return validIds.length ? validIds : facilityFilteredFieldIds;
+      if (validIds.length) {
+        return validIds;
+      }
+      const preferredRentalFieldId = rentalListings.find((listing) => (
+        facilityFilteredFieldIds.includes(listing.field.$id)
+      ))?.field.$id;
+      return preferredRentalFieldId ? [preferredRentalFieldId] : facilityFilteredFieldIds.slice(0, 1);
     });
-  }, [canManage, facilityFilteredFieldIds]);
+  }, [canManage, facilityFilteredFieldIds, rentalListings]);
 
   const selectedFieldIds = useMemo(
     () => normalizeFieldIds(selection?.fieldIds ?? []),
@@ -1423,6 +1550,16 @@ export default function FieldsTabContent({
       .map((field) => field.$id),
     [fields],
   );
+  const getPreferredFieldIdsForFacilityFilter = useCallback(
+    (filterValue: string): string[] => {
+      const fieldIds = getFieldIdsForFacilityFilter(filterValue);
+      const preferredRentalFieldId = rentalListings.find((listing) => (
+        fieldIds.includes(listing.field.$id)
+      ))?.field.$id;
+      return preferredRentalFieldId ? [preferredRentalFieldId] : fieldIds.slice(0, 1);
+    },
+    [getFieldIdsForFacilityFilter, rentalListings],
+  );
   const handleFacilityFilterChange = useCallback((value: string | null) => {
     const nextValue = value || ALL_FACILITIES_FILTER_VALUE;
     const nextFieldIds = getFieldIdsForFacilityFilter(nextValue);
@@ -1443,16 +1580,17 @@ export default function FieldsTabContent({
       return;
     }
 
-    setReadonlyVisibleFieldIds(nextFieldIds);
+    const preferredNextFieldIds = getPreferredFieldIdsForFacilityFilter(nextValue);
+    setReadonlyVisibleFieldIds(preferredNextFieldIds);
     setRentalSelections((current) => current.map((selectionItem) => {
       const validSelectionFieldIds = normalizeFieldIds(selectionItem.scheduledFieldIds)
         .filter((fieldId) => nextFieldIds.includes(fieldId));
       return {
         ...selectionItem,
-        scheduledFieldIds: validSelectionFieldIds.length ? validSelectionFieldIds : nextFieldIds.slice(0, 1),
+        scheduledFieldIds: validSelectionFieldIds.length ? validSelectionFieldIds : preferredNextFieldIds,
       };
     }));
-  }, [canManage, getFieldIdsForFacilityFilter]);
+  }, [canManage, getFieldIdsForFacilityFilter, getPreferredFieldIdsForFacilityFilter]);
   const selectionConflictInputs = useMemo(
     () => (
       canManage
@@ -1750,7 +1888,7 @@ export default function FieldsTabContent({
     }
     const events = buildFieldCalendarEvents(sourceFields, calendarRange) as FieldCalendarEntry[];
     if (!canManage) {
-      return events;
+      return buildPublicRentalCalendarEvents(events);
     }
     const seenBookedKeys = new Set<string>();
     return events.filter((event) => {
@@ -1833,29 +1971,21 @@ export default function FieldsTabContent({
 
   const eventPropGetter = useCallback(
     (event: CalendarEventData) => {
-      if (event.metaType === 'selection') {
-        return {
-          style: {
-            backgroundColor: SELECTION_COLOR,
-            border: `1px solid ${SELECTION_BORDER_COLOR}`,
-            color: SELECTION_TEXT_COLOR,
-            padding: 0,
-            cursor: 'grab',
-          },
-        };
-      }
-      const colors = getOrderedEntityColorPair(fieldColorReferenceList, event.resourceId);
+      const variant = getCalendarEventVariant(event);
       return {
+        className: `field-calendar-rbc-event field-calendar-rbc-event--${variant}`,
         style: {
-          backgroundColor: colors.bg,
-          border: `1px solid ${colors.bg}`,
-          color: colors.text,
+          backgroundColor: 'transparent',
+          border: 0,
+          color: 'inherit',
           padding: 0,
-          cursor: canManage && event.metaType === 'rental' ? 'grab' : 'default',
+          cursor: event.metaType === 'selection' || (canManage && event.metaType === 'rental')
+            ? 'grab'
+            : 'default',
         },
       };
     },
-    [canManage, fieldColorReferenceList],
+    [canManage],
   );
   const slotPropGetter = useCallback(
     (date: Date, resourceId?: string | number) => {
@@ -1870,12 +2000,16 @@ export default function FieldsTabContent({
             : undefined;
       const slotStart = new Date(date.getTime());
       const slotEnd = new Date(slotStart.getTime() + SLOT_STEP_MINUTES * 60 * 1000);
-      if (!isBlockedRange(slotStart, slotEnd, normalizedResourceId)) {
+      const isPastSlot = isPastRentalRangeStart(slotStart);
+      if (!isPastSlot && !isBlockedRange(slotStart, slotEnd, normalizedResourceId)) {
         return {};
       }
       return {
         style: {
-          backgroundColor: 'rgba(148, 163, 184, 0.22)',
+          backgroundColor: isPastSlot ? 'rgba(148, 163, 184, 0.28)' : 'rgba(148, 163, 184, 0.22)',
+          backgroundImage: isPastSlot
+            ? 'repeating-linear-gradient(135deg, rgba(100, 116, 139, 0.16) 0 6px, transparent 6px 12px)'
+            : undefined,
           cursor: 'not-allowed',
         },
       };
@@ -1893,6 +2027,9 @@ export default function FieldsTabContent({
     const slotEnd = slotInfo?.end
       ? new Date(slotInfo.end)
       : new Date(slotStart.getTime() + MIN_SELECTION_MS);
+    if (isPastRentalRangeStart(slotStart)) {
+      return false;
+    }
     const resourceId =
       typeof slotInfo.resourceId === 'string'
         ? slotInfo.resourceId
@@ -2200,6 +2337,9 @@ export default function FieldsTabContent({
       if (!dateRange) {
         errors.push('Select a valid start and end date/time.');
       }
+      if (dateRange && isPastRentalRangeStart(dateRange.start)) {
+        errors.push('Rental selections must start in the future.');
+      }
 
       if (!errors.length && dateRange) {
         const durationMinutes = Math.max(
@@ -2290,7 +2430,7 @@ export default function FieldsTabContent({
     [rentalSelectionValidations],
   );
 
-  const canCreateRentalEvent = useMemo(() => {
+  const canReserveRentalResources = useMemo(() => {
     if (canManage || !currentUser) {
       return false;
     }
@@ -2310,8 +2450,8 @@ export default function FieldsTabContent({
     }
     if (!currentUser) return 'dimmed';
     if (hasPendingConflictChecks) return 'yellow';
-    return canCreateRentalEvent ? 'teal' : 'red';
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, hasPendingConflictChecks, selectedFieldIds.length, selection]);
+    return canReserveRentalResources ? 'teal' : 'red';
+  }, [canManage, canReserveRentalResources, currentUser, existingConflicts.length, hasPendingConflictChecks, selectedFieldIds.length, selection]);
 
   const summaryText = useMemo(() => {
     if (canManage) {
@@ -2325,7 +2465,7 @@ export default function FieldsTabContent({
       return `Draft slot: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "Add Rental Slot" to set price, or click an existing rental slot to edit.`;
     }
     if (!currentUser) {
-      return 'Sign in to create an event.';
+      return 'Sign in to reserve resources.';
     }
     if (!rentalSelections.length) {
       return 'Add at least one rental selection.';
@@ -2333,11 +2473,11 @@ export default function FieldsTabContent({
     if (hasPendingConflictChecks) {
       return 'Checking resource conflicts for your selections...';
     }
-    if (!canCreateRentalEvent) {
-      return 'Resolve selection errors before creating an event.';
+    if (!canReserveRentalResources) {
+      return 'Resolve selection errors before reserving resources.';
     }
     return `${rentalSelections.length} selection${rentalSelections.length === 1 ? '' : 's'} ready • Total ${formatPrice(totalRentalCents)}`;
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, hasPendingConflictChecks, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
+  }, [canManage, canReserveRentalResources, currentUser, existingConflicts.length, hasPendingConflictChecks, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
 
   const updateRentalSelection = useCallback(
     (selectionKey: string, updater: (selectionItem: RentalDraftSelection) => RentalDraftSelection) => {
@@ -2359,12 +2499,13 @@ export default function FieldsTabContent({
     }
 
     const seedRange = seedSelection ? resolveSelectionDateRange(seedSelection) : null;
-    const defaultStart = new Date();
-    defaultStart.setMinutes(0, 0, 0);
+    const defaultStart = getNextSelectableRentalStart();
     const durationMs = seedRange
       ? Math.max(MIN_SELECTION_MS, seedRange.end.getTime() - seedRange.start.getTime())
       : MIN_SELECTION_MS;
-    const nextStart = seedRange ? new Date(seedRange.end.getTime()) : defaultStart;
+    const nextStart = seedRange && seedRange.end.getTime() > defaultStart.getTime()
+      ? new Date(seedRange.end.getTime())
+      : defaultStart;
     const nextEnd = new Date(nextStart.getTime() + durationMs);
     setRentalSelections((prev) => [buildSelectionFromCalendarRange(nextStart, nextEnd, fallbackFieldId), ...prev]);
   }, [facilityFilteredFields, fields, rentalSelections]);
@@ -2386,6 +2527,13 @@ export default function FieldsTabContent({
           return { ...prev, start: nextStart, end: nextEnd };
         });
       } else if (params?.slotKey) {
+        if (isPastRentalRangeStart(start)) {
+          notifications.show({
+            color: 'red',
+            message: 'Rental selections must start in the future.',
+          });
+          return;
+        }
         let blockedByOccupancy = false;
         setRentalSelections((prev) => prev.map((item) => (
           item.key === params.slotKey
@@ -2510,6 +2658,13 @@ export default function FieldsTabContent({
       }
 
       const slotEnd = slotEndRaw;
+      if (isPastRentalRangeStart(slotStart)) {
+        notifications.show({
+          color: 'red',
+          message: 'Rental selections must start in the future.',
+        });
+        return;
+      }
       const resourceFieldIds = typeof slotInfo.resourceId === 'string'
         ? [slotInfo.resourceId]
         : readonlyCalendarFieldIds;
@@ -2600,7 +2755,7 @@ export default function FieldsTabContent({
   }, [currentUser]);
 
   const hostSelectOptions = useMemo(() => {
-    const base = [{ value: 'self', label: 'Host as Myself' }];
+    const base = [{ value: 'self', label: 'My personal account' }];
     if (!hostOrganizations.length) {
       return base;
     }
@@ -2613,16 +2768,16 @@ export default function FieldsTabContent({
     ];
   }, [hostOrganizations]);
 
-  const handleCreateEventClick = useCallback(() => {
+  const handleReserveResourcesClick = useCallback(() => {
     if (!currentUser) {
-      notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
+      notifications.show({ color: 'yellow', message: 'Sign in to reserve resources.' });
       return;
     }
     if (canManage) {
       return;
     }
-    if (!canCreateRentalEvent || !rentalSelectionValidations.length) {
-      notifications.show({ color: 'red', message: 'Resolve rental selection issues before creating an event.' });
+    if (!canReserveRentalResources || !rentalSelectionValidations.length) {
+      notifications.show({ color: 'red', message: 'Resolve rental selection issues before reserving resources.' });
       return;
     }
 
@@ -2735,6 +2890,7 @@ export default function FieldsTabContent({
         manageEventUrl,
         organizationId: org?.$id ?? null,
         organizationName: org?.name ?? 'Organization',
+        renterOrganizationId: hostSelection && hostSelection !== 'self' ? hostSelection : null,
         facilityId: primaryFacility?.$id ?? getFieldFacilityId(primaryField) ?? null,
         facilityName: primaryFacility?.name ?? null,
         facilityLocation: primaryFacilityLocation,
@@ -2755,9 +2911,12 @@ export default function FieldsTabContent({
       });
       return;
     }
-    router.push(manageEventUrl);
+    notifications.show({
+      color: 'red',
+      message: 'Rental checkout is not available on this page.',
+    });
   }, [
-    canCreateRentalEvent,
+    canReserveRentalResources,
     canManage,
     currentUser,
     fields,
@@ -2772,7 +2931,6 @@ export default function FieldsTabContent({
     rentalSelectionValidations,
     totalRentalCents,
     onRentalSelectionReady,
-    router,
   ]);
 
   const handleAddRentalSlotClick = useCallback(() => {
@@ -2816,31 +2974,30 @@ export default function FieldsTabContent({
       ? `${formatDisplayTime(event.start)} - ${formatDisplayTime(event.end)}`
       : null;
 
+    const variant = getCalendarEventVariant(event as CalendarEventData);
     let title = event.title;
     let meta = timeLabel;
     if (event?.metaType === 'booked') {
-      title = resourceName || matchLabel || 'Booked slot';
-      meta = 'Booked';
+      const isRentalBooking = variant === 'reservation';
+      const isUnavailable = variant === 'unavailable';
+      title = isUnavailable ? 'Unavailable' : isRentalBooking ? 'Rental reservation' : resourceName || matchLabel || 'Booked slot';
+      meta = isUnavailable ? timeLabel : isRentalBooking ? 'Reserved' : 'Booked';
     } else if (event?.metaType === 'rental') {
-      title = 'Rental slot';
-      meta = timeLabel;
+      const isUnavailable = variant === 'unavailable';
+      title = isUnavailable ? 'Past rental slot' : 'Open rental slot';
+      meta = isUnavailable ? 'Unavailable' : timeLabel;
     }
-
-    const colors = event?.metaType === 'selection'
-      ? { bg: SELECTION_COLOR, text: SELECTION_TEXT_COLOR }
-      : undefined;
 
     return (
       <SharedCalendarEvent
         title={title}
         subtitle={normalizedFieldName || undefined}
         meta={meta}
-        colors={colors}
         colorReferenceList={fieldColorReferenceList}
         colorMatchKey={event?.resourceId}
         compact
-        muted={event?.metaType === 'booked' && !canManage}
         draggable={event?.metaType === 'selection' || (canManage && event?.metaType === 'rental')}
+        variant={variant}
       />
     );
   };
@@ -3245,7 +3402,6 @@ export default function FieldsTabContent({
                     const selectionRange = resolveSelectionDateRange(selectionItem);
                     const selectionFieldIds = normalizeFieldIds(selectionItem.scheduledFieldIds);
                     const selectionFacilityValue = getSelectionFacilityFilterValue(selectionFieldIds);
-                    const selectionFacilityLabel = getFacilityLabelForFilterValue(facilities, selectionFacilityValue);
                     const selectionFacilityFields = selectionFacilityValue === ALL_FACILITIES_FILTER_VALUE
                       ? fields
                       : facilityFieldsByFilterValue.get(selectionFacilityValue) ?? [];
@@ -3253,31 +3409,16 @@ export default function FieldsTabContent({
                       value: field.$id,
                       label: getFacilityScopedFieldDisplayName(field),
                     }));
-                    const selectionFieldNames = selectionFieldIds.map((fieldId) => fieldLabelById.get(fieldId) ?? fieldId);
-                    const firstSelectionField = fields.find((field) => field.$id === selectionFieldIds[0]) ?? null;
-                    const selectionFacility = getFieldFacilityFromList(firstSelectionField, facilities) ?? (
-                      selectionFacilityValue !== ALL_FACILITIES_FILTER_VALUE && selectionFacilityValue !== UNASSIGNED_FACILITY_FILTER_VALUE
-                        ? facilityById.get(selectionFacilityValue) ?? null
-                        : null
-                    );
-                    const selectionLocation = getFieldResolvedLocation(
-                      firstSelectionField,
-                      selectionFacility?.location || selectionFacility?.address || org?.location || '',
-                    );
                     const hasConflict = (validation?.conflictCount ?? 0) > 0;
                     return (
                       <Paper
                         key={selectionItem.key}
                         withBorder
                         radius="md"
-                        p="md"
+                        p="sm"
                         shadow="xs"
                         style={{
-                          minHeight: 360,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          overflow: 'hidden',
+                          alignSelf: 'start',
                           borderColor: hasConflict ? 'var(--mantine-color-red-5)' : undefined,
                           backgroundColor: hasConflict ? 'var(--mantine-color-red-0)' : undefined,
                         }}
@@ -3313,18 +3454,16 @@ export default function FieldsTabContent({
                             value={selectionFacilityValue}
                             onChange={(nextValue) => {
                               const normalizedValue = nextValue ?? publicFacilityFilterOptions[0]?.value ?? ALL_FACILITIES_FILTER_VALUE;
-                              const nextFacilityFields = normalizedValue === ALL_FACILITIES_FILTER_VALUE
-                                ? fields
-                                : facilityFieldsByFilterValue.get(normalizedValue) ?? [];
-                              const nextFieldIds = nextFacilityFields.length ? [nextFacilityFields[0].$id] : [];
+                              const nextFieldIds = getPreferredFieldIdsForFacilityFilter(normalizedValue);
                               setSelectedFacilityFilterValue(normalizedValue);
-                              setReadonlyVisibleFieldIds(nextFacilityFields.map((field) => field.$id));
+                              setReadonlyVisibleFieldIds(nextFieldIds);
                               updateRentalSelection(selectionItem.key, (current) => ({
                                 ...current,
                                 scheduledFieldIds: nextFieldIds,
                               }));
                             }}
                             allowDeselect={false}
+                            size="sm"
                           />
                           <MultiSelect
                             label="Resources"
@@ -3338,11 +3477,14 @@ export default function FieldsTabContent({
                             }}
                             searchable
                             placeholder="Select one or more resources"
+                            size="sm"
                           />
                           <Group grow>
                             <DateTimePicker
                               label="Start"
                               value={formatLocalDateTime(selectionRange?.start ?? null) ?? null}
+                              minDate={new Date()}
+                              size="sm"
                               onChange={(value) => {
                                 const nextStart = parseLocalDateTime(value ?? null);
                                 if (!nextStart) return;
@@ -3361,6 +3503,8 @@ export default function FieldsTabContent({
                             <DateTimePicker
                               label="End"
                               value={formatLocalDateTime(selectionRange?.end ?? null) ?? null}
+                              minDate={new Date()}
+                              size="sm"
                               onChange={(value) => {
                                 const nextEnd = parseLocalDateTime(value ?? null);
                                 if (!nextEnd) return;
@@ -3377,11 +3521,6 @@ export default function FieldsTabContent({
                               }}
                             />
                           </Group>
-                          <Text size="xs" c="dimmed">
-                            {selectionRange
-                              ? `${selectionFacilityLabel} • ${formatDisplayDateTime(selectionRange.start)} - ${formatDisplayDateTime(selectionRange.end)} • ${selectionFieldNames.join(', ')}${selectionLocation ? ` • ${selectionLocation}` : ''}`
-                              : 'Select date/time and resources to validate availability.'}
-                          </Text>
                           {validation?.errors.map((errorMessage, errorIndex) => (
                             <Text key={`${selectionItem.key}-${errorIndex}`} size="xs" c="red">
                               {errorMessage}
@@ -3396,21 +3535,22 @@ export default function FieldsTabContent({
             </Paper>
           )}
 
-          {!canManage && currentUser && (
-            <Select
-              label="Host Event As"
-              data={hostSelectOptions}
-              value={hostSelection}
-              onChange={(value) => setHostSelection(value ?? 'self')}
-              rightSection={hostOptionsLoading ? <Loader size="xs" /> : undefined}
-              rightSectionWidth={hostOptionsLoading ? 36 : undefined}
-              disabled={hostOptionsLoading && hostSelectOptions.length === 1}
-            />
-          )}
-
           {!canManage && (
             <div className="shared-calendar-layout">
               <Stack gap="sm">
+                {currentUser ? (
+                  <Select
+                    label="Book rental as"
+                    data={hostSelectOptions}
+                    value={hostSelection}
+                    onChange={(value) => setHostSelection(value ?? 'self')}
+                    rightSection={hostOptionsLoading ? <Loader size="xs" /> : undefined}
+                    rightSectionWidth={hostOptionsLoading ? 36 : undefined}
+                    disabled={hostOptionsLoading && hostSelectOptions.length === 1}
+                    allowDeselect={false}
+                    size="sm"
+                  />
+                ) : null}
                 <Select
                   label="Facility"
                   data={publicFacilityFilterOptions}
@@ -3448,7 +3588,7 @@ export default function FieldsTabContent({
               <Stack gap="xs">
                 <Group justify="space-between" align="center">
                   <Text fw={600} size="sm">Rental Total</Text>
-                  <Badge color={canCreateRentalEvent ? 'teal' : 'red'} size="lg">
+                  <Badge color={canReserveRentalResources ? 'teal' : 'red'} size="lg">
                     {formatPrice(totalRentalCents)}
                   </Badge>
                 </Group>
@@ -3482,7 +3622,7 @@ export default function FieldsTabContent({
                 Add Rental Slot
               </Button>
             ) : (
-              <Button disabled={!canCreateRentalEvent || !currentUser} onClick={handleCreateEventClick}>
+              <Button disabled={!canReserveRentalResources || !currentUser} onClick={handleReserveResourcesClick}>
                 {primaryActionLabel}
               </Button>
             )}

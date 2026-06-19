@@ -1,8 +1,8 @@
 import { apiRequest } from '@/lib/apiClient';
-import { Bill, BillLineItem, BillPayment, PaymentIntent, UserData } from '@/types';
+import { Bill, BillLineItem, BillOwnerType, BillPayment, PaymentIntent, UserData } from '@/types';
 
 class BillService {
-    async listBills(ownerType: 'USER' | 'TEAM', ownerId: string): Promise<Bill[]> {
+    async listBills(ownerType: BillOwnerType, ownerId: string): Promise<Bill[]> {
         const params = new URLSearchParams();
         params.set('ownerType', ownerType);
         params.set('ownerId', ownerId);
@@ -21,13 +21,15 @@ class BillService {
     }
 
     async createBill(params: {
-        ownerType: 'USER' | 'TEAM';
+        ownerType: BillOwnerType;
         ownerId: string;
         totalAmountCents: number;
         eventId?: string | null;
         slotId?: string | null;
         occurrenceDate?: string | null;
         organizationId?: string | null;
+        sourceType?: string | null;
+        sourceId?: string | null;
         installmentAmounts?: number[];
         installmentDueDates?: string[];
         installmentDueRelativeDays?: number[];
@@ -49,6 +51,8 @@ class BillService {
                 slotId: params.slotId,
                 occurrenceDate: params.occurrenceDate,
                 organizationId: params.organizationId,
+                sourceType: params.sourceType,
+                sourceId: params.sourceId,
                 installmentAmounts: params.installmentAmounts,
                 installmentDueDates: params.installmentDueDates,
                 installmentDueRelativeDays: params.installmentDueRelativeDays,
@@ -194,6 +198,10 @@ class BillService {
             ownerId: row.ownerId,
             organizationId: row.organizationId ?? null,
             eventId: row.eventId ?? null,
+            slotId: row.slotId ?? null,
+            occurrenceDate: row.occurrenceDate ?? null,
+            sourceType: row.sourceType ?? null,
+            sourceId: row.sourceId ?? null,
             totalAmountCents: toNumber(row.totalAmountCents),
             paidAmountCents: toNumber(row.paidAmountCents),
             nextPaymentDue: row.nextPaymentDue ?? null,

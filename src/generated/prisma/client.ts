@@ -247,6 +247,16 @@ export type Bills = Prisma.BillsModel
  */
 export type BillPayments = Prisma.BillPaymentsModel
 /**
+ * Model RentalBookings
+ *
+ */
+export type RentalBookings = Prisma.RentalBookingsModel
+/**
+ * Model RentalBookingItems
+ *
+ */
+export type RentalBookingItems = Prisma.RentalBookingItemsModel
+/**
  * Model RefundRequests
  *
  */

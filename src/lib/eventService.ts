@@ -1326,6 +1326,18 @@ class EventService {
         typeof row.parentEvent === "string" && row.parentEvent.trim().length > 0
           ? row.parentEvent
           : null,
+      sourceType: typeof row.sourceType === "string" && row.sourceType.trim().length > 0
+        ? row.sourceType
+        : null,
+      sourceId: typeof row.sourceId === "string" && row.sourceId.trim().length > 0
+        ? row.sourceId
+        : null,
+      rentalBookingId: typeof row.rentalBookingId === "string" && row.rentalBookingId.trim().length > 0
+        ? row.rentalBookingId
+        : null,
+      rentalBookingItemId: typeof row.rentalBookingItemId === "string" && row.rentalBookingItemId.trim().length > 0
+        ? row.rentalBookingItemId
+        : null,
       requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
         ? row.requiredTemplateIds.map((id: unknown) => String(id))
         : [],
@@ -1719,6 +1731,22 @@ class EventService {
               timeSlots: Array.isArray(row.timeSlots)
                 ? row.timeSlots.map((slot: any) => this.mapRowToTimeSlot(slot))
                 : [],
+              sourceType:
+                typeof row.sourceType === "string" && row.sourceType.trim().length > 0
+                  ? row.sourceType
+                  : null,
+              sourceId:
+                typeof row.sourceId === "string" && row.sourceId.trim().length > 0
+                  ? row.sourceId
+                  : null,
+              rentalBookingId:
+                typeof row.rentalBookingId === "string" && row.rentalBookingId.trim().length > 0
+                  ? row.rentalBookingId
+                  : null,
+              rentalBookingItemId:
+                typeof row.rentalBookingItemId === "string" && row.rentalBookingItemId.trim().length > 0
+                  ? row.rentalBookingItemId
+                  : null,
             }) as Event,
         )
       : await (async () => {
@@ -2853,6 +2881,10 @@ class EventService {
             .map((id: unknown) => String(id))
             .filter((id: string) => id.length > 0)
         : [],
+      sourceType: typeof row.sourceType === "string" && row.sourceType.trim().length > 0 ? row.sourceType : null,
+      rentalBookingId: typeof row.rentalBookingId === "string" && row.rentalBookingId.trim().length > 0 ? row.rentalBookingId : null,
+      rentalBookingItemId: typeof row.rentalBookingItemId === "string" && row.rentalBookingItemId.trim().length > 0 ? row.rentalBookingItemId : null,
+      rentalLocked: Boolean(row.rentalLocked),
       taxHandling: normalizeRentalTaxHandling(row.taxHandling),
     };
 

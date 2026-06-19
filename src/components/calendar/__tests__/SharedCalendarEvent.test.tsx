@@ -34,6 +34,23 @@ describe('SharedCalendarEvent', () => {
     expect(card).toHaveStyle('--shared-calendar-event-text: #eeeeee');
   });
 
+  it('keeps resource colors available for typed calendar variants', () => {
+    render(
+      <SharedCalendarEvent
+        title="Open rental slot"
+        colorReferenceList={['court-alpha', 'court-beta']}
+        colorMatchKey="court-beta"
+        variant="availability"
+      />,
+    );
+
+    const card = screen.getByText('Open rental slot').closest('.shared-calendar-event');
+    const expectedColors = getIndexedEntityColorPair(1);
+    expect(card).toHaveClass('shared-calendar-event--availability');
+    expect(card).toHaveStyle(`--shared-calendar-resource-bg: ${expectedColors.bg}`);
+    expect(card).not.toHaveStyle(`--shared-calendar-event-bg: ${expectedColors.bg}`);
+  });
+
   it('renders a drag handle when draggable', () => {
     render(<SharedCalendarEvent title="Movable match" draggable />);
 

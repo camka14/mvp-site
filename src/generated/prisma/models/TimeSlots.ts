@@ -56,6 +56,10 @@ export type TimeSlotsMinAggregateOutputType = {
   scheduledFieldId: string | null
   price: number | null
   taxHandling: string | null
+  sourceType: string | null
+  rentalBookingId: string | null
+  rentalBookingItemId: string | null
+  rentalLocked: boolean | null
 }
 
 export type TimeSlotsMaxAggregateOutputType = {
@@ -72,6 +76,10 @@ export type TimeSlotsMaxAggregateOutputType = {
   scheduledFieldId: string | null
   price: number | null
   taxHandling: string | null
+  sourceType: string | null
+  rentalBookingId: string | null
+  rentalBookingItemId: string | null
+  rentalLocked: boolean | null
 }
 
 export type TimeSlotsCountAggregateOutputType = {
@@ -93,6 +101,10 @@ export type TimeSlotsCountAggregateOutputType = {
   divisions: number
   requiredTemplateIds: number
   hostRequiredTemplateIds: number
+  sourceType: number
+  rentalBookingId: number
+  rentalBookingItemId: number
+  rentalLocked: number
   _all: number
 }
 
@@ -127,6 +139,10 @@ export type TimeSlotsMinAggregateInputType = {
   scheduledFieldId?: true
   price?: true
   taxHandling?: true
+  sourceType?: true
+  rentalBookingId?: true
+  rentalBookingItemId?: true
+  rentalLocked?: true
 }
 
 export type TimeSlotsMaxAggregateInputType = {
@@ -143,6 +159,10 @@ export type TimeSlotsMaxAggregateInputType = {
   scheduledFieldId?: true
   price?: true
   taxHandling?: true
+  sourceType?: true
+  rentalBookingId?: true
+  rentalBookingItemId?: true
+  rentalLocked?: true
 }
 
 export type TimeSlotsCountAggregateInputType = {
@@ -164,6 +184,10 @@ export type TimeSlotsCountAggregateInputType = {
   divisions?: true
   requiredTemplateIds?: true
   hostRequiredTemplateIds?: true
+  sourceType?: true
+  rentalBookingId?: true
+  rentalBookingItemId?: true
+  rentalLocked?: true
   _all?: true
 }
 
@@ -272,6 +296,10 @@ export type TimeSlotsGroupByOutputType = {
   divisions: string[]
   requiredTemplateIds: string[]
   hostRequiredTemplateIds: string[]
+  sourceType: string | null
+  rentalBookingId: string | null
+  rentalBookingItemId: string | null
+  rentalLocked: boolean
   _count: TimeSlotsCountAggregateOutputType | null
   _avg: TimeSlotsAvgAggregateOutputType | null
   _sum: TimeSlotsSumAggregateOutputType | null
@@ -316,6 +344,10 @@ export type TimeSlotsWhereInput = {
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
   hostRequiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  sourceType?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalBookingId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalBookingItemId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalLocked?: Prisma.BoolFilter<"TimeSlots"> | boolean
 }
 
 export type TimeSlotsOrderByWithRelationInput = {
@@ -337,6 +369,10 @@ export type TimeSlotsOrderByWithRelationInput = {
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
   hostRequiredTemplateIds?: Prisma.SortOrder
+  sourceType?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalBookingId?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalBookingItemId?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalLocked?: Prisma.SortOrder
 }
 
 export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
@@ -361,6 +397,10 @@ export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
   hostRequiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  sourceType?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalBookingId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalBookingItemId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  rentalLocked?: Prisma.BoolFilter<"TimeSlots"> | boolean
 }, "id">
 
 export type TimeSlotsOrderByWithAggregationInput = {
@@ -382,6 +422,10 @@ export type TimeSlotsOrderByWithAggregationInput = {
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
   hostRequiredTemplateIds?: Prisma.SortOrder
+  sourceType?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalBookingId?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalBookingItemId?: Prisma.SortOrderInput | Prisma.SortOrder
+  rentalLocked?: Prisma.SortOrder
   _count?: Prisma.TimeSlotsCountOrderByAggregateInput
   _avg?: Prisma.TimeSlotsAvgOrderByAggregateInput
   _max?: Prisma.TimeSlotsMaxOrderByAggregateInput
@@ -411,6 +455,10 @@ export type TimeSlotsScalarWhereWithAggregatesInput = {
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
   hostRequiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  sourceType?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
+  rentalBookingId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
+  rentalBookingItemId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
+  rentalLocked?: Prisma.BoolWithAggregatesFilter<"TimeSlots"> | boolean
 }
 
 export type TimeSlotsCreateInput = {
@@ -432,6 +480,10 @@ export type TimeSlotsCreateInput = {
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsCreatehostRequiredTemplateIdsInput | string[]
+  sourceType?: string | null
+  rentalBookingId?: string | null
+  rentalBookingItemId?: string | null
+  rentalLocked?: boolean
 }
 
 export type TimeSlotsUncheckedCreateInput = {
@@ -453,6 +505,10 @@ export type TimeSlotsUncheckedCreateInput = {
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsCreatehostRequiredTemplateIdsInput | string[]
+  sourceType?: string | null
+  rentalBookingId?: string | null
+  rentalBookingItemId?: string | null
+  rentalLocked?: boolean
 }
 
 export type TimeSlotsUpdateInput = {
@@ -474,6 +530,10 @@ export type TimeSlotsUpdateInput = {
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsUpdatehostRequiredTemplateIdsInput | string[]
+  sourceType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalLocked?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type TimeSlotsUncheckedUpdateInput = {
@@ -495,6 +555,10 @@ export type TimeSlotsUncheckedUpdateInput = {
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsUpdatehostRequiredTemplateIdsInput | string[]
+  sourceType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalLocked?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type TimeSlotsCreateManyInput = {
@@ -516,6 +580,10 @@ export type TimeSlotsCreateManyInput = {
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsCreatehostRequiredTemplateIdsInput | string[]
+  sourceType?: string | null
+  rentalBookingId?: string | null
+  rentalBookingItemId?: string | null
+  rentalLocked?: boolean
 }
 
 export type TimeSlotsUpdateManyMutationInput = {
@@ -537,6 +605,10 @@ export type TimeSlotsUpdateManyMutationInput = {
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsUpdatehostRequiredTemplateIdsInput | string[]
+  sourceType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalLocked?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type TimeSlotsUncheckedUpdateManyInput = {
@@ -558,6 +630,10 @@ export type TimeSlotsUncheckedUpdateManyInput = {
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
   hostRequiredTemplateIds?: Prisma.TimeSlotsUpdatehostRequiredTemplateIdsInput | string[]
+  sourceType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalBookingItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rentalLocked?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type TimeSlotsCountOrderByAggregateInput = {
@@ -579,6 +655,10 @@ export type TimeSlotsCountOrderByAggregateInput = {
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
   hostRequiredTemplateIds?: Prisma.SortOrder
+  sourceType?: Prisma.SortOrder
+  rentalBookingId?: Prisma.SortOrder
+  rentalBookingItemId?: Prisma.SortOrder
+  rentalLocked?: Prisma.SortOrder
 }
 
 export type TimeSlotsAvgOrderByAggregateInput = {
@@ -603,6 +683,10 @@ export type TimeSlotsMaxOrderByAggregateInput = {
   scheduledFieldId?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  sourceType?: Prisma.SortOrder
+  rentalBookingId?: Prisma.SortOrder
+  rentalBookingItemId?: Prisma.SortOrder
+  rentalLocked?: Prisma.SortOrder
 }
 
 export type TimeSlotsMinOrderByAggregateInput = {
@@ -619,6 +703,10 @@ export type TimeSlotsMinOrderByAggregateInput = {
   scheduledFieldId?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  sourceType?: Prisma.SortOrder
+  rentalBookingId?: Prisma.SortOrder
+  rentalBookingItemId?: Prisma.SortOrder
+  rentalLocked?: Prisma.SortOrder
 }
 
 export type TimeSlotsSumOrderByAggregateInput = {
@@ -695,6 +783,10 @@ export type TimeSlotsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   divisions?: boolean
   requiredTemplateIds?: boolean
   hostRequiredTemplateIds?: boolean
+  sourceType?: boolean
+  rentalBookingId?: boolean
+  rentalBookingItemId?: boolean
+  rentalLocked?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -716,6 +808,10 @@ export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   divisions?: boolean
   requiredTemplateIds?: boolean
   hostRequiredTemplateIds?: boolean
+  sourceType?: boolean
+  rentalBookingId?: boolean
+  rentalBookingItemId?: boolean
+  rentalLocked?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -737,6 +833,10 @@ export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   divisions?: boolean
   requiredTemplateIds?: boolean
   hostRequiredTemplateIds?: boolean
+  sourceType?: boolean
+  rentalBookingId?: boolean
+  rentalBookingItemId?: boolean
+  rentalLocked?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectScalar = {
@@ -758,9 +858,13 @@ export type TimeSlotsSelectScalar = {
   divisions?: boolean
   requiredTemplateIds?: boolean
   hostRequiredTemplateIds?: boolean
+  sourceType?: boolean
+  rentalBookingId?: boolean
+  rentalBookingItemId?: boolean
+  rentalLocked?: boolean
 }
 
-export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "timeZone" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "taxHandling" | "divisions" | "requiredTemplateIds" | "hostRequiredTemplateIds", ExtArgs["result"]["timeSlots"]>
+export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "timeZone" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "taxHandling" | "divisions" | "requiredTemplateIds" | "hostRequiredTemplateIds" | "sourceType" | "rentalBookingId" | "rentalBookingItemId" | "rentalLocked", ExtArgs["result"]["timeSlots"]>
 
 export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TimeSlots"
@@ -784,6 +888,10 @@ export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     divisions: string[]
     requiredTemplateIds: string[]
     hostRequiredTemplateIds: string[]
+    sourceType: string | null
+    rentalBookingId: string | null
+    rentalBookingItemId: string | null
+    rentalLocked: boolean
   }, ExtArgs["result"]["timeSlots"]>
   composites: {}
 }
@@ -1225,6 +1333,10 @@ export interface TimeSlotsFieldRefs {
   readonly divisions: Prisma.FieldRef<"TimeSlots", 'String[]'>
   readonly requiredTemplateIds: Prisma.FieldRef<"TimeSlots", 'String[]'>
   readonly hostRequiredTemplateIds: Prisma.FieldRef<"TimeSlots", 'String[]'>
+  readonly sourceType: Prisma.FieldRef<"TimeSlots", 'String'>
+  readonly rentalBookingId: Prisma.FieldRef<"TimeSlots", 'String'>
+  readonly rentalBookingItemId: Prisma.FieldRef<"TimeSlots", 'String'>
+  readonly rentalLocked: Prisma.FieldRef<"TimeSlots", 'Boolean'>
 }
 
 

@@ -1205,11 +1205,30 @@ const createInstantBillAndPayment = async ({
     return { billId: null, billPaymentId: null, created: false, transitionedToPaid: false };
   }
 
-  const ownerId = teamId ?? userId;
-  const ownerType: 'TEAM' | 'USER' = teamId ? 'TEAM' : 'USER';
+  const rentalBookingId = toStringOrNull(
+    metadata.rental_booking_id
+    ?? metadata.rentalBookingId
+    ?? (normalizedPurchaseType === 'rental' ? eventId : null),
+  );
+  const renterOrganizationId = toStringOrNull(
+    metadata.renter_organization_id
+    ?? metadata.renterOrganizationId
+    ?? null,
+  );
+  const ownerId = normalizedPurchaseType === 'rental' && renterOrganizationId
+    ? renterOrganizationId
+    : teamId ?? userId;
+  const ownerType: 'TEAM' | 'USER' | 'ORGANIZATION' =
+    normalizedPurchaseType === 'rental' && renterOrganizationId
+      ? 'ORGANIZATION'
+      : teamId
+        ? 'TEAM'
+        : 'USER';
   if (!ownerId) {
     return { billId: null, billPaymentId: null, created: false, transitionedToPaid: false };
   }
+  const billSourceType = normalizedPurchaseType === 'rental' ? 'RENTAL_BOOKING' : null;
+  const billSourceId = normalizedPurchaseType === 'rental' ? rentalBookingId : null;
 
   const instantBreakdown = buildInstantLineItems({
     purchaseType,
@@ -1322,9 +1341,10 @@ const createInstantBillAndPayment = async ({
       purchaseType: normalizedPurchaseType || null,
       userId,
       teamId,
-      eventId,
+      eventId: normalizedPurchaseType === 'rental' ? null : eventId,
       organizationId,
       registrationId,
+      rentalBookingId,
       occurrenceSlotId: toStringOrNull(metadata.occurrence_slot_id ?? metadata.occurrenceSlotId ?? null),
       occurrenceDate: toStringOrNull(metadata.occurrence_date ?? metadata.occurrenceDate ?? null),
       productId: toStringOrNull(metadata.product_id ?? metadata.productId ?? null),
@@ -1346,9 +1366,11 @@ const createInstantBillAndPayment = async ({
         ownerType,
         ownerId,
         organizationId: organizationId ?? null,
-        eventId: eventId ?? null,
+        eventId: normalizedPurchaseType === 'rental' ? null : eventId ?? null,
         slotId: purchaseMetadata.occurrenceSlotId,
         occurrenceDate: purchaseMetadata.occurrenceDate,
+        sourceType: billSourceType,
+        sourceId: billSourceId,
         totalAmountCents: effectiveAmountCents,
         paidAmountCents: isPaid ? effectiveAmountCents : 0,
         nextPaymentDue: isPaid ? null : now,

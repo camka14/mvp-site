@@ -59,6 +59,45 @@ describe('eventService', () => {
     expect(event?.$id).toBe('evt_1');
   });
 
+  it('preserves rental booking metadata for overlap-only field blockers', async () => {
+    apiRequestMock.mockResolvedValue({
+      events: [
+        {
+          $id: 'rental-booking-item-booking_item_1',
+          id: 'rental-booking-item-booking_item_1',
+          eventType: 'EVENT',
+          start: '2026-06-24T03:00:00.000Z',
+          end: '2026-06-24T04:30:00.000Z',
+          timeSlotIds: [],
+          timeSlots: [],
+          sourceType: 'RENTAL_BOOKING',
+          sourceId: 'rental_booking_1',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+        },
+      ],
+      rentalSlots: [],
+    });
+
+    const events = await eventService.getEventsForFieldInRange(
+      'field_1',
+      '2026-06-24T00:00:00.000Z',
+      '2026-06-25T00:00:00.000Z',
+      { rentalOverlapOnly: true },
+    );
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/events/field/field_1?'),
+    );
+    expect(apiRequestMock.mock.calls[0]?.[0]).toContain('rentalOverlapOnly=1');
+    expect(events[0]).toEqual(expect.objectContaining({
+      sourceType: 'RENTAL_BOOKING',
+      sourceId: 'rental_booking_1',
+      rentalBookingId: 'rental_booking_1',
+      rentalBookingItemId: 'booking_item_1',
+    }));
+  });
+
   it('deduplicates concurrent paginated event searches', async () => {
     let resolveRequest: ((value: { events?: any[] }) => void) | undefined;
     apiRequestMock.mockImplementation(() => new Promise((resolve) => {

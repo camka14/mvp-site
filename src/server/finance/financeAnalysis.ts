@@ -32,6 +32,8 @@ export type FinanceBill = {
   ownerId?: string | null;
   eventId?: string | null;
   slotId?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
   sourceName?: string | null;
   sourceEntityType?: 'event' | 'rental' | 'organization' | null;
   sourceEntityId?: string | null;

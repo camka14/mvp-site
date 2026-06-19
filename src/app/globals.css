@@ -998,6 +998,9 @@ svg {
 }
 
 .shared-calendar-event {
+  --shared-calendar-resource-bg: var(--shared-calendar-event-border);
+  --shared-calendar-resource-text: var(--shared-calendar-event-text);
+  --shared-calendar-resource-rail-width: 0.26rem;
   min-height: 100%;
   height: 100%;
   container-name: shared-calendar-event;
@@ -1010,9 +1013,15 @@ svg {
   overflow: hidden;
   border: 1px solid var(--shared-calendar-event-border);
   border-radius: 0.5rem;
-  background: var(--shared-calendar-event-bg);
+  background:
+    linear-gradient(
+      90deg,
+      var(--shared-calendar-resource-bg) 0 var(--shared-calendar-resource-rail-width),
+      transparent var(--shared-calendar-resource-rail-width) 100%
+    ),
+    var(--shared-calendar-event-bg);
   color: var(--shared-calendar-event-text);
-  padding: 0.45rem 0.55rem;
+  padding: 0.45rem 0.55rem 0.45rem 0.7rem;
   line-height: 1.18;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
@@ -1029,7 +1038,44 @@ svg {
 .shared-calendar-event--compact {
   gap: 0.06rem;
   border-radius: 0.42rem;
-  padding: 0.28rem 0.4rem;
+  padding: 0.28rem 0.4rem 0.28rem 0.56rem;
+}
+
+.shared-calendar-event--availability {
+  --shared-calendar-event-bg: color-mix(in srgb, var(--mvp-success-soft) 76%, white);
+  --shared-calendar-event-border: color-mix(in srgb, var(--mvp-success) 54%, white);
+  --shared-calendar-event-text: color-mix(in srgb, var(--mvp-success) 72%, black);
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.shared-calendar-event--unavailable {
+  --shared-calendar-event-bg: #f1f5f9;
+  --shared-calendar-event-border: #94a3b8;
+  --shared-calendar-event-text: #475569;
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.shared-calendar-event--reservation {
+  --shared-calendar-event-bg: #fff7ed;
+  --shared-calendar-event-border: #f59e0b;
+  --shared-calendar-event-text: #7c2d12;
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 158, 11, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.shared-calendar-event--booked {
+  --shared-calendar-event-bg: #cbd5e1;
+  --shared-calendar-event-border: #64748b;
+  --shared-calendar-event-text: #111827;
+}
+
+.shared-calendar-event--selection {
+  --shared-calendar-event-bg: var(--mvp-primary-100);
+  --shared-calendar-event-border: var(--mvp-primary-300);
+  --shared-calendar-event-text: var(--mvp-primary-900);
 }
 
 .shared-calendar-event--clickable {

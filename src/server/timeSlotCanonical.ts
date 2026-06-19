@@ -24,6 +24,10 @@ export type CanonicalTimeSlotInput = {
   divisions: string[];
   requiredTemplateIds: string[];
   hostRequiredTemplateIds: string[];
+  sourceType: string | null;
+  rentalBookingId: string | null;
+  rentalBookingItemId: string | null;
+  rentalLocked: boolean;
 };
 
 const MINUTE_MS = 60 * 1000;
@@ -88,6 +92,14 @@ const normalizeRequiredTemplateIds = (value: unknown): string[] => {
         .filter((entry) => entry.length > 0),
     ),
   );
+};
+
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 };
 
 const normalizePrice = (value: unknown): number | null => {
@@ -223,6 +235,10 @@ export const canonicalizeTimeSlots = ({
       divisions,
       requiredTemplateIds: normalizeRequiredTemplateIds(slot.requiredTemplateIds),
       hostRequiredTemplateIds: normalizeRequiredTemplateIds(slot.hostRequiredTemplateIds),
+      sourceType: normalizeOptionalString(slot.sourceType),
+      rentalBookingId: normalizeOptionalString(slot.rentalBookingId),
+      rentalBookingItemId: normalizeOptionalString(slot.rentalBookingItemId),
+      rentalLocked: Boolean(slot.rentalLocked),
     } satisfies CanonicalTimeSlotInput];
   });
 };

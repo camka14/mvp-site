@@ -1966,6 +1966,52 @@ const attachFieldSchedulingConflicts = async (params: {
       }
     }
   }
+
+  if (typeof params.client.rentalBookingItems?.findMany === 'function') {
+    const rentalBookingRows = await params.client.rentalBookingItems.findMany({
+      where: {
+        fieldId: { in: fieldIds },
+        status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] },
+        start: { lt: params.windowEnd },
+        end: { gt: params.windowStart },
+        ...(params.eventId
+          ? {
+              OR: [
+                { eventId: null },
+                { eventId: { not: params.eventId } },
+              ],
+            }
+          : {}),
+      } as any,
+      select: {
+        id: true,
+        bookingId: true,
+        fieldId: true,
+        start: true,
+        end: true,
+      },
+    });
+
+    for (const row of rentalBookingRows) {
+      const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
+      const field = fieldId ? params.fields[fieldId] : undefined;
+      if (!field) {
+        continue;
+      }
+      const start = toOptionalDate(row.start);
+      const end = toOptionalDate(row.end);
+      if (!start || !end || end.getTime() <= start.getTime()) {
+        continue;
+      }
+      appendBlockingEvent({
+        field,
+        id: `rental-booking:${row.bookingId}:${row.id}`,
+        start,
+        end,
+        parentId: row.bookingId ?? null,
+      });
+    }
+  }
 };
 
 const toOptionalDate = (value: unknown): Date | null => {
@@ -4618,6 +4664,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
+        sourceType: slot.sourceType,
+        rentalBookingId: slot.rentalBookingId,
+        rentalBookingItemId: slot.rentalBookingItemId,
+        rentalLocked: slot.rentalLocked,
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -4634,6 +4684,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
+        sourceType: slot.sourceType,
+        rentalBookingId: slot.rentalBookingId,
+        rentalBookingItemId: slot.rentalBookingItemId,
+        rentalLocked: slot.rentalLocked,
         updatedAt: now,
       } as any,
     });

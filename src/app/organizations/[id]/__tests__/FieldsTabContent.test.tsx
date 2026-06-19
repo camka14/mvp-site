@@ -183,8 +183,8 @@ const buildOrganizationWithTwoRentalFields = () => ({
           repeating: false,
           dayOfWeek: 1,
           daysOfWeek: [1],
-          startDate: '2026-03-10T10:00:00.000Z',
-          endDate: '2026-03-10T11:00:00.000Z',
+          startDate: '2026-07-21T10:00:00.000Z',
+          endDate: '2026-07-21T11:00:00.000Z',
           scheduledFieldId: 'field_main',
           scheduledFieldIds: ['field_main'],
         },
@@ -203,8 +203,8 @@ const buildOrganizationWithTwoRentalFields = () => ({
           repeating: false,
           dayOfWeek: 1,
           daysOfWeek: [1],
-          startDate: '2026-03-10T12:00:00.000Z',
-          endDate: '2026-03-10T13:00:00.000Z',
+          startDate: '2026-07-21T12:00:00.000Z',
+          endDate: '2026-07-21T13:00:00.000Z',
           scheduledFieldId: 'field_2',
           scheduledFieldIds: ['field_2'],
         },
@@ -508,21 +508,55 @@ describe('FieldsTabContent calendar navigation', () => {
     );
 
     expect(await screen.findByTestId('event-range-slot_1')).toBeInTheDocument();
-    expect(await screen.findByTestId('event-range-slot_2')).toBeInTheDocument();
+    expect(screen.queryByTestId('event-range-slot_2')).not.toBeInTheDocument();
     expect(screen.getByTestId('calendar-resource-count')).toHaveTextContent('none');
-
-    await user.click(screen.getByRole('button', { name: /Field 2/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('event-range-slot_2')).not.toBeInTheDocument();
-    });
-    expect(screen.getByTestId('event-range-slot_1')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Field 2/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('event-range-slot_2')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('event-range-slot_1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Field 2/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('event-range-slot_2')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows public booked overlaps as unavailable rental inventory without event details', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: field.$id === 'field_main'
+        ? [
+            {
+              $id: 'event_booked_private',
+              name: 'Private Practice',
+              start: '2026-07-21T10:15:00.000Z',
+              end: '2026-07-21T10:45:00.000Z',
+              eventType: 'EVENT',
+            },
+          ]
+        : [],
+      matches: [],
+    }));
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithTwoRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'user_2' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    const unavailableBlock = await screen.findByRole('button', { name: 'Drag Unavailable' });
+    expect(unavailableBlock).toBeDisabled();
+    expect(screen.queryByText('Private Practice')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Drag Booked' })).not.toBeInTheDocument();
   });
 
   it('keeps booked events visible when saving a rental slot returns a lean field payload', async () => {
@@ -615,6 +649,22 @@ describe('FieldsTabContent calendar navigation', () => {
 
     expect(await screen.findAllByText('River City Sports Complex - Main')).not.toHaveLength(0);
     expect(screen.getByRole('heading', { name: 'Facilities' })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /River City Sports Complex • .* • River City Sports Complex - Main • 100 River City Way/,
+    );
+    const bookingAccountSelect = screen
+      .getAllByLabelText('Book rental as')
+      .find((element) => element.tagName === 'INPUT') as HTMLInputElement | undefined;
+    if (!bookingAccountSelect) {
+      throw new Error('Book rental as input was not rendered');
+    }
+    expect(bookingAccountSelect).toHaveDisplayValue('My personal account');
+    expect(screen.queryByLabelText('Host Event As')).not.toBeInTheDocument();
+    const laterFacilitySelect = screen
+      .getAllByLabelText('Facility')
+      .filter((element) => element.tagName === 'INPUT')
+      .find((element) => Boolean(bookingAccountSelect.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
+    expect(laterFacilitySelect).toBeDefined();
   });
 
   it('passes facility context through public rental checkout', async () => {
@@ -638,7 +688,7 @@ describe('FieldsTabContent calendar navigation', () => {
       </MantineProvider>,
     );
 
-    const createEventButton = await screen.findByRole('button', { name: 'Create Event' });
+    const createEventButton = await screen.findByRole('button', { name: 'Reserve resources' });
     await waitFor(() => {
       expect(createEventButton).toBeEnabled();
     });
@@ -650,6 +700,7 @@ describe('FieldsTabContent calendar navigation', () => {
     const payload = selectionReadyMock.mock.calls[0]?.[0];
     expect(payload).toEqual(expect.objectContaining({
       organizationId: 'org_test',
+      renterOrganizationId: null,
       facilityId: 'facility_river_city',
       facilityName: 'River City Sports Complex',
       facilityLocation: '100 River City Way',
@@ -668,6 +719,47 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(manageEventUrl.searchParams.get('rentalFacilityAddress')).toBe('100 River City Way, Portland, OR 97201, USA');
     expect(manageEventUrl.searchParams.get('rentalLat')).toBe('45.523');
     expect(manageEventUrl.searchParams.get('rentalLng')).toBe('-122.676');
+  });
+
+  it('passes organization-page rental reservations to the checkout handler instead of navigating', async () => {
+    const selectionReadyMock = jest.fn();
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={{
+            ...buildOrganizationWithFacilityRentalFields(),
+            publicSlug: 'test-slug',
+          }}
+          organizationId="org_test"
+          currentUser={{ $id: 'user_2' } as any}
+          onRentalSelectionReady={selectionReadyMock}
+        />
+      </MantineProvider>,
+    );
+
+    const reserveResourcesButton = await screen.findByRole('button', { name: 'Reserve resources' });
+    await waitFor(() => {
+      expect(reserveResourcesButton).toBeEnabled();
+    });
+    await user.click(reserveResourcesButton);
+
+    await waitFor(() => {
+      expect(selectionReadyMock).toHaveBeenCalledTimes(1);
+    });
+    expect(selectionReadyMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      organizationId: 'org_test',
+      organizationName: 'Test',
+    }));
+    expect(pushMock).not.toHaveBeenCalledWith('/o/test-slug/rentals');
+    expect(pushMock).not.toHaveBeenCalledWith(expect.stringContaining('/events/'));
   });
 
   it('shows facility operations metrics for managers', async () => {

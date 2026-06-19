@@ -2284,9 +2284,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const nextSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
         const nextSlotIdSet = new Set(nextSlotIds);
         const staleSlotIds = existingSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId));
+        const existingRentalLockedSlots = nextSlotIds.length
+          ? await tx.timeSlots.findMany({
+              where: {
+                id: { in: nextSlotIds },
+                rentalLocked: true,
+              } as any,
+              select: {
+                id: true,
+                startDate: true,
+                endDate: true,
+                scheduledFieldId: true,
+                scheduledFieldIds: true,
+                rentalBookingId: true,
+              } as any,
+            })
+          : [];
+        const existingRentalLockedSlotById = new Map(existingRentalLockedSlots.map((slot: any) => [String(slot.id), slot]));
 
         for (const slot of canonicalTimeSlots) {
           const now = new Date();
+          const existingRentalLockedSlot = existingRentalLockedSlotById.get(slot.id);
+          if (existingRentalLockedSlot) {
+            const existingFieldIds = normalizeFieldIds(
+              Array.isArray(existingRentalLockedSlot.scheduledFieldIds) && existingRentalLockedSlot.scheduledFieldIds.length
+                ? existingRentalLockedSlot.scheduledFieldIds
+                : [existingRentalLockedSlot.scheduledFieldId],
+            );
+            const nextFieldIds = normalizeFieldIds(slot.scheduledFieldIds);
+            const fieldsChanged = existingFieldIds.join('|') !== nextFieldIds.join('|');
+            const startChanged = new Date(existingRentalLockedSlot.startDate).getTime() !== slot.startDate.getTime();
+            const existingEndTime = existingRentalLockedSlot.endDate ? new Date(existingRentalLockedSlot.endDate).getTime() : null;
+            const nextEndTime = slot.endDate ? slot.endDate.getTime() : null;
+            const endChanged = existingEndTime !== nextEndTime;
+            const bookingChanged = normalizeFieldIds([existingRentalLockedSlot.rentalBookingId])[0] !== (slot.rentalBookingId ?? undefined);
+            if (fieldsChanged || startChanged || endChanged || bookingChanged) {
+              throw NextResponse.json(
+                { error: 'Rental-backed time slots cannot be edited. Remove the rental from the event or ask the facility owner to change the reservation.' },
+                { status: 409 },
+              );
+            }
+          }
           const upsertData = {
             dayOfWeek: slot.dayOfWeek,
             daysOfWeek: slot.daysOfWeek,
@@ -2302,6 +2340,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             taxHandling: slot.taxHandling,
             requiredTemplateIds: slot.requiredTemplateIds,
             hostRequiredTemplateIds: slot.hostRequiredTemplateIds,
+            sourceType: slot.sourceType,
+            rentalBookingId: slot.rentalBookingId,
+            rentalBookingItemId: slot.rentalBookingItemId,
+            rentalLocked: slot.rentalLocked,
             updatedAt: now,
           };
 
@@ -2315,9 +2357,51 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             update: upsertData as any,
           });
           await persistTimeSlotDivisions(tx, slot.id, slot.divisions, now);
+          if (slot.rentalBookingId && typeof tx.rentalBookingItems?.updateMany === 'function') {
+            await tx.rentalBookingItems.updateMany({
+              where: {
+                bookingId: slot.rentalBookingId,
+                fieldId: { in: slot.scheduledFieldIds },
+                status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] },
+                start: { lte: slot.startDate },
+                ...(slot.endDate ? { end: { gte: slot.endDate } } : {}),
+              } as any,
+              data: {
+                eventId,
+                eventTimeSlotId: slot.id,
+                updatedAt: now,
+              } as any,
+            });
+            await tx.rentalBookings.updateMany({
+              where: {
+                id: slot.rentalBookingId,
+                OR: [
+                  { eventId: null },
+                  { eventId },
+                ],
+              } as any,
+              data: {
+                eventId,
+                updatedAt: now,
+              } as any,
+            });
+          }
         }
 
         if (staleSlotIds.length) {
+          if (typeof tx.rentalBookingItems?.updateMany === 'function') {
+            await tx.rentalBookingItems.updateMany({
+              where: {
+                eventId,
+                eventTimeSlotId: { in: staleSlotIds },
+              } as any,
+              data: {
+                eventId: null,
+                eventTimeSlotId: null,
+                updatedAt: new Date(),
+              } as any,
+            });
+          }
           await tx.timeSlots.deleteMany({
             where: { id: { in: staleSlotIds } },
           });

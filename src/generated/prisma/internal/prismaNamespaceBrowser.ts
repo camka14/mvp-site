@@ -92,6 +92,8 @@ export const ModelName = {
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
   BillPayments: 'BillPayments',
+  RentalBookings: 'RentalBookings',
+  RentalBookingItems: 'RentalBookingItems',
   RefundRequests: 'RefundRequests',
   OrganizationAccountingConnections: 'OrganizationAccountingConnections',
   AccountingSyncRecords: 'AccountingSyncRecords',
@@ -978,7 +980,9 @@ export const BillsScalarFieldEnum = {
   status: 'status',
   paymentPlanEnabled: 'paymentPlanEnabled',
   createdBy: 'createdBy',
-  lineItems: 'lineItems'
+  lineItems: 'lineItems',
+  sourceType: 'sourceType',
+  sourceId: 'sourceId'
 } as const
 
 export type BillsScalarFieldEnum = (typeof BillsScalarFieldEnum)[keyof typeof BillsScalarFieldEnum]
@@ -1005,6 +1009,54 @@ export const BillPaymentsScalarFieldEnum = {
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
+
+
+export const RentalBookingsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  renterType: 'renterType',
+  renterUserId: 'renterUserId',
+  renterOrganizationId: 'renterOrganizationId',
+  createdByUserId: 'createdByUserId',
+  billId: 'billId',
+  eventId: 'eventId',
+  status: 'status',
+  totalAmountCents: 'totalAmountCents',
+  currency: 'currency',
+  paymentIntentId: 'paymentIntentId',
+  expiresAt: 'expiresAt',
+  confirmedAt: 'confirmedAt',
+  cancelledAt: 'cancelledAt',
+  metadata: 'metadata'
+} as const
+
+export type RentalBookingsScalarFieldEnum = (typeof RentalBookingsScalarFieldEnum)[keyof typeof RentalBookingsScalarFieldEnum]
+
+
+export const RentalBookingItemsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  bookingId: 'bookingId',
+  organizationId: 'organizationId',
+  facilityId: 'facilityId',
+  fieldId: 'fieldId',
+  availabilitySlotId: 'availabilitySlotId',
+  eventId: 'eventId',
+  eventTimeSlotId: 'eventTimeSlotId',
+  start: 'start',
+  end: 'end',
+  timeZone: 'timeZone',
+  priceCents: 'priceCents',
+  status: 'status',
+  requiredTemplateIds: 'requiredTemplateIds',
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  metadata: 'metadata'
+} as const
+
+export type RentalBookingItemsScalarFieldEnum = (typeof RentalBookingItemsScalarFieldEnum)[keyof typeof RentalBookingItemsScalarFieldEnum]
 
 
 export const RefundRequestsScalarFieldEnum = {
@@ -1304,7 +1356,11 @@ export const TimeSlotsScalarFieldEnum = {
   taxHandling: 'taxHandling',
   divisions: 'divisions',
   requiredTemplateIds: 'requiredTemplateIds',
-  hostRequiredTemplateIds: 'hostRequiredTemplateIds'
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  sourceType: 'sourceType',
+  rentalBookingId: 'rentalBookingId',
+  rentalBookingItemId: 'rentalBookingItemId',
+  rentalLocked: 'rentalLocked'
 } as const
 
 export type TimeSlotsScalarFieldEnum = (typeof TimeSlotsScalarFieldEnum)[keyof typeof TimeSlotsScalarFieldEnum]
