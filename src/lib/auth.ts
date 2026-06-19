@@ -349,7 +349,7 @@ export const authService = {
     return buildAuthSessionResult(data);
   },
 
-  async getTotpMfaStatus(): Promise<{ mfa: { authenticatorEnabled: boolean; enabledAt: string | null; lastVerifiedAt: string | null; provider: string | null } }> {
+  async getTotpMfaStatus(): Promise<{ mfa: { authenticatorEnabled: boolean; enabledAt: string | null; lastVerifiedAt: string | null; provider: string | null; localBypassEnabled?: boolean } }> {
     return apiFetch('/api/auth/mfa/totp');
   },
 

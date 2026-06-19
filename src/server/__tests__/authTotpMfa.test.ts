@@ -3,12 +3,13 @@
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 
 import { AuthMfaChallengePurpose } from '@/server/authMfaPurpose';
-import { decryptSecret } from '@/server/integrations/secretCrypto';
+import { decryptSecret, encryptSecret } from '@/server/integrations/secretCrypto';
 import {
   confirmTotpMfaChallenge,
   createTotpCodeForTest,
   createWebLoginMfaChallenge,
   encodeBase32,
+  isLocalAuthMfaBypassEnabled,
   startProfileTotpMfaSetup,
   verifyTotpCode,
 } from '@/server/authTotpMfa';
@@ -63,6 +64,74 @@ describe('authTotpMfa', () => {
       metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
       client,
     })).resolves.toBeNull();
+  });
+
+  it('only enables the local MFA bypass for non-test local hosts or explicit env override', () => {
+    const localRequest = {
+      headers: {
+        get: jest.fn().mockReturnValue('localhost:3000'),
+      },
+    };
+
+    expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(false);
+
+    process.env.NODE_ENV = 'production';
+    expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(true);
+
+    process.env.AUTH_MFA_DISABLED_LOCAL = 'false';
+    expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(false);
+
+    process.env.AUTH_MFA_DISABLED_LOCAL = 'true';
+    expect(isLocalAuthMfaBypassEnabled({
+      headers: {
+        get: jest.fn().mockReturnValue('bracket-iq.com'),
+      },
+    })).toBe(true);
+  });
+
+  it('returns a controlled MFA error when an authenticator secret cannot be decrypted', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const client = {
+      sensitiveUserData: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'sensitive_1',
+          totpSecretEncrypted: encryptSecret(encodeBase32(Buffer.from('12345678901234567890')), 'old-local-secret'),
+          totpLastUsedCounter: null,
+        }),
+      },
+      authUser: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user_1',
+          email: 'test@example.com',
+          sessionVersion: 0,
+        }),
+      },
+      authMfaChallenges: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'mfa_1',
+          userId: 'user_1',
+          purpose: AuthMfaChallengePurpose.LOGIN,
+          provider: 'totp',
+          consumedAt: null,
+          expiresAt: new Date(systemTime.getTime() + 10 * 60 * 1000),
+          attemptCount: 0,
+          sessionVersion: 0,
+        }),
+        update: jest.fn(),
+      },
+    };
+
+    await expect(confirmTotpMfaChallenge({
+      challengeId: 'mfa_1',
+      code: '123456',
+      purpose: AuthMfaChallengePurpose.LOGIN,
+      client,
+    })).rejects.toMatchObject({
+      code: 'MFA_SECRET_INVALID',
+      status: 400,
+    });
+    expect(client.authMfaChallenges.update).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   it('creates and confirms a profile setup challenge for a user without an authenticator', async () => {

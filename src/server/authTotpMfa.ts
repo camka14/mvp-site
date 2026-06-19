@@ -33,6 +33,12 @@ type TotpVerificationResult = {
   counter?: number;
 };
 
+type RequestHostSource = {
+  headers: {
+    get(name: string): string | null;
+  };
+};
+
 export class TotpMfaError extends Error {
   code: string;
   status: number;
@@ -56,6 +62,48 @@ const createId = (prefix: string): string => `${prefix}_${crypto.randomUUID()}`;
 const addMs = (date: Date, ms: number): Date => new Date(date.getTime() + ms);
 
 const hashValue = (value: string): string => crypto.createHash('sha256').update(value).digest('hex');
+
+const readBooleanEnvFlag = (...keys: string[]): boolean | null => {
+  for (const key of keys) {
+    const value = process.env[key]?.trim().toLowerCase();
+    if (value === 'true' || value === '1' || value === 'yes') return true;
+    if (value === 'false' || value === '0' || value === 'no') return false;
+  }
+  return null;
+};
+
+const isLocalHost = (host: string): boolean => {
+  const normalized = host.trim().toLowerCase();
+  return normalized === 'localhost'
+    || normalized.startsWith('localhost:')
+    || normalized === '127.0.0.1'
+    || normalized.startsWith('127.0.0.1:')
+    || normalized === '[::1]'
+    || normalized.startsWith('[::1]:');
+};
+
+export const isLocalAuthMfaBypassEnabled = (req?: RequestHostSource | null): boolean => {
+  const explicit = readBooleanEnvFlag('AUTH_MFA_DISABLED_LOCAL', 'AUTH_MFA_DISABLED');
+  if (explicit !== null) return explicit;
+
+  if (process.env.NODE_ENV === 'test') return false;
+  if (process.env.NODE_ENV !== 'production') return true;
+
+  return isLocalHost(req?.headers.get('host') ?? '');
+};
+
+const decryptTotpSecret = (encryptedSecret: string): string => {
+  try {
+    return decryptSecret(encryptedSecret);
+  } catch (error) {
+    console.error('Failed to decrypt authenticator secret for MFA.', error);
+    throw new TotpMfaError(
+      'Authenticator setup could not be verified. Please set up your authenticator again.',
+      'MFA_SECRET_INVALID',
+      400,
+    );
+  }
+};
 
 const readForwardedIp = (req: NextRequest): string | null => {
   const forwardedFor = req.headers.get('x-forwarded-for');
@@ -405,6 +453,29 @@ const consumeChallengeAfterVerification = async (
   })
 );
 
+const verifyChallengeAccount = async (
+  client: TotpMfaClient,
+  challenge: any,
+  expectedUserId?: string | null,
+) => {
+  if (expectedUserId && challenge.userId !== expectedUserId) {
+    throw new TotpMfaError('Invalid authenticator challenge.', 'MFA_CHALLENGE_INVALID', 400);
+  }
+
+  const authUserForChallenge = await client.authUser.findUnique({
+    where: { id: challenge.userId },
+    select: { email: true, sessionVersion: true },
+  });
+  if (!authUserForChallenge) {
+    throw new TotpMfaError('Unable to verify account for authenticator setup.', 'MFA_ACCOUNT_NOT_FOUND', 401);
+  }
+  if ((authUserForChallenge.sessionVersion ?? 0) !== (challenge.sessionVersion ?? 0)) {
+    throw new TotpMfaError('Authenticator challenge has expired.', 'MFA_CHALLENGE_EXPIRED', 401);
+  }
+
+  return authUserForChallenge;
+};
+
 const upsertVerifiedTotp = async ({
   client,
   userId,
@@ -526,7 +597,7 @@ export const getTotpSetupQrPayload = async ({
 
   return {
     otpauthUri: buildTotpSetupUri({
-      secretBase32: decryptSecret(challenge.totpSecretEncrypted),
+      secretBase32: decryptTotpSecret(challenge.totpSecretEncrypted),
       email: authUser.email,
     }),
     expiresAt: challenge.expiresAt.toISOString(),
@@ -552,20 +623,7 @@ export const confirmTotpMfaChallenge = async ({
   sessionVersion: number;
 }> => {
   const challenge = await loadActiveChallenge(client, challengeId, purpose);
-  if (expectedUserId && challenge.userId !== expectedUserId) {
-    throw new TotpMfaError('Invalid authenticator challenge.', 'MFA_CHALLENGE_INVALID', 400);
-  }
-
-  const authUserForChallenge = await client.authUser.findUnique({
-    where: { id: challenge.userId },
-    select: { email: true, sessionVersion: true },
-  });
-  if (!authUserForChallenge) {
-    throw new TotpMfaError('Unable to verify account for authenticator setup.', 'MFA_ACCOUNT_NOT_FOUND', 401);
-  }
-  if ((authUserForChallenge.sessionVersion ?? 0) !== (challenge.sessionVersion ?? 0)) {
-    throw new TotpMfaError('Authenticator challenge has expired.', 'MFA_CHALLENGE_EXPIRED', 401);
-  }
+  const authUserForChallenge = await verifyChallengeAccount(client, challenge, expectedUserId);
 
   const now = new Date();
   const isSetup = purpose === AuthMfaChallengePurpose.LOGIN_SETUP
@@ -579,7 +637,7 @@ export const confirmTotpMfaChallenge = async ({
   }
 
   const verification = verifyTotpCode({
-    secretBase32: decryptSecret(encryptedSecret),
+    secretBase32: decryptTotpSecret(encryptedSecret),
     code,
     now,
     minimumCounter: isSetup ? null : sensitive?.totpLastUsedCounter ?? null,
@@ -615,6 +673,30 @@ export const confirmTotpMfaChallenge = async ({
     });
   }
 
+  return {
+    userId: consumed.userId,
+    sessionVersion: consumed.sessionVersion ?? 0,
+  };
+};
+
+export const confirmTotpMfaChallengeForLocalBypass = async ({
+  challengeId,
+  purpose,
+  expectedUserId,
+  client = prisma,
+}: {
+  challengeId: string;
+  purpose: AuthMfaChallengePurpose;
+  expectedUserId?: string | null;
+  client?: TotpMfaClient;
+}): Promise<{
+  userId: string;
+  sessionVersion: number;
+}> => {
+  const challenge = await loadActiveChallenge(client, challengeId, purpose);
+  await verifyChallengeAccount(client, challenge, expectedUserId);
+
+  const consumed = await consumeChallengeAfterVerification(client, challenge.id, new Date());
   return {
     userId: consumed.userId,
     sessionVersion: consumed.sessionVersion ?? 0,
