@@ -34,7 +34,13 @@ import { addHours, endOfDay, endOfMonth, endOfWeek, format, getDay, parse, start
 import Loading from '@/components/ui/Loading';
 import type { Facility, Field, Organization, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
-import { buildFacilityCalendarSummary, buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalendar';
+import {
+  buildFacilityCalendarFeed,
+  buildFieldCalendarEvents,
+  type FacilityCalendarFeedItem,
+  type FacilityCalendarFeedItemType,
+  type FieldCalendarEntry,
+} from './fieldCalendar';
 import { resolveFieldIdsForCalendarHydration } from './fieldCalendarHydration';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFacilityScopedFieldDisplayName, getFieldResolvedLocation, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
@@ -59,18 +65,33 @@ type SelectionState = {
   end: Date;
 };
 
+type ManagerCalendarSelectionMode = 'rental' | 'staff_assignment' | 'official_assignment';
+
 type SelectionCalendarEntry = {
   id: string;
   title: string;
   start: Date;
   end: Date;
   resourceId: string;
-  resource: { type: 'selection'; slotKey?: string };
+  resource: { type: 'selection'; slotKey?: string; mode?: ManagerCalendarSelectionMode };
   metaType: 'selection';
+  selectionMode?: ManagerCalendarSelectionMode;
   fieldName: string;
 };
 
-type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
+type FacilityFeedCalendarEntry = {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  resourceId: string;
+  resource: FacilityCalendarFeedItem;
+  metaType: 'facility-feed';
+  feedType: FacilityCalendarFeedItemType;
+  fieldName: string;
+};
+
+type CalendarEventData = FieldCalendarEntry | FacilityFeedCalendarEntry | SelectionCalendarEntry;
 
 const getCalendarEventVariant = (event: CalendarEventData | null | undefined): SharedCalendarEventVariant => {
   if (!event) {
@@ -78,6 +99,15 @@ const getCalendarEventVariant = (event: CalendarEventData | null | undefined): S
   }
   if (event.metaType === 'selection') {
     return 'selection';
+  }
+  if (event.metaType === 'facility-feed') {
+    if (event.feedType === 'conflict') {
+      return 'conflict';
+    }
+    if (event.feedType === 'maintenance_block') {
+      return 'unavailable';
+    }
+    return 'default';
   }
   if (event.metaType === 'rental') {
     return isPastRentalRangeStart(event.start) ? 'unavailable' : 'availability';
@@ -200,6 +230,68 @@ const FACILITY_METRIC_CARD_STYLE = {
   minHeight: 92,
 } as const;
 
+type CalendarLayerType =
+  | FacilityCalendarFeedItemType
+  | 'reservation';
+
+const CALENDAR_LAYER_ORDER: CalendarLayerType[] = [
+  'conflict',
+  'rental',
+  'reservation',
+  'event',
+  'game',
+  'maintenance_block',
+  'official_assignment',
+  'staff_assignment',
+];
+
+const CALENDAR_LAYER_LABELS: Record<CalendarLayerType, string> = {
+  conflict: 'Conflicts',
+  rental: 'Open rentals',
+  reservation: 'Reservations',
+  maintenance_block: 'Maintenance',
+  event: 'Events',
+  game: 'Games',
+  official_assignment: 'Officials',
+  staff_assignment: 'Staff',
+};
+
+const CALENDAR_LAYER_COLORS: Record<CalendarLayerType, string> = {
+  conflict: 'red',
+  rental: 'teal',
+  reservation: 'orange',
+  maintenance_block: 'yellow',
+  event: 'blue',
+  game: 'indigo',
+  official_assignment: 'grape',
+  staff_assignment: 'cyan',
+};
+
+const MANAGER_SELECTION_MODE_OPTIONS: Array<{ value: ManagerCalendarSelectionMode; label: string }> = [
+  { value: 'rental', label: 'Rental slot' },
+  { value: 'staff_assignment', label: 'Staff timeslot' },
+  { value: 'official_assignment', label: 'Official timeslot' },
+];
+
+const MANAGER_SELECTION_TITLES: Record<ManagerCalendarSelectionMode, string> = {
+  rental: 'New Rental Slot',
+  staff_assignment: 'New Staff Timeslot',
+  official_assignment: 'New Official Timeslot',
+};
+
+const MANAGER_SELECTION_ACTION_LABELS: Record<ManagerCalendarSelectionMode, string> = {
+  rental: 'Add Rental Slot',
+  staff_assignment: 'Apply Staff Timeslot',
+  official_assignment: 'Apply Official Timeslot',
+};
+
+const FACILITY_FEED_CALENDAR_TYPES = new Set<FacilityCalendarFeedItemType>([
+  'conflict',
+  'maintenance_block',
+  'official_assignment',
+  'staff_assignment',
+]);
+
 const formatMetricMoney = (cents: number): string => `$${(Math.max(0, Math.round(cents)) / 100).toFixed(2)}`;
 
 const formatCourtHours = (hours: number): string => {
@@ -240,6 +332,44 @@ function FacilityMetric({
     </div>
   );
 }
+
+const formatFacilityFeedStatus = (item: FacilityCalendarFeedItem): string | null => {
+  if (item.unresolved) {
+    return 'Unresolved';
+  }
+  if (!item.status) {
+    return null;
+  }
+  return item.status
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
+    .join(' ');
+};
+
+const getBookedEventSourceType = (event: FieldCalendarEntry | null | undefined): string => (
+  typeof (event?.resource as { sourceType?: unknown } | undefined)?.sourceType === 'string'
+    ? String((event?.resource as { sourceType?: unknown }).sourceType).toUpperCase()
+    : ''
+);
+
+const getCalendarEventLayer = (event: CalendarEventData): CalendarLayerType | null => {
+  if (event.metaType === 'selection') {
+    return null;
+  }
+  if (event.metaType === 'facility-feed') {
+    return event.feedType;
+  }
+  if (event.metaType === 'rental') {
+    return 'rental';
+  }
+
+  const sourceType = getBookedEventSourceType(event);
+  if (sourceType === 'RENTAL_BOOKING') {
+    return 'reservation';
+  }
+  return event.id.includes('field-booked-match-') ? 'game' : 'event';
+};
 
 const getFacilitySortOrder = (facility: Facility): number => (
   typeof facility.sortOrder === 'number' && Number.isFinite(facility.sortOrder)
@@ -1187,6 +1317,8 @@ export default function FieldsTabContent({
   const [editingRentalField, setEditingRentalField] = useState<Field | null>(null);
   const [rentalDraftRange, setRentalDraftRange] = useState<{ start: Date; end: Date } | null>(null);
   const [facilitySummaryOpen, setFacilitySummaryOpen] = useState(false);
+  const [managerSelectionMode, setManagerSelectionMode] = useState<ManagerCalendarSelectionMode>('rental');
+  const [calendarLayerFilters, setCalendarLayerFilters] = useState<CalendarLayerType[]>(CALENDAR_LAYER_ORDER);
   const [facilityModalOpen, setFacilityModalOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
   const [facilityFormName, setFacilityFormName] = useState('');
@@ -1527,6 +1659,10 @@ export default function FieldsTabContent({
     () => fields.filter((field) => readonlyCalendarFieldIds.includes(field.$id)),
     [fields, readonlyCalendarFieldIds],
   );
+  const facilityCalendarFields = useMemo(
+    () => (canManage ? selectedFields : readonlyCalendarFields),
+    [canManage, readonlyCalendarFields, selectedFields],
+  );
   const handleReadonlyVisibleFieldIdsChange = useCallback((values: string[]) => {
     setReadonlyVisibleFieldIds(normalizeFieldIds(values));
   }, []);
@@ -1826,12 +1962,13 @@ export default function FieldsTabContent({
       const selectionEnd = selection.end;
       return [{
         id: `selection-${selectionStart.getTime()}`,
-        title: 'New Rental Slot',
+        title: MANAGER_SELECTION_TITLES[managerSelectionMode],
         start: selectionStart,
         end: selectionEnd,
         resourceId: selectedFieldIds[0],
-        resource: { type: 'selection' },
+        resource: { type: 'selection', mode: managerSelectionMode },
         metaType: 'selection',
+        selectionMode: managerSelectionMode,
         fieldName: getFacilityScopedFieldDisplayName(selectedField),
       }];
     }
@@ -1879,10 +2016,10 @@ export default function FieldsTabContent({
       });
     });
     return draftEvents;
-  }, [calendarRange.end, calendarRange.start, canManage, fields, readonlyCalendarFieldIds, rentalSelections, selectedField, selectedFieldIds, selection]);
+  }, [calendarRange.end, calendarRange.start, canManage, fields, managerSelectionMode, readonlyCalendarFieldIds, rentalSelections, selectedField, selectedFieldIds, selection]);
 
   const baseCalendarEvents = useMemo<FieldCalendarEntry[]>(() => {
-    const sourceFields = canManage ? selectedFields : readonlyCalendarFields;
+    const sourceFields = facilityCalendarFields;
     if (!sourceFields.length) {
       return [];
     }
@@ -1905,16 +2042,64 @@ export default function FieldsTabContent({
       seenBookedKeys.add(dedupeKey);
       return true;
     });
-  }, [calendarRange, canManage, readonlyCalendarFields, selectedFields]);
+  }, [calendarRange, canManage, facilityCalendarFields]);
 
-  const calendarEvents = useMemo<CalendarEventData[]>(
-    () => [...baseCalendarEvents, ...selectionCalendarEvents],
-    [baseCalendarEvents, selectionCalendarEvents],
+  const facilityCalendarFeed = useMemo(
+    () => buildFacilityCalendarFeed(facilityCalendarFields, calendarRange),
+    [calendarRange, facilityCalendarFields],
   );
-  const facilityCalendarSummary = useMemo(
-    () => buildFacilityCalendarSummary(canManage ? selectedFields : readonlyCalendarFields, calendarRange),
-    [calendarRange, canManage, readonlyCalendarFields, selectedFields],
+  const facilityCalendarSummary = facilityCalendarFeed.summary;
+  const facilityFeedCalendarEvents = useMemo<FacilityFeedCalendarEntry[]>(() => (
+    facilityCalendarFeed.items
+      .filter((item) => FACILITY_FEED_CALENDAR_TYPES.has(item.type))
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        start: item.start,
+        end: item.end,
+        resourceId: item.fieldId,
+        resource: item,
+        metaType: 'facility-feed' as const,
+        feedType: item.type,
+        fieldName: item.fieldName,
+      }))
+  ), [facilityCalendarFeed.items]);
+  const unfilteredCalendarEvents = useMemo<CalendarEventData[]>(
+    () => [...baseCalendarEvents, ...facilityFeedCalendarEvents, ...selectionCalendarEvents],
+    [baseCalendarEvents, facilityFeedCalendarEvents, selectionCalendarEvents],
   );
+  const calendarLayerCounts = useMemo(() => {
+    const counts = new Map<CalendarLayerType, number>();
+    unfilteredCalendarEvents.forEach((event) => {
+      const layer = getCalendarEventLayer(event);
+      if (!layer) {
+        return;
+      }
+      counts.set(layer, (counts.get(layer) ?? 0) + 1);
+    });
+    return counts;
+  }, [unfilteredCalendarEvents]);
+  const activeCalendarLayerSet = useMemo(
+    () => new Set(calendarLayerFilters),
+    [calendarLayerFilters],
+  );
+  const calendarEvents = useMemo<CalendarEventData[]>(() => {
+    if (!canManage) {
+      return unfilteredCalendarEvents;
+    }
+    return unfilteredCalendarEvents.filter((event) => {
+      const layer = getCalendarEventLayer(event);
+      return !layer || activeCalendarLayerSet.has(layer);
+    });
+  }, [activeCalendarLayerSet, canManage, unfilteredCalendarEvents]);
+  const allCalendarLayersSelected = CALENDAR_LAYER_ORDER.every((layer) => activeCalendarLayerSet.has(layer));
+  const toggleCalendarLayer = useCallback((type: CalendarLayerType) => {
+    setCalendarLayerFilters((current) => (
+      current.includes(type)
+        ? current.filter((entry) => entry !== type)
+        : [...current, type]
+    ));
+  }, []);
   const facilityCalendarRangeLabel = useMemo(
     () => `${formatDisplayDate(calendarRange.start, { year: '2-digit' })} - ${formatDisplayDate(calendarRange.end, { year: '2-digit' })}`,
     [calendarRange.end, calendarRange.start],
@@ -2043,12 +2228,12 @@ export default function FieldsTabContent({
     if (!selectedFieldIds.length || !selection) return [];
     const selectionStart = selection.start;
     const selectionEnd = selection.end;
-    return calendarEvents.filter((event) => {
-      if (event.metaType === 'selection' || event.metaType === 'rental') return false;
+    return baseCalendarEvents.filter((event) => {
+      if (event.metaType === 'rental') return false;
       return selectedFieldIds.includes(event.resourceId)
         && compareRanges(selectionStart, selectionEnd, event.start, event.end);
     });
-  }, [calendarEvents, selection, selectedFieldIds]);
+  }, [baseCalendarEvents, selection, selectedFieldIds]);
 
   useEffect(() => {
     if (!fieldEventsRequestKey || !fieldIdsToHydrate.length) return;
@@ -2462,7 +2647,12 @@ export default function FieldsTabContent({
       const endLabel = formatDisplayTime(selection.end);
       const conflictSuffix = existingConflicts.length ? ' (overlaps an event or match on this date)' : '';
       const fieldsSuffix = selectedFieldIds.length > 1 ? ` across ${selectedFieldIds.length} resources` : '';
-      return `Draft slot: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "Add Rental Slot" to set price, or click an existing rental slot to edit.`;
+      const actionLabel = MANAGER_SELECTION_ACTION_LABELS[managerSelectionMode];
+      if (managerSelectionMode !== 'rental') {
+        const modeLabel = managerSelectionMode === 'staff_assignment' ? 'staff timeslot' : 'official timeslot';
+        return `Draft ${modeLabel}: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "${actionLabel}" after choosing the event or match assignment this time belongs to.`;
+      }
+      return `Draft slot: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "${actionLabel}" to set price, or click an existing rental slot to edit.`;
     }
     if (!currentUser) {
       return 'Sign in to reserve resources.';
@@ -2477,7 +2667,7 @@ export default function FieldsTabContent({
       return 'Resolve selection errors before reserving resources.';
     }
     return `${rentalSelections.length} selection${rentalSelections.length === 1 ? '' : 's'} ready • Total ${formatPrice(totalRentalCents)}`;
-  }, [canManage, canReserveRentalResources, currentUser, existingConflicts.length, hasPendingConflictChecks, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
+  }, [canManage, canReserveRentalResources, currentUser, existingConflicts.length, hasPendingConflictChecks, managerSelectionMode, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
 
   const updateRentalSelection = useCallback(
     (selectionKey: string, updater: (selectionItem: RentalDraftSelection) => RentalDraftSelection) => {
@@ -2950,6 +3140,26 @@ export default function FieldsTabContent({
     setCreateRentalOpen(true);
   }, [canManage, selectedFieldIds.length, selection]);
 
+  const handleManagerSelectionActionClick = useCallback(() => {
+    if (managerSelectionMode === 'rental') {
+      handleAddRentalSlotClick();
+      return;
+    }
+    if (!canManage) {
+      return;
+    }
+    if (!selectedFieldIds.length || !selection) {
+      notifications.show({ color: 'red', message: 'Select at least one resource and a time range first.' });
+      return;
+    }
+    notifications.show({
+      color: 'yellow',
+      message: managerSelectionMode === 'staff_assignment'
+        ? 'Staff time is saved from an event staffing assignment. Choose the event before applying this window.'
+        : 'Official time is saved from a match or event official assignment. Choose the assignment before applying this window.',
+    });
+  }, [canManage, handleAddRentalSlotClick, managerSelectionMode, selectedFieldIds.length, selection]);
+
   const handleSelectCalendarEvent = useCallback((event: any) => {
     if (!canManage) return;
     if (!event || event.metaType !== 'rental') return;
@@ -2977,7 +3187,12 @@ export default function FieldsTabContent({
     const variant = getCalendarEventVariant(event as CalendarEventData);
     let title = event.title;
     let meta = timeLabel;
-    if (event?.metaType === 'booked') {
+    if (event?.metaType === 'facility-feed') {
+      const feedItem = event.resource as FacilityCalendarFeedItem;
+      const status = formatFacilityFeedStatus(feedItem);
+      title = feedItem.title || event.title;
+      meta = status ?? timeLabel;
+    } else if (event?.metaType === 'booked') {
       const isRentalBooking = variant === 'reservation';
       const isUnavailable = variant === 'unavailable';
       title = isUnavailable ? 'Unavailable' : isRentalBooking ? 'Rental reservation' : resourceName || matchLabel || 'Booked slot';
@@ -2997,6 +3212,7 @@ export default function FieldsTabContent({
         colorMatchKey={event?.resourceId}
         compact
         draggable={event?.metaType === 'selection' || (canManage && event?.metaType === 'rental')}
+        conflict={variant === 'conflict'}
         variant={variant}
       />
     );
@@ -3356,6 +3572,18 @@ export default function FieldsTabContent({
               <div className="shared-calendar-layout">
                 <Stack gap="sm">
                   <Select
+                    label="Apply selection as"
+                    data={MANAGER_SELECTION_MODE_OPTIONS}
+                    value={managerSelectionMode}
+                    onChange={(value) => {
+                      if (value === 'rental' || value === 'staff_assignment' || value === 'official_assignment') {
+                        setManagerSelectionMode(value);
+                      }
+                    }}
+                    allowDeselect={false}
+                    size="sm"
+                  />
+                  <Select
                     label="Facility"
                     data={facilityFilterOptions}
                     value={selectedFacilityFilterValue}
@@ -3363,6 +3591,36 @@ export default function FieldsTabContent({
                     allowDeselect={false}
                     size="sm"
                   />
+                  <Stack gap={6}>
+                    <Group justify="space-between" align="center">
+                      <Text fw={700} size="sm">Calendar layers</Text>
+                      <Button
+                        size="compact-xs"
+                        variant={allCalendarLayersSelected ? 'light' : 'subtle'}
+                        color="gray"
+                        onClick={() => setCalendarLayerFilters(CALENDAR_LAYER_ORDER)}
+                      >
+                        All
+                      </Button>
+                    </Group>
+                    <Group gap={6}>
+                      {CALENDAR_LAYER_ORDER.map((type) => {
+                        const count = calendarLayerCounts.get(type) ?? 0;
+                        const selected = activeCalendarLayerSet.has(type);
+                        return (
+                          <Button
+                            key={type}
+                            size="compact-xs"
+                            variant={selected ? 'filled' : 'light'}
+                            color={CALENDAR_LAYER_COLORS[type]}
+                            onClick={() => toggleCalendarLayer(type)}
+                          >
+                            {CALENDAR_LAYER_LABELS[type]} {count}
+                          </Button>
+                        );
+                      })}
+                    </Group>
+                  </Stack>
                   <FieldCalendarFilter
                     items={fieldFilterItems}
                     selectedIds={selectedFieldIds.filter((fieldId) => facilityFilteredFieldIds.includes(fieldId))}
@@ -3618,8 +3876,8 @@ export default function FieldsTabContent({
               </Button>
             )}
             {canManage ? (
-              <Button disabled={!selectedFieldIds.length || !selection} onClick={handleAddRentalSlotClick}>
-                Add Rental Slot
+              <Button disabled={!selectedFieldIds.length || !selection} onClick={handleManagerSelectionActionClick}>
+                {MANAGER_SELECTION_ACTION_LABELS[managerSelectionMode]}
               </Button>
             ) : (
               <Button disabled={!canReserveRentalResources || !currentUser} onClick={handleReserveResourcesClick}>

@@ -35,6 +35,7 @@ export type SharedCalendarEventVariant =
   | 'unavailable'
   | 'reservation'
   | 'booked'
+  | 'conflict'
   | 'selection';
 
 const getTextLabel = (value: ReactNode): string => {

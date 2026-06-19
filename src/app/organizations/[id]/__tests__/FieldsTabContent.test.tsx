@@ -274,6 +274,71 @@ const buildOrganizationWithFacilityRentalFields = () => {
   return organization;
 };
 
+const buildOrganizationWithUnifiedFacilityCalendarFeed = () => {
+  const organization = buildOrganizationWithFacilityRentalFields();
+  organization.fields[0] = {
+    ...organization.fields[0],
+    events: [
+      {
+        $id: 'event_league_night',
+        name: 'League night',
+        eventType: 'EVENT',
+        start: '2026-07-21T10:15:00.000Z',
+        end: '2026-07-21T10:45:00.000Z',
+        eventOfficials: [
+          {
+            id: 'event_official_1',
+            userId: 'official_1',
+            positionIds: ['referee'],
+            fieldIds: ['field_main'],
+            isActive: true,
+          },
+        ],
+        staffAssignments: [
+          {
+            id: 'event_staff_1',
+            userId: 'staff_user_1',
+            staffMemberId: 'staff_member_1',
+            role: 'Court lead',
+            plannedStart: '2026-07-21T10:00:00.000Z',
+            plannedEnd: '2026-07-21T11:00:00.000Z',
+            status: 'PLANNED',
+          },
+        ],
+      },
+    ],
+    matches: [
+      {
+        $id: 'match_1',
+        matchId: 7,
+        eventId: 'event_league_night',
+        fieldId: 'field_main',
+        start: '2026-07-21T11:00:00.000Z',
+        end: '2026-07-21T12:00:00.000Z',
+        team1Points: [],
+        team2Points: [],
+        setResults: [],
+        officialIds: [
+          {
+            userId: 'official_2',
+            positionIds: ['scorekeeper'],
+          },
+        ],
+      },
+    ],
+    maintenanceBlocks: [
+      {
+        id: 'maintenance_1',
+        title: 'Net repair',
+        start: '2026-07-21T12:30:00.000Z',
+        end: '2026-07-21T13:00:00.000Z',
+        status: 'PLANNED',
+      },
+    ],
+  };
+  return organization;
+};
+
 const originalRentalRangeText = [
   new Date(2026, 2, 10, 10, 0, 0, 0).toISOString(),
   new Date(2026, 2, 10, 11, 0, 0, 0).toISOString(),
@@ -800,6 +865,48 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(screen.getByText('Open inventory')).toBeInTheDocument();
     expect(screen.getByText('Unresolved conflicts')).toBeInTheDocument();
     expect(screen.getByText('No conflicts')).toBeInTheDocument();
+  });
+
+  it('shows facility operation layers on the main manager calendar', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithUnifiedFacilityCalendarFeed()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByText('Unified facility calendar')).not.toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText('Apply selection as').some((element) => element.tagName === 'INPUT'),
+    ).toBe(true);
+    expect(screen.getByText('Calendar layers')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('calendar-date')).toHaveTextContent('2026-07-21');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Drag Net repair' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Drag Court lead' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Drag Match official assignment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Drag Conflict: League night' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Maintenance 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Conflicts 1/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Maintenance 1/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Drag Net repair' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Drag Court lead' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Drag Conflict: League night' })).toBeInTheDocument();
   });
 
   it('opens the facility creation modal for managers', async () => {

@@ -6,7 +6,7 @@ This document follows `PLANS.md` in the repository root. It is self-contained so
 
 ## Purpose / Big Picture
 
-Facilities and event organizers need rental customers and managers to understand where a court, field, or other resource physically belongs. After this work, an organization can have multiple facilities, each facility can contain multiple fields or courts, and rental selection screens can show the facility name beside the selected resources. This is the foundation for a future unified facility calendar with fields, courts, rentals, events, games, maintenance blocks, staff assignments, conflicts, utilization, revenue per court-hour, and open inventory.
+Facilities and event organizers need rental customers and managers to understand where a court, field, or other resource physically belongs. After this work, an organization can have multiple facilities, each facility can contain multiple fields or courts, and rental selection screens can show the facility name beside the selected resources. The existing resource calendar is the facility operations surface: it can layer fields/courts, rentals, reservations, events, games, maintenance blocks, staff assignments, official assignments, and conflicts while summary metrics stay collapsible.
 
 The first user-visible proof is that fields returned for an organization carry a facility identity and rental UI labels can say, for example, "Downtown Sports Center - Court 2" instead of only "Court 2". Existing rental windows remain powered by `TimeSlots`, so this change does not create a duplicate availability source.
 
@@ -22,6 +22,8 @@ The first user-visible proof is that fields returned for an organization carry a
 - [x] (2026-06-18 America/Los_Angeles) Added a manager-facing facility operations summary over the selected calendar resources.
 - [x] (2026-06-18 America/Los_Angeles) Verified the built organization Fields tab in browser on desktop and mobile viewports.
 - [x] (2026-06-18 America/Los_Angeles) Added facility metadata to field API payloads and updated mobile rental labels to preserve facility context in `mvp-app`.
+- [x] (2026-06-18 America/Los_Angeles) Added a facility calendar feed helper that normalizes rentals, rental reservations, events, games, maintenance blocks, staff assignments, official assignments, and conflicts into one derived feed.
+- [x] (2026-06-18 America/Los_Angeles) Folded the derived feed into the existing resource calendar with manager layer filters and red conflict cards instead of adding a second calendar panel.
 
 ## Surprises & Discoveries
 
@@ -72,6 +74,10 @@ The first user-visible proof is that fields returned for an organization carry a
   Rationale: The app only needs the facility name for rental display labels. Persisting a partial facility snapshot on `Field` would duplicate web facility state and require an avoidable local database migration.
   Date/Author: 2026-06-18 / Codex
 
+- Decision: Do not add persisted facility calendar rows for the current manager view.
+  Rationale: The calendar can be derived from existing rental slots, rental booking items, event/match hydration, assignment rows, and maintenance-like blocks already attached to resources. A persisted calendar table would risk becoming a duplicate source of truth before we have a concrete offline/audit use case.
+  Date/Author: 2026-06-18 / Codex
+
 ## Outcomes & Retrospective
 
 The first slice is complete. Organizations now have a `Facilities` model, organization fields can carry `facilityId`, existing organization fields are backfilled to deterministic default facilities, and new organization field creation assigns either a validated requested facility or the organization's default facility. `fieldService` hydrates facility records by id and the organization rental/field calendar uses facility-scoped labels such as "River City Sports Complex - Main" when facility data is available.
@@ -80,7 +86,9 @@ The second slice adds the first facility calendar aggregation layer in the organ
 
 The cross-client rental slice now exposes nested facility metadata from the fields API and lets `mvp-app` show facility-scoped rental labels from the same field response it already loads. The mobile entity keeps facility metadata in ignored API-only properties so Room remains unchanged.
 
-This work intentionally does not add facility operating hours, maintenance blocks, persisted facility calendar records, persisted mobile facility snapshots, or staff assignment models. Those belong to later slices after the operations model is in place.
+The facility calendar slice now keeps the existing resource calendar as the single manager operating surface. It uses the derived `buildFacilityCalendarFeed` output to layer maintenance blocks, staff assignments, official assignments, and unresolved conflicts directly onto the resource calendar while existing generated entries continue to show open rentals, reservations, events, and games.
+
+This work intentionally does not add persisted facility calendar records, persisted mobile facility snapshots, or a new parallel staff assignment model. Facility operating hours exist as organization/facility operations metadata; rental availability remains powered by `TimeSlots`.
 
 ## Context and Orientation
 
@@ -133,6 +141,8 @@ Run commands from the repository root.
 12. Update `mvp-app` rental resource labels to use nested facility names when present without changing the Room schema.
 13. Add facility management controls to assign resources from the facility create/edit modal while persisting only `Fields.facilityId`.
 14. Add facility-first resource filtering for manager calendars and public rental selection, including an unassigned-resource group.
+15. Build `buildFacilityCalendarFeed` as the derived feed across rentals, reservations, events, games, maintenance, staff, officials, and conflicts.
+16. Render feed-only operations records directly on the existing resource calendar, add manager layer filters to the left rail, and show unresolved conflicts as red calendar cards.
 
 ## Validation and Acceptance
 
@@ -156,6 +166,12 @@ Validation results from this slice:
     PASS: mvp-app :composeApp:testDebugUnitTest --tests "com.razumly.mvp.eventSearch.RentalFieldDisplayLabelTest"
     PASS: FieldsTabContent focused Jest suite, 12 tests, after facility modal assignment and facility-first filtering
     PASS: tsc --noEmit after facility modal assignment and facility-first filtering
+    PASS: FieldsTabContent focused Jest suite, 17 tests, after integrated calendar layers and conflict cards
+    PASS: fieldCalendarHydration focused Jest suite, 2 tests
+    PASS: tsc --noEmit after integrated calendar layers
+    PASS: git diff --check after integrated calendar layers
+    PASS: npm run build after integrated calendar layers
+    PASS: Browser smoke test of http://localhost:3000/organizations/org_1?tab=fields with left-side layer filters, conflict filtering, staff selection mode, and red conflict card rendering
 
 Acceptance for the first slice:
 
@@ -172,6 +188,8 @@ Acceptance for the first slice:
 - Facility create/edit can assign resources by patching the selected resources' `facilityId`; facilities do not store their own resource-id list.
 - The Facilities tab shows unassigned resources and lets managers filter the calendar by facility before selecting resources.
 - Public rental selection can be scoped by facility before selecting resources, while checkout still serializes the existing rental params.
+- Managers can filter the existing resource calendar by rentals, reservations, events, games, maintenance blocks, staff assignments, official assignments, and conflicts.
+- Unresolved conflicts render as red calendar cards on the calendar body and are derived from existing feed inputs instead of persisted as a second calendar source.
 
 ## Idempotence and Recovery
 
@@ -190,6 +208,7 @@ Current source evidence:
     Field service hydration: src/lib/fieldService.ts
     Mobile rental labels: /Users/elesesy/StudioProjects/mvp-app/composeApp/src/commonMain/kotlin/com/razumly/mvp/eventSearch/tabs/rentals/RentalSchedulingUtils.kt
     Staff/official plan: docs/staff-official-operations-execplan.md
+    Browser screenshot: output/playwright/facility-calendar-integrated-conflicts.png
 
 ## Interfaces and Dependencies
 
@@ -222,3 +241,4 @@ Change log:
 - 2026-06-18: Added manager facility calendar metrics and recorded build/browser validation.
 - 2026-06-18: Added field API facility payloads and mobile rental label parity without changing mobile persistence.
 - 2026-06-18: Added facility-modal resource assignment and facility-first resource filtering while keeping `Fields.facilityId` as the source of truth.
+- 2026-06-18: Added the derived facility calendar feed and folded feed-only records into the existing resource calendar with layer filters and red conflict cards.

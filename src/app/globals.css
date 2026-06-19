@@ -1072,6 +1072,16 @@ svg {
   --shared-calendar-event-text: #111827;
 }
 
+.shared-calendar-event--conflict {
+  --shared-calendar-event-bg: #fee2e2;
+  --shared-calendar-event-border: #dc2626;
+  --shared-calendar-event-text: #7f1d1d;
+  border-width: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(220, 38, 38, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
 .shared-calendar-event--selection {
   --shared-calendar-event-bg: var(--mvp-primary-100);
   --shared-calendar-event-border: var(--mvp-primary-300);
@@ -1116,10 +1126,6 @@ svg {
 
 .shared-calendar-event--selected {
   box-shadow: 0 0 0 2px var(--mvp-success), 0 0 0 5px color-mix(in srgb, var(--mvp-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.34);
-}
-
-.shared-calendar-event--conflict {
-  box-shadow: inset 0 0 0 2px var(--mvp-danger), inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .shared-calendar-event__title,
