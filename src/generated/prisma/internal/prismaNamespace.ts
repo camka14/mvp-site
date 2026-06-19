@@ -402,6 +402,7 @@ export const ModelName = {
   OrganizationRoleCompensationRates: 'OrganizationRoleCompensationRates',
   StaffCompensationRates: 'StaffCompensationRates',
   EventStaffAssignments: 'EventStaffAssignments',
+  StaffScheduleAssignments: 'StaffScheduleAssignments',
   TeamStaffLaborEntries: 'TeamStaffLaborEntries',
   FinancialLineItems: 'FinancialLineItems',
   StaffPayRun: 'StaffPayRun',
@@ -462,7 +463,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1795,6 +1796,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.EventStaffAssignmentsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.EventStaffAssignmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    StaffScheduleAssignments: {
+      payload: Prisma.$StaffScheduleAssignmentsPayload<ExtArgs>
+      fields: Prisma.StaffScheduleAssignmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StaffScheduleAssignmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StaffScheduleAssignmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.StaffScheduleAssignmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StaffScheduleAssignmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        findMany: {
+          args: Prisma.StaffScheduleAssignmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>[]
+        }
+        create: {
+          args: Prisma.StaffScheduleAssignmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        createMany: {
+          args: Prisma.StaffScheduleAssignmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StaffScheduleAssignmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.StaffScheduleAssignmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        update: {
+          args: Prisma.StaffScheduleAssignmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.StaffScheduleAssignmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StaffScheduleAssignmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StaffScheduleAssignmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.StaffScheduleAssignmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffScheduleAssignmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.StaffScheduleAssignmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStaffScheduleAssignments>
+        }
+        groupBy: {
+          args: Prisma.StaffScheduleAssignmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffScheduleAssignmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StaffScheduleAssignmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffScheduleAssignmentsCountAggregateOutputType> | number
         }
       }
     }
@@ -5585,6 +5660,36 @@ export const EventStaffAssignmentsScalarFieldEnum = {
 export type EventStaffAssignmentsScalarFieldEnum = (typeof EventStaffAssignmentsScalarFieldEnum)[keyof typeof EventStaffAssignmentsScalarFieldEnum]
 
 
+export const StaffScheduleAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  parentAssignmentId: 'parentAssignmentId',
+  staffMemberId: 'staffMemberId',
+  organizationRoleId: 'organizationRoleId',
+  userId: 'userId',
+  assignmentKind: 'assignmentKind',
+  facilityId: 'facilityId',
+  fieldId: 'fieldId',
+  timeSlotId: 'timeSlotId',
+  plannedStart: 'plannedStart',
+  plannedEnd: 'plannedEnd',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  plannedMinutes: 'plannedMinutes',
+  actualMinutes: 'actualMinutes',
+  rateOverrideType: 'rateOverrideType',
+  rateOverrideCents: 'rateOverrideCents',
+  status: 'status',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type StaffScheduleAssignmentsScalarFieldEnum = (typeof StaffScheduleAssignmentsScalarFieldEnum)[keyof typeof StaffScheduleAssignmentsScalarFieldEnum]
+
+
 export const TeamStaffLaborEntriesScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -5683,6 +5788,8 @@ export const StaffPayRunItemScalarFieldEnum = {
   teamId: 'teamId',
   eventTeamId: 'eventTeamId',
   eventStaffAssignmentId: 'eventStaffAssignmentId',
+  staffScheduleAssignmentId: 'staffScheduleAssignmentId',
+  staffScheduleOccurrenceKey: 'staffScheduleOccurrenceKey',
   teamStaffLaborEntryId: 'teamStaffLaborEntryId',
   label: 'label',
   description: 'description',
@@ -6868,6 +6975,20 @@ export type ListEnumStaffLaborStatusEnumFieldRefInput<$PrismaModel> = FieldRefIn
 
 
 /**
+ * Reference to a field of type 'StaffScheduleAssignmentKindEnum'
+ */
+export type EnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StaffScheduleAssignmentKindEnum'>
+
+
+
+/**
+ * Reference to a field of type 'StaffScheduleAssignmentKindEnum[]'
+ */
+export type ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StaffScheduleAssignmentKindEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'FinancialLineItemScopeEnum'
  */
 export type EnumFinancialLineItemScopeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinancialLineItemScopeEnum'>
@@ -7624,6 +7745,7 @@ export type GlobalOmitConfig = {
   organizationRoleCompensationRates?: Prisma.OrganizationRoleCompensationRatesOmit
   staffCompensationRates?: Prisma.StaffCompensationRatesOmit
   eventStaffAssignments?: Prisma.EventStaffAssignmentsOmit
+  staffScheduleAssignments?: Prisma.StaffScheduleAssignmentsOmit
   teamStaffLaborEntries?: Prisma.TeamStaffLaborEntriesOmit
   financialLineItems?: Prisma.FinancialLineItemsOmit
   staffPayRun?: Prisma.StaffPayRunOmit

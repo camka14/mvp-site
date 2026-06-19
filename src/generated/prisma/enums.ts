@@ -330,6 +330,14 @@ export const StaffLaborStatusEnum = {
 export type StaffLaborStatusEnum = (typeof StaffLaborStatusEnum)[keyof typeof StaffLaborStatusEnum]
 
 
+export const StaffScheduleAssignmentKindEnum = {
+  STAFF_SHIFT: 'STAFF_SHIFT',
+  OFFICIAL_SHIFT: 'OFFICIAL_SHIFT'
+} as const
+
+export type StaffScheduleAssignmentKindEnum = (typeof StaffScheduleAssignmentKindEnum)[keyof typeof StaffScheduleAssignmentKindEnum]
+
+
 export const FinancialLineItemScopeEnum = {
   ORGANIZATION: 'ORGANIZATION',
   EVENT: 'EVENT',

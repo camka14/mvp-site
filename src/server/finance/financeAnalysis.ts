@@ -52,11 +52,18 @@ export type FinanceLaborRate = {
 
 export type FinanceLaborEntry = {
   id: string;
-  sourceType?: 'EVENT_STAFF_ASSIGNMENT' | 'TEAM_STAFF_LABOR';
+  sourceType?: 'EVENT_STAFF_ASSIGNMENT' | 'TEAM_STAFF_LABOR' | 'STAFF_SCHEDULE_ASSIGNMENT';
   label: string;
   staffMemberId?: string | null;
   userId?: string | null;
   userName?: string | null;
+  assignmentKind?: string | null;
+  staffScheduleAssignmentId?: string | null;
+  staffScheduleOccurrenceKey?: string | null;
+  facilityId?: string | null;
+  facilityName?: string | null;
+  fieldId?: string | null;
+  fieldName?: string | null;
   eventId?: string | null;
   eventName?: string | null;
   teamId?: string | null;

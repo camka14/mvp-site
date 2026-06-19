@@ -50,6 +50,8 @@ export type StaffPayRunItemMinAggregateOutputType = {
   teamId: string | null
   eventTeamId: string | null
   eventStaffAssignmentId: string | null
+  staffScheduleAssignmentId: string | null
+  staffScheduleOccurrenceKey: string | null
   teamStaffLaborEntryId: string | null
   label: string | null
   description: string | null
@@ -84,6 +86,8 @@ export type StaffPayRunItemMaxAggregateOutputType = {
   teamId: string | null
   eventTeamId: string | null
   eventStaffAssignmentId: string | null
+  staffScheduleAssignmentId: string | null
+  staffScheduleOccurrenceKey: string | null
   teamStaffLaborEntryId: string | null
   label: string | null
   description: string | null
@@ -118,6 +122,8 @@ export type StaffPayRunItemCountAggregateOutputType = {
   teamId: number
   eventTeamId: number
   eventStaffAssignmentId: number
+  staffScheduleAssignmentId: number
+  staffScheduleOccurrenceKey: number
   teamStaffLaborEntryId: number
   label: number
   description: number
@@ -166,6 +172,8 @@ export type StaffPayRunItemMinAggregateInputType = {
   teamId?: true
   eventTeamId?: true
   eventStaffAssignmentId?: true
+  staffScheduleAssignmentId?: true
+  staffScheduleOccurrenceKey?: true
   teamStaffLaborEntryId?: true
   label?: true
   description?: true
@@ -200,6 +208,8 @@ export type StaffPayRunItemMaxAggregateInputType = {
   teamId?: true
   eventTeamId?: true
   eventStaffAssignmentId?: true
+  staffScheduleAssignmentId?: true
+  staffScheduleOccurrenceKey?: true
   teamStaffLaborEntryId?: true
   label?: true
   description?: true
@@ -234,6 +244,8 @@ export type StaffPayRunItemCountAggregateInputType = {
   teamId?: true
   eventTeamId?: true
   eventStaffAssignmentId?: true
+  staffScheduleAssignmentId?: true
+  staffScheduleOccurrenceKey?: true
   teamStaffLaborEntryId?: true
   label?: true
   description?: true
@@ -355,6 +367,8 @@ export type StaffPayRunItemGroupByOutputType = {
   teamId: string | null
   eventTeamId: string | null
   eventStaffAssignmentId: string | null
+  staffScheduleAssignmentId: string | null
+  staffScheduleOccurrenceKey: string | null
   teamStaffLaborEntryId: string | null
   label: string
   description: string | null
@@ -412,6 +426,8 @@ export type StaffPayRunItemWhereInput = {
   teamId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   eventTeamId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   eventStaffAssignmentId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
+  staffScheduleAssignmentId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
+  staffScheduleOccurrenceKey?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   teamStaffLaborEntryId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   label?: Prisma.StringFilter<"StaffPayRunItem"> | string
   description?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
@@ -446,6 +462,8 @@ export type StaffPayRunItemOrderByWithRelationInput = {
   teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventStaffAssignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  staffScheduleAssignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  staffScheduleOccurrenceKey?: Prisma.SortOrderInput | Prisma.SortOrder
   teamStaffLaborEntryId?: Prisma.SortOrderInput | Prisma.SortOrder
   label?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -471,6 +489,7 @@ export type StaffPayRunItemOrderByWithRelationInput = {
 export type StaffPayRunItemWhereUniqueInput = Prisma.AtLeast<{
   id?: string
   eventStaffAssignmentId?: string
+  staffScheduleOccurrenceKey?: string
   teamStaffLaborEntryId?: string
   AND?: Prisma.StaffPayRunItemWhereInput | Prisma.StaffPayRunItemWhereInput[]
   OR?: Prisma.StaffPayRunItemWhereInput[]
@@ -484,6 +503,7 @@ export type StaffPayRunItemWhereUniqueInput = Prisma.AtLeast<{
   eventId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   teamId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   eventTeamId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
+  staffScheduleAssignmentId?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   label?: Prisma.StringFilter<"StaffPayRunItem"> | string
   description?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   wageType?: Prisma.EnumCompensationWageTypeEnumNullableFilter<"StaffPayRunItem"> | $Enums.CompensationWageTypeEnum | null
@@ -503,7 +523,7 @@ export type StaffPayRunItemWhereUniqueInput = Prisma.AtLeast<{
   notes?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   createdBy?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
   updatedBy?: Prisma.StringNullableFilter<"StaffPayRunItem"> | string | null
-}, "id" | "eventStaffAssignmentId" | "teamStaffLaborEntryId">
+}, "id" | "eventStaffAssignmentId" | "staffScheduleOccurrenceKey" | "teamStaffLaborEntryId">
 
 export type StaffPayRunItemOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -517,6 +537,8 @@ export type StaffPayRunItemOrderByWithAggregationInput = {
   teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventStaffAssignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  staffScheduleAssignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
+  staffScheduleOccurrenceKey?: Prisma.SortOrderInput | Prisma.SortOrder
   teamStaffLaborEntryId?: Prisma.SortOrderInput | Prisma.SortOrder
   label?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -559,6 +581,8 @@ export type StaffPayRunItemScalarWhereWithAggregatesInput = {
   teamId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
   eventTeamId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
   eventStaffAssignmentId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
+  staffScheduleAssignmentId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
+  staffScheduleOccurrenceKey?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
   teamStaffLaborEntryId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
   label?: Prisma.StringWithAggregatesFilter<"StaffPayRunItem"> | string
   description?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRunItem"> | string | null
@@ -593,6 +617,8 @@ export type StaffPayRunItemCreateInput = {
   teamId?: string | null
   eventTeamId?: string | null
   eventStaffAssignmentId?: string | null
+  staffScheduleAssignmentId?: string | null
+  staffScheduleOccurrenceKey?: string | null
   teamStaffLaborEntryId?: string | null
   label: string
   description?: string | null
@@ -627,6 +653,8 @@ export type StaffPayRunItemUncheckedCreateInput = {
   teamId?: string | null
   eventTeamId?: string | null
   eventStaffAssignmentId?: string | null
+  staffScheduleAssignmentId?: string | null
+  staffScheduleOccurrenceKey?: string | null
   teamStaffLaborEntryId?: string | null
   label: string
   description?: string | null
@@ -661,6 +689,8 @@ export type StaffPayRunItemUpdateInput = {
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventStaffAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleOccurrenceKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamStaffLaborEntryId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   label?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -695,6 +725,8 @@ export type StaffPayRunItemUncheckedUpdateInput = {
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventStaffAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleOccurrenceKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamStaffLaborEntryId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   label?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -729,6 +761,8 @@ export type StaffPayRunItemCreateManyInput = {
   teamId?: string | null
   eventTeamId?: string | null
   eventStaffAssignmentId?: string | null
+  staffScheduleAssignmentId?: string | null
+  staffScheduleOccurrenceKey?: string | null
   teamStaffLaborEntryId?: string | null
   label: string
   description?: string | null
@@ -763,6 +797,8 @@ export type StaffPayRunItemUpdateManyMutationInput = {
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventStaffAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleOccurrenceKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamStaffLaborEntryId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   label?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -797,6 +833,8 @@ export type StaffPayRunItemUncheckedUpdateManyInput = {
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventStaffAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleAssignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffScheduleOccurrenceKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamStaffLaborEntryId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   label?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -831,6 +869,8 @@ export type StaffPayRunItemCountOrderByAggregateInput = {
   teamId?: Prisma.SortOrder
   eventTeamId?: Prisma.SortOrder
   eventStaffAssignmentId?: Prisma.SortOrder
+  staffScheduleAssignmentId?: Prisma.SortOrder
+  staffScheduleOccurrenceKey?: Prisma.SortOrder
   teamStaffLaborEntryId?: Prisma.SortOrder
   label?: Prisma.SortOrder
   description?: Prisma.SortOrder
@@ -871,6 +911,8 @@ export type StaffPayRunItemMaxOrderByAggregateInput = {
   teamId?: Prisma.SortOrder
   eventTeamId?: Prisma.SortOrder
   eventStaffAssignmentId?: Prisma.SortOrder
+  staffScheduleAssignmentId?: Prisma.SortOrder
+  staffScheduleOccurrenceKey?: Prisma.SortOrder
   teamStaffLaborEntryId?: Prisma.SortOrder
   label?: Prisma.SortOrder
   description?: Prisma.SortOrder
@@ -905,6 +947,8 @@ export type StaffPayRunItemMinOrderByAggregateInput = {
   teamId?: Prisma.SortOrder
   eventTeamId?: Prisma.SortOrder
   eventStaffAssignmentId?: Prisma.SortOrder
+  staffScheduleAssignmentId?: Prisma.SortOrder
+  staffScheduleOccurrenceKey?: Prisma.SortOrder
   teamStaffLaborEntryId?: Prisma.SortOrder
   label?: Prisma.SortOrder
   description?: Prisma.SortOrder
@@ -951,6 +995,8 @@ export type StaffPayRunItemSelect<ExtArgs extends runtime.Types.Extensions.Inter
   teamId?: boolean
   eventTeamId?: boolean
   eventStaffAssignmentId?: boolean
+  staffScheduleAssignmentId?: boolean
+  staffScheduleOccurrenceKey?: boolean
   teamStaffLaborEntryId?: boolean
   label?: boolean
   description?: boolean
@@ -985,6 +1031,8 @@ export type StaffPayRunItemSelectCreateManyAndReturn<ExtArgs extends runtime.Typ
   teamId?: boolean
   eventTeamId?: boolean
   eventStaffAssignmentId?: boolean
+  staffScheduleAssignmentId?: boolean
+  staffScheduleOccurrenceKey?: boolean
   teamStaffLaborEntryId?: boolean
   label?: boolean
   description?: boolean
@@ -1019,6 +1067,8 @@ export type StaffPayRunItemSelectUpdateManyAndReturn<ExtArgs extends runtime.Typ
   teamId?: boolean
   eventTeamId?: boolean
   eventStaffAssignmentId?: boolean
+  staffScheduleAssignmentId?: boolean
+  staffScheduleOccurrenceKey?: boolean
   teamStaffLaborEntryId?: boolean
   label?: boolean
   description?: boolean
@@ -1053,6 +1103,8 @@ export type StaffPayRunItemSelectScalar = {
   teamId?: boolean
   eventTeamId?: boolean
   eventStaffAssignmentId?: boolean
+  staffScheduleAssignmentId?: boolean
+  staffScheduleOccurrenceKey?: boolean
   teamStaffLaborEntryId?: boolean
   label?: boolean
   description?: boolean
@@ -1075,7 +1127,7 @@ export type StaffPayRunItemSelectScalar = {
   updatedBy?: boolean
 }
 
-export type StaffPayRunItemOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "payRunId" | "organizationId" | "staffMemberId" | "userId" | "eventId" | "teamId" | "eventTeamId" | "eventStaffAssignmentId" | "teamStaffLaborEntryId" | "label" | "description" | "wageType" | "rateCents" | "paidMinutes" | "amountCents" | "serviceStartAt" | "serviceEndAt" | "status" | "payoutStatus" | "approvedAt" | "approvedByUserId" | "paidAt" | "paidByUserId" | "payoutProvider" | "payoutProviderTransferId" | "notes" | "createdBy" | "updatedBy", ExtArgs["result"]["staffPayRunItem"]>
+export type StaffPayRunItemOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "payRunId" | "organizationId" | "staffMemberId" | "userId" | "eventId" | "teamId" | "eventTeamId" | "eventStaffAssignmentId" | "staffScheduleAssignmentId" | "staffScheduleOccurrenceKey" | "teamStaffLaborEntryId" | "label" | "description" | "wageType" | "rateCents" | "paidMinutes" | "amountCents" | "serviceStartAt" | "serviceEndAt" | "status" | "payoutStatus" | "approvedAt" | "approvedByUserId" | "paidAt" | "paidByUserId" | "payoutProvider" | "payoutProviderTransferId" | "notes" | "createdBy" | "updatedBy", ExtArgs["result"]["staffPayRunItem"]>
 
 export type $StaffPayRunItemPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "StaffPayRunItem"
@@ -1092,6 +1144,8 @@ export type $StaffPayRunItemPayload<ExtArgs extends runtime.Types.Extensions.Int
     teamId: string | null
     eventTeamId: string | null
     eventStaffAssignmentId: string | null
+    staffScheduleAssignmentId: string | null
+    staffScheduleOccurrenceKey: string | null
     teamStaffLaborEntryId: string | null
     label: string
     description: string | null
@@ -1546,6 +1600,8 @@ export interface StaffPayRunItemFieldRefs {
   readonly teamId: Prisma.FieldRef<"StaffPayRunItem", 'String'>
   readonly eventTeamId: Prisma.FieldRef<"StaffPayRunItem", 'String'>
   readonly eventStaffAssignmentId: Prisma.FieldRef<"StaffPayRunItem", 'String'>
+  readonly staffScheduleAssignmentId: Prisma.FieldRef<"StaffPayRunItem", 'String'>
+  readonly staffScheduleOccurrenceKey: Prisma.FieldRef<"StaffPayRunItem", 'String'>
   readonly teamStaffLaborEntryId: Prisma.FieldRef<"StaffPayRunItem", 'String'>
   readonly label: Prisma.FieldRef<"StaffPayRunItem", 'String'>
   readonly description: Prisma.FieldRef<"StaffPayRunItem", 'String'>

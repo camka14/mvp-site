@@ -226,6 +226,11 @@ enum StaffLaborStatusEnum {
   CANCELLED
 }
 
+enum StaffScheduleAssignmentKindEnum {
+  STAFF_SHIFT
+  OFFICIAL_SHIFT
+}
+
 enum FinancialLineItemScopeEnum {
   ORGANIZATION
   EVENT
@@ -788,6 +793,45 @@ model EventStaffAssignments {
   @@index([status])
 }
 
+model StaffScheduleAssignments {
+  id                 String                          @id
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+  organizationId     String
+  parentAssignmentId String?
+  staffMemberId      String?
+  organizationRoleId String?
+  userId             String?
+  assignmentKind     StaffScheduleAssignmentKindEnum @default(STAFF_SHIFT)
+  facilityId         String?
+  fieldId            String?
+  timeSlotId         String                          @unique
+  plannedStart       DateTime?
+  plannedEnd         DateTime?
+  actualStart        DateTime?
+  actualEnd          DateTime?
+  plannedMinutes     Int?
+  actualMinutes      Int?
+  rateOverrideType   CompensationWageTypeEnum?
+  rateOverrideCents  Int?
+  status             StaffLaborStatusEnum            @default(PLANNED)
+  notes              String?
+  createdBy          String?
+  updatedBy          String?
+
+  @@index([organizationId])
+  @@index([parentAssignmentId])
+  @@index([staffMemberId])
+  @@index([organizationRoleId])
+  @@index([userId])
+  @@index([assignmentKind])
+  @@index([facilityId])
+  @@index([fieldId])
+  @@index([status])
+  @@index([plannedStart])
+  @@index([plannedEnd])
+}
+
 model TeamStaffLaborEntries {
   id                         String                    @id
   createdAt                  DateTime                  @default(now())
@@ -897,37 +941,39 @@ model StaffPayRun {
 }
 
 model StaffPayRunItem {
-  id                       String                    @id
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  payRunId                 String
-  organizationId           String
-  staffMemberId            String?
-  userId                   String
-  eventId                  String?
-  teamId                   String?
-  eventTeamId              String?
-  eventStaffAssignmentId   String?                   @unique
-  teamStaffLaborEntryId    String?                   @unique
-  label                    String
-  description              String?
-  wageType                 CompensationWageTypeEnum?
-  rateCents                Int?
-  paidMinutes              Int?
-  amountCents              Int
-  serviceStartAt           DateTime?
-  serviceEndAt             DateTime?
-  status                   StaffPayRunItemStatusEnum @default(DRAFT)
-  payoutStatus             StaffPayoutStatusEnum     @default(NOT_STARTED)
-  approvedAt               DateTime?
-  approvedByUserId         String?
-  paidAt                   DateTime?
-  paidByUserId             String?
-  payoutProvider           String?
-  payoutProviderTransferId String?
-  notes                    String?
-  createdBy                String?
-  updatedBy                String?
+  id                         String                    @id
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  payRunId                   String
+  organizationId             String
+  staffMemberId              String?
+  userId                     String
+  eventId                    String?
+  teamId                     String?
+  eventTeamId                String?
+  eventStaffAssignmentId     String?                   @unique
+  staffScheduleAssignmentId  String?
+  staffScheduleOccurrenceKey String?                   @unique
+  teamStaffLaborEntryId      String?                   @unique
+  label                      String
+  description                String?
+  wageType                   CompensationWageTypeEnum?
+  rateCents                  Int?
+  paidMinutes                Int?
+  amountCents                Int
+  serviceStartAt             DateTime?
+  serviceEndAt               DateTime?
+  status                     StaffPayRunItemStatusEnum @default(DRAFT)
+  payoutStatus               StaffPayoutStatusEnum     @default(NOT_STARTED)
+  approvedAt                 DateTime?
+  approvedByUserId           String?
+  paidAt                     DateTime?
+  paidByUserId               String?
+  payoutProvider             String?
+  payoutProviderTransferId   String?
+  notes                      String?
+  createdBy                  String?
+  updatedBy                  String?
 
   @@index([payRunId])
   @@index([organizationId])

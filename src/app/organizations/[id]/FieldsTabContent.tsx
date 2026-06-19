@@ -12,15 +12,17 @@ import {
   Loader,
   Modal,
   MultiSelect,
+  NumberInput,
   Paper,
   Select,
   SimpleGrid,
   Stack,
   Text,
   TextInput,
+  Textarea,
   Title,
 } from '@mantine/core';
-import { DateTimePicker } from '@mantine/dates';
+import { DatePickerInput, DateTimePicker } from '@mantine/dates';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
@@ -50,6 +52,7 @@ import { createId } from '@/lib/id';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import { fieldService } from '@/lib/fieldService';
 import { facilityService } from '@/lib/facilityService';
+import { apiRequest } from '@/lib/apiClient';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/calendar/FieldCalendarFilter';
@@ -187,6 +190,56 @@ type RentalSelectionConflictState = {
   error: string | null;
 };
 
+type StaffScheduleAssignmentKind = 'STAFF_SHIFT' | 'OFFICIAL_SHIFT';
+
+type StaffScheduleStaffMember = {
+  staffMemberId: string;
+  userId: string;
+  fullName: string;
+  userName?: string | null;
+  types?: string[];
+  roleName?: string | null;
+};
+
+type StaffScheduleTimeSlot = {
+  startDate: string;
+  endDate?: string | null;
+  repeating: boolean;
+  daysOfWeek?: number[] | null;
+  startTimeMinutes?: number | null;
+  endTimeMinutes?: number | null;
+};
+
+type StaffScheduleAssignment = {
+  id: string;
+  parentAssignmentId?: string | null;
+  staffMemberId?: string | null;
+  userId?: string | null;
+  userName: string;
+  isOpen?: boolean;
+  isChildAssignment?: boolean;
+  assignmentKind: StaffScheduleAssignmentKind;
+  facilityId?: string | null;
+  facilityName?: string | null;
+  fieldId?: string | null;
+  fieldName?: string | null;
+  timeSlot?: StaffScheduleTimeSlot | null;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  plannedMinutes?: number | null;
+  rateOverrideCents?: number | null;
+  status?: string | null;
+};
+
+type StaffScheduleResponse = {
+  assignments?: StaffScheduleAssignment[];
+  staffMembers?: StaffScheduleStaffMember[];
+};
+
+type StaffScheduleCreateResponse = {
+  assignment?: StaffScheduleAssignment;
+};
+
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
 const SLOT_STEP_MINUTES = 30;
@@ -203,6 +256,11 @@ const FIELD_CALENDAR_FORMATS = {
 const isPastRentalRangeStart = (start: Date, reference: Date = new Date()): boolean => (
   start.getTime() < reference.getTime()
 );
+
+const centsFromDollars = (value: string | number): number => {
+  const numericValue = typeof value === 'number' ? value : Number(String(value).replace(/^\$/, ''));
+  return Number.isFinite(numericValue) ? Math.round(numericValue * 100) : 0;
+};
 
 const getNextSelectableRentalStart = (reference: Date = new Date()): Date => {
   const next = new Date(reference.getTime());
@@ -674,6 +732,10 @@ const FACILITY_DAY_OPTIONS = [
   { value: '6', label: 'Sun', longLabel: 'Sunday', dayOfWeek: 6 },
 ];
 const FACILITY_DAY_LABELS = FACILITY_DAY_OPTIONS.map((option) => option.label);
+const STAFF_TIMESLOT_REPEAT_DAY_OPTIONS = FACILITY_DAY_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.longLabel,
+}));
 const DEFAULT_FACILITY_OPEN_TIME = '08:00';
 const DEFAULT_FACILITY_CLOSE_TIME = '22:00';
 const ALL_FACILITIES_FILTER_VALUE = '__all_facilities__';
@@ -695,6 +757,17 @@ const normalizeTimeInput = (value: unknown): string => {
   }
   const normalized = value.trim();
   return /^\d{2}:\d{2}$/.test(normalized) ? normalized : '';
+};
+
+const coerceDatePickerValue = (value: unknown): Date | null => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
 };
 
 const facilityCoordinatesToInput = (value: Facility['coordinates'] | unknown): { lat: number; lng: number } => {
@@ -960,6 +1033,140 @@ const toValidDate = (value: unknown): Date | null => {
     }
   }
   return null;
+};
+
+const dateWithMinutes = (date: Date, minutes: number): Date => {
+  const next = new Date(date.getTime());
+  next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return next;
+};
+
+const buildStaffScheduleCalendarItems = ({
+  assignments,
+  fields,
+  facilities,
+  range,
+}: {
+  assignments: StaffScheduleAssignment[];
+  fields: Field[];
+  facilities: Facility[];
+  range: { start: Date; end: Date };
+}): FacilityCalendarFeedItem[] => {
+  const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+  const facilitiesById = new Map(facilities.map((facility) => [facility.$id, facility]));
+
+  const expandAssignment = (assignment: StaffScheduleAssignment): FacilityCalendarFeedItem[] => {
+    const field = assignment.fieldId ? fieldsById.get(assignment.fieldId) ?? null : null;
+    if (!field) {
+      return [];
+    }
+    const timeSlot = assignment.timeSlot ?? null;
+    const assignmentType: FacilityCalendarFeedItemType = assignment.assignmentKind === 'OFFICIAL_SHIFT'
+      ? 'official_assignment'
+      : 'staff_assignment';
+    const facilityId = assignment.facilityId ?? getFieldFacilityId(field);
+    const facility = facilityId ? facilitiesById.get(facilityId) ?? null : null;
+    const facilityName = assignment.facilityName
+      ?? facility?.name
+      ?? getFieldFacility(field)?.name
+      ?? 'Unassigned facility';
+    const fieldName = assignment.fieldName ?? getFacilityScopedFieldDisplayName(field);
+    const title = assignment.userName
+      || (assignmentType === 'official_assignment' ? 'Open official shift' : 'Open staff shift');
+    const assignmentItems: FacilityCalendarFeedItem[] = [];
+
+    const pushItem = (start: Date, end: Date) => {
+      if (end.getTime() <= start.getTime() || !compareRanges(start, end, range.start, range.end)) {
+        return;
+      }
+      assignmentItems.push({
+        id: `facility-calendar-staff-schedule-${assignment.id}-${field.$id}-${start.getTime()}`,
+        type: assignmentType,
+        title,
+        start,
+        end,
+        facilityId: facilityId ?? null,
+        facilityName,
+        fieldId: field.$id,
+        fieldName,
+        sourceId: assignment.id,
+        parentId: assignment.parentAssignmentId ?? null,
+        userId: assignment.userId ?? null,
+        staffMemberId: assignment.staffMemberId ?? null,
+        status: assignment.status ?? null,
+        source: assignment,
+      });
+    };
+
+    if (!timeSlot?.repeating) {
+      const start = toValidDate(assignment.plannedStart) ?? toValidDate(timeSlot?.startDate);
+      const end = toValidDate(assignment.plannedEnd) ?? toValidDate(timeSlot?.endDate);
+      if (start && end) {
+        pushItem(start, end);
+      }
+      return assignmentItems;
+    }
+
+    const scheduleStart = toValidDate(timeSlot.startDate);
+    if (!scheduleStart) {
+      return assignmentItems;
+    }
+    const scheduleEnd = toValidDate(timeSlot.endDate);
+    const days = Array.isArray(timeSlot.daysOfWeek) && timeSlot.daysOfWeek.length
+      ? timeSlot.daysOfWeek
+      : [mondayDayOf(scheduleStart)];
+    const startMinutes = typeof timeSlot.startTimeMinutes === 'number'
+      ? timeSlot.startTimeMinutes
+      : scheduleStart.getHours() * 60 + scheduleStart.getMinutes();
+    const endMinutes = typeof timeSlot.endTimeMinutes === 'number'
+      ? timeSlot.endTimeMinutes
+      : startMinutes + Math.max(30, assignment.plannedMinutes ?? 60);
+
+    let cursor = startOfDay(range.start);
+    while (cursor.getTime() <= range.end.getTime()) {
+      const cursorDay = mondayDayOf(cursor);
+      if (
+        days.includes(cursorDay)
+        && cursor.getTime() >= startOfDay(scheduleStart).getTime()
+        && (!scheduleEnd || cursor.getTime() <= endOfDay(scheduleEnd).getTime())
+      ) {
+        pushItem(dateWithMinutes(cursor, startMinutes), dateWithMinutes(cursor, endMinutes));
+      }
+      const next = new Date(cursor.getTime());
+      next.setDate(next.getDate() + 1);
+      cursor = next;
+    }
+
+    return assignmentItems;
+  };
+
+  const childItems = assignments
+    .filter((assignment) => Boolean(assignment.parentAssignmentId))
+    .flatMap((assignment) => expandAssignment(assignment));
+  const coverageByParentId = childItems.reduce((acc, item) => {
+    if (!item.parentId) {
+      return acc;
+    }
+    const existing = acc.get(item.parentId) ?? [];
+    existing.push({
+      fieldId: item.fieldId,
+      start: item.start,
+      end: item.end,
+    });
+    acc.set(item.parentId, existing);
+    return acc;
+  }, new Map<string, Array<{ fieldId: string | null; start: Date; end: Date }>>());
+
+  const parentItems = assignments
+    .filter((assignment) => !assignment.parentAssignmentId)
+    .flatMap((assignment) => {
+      const coveredRanges = coverageByParentId.get(assignment.id) ?? [];
+      return expandAssignment(assignment).filter((item) => !coveredRanges.some((covered) => (
+        covered.fieldId === item.fieldId && compareRanges(covered.start, covered.end, item.start, item.end)
+      )));
+    });
+
+  return [...parentItems, ...childItems];
 };
 
 const resolveSelectionDateRange = (
@@ -1335,6 +1542,21 @@ export default function FieldsTabContent({
   const [newResourceFacilityId, setNewResourceFacilityId] = useState<string | null>(null);
   const [selectionConflictStateByKey, setSelectionConflictStateByKey] = useState<Record<string, RentalSelectionConflictState>>({});
   const selectionConflictStateRef = useRef<Record<string, RentalSelectionConflictState>>({});
+  const [staffScheduleAssignments, setStaffScheduleAssignments] = useState<StaffScheduleAssignment[]>([]);
+  const [staffScheduleMembers, setStaffScheduleMembers] = useState<StaffScheduleStaffMember[]>([]);
+  const [staffScheduleLoaded, setStaffScheduleLoaded] = useState(false);
+  const [staffScheduleLoading, setStaffScheduleLoading] = useState(false);
+  const [staffTimeslotModalOpen, setStaffTimeslotModalOpen] = useState(false);
+  const [staffTimeslotParentAssignment, setStaffTimeslotParentAssignment] = useState<StaffScheduleAssignment | null>(null);
+  const [staffTimeslotMode, setStaffTimeslotMode] = useState<Exclude<ManagerCalendarSelectionMode, 'rental'>>('staff_assignment');
+  const [staffTimeslotUserId, setStaffTimeslotUserId] = useState<string | null>(null);
+  const [staffTimeslotOverrideAmount, setStaffTimeslotOverrideAmount] = useState<string | number>('');
+  const [staffTimeslotNotes, setStaffTimeslotNotes] = useState('');
+  const [staffTimeslotRepeating, setStaffTimeslotRepeating] = useState(false);
+  const [staffTimeslotRepeatDays, setStaffTimeslotRepeatDays] = useState<number[]>([]);
+  const [staffTimeslotRepeatEndDate, setStaffTimeslotRepeatEndDate] = useState<Date | null>(null);
+  const [staffTimeslotError, setStaffTimeslotError] = useState<string | null>(null);
+  const [staffTimeslotSubmitting, setStaffTimeslotSubmitting] = useState(false);
 
   useEffect(() => {
     selectionConflictStateRef.current = selectionConflictStateByKey;
@@ -1632,6 +1854,77 @@ export default function FieldsTabContent({
     [fields, selectedFieldIds],
   );
   const selectedField = selectedFields[0] ?? null;
+  const loadStaffSchedule = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!organizationId || !canManage) {
+      setStaffScheduleAssignments([]);
+      setStaffScheduleMembers([]);
+      setStaffScheduleLoaded(false);
+      return null;
+    }
+    setStaffScheduleLoading(true);
+    if (!options.silent) {
+      setStaffTimeslotError(null);
+    }
+    try {
+      const response = await apiRequest<StaffScheduleResponse>(`/api/organizations/${organizationId}/staff/schedule`);
+      setStaffScheduleAssignments(Array.isArray(response.assignments) ? response.assignments : []);
+      setStaffScheduleMembers(Array.isArray(response.staffMembers) ? response.staffMembers : []);
+      setStaffScheduleLoaded(true);
+      return response;
+    } catch (error) {
+      if (!options.silent) {
+        setStaffTimeslotError(error instanceof Error ? error.message : 'Failed to load staff options.');
+      }
+      setStaffScheduleLoaded(true);
+      return null;
+    } finally {
+      setStaffScheduleLoading(false);
+    }
+  }, [canManage, organizationId]);
+
+  useEffect(() => {
+    setStaffScheduleAssignments([]);
+    setStaffScheduleMembers([]);
+    setStaffScheduleLoaded(false);
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (
+      canManage
+      && !staffScheduleLoaded
+      && (
+        managerSelectionMode !== 'rental'
+        || calendarLayerFilters.includes('staff_assignment')
+        || calendarLayerFilters.includes('official_assignment')
+      )
+    ) {
+      void loadStaffSchedule({ silent: true });
+    }
+  }, [calendarLayerFilters, canManage, loadStaffSchedule, managerSelectionMode, staffScheduleLoaded]);
+
+  const staffTimeslotAssignmentKind: StaffScheduleAssignmentKind = staffTimeslotMode === 'official_assignment'
+    ? 'OFFICIAL_SHIFT'
+    : 'STAFF_SHIFT';
+  const isAssigningStaffOccurrence = Boolean(staffTimeslotParentAssignment);
+  const staffTimeslotUserOptions = useMemo(() => staffScheduleMembers
+    .filter((staffMember) => (
+      staffTimeslotAssignmentKind === 'OFFICIAL_SHIFT'
+        ? Array.isArray(staffMember.types) && staffMember.types.includes('OFFICIAL')
+        : true
+    ))
+    .map((staffMember) => ({
+      value: staffMember.userId,
+      label: `${staffMember.fullName}${staffMember.roleName ? ` - ${staffMember.roleName}` : ''}`,
+    })), [staffScheduleMembers, staffTimeslotAssignmentKind]);
+
+  useEffect(() => {
+    setStaffTimeslotUserId((current) => (
+      current && staffTimeslotUserOptions.some((option) => option.value === current)
+        ? current
+        : null
+    ));
+  }, [staffTimeslotUserOptions]);
+
   const getSelectionFacilityFilterValue = useCallback(
     (fieldIds: string[]): string => {
       const normalizedIds = normalizeFieldIds(fieldIds);
@@ -2049,8 +2342,17 @@ export default function FieldsTabContent({
     [calendarRange, facilityCalendarFields],
   );
   const facilityCalendarSummary = facilityCalendarFeed.summary;
+  const staffScheduleCalendarItems = useMemo(
+    () => buildStaffScheduleCalendarItems({
+      assignments: staffScheduleAssignments,
+      fields: facilityCalendarFields,
+      facilities,
+      range: calendarRange,
+    }),
+    [calendarRange, facilities, facilityCalendarFields, staffScheduleAssignments],
+  );
   const facilityFeedCalendarEvents = useMemo<FacilityFeedCalendarEntry[]>(() => (
-    facilityCalendarFeed.items
+    [...facilityCalendarFeed.items, ...staffScheduleCalendarItems]
       .filter((item) => FACILITY_FEED_CALENDAR_TYPES.has(item.type))
       .map((item) => ({
         id: item.id,
@@ -2063,7 +2365,7 @@ export default function FieldsTabContent({
         feedType: item.type,
         fieldName: item.fieldName,
       }))
-  ), [facilityCalendarFeed.items]);
+  ), [facilityCalendarFeed.items, staffScheduleCalendarItems]);
   const unfilteredCalendarEvents = useMemo<CalendarEventData[]>(
     () => [...baseCalendarEvents, ...facilityFeedCalendarEvents, ...selectionCalendarEvents],
     [baseCalendarEvents, facilityFeedCalendarEvents, selectionCalendarEvents],
@@ -2650,7 +2952,7 @@ export default function FieldsTabContent({
       const actionLabel = MANAGER_SELECTION_ACTION_LABELS[managerSelectionMode];
       if (managerSelectionMode !== 'rental') {
         const modeLabel = managerSelectionMode === 'staff_assignment' ? 'staff timeslot' : 'official timeslot';
-        return `Draft ${modeLabel}: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "${actionLabel}" after choosing the event or match assignment this time belongs to.`;
+        return `Draft ${modeLabel}: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "${actionLabel}" to assign coverage or leave it open.`;
       }
       return `Draft slot: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "${actionLabel}" to set price, or click an existing rental slot to edit.`;
     }
@@ -3140,11 +3442,7 @@ export default function FieldsTabContent({
     setCreateRentalOpen(true);
   }, [canManage, selectedFieldIds.length, selection]);
 
-  const handleManagerSelectionActionClick = useCallback(() => {
-    if (managerSelectionMode === 'rental') {
-      handleAddRentalSlotClick();
-      return;
-    }
+  const openStaffTimeslotModal = useCallback((mode: Exclude<ManagerCalendarSelectionMode, 'rental'>) => {
     if (!canManage) {
       return;
     }
@@ -3152,17 +3450,207 @@ export default function FieldsTabContent({
       notifications.show({ color: 'red', message: 'Select at least one resource and a time range first.' });
       return;
     }
-    notifications.show({
-      color: 'yellow',
-      message: managerSelectionMode === 'staff_assignment'
-        ? 'Staff time is saved from an event staffing assignment. Choose the event before applying this window.'
-        : 'Official time is saved from a match or event official assignment. Choose the assignment before applying this window.',
-    });
-  }, [canManage, handleAddRentalSlotClick, managerSelectionMode, selectedFieldIds.length, selection]);
+    if (selection.start.toDateString() !== selection.end.toDateString()) {
+      notifications.show({ color: 'red', message: 'Staff timeslots must stay within a single day. Adjust the selection.' });
+      return;
+    }
+    const selectionDay = mondayDayOf(selection.start);
+    setStaffTimeslotParentAssignment(null);
+    setStaffTimeslotMode(mode);
+    setStaffTimeslotUserId(null);
+    setStaffTimeslotOverrideAmount('');
+    setStaffTimeslotNotes('');
+    setStaffTimeslotRepeating(false);
+    setStaffTimeslotRepeatDays([selectionDay]);
+    setStaffTimeslotRepeatEndDate(null);
+    setStaffTimeslotError(null);
+    setStaffTimeslotModalOpen(true);
+    if (!staffScheduleLoaded) {
+      void loadStaffSchedule();
+    }
+  }, [canManage, loadStaffSchedule, selectedFieldIds.length, selection, staffScheduleLoaded]);
+
+  const submitStaffTimeslot = useCallback(async () => {
+    if (!canManage || !organizationId) {
+      setStaffTimeslotError('Missing organization context.');
+      return;
+    }
+    if (!selection || !selectedFields.length) {
+      setStaffTimeslotError('Select at least one resource and a time range first.');
+      return;
+    }
+    if (selection.end.getTime() <= selection.start.getTime()) {
+      setStaffTimeslotError('End time must be after the start time.');
+      return;
+    }
+    if (selection.start.toDateString() !== selection.end.toDateString()) {
+      setStaffTimeslotError('Staff timeslots must stay within a single day.');
+      return;
+    }
+    const overrideAmountCents = staffTimeslotOverrideAmount === ''
+      ? null
+      : centsFromDollars(staffTimeslotOverrideAmount);
+    if (overrideAmountCents !== null && overrideAmountCents <= 0) {
+      setStaffTimeslotError('Override amount must be greater than 0.');
+      return;
+    }
+    if (staffTimeslotParentAssignment && !staffTimeslotUserId) {
+      setStaffTimeslotError('Choose a staff member for this occurrence.');
+      return;
+    }
+
+    const assignmentKind: StaffScheduleAssignmentKind = staffTimeslotMode === 'official_assignment'
+      ? 'OFFICIAL_SHIFT'
+      : 'STAFF_SHIFT';
+    const dayOfWeek = mondayDayOf(selection.start);
+    const isRepeatingAssignment = staffTimeslotParentAssignment ? false : staffTimeslotRepeating;
+    const repeatDays = isRepeatingAssignment
+      ? Array.from(new Set(staffTimeslotRepeatDays
+        .map((day) => Number(day))
+        .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)))
+        .sort((a, b) => a - b)
+      : [dayOfWeek];
+    if (isRepeatingAssignment && repeatDays.length === 0) {
+      setStaffTimeslotError('Select at least one repeat day.');
+      return;
+    }
+    if (
+      isRepeatingAssignment
+      && staffTimeslotRepeatEndDate
+      && startOfDay(staffTimeslotRepeatEndDate).getTime() < startOfDay(selection.start).getTime()
+    ) {
+      setStaffTimeslotError('Repeat end date must be on or after the start date.');
+      return;
+    }
+    const repeatEndDate = isRepeatingAssignment
+      ? (staffTimeslotRepeatEndDate ? endOfDay(staffTimeslotRepeatEndDate).toISOString() : null)
+      : selection.end.toISOString();
+    setStaffTimeslotSubmitting(true);
+    setStaffTimeslotError(null);
+    try {
+      const created = await Promise.all(selectedFields.map(async (field) => {
+        const facilityId = getFieldFacilityId(field);
+        const response = await apiRequest<StaffScheduleCreateResponse>(`/api/organizations/${organizationId}/staff/schedule`, {
+          method: 'POST',
+          body: {
+            parentAssignmentId: staffTimeslotParentAssignment?.id ?? null,
+            userId: staffTimeslotUserId || null,
+            assignmentKind,
+            facilityId,
+            fieldId: field.$id,
+            rateOverrideType: overrideAmountCents ? 'HOURLY' : null,
+            rateOverrideCents: overrideAmountCents,
+            notes: staffTimeslotNotes,
+            timeSlot: {
+              startDate: selection.start.toISOString(),
+              endDate: repeatEndDate,
+              repeating: isRepeatingAssignment,
+              daysOfWeek: repeatDays,
+              startTimeMinutes: selection.start.getHours() * 60 + selection.start.getMinutes(),
+              endTimeMinutes: selection.end.getHours() * 60 + selection.end.getMinutes(),
+            },
+          },
+        });
+        return response.assignment ?? null;
+      }));
+      const createdAssignments = created.filter((assignment): assignment is StaffScheduleAssignment => Boolean(assignment));
+      if (createdAssignments.length) {
+        setStaffScheduleAssignments((current) => [...createdAssignments, ...current]);
+      }
+      setStaffTimeslotModalOpen(false);
+      setStaffTimeslotParentAssignment(null);
+      setStaffTimeslotUserId(null);
+      setStaffTimeslotOverrideAmount('');
+      setStaffTimeslotNotes('');
+      setStaffTimeslotRepeating(false);
+      setStaffTimeslotRepeatDays([]);
+      setStaffTimeslotRepeatEndDate(null);
+      notifications.show({
+        color: 'green',
+        message: `${createdAssignments.length || selectedFields.length} ${assignmentKind === 'OFFICIAL_SHIFT' ? 'official' : 'staff'} timeslot${(createdAssignments.length || selectedFields.length) === 1 ? '' : 's'} added.`,
+      });
+      void loadStaffSchedule({ silent: true });
+    } catch (error) {
+      setStaffTimeslotError(error instanceof Error ? error.message : 'Failed to apply staff timeslot.');
+    } finally {
+      setStaffTimeslotSubmitting(false);
+    }
+  }, [
+    canManage,
+    loadStaffSchedule,
+    organizationId,
+    selectedFields,
+    selection,
+    staffTimeslotParentAssignment,
+    staffTimeslotRepeatDays,
+    staffTimeslotRepeatEndDate,
+    staffTimeslotRepeating,
+    staffTimeslotMode,
+    staffTimeslotNotes,
+    staffTimeslotOverrideAmount,
+    staffTimeslotUserId,
+  ]);
+
+  const handleManagerSelectionActionClick = useCallback(() => {
+    if (managerSelectionMode === 'rental') {
+      handleAddRentalSlotClick();
+      return;
+    }
+    openStaffTimeslotModal(managerSelectionMode);
+  }, [handleAddRentalSlotClick, managerSelectionMode, openStaffTimeslotModal]);
+
+  const openStaffOccurrenceAssignmentModal = useCallback((item: FacilityCalendarFeedItem, start: Date, end: Date) => {
+    if (!canManage) {
+      return;
+    }
+    const assignment = item.source as StaffScheduleAssignment | undefined;
+    if (!assignment?.id) {
+      notifications.show({ color: 'red', message: 'Unable to resolve this staff assignment.' });
+      return;
+    }
+    if (assignment.parentAssignmentId) {
+      notifications.show({ color: 'yellow', message: 'Editing assigned coverage is not available yet.' });
+      return;
+    }
+    if (assignment.userId || assignment.staffMemberId) {
+      notifications.show({ color: 'yellow', message: 'This parent shift is already assigned. Per-occurrence swaps are not enabled yet.' });
+      return;
+    }
+    if (!item.fieldId) {
+      notifications.show({ color: 'red', message: 'Assigning coverage from the calendar requires a resource.' });
+      return;
+    }
+    setSelection({ fieldIds: [item.fieldId], start, end });
+    setCalendarDate(new Date(start));
+    setStaffTimeslotParentAssignment(assignment);
+    setStaffTimeslotMode(item.type === 'official_assignment' ? 'official_assignment' : 'staff_assignment');
+    setStaffTimeslotUserId(null);
+    setStaffTimeslotOverrideAmount('');
+    setStaffTimeslotNotes('');
+    setStaffTimeslotRepeating(false);
+    setStaffTimeslotRepeatDays([mondayDayOf(start)]);
+    setStaffTimeslotRepeatEndDate(null);
+    setStaffTimeslotError(null);
+    setStaffTimeslotModalOpen(true);
+    if (!staffScheduleLoaded) {
+      void loadStaffSchedule();
+    }
+  }, [canManage, loadStaffSchedule, staffScheduleLoaded]);
 
   const handleSelectCalendarEvent = useCallback((event: any) => {
     if (!canManage) return;
-    if (!event || event.metaType !== 'rental') return;
+    if (!event) return;
+    if (
+      event.metaType === 'facility-feed'
+      && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment')
+      && event.resource
+      && event.start
+      && event.end
+    ) {
+      openStaffOccurrenceAssignmentModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
+      return;
+    }
+    if (event.metaType !== 'rental') return;
 
     const slot = event.resource as TimeSlot | undefined;
     if (!slot?.$id) return;
@@ -3173,7 +3661,7 @@ export default function FieldsTabContent({
     setEditingRentalSlot(slot);
     setRentalDraftRange(null);
     setCreateRentalOpen(true);
-  }, [canManage, fields, selectedField]);
+  }, [canManage, fields, openStaffOccurrenceAssignmentModal, selectedField]);
 
   const CalendarEvent: any = ({ event }: any) => {
     const normalizedFieldName = typeof event?.fieldName === 'string' ? event.fieldName.trim() : '';
@@ -3635,7 +4123,9 @@ export default function FieldsTabContent({
                 </Stack>
                 <Stack gap="sm" className="min-w-0">
                   <Text size="sm" c="dimmed">
-                    Click a time slot to move the draft block, drag it to adjust, then add a rental slot.
+                    {managerSelectionMode === 'rental'
+                      ? 'Click a time slot to move the draft block, drag it to adjust, then add a rental slot.'
+                      : 'Click a time slot to move the draft block, drag it to adjust, then apply a staff or official timeslot.'}
                     Slots are colored by resource so each selected resource stays visible across the week.
                   </Text>
                   {fieldCalendarNode}
@@ -3887,6 +4377,147 @@ export default function FieldsTabContent({
           </Group>
         </Stack>
       )}
+
+      <Modal
+        opened={staffTimeslotModalOpen}
+        onClose={() => {
+          if (staffTimeslotSubmitting) return;
+          setStaffTimeslotModalOpen(false);
+          setStaffTimeslotParentAssignment(null);
+          setStaffTimeslotError(null);
+        }}
+        title={isAssigningStaffOccurrence
+          ? (staffTimeslotMode === 'official_assignment' ? 'Assign Official Coverage' : 'Assign Staff Coverage')
+          : (staffTimeslotMode === 'official_assignment' ? 'Apply Official Timeslot' : 'Apply Staff Timeslot')}
+        centered
+      >
+        <Stack gap="sm">
+          {staffTimeslotError ? (
+            <Alert color="red" radius="md">
+              {staffTimeslotError}
+            </Alert>
+          ) : null}
+
+          <Stack gap={2}>
+            <Text size="sm" fw={700}>
+              {selectedFields.length > 1
+                ? `${selectedFields.length} selected resources`
+                : selectedField
+                  ? getFacilityScopedFieldDisplayName(selectedField)
+                  : 'Selected resource'}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {selection ? `${formatDisplayDateTime(selection.start)} - ${formatDisplayTime(selection.end)}` : 'Select a time range first.'}
+            </Text>
+          </Stack>
+
+          <Select
+            label={staffTimeslotMode === 'official_assignment' ? 'Official' : 'Staff member'}
+            description={isAssigningStaffOccurrence
+              ? 'Required for assigned coverage.'
+              : staffTimeslotMode === 'official_assignment'
+                ? 'Leave blank to create open official coverage.'
+                : 'Leave blank to create open staff coverage.'}
+            data={staffTimeslotUserOptions}
+            value={staffTimeslotUserId}
+            onChange={setStaffTimeslotUserId}
+            placeholder={isAssigningStaffOccurrence
+              ? (staffTimeslotMode === 'official_assignment' ? 'Select official' : 'Select staff member')
+              : (staffTimeslotMode === 'official_assignment' ? 'Open official timeslot' : 'Open staff timeslot')}
+            searchable={staffTimeslotUserOptions.length > 8}
+            disabled={staffScheduleLoading}
+            rightSection={staffScheduleLoading ? <Loader size="xs" /> : undefined}
+            clearable
+            required={isAssigningStaffOccurrence}
+          />
+
+          <NumberInput
+            label="Override rate"
+            description="Optional hourly override for this timeslot."
+            prefix="$"
+            decimalScale={2}
+            min={0}
+            value={staffTimeslotOverrideAmount}
+            onChange={setStaffTimeslotOverrideAmount}
+          />
+
+          {!isAssigningStaffOccurrence ? (
+            <>
+              <Checkbox
+                label="Repeat weekly"
+                description="Use the selected time window on one or more days each week."
+                checked={staffTimeslotRepeating}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  setStaffTimeslotRepeating(checked);
+                  if (checked && staffTimeslotRepeatDays.length === 0 && selection) {
+                    setStaffTimeslotRepeatDays([mondayDayOf(selection.start)]);
+                  }
+                }}
+              />
+
+              <Collapse in={staffTimeslotRepeating}>
+                <Stack gap="sm">
+                  <MultiSelect
+                    label="Repeat days"
+                    data={STAFF_TIMESLOT_REPEAT_DAY_OPTIONS}
+                    value={staffTimeslotRepeatDays.map((day) => String(day))}
+                    onChange={(values) => {
+                      setStaffTimeslotRepeatDays(Array.from(new Set(values
+                        .map((value) => Number(value))
+                        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)))
+                        .sort((a, b) => a - b));
+                    }}
+                    placeholder="Select days"
+                    required
+                  />
+                  <DatePickerInput
+                    label="Repeat until"
+                    description="Optional. Leave blank for an ongoing weekly schedule."
+                    placeholder="No end date"
+                    valueFormat="MM/DD/YYYY"
+                    value={staffTimeslotRepeatEndDate}
+                    onChange={(value) => setStaffTimeslotRepeatEndDate(coerceDatePickerValue(value))}
+                    minDate={selection ? startOfDay(selection.start) : undefined}
+                    clearable
+                    clearButtonProps={{ 'aria-label': 'Clear repeat end date' }}
+                    popoverProps={{ withinPortal: true }}
+                  />
+                </Stack>
+              </Collapse>
+            </>
+          ) : null}
+
+          <Textarea
+            label="Notes"
+            minRows={2}
+            autosize
+            value={staffTimeslotNotes}
+            onChange={(event) => setStaffTimeslotNotes(event.currentTarget.value)}
+          />
+
+          <Group justify="flex-end">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setStaffTimeslotModalOpen(false);
+                setStaffTimeslotParentAssignment(null);
+                setStaffTimeslotError(null);
+              }}
+              disabled={staffTimeslotSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitStaffTimeslot()}
+              loading={staffTimeslotSubmitting}
+              disabled={staffTimeslotSubmitting || !selection || !selectedFields.length}
+            >
+              {isAssigningStaffOccurrence ? 'Assign coverage' : 'Apply timeslot'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Modal
         opened={facilityModalOpen}

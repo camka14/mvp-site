@@ -49,6 +49,9 @@ const createClient = () => {
         },
       ]),
     },
+    staffScheduleAssignments: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     events: {
       findMany: jest.fn().mockResolvedValue([
         { id: 'event_1', start: new Date('2026-06-01T16:00:00.000Z') },
@@ -60,6 +63,15 @@ const createClient = () => {
       ]),
     },
     teams: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    facilities: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    fields: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    timeSlots: {
       findMany: jest.fn().mockResolvedValue([]),
     },
     staffMembers: {
@@ -198,6 +210,59 @@ describe('createDraftStaffPayRun', () => {
       status: 400,
       message: 'No unpaid staff labor was found for this pay period.',
     });
+  });
+
+  it('includes unpaid organization schedule assignments using staff rate fallback', async () => {
+    const client = createClient();
+    client.staffScheduleAssignments.findMany.mockResolvedValue([
+      {
+        id: 'schedule_labor_1',
+        organizationId: 'org_1',
+        staffMemberId: 'staff_1',
+        organizationRoleId: null,
+        userId: 'user_1',
+        assignmentKind: 'STAFF_SHIFT',
+        facilityId: 'facility_1',
+        fieldId: 'field_1',
+        timeSlotId: 'schedule_timeslot_1',
+        plannedStart: new Date('2026-06-03T16:00:00.000Z'),
+        plannedEnd: new Date('2026-06-03T17:30:00.000Z'),
+        plannedMinutes: 90,
+        status: 'PLANNED',
+      },
+    ]);
+    client.facilities.findMany.mockResolvedValue([{ id: 'facility_1', name: 'Main Facility' }]);
+    client.fields.findMany.mockResolvedValue([{ id: 'field_1', name: 'Court 1' }]);
+    client.timeSlots.findMany.mockResolvedValue([{
+      id: 'schedule_timeslot_1',
+      startDate: new Date('2026-06-03T16:00:00.000Z'),
+      endDate: new Date('2026-06-03T17:30:00.000Z'),
+      repeating: false,
+      daysOfWeek: [2],
+      startTimeMinutes: 960,
+      endTimeMinutes: 1050,
+    }]);
+
+    const payRun = await createDraftStaffPayRun({
+      organizationId: 'org_1',
+      periodStart: '2026-06-01T00:00:00.000Z',
+      periodEnd: '2026-06-30T23:59:59.999Z',
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(payRun.totalAmountCents).toBe(9500);
+    expect(payRun.itemCount).toBe(3);
+    expect(client.tx.staffPayRunItem.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventStaffAssignmentId: null,
+        staffScheduleAssignmentId: 'schedule_labor_1',
+        staffScheduleOccurrenceKey: 'schedule_labor_1:2026-06-03T16:00:00.000Z',
+        teamStaffLaborEntryId: null,
+        label: 'Alex Rivera - Court 1',
+        amountCents: 4500,
+        paidMinutes: 90,
+      }),
+    }));
   });
 });
 

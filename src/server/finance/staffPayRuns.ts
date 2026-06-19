@@ -189,11 +189,13 @@ export const createDraftStaffPayRun = async (
   }
 
   const [laborEntries, existingItems] = await Promise.all([
-    loadOrganizationStaffLaborEntries(input.organizationId, client),
+    loadOrganizationStaffLaborEntries(input.organizationId, client, { periodStart, periodEnd }),
     client.staffPayRunItem.findMany({
       where: { organizationId: input.organizationId },
       select: {
         eventStaffAssignmentId: true,
+        staffScheduleAssignmentId: true,
+        staffScheduleOccurrenceKey: true,
         teamStaffLaborEntryId: true,
       },
     }),
@@ -209,6 +211,11 @@ export const createDraftStaffPayRun = async (
       .map((item: any) => item.teamStaffLaborEntryId)
       .filter((value: unknown): value is string => typeof value === 'string' && Boolean(value)),
   );
+  const paidScheduleOccurrenceKeys = new Set(
+    existingItems
+      .map((item: any) => item.staffScheduleOccurrenceKey)
+      .filter((value: unknown): value is string => typeof value === 'string' && Boolean(value)),
+  );
 
   const itemInputs = laborEntries
     .filter((entry) => isEntryInPeriod(entry, periodStart, periodEnd))
@@ -218,6 +225,9 @@ export const createDraftStaffPayRun = async (
       }
       if (entry.sourceType === 'TEAM_STAFF_LABOR') {
         return !paidTeamLaborIds.has(entry.id);
+      }
+      if (entry.sourceType === 'STAFF_SCHEDULE_ASSIGNMENT') {
+        return Boolean(entry.staffScheduleOccurrenceKey) && !paidScheduleOccurrenceKeys.has(entry.staffScheduleOccurrenceKey);
       }
       return false;
     })
@@ -236,6 +246,8 @@ export const createDraftStaffPayRun = async (
         teamId: entry.teamId ?? null,
         eventTeamId: entry.eventTeamId ?? null,
         eventStaffAssignmentId: entry.sourceType === 'EVENT_STAFF_ASSIGNMENT' ? entry.id : null,
+        staffScheduleAssignmentId: entry.sourceType === 'STAFF_SCHEDULE_ASSIGNMENT' ? entry.staffScheduleAssignmentId ?? null : null,
+        staffScheduleOccurrenceKey: entry.sourceType === 'STAFF_SCHEDULE_ASSIGNMENT' ? entry.staffScheduleOccurrenceKey ?? null : null,
         teamStaffLaborEntryId: entry.sourceType === 'TEAM_STAFF_LABOR' ? entry.id : null,
         label: entry.label,
         wageType: entry.rate?.wageType ?? null,

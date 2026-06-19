@@ -108,6 +108,11 @@ export type StaffCompensationRates = Prisma.StaffCompensationRatesModel
  */
 export type EventStaffAssignments = Prisma.EventStaffAssignmentsModel
 /**
+ * Model StaffScheduleAssignments
+ *
+ */
+export type StaffScheduleAssignments = Prisma.StaffScheduleAssignmentsModel
+/**
  * Model TeamStaffLaborEntries
  *
  */

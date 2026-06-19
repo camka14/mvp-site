@@ -463,6 +463,23 @@ export type EnumStaffLaborStatusEnumWithAggregatesFilter<$PrismaModel = never> =
   _max?: Prisma.NestedEnumStaffLaborStatusEnumFilter<$PrismaModel>
 }
 
+export type EnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.StaffScheduleAssignmentKindEnum | Prisma.EnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel> | $Enums.StaffScheduleAssignmentKindEnum
+}
+
+export type EnumStaffScheduleAssignmentKindEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.StaffScheduleAssignmentKindEnum | Prisma.EnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumWithAggregatesFilter<$PrismaModel> | $Enums.StaffScheduleAssignmentKindEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel>
+}
+
 export type EnumFinancialLineItemScopeEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.FinancialLineItemScopeEnum | Prisma.EnumFinancialLineItemScopeEnumFieldRefInput<$PrismaModel>
   in?: $Enums.FinancialLineItemScopeEnum[] | Prisma.ListEnumFinancialLineItemScopeEnumFieldRefInput<$PrismaModel>
@@ -1623,6 +1640,23 @@ export type NestedEnumStaffLaborStatusEnumWithAggregatesFilter<$PrismaModel = ne
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumStaffLaborStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumStaffLaborStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.StaffScheduleAssignmentKindEnum | Prisma.EnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel> | $Enums.StaffScheduleAssignmentKindEnum
+}
+
+export type NestedEnumStaffScheduleAssignmentKindEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.StaffScheduleAssignmentKindEnum | Prisma.EnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.StaffScheduleAssignmentKindEnum[] | Prisma.ListEnumStaffScheduleAssignmentKindEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumWithAggregatesFilter<$PrismaModel> | $Enums.StaffScheduleAssignmentKindEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumStaffScheduleAssignmentKindEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumFinancialLineItemScopeEnumFilter<$PrismaModel = never> = {

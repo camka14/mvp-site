@@ -69,6 +69,7 @@ export const ModelName = {
   OrganizationRoleCompensationRates: 'OrganizationRoleCompensationRates',
   StaffCompensationRates: 'StaffCompensationRates',
   EventStaffAssignments: 'EventStaffAssignments',
+  StaffScheduleAssignments: 'StaffScheduleAssignments',
   TeamStaffLaborEntries: 'TeamStaffLaborEntries',
   FinancialLineItems: 'FinancialLineItems',
   StaffPayRun: 'StaffPayRun',
@@ -550,6 +551,36 @@ export const EventStaffAssignmentsScalarFieldEnum = {
 export type EventStaffAssignmentsScalarFieldEnum = (typeof EventStaffAssignmentsScalarFieldEnum)[keyof typeof EventStaffAssignmentsScalarFieldEnum]
 
 
+export const StaffScheduleAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  parentAssignmentId: 'parentAssignmentId',
+  staffMemberId: 'staffMemberId',
+  organizationRoleId: 'organizationRoleId',
+  userId: 'userId',
+  assignmentKind: 'assignmentKind',
+  facilityId: 'facilityId',
+  fieldId: 'fieldId',
+  timeSlotId: 'timeSlotId',
+  plannedStart: 'plannedStart',
+  plannedEnd: 'plannedEnd',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  plannedMinutes: 'plannedMinutes',
+  actualMinutes: 'actualMinutes',
+  rateOverrideType: 'rateOverrideType',
+  rateOverrideCents: 'rateOverrideCents',
+  status: 'status',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type StaffScheduleAssignmentsScalarFieldEnum = (typeof StaffScheduleAssignmentsScalarFieldEnum)[keyof typeof StaffScheduleAssignmentsScalarFieldEnum]
+
+
 export const TeamStaffLaborEntriesScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -648,6 +679,8 @@ export const StaffPayRunItemScalarFieldEnum = {
   teamId: 'teamId',
   eventTeamId: 'eventTeamId',
   eventStaffAssignmentId: 'eventStaffAssignmentId',
+  staffScheduleAssignmentId: 'staffScheduleAssignmentId',
+  staffScheduleOccurrenceKey: 'staffScheduleOccurrenceKey',
   teamStaffLaborEntryId: 'teamStaffLaborEntryId',
   label: 'label',
   description: 'description',
