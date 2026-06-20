@@ -29,6 +29,19 @@ export type StaffScheduleAssignmentInput = {
   actingUserId: string;
 };
 
+export type StaffScheduleAssignmentUpdateInput = {
+  organizationId: string;
+  assignmentId: string;
+  userId?: string | null;
+  facilityId?: string | null;
+  fieldId?: string | null;
+  rateOverrideType?: ScheduleWageType | string | null;
+  rateOverrideCents?: number | null;
+  notes?: string | null;
+  action?: 'UNASSIGN' | null;
+  actingUserId: string;
+};
+
 type NormalizedTimeSlot = {
   startDate: Date;
   endDate: Date | null;
@@ -481,7 +494,7 @@ export const listStaffScheduleAssignments = async (
   client: PrismaLike = prisma,
 ) => {
   const rows = await client.staffScheduleAssignments.findMany({
-    where: { organizationId },
+    where: { organizationId, status: { not: 'CANCELLED' } },
     orderBy: [{ plannedStart: 'asc' }, { createdAt: 'asc' }],
   });
   return hydrateAssignments(rows, client);
@@ -663,4 +676,209 @@ export const createStaffScheduleAssignment = async (
 
   const [hydrated] = await hydrateAssignments([assignment], client);
   return hydrated;
+};
+
+export const updateStaffScheduleAssignment = async (
+  input: StaffScheduleAssignmentUpdateInput,
+  client: PrismaLike = prisma,
+) => {
+  const organizationId = normalizeId(input.organizationId);
+  const assignmentId = normalizeId(input.assignmentId);
+  if (!organizationId || !assignmentId) {
+    throw new StaffScheduleAssignmentError(400, 'Assignment is required.');
+  }
+
+  const existing = await client.staffScheduleAssignments.findFirst({
+    where: {
+      id: assignmentId,
+      organizationId,
+      status: { not: 'CANCELLED' },
+    },
+  });
+  if (!existing) {
+    throw new StaffScheduleAssignmentError(404, 'Staff assignment not found.');
+  }
+
+  const isChildAssignment = Boolean(normalizeId(existing.parentAssignmentId));
+  if (input.action === 'UNASSIGN') {
+    if (!isChildAssignment) {
+      throw new StaffScheduleAssignmentError(400, 'Only child coverage can be unassigned from this action.');
+    }
+    const updated = await client.staffScheduleAssignments.update({
+      where: { id: assignmentId },
+      data: {
+        status: 'CANCELLED',
+        updatedBy: input.actingUserId,
+      },
+    });
+    const [hydrated] = await hydrateAssignments([updated], client);
+    return hydrated;
+  }
+
+  const hasUserIdField = Object.prototype.hasOwnProperty.call(input, 'userId');
+  const hasFacilityIdField = Object.prototype.hasOwnProperty.call(input, 'facilityId');
+  const hasFieldIdField = Object.prototype.hasOwnProperty.call(input, 'fieldId');
+  const hasResourceUpdate = hasFacilityIdField || hasFieldIdField;
+  const nextUserId = hasUserIdField ? normalizeId(input.userId) : normalizeId(existing.userId);
+  const requestedFacilityId = hasFacilityIdField ? normalizeId(input.facilityId) : normalizeId(existing.facilityId);
+  const nextFieldId = hasFieldIdField ? normalizeId(input.fieldId) : normalizeId(existing.fieldId);
+  if (isChildAssignment && hasUserIdField && nextUserId !== normalizeId(existing.userId)) {
+    throw new StaffScheduleAssignmentError(400, 'Child coverage can only be unassigned or have its pay override changed.');
+  }
+  if (isChildAssignment && (
+    (hasFacilityIdField && requestedFacilityId !== normalizeId(existing.facilityId))
+    || (hasFieldIdField && nextFieldId !== normalizeId(existing.fieldId))
+  )) {
+    throw new StaffScheduleAssignmentError(400, 'Child coverage inherits resource assignment from its parent.');
+  }
+
+  const rateOverrideType = normalizeWageType(input.rateOverrideType);
+  const rateOverrideCents = normalizeCents(input.rateOverrideCents);
+  if ((rateOverrideType && rateOverrideCents == null) || (!rateOverrideType && rateOverrideCents != null)) {
+    throw new StaffScheduleAssignmentError(400, 'Override rate requires both type and amount.');
+  }
+
+  let nextFacilityId = normalizeId(existing.facilityId);
+  if (hasResourceUpdate) {
+    const [field, requestedFacility] = await Promise.all([
+      nextFieldId
+        ? client.fields.findFirst({
+          where: { id: nextFieldId, organizationId },
+          select: { id: true, facilityId: true },
+        })
+        : Promise.resolve(null),
+      requestedFacilityId
+        ? client.facilities.findFirst({
+          where: { id: requestedFacilityId, organizationId },
+          select: { id: true },
+        })
+        : Promise.resolve(null),
+    ]);
+    if (nextFieldId && !field) {
+      throw new StaffScheduleAssignmentError(404, 'Resource not found.');
+    }
+    if (requestedFacilityId && !requestedFacility) {
+      throw new StaffScheduleAssignmentError(404, 'Facility not found.');
+    }
+    if (field?.facilityId && requestedFacilityId && field.facilityId !== requestedFacilityId) {
+      throw new StaffScheduleAssignmentError(400, 'Selected resource is not part of the selected facility.');
+    }
+    nextFacilityId = requestedFacilityId ?? field?.facilityId ?? null;
+    const resourceChanged = !isChildAssignment
+      && (nextFieldId !== normalizeId(existing.fieldId) || nextFacilityId !== normalizeId(existing.facilityId));
+    if (resourceChanged) {
+      const childCount = await client.staffScheduleAssignments.count({
+        where: {
+          organizationId,
+          parentAssignmentId: assignmentId,
+          status: { not: 'CANCELLED' },
+        },
+      });
+      if (childCount > 0) {
+        throw new StaffScheduleAssignmentError(400, 'Assignments with assigned child coverage cannot be reassigned yet.');
+      }
+    }
+  }
+
+  let staffMember: any = null;
+  if (!isChildAssignment && nextUserId) {
+    staffMember = await client.staffMembers.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId: nextUserId,
+        },
+      },
+      select: { id: true, userId: true, roleId: true, types: true },
+    });
+    if (!staffMember) {
+      throw new StaffScheduleAssignmentError(404, 'Staff member not found.');
+    }
+    if (
+      normalizeAssignmentKind(existing.assignmentKind) === 'OFFICIAL_SHIFT'
+      && (!Array.isArray(staffMember.types) || !staffMember.types.includes('OFFICIAL'))
+    ) {
+      throw new StaffScheduleAssignmentError(400, 'Official assignment requires an official staff member.');
+    }
+  }
+
+  const data: Record<string, unknown> = {
+    rateOverrideType,
+    rateOverrideCents,
+    updatedBy: input.actingUserId,
+  };
+  if (!isChildAssignment) {
+    data.userId = nextUserId;
+    data.staffMemberId = staffMember?.id ?? null;
+    data.organizationRoleId = staffMember?.roleId ?? null;
+    if (hasResourceUpdate) {
+      data.facilityId = nextFacilityId;
+      data.fieldId = nextFieldId;
+    }
+    data.notes = normalizeNotes(input.notes);
+  }
+
+  const updated = await client.$transaction(async (tx: PrismaLike) => {
+    if (!isChildAssignment && hasResourceUpdate && normalizeId(existing.timeSlotId)) {
+      await tx.timeSlots.update({
+        where: { id: existing.timeSlotId },
+        data: {
+          scheduledFieldId: nextFieldId,
+          scheduledFieldIds: nextFieldId ? [nextFieldId] : [],
+          updatedAt: new Date(),
+        },
+      });
+    }
+    return tx.staffScheduleAssignments.update({
+      where: { id: assignmentId },
+      data,
+    });
+  });
+  const [hydrated] = await hydrateAssignments([updated], client);
+  return hydrated;
+};
+
+export const deleteStaffScheduleAssignment = async (
+  input: {
+    organizationId: string;
+    assignmentId: string;
+    actingUserId: string;
+  },
+  client: PrismaLike = prisma,
+) => {
+  const organizationId = normalizeId(input.organizationId);
+  const assignmentId = normalizeId(input.assignmentId);
+  if (!organizationId || !assignmentId) {
+    throw new StaffScheduleAssignmentError(400, 'Assignment is required.');
+  }
+
+  const existing = await client.staffScheduleAssignments.findFirst({
+    where: {
+      id: assignmentId,
+      organizationId,
+      status: { not: 'CANCELLED' },
+    },
+  });
+  if (!existing) {
+    throw new StaffScheduleAssignmentError(404, 'Staff assignment not found.');
+  }
+  if (normalizeId(existing.parentAssignmentId)) {
+    throw new StaffScheduleAssignmentError(400, 'Child coverage cannot be deleted. Unassign the staff member instead.');
+  }
+
+  await client.staffScheduleAssignments.updateMany({
+    where: {
+      organizationId,
+      OR: [
+        { id: assignmentId },
+        { parentAssignmentId: assignmentId },
+      ],
+    },
+    data: {
+      status: 'CANCELLED',
+      updatedBy: input.actingUserId,
+    },
+  });
+
+  return { id: assignmentId, deleted: true };
 };

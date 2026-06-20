@@ -4,6 +4,8 @@ jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 
 import {
   createStaffScheduleAssignment,
+  deleteStaffScheduleAssignment,
+  updateStaffScheduleAssignment,
 } from '@/server/staff/scheduleAssignments';
 
 const baseStart = new Date(2026, 5, 22, 9, 0, 0, 0);
@@ -13,9 +15,18 @@ const createClient = () => {
   const tx = {
     timeSlots: {
       create: jest.fn().mockImplementation(async ({ data }) => ({ ...data, id: 'timeslot_1' })),
+      update: jest.fn().mockImplementation(async ({ where, data }) => ({ id: where.id, ...data })),
     },
     staffScheduleAssignments: {
       create: jest.fn().mockImplementation(async ({ data }) => ({ ...data, id: 'assignment_1' })),
+      update: jest.fn().mockImplementation(async ({ where, data }) => ({
+        id: where.id,
+        organizationId: 'org_1',
+        timeSlotId: 'timeslot_1',
+        assignmentKind: 'STAFF_SHIFT',
+        status: 'PLANNED',
+        ...data,
+      })),
     },
   };
   return {
@@ -41,6 +52,16 @@ const createClient = () => {
     staffScheduleAssignments: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      update: jest.fn().mockImplementation(async ({ where, data }) => ({
+        id: where.id,
+        organizationId: 'org_1',
+        timeSlotId: 'timeslot_1',
+        assignmentKind: 'STAFF_SHIFT',
+        status: 'PLANNED',
+        ...data,
+      })),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     timeSlots: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -367,5 +388,256 @@ describe('createStaffScheduleAssignment', () => {
       status: 400,
       message: 'Official assignment requires an official staff member.',
     });
+  });
+});
+
+describe('updateStaffScheduleAssignment', () => {
+  it('lets child coverage update only its pay override', async () => {
+    const client = createClient();
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    };
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(childAssignment);
+    client.staffScheduleAssignments.update.mockImplementation(async ({ data }) => ({
+      ...childAssignment,
+      ...data,
+    }));
+
+    const assignment = await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      rateOverrideType: 'HOURLY',
+      rateOverrideCents: 2750,
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.tx.staffScheduleAssignments.update).toHaveBeenCalledWith({
+      where: { id: 'child_1' },
+      data: {
+        rateOverrideType: 'HOURLY',
+        rateOverrideCents: 2750,
+        updatedBy: 'manager_1',
+      },
+    });
+    expect(assignment).toEqual(expect.objectContaining({
+      id: 'child_1',
+      rateOverrideCents: 2750,
+    }));
+  });
+
+  it('rejects changing the staff member on child coverage', async () => {
+    const client = createClient();
+    client.staffScheduleAssignments.findFirst.mockResolvedValue({
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    });
+
+    await expect(updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      userId: 'user_2',
+      rateOverrideType: null,
+      rateOverrideCents: null,
+      actingUserId: 'manager_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Child coverage can only be unassigned or have its pay override changed.',
+    });
+    expect(client.staffScheduleAssignments.update).not.toHaveBeenCalled();
+  });
+
+  it('unassigns child coverage by cancelling the child row', async () => {
+    const client = createClient();
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    };
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(childAssignment);
+    client.staffScheduleAssignments.update.mockImplementation(async ({ data }) => ({
+      ...childAssignment,
+      ...data,
+    }));
+
+    await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      action: 'UNASSIGN',
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.staffScheduleAssignments.update).toHaveBeenCalledWith({
+      where: { id: 'child_1' },
+      data: {
+        status: 'CANCELLED',
+        updatedBy: 'manager_1',
+      },
+    });
+  });
+
+  it('updates a parent assignment resource and its linked timeslot fields', async () => {
+    const client = createClient();
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_1',
+      fieldId: 'field_1',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    };
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(parentAssignment);
+    client.fields.findFirst.mockResolvedValue({
+      id: 'field_2',
+      facilityId: 'facility_1',
+    });
+    client.facilities.findFirst.mockResolvedValue({ id: 'facility_1' });
+    client.staffScheduleAssignments.count.mockResolvedValue(0);
+
+    const assignment = await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'parent_1',
+      facilityId: 'facility_1',
+      fieldId: 'field_2',
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.fields.findFirst).toHaveBeenCalledWith({
+      where: { id: 'field_2', organizationId: 'org_1' },
+      select: { id: true, facilityId: true },
+    });
+    expect(client.staffScheduleAssignments.count).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        parentAssignmentId: 'parent_1',
+        status: { not: 'CANCELLED' },
+      },
+    });
+    expect(client.tx.timeSlots.update).toHaveBeenCalledWith({
+      where: { id: 'timeslot_1' },
+      data: expect.objectContaining({
+        scheduledFieldId: 'field_2',
+        scheduledFieldIds: ['field_2'],
+      }),
+    });
+    expect(client.tx.staffScheduleAssignments.update).toHaveBeenCalledWith({
+      where: { id: 'parent_1' },
+      data: expect.objectContaining({
+        facilityId: 'facility_1',
+        fieldId: 'field_2',
+        updatedBy: 'manager_1',
+      }),
+    });
+    expect(assignment).toEqual(expect.objectContaining({
+      id: 'parent_1',
+      fieldId: 'field_2',
+      facilityId: 'facility_1',
+    }));
+  });
+
+  it('rejects changing resources on child coverage', async () => {
+    const client = createClient();
+    client.staffScheduleAssignments.findFirst.mockResolvedValue({
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_1',
+      fieldId: 'field_1',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    });
+
+    await expect(updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      facilityId: 'facility_1',
+      fieldId: 'field_2',
+      actingUserId: 'manager_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Child coverage inherits resource assignment from its parent.',
+    });
+    expect(client.tx.staffScheduleAssignments.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteStaffScheduleAssignment', () => {
+  it('rejects deleting child coverage', async () => {
+    const client = createClient();
+    client.staffScheduleAssignments.findFirst.mockResolvedValue({
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    });
+
+    await expect(deleteStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      actingUserId: 'manager_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Child coverage cannot be deleted. Unassign the staff member instead.',
+    });
+    expect(client.staffScheduleAssignments.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cancels a parent assignment and its child coverage when deleted', async () => {
+    const client = createClient();
+    client.staffScheduleAssignments.findFirst.mockResolvedValue({
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    });
+
+    const result = await deleteStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'parent_1',
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.staffScheduleAssignments.updateMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        OR: [
+          { id: 'parent_1' },
+          { parentAssignmentId: 'parent_1' },
+        ],
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedBy: 'manager_1',
+      },
+    });
+    expect(result).toEqual({ id: 'parent_1', deleted: true });
   });
 });

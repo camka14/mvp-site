@@ -668,7 +668,6 @@ export default function RoleRosterManager({
   const managerViewOptions = useMemo(
     () => [
       { label: 'Staff', value: 'staff' },
-      { label: 'Schedule', value: 'schedule' },
       { label: 'Roles', value: 'roles' },
       ...(canManageCompensation ? [{ label: 'Compensation', value: 'compensation' }] : []),
     ],
@@ -756,12 +755,6 @@ export default function RoleRosterManager({
       void loadCompensationRates();
     }
   }, [loadCompensationRates, managerView]);
-
-  useEffect(() => {
-    if (managerView === 'schedule' && !scheduleLoaded) {
-      void loadScheduleAssignments();
-    }
-  }, [loadScheduleAssignments, managerView, scheduleLoaded]);
 
   useEffect(() => {
     const sourceRoleByUserId = new Map(rosterEntries.map((entry) => [entry.userId, entry.roleId ?? null] as const));
@@ -2494,9 +2487,7 @@ export default function RoleRosterManager({
           ? renderStaffView()
           : managerView === 'roles'
             ? renderRolesView()
-            : managerView === 'schedule'
-              ? renderScheduleView()
-              : renderCompensationView()}
+            : renderCompensationView()}
       </Stack>
     </Paper>
   );
