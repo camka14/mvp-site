@@ -12,6 +12,7 @@ const updateRentalSlotMock = jest.fn();
 const getNextRentalOccurrenceMock = jest.fn();
 const createFacilityMock = jest.fn();
 const updateFacilityMock = jest.fn();
+const createRentalSlotMock = jest.fn();
 const apiRequestMock = jest.fn();
 const mockShowNotification = jest.fn();
 let mockCreateRentalSlotModalProps: any = null;
@@ -194,6 +195,7 @@ jest.mock('@/lib/fieldService', () => ({
   fieldService: {
     getFieldEventsMatches: (...args: any[]) => getFieldEventsMatchesMock(...args),
     updateField: (...args: any[]) => updateFieldMock(...args),
+    createRentalSlot: (...args: any[]) => createRentalSlotMock(...args),
     updateRentalSlot: (...args: any[]) => updateRentalSlotMock(...args),
   },
 }));
@@ -433,13 +435,18 @@ const originalRentalRangeText = [
 ].join('|');
 
 const draggedRentalRangeText = [
-  new Date('2026-03-11T12:00:00.000Z').toISOString(),
-  new Date('2026-03-11T13:00:00.000Z').toISOString(),
+  new Date('2026-03-10T12:00:00.000Z').toISOString(),
+  new Date('2026-03-10T13:00:00.000Z').toISOString(),
 ].join('|');
 
 describe('FieldsTabContent calendar navigation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.clear();
+    window.localStorage.setItem(
+      'bracketiq.facilities.managerResourceSelection:org_test',
+      JSON.stringify({ fieldIds: ['field_main'], updatedAt: '2026-06-20T00:00:00.000Z' }),
+    );
     mockCreateRentalSlotModalProps = null;
     getOrganizationByIdMock.mockResolvedValue(null);
     getOrganizationsByOwnerMock.mockResolvedValue([]);
@@ -449,6 +456,13 @@ describe('FieldsTabContent calendar navigation', () => {
         rentalSlots: [{ ...slot }],
       },
       slot,
+    }));
+    createRentalSlotMock.mockImplementation(async (field, slot) => ({
+      field: {
+        ...field,
+        rentalSlots: [{ ...slot, $id: 'created_slot_1' }],
+      },
+      slot: { ...slot, $id: 'created_slot_1' },
     }));
     apiRequestMock.mockImplementation(async (path: string) => {
       if (path.endsWith('/staff/schedule')) {
@@ -825,6 +839,59 @@ describe('FieldsTabContent calendar navigation', () => {
       .filter((element) => element.tagName === 'INPUT')
       .find((element) => Boolean(bookingAccountSelect.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
     expect(laterFacilitySelect).toBeDefined();
+  });
+
+  it('defaults manager facility resource selection to every resource when nothing is saved locally', async () => {
+    window.localStorage.removeItem('bracketiq.facilities.managerResourceSelection:org_test');
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByLabelText('Facility resources')).getByText('2 of 2 selected')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const storedSelection = JSON.parse(
+        window.localStorage.getItem('bracketiq.facilities.managerResourceSelection:org_test') ?? '{}',
+      );
+      expect(storedSelection.fieldIds).toEqual(['field_main', 'field_2']);
+    });
+  });
+
+  it('restores manager facility resource selection from local storage', async () => {
+    window.localStorage.setItem(
+      'bracketiq.facilities.managerResourceSelection:org_test',
+      JSON.stringify({ fieldIds: ['field_2'], updatedAt: '2026-06-20T00:00:00.000Z' }),
+    );
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByLabelText('Facility resources')).getByText('1 of 2 selected')).toBeInTheDocument();
+    });
+    expect(JSON.parse(
+      window.localStorage.getItem('bracketiq.facilities.managerResourceSelection:org_test') ?? '{}',
+    ).fieldIds).toEqual(['field_2']);
   });
 
   it('passes facility context through public rental checkout', async () => {
@@ -2058,6 +2125,101 @@ describe('FieldsTabContent calendar navigation', () => {
     });
   });
 
+  it('moves an assigned repeating staff assignment without replacing its repeat days', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_repeating_move_1',
+      parentAssignmentId: null,
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-03T15:00:00.000Z',
+        endDate: '2026-12-31T23:59:59.999Z',
+        repeating: true,
+        daysOfWeek: [1, 2, 3],
+        startTimeMinutes: 900,
+        endTimeMinutes: 960,
+      },
+      plannedStart: '2026-03-03T15:00:00.000Z',
+      plannedEnd: '2026-03-03T16:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (path.endsWith('/staff/schedule/staff_parent_repeating_move_1') && options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...parentAssignment,
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Drag Sam Staff' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(screen.getAllByRole('button', { name: 'Drag Sam Staff' })[0]);
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    const movedStart = new Date('2026-03-11T12:00:00.000Z');
+    const movedEnd = new Date('2026-03-11T13:00:00.000Z');
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/organizations/org_test/staff/schedule/staff_parent_repeating_move_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({
+            fieldId: 'field_main',
+            facilityId: 'facility_river_city',
+            timeSlot: expect.objectContaining({
+              startDate: '2026-03-03T15:00:00.000Z',
+              endDate: '2026-12-31T23:59:59.999Z',
+              repeating: true,
+              daysOfWeek: [1, 2, 3],
+              startTimeMinutes: movedStart.getHours() * 60 + movedStart.getMinutes(),
+              endTimeMinutes: movedEnd.getHours() * 60 + movedEnd.getMinutes(),
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
   it('shortens all child coverage when resizing an open repeating parent shorter', async () => {
     const rentalDate = new Date('2026-03-10T10:00:00.000Z');
     getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
@@ -2869,7 +3031,292 @@ describe('FieldsTabContent calendar navigation', () => {
 	    }));
 	  });
 
-	  it('stages rental slot modal edits until managers save calendar changes', async () => {
+  it('resizes a repeating rental draft without changing the draft series date range', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const organization = buildOrganizationWithFacilityRentalFields();
+    const field = organization.fields[0] as any;
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={organization}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(within(screen.getByLabelText('Facility resources')).getByRole('button', { name: 'All' }));
+    const rentalCreateCard = screen.getByText('Rental slot').closest('.facility-calendar-create-card');
+    expect(rentalCreateCard).not.toBeNull();
+    await waitFor(() => {
+      expect(rentalCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+    });
+
+    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+        pointerType: { value: 'mouse' },
+      });
+      fireEvent(rentalCreateCard!, event);
+    };
+    dispatchPointer('pointerdown', 10, 10);
+    dispatchPointer('pointermove', 150, 200);
+    dispatchPointer('pointerup', 150, 200);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Open rental slot' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Select Open rental slot' })[0]);
+    expect(mockCreateRentalSlotModalProps?.onSubmitOverride).toEqual(expect.any(Function));
+
+    const draftRentalPayload = {
+      dayOfWeek: 1,
+      daysOfWeek: [1, 2, 3],
+      repeating: true,
+      startDate: '2026-03-03T09:00:00.000Z',
+      endDate: '2026-12-31T23:59:59.999Z',
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      price: 27500,
+      requiredTemplateIds: [],
+      hostRequiredTemplateIds: [],
+      taxHandling: 'STRIPE_TAX',
+    };
+    await act(async () => {
+      await mockCreateRentalSlotModalProps.onSubmitOverride({
+        field,
+        targetFields: [field],
+        payload: draftRentalPayload,
+        updatePayload: draftRentalPayload,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Resize Open rental slot' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Resize Open rental slot' })[0]);
+    await user.click(await screen.findByRole('button', { name: /Save changes/ }));
+
+    const resizedStart = new Date('2026-03-11T12:00:00.000Z');
+    const resizedEnd = new Date('2026-03-11T14:00:00.000Z');
+    await waitFor(() => {
+      expect(createRentalSlotMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createRentalSlotMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      startDate: '2026-03-03T09:00:00.000Z',
+      endDate: '2026-12-31T23:59:59.999Z',
+      repeating: true,
+      daysOfWeek: [1, 2, 3],
+      startTimeMinutes: resizedStart.getHours() * 60 + resizedStart.getMinutes(),
+      endTimeMinutes: resizedEnd.getHours() * 60 + resizedEnd.getMinutes(),
+    }));
+  });
+
+  it('resizes a repeating staff draft without changing the draft series date range', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return { assignments: [], staffMembers: [] };
+      }
+      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+        return {
+          assignment: {
+            id: 'created_staff_assignment',
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    const staffCreateCard = screen.getByText('Staff shift').closest('.facility-calendar-create-card');
+    expect(staffCreateCard).not.toBeNull();
+    await waitFor(() => {
+      expect(staffCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+    });
+
+    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+        pointerType: { value: 'mouse' },
+      });
+      fireEvent(staffCreateCard!, event);
+    };
+    dispatchPointer('pointerdown', 10, 10);
+    dispatchPointer('pointermove', 150, 200);
+    dispatchPointer('pointerup', 150, 200);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Select Open staff shift' })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: 'Select Open staff shift' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('Repeat weekly'));
+    await user.click(within(dialog).getByPlaceholderText('Select days'));
+    fireEvent.click(screen.getByRole('option', { name: 'Tuesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Wednesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Thursday', hidden: true }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Resize Open staff shift' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Resize Open staff shift' })[0]);
+    await user.click(await screen.findByRole('button', { name: /Save changes/ }));
+
+    const resizedStart = new Date('2026-03-11T12:00:00.000Z');
+    const resizedEnd = new Date('2026-03-11T14:00:00.000Z');
+    await waitFor(() => {
+      expect(apiRequestMock.mock.calls.filter(([path, options]) => (
+        String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+      ))).toHaveLength(1);
+    });
+    const staffCreateCall = apiRequestMock.mock.calls.find(([path, options]) => (
+      String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+    ));
+    expect(staffCreateCall?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+      repeating: true,
+      daysOfWeek: expect.arrayContaining([1, 2, 3]),
+      startTimeMinutes: resizedStart.getHours() * 60 + resizedStart.getMinutes(),
+      endTimeMinutes: resizedEnd.getHours() * 60 + resizedEnd.getMinutes(),
+    }));
+    expect(staffCreateCall?.[1]?.body?.timeSlot?.startDate).not.toBe(resizedStart.toISOString());
+  });
+
+  it('moves a repeating staff draft without replacing its repeat days', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return { assignments: [], staffMembers: [] };
+      }
+      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+        return {
+          assignment: {
+            id: 'created_staff_assignment',
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    const staffCreateCard = screen.getByText('Staff shift').closest('.facility-calendar-create-card');
+    expect(staffCreateCard).not.toBeNull();
+    await waitFor(() => {
+      expect(staffCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+    });
+
+    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+        pointerType: { value: 'mouse' },
+      });
+      fireEvent(staffCreateCard!, event);
+    };
+    dispatchPointer('pointerdown', 10, 10);
+    dispatchPointer('pointermove', 150, 200);
+    dispatchPointer('pointerup', 150, 200);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Select Open staff shift' })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: 'Select Open staff shift' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('Repeat weekly'));
+    await user.click(within(dialog).getByPlaceholderText('Select days'));
+    fireEvent.click(screen.getByRole('option', { name: 'Tuesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Wednesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Thursday', hidden: true }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Drag Open staff shift' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Drag Open staff shift' })[0]);
+    await user.click(await screen.findByRole('button', { name: /Save changes/ }));
+
+    const movedStart = new Date('2026-03-11T12:00:00.000Z');
+    const movedEnd = new Date('2026-03-11T13:00:00.000Z');
+    await waitFor(() => {
+      expect(apiRequestMock.mock.calls.filter(([path, options]) => (
+        String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+      ))).toHaveLength(1);
+    });
+    const staffCreateCall = apiRequestMock.mock.calls.find(([path, options]) => (
+      String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+    ));
+    expect(staffCreateCall?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+      repeating: true,
+      daysOfWeek: expect.arrayContaining([1, 2, 3]),
+      startTimeMinutes: movedStart.getHours() * 60 + movedStart.getMinutes(),
+      endTimeMinutes: movedEnd.getHours() * 60 + movedEnd.getMinutes(),
+    }));
+    expect(staffCreateCall?.[1]?.body?.timeSlot?.startDate).not.toBe(movedStart.toISOString());
+  });
+
+  it('stages rental slot modal edits until managers save calendar changes', async () => {
     const rentalDate = new Date('2026-03-10T10:00:00.000Z');
     getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
@@ -3009,8 +3456,8 @@ describe('FieldsTabContent calendar navigation', () => {
     const expectedEndMinutes = expectedEnd.getHours() * 60 + expectedEnd.getMinutes();
     expect(updateRentalSlotMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
       $id: 'slot_1',
-      dayOfWeek: 2,
-      daysOfWeek: [2],
+      dayOfWeek: 1,
+      daysOfWeek: [1],
       scheduledFieldId: 'field_main',
       scheduledFieldIds: ['field_main'],
       startDate: '2026-01-01T00:00:00.000Z',
