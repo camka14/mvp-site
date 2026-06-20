@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, PointerEventHandler, ReactNode } from 'react';
+import type { CSSProperties, MouseEventHandler, PointerEventHandler, ReactNode } from 'react';
 
 import {
   getEntityColorPair,
@@ -28,6 +28,7 @@ type SharedCalendarEventProps = {
   style?: CSSProperties;
   dataAttributes?: Record<string, string | number | undefined>;
   onClick?: () => void;
+  onMouseDown?: MouseEventHandler<HTMLDivElement>;
   onPointerDown?: PointerEventHandler<HTMLDivElement>;
   onPointerMove?: PointerEventHandler<HTMLDivElement>;
   onPointerUp?: PointerEventHandler<HTMLDivElement>;
@@ -70,6 +71,7 @@ export default function SharedCalendarEvent({
   style,
   dataAttributes,
   onClick,
+  onMouseDown,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -134,6 +136,7 @@ export default function SharedCalendarEvent({
       {...dataAttributes}
       title={tooltipLabel}
       onClick={onClick}
+      onMouseDown={onMouseDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

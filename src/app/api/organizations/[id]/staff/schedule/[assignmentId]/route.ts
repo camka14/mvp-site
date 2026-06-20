@@ -12,6 +12,16 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const timeSlotSchema = z.object({
+  startDate: z.union([z.string(), z.date()]),
+  endDate: z.union([z.string(), z.date()]).nullable().optional(),
+  repeating: z.boolean().optional().nullable(),
+  daysOfWeek: z.array(z.coerce.number().int().min(0).max(6)).optional().nullable(),
+  startTimeMinutes: z.coerce.number().int().min(0).max(1440).optional().nullable(),
+  endTimeMinutes: z.coerce.number().int().min(0).max(1440).optional().nullable(),
+  timeZone: z.string().trim().optional().nullable(),
+}).strict();
+
 const updateAssignmentSchema = z.object({
   userId: z.string().trim().min(1).optional().nullable(),
   facilityId: z.string().trim().min(1).optional().nullable(),
@@ -19,6 +29,7 @@ const updateAssignmentSchema = z.object({
   rateOverrideType: z.enum(['HOURLY', 'SALARY', 'FLAT_PER_EVENT']).optional().nullable(),
   rateOverrideCents: z.coerce.number().int().min(0).optional().nullable(),
   notes: z.string().trim().max(1000).optional().nullable(),
+  timeSlot: timeSlotSchema.optional().nullable(),
   action: z.enum(['UNASSIGN']).optional().nullable(),
 }).strict();
 

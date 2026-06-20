@@ -59,7 +59,7 @@ import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/
 import SharedCalendarEvent, { type SharedCalendarEventVariant } from '@/components/calendar/SharedCalendarEvent';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
-import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
+import CreateRentalSlotModal, { type CreateRentalSlotModalSubmitPayload } from '@/components/ui/CreateRentalSlotModal';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 
 type SelectionState = {
@@ -70,34 +70,106 @@ type SelectionState = {
 
 type ManagerCalendarSelectionMode = 'rental' | 'staff_assignment' | 'official_assignment';
 
+type ManagerCalendarDraftRentalOptions = {
+  repeating?: boolean;
+  dayOfWeek?: NonNullable<TimeSlot['dayOfWeek']>;
+  daysOfWeek?: number[];
+  startDate?: string;
+  endDate?: string | null;
+  startTimeMinutes?: number | null;
+  endTimeMinutes?: number | null;
+  price?: number;
+  requiredTemplateIds?: string[];
+  hostRequiredTemplateIds?: string[];
+};
+
+type ManagerCalendarDraftStaffOptions = {
+  userId?: string | null;
+  userName?: string | null;
+  parentDraftId?: string | null;
+  rateOverrideCents?: number | null;
+  notes?: string;
+  repeating?: boolean;
+  daysOfWeek?: number[];
+  repeatEndDate?: string | null;
+};
+
 type ManagerCalendarDraft = {
   id: string;
   mode: ManagerCalendarSelectionMode;
   fieldIds: string[];
   start: Date;
   end: Date;
+  rental?: ManagerCalendarDraftRentalOptions;
+  staff?: ManagerCalendarDraftStaffOptions;
 };
 
 type ManagerRentalSlotPendingUpdate = {
   key: string;
   fieldId: string;
   slotId: string;
-  slot: RentalSlotDragUpdate;
-};
+} & (
+  | { action: 'update'; slot: RentalSlotDragUpdate }
+  | { action: 'delete' }
+);
 
 type ManagerStaffAssignmentPendingOverride =
+  | { action: 'create'; assignment: StaffScheduleAssignment }
   | { action: 'update'; assignment: StaffScheduleAssignment }
   | { action: 'unassign'; assignmentId: string }
   | { action: 'delete'; assignmentId: string };
 
+type ManagerStaffAssignmentPendingOverrideBatch = Record<string, {
+  previous: ManagerStaffAssignmentPendingOverride | null;
+  next: ManagerStaffAssignmentPendingOverride;
+}>;
+
 type ManagerCalendarPendingChange =
   | { id: string; type: 'create_draft'; label: string; draft: ManagerCalendarDraft }
   | { id: string; type: 'draft_update'; label: string; draftId: string; previous: ManagerCalendarDraft; next: ManagerCalendarDraft }
+  | { id: string; type: 'draft_scope'; label: string; draftId: string; previous: ManagerCalendarDraft; parentNext: ManagerCalendarDraft; childDraft: ManagerCalendarDraft }
   | { id: string; type: 'rental_update'; label: string; key: string; previous: ManagerRentalSlotPendingUpdate | null; next: ManagerRentalSlotPendingUpdate }
-  | { id: string; type: 'staff_override'; label: string; assignmentId: string; previous: ManagerStaffAssignmentPendingOverride | null; next: ManagerStaffAssignmentPendingOverride };
+  | { id: string; type: 'staff_override'; label: string; assignmentId: string; previous: ManagerStaffAssignmentPendingOverride | null; next: ManagerStaffAssignmentPendingOverride }
+  | { id: string; type: 'staff_override_batch'; label: string; changes: ManagerStaffAssignmentPendingOverrideBatch };
+
+type BuildStaffAssignmentCalendarRangeOptions = {
+  preserveRepeatingPattern?: boolean;
+};
+
+type OpenStaffDeleteScope = 'following' | 'all';
+
+type OpenStaffDeleteConfirmationState = {
+  assignmentId: string;
+  occurrenceStart: string;
+  occurrenceEnd: string;
+  scope: OpenStaffDeleteScope;
+};
+
+type StaffAssignmentScopePromptState =
+  | {
+      source: 'assignment';
+      parentAssignment: StaffScheduleAssignment;
+      parentOverride: ManagerStaffAssignmentPendingOverride;
+      childOverride: ManagerStaffAssignmentPendingOverride;
+      staffName: string;
+      occurrenceLabel: string;
+      kindLabel: 'staff' | 'official';
+    }
+  | {
+      source: 'draft';
+      draftId: string;
+      previousDraft: ManagerCalendarDraft;
+      allDraft: ManagerCalendarDraft;
+      parentDraft: ManagerCalendarDraft;
+      childDraft: ManagerCalendarDraft;
+      staffName: string;
+      occurrenceLabel: string;
+      kindLabel: 'staff' | 'official';
+    };
 
 type ManagerDraftDragState = {
   draftId: string;
+  draft: ManagerCalendarDraft;
   fieldIds: string[];
   durationMs: number;
   startPoint: { clientX: number; clientY: number };
@@ -111,7 +183,12 @@ type SelectionCalendarEntry = {
   start: Date;
   end: Date;
   resourceId: string;
-  resource: { type: 'selection'; slotKey?: string; mode?: ManagerCalendarSelectionMode };
+  resource: {
+    type: 'selection';
+    slotKey?: string;
+    mode?: ManagerCalendarSelectionMode;
+    userId?: string | null;
+  };
   metaType: 'selection';
   selectionMode?: ManagerCalendarSelectionMode;
   fieldName: string;
@@ -136,14 +213,15 @@ const getCalendarEventVariant = (event: CalendarEventData | null | undefined): S
     return 'default';
   }
   if (event.metaType === 'selection') {
+    const selectionUserId = event.resource?.userId ?? null;
     if (event.selectionMode === 'rental' || event.resource?.mode === 'rental') {
       return 'availability';
     }
     if (event.selectionMode === 'official_assignment' || event.resource?.mode === 'official_assignment') {
-      return 'official-open';
+      return selectionUserId ? 'official-assigned' : 'official-open';
     }
     if (event.selectionMode === 'staff_assignment' || event.resource?.mode === 'staff_assignment') {
-      return 'staff-open';
+      return selectionUserId ? 'staff-assigned' : 'staff-open';
     }
     return event.selectionMode || event.resource?.mode ? 'default' : 'selection';
   }
@@ -255,9 +333,11 @@ type StaffScheduleTimeSlot = {
   startDate: string;
   endDate?: string | null;
   repeating: boolean;
+  dayOfWeek?: number | null;
   daysOfWeek?: number[] | null;
   startTimeMinutes?: number | null;
   endTimeMinutes?: number | null;
+  timeZone?: string | null;
 };
 
 type StaffScheduleAssignment = {
@@ -300,6 +380,8 @@ const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
 const SLOT_STEP_MINUTES = 30;
 const MANAGER_CARD_DRAG_THRESHOLD_PX = 6;
+const OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT = 3;
+const OPEN_STAFF_DELETE_CHILD_ROW_HEIGHT = 54;
 
 const hasMovedPastDragThreshold = (
   startPoint: { clientX: number; clientY: number },
@@ -332,6 +414,94 @@ const dollarsFromCents = (amountCents: number | null | undefined): string => {
     return '';
   }
   return (Number(amountCents) / 100).toFixed(2);
+};
+
+const serializeManagerCalendarDraft = (draft: ManagerCalendarDraft) => JSON.stringify({
+  ...draft,
+  fieldIds: normalizeFieldIds(draft.fieldIds),
+  start: new Date(draft.start).toISOString(),
+  end: new Date(draft.end).toISOString(),
+});
+
+const managerCalendarDraftsAreEqual = (
+  first: ManagerCalendarDraft,
+  second: ManagerCalendarDraft,
+) => serializeManagerCalendarDraft(first) === serializeManagerCalendarDraft(second);
+
+const buildStaffAssignmentWithCalendarRange = (
+  assignment: StaffScheduleAssignment,
+  start: Date,
+  end: Date,
+  options: BuildStaffAssignmentCalendarRangeOptions = {},
+): StaffScheduleAssignment | null => {
+  const nextStart = new Date(start);
+  const nextEnd = new Date(end);
+  if (
+    Number.isNaN(nextStart.getTime())
+    || Number.isNaN(nextEnd.getTime())
+    || nextEnd.getTime() <= nextStart.getTime()
+    || nextStart.toDateString() !== nextEnd.toDateString()
+  ) {
+    return null;
+  }
+
+  const dayOfWeek = mondayDayOf(nextStart);
+  const startTimeMinutes = nextStart.getHours() * 60 + nextStart.getMinutes();
+  const endTimeMinutes = nextEnd.getHours() * 60 + nextEnd.getMinutes();
+  const existingTimeSlot = assignment.timeSlot ?? null;
+  const repeating = Boolean(existingTimeSlot?.repeating);
+  const existingDaysOfWeek = Array.isArray(existingTimeSlot?.daysOfWeek) && existingTimeSlot.daysOfWeek.length
+    ? existingTimeSlot.daysOfWeek
+    : [dayOfWeek];
+  const nextDaysOfWeek = repeating && options.preserveRepeatingPattern
+    ? existingDaysOfWeek
+    : [dayOfWeek];
+  const plannedOccurrenceDate = repeating && options.preserveRepeatingPattern
+    ? alignDateToWeekday(toValidDate(existingTimeSlot?.startDate) ?? nextStart, nextDaysOfWeek[0] ?? dayOfWeek)
+    : nextStart;
+  const plannedStart = repeating && options.preserveRepeatingPattern
+    ? dateWithMinutes(plannedOccurrenceDate, startTimeMinutes)
+    : nextStart;
+  const plannedEnd = repeating && options.preserveRepeatingPattern
+    ? dateWithMinutes(plannedOccurrenceDate, endTimeMinutes)
+    : nextEnd;
+  const nextTimeSlot: StaffScheduleTimeSlot = {
+    startDate: repeating
+      ? (existingTimeSlot?.startDate ?? nextStart.toISOString())
+      : nextStart.toISOString(),
+    endDate: repeating
+      ? (existingTimeSlot?.endDate ?? nextEnd.toISOString())
+      : nextEnd.toISOString(),
+    repeating,
+    dayOfWeek: nextDaysOfWeek[0] ?? dayOfWeek,
+    daysOfWeek: nextDaysOfWeek,
+    startTimeMinutes,
+    endTimeMinutes,
+    timeZone: existingTimeSlot?.timeZone ?? null,
+  };
+
+  return {
+    ...assignment,
+    timeSlot: nextTimeSlot,
+    plannedStart: plannedStart.toISOString(),
+    plannedEnd: plannedEnd.toISOString(),
+    plannedMinutes: Math.max(0, Math.round((plannedEnd.getTime() - plannedStart.getTime()) / 60000)),
+  };
+};
+
+const buildStaffScheduleTimeSlotPayload = (timeSlot?: StaffScheduleTimeSlot | null) => {
+  if (!timeSlot) {
+    return undefined;
+  }
+  return {
+    startDate: timeSlot.startDate,
+    endDate: timeSlot.endDate ?? null,
+    repeating: Boolean(timeSlot.repeating),
+    daysOfWeek: Array.isArray(timeSlot.daysOfWeek) ? timeSlot.daysOfWeek : null,
+    startTimeMinutes: typeof timeSlot.startTimeMinutes === 'number' ? timeSlot.startTimeMinutes : null,
+    endTimeMinutes: typeof timeSlot.endTimeMinutes === 'number' ? timeSlot.endTimeMinutes : null,
+    timeZone: timeSlot.timeZone ?? null,
+  };
 };
 
 const getNextSelectableRentalStart = (reference: Date = new Date()): Date => {
@@ -710,6 +880,49 @@ const mergePublicRentalIntervals = (intervals: PublicRentalInterval[]): PublicRe
   });
 
   return merged;
+};
+
+const subtractIntervals = (
+  base: PublicRentalInterval,
+  blockers: PublicRentalInterval[],
+): PublicRentalInterval[] => {
+  const overlaps = mergePublicRentalIntervals(
+    blockers.flatMap((blocker) => {
+      if (!compareRanges(base.start, base.end, blocker.start, blocker.end)) {
+        return [];
+      }
+      const start = new Date(Math.max(base.start.getTime(), blocker.start.getTime()));
+      const end = new Date(Math.min(base.end.getTime(), blocker.end.getTime()));
+      return end.getTime() > start.getTime() ? [{ start, end }] : [];
+    }),
+  );
+
+  if (!overlaps.length) {
+    return [{ start: new Date(base.start.getTime()), end: new Date(base.end.getTime()) }];
+  }
+
+  const gaps: PublicRentalInterval[] = [];
+  let cursor = new Date(base.start.getTime());
+  overlaps.forEach((overlap) => {
+    if (overlap.start.getTime() > cursor.getTime()) {
+      gaps.push({
+        start: new Date(cursor.getTime()),
+        end: new Date(overlap.start.getTime()),
+      });
+    }
+    if (overlap.end.getTime() > cursor.getTime()) {
+      cursor = new Date(overlap.end.getTime());
+    }
+  });
+
+  if (cursor.getTime() < base.end.getTime()) {
+    gaps.push({
+      start: new Date(cursor.getTime()),
+      end: new Date(base.end.getTime()),
+    });
+  }
+
+  return gaps;
 };
 
 const buildPublicRentalCalendarEvents = (events: FieldCalendarEntry[]): FieldCalendarEntry[] => {
@@ -1135,6 +1348,275 @@ const dateWithMinutes = (date: Date, minutes: number): Date => {
   return next;
 };
 
+const getStaffAssignmentOccurrenceRangeForDate = (
+  assignment: StaffScheduleAssignment,
+  occurrenceDate: Date,
+): PublicRentalInterval | null => {
+  const timeSlot = assignment.timeSlot ?? null;
+  if (!timeSlot?.repeating) {
+    const start = toValidDate(assignment.plannedStart) ?? toValidDate(timeSlot?.startDate);
+    const end = toValidDate(assignment.plannedEnd) ?? toValidDate(timeSlot?.endDate);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+      return null;
+    }
+    return startOfDay(start).getTime() === startOfDay(occurrenceDate).getTime()
+      ? { start, end }
+      : null;
+  }
+
+  const scheduleStart = toValidDate(timeSlot.startDate);
+  if (!scheduleStart) {
+    return null;
+  }
+  const targetDay = startOfDay(occurrenceDate);
+  const scheduleEnd = toValidDate(timeSlot.endDate);
+  const days = Array.isArray(timeSlot.daysOfWeek) && timeSlot.daysOfWeek.length
+    ? timeSlot.daysOfWeek
+    : [mondayDayOf(scheduleStart)];
+  if (
+    !days.includes(mondayDayOf(targetDay))
+    || targetDay.getTime() < startOfDay(scheduleStart).getTime()
+    || (scheduleEnd && targetDay.getTime() > endOfDay(scheduleEnd).getTime())
+  ) {
+    return null;
+  }
+  const startMinutes = typeof timeSlot.startTimeMinutes === 'number'
+    ? timeSlot.startTimeMinutes
+    : scheduleStart.getHours() * 60 + scheduleStart.getMinutes();
+  const endMinutes = typeof timeSlot.endTimeMinutes === 'number'
+    ? timeSlot.endTimeMinutes
+    : startMinutes + Math.max(30, assignment.plannedMinutes ?? 60);
+  const start = dateWithMinutes(targetDay, startMinutes);
+  const end = dateWithMinutes(targetDay, endMinutes);
+  return end.getTime() > start.getTime() ? { start, end } : null;
+};
+
+const getStaffAssignmentPrimaryRange = (assignment: StaffScheduleAssignment): PublicRentalInterval | null => {
+  const timeSlot = assignment.timeSlot ?? null;
+  const start = toValidDate(assignment.plannedStart) ?? toValidDate(timeSlot?.startDate);
+  const end = toValidDate(assignment.plannedEnd) ?? toValidDate(timeSlot?.endDate);
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    return null;
+  }
+  return { start, end };
+};
+
+const staffAssignmentCanDeleteFollowing = (assignment: StaffScheduleAssignment): boolean => {
+  const timeSlot = assignment.timeSlot ?? null;
+  if (timeSlot?.repeating) {
+    return true;
+  }
+  const range = getStaffAssignmentPrimaryRange(assignment);
+  return Boolean(range && startOfDay(range.start).getTime() !== startOfDay(range.end).getTime());
+};
+
+const isOpenParentStaffScheduleAssignment = (assignment: StaffScheduleAssignment): boolean => (
+  !assignment.parentAssignmentId
+  && !assignment.userId
+  && !assignment.staffMemberId
+);
+
+const isOpenParentStaffScheduleSeries = (assignment: StaffScheduleAssignment): boolean => (
+  isOpenParentStaffScheduleAssignment(assignment)
+  && staffAssignmentCanDeleteFollowing(assignment)
+);
+
+const minutesFromCalendarDate = (date: Date): number => date.getHours() * 60 + date.getMinutes();
+
+const childStaffAssignmentTouchesDeleteScope = (
+  assignment: StaffScheduleAssignment,
+  occurrenceStart: Date,
+): boolean => {
+  const timeSlot = assignment.timeSlot ?? null;
+  if (timeSlot?.repeating) {
+    const scheduleEnd = toValidDate(timeSlot.endDate);
+    return !scheduleEnd || endOfDay(scheduleEnd).getTime() >= occurrenceStart.getTime();
+  }
+  const range = getStaffAssignmentPrimaryRange(assignment);
+  if (!range) {
+    return false;
+  }
+  return range.end.getTime() > occurrenceStart.getTime();
+};
+
+const buildChildStaffAssignmentClippedToParentResize = ({
+  assignment,
+  parentStartMinutes,
+  parentEndMinutes,
+  shrinkStart,
+  shrinkEnd,
+}: {
+  assignment: StaffScheduleAssignment;
+  parentStartMinutes: number;
+  parentEndMinutes: number;
+  shrinkStart: boolean;
+  shrinkEnd: boolean;
+}): ManagerStaffAssignmentPendingOverride | null => {
+  const range = getStaffAssignmentPrimaryRange(assignment);
+  if (!range) {
+    return null;
+  }
+
+  const targetDay = startOfDay(range.start);
+  let nextStart = range.start;
+  let nextEnd = range.end;
+  if (shrinkStart) {
+    const parentStart = dateWithMinutes(targetDay, parentStartMinutes);
+    if (nextStart.getTime() < parentStart.getTime()) {
+      nextStart = parentStart;
+    }
+  }
+  if (shrinkEnd) {
+    const parentEnd = dateWithMinutes(targetDay, parentEndMinutes);
+    if (nextEnd.getTime() > parentEnd.getTime()) {
+      nextEnd = parentEnd;
+    }
+  }
+
+  if (nextEnd.getTime() <= nextStart.getTime()) {
+    return {
+      action: 'unassign',
+      assignmentId: assignment.id,
+    };
+  }
+  if (nextStart.getTime() === range.start.getTime() && nextEnd.getTime() === range.end.getTime()) {
+    return null;
+  }
+
+  const nextAssignment = buildStaffAssignmentWithCalendarRange(assignment, nextStart, nextEnd, {
+    preserveRepeatingPattern: Boolean(assignment.timeSlot?.repeating),
+  });
+  return nextAssignment ? {
+    action: 'update',
+    assignment: nextAssignment,
+  } : null;
+};
+
+const buildOpenParentStaffSeriesResizeOverrides = ({
+  assignment,
+  children,
+  originalStart,
+  originalEnd,
+  nextStart,
+  nextEnd,
+}: {
+  assignment: StaffScheduleAssignment;
+  children: StaffScheduleAssignment[];
+  originalStart: Date;
+  originalEnd: Date;
+  nextStart: Date;
+  nextEnd: Date;
+}): Array<{ assignmentId: string; override: ManagerStaffAssignmentPendingOverride }> | null => {
+  const parentAssignment = buildStaffAssignmentWithCalendarRange(assignment, nextStart, nextEnd, {
+    preserveRepeatingPattern: true,
+  });
+  if (!parentAssignment) {
+    return null;
+  }
+
+  const originalStartMinutes = minutesFromCalendarDate(originalStart);
+  const originalEndMinutes = minutesFromCalendarDate(originalEnd);
+  const nextStartMinutes = minutesFromCalendarDate(nextStart);
+  const nextEndMinutes = minutesFromCalendarDate(nextEnd);
+  const shrinkStart = nextStartMinutes > originalStartMinutes;
+  const shrinkEnd = nextEndMinutes < originalEndMinutes;
+  const childOverrides = shrinkStart || shrinkEnd
+    ? children.flatMap((child) => {
+        const override = buildChildStaffAssignmentClippedToParentResize({
+          assignment: child,
+          parentStartMinutes: nextStartMinutes,
+          parentEndMinutes: nextEndMinutes,
+          shrinkStart,
+          shrinkEnd,
+        });
+        return override ? [{ assignmentId: child.id, override }] : [];
+      })
+    : [];
+
+  return [
+    ...childOverrides,
+    {
+      assignmentId: assignment.id,
+      override: {
+        action: 'update',
+        assignment: parentAssignment,
+      },
+    },
+  ];
+};
+
+const getPreviousStaffAssignmentOccurrenceRange = (
+  assignment: StaffScheduleAssignment,
+  beforeStart: Date,
+): PublicRentalInterval | null => {
+  const timeSlot = assignment.timeSlot ?? null;
+  if (!timeSlot?.repeating) {
+    return null;
+  }
+  const scheduleStart = toValidDate(timeSlot.startDate);
+  if (!scheduleStart) {
+    return null;
+  }
+  const scheduleEnd = toValidDate(timeSlot.endDate);
+  const days = Array.isArray(timeSlot.daysOfWeek) && timeSlot.daysOfWeek.length
+    ? timeSlot.daysOfWeek
+    : [mondayDayOf(scheduleStart)];
+  const startMinutes = typeof timeSlot.startTimeMinutes === 'number'
+    ? timeSlot.startTimeMinutes
+    : scheduleStart.getHours() * 60 + scheduleStart.getMinutes();
+  const endMinutes = typeof timeSlot.endTimeMinutes === 'number'
+    ? timeSlot.endTimeMinutes
+    : startMinutes + Math.max(30, assignment.plannedMinutes ?? 60);
+  if (endMinutes <= startMinutes) {
+    return null;
+  }
+
+  let cursor = startOfDay(beforeStart);
+  const scheduleStartDay = startOfDay(scheduleStart);
+  for (let attempts = 0; cursor.getTime() >= scheduleStartDay.getTime() && attempts < 3660; attempts += 1) {
+    if (
+      days.includes(mondayDayOf(cursor))
+      && (!scheduleEnd || cursor.getTime() <= endOfDay(scheduleEnd).getTime())
+    ) {
+      const start = dateWithMinutes(cursor, startMinutes);
+      const end = dateWithMinutes(cursor, endMinutes);
+      if (start.getTime() < beforeStart.getTime() && end.getTime() > start.getTime()) {
+        return { start, end };
+      }
+    }
+    const previous = new Date(cursor.getTime());
+    previous.setDate(previous.getDate() - 1);
+    cursor = previous;
+  }
+  return null;
+};
+
+const buildStaffAssignmentEndingAfterOccurrence = (
+  assignment: StaffScheduleAssignment,
+  occurrence: PublicRentalInterval,
+): StaffScheduleAssignment | null => {
+  const timeSlot = assignment.timeSlot ?? null;
+  if (!timeSlot?.repeating) {
+    return null;
+  }
+  return {
+    ...assignment,
+    timeSlot: {
+      ...timeSlot,
+      endDate: endOfDay(occurrence.start).toISOString(),
+    },
+    plannedEnd: occurrence.end.toISOString(),
+  };
+};
+
+const formatStaffAssignmentDeleteChildLabel = (assignment: StaffScheduleAssignment): string => {
+  const range = getStaffAssignmentPrimaryRange(assignment);
+  const name = assignment.userName || 'Assigned coverage';
+  const resource = assignment.fieldName ? ` • ${assignment.fieldName}` : '';
+  const time = range ? ` • ${formatDisplayDateTime(range.start)} - ${formatDisplayTime(range.end)}` : '';
+  return `${name}${resource}${time}`;
+};
+
 const buildStaffScheduleCalendarItems = ({
   assignments,
   fields,
@@ -1255,9 +1737,23 @@ const buildStaffScheduleCalendarItems = ({
     .filter((assignment) => !assignment.parentAssignmentId)
     .flatMap((assignment) => {
       const coveredRanges = coverageByParentId.get(assignment.id) ?? [];
-      return expandAssignment(assignment).filter((item) => !coveredRanges.some((covered) => (
-        covered.fieldId === item.fieldId && compareRanges(covered.start, covered.end, item.start, item.end)
-      )));
+      return expandAssignment(assignment).flatMap((item) => {
+        const relevantCoveredRanges = coveredRanges
+          .filter((covered) => (
+            covered.fieldId === item.fieldId
+            && compareRanges(covered.start, covered.end, item.start, item.end)
+          ))
+          .map((covered) => ({ start: covered.start, end: covered.end }));
+        if (!relevantCoveredRanges.length) {
+          return [item];
+        }
+        return subtractIntervals(item, relevantCoveredRanges).map((gap) => ({
+          ...item,
+          id: `${item.id}-open-gap-${gap.start.getTime()}-${gap.end.getTime()}`,
+          start: gap.start,
+          end: gap.end,
+        }));
+      });
     });
 
   return [...parentItems, ...childItems];
@@ -1288,6 +1784,84 @@ const resolveSelectionDateRange = (
   const endCandidate = minutesToDate(baseDay, endMinutes);
   const end = endCandidate > start ? endCandidate : new Date(start.getTime() + MIN_SELECTION_MS);
   return { start, end };
+};
+
+const buildManagerCalendarDraftOccurrences = (
+  draft: ManagerCalendarDraft,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Array<{ start: Date; end: Date }> => {
+  const start = new Date(draft.start);
+  const end = new Date(draft.end);
+  if (
+    Number.isNaN(start.getTime())
+    || Number.isNaN(end.getTime())
+    || end.getTime() <= start.getTime()
+  ) {
+    return [];
+  }
+
+  const rentalOptions = draft.mode === 'rental' ? draft.rental : null;
+  const staffOptions = draft.mode !== 'rental' ? draft.staff : null;
+  const repeating = draft.mode === 'rental'
+    ? Boolean(rentalOptions?.repeating)
+    : Boolean(staffOptions?.repeating);
+
+  if (!repeating) {
+    return compareRanges(start, end, rangeStart, rangeEnd) ? [{ start, end }] : [];
+  }
+
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const fallbackEndMinutes = end.getHours() * 60 + end.getMinutes();
+  const endMinutes = draft.mode === 'rental' && typeof rentalOptions?.endTimeMinutes === 'number'
+    ? rentalOptions.endTimeMinutes
+    : fallbackEndMinutes;
+  const effectiveStartMinutes = draft.mode === 'rental' && typeof rentalOptions?.startTimeMinutes === 'number'
+    ? rentalOptions.startTimeMinutes
+    : startMinutes;
+  if (endMinutes <= effectiveStartMinutes) {
+    return [];
+  }
+
+  const fallbackDay = mondayDayOf(start);
+  const repeatDays = draft.mode === 'rental'
+    ? normalizeDaysOfWeek(rentalOptions?.daysOfWeek, rentalOptions?.dayOfWeek ?? fallbackDay)
+    : normalizeDaysOfWeek(staffOptions?.daysOfWeek, fallbackDay);
+  if (!repeatDays.length) {
+    return [];
+  }
+
+  const repeatEndDate = draft.mode === 'rental'
+    ? toValidDate(rentalOptions?.endDate)
+    : toValidDate(staffOptions?.repeatEndDate);
+  const scheduleStartDay = startOfDay(start);
+  const scheduleEndDay = repeatEndDate ? endOfDay(repeatEndDate) : endOfDay(rangeEnd);
+  const cursorStartMs = Math.max(startOfDay(rangeStart).getTime(), scheduleStartDay.getTime());
+  const cursorEndMs = Math.min(endOfDay(rangeEnd).getTime(), scheduleEndDay.getTime());
+  if (cursorEndMs < cursorStartMs) {
+    return [];
+  }
+
+  const occurrences: Array<{ start: Date; end: Date }> = [];
+  let cursor = startOfDay(new Date(cursorStartMs));
+  const cursorEnd = new Date(cursorEndMs);
+  while (cursor.getTime() <= cursorEnd.getTime()) {
+    if (repeatDays.includes(mondayDayOf(cursor))) {
+      const occurrenceStart = dateWithMinutes(cursor, effectiveStartMinutes);
+      const occurrenceEnd = dateWithMinutes(cursor, endMinutes);
+      if (
+        occurrenceEnd.getTime() > occurrenceStart.getTime()
+        && compareRanges(occurrenceStart, occurrenceEnd, rangeStart, rangeEnd)
+      ) {
+        occurrences.push({ start: occurrenceStart, end: occurrenceEnd });
+      }
+    }
+    const next = new Date(cursor.getTime());
+    next.setDate(next.getDate() + 1);
+    cursor = next;
+  }
+
+  return occurrences;
 };
 
 const buildSelectionConflictSignature = (
@@ -1599,8 +2173,11 @@ export default function FieldsTabContent({
   const [managerStaffAssignmentOverrides, setManagerStaffAssignmentOverrides] = useState<Record<string, ManagerStaffAssignmentPendingOverride>>({});
   const [managerCalendarDraftsSaving, setManagerCalendarDraftsSaving] = useState(false);
   const managerDraftDragRef = useRef<ManagerDraftDragState | null>(null);
+  const managerDraftSuppressNextClickRef = useRef(false);
+  const openManagerCalendarDraftEditorRef = useRef<((draftId: string) => void) | null>(null);
   const [managerDraftDragId, setManagerDraftDragId] = useState<string | null>(null);
   const [selectedManagerDraftId, setSelectedManagerDraftId] = useState<string | null>(null);
+  const [editingManagerDraftId, setEditingManagerDraftId] = useState<string | null>(null);
   const [calendarLayerFilters, setCalendarLayerFilters] = useState<CalendarLayerType[]>(CALENDAR_LAYER_ORDER);
   const [facilityModalOpen, setFacilityModalOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
@@ -1635,7 +2212,18 @@ export default function FieldsTabContent({
   const [staffTimeslotError, setStaffTimeslotError] = useState<string | null>(null);
   const [staffTimeslotSubmitting, setStaffTimeslotSubmitting] = useState(false);
   const [staffTimeslotDeleting, setStaffTimeslotDeleting] = useState(false);
+  const [openStaffDeleteConfirmation, setOpenStaffDeleteConfirmation] = useState<OpenStaffDeleteConfirmationState | null>(null);
+  const [staffAssignmentScopePrompt, setStaffAssignmentScopePrompt] = useState<StaffAssignmentScopePromptState | null>(null);
   const openStaffAssignmentEditModalRef = useRef<((item: FacilityCalendarFeedItem, start: Date, end: Date) => void) | null>(null);
+  const suppressStaffAssignmentActivationUntilRef = useRef(0);
+
+  const suppressStaffAssignmentActivation = useCallback((durationMs = 600) => {
+    suppressStaffAssignmentActivationUntilRef.current = Date.now() + durationMs;
+  }, []);
+
+  const isStaffAssignmentActivationSuppressed = useCallback(() => (
+    Date.now() < suppressStaffAssignmentActivationUntilRef.current
+  ), []);
 
   useEffect(() => {
     selectionConflictStateRef.current = selectionConflictStateByKey;
@@ -1983,6 +2571,7 @@ export default function FieldsTabContent({
   const staffTimeslotAssignmentKind: StaffScheduleAssignmentKind = staffTimeslotMode === 'official_assignment'
     ? 'OFFICIAL_SHIFT'
     : 'STAFF_SHIFT';
+  const isEditingManagerDraft = Boolean(editingManagerDraftId);
   const isEditingStaffAssignment = Boolean(editingStaffAssignment);
   const isEditingChildStaffAssignment = Boolean(editingStaffAssignment?.parentAssignmentId);
   const isAssigningStaffOccurrence = Boolean(staffTimeslotParentAssignment) && !isEditingStaffAssignment;
@@ -2042,6 +2631,21 @@ export default function FieldsTabContent({
       return facilityCalendarFields;
     }
     return pendingUpdates.reduce<Field[]>((currentFields, update) => {
+      if (update.action === 'delete') {
+        return currentFields.map((field) => (
+          field.$id === update.fieldId
+            ? {
+                ...field,
+                rentalSlotIds: Array.isArray(field.rentalSlotIds)
+                  ? field.rentalSlotIds.filter((slotId) => slotId !== update.slotId)
+                  : field.rentalSlotIds,
+                rentalSlots: Array.isArray(field.rentalSlots)
+                  ? field.rentalSlots.filter((slot) => slot?.$id !== update.slotId)
+                  : field.rentalSlots,
+              }
+            : field
+        ));
+      }
       const sourceSlot = currentFields
         .flatMap((field) => (Array.isArray(field.rentalSlots) ? field.rentalSlots : []))
         .find((slot) => slot?.$id === update.slotId) ?? ({ $id: update.slotId } as TimeSlot);
@@ -2058,7 +2662,12 @@ export default function FieldsTabContent({
         .filter(([, override]) => override.action === 'delete')
         .map(([assignmentId]) => assignmentId),
     );
-    return staffScheduleAssignments
+    const createdAssignments = overrideEntries
+      .flatMap(([, override]) => override.action === 'create' ? [override.assignment] : [])
+      .filter((assignment) => (
+        !assignment.parentAssignmentId || !parentDeleteIds.has(assignment.parentAssignmentId)
+      ));
+    const existingAssignments = staffScheduleAssignments
       .map((assignment) => {
         const override = managerStaffAssignmentOverrides[assignment.id];
         return override?.action === 'update' ? override.assignment : assignment;
@@ -2073,41 +2682,13 @@ export default function FieldsTabContent({
         }
         return true;
       });
+    return [...createdAssignments, ...existingAssignments];
   }, [managerStaffAssignmentOverrides, staffScheduleAssignments]);
   const handleReadonlyVisibleFieldIdsChange = useCallback((values: string[]) => {
     setReadonlyVisibleFieldIds(normalizeFieldIds(values));
   }, []);
   const handleSelectedFieldIdsChange = useCallback((values: string[]) => {
     const nextValues = normalizeFieldIds(values);
-    if (canManage && managerCalendarEditMode && selectedManagerDraftId) {
-      if (!nextValues.length) {
-        notifications.show({ color: 'red', message: 'A calendar draft needs at least one resource.' });
-        return;
-      }
-      const matchingDraft = managerCalendarDrafts.find((draft) => draft.id === selectedManagerDraftId);
-      if (matchingDraft) {
-        const currentValues = normalizeFieldIds(matchingDraft.fieldIds);
-        if (currentValues.join('|') !== nextValues.join('|')) {
-          const nextDraft: ManagerCalendarDraft = { ...matchingDraft, fieldIds: nextValues };
-          setManagerCalendarDrafts((current) => current.map((draft) => (
-            draft.id === matchingDraft.id ? nextDraft : draft
-          )));
-          setManagerCalendarPendingChanges((current) => ([
-            ...current,
-            {
-              id: createId(),
-              type: 'draft_update',
-              label: 'Changed draft resources',
-              draftId: matchingDraft.id,
-              previous: matchingDraft,
-              next: nextDraft,
-            },
-          ]));
-          setSelection({ fieldIds: nextValues, start: new Date(matchingDraft.start), end: new Date(matchingDraft.end) });
-        }
-        return;
-      }
-    }
     setSelection((prev) => {
       if (!nextValues.length) {
         return prev;
@@ -2119,7 +2700,7 @@ export default function FieldsTabContent({
       }
       return { ...prev, fieldIds: nextValues };
     });
-  }, [canManage, managerCalendarDrafts, managerCalendarEditMode, selectedManagerDraftId]);
+  }, []);
   const getFieldIdsForFacilityFilter = useCallback(
     (filterValue: string) => fields
       .filter((field) => fieldMatchesFacilityFilter(field, filterValue))
@@ -2168,10 +2749,6 @@ export default function FieldsTabContent({
     setSelectedFacilityFilterValue(nextValue);
 
     if (canManage) {
-      if (managerCalendarEditMode && selectedManagerDraftId) {
-        handleSelectedFieldIdsChange(nextFieldIds);
-        return;
-      }
       setSelection((prev) => {
         if (!nextFieldIds.length) {
           return null;
@@ -2200,9 +2777,6 @@ export default function FieldsTabContent({
     canManage,
     getFieldIdsForFacilityFilter,
     getPreferredFieldIdsForFacilityFilter,
-    handleSelectedFieldIdsChange,
-    managerCalendarEditMode,
-    selectedManagerDraftId,
   ]);
   const selectionConflictInputs = useMemo(
     () => (
@@ -2438,16 +3012,41 @@ export default function FieldsTabContent({
     const byId = new Map(fields.map((field) => [field.$id, field]));
     const rangeStart = new Date(calendarRange.start.getTime());
     rangeStart.setHours(0, 0, 0, 0);
-    const rangeEnd = new Date(calendarRange.end.getTime());
-    rangeEnd.setHours(23, 59, 59, 999);
+	    const rangeEnd = new Date(calendarRange.end.getTime());
+	    rangeEnd.setHours(23, 59, 59, 999);
+	    const staffMemberByUserId = new Map(staffScheduleMembers.map((member) => [member.userId, member]));
+	    const draftChildCoverageByParentId = managerCalendarDrafts.reduce(
+	      (acc, draft) => {
+	        const parentDraftId = draft.staff?.parentDraftId ?? null;
+	        if (!parentDraftId) {
+	          return acc;
+	        }
+	        const occurrences = buildManagerCalendarDraftOccurrences(draft, rangeStart, rangeEnd);
+	        if (!occurrences.length) {
+	          return acc;
+	        }
+	        normalizeFieldIds(draft.fieldIds).forEach((fieldId) => {
+	          const existing = acc.get(parentDraftId) ?? [];
+	          occurrences.forEach((occurrence) => {
+	            existing.push({
+	              fieldId,
+	              start: occurrence.start,
+	              end: occurrence.end,
+	            });
+	          });
+	          acc.set(parentDraftId, existing);
+	        });
+	        return acc;
+	      },
+	      new Map<string, Array<{ fieldId: string; start: Date; end: Date }>>(),
+	    );
 
-    const draftEvents: SelectionCalendarEntry[] = [];
-    if (canManage) {
-      const visibleFieldIdSet = new Set(selectedFieldIds);
-      managerCalendarDrafts.forEach((draft) => {
-        const start = new Date(draft.start);
-        const end = new Date(draft.end);
-        if (!compareRanges(start, end, rangeStart, rangeEnd)) {
+	    const draftEvents: SelectionCalendarEntry[] = [];
+	    if (canManage) {
+	      const visibleFieldIdSet = new Set(selectedFieldIds);
+	      managerCalendarDrafts.forEach((draft) => {
+        const occurrences = buildManagerCalendarDraftOccurrences(draft, rangeStart, rangeEnd);
+        if (!occurrences.length) {
           return;
         }
         normalizeFieldIds(draft.fieldIds).forEach((fieldId) => {
@@ -2458,19 +3057,42 @@ export default function FieldsTabContent({
           if (!field) {
             return;
           }
-          draftEvents.push({
-            id: `manager-draft-${draft.id}-${fieldId}`,
-            title: MANAGER_SELECTION_TITLES[draft.mode],
-            start,
-            end,
-            resourceId: fieldId,
-            resource: { type: 'selection', slotKey: draft.id, mode: draft.mode },
-            metaType: 'selection',
-            selectionMode: draft.mode,
-            fieldName: getFacilityScopedFieldDisplayName(field),
-          });
-        });
-      });
+	          const assignedStaffName = draft.mode !== 'rental' && draft.staff?.userId
+	            ? staffMemberByUserId.get(draft.staff.userId)?.fullName ?? draft.staff.userName ?? null
+	            : null;
+	          occurrences.forEach((occurrence) => {
+	            const coveredRanges = draft.staff?.parentDraftId
+	              ? []
+	              : (draftChildCoverageByParentId.get(draft.id) ?? [])
+	                .filter((covered) => (
+	                  covered.fieldId === fieldId
+	                  && compareRanges(covered.start, covered.end, occurrence.start, occurrence.end)
+	                ))
+	                .map((covered) => ({ start: covered.start, end: covered.end }));
+	            const visibleRanges = coveredRanges.length
+	              ? subtractIntervals(occurrence, coveredRanges)
+	              : [occurrence];
+	            visibleRanges.forEach((visibleRange) => {
+	              draftEvents.push({
+	                id: `manager-draft-${draft.id}-${fieldId}-${visibleRange.start.getTime()}`,
+	                title: assignedStaffName ?? MANAGER_SELECTION_TITLES[draft.mode],
+	                start: visibleRange.start,
+	                end: visibleRange.end,
+	                resourceId: fieldId,
+	                resource: {
+	                  type: 'selection',
+	                  slotKey: draft.id,
+	                  mode: draft.mode,
+	                  userId: draft.mode !== 'rental' ? draft.staff?.userId ?? null : null,
+	                },
+	                metaType: 'selection',
+	                selectionMode: draft.mode,
+	                fieldName: getFacilityScopedFieldDisplayName(field),
+	              });
+	            });
+	          });
+	        });
+	      });
       return draftEvents;
     }
 
@@ -2519,6 +3141,7 @@ export default function FieldsTabContent({
     readonlyCalendarFieldIds,
     rentalSelections,
     selectedFieldIds,
+    staffScheduleMembers,
   ]);
 
   const baseCalendarEvents = useMemo<FieldCalendarEntry[]>(() => {
@@ -2676,10 +3299,35 @@ export default function FieldsTabContent({
     if (!canManage) {
       return;
     }
+    if (isStaffAssignmentActivationSuppressed()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const target = event.target as Element | null;
+    if (
+      managerCalendarEditMode
+      && typeof target?.closest === 'function'
+      && (
+        target.closest('.shared-calendar-event__drag-handle')
+        || target.closest('.rbc-addons-dnd-resize-ns-anchor')
+        || target.closest('.rbc-addons-dnd-resize-ew-anchor')
+      )
+    ) {
+      return;
+    }
     const card = typeof target?.closest === 'function'
       ? target.closest('[data-staff-assignment-calendar-event-id]')
       : null;
+    const draftCard = typeof target?.closest === 'function'
+      ? target.closest('[data-manager-draft-id]')
+      : null;
+    const draftId = draftCard?.getAttribute('data-manager-draft-id') ?? '';
+    if (draftId) {
+      event.stopPropagation();
+      openManagerCalendarDraftEditorRef.current?.(draftId);
+      return;
+    }
     const eventId = card?.getAttribute('data-staff-assignment-calendar-event-id') ?? '';
     if (!eventId) {
       return;
@@ -2689,22 +3337,59 @@ export default function FieldsTabContent({
     if (!calendarEvent || !item) {
       return;
     }
-    event.preventDefault();
     event.stopPropagation();
     openStaffAssignmentEditModalRef.current?.(item, calendarEvent.start, calendarEvent.end);
-  }, [canManage, staffAssignmentCalendarEventById]);
+  }, [canManage, isStaffAssignmentActivationSuppressed, managerCalendarEditMode, staffAssignmentCalendarEventById]);
+
+  const handleCalendarShellStaffPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canManage || !managerCalendarEditMode) {
+      return;
+    }
+    const target = event.target as Element | null;
+    if (
+      typeof target?.closest === 'function'
+      && (
+        target.closest('.shared-calendar-event__drag-handle')
+        || target.closest('.rbc-addons-dnd-resize-ns-anchor')
+        || target.closest('.rbc-addons-dnd-resize-ew-anchor')
+      )
+    ) {
+      suppressStaffAssignmentActivation(1200);
+    }
+  }, [canManage, managerCalendarEditMode, suppressStaffAssignmentActivation]);
 
   const eventPropGetter = useCallback(
     (event: CalendarEventData) => {
       const variant = getCalendarEventVariant(event);
       const isEditableManagerEvent = canManage
         && managerCalendarEditMode
-        && (event.metaType === 'selection' || event.metaType === 'rental');
+        && (
+          event.metaType === 'selection'
+          || event.metaType === 'rental'
+          || (
+            event.metaType === 'facility-feed'
+            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment')
+          )
+        );
+      const managerDraftId = event.metaType === 'selection' && typeof event.resource?.slotKey === 'string'
+        ? event.resource.slotKey
+        : null;
       const isStaffAssignmentEvent = canManage
         && event.metaType === 'facility-feed'
         && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
+      const staffAssignment = isStaffAssignmentEvent
+        ? ((event.resource as FacilityCalendarFeedItem | undefined)?.source as StaffScheduleAssignment | undefined)
+        : undefined;
+      const isOpenStaffSeriesEvent = Boolean(
+        staffAssignment
+        && isOpenParentStaffScheduleSeries(staffAssignment),
+      );
       return {
-        className: `field-calendar-rbc-event field-calendar-rbc-event--${variant}`,
+        className: [
+          'field-calendar-rbc-event',
+          `field-calendar-rbc-event--${variant}`,
+          isOpenStaffSeriesEvent ? 'field-calendar-rbc-event--open-staff-series' : '',
+        ].filter(Boolean).join(' '),
         style: {
           backgroundColor: 'transparent',
           border: 0,
@@ -2716,19 +3401,25 @@ export default function FieldsTabContent({
               ? 'pointer'
               : 'default',
         },
-        onPointerUp: isStaffAssignmentEvent
+        onPointerUp: isStaffAssignmentEvent && !managerCalendarEditMode
           ? (pointerEvent: ReactPointerEvent<HTMLElement>) => {
+              if (isStaffAssignmentActivationSuppressed()) {
+                pointerEvent.preventDefault();
+                pointerEvent.stopPropagation();
+                return;
+              }
               pointerEvent.preventDefault();
               pointerEvent.stopPropagation();
               const item = event.resource as FacilityCalendarFeedItem | undefined;
               if (item && event.start && event.end) {
                 openStaffAssignmentEditModalRef.current?.(item, event.start, event.end);
               }
-            }
-          : undefined,
+          }
+        : undefined,
+        ...(managerDraftId ? { 'data-manager-draft-id': managerDraftId } : {}),
       };
     },
-    [canManage, managerCalendarEditMode],
+    [canManage, isStaffAssignmentActivationSuppressed, managerCalendarEditMode],
   );
   const slotPropGetter = useCallback(
     (date: Date, resourceId?: string | number) => {
@@ -3259,6 +3950,109 @@ export default function FieldsTabContent({
 
   const managerCalendarPendingChangeCount = managerCalendarPendingChanges.length;
 
+	  const stageManagerCalendarDraftUpdate = useCallback((
+	    draftId: string,
+	    updater: (draft: ManagerCalendarDraft) => ManagerCalendarDraft,
+	    label = 'Updated draft card',
+	  ): ManagerCalendarDraft | null => {
+    const previous = managerCalendarDrafts.find((draft) => draft.id === draftId) ?? null;
+    if (!previous) {
+      return null;
+    }
+    const next = updater({
+      ...previous,
+      fieldIds: normalizeFieldIds(previous.fieldIds),
+      start: new Date(previous.start),
+      end: new Date(previous.end),
+    });
+    const normalizedNext: ManagerCalendarDraft = {
+      ...next,
+      fieldIds: normalizeFieldIds(next.fieldIds),
+      start: new Date(next.start),
+      end: new Date(next.end),
+    };
+    if (managerCalendarDraftsAreEqual(previous, normalizedNext)) {
+      return normalizedNext;
+    }
+
+    setManagerCalendarEditMode(true);
+    setManagerCalendarDrafts((current) => current.map((draft) => (
+      draft.id === draftId ? normalizedNext : draft
+    )));
+    setSelectedManagerDraftId(draftId);
+    setSelection({
+      fieldIds: normalizeFieldIds(normalizedNext.fieldIds),
+      start: new Date(normalizedNext.start),
+      end: new Date(normalizedNext.end),
+    });
+    setCalendarDate(new Date(normalizedNext.start));
+    setManagerCalendarPendingChanges((current) => ([
+      ...current,
+      {
+        id: createId(),
+        type: 'draft_update',
+        label,
+        draftId,
+        previous,
+        next: normalizedNext,
+	      },
+	    ]));
+	    return normalizedNext;
+	  }, [managerCalendarDrafts]);
+
+	  const stageManagerCalendarDraftScope = useCallback((
+	    draftId: string,
+	    parentNext: ManagerCalendarDraft,
+	    childDraft: ManagerCalendarDraft,
+	    label = 'Assigned draft coverage occurrence',
+	    previousDraftFallback: ManagerCalendarDraft | null = null,
+	  ) => {
+	    const previous = managerCalendarDrafts.find((draft) => draft.id === draftId) ?? previousDraftFallback;
+	    if (!previous) {
+	      return false;
+	    }
+	    const normalizedParentNext: ManagerCalendarDraft = {
+	      ...parentNext,
+	      fieldIds: normalizeFieldIds(parentNext.fieldIds),
+	      start: new Date(parentNext.start),
+	      end: new Date(parentNext.end),
+	    };
+	    const normalizedChildDraft: ManagerCalendarDraft = {
+	      ...childDraft,
+	      fieldIds: normalizeFieldIds(childDraft.fieldIds),
+	      start: new Date(childDraft.start),
+	      end: new Date(childDraft.end),
+	    };
+	    setManagerCalendarEditMode(true);
+	    setManagerCalendarDrafts((current) => {
+	      const hasParentDraft = current.some((draft) => draft.id === draftId);
+	      const parentDrafts = hasParentDraft
+	        ? current.map((draft) => (draft.id === draftId ? normalizedParentNext : draft))
+	        : [...current, normalizedParentNext];
+	      return [...parentDrafts, normalizedChildDraft];
+	    });
+	    setSelectedManagerDraftId(normalizedChildDraft.id);
+	    setSelection({
+	      fieldIds: normalizeFieldIds(normalizedChildDraft.fieldIds),
+	      start: new Date(normalizedChildDraft.start),
+	      end: new Date(normalizedChildDraft.end),
+	    });
+	    setCalendarDate(new Date(normalizedChildDraft.start));
+	    setManagerCalendarPendingChanges((current) => ([
+	      ...current,
+	      {
+	        id: createId(),
+	        type: 'draft_scope',
+	        label,
+	        draftId,
+	        previous,
+	        parentNext: normalizedParentNext,
+	        childDraft: normalizedChildDraft,
+	      },
+	    ]));
+	    return true;
+	  }, [managerCalendarDrafts]);
+
   const stageRentalSlotUpdate = useCallback((
     update: ManagerRentalSlotPendingUpdate,
     label = 'Moved rental slot',
@@ -3306,6 +4100,103 @@ export default function FieldsTabContent({
     ]));
   }, [managerStaffAssignmentOverrides]);
 
+  const stageStaffAssignmentOverrideBatch = useCallback((
+    updates: Array<{ assignmentId: string; override: ManagerStaffAssignmentPendingOverride }>,
+    label = 'Updated staff assignments',
+  ) => {
+    const normalizedUpdates = new Map<string, ManagerStaffAssignmentPendingOverride>();
+    updates.forEach((update) => {
+      if (update.assignmentId) {
+        normalizedUpdates.set(update.assignmentId, update.override);
+      }
+    });
+    if (!normalizedUpdates.size) {
+      return;
+    }
+    const changes = Array.from(normalizedUpdates.entries()).reduce<ManagerStaffAssignmentPendingOverrideBatch>(
+      (acc, [assignmentId, override]) => {
+        acc[assignmentId] = {
+          previous: managerStaffAssignmentOverrides[assignmentId] ?? null,
+          next: override,
+        };
+        return acc;
+      },
+      {},
+    );
+    setManagerCalendarEditMode(true);
+    setManagerStaffAssignmentOverrides((current) => {
+      const next = { ...current };
+      Object.entries(changes).forEach(([assignmentId, change]) => {
+        next[assignmentId] = change.next;
+      });
+      return next;
+    });
+    setManagerCalendarPendingChanges((current) => ([
+      ...current,
+      {
+        id: createId(),
+        type: 'staff_override_batch',
+        label,
+        changes,
+      },
+    ]));
+  }, [managerStaffAssignmentOverrides]);
+
+  const restorePendingStaffUnassignment = useCallback((assignmentId: string) => {
+    const currentOverride = managerStaffAssignmentOverrides[assignmentId];
+    if (currentOverride?.action !== 'unassign') {
+      return false;
+    }
+
+    let replacementOverride: ManagerStaffAssignmentPendingOverride | null = null;
+    let changeIdToRemove: string | null = null;
+    for (let index = managerCalendarPendingChanges.length - 1; index >= 0; index -= 1) {
+      const change = managerCalendarPendingChanges[index];
+      if (change.type === 'staff_override' && change.assignmentId === assignmentId && change.next.action === 'unassign') {
+        replacementOverride = change.previous;
+        changeIdToRemove = change.id;
+        break;
+      }
+      if (change.type === 'staff_override_batch') {
+        const batchedChange = change.changes[assignmentId];
+        if (batchedChange?.next.action === 'unassign') {
+          replacementOverride = batchedChange.previous;
+          changeIdToRemove = change.id;
+          break;
+        }
+      }
+    }
+
+    setManagerStaffAssignmentOverrides((current) => {
+      const next = { ...current };
+      if (replacementOverride) {
+        next[assignmentId] = replacementOverride;
+      } else {
+        delete next[assignmentId];
+      }
+      return next;
+    });
+
+    if (changeIdToRemove) {
+      setManagerCalendarPendingChanges((current) => current.flatMap((change) => {
+        if (change.id !== changeIdToRemove) {
+          return [change];
+        }
+        if (change.type === 'staff_override') {
+          return [];
+        }
+        if (change.type === 'staff_override_batch') {
+          const nextChanges = { ...change.changes };
+          delete nextChanges[assignmentId];
+          return Object.keys(nextChanges).length ? [{ ...change, changes: nextChanges }] : [];
+        }
+        return [change];
+      }));
+    }
+
+    return true;
+  }, [managerCalendarPendingChanges, managerStaffAssignmentOverrides]);
+
   const undoLastManagerCalendarChange = useCallback(() => {
     const lastChange = managerCalendarPendingChanges[managerCalendarPendingChanges.length - 1];
     if (!lastChange) {
@@ -3317,11 +4208,14 @@ export default function FieldsTabContent({
       if (selectedManagerDraftId === lastChange.draft.id) {
         setSelectedManagerDraftId(null);
       }
-    } else if (lastChange.type === 'draft_update') {
-      setSelectedManagerDraftId(lastChange.draftId);
-      setManagerCalendarDrafts((current) => current.map((draft) => (
-        draft.id === lastChange.draftId ? lastChange.previous : draft
-      )));
+      if (editingManagerDraftId === lastChange.draft.id) {
+        setEditingManagerDraftId(null);
+      }
+	    } else if (lastChange.type === 'draft_update') {
+	      setSelectedManagerDraftId(lastChange.draftId);
+	      setManagerCalendarDrafts((current) => current.map((draft) => (
+	        draft.id === lastChange.draftId ? lastChange.previous : draft
+	      )));
       setSelection((current) => {
         if (current?.fieldIds?.some((fieldId) => lastChange.previous.fieldIds.includes(fieldId))) {
           return {
@@ -3330,11 +4224,31 @@ export default function FieldsTabContent({
             end: new Date(lastChange.previous.end),
           };
         }
-        return current;
-      });
-    } else if (lastChange.type === 'rental_update') {
-      setManagerRentalSlotUpdates((current) => {
-        const next = { ...current };
+	        return current;
+	      });
+	    } else if (lastChange.type === 'draft_scope') {
+	      setManagerCalendarDrafts((current) => current
+	        .filter((draft) => draft.id !== lastChange.childDraft.id)
+	        .map((draft) => (
+	          draft.id === lastChange.draftId ? lastChange.previous : draft
+	        )));
+	      setSelectedManagerDraftId(lastChange.draftId);
+	      if (editingManagerDraftId === lastChange.childDraft.id) {
+	        setEditingManagerDraftId(null);
+	      }
+	      setSelection((current) => {
+	        if (current?.fieldIds?.some((fieldId) => lastChange.previous.fieldIds.includes(fieldId))) {
+	          return {
+	            fieldIds: normalizeFieldIds(lastChange.previous.fieldIds),
+	            start: new Date(lastChange.previous.start),
+	            end: new Date(lastChange.previous.end),
+	          };
+	        }
+	        return current;
+	      });
+	    } else if (lastChange.type === 'rental_update') {
+	      setManagerRentalSlotUpdates((current) => {
+	        const next = { ...current };
         if (lastChange.previous) {
           next[lastChange.key] = lastChange.previous;
         } else {
@@ -3352,10 +4266,22 @@ export default function FieldsTabContent({
         }
         return next;
       });
+    } else if (lastChange.type === 'staff_override_batch') {
+      setManagerStaffAssignmentOverrides((current) => {
+        const next = { ...current };
+        Object.entries(lastChange.changes).forEach(([assignmentId, change]) => {
+          if (change.previous) {
+            next[assignmentId] = change.previous;
+          } else {
+            delete next[assignmentId];
+          }
+        });
+        return next;
+      });
     }
 
     setManagerCalendarPendingChanges((current) => current.slice(0, -1));
-  }, [managerCalendarPendingChanges, selectedManagerDraftId]);
+  }, [editingManagerDraftId, managerCalendarPendingChanges, selectedManagerDraftId]);
 
   const clearManagerCalendarPendingState = useCallback(() => {
     setManagerCalendarDrafts([]);
@@ -3363,6 +4289,7 @@ export default function FieldsTabContent({
     setManagerRentalSlotUpdates({});
     setManagerStaffAssignmentOverrides({});
     setSelectedManagerDraftId(null);
+    setEditingManagerDraftId(null);
   }, []);
 
   const applySelectionWindow = useCallback(
@@ -3375,28 +4302,11 @@ export default function FieldsTabContent({
         }
         if (params?.slotKey) {
           const matchingDraft = managerCalendarDrafts.find((draft) => draft.id === params.slotKey);
-          const nextDraft = matchingDraft
-            ? { ...matchingDraft, start: nextStart, end: nextEnd }
-            : null;
-          setSelectedManagerDraftId(params.slotKey);
-          setManagerCalendarDrafts((prev) => prev.map((draft) => (
-            draft.id === params.slotKey
-              ? { ...draft, start: nextStart, end: nextEnd }
-              : draft
-          )));
-          if (matchingDraft && nextDraft) {
-            setManagerCalendarPendingChanges((prev) => ([
-              ...prev,
-              {
-                id: createId(),
-                type: 'draft_update',
-                label: 'Moved draft card',
-                draftId: matchingDraft.id,
-                previous: matchingDraft,
-                next: nextDraft,
-              },
-            ]));
-          }
+          stageManagerCalendarDraftUpdate(
+            params.slotKey,
+            (draft) => ({ ...draft, start: nextStart, end: nextEnd }),
+            'Moved draft card',
+          );
           setSelection((prev) => {
             return {
               fieldIds: matchingDraft?.fieldIds?.length ? normalizeFieldIds(matchingDraft.fieldIds) : normalizeFieldIds(prev?.fieldIds ?? []),
@@ -3443,7 +4353,7 @@ export default function FieldsTabContent({
       }
       setCalendarDate(new Date(start));
     },
-    [canManage, isBlockedRange, managerCalendarDrafts],
+    [canManage, isBlockedRange, managerCalendarDrafts, stageManagerCalendarDraftUpdate],
   );
 
   const handleRentalSlotCalendarDrop = useCallback(
@@ -3479,6 +4389,7 @@ export default function FieldsTabContent({
       const pendingKey = getRentalSlotPendingUpdateKey(ownerField.$id, slot.$id);
       stageRentalSlotUpdate({
         key: pendingKey,
+        action: 'update',
         fieldId: ownerField.$id,
         slotId: slot.$id,
         slot: updatePayload,
@@ -3487,6 +4398,129 @@ export default function FieldsTabContent({
       notifications.show({ color: 'blue', message: 'Rental slot change staged.' });
     },
     [canManage, fields, selectedField, stageRentalSlotUpdate],
+  );
+
+  const handleStaffAssignmentCalendarDrop = useCallback(
+    ({ event, start, end, resourceId }: any, label: string, interaction: 'move' | 'resize' = 'move') => {
+      if (
+        !canManage
+        || !event
+        || event.metaType !== 'facility-feed'
+        || (event.feedType !== 'staff_assignment' && event.feedType !== 'official_assignment')
+        || !start
+        || !end
+      ) {
+        return;
+      }
+
+      suppressStaffAssignmentActivation(900);
+
+      const item = event.resource as FacilityCalendarFeedItem | undefined;
+      const assignment = item?.source as StaffScheduleAssignment | undefined;
+      const nextStart = start instanceof Date ? start : new Date(start);
+      const nextEnd = end instanceof Date ? end : new Date(end);
+      if (!assignment?.id || Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+        return;
+      }
+
+      if (assignment.parentAssignmentId) {
+        const parentAssignment = visibleStaffScheduleAssignments.find((candidate) => (
+          candidate.id === assignment.parentAssignmentId
+        ));
+        const parentRange = parentAssignment
+          ? getStaffAssignmentOccurrenceRangeForDate(parentAssignment, nextStart)
+          : null;
+        if (
+          !parentRange
+          || nextStart.getTime() < parentRange.start.getTime()
+          || nextEnd.getTime() > parentRange.end.getTime()
+        ) {
+          notifications.show({
+            color: 'yellow',
+            message: 'Assigned coverage must stay inside the parent shift.',
+          });
+          return;
+        }
+      }
+
+      const originalStart = item?.start instanceof Date
+        ? item.start
+        : toValidDate(event.start);
+      const originalEnd = item?.end instanceof Date
+        ? item.end
+        : toValidDate(event.end);
+      if (
+        interaction === 'resize'
+        && originalStart
+        && originalEnd
+        && isOpenParentStaffScheduleSeries(assignment)
+      ) {
+        const childAssignments = visibleStaffScheduleAssignments.filter((candidate) => (
+          candidate.parentAssignmentId === assignment.id
+          && Boolean(candidate.userId || candidate.staffMemberId)
+        ));
+        const overrides = buildOpenParentStaffSeriesResizeOverrides({
+          assignment,
+          children: childAssignments,
+          originalStart,
+          originalEnd,
+          nextStart,
+          nextEnd,
+        });
+        if (!overrides?.length) {
+          notifications.show({ color: 'red', message: 'Unable to resize this staff assignment.' });
+          return;
+        }
+        if (overrides.length === 1) {
+          stageStaffAssignmentOverride(overrides[0].assignmentId, overrides[0].override, label);
+        } else {
+          stageStaffAssignmentOverrideBatch(overrides, label);
+        }
+        setCalendarDate(nextStart);
+        notifications.show({
+          color: 'blue',
+          message: overrides.length > 1
+            ? 'Staff assignment series changes staged.'
+            : 'Staff assignment change staged.',
+        });
+        return;
+      }
+
+      const preserveRepeatingPattern = interaction === 'resize' && Boolean(assignment.timeSlot?.repeating);
+      let nextAssignment = buildStaffAssignmentWithCalendarRange(assignment, nextStart, nextEnd, {
+        preserveRepeatingPattern,
+      });
+      if (!nextAssignment) {
+        notifications.show({ color: 'red', message: 'Unable to move this staff assignment.' });
+        return;
+      }
+
+      const targetFieldId = typeof resourceId === 'string' && resourceId.trim().length > 0
+        ? resourceId.trim()
+        : typeof event.resourceId === 'string'
+          ? event.resourceId.trim()
+          : item?.fieldId ?? assignment.fieldId ?? null;
+      if (!assignment.parentAssignmentId && targetFieldId && targetFieldId !== assignment.fieldId) {
+        const targetField = fields.find((field) => field.$id === targetFieldId);
+        if (targetField) {
+          nextAssignment = {
+            ...nextAssignment,
+            fieldId: targetField.$id,
+            fieldName: getFacilityScopedFieldDisplayName(targetField),
+            facilityId: getFieldFacilityId(targetField),
+            facilityName: getFieldFacility(targetField)?.name ?? nextAssignment.facilityName ?? null,
+          };
+        }
+      }
+
+      stageStaffAssignmentOverride(assignment.id, {
+        action: 'update',
+        assignment: nextAssignment,
+      }, label);
+      setCalendarDate(nextStart);
+      notifications.show({ color: 'blue', message: 'Staff assignment change staged.' });
+    },
+    [canManage, fields, stageStaffAssignmentOverride, stageStaffAssignmentOverrideBatch, suppressStaffAssignmentActivation, visibleStaffScheduleAssignments],
   );
 
   const handleSlotSelect = useCallback(
@@ -3540,13 +4574,20 @@ export default function FieldsTabContent({
         void handleRentalSlotCalendarDrop({ event, start, end, resourceId });
         return;
       }
+      if (
+        event?.metaType === 'facility-feed'
+        && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment')
+      ) {
+        handleStaffAssignmentCalendarDrop({ event, start, end, resourceId }, 'Moved staff assignment');
+        return;
+      }
       if (!event || event.metaType !== 'selection' || !start || !end) return;
       const slotKey = event.resource?.slotKey;
       applySelectionWindow(new Date(start), new Date(end), {
         slotKey: typeof slotKey === 'string' ? slotKey : undefined,
       });
     },
-    [applySelectionWindow, handleRentalSlotCalendarDrop, managerCalendarEditMode],
+    [applySelectionWindow, handleRentalSlotCalendarDrop, handleStaffAssignmentCalendarDrop, managerCalendarEditMode],
   );
 
   const handleEventResize = useCallback(
@@ -3558,13 +4599,20 @@ export default function FieldsTabContent({
         handleRentalSlotCalendarDrop({ event, start, end, resourceId: event.resourceId });
         return;
       }
+      if (
+        event?.metaType === 'facility-feed'
+        && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment')
+      ) {
+        handleStaffAssignmentCalendarDrop({ event, start, end, resourceId: event.resourceId }, 'Resized staff assignment', 'resize');
+        return;
+      }
       if (!event || event.metaType !== 'selection' || !start || !end) return;
       const slotKey = event.resource?.slotKey;
       applySelectionWindow(new Date(start), new Date(end), {
         slotKey: typeof slotKey === 'string' ? slotKey : undefined,
       });
     },
-    [applySelectionWindow, handleRentalSlotCalendarDrop, managerCalendarEditMode],
+    [applySelectionWindow, handleRentalSlotCalendarDrop, handleStaffAssignmentCalendarDrop, managerCalendarEditMode],
   );
 
   useEffect(() => {
@@ -3784,7 +4832,10 @@ export default function FieldsTabContent({
     onRentalSelectionReady,
   ]);
 
-  const openRentalSlotModalForSelection = useCallback((draftSelection?: SelectionState | null) => {
+  const openRentalSlotModalForSelection = useCallback((
+    draftSelection?: SelectionState | null,
+    options: { draftId?: string | null } = {},
+  ) => {
     if (!canManage) return;
     const activeSelection = draftSelection ?? selection;
     const activeFieldIds = normalizeFieldIds(activeSelection?.fieldIds ?? []);
@@ -3797,7 +4848,8 @@ export default function FieldsTabContent({
       return;
     }
 
-    setSelectedManagerDraftId(null);
+    setSelectedManagerDraftId(options.draftId ?? null);
+    setEditingManagerDraftId(options.draftId ?? null);
     setEditingRentalSlot(null);
     setEditingRentalField(null);
     setRentalDraftRange({ start: activeSelection.start, end: activeSelection.end });
@@ -3808,6 +4860,7 @@ export default function FieldsTabContent({
     setStaffTimeslotModalOpen(false);
     setStaffTimeslotParentAssignment(null);
     setEditingStaffAssignment(null);
+    setEditingManagerDraftId(null);
     setStaffTimeslotUserId(null);
     setStaffTimeslotOverrideAmount('');
     setStaffTimeslotNotes('');
@@ -3815,11 +4868,14 @@ export default function FieldsTabContent({
     setStaffTimeslotRepeatDays([]);
     setStaffTimeslotRepeatEndDate(null);
     setStaffTimeslotError(null);
+    setOpenStaffDeleteConfirmation(null);
+    setStaffAssignmentScopePrompt(null);
   }, []);
 
   const openStaffTimeslotModal = useCallback((
     mode: Exclude<ManagerCalendarSelectionMode, 'rental'>,
     draftSelection?: SelectionState | null,
+    options: { draftId?: string | null; draft?: ManagerCalendarDraft | null } = {},
   ) => {
     if (!canManage) {
       return;
@@ -3835,16 +4891,20 @@ export default function FieldsTabContent({
       return;
     }
     const selectionDay = mondayDayOf(activeSelection.start);
-    setSelectedManagerDraftId(null);
+    const draftStaff = options.draft?.staff ?? {};
+    setSelectedManagerDraftId(options.draftId ?? null);
+    setEditingManagerDraftId(options.draftId ?? null);
     setEditingStaffAssignment(null);
     setStaffTimeslotParentAssignment(null);
     setStaffTimeslotMode(mode);
-    setStaffTimeslotUserId(null);
-    setStaffTimeslotOverrideAmount('');
-    setStaffTimeslotNotes('');
-    setStaffTimeslotRepeating(false);
-    setStaffTimeslotRepeatDays([selectionDay]);
-    setStaffTimeslotRepeatEndDate(null);
+    setStaffTimeslotUserId(draftStaff.userId ?? null);
+    setStaffTimeslotOverrideAmount(dollarsFromCents(draftStaff.rateOverrideCents));
+    setStaffTimeslotNotes(draftStaff.notes ?? '');
+    setStaffTimeslotRepeating(Boolean(draftStaff.repeating));
+    setStaffTimeslotRepeatDays(Array.isArray(draftStaff.daysOfWeek) && draftStaff.daysOfWeek.length
+      ? draftStaff.daysOfWeek
+      : [selectionDay]);
+    setStaffTimeslotRepeatEndDate(draftStaff.repeatEndDate ? toValidDate(draftStaff.repeatEndDate) : null);
     setStaffTimeslotError(null);
     setStaffTimeslotModalOpen(true);
     if (!staffScheduleLoaded) {
@@ -3852,9 +4912,254 @@ export default function FieldsTabContent({
     }
   }, [canManage, loadStaffSchedule, selection, staffScheduleLoaded]);
 
+  const openManagerCalendarDraftEditor = useCallback((draftId: string, fallbackDraft: ManagerCalendarDraft | null = null) => {
+    const draft = managerCalendarDrafts.find((candidate) => candidate.id === draftId) ?? fallbackDraft;
+    if (!draft) {
+      return;
+    }
+    const draftSelection = {
+      fieldIds: normalizeFieldIds(draft.fieldIds),
+      start: new Date(draft.start),
+      end: new Date(draft.end),
+    };
+    setSelection(draftSelection);
+    setCalendarDate(new Date(draft.start));
+    setSelectedManagerDraftId(draft.id);
+    if (draft.mode === 'rental') {
+      openRentalSlotModalForSelection(draftSelection, { draftId: draft.id });
+      return;
+    }
+    openStaffTimeslotModal(draft.mode, draftSelection, { draftId: draft.id, draft });
+  }, [managerCalendarDrafts, openRentalSlotModalForSelection, openStaffTimeslotModal]);
+
+  openManagerCalendarDraftEditorRef.current = (draftId: string) => {
+    openManagerCalendarDraftEditor(draftId);
+  };
+
+  const resolveRentalModalPayloadRange = useCallback((payload: CreateRentalSlotModalSubmitPayload['payload']) => {
+    const startDate = parseLocalDateTime(payload.startDate ?? null) ?? new Date();
+    const startDay = startOfDay(startDate);
+    const startMinutes = typeof payload.startTimeMinutes === 'number'
+      ? payload.startTimeMinutes
+      : startDate.getHours() * 60 + startDate.getMinutes();
+    const endMinutes = typeof payload.endTimeMinutes === 'number'
+      ? payload.endTimeMinutes
+      : startMinutes + Math.round(MIN_SELECTION_MS / 60000);
+    const start = payload.repeating
+      ? dateWithMinutes(startDay, startMinutes)
+      : startDate;
+    const parsedEndDate = payload.endDate ? parseLocalDateTime(payload.endDate) : null;
+    const end = payload.repeating
+      ? dateWithMinutes(startDay, endMinutes)
+      : parsedEndDate ?? new Date(start.getTime() + MIN_SELECTION_MS);
+    if (end.getTime() <= start.getTime()) {
+      end.setTime(start.getTime() + MIN_SELECTION_MS);
+    }
+    return { start, end };
+  }, []);
+
+  const handleRentalSlotModalSubmit = useCallback(async (submitPayload: CreateRentalSlotModalSubmitPayload) => {
+    if (editingManagerDraftId && !submitPayload.slot) {
+      const targetFieldIds = normalizeFieldIds(submitPayload.targetFields.map((targetField) => targetField.$id));
+      if (!targetFieldIds.length) {
+        throw new Error('Select at least one resource for this draft.');
+      }
+      const range = resolveRentalModalPayloadRange(submitPayload.payload);
+      const updatedDraft = stageManagerCalendarDraftUpdate(
+        editingManagerDraftId,
+        (draft) => ({
+          ...draft,
+          mode: 'rental',
+          fieldIds: targetFieldIds,
+          start: range.start,
+          end: range.end,
+          rental: {
+            repeating: Boolean(submitPayload.payload.repeating),
+            dayOfWeek: submitPayload.payload.dayOfWeek,
+            daysOfWeek: Array.isArray(submitPayload.payload.daysOfWeek)
+              ? submitPayload.payload.daysOfWeek
+              : [submitPayload.payload.dayOfWeek],
+            startDate: submitPayload.payload.startDate,
+            endDate: submitPayload.payload.endDate ?? null,
+            startTimeMinutes: submitPayload.payload.startTimeMinutes ?? null,
+            endTimeMinutes: submitPayload.payload.endTimeMinutes ?? null,
+            price: submitPayload.payload.price ?? 0,
+            requiredTemplateIds: submitPayload.payload.requiredTemplateIds ?? [],
+            hostRequiredTemplateIds: submitPayload.payload.hostRequiredTemplateIds ?? [],
+          },
+        }),
+        'Edited draft rental slot',
+      );
+      setEditingManagerDraftId(null);
+      if (updatedDraft) {
+        notifications.show({ color: 'blue', message: 'Draft rental slot change staged.' });
+      }
+      return;
+    }
+
+    if (managerCalendarEditMode && submitPayload.slot?.$id && submitPayload.field?.$id && submitPayload.updatePayload) {
+      const pendingKey = getRentalSlotPendingUpdateKey(submitPayload.field.$id, submitPayload.slot.$id);
+      stageRentalSlotUpdate({
+        key: pendingKey,
+        action: 'update',
+        fieldId: submitPayload.field.$id,
+        slotId: submitPayload.slot.$id,
+        slot: submitPayload.updatePayload,
+      }, 'Edited rental slot');
+      notifications.show({ color: 'blue', message: 'Rental slot change staged.' });
+      return;
+    }
+  }, [
+    editingManagerDraftId,
+    managerCalendarEditMode,
+    resolveRentalModalPayloadRange,
+    stageManagerCalendarDraftUpdate,
+    stageRentalSlotUpdate,
+  ]);
+
+  const handleRentalSlotModalDelete = useCallback(async ({ field, slot }: { field: Field | null; slot: TimeSlot }) => {
+    if (!managerCalendarEditMode || !field?.$id || !slot?.$id) {
+      return;
+    }
+    const pendingKey = getRentalSlotPendingUpdateKey(field.$id, slot.$id);
+    stageRentalSlotUpdate({
+      key: pendingKey,
+      action: 'delete',
+      fieldId: field.$id,
+      slotId: slot.$id,
+    }, 'Deleted rental slot');
+    notifications.show({ color: 'blue', message: 'Rental slot delete staged.' });
+  }, [managerCalendarEditMode, stageRentalSlotUpdate]);
+
   const submitStaffTimeslot = useCallback(async () => {
     if (!canManage || !organizationId) {
       setStaffTimeslotError('Missing organization context.');
+      return;
+    }
+    if (editingManagerDraftId) {
+      if (!selection || !selectedFields.length) {
+        setStaffTimeslotError('Select at least one resource and a time range first.');
+        return;
+      }
+      if (selection.end.getTime() <= selection.start.getTime()) {
+        setStaffTimeslotError('End time must be after the start time.');
+        return;
+      }
+      if (selection.start.toDateString() !== selection.end.toDateString()) {
+        setStaffTimeslotError('Staff timeslots must stay within a single day.');
+        return;
+      }
+      const overrideAmountCents = staffTimeslotOverrideAmount === ''
+        ? null
+        : centsFromDollars(staffTimeslotOverrideAmount);
+      if (overrideAmountCents !== null && overrideAmountCents <= 0) {
+        setStaffTimeslotError('Override amount must be greater than 0.');
+        return;
+      }
+      const dayOfWeek = mondayDayOf(selection.start);
+      const isRepeatingAssignment = staffTimeslotRepeating;
+      const repeatDays = isRepeatingAssignment
+        ? Array.from(new Set(staffTimeslotRepeatDays
+          .map((day) => Number(day))
+          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)))
+          .sort((a, b) => a - b)
+        : [dayOfWeek];
+      if (isRepeatingAssignment && repeatDays.length === 0) {
+        setStaffTimeslotError('Select at least one repeat day.');
+        return;
+      }
+	      if (
+	        isRepeatingAssignment
+	        && staffTimeslotRepeatEndDate
+	        && startOfDay(staffTimeslotRepeatEndDate).getTime() < startOfDay(selection.start).getTime()
+	      ) {
+	        setStaffTimeslotError('Repeat end date must be on or after the start date.');
+	        return;
+	      }
+	      const targetFieldIds = normalizeFieldIds(selectedFieldIds);
+	      const repeatEndDate = isRepeatingAssignment && staffTimeslotRepeatEndDate
+	        ? endOfDay(staffTimeslotRepeatEndDate).toISOString()
+	        : null;
+	      const selectedStaffMember = staffTimeslotUserId
+	        ? staffScheduleMembers.find((member) => member.userId === staffTimeslotUserId) ?? null
+	        : null;
+	      if (staffTimeslotUserId && !selectedStaffMember) {
+	        setStaffTimeslotError('Choose a valid staff member for this assignment.');
+	        return;
+	      }
+	      const shouldAskAssignmentScope = Boolean(selectedStaffMember)
+	        && (isRepeatingAssignment || targetFieldIds.length > 1);
+	      const buildDraftWithStaff = (
+	        draft: ManagerCalendarDraft,
+	        staffUserId: string | null,
+	        extraStaffOptions: Partial<ManagerCalendarDraftStaffOptions> = {},
+	      ): ManagerCalendarDraft => ({
+	        ...draft,
+	        mode: staffTimeslotMode,
+	        fieldIds: targetFieldIds,
+	        start: new Date(selection.start),
+	        end: new Date(selection.end),
+	        staff: {
+	          userId: staffUserId,
+	          userName: staffUserId ? selectedStaffMember?.fullName ?? null : null,
+	          rateOverrideCents: overrideAmountCents,
+	          notes: staffTimeslotNotes,
+	          repeating: isRepeatingAssignment,
+	          daysOfWeek: repeatDays,
+	          repeatEndDate,
+	          ...extraStaffOptions,
+	        },
+	      });
+
+	      if (shouldAskAssignmentScope && selectedStaffMember) {
+	        const sourceDraft = managerCalendarDrafts.find((draft) => draft.id === editingManagerDraftId) ?? null;
+	        if (!sourceDraft) {
+	          setStaffTimeslotError('Unable to resolve this draft assignment.');
+	          return;
+	        }
+	        const allDraft = buildDraftWithStaff(sourceDraft, selectedStaffMember.userId);
+	        const parentDraft = buildDraftWithStaff(sourceDraft, null);
+	        const childDraft: ManagerCalendarDraft = {
+	          id: createId(),
+	          mode: staffTimeslotMode,
+	          fieldIds: targetFieldIds,
+	          start: new Date(selection.start),
+	          end: new Date(selection.end),
+	          staff: {
+	            parentDraftId: sourceDraft.id,
+	            userId: selectedStaffMember.userId,
+	            userName: selectedStaffMember.fullName,
+	            rateOverrideCents: overrideAmountCents,
+	            notes: staffTimeslotNotes,
+	            repeating: false,
+	            daysOfWeek: [dayOfWeek],
+	            repeatEndDate: null,
+	          },
+	        };
+	        setStaffAssignmentScopePrompt({
+	          source: 'draft',
+	          draftId: sourceDraft.id,
+	          previousDraft: sourceDraft,
+	          allDraft,
+	          parentDraft,
+	          childDraft,
+	          staffName: selectedStaffMember.fullName,
+	          occurrenceLabel: `${formatDisplayDateTime(selection.start)} - ${formatDisplayTime(selection.end)}`,
+	          kindLabel: staffTimeslotMode === 'official_assignment' ? 'official' : 'staff',
+	        });
+	        setStaffTimeslotError(null);
+	        return;
+	      }
+
+	      const updatedDraft = stageManagerCalendarDraftUpdate(
+	        editingManagerDraftId,
+	        (draft) => buildDraftWithStaff(draft, staffTimeslotUserId || null),
+	        'Edited draft assignment',
+	      );
+      resetStaffTimeslotModalState();
+      if (updatedDraft) {
+        notifications.show({ color: 'blue', message: 'Draft assignment change staged.' });
+      }
       return;
     }
     if (editingStaffAssignment) {
@@ -3961,15 +5266,140 @@ export default function FieldsTabContent({
     const repeatEndDate = isRepeatingAssignment
       ? (staffTimeslotRepeatEndDate ? endOfDay(staffTimeslotRepeatEndDate).toISOString() : null)
       : selection.end.toISOString();
-    setStaffTimeslotSubmitting(true);
-    setStaffTimeslotError(null);
-    try {
+    const restorablePendingUnassignments = staffTimeslotParentAssignment && staffTimeslotUserId
+      ? staffScheduleAssignments.filter((assignment) => {
+          const override = managerStaffAssignmentOverrides[assignment.id];
+          if (
+            override?.action !== 'unassign'
+            || assignment.parentAssignmentId !== staffTimeslotParentAssignment.id
+            || assignment.assignmentKind !== assignmentKind
+            || assignment.userId !== staffTimeslotUserId
+            || (assignment.fieldId && !selectedFieldIds.includes(assignment.fieldId))
+          ) {
+            return false;
+          }
+          const range = getStaffAssignmentOccurrenceRangeForDate(assignment, selection.start)
+            ?? getStaffAssignmentPrimaryRange(assignment);
+          return Boolean(
+            range
+            && range.start.getTime() === selection.start.getTime()
+            && range.end.getTime() === selection.end.getTime(),
+          );
+        })
+      : [];
+	    if (restorablePendingUnassignments.length > 0) {
+	      let restoredCount = 0;
+	      restorablePendingUnassignments.forEach((assignment) => {
+	        if (restorePendingStaffUnassignment(assignment.id)) {
+	          restoredCount += 1;
+        }
+      });
+      if (restoredCount > 0) {
+        resetStaffTimeslotModalState();
+        notifications.show({
+          color: 'blue',
+          message: `${restoredCount} pending staff unassignment${restoredCount === 1 ? '' : 's'} restored.`,
+        });
+	        return;
+	      }
+	    }
+	    if (staffTimeslotParentAssignment) {
+	      const targetField = selectedFields[0] ?? null;
+	      if (!targetField) {
+	        setStaffTimeslotError('Select a resource for this assignment.');
+	        return;
+	      }
+	      const selectedStaffMember = staffScheduleMembers.find((member) => member.userId === staffTimeslotUserId) ?? null;
+	      if (!selectedStaffMember) {
+	        setStaffTimeslotError('Choose a valid staff member for this occurrence.');
+	        return;
+	      }
+	      const startTimeMinutes = selection.start.getHours() * 60 + selection.start.getMinutes();
+	      const endTimeMinutes = selection.end.getHours() * 60 + selection.end.getMinutes();
+	      const occurrenceDay = mondayDayOf(selection.start);
+	      const facilityId = getFieldFacilityId(targetField);
+	      const facility = facilityId ? facilities.find((candidate) => candidate.$id === facilityId) ?? null : null;
+	      const fieldName = getFacilityScopedFieldDisplayName(targetField);
+	      const childAssignment: StaffScheduleAssignment = {
+	        id: createId(),
+	        parentAssignmentId: staffTimeslotParentAssignment.id,
+	        staffMemberId: selectedStaffMember.staffMemberId,
+	        userId: selectedStaffMember.userId,
+	        userName: selectedStaffMember.fullName,
+	        isOpen: false,
+	        isChildAssignment: true,
+	        assignmentKind,
+	        facilityId,
+	        facilityName: facility?.name ?? staffTimeslotParentAssignment.facilityName ?? null,
+	        fieldId: targetField.$id,
+	        fieldName,
+	        rateOverrideType: overrideAmountCents ? 'HOURLY' : null,
+	        rateOverrideCents: overrideAmountCents,
+	        notes: staffTimeslotNotes,
+	        status: staffTimeslotParentAssignment.status ?? 'PLANNED',
+	        timeSlot: {
+	          startDate: selection.start.toISOString(),
+	          endDate: selection.end.toISOString(),
+	          repeating: false,
+	          dayOfWeek: occurrenceDay,
+	          daysOfWeek: [occurrenceDay],
+	          startTimeMinutes,
+	          endTimeMinutes,
+	          timeZone: staffTimeslotParentAssignment.timeSlot?.timeZone ?? null,
+	        },
+	        plannedStart: selection.start.toISOString(),
+	        plannedEnd: selection.end.toISOString(),
+	        plannedMinutes: Math.max(0, Math.round((selection.end.getTime() - selection.start.getTime()) / 60000)),
+	      };
+	      const parentAssignment: StaffScheduleAssignment = {
+	        ...staffTimeslotParentAssignment,
+	        staffMemberId: selectedStaffMember.staffMemberId,
+	        userId: selectedStaffMember.userId,
+	        userName: selectedStaffMember.fullName,
+	        isOpen: false,
+	        rateOverrideType: overrideAmountCents ? 'HOURLY' : null,
+	        rateOverrideCents: overrideAmountCents,
+	        notes: staffTimeslotNotes,
+	      };
+	      const childOverride: ManagerStaffAssignmentPendingOverride = {
+	        action: 'create',
+	        assignment: childAssignment,
+	      };
+	      const parentOverride: ManagerStaffAssignmentPendingOverride = {
+	        action: 'update',
+	        assignment: parentAssignment,
+	      };
+	      const kindLabel = assignmentKind === 'OFFICIAL_SHIFT' ? 'official' : 'staff';
+	      if (staffAssignmentCanDeleteFollowing(staffTimeslotParentAssignment)) {
+	        setStaffAssignmentScopePrompt({
+	          source: 'assignment',
+	          parentAssignment: staffTimeslotParentAssignment,
+	          parentOverride,
+	          childOverride,
+	          staffName: selectedStaffMember.fullName,
+	          occurrenceLabel: `${formatDisplayDateTime(selection.start)} - ${formatDisplayTime(selection.end)}`,
+	          kindLabel,
+	        });
+	        setStaffTimeslotError(null);
+	        return;
+	      }
+	      stageStaffAssignmentOverride(childAssignment.id, childOverride, `Assigned ${kindLabel} coverage occurrence`);
+	      resetStaffTimeslotModalState();
+	      notifications.show({
+	        color: 'blue',
+	        message: `${selectedStaffMember.fullName} assignment staged for this occurrence.`,
+	      });
+	      return;
+	    }
+	    setStaffTimeslotSubmitting(true);
+	    setStaffTimeslotError(null);
+	    try {
       const created = await Promise.all(selectedFields.map(async (field) => {
         const facilityId = getFieldFacilityId(field);
         const response = await apiRequest<StaffScheduleCreateResponse>(`/api/organizations/${organizationId}/staff/schedule`, {
           method: 'POST',
           body: {
-            parentAssignmentId: staffTimeslotParentAssignment?.id ?? null,
+	            parentAssignmentId: null,
             userId: staffTimeslotUserId || null,
             assignmentKind,
             facilityId,
@@ -4006,15 +5436,22 @@ export default function FieldsTabContent({
     }
   }, [
     canManage,
+    editingManagerDraftId,
     editingStaffAssignment,
     facilities,
     isEditingChildStaffAssignment,
-    loadStaffSchedule,
-    organizationId,
+	    loadStaffSchedule,
+	    managerCalendarDrafts,
+	    managerStaffAssignmentOverrides,
+	    organizationId,
     resetStaffTimeslotModalState,
+    restorePendingStaffUnassignment,
     selectedFields,
     selection,
+    selectedFieldIds,
     stageStaffAssignmentOverride,
+    stageManagerCalendarDraftUpdate,
+    staffScheduleAssignments,
     staffScheduleMembers,
     staffTimeslotParentAssignment,
     staffTimeslotRepeatDays,
@@ -4024,12 +5461,85 @@ export default function FieldsTabContent({
     staffTimeslotNotes,
     staffTimeslotOverrideAmount,
     staffTimeslotUserId,
-  ]);
+	  ]);
 
-  const unassignChildStaffAssignment = useCallback(() => {
-    if (!canManage || !organizationId || !editingStaffAssignment?.id || !editingStaffAssignment.parentAssignmentId) {
-      return;
-    }
+		  const applyStaffAssignmentScopePrompt = useCallback((scope: 'all' | 'occurrence') => {
+		    if (!staffAssignmentScopePrompt) {
+		      return;
+		    }
+	    if (staffAssignmentScopePrompt.source === 'draft') {
+	      if (scope === 'all') {
+	        const updatedDraft = stageManagerCalendarDraftUpdate(
+	          staffAssignmentScopePrompt.draftId,
+	          () => staffAssignmentScopePrompt.allDraft,
+	          `Assigned all ${staffAssignmentScopePrompt.kindLabel} draft coverage`,
+	        );
+	        resetStaffTimeslotModalState();
+	        if (updatedDraft) {
+	          notifications.show({
+	            color: 'blue',
+	            message: `${staffAssignmentScopePrompt.staffName} assignment staged for all instances.`,
+	          });
+	        }
+	        return;
+	      }
+	      const staged = stageManagerCalendarDraftScope(
+	        staffAssignmentScopePrompt.draftId,
+	        staffAssignmentScopePrompt.parentDraft,
+	        staffAssignmentScopePrompt.childDraft,
+	        `Assigned ${staffAssignmentScopePrompt.kindLabel} draft coverage occurrence`,
+	        staffAssignmentScopePrompt.previousDraft,
+	      );
+	      resetStaffTimeslotModalState();
+	      if (staged) {
+	        notifications.show({
+	          color: 'blue',
+	          message: `${staffAssignmentScopePrompt.staffName} assignment staged for this occurrence.`,
+	        });
+	      }
+	      return;
+	    }
+		    if (scope === 'all') {
+		      stageStaffAssignmentOverride(
+		        staffAssignmentScopePrompt.parentAssignment.id,
+	        staffAssignmentScopePrompt.parentOverride,
+	        `Assigned all ${staffAssignmentScopePrompt.kindLabel} coverage`,
+	      );
+	      resetStaffTimeslotModalState();
+	      notifications.show({
+	        color: 'blue',
+	        message: `${staffAssignmentScopePrompt.staffName} assignment staged for all instances.`,
+	      });
+	      return;
+	    }
+	    const childAssignment = staffAssignmentScopePrompt.childOverride.action === 'create'
+	      ? staffAssignmentScopePrompt.childOverride.assignment
+	      : null;
+	    if (!childAssignment) {
+	      return;
+	    }
+	    stageStaffAssignmentOverride(
+	      childAssignment.id,
+	      staffAssignmentScopePrompt.childOverride,
+	      `Assigned ${staffAssignmentScopePrompt.kindLabel} coverage occurrence`,
+	    );
+	    resetStaffTimeslotModalState();
+	    notifications.show({
+	      color: 'blue',
+	      message: `${staffAssignmentScopePrompt.staffName} assignment staged for this occurrence.`,
+	    });
+	  }, [
+	    resetStaffTimeslotModalState,
+	    staffAssignmentScopePrompt,
+	    stageManagerCalendarDraftScope,
+	    stageManagerCalendarDraftUpdate,
+	    stageStaffAssignmentOverride,
+	  ]);
+
+	  const unassignChildStaffAssignment = useCallback(() => {
+	    if (!canManage || !organizationId || !editingStaffAssignment?.id || !editingStaffAssignment.parentAssignmentId) {
+	      return;
+	    }
     setStaffTimeslotError(null);
     stageStaffAssignmentOverride(editingStaffAssignment.id, {
       action: 'unassign',
@@ -4058,25 +5568,167 @@ export default function FieldsTabContent({
     });
   }, [canManage, editingStaffAssignment, organizationId, resetStaffTimeslotModalState, stageStaffAssignmentOverride]);
 
+  const openStaffDeletePlan = useMemo(() => {
+    if (!openStaffDeleteConfirmation) {
+      return null;
+    }
+    const parentAssignment = visibleStaffScheduleAssignments
+      .find((assignment) => assignment.id === openStaffDeleteConfirmation.assignmentId)
+      ?? staffScheduleAssignments.find((assignment) => assignment.id === openStaffDeleteConfirmation.assignmentId)
+      ?? null;
+    const occurrenceStart = toValidDate(openStaffDeleteConfirmation.occurrenceStart);
+    const occurrenceEnd = toValidDate(openStaffDeleteConfirmation.occurrenceEnd);
+    if (!parentAssignment || !occurrenceStart || !occurrenceEnd) {
+      return null;
+    }
+    const childAssignments = visibleStaffScheduleAssignments
+      .filter((assignment) => (
+        assignment.parentAssignmentId === parentAssignment.id
+        && Boolean(assignment.userId || assignment.staffMemberId)
+        && (
+          openStaffDeleteConfirmation.scope === 'all'
+          || childStaffAssignmentTouchesDeleteScope(assignment, occurrenceStart)
+        )
+      ))
+      .sort((left, right) => {
+        const leftStart = getStaffAssignmentPrimaryRange(left)?.start.getTime() ?? 0;
+        const rightStart = getStaffAssignmentPrimaryRange(right)?.start.getTime() ?? 0;
+        return leftStart - rightStart;
+      });
+    const childOverrides = childAssignments.map((assignment) => ({
+      assignmentId: assignment.id,
+      override: {
+        action: 'unassign' as const,
+        assignmentId: assignment.id,
+      },
+    }));
+
+    if (openStaffDeleteConfirmation.scope === 'all') {
+      return {
+        parentAssignment,
+        occurrenceStart,
+        occurrenceEnd,
+        scope: openStaffDeleteConfirmation.scope,
+        childAssignments,
+        shortenedAssignment: null,
+        deletesParent: true,
+        overrides: [{
+          assignmentId: parentAssignment.id,
+          override: {
+            action: 'delete' as const,
+            assignmentId: parentAssignment.id,
+          },
+        }],
+      };
+    }
+
+    const previousOccurrence = getPreviousStaffAssignmentOccurrenceRange(parentAssignment, occurrenceStart);
+    const shortenedAssignment = previousOccurrence
+      ? buildStaffAssignmentEndingAfterOccurrence(parentAssignment, previousOccurrence)
+      : null;
+
+    return {
+      parentAssignment,
+      occurrenceStart,
+      occurrenceEnd,
+      scope: openStaffDeleteConfirmation.scope,
+      childAssignments,
+      shortenedAssignment,
+      deletesParent: !shortenedAssignment,
+      overrides: shortenedAssignment
+        ? [
+            ...childOverrides,
+            {
+              assignmentId: parentAssignment.id,
+              override: {
+                action: 'update' as const,
+                assignment: shortenedAssignment,
+              },
+            },
+          ]
+        : [{
+            assignmentId: parentAssignment.id,
+            override: {
+              action: 'delete' as const,
+              assignmentId: parentAssignment.id,
+            },
+          }],
+    };
+  }, [openStaffDeleteConfirmation, staffScheduleAssignments, visibleStaffScheduleAssignments]);
+
+  const requestDeleteOpenStaffAssignment = useCallback(() => {
+    if (!canManage || !organizationId || !staffTimeslotParentAssignment?.id || !selection) {
+      return;
+    }
+    const defaultScope: OpenStaffDeleteScope = staffAssignmentCanDeleteFollowing(staffTimeslotParentAssignment)
+      ? 'following'
+      : 'all';
+    setStaffTimeslotError(null);
+    setOpenStaffDeleteConfirmation({
+      assignmentId: staffTimeslotParentAssignment.id,
+      occurrenceStart: selection.start.toISOString(),
+      occurrenceEnd: selection.end.toISOString(),
+      scope: defaultScope,
+    });
+  }, [canManage, organizationId, selection, staffTimeslotParentAssignment]);
+
+  const confirmOpenStaffAssignmentDelete = useCallback(() => {
+    if (!openStaffDeletePlan?.overrides.length) {
+      return;
+    }
+    const parentIsOfficial = openStaffDeletePlan.parentAssignment.assignmentKind === 'OFFICIAL_SHIFT';
+    const label = openStaffDeletePlan.scope === 'all'
+      ? `Deleted open ${parentIsOfficial ? 'official' : 'staff'} assignment`
+      : `Deleted following open ${parentIsOfficial ? 'official' : 'staff'} assignments`;
+    stageStaffAssignmentOverrideBatch(openStaffDeletePlan.overrides, label);
+    resetStaffTimeslotModalState();
+    notifications.show({
+      color: 'blue',
+      message: openStaffDeletePlan.scope === 'all'
+        ? `Open ${parentIsOfficial ? 'official' : 'staff'} assignment deletion staged.`
+        : `Following open ${parentIsOfficial ? 'official' : 'staff'} assignment changes staged.`,
+    });
+  }, [openStaffDeletePlan, resetStaffTimeslotModalState, stageStaffAssignmentOverrideBatch]);
+
   const handleSaveManagerCalendarDrafts = useCallback(async () => {
     if (!canManage || !organizationId || managerCalendarDraftsSaving || !managerCalendarPendingChangeCount) {
       return;
     }
     const fieldById = new Map(fields.map((field) => [field.$id, field]));
     const pendingRentalUpdates = Object.values(managerRentalSlotUpdates);
-    const pendingStaffOverrides = Object.entries(managerStaffAssignmentOverrides);
+	    const pendingStaffOverrides = Object.entries(managerStaffAssignmentOverrides)
+	      .sort(([leftAssignmentId, left], [rightAssignmentId, right]) => {
+	        const rank = (assignmentId: string, override: ManagerStaffAssignmentPendingOverride) => {
+	          if (override.action === 'create') return override.assignment.parentAssignmentId ? 2 : 3;
+	          if (override.action === 'unassign') return 0;
+	          if (override.action === 'delete') return 1;
+	          const pendingAssignment = override.assignment;
+	          if (pendingAssignment.parentAssignmentId) return 2;
+          const sourceAssignment = staffScheduleAssignments.find((assignment) => assignment.id === assignmentId);
+          if (sourceAssignment?.parentAssignmentId) return 2;
+          return 3;
+        };
+        return rank(leftAssignmentId, left) - rank(rightAssignmentId, right);
+      });
     setManagerCalendarDraftsSaving(true);
     try {
       const updatedRentalFields: Field[] = [];
-      const createdAssignments: StaffScheduleAssignment[] = [];
-      const updatedAssignments: StaffScheduleAssignment[] = [];
-      const removedAssignmentIds = new Set<string>();
-      const deletedParentAssignmentIds = new Set<string>();
+	      const createdAssignments: StaffScheduleAssignment[] = [];
+	      const updatedAssignments: StaffScheduleAssignment[] = [];
+	      const removedAssignmentIds = new Set<string>();
+	      const deletedParentAssignmentIds = new Set<string>();
+	      const createdDraftAssignmentIds = new Map<string, string>();
+	      const draftsToSave = [...managerCalendarDrafts].sort((left, right) => {
+	        const leftIsChild = Boolean(left.staff?.parentDraftId);
+	        const rightIsChild = Boolean(right.staff?.parentDraftId);
+	        if (leftIsChild === rightIsChild) return 0;
+	        return leftIsChild ? 1 : -1;
+	      });
 
-      for (const draft of managerCalendarDrafts) {
-        const draftFields = normalizeFieldIds(draft.fieldIds)
-          .map((fieldId) => fieldById.get(fieldId))
-          .filter((field): field is Field => Boolean(field));
+	      for (const draft of draftsToSave) {
+	        const draftFields = normalizeFieldIds(draft.fieldIds)
+	          .map((fieldId) => fieldById.get(fieldId))
+	          .filter((field): field is Field => Boolean(field));
         if (!draftFields.length) {
           throw new Error('One draft no longer has a valid resource.');
         }
@@ -4093,20 +5745,30 @@ export default function FieldsTabContent({
         const endTimeMinutes = end.getHours() * 60 + end.getMinutes();
 
         if (draft.mode === 'rental') {
+          const draftRental = draft.rental ?? {};
+          const normalizedDraftRentalDays = Array.isArray(draftRental.daysOfWeek)
+            ? draftRental.daysOfWeek.filter((day): day is NonNullable<TimeSlot['dayOfWeek']> => (
+                Number.isInteger(day) && day >= 0 && day <= 6
+              ))
+            : [];
+          const draftRentalDaysOfWeek = normalizedDraftRentalDays.length
+            ? normalizedDraftRentalDays
+            : [dayOfWeek];
+          const rentalRepeating = Boolean(draftRental.repeating);
           const results = await Promise.all(draftFields.map((field) => (
             fieldService.createRentalSlot(field, {
-              dayOfWeek,
-              daysOfWeek: [dayOfWeek],
-              repeating: false,
+              dayOfWeek: draftRental.dayOfWeek ?? dayOfWeek,
+              daysOfWeek: draftRentalDaysOfWeek,
+              repeating: rentalRepeating,
               scheduledFieldId: field.$id,
               scheduledFieldIds: [field.$id],
-              startDate: formatLocalDateTime(start),
-              endDate: formatLocalDateTime(end),
-              startTimeMinutes,
-              endTimeMinutes,
-              price: 0,
-              requiredTemplateIds: [],
-              hostRequiredTemplateIds: [],
+              startDate: draftRental.startDate ?? formatLocalDateTime(start),
+              endDate: draftRental.endDate ?? (rentalRepeating ? null : formatLocalDateTime(end)),
+              startTimeMinutes: draftRental.startTimeMinutes ?? startTimeMinutes,
+              endTimeMinutes: draftRental.endTimeMinutes ?? endTimeMinutes,
+              price: draftRental.price ?? 0,
+              requiredTemplateIds: draftRental.requiredTemplateIds ?? [],
+              hostRequiredTemplateIds: draftRental.hostRequiredTemplateIds ?? [],
             })
           )));
           updatedRentalFields.push(...results.map((result) => result.field));
@@ -4116,30 +5778,45 @@ export default function FieldsTabContent({
         const assignmentKind: StaffScheduleAssignmentKind = draft.mode === 'official_assignment'
           ? 'OFFICIAL_SHIFT'
           : 'STAFF_SHIFT';
-        const results = await Promise.all(draftFields.map(async (field) => {
-          const response = await apiRequest<StaffScheduleCreateResponse>(`/api/organizations/${organizationId}/staff/schedule`, {
-            method: 'POST',
-            body: {
-              parentAssignmentId: null,
-              userId: null,
-              assignmentKind,
-              facilityId: getFieldFacilityId(field),
+	        const draftStaff = draft.staff ?? {};
+	        const parentDraftId = draftStaff.parentDraftId ?? null;
+	        const staffRepeating = Boolean(draftStaff.repeating);
+	        const staffDaysOfWeek = Array.isArray(draftStaff.daysOfWeek) && draftStaff.daysOfWeek.length
+	          ? draftStaff.daysOfWeek
+	          : [dayOfWeek];
+	        const results = await Promise.all(draftFields.map(async (field) => {
+	          const parentAssignmentId = parentDraftId
+	            ? createdDraftAssignmentIds.get(`${parentDraftId}:${field.$id}`) ?? null
+	            : null;
+	          if (parentDraftId && !parentAssignmentId) {
+	            throw new Error('One draft child assignment no longer has a saved parent assignment.');
+	          }
+	          const response = await apiRequest<StaffScheduleCreateResponse>(`/api/organizations/${organizationId}/staff/schedule`, {
+	            method: 'POST',
+	            body: {
+	              parentAssignmentId,
+	              userId: draftStaff.userId || null,
+	              assignmentKind,
+	              facilityId: getFieldFacilityId(field),
               fieldId: field.$id,
-              rateOverrideType: null,
-              rateOverrideCents: null,
-              notes: '',
+              rateOverrideType: draftStaff.rateOverrideCents ? 'HOURLY' : null,
+              rateOverrideCents: draftStaff.rateOverrideCents ?? null,
+              notes: draftStaff.notes ?? '',
               timeSlot: {
                 startDate: start.toISOString(),
-                endDate: end.toISOString(),
-                repeating: false,
-                daysOfWeek: [dayOfWeek],
+                endDate: staffRepeating ? draftStaff.repeatEndDate ?? null : end.toISOString(),
+                repeating: staffRepeating,
+                daysOfWeek: staffDaysOfWeek,
                 startTimeMinutes,
                 endTimeMinutes,
               },
-            },
-          });
-          return response.assignment ?? null;
-        }));
+	            },
+	          });
+	          if (response.assignment && !parentDraftId) {
+	            createdDraftAssignmentIds.set(`${draft.id}:${field.$id}`, response.assignment.id);
+	          }
+	          return response.assignment ?? null;
+	        }));
         createdAssignments.push(...results.filter((assignment): assignment is StaffScheduleAssignment => Boolean(assignment)));
       }
 
@@ -4148,13 +5825,42 @@ export default function FieldsTabContent({
         if (!ownerField) {
           throw new Error('One rental slot no longer has a valid resource.');
         }
-        const result = await fieldService.updateRentalSlot(ownerField, update.slot);
+        const result = update.action === 'delete'
+          ? { field: await fieldService.deleteRentalSlot(ownerField, update.slotId) }
+          : await fieldService.updateRentalSlot(ownerField, update.slot);
         updatedRentalFields.push(result.field);
       }
 
-      for (const [assignmentId, override] of pendingStaffOverrides) {
-        if (override.action === 'update') {
-          const assignment = override.assignment;
+	      for (const [assignmentId, override] of pendingStaffOverrides) {
+	        if (override.action === 'create') {
+	          const assignment = override.assignment;
+	          const timeSlotPayload = buildStaffScheduleTimeSlotPayload(assignment.timeSlot);
+	          const response = await apiRequest<StaffScheduleCreateResponse>(
+	            `/api/organizations/${organizationId}/staff/schedule`,
+	            {
+	              method: 'POST',
+	              body: {
+	                parentAssignmentId: assignment.parentAssignmentId ?? null,
+	                userId: assignment.userId || null,
+	                assignmentKind: assignment.assignmentKind,
+	                facilityId: assignment.facilityId || null,
+	                fieldId: assignment.fieldId || null,
+	                rateOverrideType: assignment.rateOverrideCents ? 'HOURLY' : null,
+	                rateOverrideCents: assignment.rateOverrideCents ?? null,
+	                notes: assignment.notes ?? '',
+	                ...(timeSlotPayload ? { timeSlot: timeSlotPayload } : {}),
+	              },
+	            },
+	          );
+	          if (response.assignment) {
+	            createdAssignments.push(response.assignment);
+	          }
+	          continue;
+	        }
+
+	        if (override.action === 'update') {
+	          const assignment = override.assignment;
+	          const timeSlotPayload = buildStaffScheduleTimeSlotPayload(assignment.timeSlot);
           const response = await apiRequest<StaffScheduleUpdateResponse>(
             `/api/organizations/${organizationId}/staff/schedule/${assignmentId}`,
             {
@@ -4163,6 +5869,7 @@ export default function FieldsTabContent({
                 ? {
                     rateOverrideType: assignment.rateOverrideCents ? 'HOURLY' : null,
                     rateOverrideCents: assignment.rateOverrideCents ?? null,
+                    ...(timeSlotPayload ? { timeSlot: timeSlotPayload } : {}),
                   }
                 : {
                     userId: assignment.userId || null,
@@ -4171,6 +5878,7 @@ export default function FieldsTabContent({
                     rateOverrideType: assignment.rateOverrideCents ? 'HOURLY' : null,
                     rateOverrideCents: assignment.rateOverrideCents ?? null,
                     notes: assignment.notes ?? '',
+                    ...(timeSlotPayload ? { timeSlot: timeSlotPayload } : {}),
                   },
             },
           );
@@ -4258,6 +5966,7 @@ export default function FieldsTabContent({
     managerStaffAssignmentOverrides,
     organizationId,
     refreshOrganization,
+    staffScheduleAssignments,
   ]);
 
   const handleCancelManagerCalendarEditMode = useCallback(() => {
@@ -4273,6 +5982,7 @@ export default function FieldsTabContent({
     setManagerCreateDragMode(null);
     setManagerDraftDragId(null);
     setSelectedManagerDraftId(null);
+    setEditingManagerDraftId(null);
     clearManagerCalendarPendingState();
     setManagerCalendarEditMode(false);
   }, [clearManagerCalendarPendingState, managerCalendarPendingChangeCount]);
@@ -4284,7 +5994,7 @@ export default function FieldsTabContent({
     durationMs = MIN_SELECTION_MS,
   ): SelectionState | null => {
     const normalizedFieldIds = normalizeFieldIds(fieldIds);
-    if (!canManage || !normalizedFieldIds.length) {
+    if (!canManage || !normalizedFieldIds.length || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return null;
     }
     const effectiveDurationMs = Math.max(MIN_SELECTION_MS, durationMs);
@@ -4538,17 +6248,6 @@ export default function FieldsTabContent({
     }
   }, []);
 
-  const selectManagerCalendarDraft = useCallback((draftId: string) => {
-    const draft = managerCalendarDrafts.find((candidate) => candidate.id === draftId);
-    if (!draft) {
-      return;
-    }
-    const fieldIds = normalizeFieldIds(draft.fieldIds);
-    setSelectedManagerDraftId(draft.id);
-    setSelection({ fieldIds, start: new Date(draft.start), end: new Date(draft.end) });
-    setCalendarDate(new Date(draft.start));
-  }, [managerCalendarDrafts]);
-
   const handleManagerDraftPointerDown = useCallback((
     draftEvent: SelectionCalendarEntry,
     event: ReactPointerEvent<HTMLDivElement>,
@@ -4564,11 +6263,25 @@ export default function FieldsTabContent({
     if (!draft) {
       return;
     }
-    event.preventDefault();
+    const target = event.target as Element | null;
+    const isResizeHandle = typeof target?.closest === 'function' && (
+      target.closest('.rbc-addons-dnd-resize-ns-anchor')
+      || target.closest('.rbc-addons-dnd-resize-ew-anchor')
+    );
+    const isDragHandle = typeof target?.closest === 'function'
+      && Boolean(target.closest('.shared-calendar-event__drag-handle'));
+    if (!isDragHandle) {
+      if (!isResizeHandle) {
+        event.stopPropagation();
+        openManagerCalendarDraftEditor(draftId, draft);
+      }
+      return;
+    }
     event.stopPropagation();
     const startPoint = { clientX: event.clientX, clientY: event.clientY };
     managerDraftDragRef.current = {
       draftId,
+      draft,
       fieldIds: normalizeFieldIds(draft.fieldIds),
       durationMs: Math.max(MIN_SELECTION_MS, draft.end.getTime() - draft.start.getTime()),
       startPoint,
@@ -4613,9 +6326,10 @@ export default function FieldsTabContent({
       // No-op when capture was not active.
     }
     if (!dragState.hasMoved) {
-      selectManagerCalendarDraft(dragState.draftId);
+      openManagerCalendarDraftEditor(dragState.draftId, dragState.draft);
       return;
     }
+    managerDraftSuppressNextClickRef.current = true;
     const nextSelection = resolveCalendarPointSelection(
       dragState.lastPoint.clientX,
       dragState.lastPoint.clientY,
@@ -4626,7 +6340,7 @@ export default function FieldsTabContent({
       return;
     }
     applySelectionWindow(nextSelection.start, nextSelection.end, { slotKey: dragState.draftId });
-  }, [applySelectionWindow, resolveCalendarPointSelection, selectManagerCalendarDraft]);
+  }, [applySelectionWindow, openManagerCalendarDraftEditor, resolveCalendarPointSelection]);
 
   const handleManagerDraftPointerCancel = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!managerDraftDragRef.current) {
@@ -4671,9 +6385,10 @@ export default function FieldsTabContent({
       managerDraftDragRef.current = null;
       setManagerDraftDragId(null);
       if (!finalState.hasMoved) {
-        selectManagerCalendarDraft(finalState.draftId);
+        openManagerCalendarDraftEditor(finalState.draftId, finalState.draft);
         return;
       }
+      managerDraftSuppressNextClickRef.current = true;
       const nextSelection = resolveCalendarPointSelection(
         finalState.lastPoint.clientX,
         finalState.lastPoint.clientY,
@@ -4706,13 +6421,14 @@ export default function FieldsTabContent({
       window.removeEventListener('pointercancel', cancelDrag, true);
       window.removeEventListener('blur', cancelDrag);
     };
-  }, [applySelectionWindow, managerDraftDragId, resolveCalendarPointSelection, selectManagerCalendarDraft]);
+  }, [applySelectionWindow, managerDraftDragId, openManagerCalendarDraftEditor, resolveCalendarPointSelection]);
 
   const openStaffAssignmentEditModal = useCallback((item: FacilityCalendarFeedItem, start: Date, end: Date) => {
     if (!canManage) {
       return;
     }
     setSelectedManagerDraftId(null);
+    setEditingManagerDraftId(null);
     const assignment = item.source as StaffScheduleAssignment | undefined;
     if (!assignment?.id) {
       notifications.show({ color: 'red', message: 'Unable to resolve this staff assignment.' });
@@ -4730,7 +6446,7 @@ export default function FieldsTabContent({
       setStaffTimeslotMode(item.type === 'official_assignment' ? 'official_assignment' : 'staff_assignment');
       setStaffTimeslotUserId(null);
       setStaffTimeslotOverrideAmount('');
-      setStaffTimeslotNotes('');
+      setStaffTimeslotNotes(assignment.notes ?? '');
       setStaffTimeslotRepeating(false);
       setStaffTimeslotRepeatDays([mondayDayOf(start)]);
       setStaffTimeslotRepeatEndDate(null);
@@ -4779,7 +6495,7 @@ export default function FieldsTabContent({
     if (event.metaType === 'selection') {
       const draftId = typeof event.resource?.slotKey === 'string' ? event.resource.slotKey : '';
       if (draftId) {
-        selectManagerCalendarDraft(draftId);
+        openManagerCalendarDraftEditor(draftId);
       }
       return;
     }
@@ -4790,6 +6506,9 @@ export default function FieldsTabContent({
       && event.start
       && event.end
     ) {
+      if (isStaffAssignmentActivationSuppressed()) {
+        return;
+      }
       openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
       return;
     }
@@ -4801,11 +6520,12 @@ export default function FieldsTabContent({
     const ownerField = fields.find((field) => field.$id === eventFieldId) ?? selectedField;
     if (!ownerField) return;
     setSelectedManagerDraftId(null);
+    setEditingManagerDraftId(null);
     setEditingRentalField(ownerField);
     setEditingRentalSlot(slot);
     setRentalDraftRange(null);
     setCreateRentalOpen(true);
-  }, [canManage, fields, openStaffAssignmentEditModal, selectedField, selectManagerCalendarDraft]);
+  }, [canManage, fields, isStaffAssignmentActivationSuppressed, openManagerCalendarDraftEditor, openStaffAssignmentEditModal, selectedField]);
 
   const CalendarEvent: any = ({ event }: any) => {
     const normalizedFieldName = typeof event?.fieldName === 'string' ? event.fieldName.trim() : '';
@@ -4835,7 +6555,13 @@ export default function FieldsTabContent({
       meta = isUnavailable ? 'Unavailable' : timeLabel;
     } else if (event?.metaType === 'selection' && canManage) {
       const mode = event.selectionMode ?? resource?.mode;
-      title = MANAGER_SELECTION_TITLES[mode as ManagerCalendarSelectionMode] ?? event.title;
+      const isAssignedStaffDraft = (
+        (mode === 'staff_assignment' || mode === 'official_assignment')
+        && Boolean(resource?.userId)
+      );
+      title = isAssignedStaffDraft
+        ? event.title
+        : MANAGER_SELECTION_TITLES[mode as ManagerCalendarSelectionMode] ?? event.title;
       meta = 'Unsaved';
     }
     const isManagerDraft = Boolean(
@@ -4854,6 +6580,7 @@ export default function FieldsTabContent({
       && event.end
       && event.resource,
     );
+    const isEditableStaffAssignmentFeedEvent = Boolean(isStaffAssignmentFeedEvent && managerCalendarEditMode);
 
     return (
       <SharedCalendarEvent
@@ -4863,23 +6590,110 @@ export default function FieldsTabContent({
         colorReferenceList={fieldColorReferenceList}
         colorMatchKey={event?.resourceId}
         resourceColorMatchKeys={event?.resourceId ? [event.resourceId] : undefined}
-        dataAttributes={isStaffAssignmentFeedEvent ? {
-          'data-staff-assignment-calendar-event-id': String(event.id),
-        } : undefined}
+        dataAttributes={{
+          ...(isStaffAssignmentFeedEvent ? {
+            'data-staff-assignment-calendar-event-id': String(event.id),
+          } : {}),
+          ...(isManagerDraft && typeof resource?.slotKey === 'string' ? {
+            'data-manager-draft-id': resource.slotKey,
+          } : {}),
+        }}
         compact
-        draggable={isManagerDraft || (canManage && managerCalendarEditMode && event?.metaType === 'rental')}
+        draggable={
+          isManagerDraft
+          || isEditableStaffAssignmentFeedEvent
+          || (canManage && managerCalendarEditMode && event?.metaType === 'rental')
+        }
         selected={isManagerDraft && managerDraftDragId === resource?.slotKey}
         conflict={variant === 'conflict'}
         variant={variant}
-        onClick={isStaffAssignmentFeedEvent
-          ? () => openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end)
+        onClick={isManagerDraft
+          ? () => {
+              if (managerDraftSuppressNextClickRef.current) {
+                managerDraftSuppressNextClickRef.current = false;
+                return;
+              }
+              const draftId = typeof resource?.slotKey === 'string' ? resource.slotKey : '';
+              if (draftId) {
+                const mode = event.selectionMode ?? resource?.mode;
+                const fallbackDraft = mode
+                  ? {
+                      id: draftId,
+                      mode,
+                      fieldIds: event.resourceId ? [event.resourceId] : [],
+                      start: new Date(event.start),
+                      end: new Date(event.end),
+                      ...(mode === 'rental'
+                        ? { rental: {} }
+                        : {
+                            staff: {
+                              userId: resource?.userId ?? null,
+                              userName: typeof event.title === 'string' ? event.title : null,
+                            },
+                          }),
+                    } satisfies ManagerCalendarDraft
+                  : null;
+                openManagerCalendarDraftEditor(draftId, fallbackDraft);
+              }
+            }
+          : isStaffAssignmentFeedEvent
+            ? () => {
+              if (isStaffAssignmentActivationSuppressed()) {
+                return;
+              }
+              openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
+            }
+          : undefined}
+        onMouseDown={isManagerDraft
+          ? (mouseEvent) => {
+              const target = mouseEvent.target as Element | null;
+              if (
+                typeof target?.closest === 'function'
+                && (
+                  target.closest('.shared-calendar-event__drag-handle')
+                  || target.closest('.rbc-addons-dnd-resize-ns-anchor')
+                  || target.closest('.rbc-addons-dnd-resize-ew-anchor')
+                )
+              ) {
+                return;
+              }
+              const draftId = typeof resource?.slotKey === 'string' ? resource.slotKey : '';
+              if (!draftId) {
+                return;
+              }
+              mouseEvent.stopPropagation();
+              const mode = event.selectionMode ?? resource?.mode;
+              const fallbackDraft = mode
+                ? {
+                    id: draftId,
+                    mode,
+                    fieldIds: event.resourceId ? [event.resourceId] : [],
+                    start: new Date(event.start),
+                    end: new Date(event.end),
+                    ...(mode === 'rental'
+                      ? { rental: {} }
+                      : {
+                          staff: {
+                            userId: resource?.userId ?? null,
+                            userName: typeof event.title === 'string' ? event.title : null,
+                          },
+                        }),
+                  } satisfies ManagerCalendarDraft
+                : null;
+              openManagerCalendarDraftEditor(draftId, fallbackDraft);
+            }
           : undefined}
         onPointerDown={isManagerDraft ? (pointerEvent) => handleManagerDraftPointerDown(event as SelectionCalendarEntry, pointerEvent) : undefined}
         onPointerMove={isManagerDraft ? handleManagerDraftPointerMove : undefined}
         onPointerUp={isManagerDraft
           ? handleManagerDraftPointerUp
-          : isStaffAssignmentFeedEvent
+          : isStaffAssignmentFeedEvent && !managerCalendarEditMode
             ? (pointerEvent) => {
+                if (isStaffAssignmentActivationSuppressed()) {
+                  pointerEvent.preventDefault();
+                  pointerEvent.stopPropagation();
+                  return;
+                }
                 pointerEvent.preventDefault();
                 pointerEvent.stopPropagation();
                 openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
@@ -4934,6 +6748,7 @@ export default function FieldsTabContent({
     <div
       className="shared-calendar-shell shared-calendar-shell--fields"
       style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}
+      onPointerDownCapture={handleCalendarShellStaffPointerDown}
       onPointerUpCapture={handleCalendarShellStaffEventActivation}
       onClickCapture={handleCalendarShellStaffEventActivation}
     >
@@ -4964,16 +6779,24 @@ export default function FieldsTabContent({
         formats={FIELD_CALENDAR_FORMATS}
         eventPropGetter={eventPropGetter}
         slotPropGetter={slotPropGetter}
-        draggableAccessor={(event: CalendarEventData) => (
-          canManage
-          && managerCalendarEditMode
-          && (event.metaType === 'selection' || event.metaType === 'rental')
-        )}
-        resizableAccessor={(event: CalendarEventData) => (
-          canManage
-          && managerCalendarEditMode
-          && (event.metaType === 'selection' || event.metaType === 'rental')
-        )}
+        draggableAccessor={(event: CalendarEventData) => {
+          const isEditableStaffEvent = event.metaType === 'facility-feed'
+            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
+          return (
+            canManage
+            && managerCalendarEditMode
+            && (event.metaType === 'selection' || event.metaType === 'rental' || isEditableStaffEvent)
+          );
+        }}
+        resizableAccessor={(event: CalendarEventData) => {
+          const isEditableStaffEvent = event.metaType === 'facility-feed'
+            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
+          return (
+            canManage
+            && managerCalendarEditMode
+            && (event.metaType === 'selection' || event.metaType === 'rental' || isEditableStaffEvent)
+          );
+        }}
         onEventDrop={handleEventDrop}
         onEventResize={handleEventResize}
         onSelecting={handleSelecting}
@@ -5632,7 +7455,9 @@ export default function FieldsTabContent({
         }}
         title={isEditingStaffAssignment
           ? (staffTimeslotMode === 'official_assignment' ? 'Edit Official Assignment' : 'Edit Staff Assignment')
-          : isAssigningStaffOccurrence
+          : isEditingManagerDraft
+            ? (staffTimeslotMode === 'official_assignment' ? 'Edit Official Draft' : 'Edit Staff Draft')
+            : isAssigningStaffOccurrence
             ? (staffTimeslotMode === 'official_assignment' ? 'Assign Official Coverage' : 'Assign Staff Coverage')
             : (staffTimeslotMode === 'official_assignment' ? 'Apply Official Timeslot' : 'Apply Staff Timeslot')}
         centered
@@ -5781,7 +7606,17 @@ export default function FieldsTabContent({
 
           <Group justify="space-between">
             <Group gap="xs">
-              {isEditingChildStaffAssignment ? (
+              {isAssigningStaffOccurrence ? (
+                <Button
+                  color="red"
+                  variant="light"
+                  onClick={() => void requestDeleteOpenStaffAssignment()}
+                  loading={staffTimeslotDeleting}
+                  disabled={staffTimeslotSubmitting}
+                >
+                  {staffTimeslotMode === 'official_assignment' ? 'Delete open official shift' : 'Delete open staff shift'}
+                </Button>
+              ) : isEditingChildStaffAssignment ? (
                 <Button
                   color="red"
                   variant="light"
@@ -5818,12 +7653,154 @@ export default function FieldsTabContent({
               >
                 {isEditingStaffAssignment
                   ? 'Save assignment'
+                  : isEditingManagerDraft
+                    ? 'Save draft'
                   : isAssigningStaffOccurrence
                     ? 'Assign coverage'
                     : 'Apply timeslot'}
               </Button>
             </Group>
           </Group>
+        </Stack>
+	      </Modal>
+
+	      <Modal
+	        opened={Boolean(staffAssignmentScopePrompt)}
+	        onClose={() => setStaffAssignmentScopePrompt(null)}
+	        title={staffAssignmentScopePrompt?.kindLabel === 'official'
+	          ? 'Assign official coverage'
+	          : 'Assign staff coverage'}
+	        centered
+	      >
+	        <Stack gap="md">
+	          <Stack gap={4}>
+	            <Text fw={700}>
+	              {staffAssignmentScopePrompt?.staffName ?? 'Selected staff member'}
+	            </Text>
+	            <Text size="sm" c="dimmed">
+	              {staffAssignmentScopePrompt?.occurrenceLabel ?? 'Selected occurrence'}
+	            </Text>
+	          </Stack>
+	          <Alert color="blue" radius="md">
+	            Assign this person to every instance of the parent coverage block, or only the clicked occurrence?
+	          </Alert>
+	          <Group justify="flex-end" gap="xs">
+	            <Button variant="subtle" onClick={() => setStaffAssignmentScopePrompt(null)}>
+	              Cancel
+	            </Button>
+	            <Button variant="default" onClick={() => applyStaffAssignmentScopePrompt('occurrence')}>
+	              This occurrence
+	            </Button>
+	            <Button onClick={() => applyStaffAssignmentScopePrompt('all')}>
+	              All instances
+	            </Button>
+	          </Group>
+	        </Stack>
+	      </Modal>
+
+	      <Modal
+	        opened={Boolean(openStaffDeleteConfirmation)}
+	        onClose={() => setOpenStaffDeleteConfirmation(null)}
+        title={openStaffDeletePlan?.parentAssignment.assignmentKind === 'OFFICIAL_SHIFT'
+          ? 'Delete open official shift'
+          : 'Delete open staff shift'}
+        centered
+      >
+        <Stack gap="md">
+          {openStaffDeletePlan ? (
+            <>
+              {staffAssignmentCanDeleteFollowing(openStaffDeletePlan.parentAssignment) ? (
+                <Stack gap="xs">
+                  <Text size="sm" fw={700}>Delete scope</Text>
+                  <Group gap="xs" grow>
+                    <Button
+                      variant={openStaffDeleteConfirmation?.scope === 'following' ? 'filled' : 'default'}
+                      onClick={() => setOpenStaffDeleteConfirmation((current) => (
+                        current ? { ...current, scope: 'following' } : current
+                      ))}
+                    >
+                      This and following
+                    </Button>
+                    <Button
+                      variant={openStaffDeleteConfirmation?.scope === 'all' ? 'filled' : 'default'}
+                      onClick={() => setOpenStaffDeleteConfirmation((current) => (
+                        current ? { ...current, scope: 'all' } : current
+                      ))}
+                    >
+                      All instances
+                    </Button>
+                  </Group>
+                </Stack>
+              ) : null}
+
+              <Stack gap={4}>
+                <Text size="sm" fw={700}>
+                  {openStaffDeleteConfirmation?.scope === 'all'
+                    ? 'All open instances will be removed.'
+                    : 'This occurrence and future open instances will be removed.'}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {`${formatDisplayDateTime(openStaffDeletePlan.occurrenceStart)} - ${formatDisplayTime(openStaffDeletePlan.occurrenceEnd)}`}
+                </Text>
+              </Stack>
+
+              {openStaffDeletePlan.scope === 'following' && openStaffDeletePlan.shortenedAssignment ? (
+                <Alert color="blue" radius="md">
+                  The parent open range will be shortened to end after the previous occurrence. Earlier assignments remain unchanged.
+                </Alert>
+              ) : null}
+
+              {openStaffDeletePlan.scope === 'following' && openStaffDeletePlan.deletesParent ? (
+                <Alert color="yellow" radius="md">
+                  This is the first occurrence in the open range, so staging this change will delete the parent open shift.
+                </Alert>
+              ) : null}
+
+              {openStaffDeletePlan.childAssignments.length ? (
+                <Alert color="yellow" radius="md">
+                  <Stack gap={6}>
+                    <Text size="sm" fw={700}>
+                      Assigned coverage that will be removed
+                    </Text>
+                    <Stack
+                      gap={6}
+                      aria-label="Assigned coverage removal list"
+                      style={openStaffDeletePlan.childAssignments.length > OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT
+                        ? {
+                            maxHeight: OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT * OPEN_STAFF_DELETE_CHILD_ROW_HEIGHT,
+                            overflowY: 'auto',
+                            paddingRight: 4,
+                          }
+                        : undefined}
+                    >
+                      {openStaffDeletePlan.childAssignments.map((assignment) => (
+                        <Text key={assignment.id} size="sm">
+                          {formatStaffAssignmentDeleteChildLabel(assignment)}
+                        </Text>
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Alert>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  No assigned staff coverage will be removed for this scope.
+                </Text>
+              )}
+
+              <Group justify="flex-end">
+                <Button variant="subtle" onClick={() => setOpenStaffDeleteConfirmation(null)}>
+                  Cancel
+                </Button>
+                <Button color="red" onClick={() => void confirmOpenStaffAssignmentDelete()}>
+                  Stage delete
+                </Button>
+              </Group>
+            </>
+          ) : (
+            <Alert color="red" radius="md">
+              Unable to resolve this open staff assignment.
+            </Alert>
+          )}
         </Stack>
       </Modal>
 
@@ -6069,12 +8046,15 @@ export default function FieldsTabContent({
           setCreateRentalOpen(false);
           setEditingRentalSlot(null);
           setEditingRentalField(null);
+          setEditingManagerDraftId(null);
           setRentalDraftRange(null);
         }}
         field={editingRentalField ?? selectedField}
         selectedFields={!editingRentalSlot ? selectedFields : undefined}
         slot={editingRentalSlot}
         initialRange={editingRentalSlot ? null : rentalDraftRange}
+        onSubmitOverride={managerCalendarEditMode ? handleRentalSlotModalSubmit : undefined}
+        onDeleteOverride={managerCalendarEditMode ? handleRentalSlotModalDelete : undefined}
         onSaved={async (updatedFields) => {
           setOrg((prev) => {
             if (!prev) return prev;

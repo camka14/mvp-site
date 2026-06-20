@@ -24,8 +24,49 @@ jest.mock('react-big-calendar', () => {
   const React = require('react');
   const MS_IN_WEEK = 7 * 24 * 60 * 60 * 1000;
 
-  const Calendar = ({ date, events = [], resources, onNavigate, onEventDrop, onSelectEvent, draggableAccessor }: any) => {
+  const Calendar = ({
+    date,
+    events = [],
+    resources,
+    onNavigate,
+    onEventDrop,
+    onEventResize,
+    onSelectEvent,
+    draggableAccessor,
+    resizableAccessor,
+  }: any) => {
     const resolvedDate = date instanceof Date ? date : new Date(date);
+    const contentRef = React.useRef(null);
+    const daySlotRefs = React.useRef([]);
+    React.useEffect(() => {
+      if (contentRef.current) {
+        contentRef.current.getBoundingClientRect = () => ({
+          left: 0,
+          right: 700,
+          top: 0,
+          bottom: 700,
+          width: 700,
+          height: 700,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        });
+      }
+      daySlotRefs.current.forEach((slot, index) => {
+        if (!slot) return;
+        slot.getBoundingClientRect = () => ({
+          left: index * 100,
+          right: (index + 1) * 100,
+          top: 0,
+          bottom: 700,
+          width: 100,
+          height: 700,
+          x: index * 100,
+          y: 0,
+          toJSON: () => ({}),
+        });
+      });
+    }, []);
     return (
       <div>
         <button
@@ -36,22 +77,58 @@ jest.mock('react-big-calendar', () => {
         </button>
         <div data-testid="calendar-date">{resolvedDate.toISOString()}</div>
         <div data-testid="calendar-resource-count">{Array.isArray(resources) ? resources.length : 'none'}</div>
+        <div ref={contentRef} className="rbc-time-content" data-testid="calendar-drop-zone">
+          {Array.from({ length: 7 }, (_, index) => (
+            <div
+              key={index}
+              ref={(node) => {
+                daySlotRefs.current[index] = node;
+              }}
+              className="rbc-day-slot"
+              data-testid={`calendar-day-slot-${index}`}
+            />
+          ))}
+        </div>
         {events.map((event: any) => {
           const canDrag = typeof draggableAccessor === 'function' ? Boolean(draggableAccessor(event)) : false;
+          const canResize = typeof resizableAccessor === 'function' ? Boolean(resizableAccessor(event)) : false;
           const resourceId = event.resource?.$id ?? event.id;
+          const shouldSelectAfterMutation = event.metaType === 'facility-feed'
+            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
           return (
             <div key={event.id}>
               <button
                 type="button"
                 disabled={!canDrag}
-                onClick={() => onEventDrop?.({
-                  event,
-                  start: new Date('2026-03-11T12:00:00.000Z'),
-                  end: new Date('2026-03-11T13:00:00.000Z'),
-                  resourceId: event.resourceId,
-                })}
+                onClick={() => {
+                  onEventDrop?.({
+                    event,
+                    start: new Date('2026-03-11T12:00:00.000Z'),
+                    end: new Date('2026-03-11T13:00:00.000Z'),
+                    resourceId: event.resourceId,
+                  });
+                  if (shouldSelectAfterMutation) {
+                    onSelectEvent?.(event);
+                  }
+                }}
               >
                 Drag {event.title}
+              </button>
+              <button
+                type="button"
+                disabled={!canResize}
+                onClick={() => {
+                  onEventResize?.({
+                    event,
+                    start: new Date('2026-03-11T12:00:00.000Z'),
+                    end: new Date('2026-03-11T14:00:00.000Z'),
+                  });
+                  if (shouldSelectAfterMutation) {
+                    onSelectEvent?.(event);
+                  }
+                }}
+              >
+                Resize {event.title}
               </button>
               <div data-testid={`event-range-${resourceId}`}>
                 {event.start.toISOString()}|{event.end.toISOString()}
@@ -1026,6 +1103,388 @@ describe('FieldsTabContent calendar navigation', () => {
     });
   });
 
+  it('restores a pending child staff unassignment when assigning the same coverage back before saving', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-21T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T15:00:00.000Z',
+    };
+    const childAssignment = {
+      id: 'staff_child_1',
+      parentAssignmentId: 'staff_parent_open_1',
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-21T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T15:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment, childAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (options?.method === 'POST') {
+        throw new Error('Unexpected duplicate child create');
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Select Sam Staff' }));
+    expect(await screen.findByRole('heading', { name: 'Edit Staff Assignment' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Unassign staff member' }));
+    expect(await screen.findByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+
+    await user.click(await screen.findByRole('button', { name: 'Select Open staff shift' }));
+    expect(await screen.findByRole('heading', { name: 'Assign Staff Coverage' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByPlaceholderText('Select staff member'));
+    fireEvent.click(screen.getByRole('option', { name: /Sam Staff/i, hidden: true }));
+    await user.click(within(dialog).getByRole('button', { name: 'Assign coverage' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    });
+    expect(screen.queryByRole('heading', { name: 'Assign Staff Coverage' })).not.toBeInTheDocument();
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+  });
+
+  it('stages assigning a staff member to every parent coverage instance', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_series_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-23T15:00:00.000Z',
+        repeating: true,
+        daysOfWeek: [1, 2],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T15:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...parentAssignment,
+            userId: options.body.userId,
+            staffMemberId: 'staff_member_1',
+            userName: 'Sam Staff',
+          },
+        };
+      }
+      if (options?.method === 'POST') {
+        throw new Error('Unexpected child create for all-instance assignment');
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click((await screen.findAllByRole('button', { name: 'Select Open staff shift' }))[0]);
+    const assignDialog = await screen.findByRole('dialog');
+    await user.click(within(assignDialog).getByPlaceholderText('Select staff member'));
+    fireEvent.click(screen.getByRole('option', { name: /Sam Staff/i, hidden: true }));
+    await user.click(within(assignDialog).getByRole('button', { name: 'Assign coverage' }));
+
+    expect(await screen.findByRole('heading', { name: 'Assign staff coverage' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'All instances' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Sam Staff' }).length).toBeGreaterThanOrEqual(2);
+    });
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+    expect(await screen.findByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /Save changes \(1\)/ }));
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/organizations/org_test/staff/schedule/staff_parent_open_series_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({ userId: 'staff_user_1' }),
+        }),
+      );
+    });
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+  });
+
+  it('stages assigning a staff member only to the clicked parent coverage occurrence', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_series_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-23T15:00:00.000Z',
+        repeating: true,
+        daysOfWeek: [1, 2],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T15:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+        return {
+          assignment: {
+            id: 'created_child_assignment',
+            ...options.body,
+            staffMemberId: 'staff_member_1',
+            userName: 'Sam Staff',
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      if (options?.method === 'PATCH') {
+        throw new Error('Unexpected parent update for occurrence assignment');
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click((await screen.findAllByRole('button', { name: 'Select Open staff shift' }))[0]);
+    const assignDialog = await screen.findByRole('dialog');
+    await user.click(within(assignDialog).getByPlaceholderText('Select staff member'));
+    fireEvent.click(screen.getByRole('option', { name: /Sam Staff/i, hidden: true }));
+    await user.click(within(assignDialog).getByRole('button', { name: 'Assign coverage' }));
+    await user.click(await screen.findByRole('button', { name: 'This occurrence' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Select Sam Staff' })).toBeInTheDocument();
+    });
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+    expect(await screen.findByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /Save changes \(1\)/ }));
+    await waitFor(() => {
+      const createCall = apiRequestMock.mock.calls.find(([path, options]) => (
+        String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+      ));
+      expect(createCall?.[1]?.body).toEqual(expect.objectContaining({
+        parentAssignmentId: 'staff_parent_open_series_1',
+        userId: 'staff_user_1',
+        assignmentKind: 'STAFF_SHIFT',
+        fieldId: 'field_main',
+      }));
+      expect(createCall?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+        repeating: false,
+        daysOfWeek: [1],
+      }));
+    });
+  });
+
+  it('renders open parent coverage gaps around partial child assignments', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-21T16:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 960,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T16:00:00.000Z',
+    };
+    const childAssignment = {
+      id: 'staff_child_1',
+      parentAssignmentId: 'staff_parent_open_1',
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T14:00:00.000Z',
+        endDate: '2026-07-21T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-21T14:00:00.000Z',
+      plannedEnd: '2026-07-21T15:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment, childAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      return {};
+    });
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    const gapStart = new Date('2026-07-21T15:00:00.000Z');
+    const gapEnd = new Date('2026-07-21T16:00:00.000Z');
+    const fullParentStart = new Date('2026-07-21T14:00:00.000Z');
+    const gapRangeId = `event-range-facility-calendar-staff-schedule-staff_parent_open_1-field_main-${fullParentStart.getTime()}-open-gap-${gapStart.getTime()}-${gapEnd.getTime()}`;
+
+    expect(await screen.findByRole('button', { name: 'Select Sam Staff' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId(gapRangeId)).toHaveTextContent(`${gapStart.toISOString()}|${gapEnd.toISOString()}`);
+    });
+    expect(screen.queryByTestId(`event-range-facility-calendar-staff-schedule-staff_parent_open_1-field_main-${fullParentStart.getTime()}`)).not.toBeInTheDocument();
+  });
+
   it('opens assigned parent staff cards with a delete option', async () => {
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
@@ -1107,6 +1566,203 @@ describe('FieldsTabContent calendar navigation', () => {
         '/api/organizations/org_test/staff/schedule/staff_parent_assigned_1',
         expect.objectContaining({ method: 'DELETE' }),
       );
+    });
+  });
+
+  it('stages deleting this and following open staff assignments with future child coverage warning', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-14T14:00:00.000Z',
+        endDate: null,
+        repeating: true,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-14T14:00:00.000Z',
+      plannedEnd: '2026-07-14T15:00:00.000Z',
+    };
+    const pastChildAssignment = {
+      id: 'staff_child_past_1',
+      parentAssignmentId: 'staff_parent_open_1',
+      staffMemberId: 'staff_member_past',
+      userId: 'staff_user_past',
+      userName: 'Pat Past',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-14T14:00:00.000Z',
+        endDate: '2026-07-14T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-14T14:00:00.000Z',
+      plannedEnd: '2026-07-14T15:00:00.000Z',
+    };
+    const futureChildAssignment = {
+      id: 'staff_child_future_1',
+      parentAssignmentId: 'staff_parent_open_1',
+      staffMemberId: 'staff_member_future',
+      userId: 'staff_user_future',
+      userName: 'Sam Future',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-28T14:00:00.000Z',
+        endDate: '2026-07-28T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-07-28T14:00:00.000Z',
+      plannedEnd: '2026-07-28T15:00:00.000Z',
+    };
+    const additionalFutureChildAssignments = [2, 3, 4].map((index) => ({
+      ...futureChildAssignment,
+      id: `staff_child_future_${index}`,
+      staffMemberId: `staff_member_future_${index}`,
+      userId: `staff_user_future_${index}`,
+      userName: `Future Staff ${index}`,
+      timeSlot: {
+        ...futureChildAssignment.timeSlot,
+        startDate: `2026-07-${27 + index}T14:00:00.000Z`,
+        endDate: `2026-07-${27 + index}T15:00:00.000Z`,
+        daysOfWeek: [index],
+      },
+      plannedStart: `2026-07-${27 + index}T14:00:00.000Z`,
+      plannedEnd: `2026-07-${27 + index}T15:00:00.000Z`,
+    }));
+    const futureChildAssignments = [futureChildAssignment, ...additionalFutureChildAssignments];
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment, pastChildAssignment, ...futureChildAssignments],
+          staffMembers: [{
+            staffMemberId: 'staff_member_future',
+            userId: 'staff_user_future',
+            fullName: 'Sam Future',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      const matchedFutureChildAssignment = futureChildAssignments.find((assignment) => (
+        path.endsWith(`/staff/schedule/${assignment.id}`)
+      ));
+      if (matchedFutureChildAssignment && options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...matchedFutureChildAssignment,
+            status: 'CANCELLED',
+          },
+        };
+      }
+      if (path.endsWith('/staff/schedule/staff_parent_open_1') && options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...parentAssignment,
+            timeSlot: options.body.timeSlot,
+            plannedEnd: options.body.timeSlot?.endDate,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Open staff shift' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Select Open staff shift' })[0]);
+
+    expect(await screen.findByRole('heading', { name: 'Assign Staff Coverage' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete open staff shift' }));
+
+    expect(await screen.findByRole('heading', { name: 'Delete open staff shift' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'This and following' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All instances' })).toBeInTheDocument();
+    expect(screen.getByText(/Sam Future .* Main/)).toBeInTheDocument();
+    expect(screen.getByText(/Future Staff 4 .* Main/)).toBeInTheDocument();
+    expect(screen.queryByText(/Pat Past .* Main/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Assigned coverage removal list')).toHaveStyle({
+      maxHeight: '162px',
+      overflowY: 'auto',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Stage delete' }));
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+    await user.click(screen.getAllByRole('button', { name: 'Select Open staff shift' })[0]);
+    await user.click(await screen.findByRole('button', { name: 'Delete open staff shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Stage delete' }));
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    await waitFor(() => {
+      const staffWriteCalls = apiRequestMock.mock.calls.filter(([path, options]) => (
+        String(path).includes('/staff/schedule/')
+        && options?.method
+      ));
+      expect(staffWriteCalls.slice(0, 4).map(([path, options]) => ({
+        path,
+        method: options?.method,
+        body: options?.body,
+      }))).toEqual(futureChildAssignments.map((assignment) => ({
+        path: `/api/organizations/org_test/staff/schedule/${assignment.id}`,
+        method: 'PATCH',
+        body: { action: 'UNASSIGN' },
+      })));
+      expect(staffWriteCalls[4]).toEqual([
+        '/api/organizations/org_test/staff/schedule/staff_parent_open_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({
+            timeSlot: expect.objectContaining({
+              repeating: true,
+              endDate: expect.any(String),
+            }),
+          }),
+        }),
+      ]);
     });
   });
 
@@ -1206,6 +1862,458 @@ describe('FieldsTabContent calendar navigation', () => {
         }),
       );
     });
+  });
+
+  it('stages staff assignment card resize until calendar changes are saved', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_assigned_1',
+      parentAssignmentId: null,
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-07-21T15:00:00.000Z',
+        endDate: '2026-07-21T16:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 900,
+        endTimeMinutes: 960,
+      },
+      plannedStart: '2026-07-21T15:00:00.000Z',
+      plannedEnd: '2026-07-21T16:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (path.endsWith('/staff/schedule/staff_parent_assigned_1') && options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...parentAssignment,
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Resize Sam Staff' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(screen.getAllByRole('button', { name: 'Resize Sam Staff' })[0]);
+
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+    expect(screen.queryByRole('heading', { name: 'Edit Staff Assignment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Assign Staff Coverage' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    const expectedStart = new Date('2026-03-11T12:00:00.000Z');
+    const expectedEnd = new Date('2026-03-11T14:00:00.000Z');
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/organizations/org_test/staff/schedule/staff_parent_assigned_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({
+            fieldId: 'field_main',
+            facilityId: 'facility_river_city',
+            timeSlot: expect.objectContaining({
+              startDate: expectedStart.toISOString(),
+              endDate: expectedEnd.toISOString(),
+              repeating: false,
+              daysOfWeek: [2],
+              startTimeMinutes: expectedStart.getHours() * 60 + expectedStart.getMinutes(),
+              endTimeMinutes: expectedEnd.getHours() * 60 + expectedEnd.getMinutes(),
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it('resizes an assigned repeating staff assignment without changing the series date range', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_repeating_assigned_1',
+      parentAssignmentId: null,
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-03T15:00:00.000Z',
+        endDate: '2026-12-31T23:59:59.999Z',
+        repeating: true,
+        daysOfWeek: [1, 2, 3],
+        startTimeMinutes: 900,
+        endTimeMinutes: 960,
+      },
+      plannedStart: '2026-03-03T15:00:00.000Z',
+      plannedEnd: '2026-03-03T16:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (path.endsWith('/staff/schedule/staff_parent_repeating_assigned_1') && options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...parentAssignment,
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Resize Sam Staff' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(screen.getAllByRole('button', { name: 'Resize Sam Staff' })[0]);
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    const resizedStart = new Date('2026-03-11T12:00:00.000Z');
+    const resizedEnd = new Date('2026-03-11T14:00:00.000Z');
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/organizations/org_test/staff/schedule/staff_parent_repeating_assigned_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({
+            fieldId: 'field_main',
+            facilityId: 'facility_river_city',
+            timeSlot: expect.objectContaining({
+              startDate: '2026-03-03T15:00:00.000Z',
+              endDate: '2026-12-31T23:59:59.999Z',
+              repeating: true,
+              daysOfWeek: [1, 2, 3],
+              startTimeMinutes: resizedStart.getHours() * 60 + resizedStart.getMinutes(),
+              endTimeMinutes: resizedEnd.getHours() * 60 + resizedEnd.getMinutes(),
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it('shortens all child coverage when resizing an open repeating parent shorter', async () => {
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_series_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: null,
+      facilityName: null,
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-10T12:00:00.000Z',
+        endDate: '2026-03-31T23:59:59.999Z',
+        repeating: true,
+        daysOfWeek: [1, 2],
+        startTimeMinutes: 720,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-03-10T12:00:00.000Z',
+      plannedEnd: '2026-03-10T15:00:00.000Z',
+    };
+    const pastChildAssignment = {
+      id: 'staff_child_past_1',
+      parentAssignmentId: 'staff_parent_open_series_1',
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: null,
+      facilityName: null,
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-09T12:00:00.000Z',
+        endDate: '2026-03-09T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [0],
+        startTimeMinutes: 720,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-03-09T12:00:00.000Z',
+      plannedEnd: '2026-03-09T15:00:00.000Z',
+    };
+    const futureChildAssignment = {
+      id: 'staff_child_future_1',
+      parentAssignmentId: 'staff_parent_open_series_1',
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: null,
+      facilityName: null,
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-18T12:00:00.000Z',
+        endDate: '2026-03-18T15:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [2],
+        startTimeMinutes: 720,
+        endTimeMinutes: 900,
+      },
+      plannedStart: '2026-03-18T12:00:00.000Z',
+      plannedEnd: '2026-03-18T15:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment, pastChildAssignment, futureChildAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      if (options?.method === 'PATCH') {
+        return {
+          assignment: {
+            ...(path.endsWith('/staff_child_future_1') ? futureChildAssignment : parentAssignment),
+            ...options.body,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithRentalSlot()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Resize Open staff shift' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(screen.getAllByRole('button', { name: 'Resize Open staff shift' })[0]);
+
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    await waitFor(() => {
+      expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(3);
+    });
+    const patchCalls = apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH');
+    const resizedStart = new Date('2026-03-11T12:00:00.000Z');
+    const resizedEnd = new Date('2026-03-11T14:00:00.000Z');
+    const expectedStartTimeMinutes = resizedStart.getHours() * 60 + resizedStart.getMinutes();
+    const expectedEndTimeMinutes = resizedEnd.getHours() * 60 + resizedEnd.getMinutes();
+    expect(patchCalls[0][0]).toBe('/api/organizations/org_test/staff/schedule/staff_child_past_1');
+    expect(patchCalls[0][1].body).toEqual(expect.objectContaining({
+      timeSlot: expect.objectContaining({
+        startDate: '2026-03-09T12:00:00.000Z',
+        endDate: '2026-03-09T14:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [0],
+        startTimeMinutes: expectedStartTimeMinutes,
+        endTimeMinutes: expectedEndTimeMinutes,
+      }),
+    }));
+    expect(patchCalls[1][0]).toBe('/api/organizations/org_test/staff/schedule/staff_child_future_1');
+    expect(patchCalls[1][1].body).toEqual(expect.objectContaining({
+      timeSlot: expect.objectContaining({
+        startDate: '2026-03-18T12:00:00.000Z',
+        endDate: '2026-03-18T14:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [2],
+        startTimeMinutes: expectedStartTimeMinutes,
+        endTimeMinutes: expectedEndTimeMinutes,
+      }),
+    }));
+    expect(patchCalls[2][0]).toBe('/api/organizations/org_test/staff/schedule/staff_parent_open_series_1');
+    expect(patchCalls[2][1].body).toEqual(expect.objectContaining({
+      timeSlot: expect.objectContaining({
+        startDate: '2026-03-10T12:00:00.000Z',
+        endDate: '2026-03-31T23:59:59.999Z',
+        repeating: true,
+        daysOfWeek: [1, 2],
+        startTimeMinutes: expectedStartTimeMinutes,
+        endTimeMinutes: expectedEndTimeMinutes,
+      }),
+    }));
+  });
+
+  it('warns instead of staging when child coverage is resized outside the parent shift', async () => {
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => field);
+    const parentAssignment = {
+      id: 'staff_parent_open_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      userName: 'Open staff shift',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: null,
+      facilityName: null,
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-11T12:00:00.000Z',
+        endDate: '2026-03-11T13:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [2],
+        startTimeMinutes: 720,
+        endTimeMinutes: 780,
+      },
+      plannedStart: '2026-03-11T12:00:00.000Z',
+      plannedEnd: '2026-03-11T13:00:00.000Z',
+    };
+    const childAssignment = {
+      id: 'staff_child_1',
+      parentAssignmentId: 'staff_parent_open_1',
+      staffMemberId: 'staff_member_1',
+      userId: 'staff_user_1',
+      userName: 'Sam Staff',
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: null,
+      facilityName: null,
+      fieldId: 'field_main',
+      fieldName: 'Main',
+      rateOverrideCents: null,
+      status: 'PLANNED',
+      timeSlot: {
+        startDate: '2026-03-11T12:00:00.000Z',
+        endDate: '2026-03-11T13:00:00.000Z',
+        repeating: false,
+        daysOfWeek: [2],
+        startTimeMinutes: 720,
+        endTimeMinutes: 780,
+      },
+      plannedStart: '2026-03-11T12:00:00.000Z',
+      plannedEnd: '2026-03-11T13:00:00.000Z',
+    };
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return {
+          assignments: [parentAssignment, childAssignment],
+          staffMembers: [{
+            staffMemberId: 'staff_member_1',
+            userId: 'staff_user_1',
+            fullName: 'Sam Staff',
+            types: ['STAFF'],
+          }],
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithRentalSlot()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Resize Sam Staff' })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    mockShowNotification.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Resize Sam Staff' }));
+
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
+      color: 'yellow',
+      message: 'Assigned coverage must stay inside the parent shift.',
+    }));
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.queryByRole('heading', { name: 'Edit Staff Assignment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Assign Staff Coverage' })).not.toBeInTheDocument();
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
   });
 
   it('opens the facility creation modal for managers', async () => {
@@ -1385,6 +2493,446 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(screen.queryByRole('button', { name: 'Back to Discover' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
     expect(await screen.findByText('Rental slot')).toBeInTheDocument();
+  });
+
+  it('opens a dropped staff draft for editing and stores the edit as an undoable step', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(within(screen.getByLabelText('Facility resources')).getByRole('button', { name: 'All' }));
+    const staffCreateCard = screen.getByText('Staff shift').closest('.facility-calendar-create-card');
+    expect(staffCreateCard).not.toBeNull();
+    await waitFor(() => {
+      expect(staffCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+    });
+
+    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+        pointerType: { value: 'mouse' },
+      });
+      fireEvent(staffCreateCard!, event);
+    };
+    dispatchPointer('pointerdown', 10, 10);
+    dispatchPointer('pointermove', 150, 200);
+    dispatchPointer('pointerup', 150, 200);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Open staff shift' }).length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByRole('button', { name: 'Select Open staff shift' })[0]);
+
+    expect(await screen.findByRole('heading', { name: 'Edit Staff Draft' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Notes'), 'Gate coverage');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    expect(await screen.findByRole('button', { name: /Save changes \(2\)/ })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+  });
+
+	  it('renders queued repeating staff drafts as repeated calendar occurrences', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/staff/schedule') && !options?.method) {
+        return { assignments: [], staffMembers: [] };
+      }
+      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+        return {
+          assignment: {
+            id: 'created_staff_assignment',
+            ...options.body,
+            plannedStart: options.body.timeSlot?.startDate,
+            plannedEnd: options.body.timeSlot?.endDate,
+            timeSlot: options.body.timeSlot,
+          },
+        };
+      }
+      return {};
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    const staffCreateCard = screen.getByText('Staff shift').closest('.facility-calendar-create-card');
+    expect(staffCreateCard).not.toBeNull();
+    await waitFor(() => {
+      expect(staffCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+    });
+
+    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+        pointerType: { value: 'mouse' },
+      });
+      fireEvent(staffCreateCard!, event);
+    };
+    dispatchPointer('pointerdown', 10, 10);
+    dispatchPointer('pointermove', 150, 200);
+    dispatchPointer('pointerup', 150, 200);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Open staff shift' })).toHaveLength(1);
+    });
+    await user.click(screen.getByRole('button', { name: 'Select Open staff shift' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Edit Staff Draft' })).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText('Repeat weekly'));
+    await user.click(within(dialog).getByPlaceholderText('Select days'));
+    fireEvent.click(screen.getByRole('option', { name: 'Tuesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Wednesday', hidden: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Thursday', hidden: true }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Select Open staff shift' }).length).toBeGreaterThanOrEqual(3);
+    });
+    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: /Save changes \(2\)/ }));
+    await waitFor(() => {
+      expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+    });
+    const staffCreateCall = apiRequestMock.mock.calls.find(([path, options]) => (
+      String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+    ));
+	    expect(staffCreateCall?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+	      repeating: true,
+	      daysOfWeek: expect.arrayContaining([1, 2, 3]),
+	    }));
+	  });
+
+	  it('asks for assignment scope when saving a repeating official draft with an official selected', async () => {
+	    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+	    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+	      ...field,
+	      events: [],
+	      matches: [],
+	    }));
+	    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+	      if (path.endsWith('/staff/schedule') && !options?.method) {
+	        return {
+	          assignments: [],
+	          staffMembers: [{
+	            staffMemberId: 'official_member_1',
+	            userId: 'official_user_1',
+	            fullName: 'Sam Official',
+	            types: ['OFFICIAL'],
+	            roleName: 'Official',
+	          }],
+	        };
+	      }
+	      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+	        return {
+	          assignment: {
+	            id: 'created_official_assignment',
+	            ...options.body,
+	            plannedStart: options.body.timeSlot?.startDate,
+	            plannedEnd: options.body.timeSlot?.endDate,
+	            timeSlot: options.body.timeSlot,
+	          },
+	        };
+	      }
+	      return {};
+	    });
+	    const user = userEvent.setup();
+
+	    render(
+	      <MantineProvider>
+	        <FieldsTabContent
+	          organization={buildOrganizationWithFacilityRentalFields()}
+	          organizationId="org_test"
+	          currentUser={{ $id: 'owner_1' } as any}
+	        />
+	      </MantineProvider>,
+	    );
+
+	    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+	    const officialCreateCard = screen.getByText('Official shift').closest('.facility-calendar-create-card');
+	    expect(officialCreateCard).not.toBeNull();
+	    await waitFor(() => {
+	      expect(officialCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+	    });
+
+	    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+	      const event = new Event(type, { bubbles: true, cancelable: true });
+	      Object.defineProperties(event, {
+	        clientX: { value: clientX },
+	        clientY: { value: clientY },
+	        button: { value: 0 },
+	        pointerId: { value: 1 },
+	        pointerType: { value: 'mouse' },
+	      });
+	      fireEvent(officialCreateCard!, event);
+	    };
+	    dispatchPointer('pointerdown', 10, 10);
+	    dispatchPointer('pointermove', 150, 200);
+	    dispatchPointer('pointerup', 150, 200);
+
+	    await waitFor(() => {
+	      expect(screen.getByRole('button', { name: 'Select Open official shift' })).toBeInTheDocument();
+	    });
+	    await user.click(screen.getByRole('button', { name: 'Select Open official shift' }));
+
+	    const dialog = await screen.findByRole('dialog');
+	    expect(within(dialog).getByRole('heading', { name: 'Edit Official Draft' })).toBeInTheDocument();
+	    await user.click(within(dialog).getByLabelText('Official'));
+	    fireEvent.click(screen.getByRole('option', { name: /Sam Official/i, hidden: true }));
+	    await user.click(within(dialog).getByLabelText('Repeat weekly'));
+	    await user.click(within(dialog).getByPlaceholderText('Select days'));
+	    fireEvent.click(screen.getByRole('option', { name: 'Tuesday', hidden: true }));
+	    fireEvent.click(screen.getByRole('option', { name: 'Wednesday', hidden: true }));
+	    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+	    expect(await screen.findByRole('heading', { name: 'Assign official coverage' })).toBeInTheDocument();
+	    await user.click(screen.getByRole('button', { name: 'All instances' }));
+
+	    await waitFor(() => {
+	      expect(screen.getAllByRole('button', { name: 'Select Sam Official' }).length).toBeGreaterThanOrEqual(2);
+	    });
+	    expect(screen.queryByRole('button', { name: 'Select Open official shift' })).not.toBeInTheDocument();
+	    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+
+	    await user.click(screen.getByRole('button', { name: /Save changes \(2\)/ }));
+	    await waitFor(() => {
+	      expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+	    });
+	    const officialCreateCall = apiRequestMock.mock.calls.find(([path, options]) => (
+	      String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+	    ));
+	    expect(officialCreateCall?.[1]?.body).toEqual(expect.objectContaining({
+	      parentAssignmentId: null,
+	      userId: 'official_user_1',
+	      assignmentKind: 'OFFICIAL_SHIFT',
+	    }));
+	    expect(officialCreateCall?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+	      repeating: true,
+	      daysOfWeek: expect.arrayContaining([1, 2]),
+	    }));
+	  });
+
+	  it('stages one assigned child draft while keeping the remaining repeating parent draft open', async () => {
+	    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+	    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+	      ...field,
+	      events: [],
+	      matches: [],
+	    }));
+	    apiRequestMock.mockImplementation(async (path: string, options?: any) => {
+	      if (path.endsWith('/staff/schedule') && !options?.method) {
+	        return {
+	          assignments: [],
+	          staffMembers: [{
+	            staffMemberId: 'staff_member_1',
+	            userId: 'staff_user_1',
+	            fullName: 'Sam Staff',
+	            types: ['STAFF'],
+	            roleName: 'Staff',
+	          }],
+	        };
+	      }
+	      if (path.endsWith('/staff/schedule') && options?.method === 'POST') {
+	        return {
+	          assignment: {
+	            id: options.body.parentAssignmentId ? 'created_child_assignment' : 'created_parent_assignment',
+	            ...options.body,
+	            plannedStart: options.body.timeSlot?.startDate,
+	            plannedEnd: options.body.timeSlot?.endDate,
+	            timeSlot: options.body.timeSlot,
+	          },
+	        };
+	      }
+	      return {};
+	    });
+	    const user = userEvent.setup();
+
+	    render(
+	      <MantineProvider>
+	        <FieldsTabContent
+	          organization={buildOrganizationWithFacilityRentalFields()}
+	          organizationId="org_test"
+	          currentUser={{ $id: 'owner_1' } as any}
+	        />
+	      </MantineProvider>,
+	    );
+
+	    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+	    const staffCreateCard = screen.getByText('Staff shift').closest('.facility-calendar-create-card');
+	    expect(staffCreateCard).not.toBeNull();
+	    await waitFor(() => {
+	      expect(staffCreateCard).not.toHaveClass('facility-calendar-create-card--disabled');
+	    });
+
+	    const dispatchPointer = (type: string, clientX: number, clientY: number) => {
+	      const event = new Event(type, { bubbles: true, cancelable: true });
+	      Object.defineProperties(event, {
+	        clientX: { value: clientX },
+	        clientY: { value: clientY },
+	        button: { value: 0 },
+	        pointerId: { value: 1 },
+	        pointerType: { value: 'mouse' },
+	      });
+	      fireEvent(staffCreateCard!, event);
+	    };
+	    dispatchPointer('pointerdown', 10, 10);
+	    dispatchPointer('pointermove', 150, 200);
+	    dispatchPointer('pointerup', 150, 200);
+
+	    await waitFor(() => {
+	      expect(screen.getByRole('button', { name: 'Select Open staff shift' })).toBeInTheDocument();
+	    });
+	    await user.click(screen.getByRole('button', { name: 'Select Open staff shift' }));
+
+	    const dialog = await screen.findByRole('dialog');
+	    expect(within(dialog).getByRole('heading', { name: 'Edit Staff Draft' })).toBeInTheDocument();
+	    await user.click(within(dialog).getByLabelText('Staff member'));
+	    fireEvent.click(screen.getByRole('option', { name: /Sam Staff/i, hidden: true }));
+	    await user.click(within(dialog).getByLabelText('Repeat weekly'));
+	    await user.click(within(dialog).getByPlaceholderText('Select days'));
+	    fireEvent.click(screen.getByRole('option', { name: 'Tuesday', hidden: true }));
+	    fireEvent.click(screen.getByRole('option', { name: 'Wednesday', hidden: true }));
+	    fireEvent.click(screen.getByRole('option', { name: 'Thursday', hidden: true }));
+	    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+	    expect(await screen.findByRole('heading', { name: 'Assign staff coverage' })).toBeInTheDocument();
+	    await user.click(screen.getByRole('button', { name: 'This occurrence' }));
+
+	    await waitFor(() => {
+	      expect(screen.getByRole('button', { name: 'Select Sam Staff' })).toBeInTheDocument();
+	    });
+	    expect(screen.getAllByRole('button', { name: 'Select Open staff shift' }).length).toBeGreaterThanOrEqual(2);
+	    expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+
+	    await user.click(screen.getByRole('button', { name: /Save changes \(2\)/ }));
+	    await waitFor(() => {
+	      expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2);
+	    });
+	    const staffCreateCalls = apiRequestMock.mock.calls.filter(([path, options]) => (
+	      String(path).endsWith('/staff/schedule') && options?.method === 'POST'
+	    ));
+	    expect(staffCreateCalls[0]?.[1]?.body).toEqual(expect.objectContaining({
+	      parentAssignmentId: null,
+	      userId: null,
+	      assignmentKind: 'STAFF_SHIFT',
+	    }));
+	    expect(staffCreateCalls[0]?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+	      repeating: true,
+	      daysOfWeek: expect.arrayContaining([1, 2, 3]),
+	    }));
+	    expect(staffCreateCalls[1]?.[1]?.body).toEqual(expect.objectContaining({
+	      parentAssignmentId: 'created_parent_assignment',
+	      userId: 'staff_user_1',
+	      assignmentKind: 'STAFF_SHIFT',
+	    }));
+	    expect(staffCreateCalls[1]?.[1]?.body?.timeSlot).toEqual(expect.objectContaining({
+	      repeating: false,
+	      daysOfWeek: [0],
+	    }));
+	  });
+
+	  it('stages rental slot modal edits until managers save calendar changes', async () => {
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const organization = buildOrganizationWithRentalSlot();
+    const field = organization.fields[0] as any;
+    const slot = field.rentalSlots[0];
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={organization}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    await user.click(await screen.findByRole('button', { name: 'Select Rental Slot' }));
+
+    expect(mockCreateRentalSlotModalProps?.onSubmitOverride).toEqual(expect.any(Function));
+
+    const editedSlot = {
+      $id: 'slot_1',
+      dayOfWeek: 2,
+      repeating: true,
+      startDate: '2026-03-11T00:00:00.000Z',
+      endDate: null,
+      startTimeMinutes: 720,
+      endTimeMinutes: 780,
+      price: 1500,
+      requiredTemplateIds: [],
+      hostRequiredTemplateIds: [],
+      taxHandling: 'STRIPE_TAX',
+    };
+    await act(async () => {
+      await mockCreateRentalSlotModalProps.onSubmitOverride({
+        field,
+        targetFields: [field],
+        slot,
+        payload: editedSlot,
+        updatePayload: editedSlot,
+      });
+    });
+
+    expect(updateRentalSlotMock).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: /Save changes \(1\)/ }));
+
+    await waitFor(() => {
+      expect(updateRentalSlotMock).toHaveBeenCalledTimes(1);
+    });
+    expect(updateRentalSlotMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      $id: 'slot_1',
+      dayOfWeek: 2,
+      startTimeMinutes: 720,
+      endTimeMinutes: 780,
+      price: 1500,
+    }));
   });
 
   it('stages dragged rental slots until managers save calendar changes', async () => {

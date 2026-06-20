@@ -556,6 +556,323 @@ describe('updateStaffScheduleAssignment', () => {
     }));
   });
 
+  it('updates a parent assignment timeslot and planned range', async () => {
+    const client = createClient();
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_1',
+      fieldId: 'field_1',
+      timeSlotId: 'timeslot_1',
+      status: 'PLANNED',
+    };
+    const nextStart = new Date(2026, 5, 23, 12, 0, 0, 0);
+    const nextEnd = new Date(2026, 5, 23, 14, 0, 0, 0);
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(parentAssignment);
+    client.staffScheduleAssignments.findMany.mockResolvedValue([]);
+
+    await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'parent_1',
+      timeSlot: {
+        startDate: nextStart,
+        endDate: nextEnd,
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 720,
+        endTimeMinutes: 840,
+      },
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.staffScheduleAssignments.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        parentAssignmentId: 'parent_1',
+        status: { not: 'CANCELLED' },
+      },
+    });
+    expect(client.tx.timeSlots.update).toHaveBeenCalledWith({
+      where: { id: 'timeslot_1' },
+      data: expect.objectContaining({
+        startDate: nextStart,
+        endDate: nextEnd,
+        repeating: false,
+        daysOfWeek: [1],
+        startTimeMinutes: 720,
+        endTimeMinutes: 840,
+      }),
+    });
+    expect(client.tx.staffScheduleAssignments.update).toHaveBeenCalledWith({
+      where: { id: 'parent_1' },
+      data: expect.objectContaining({
+        plannedStart: nextStart,
+        plannedEnd: nextEnd,
+        plannedMinutes: 120,
+        updatedBy: 'manager_1',
+      }),
+    });
+  });
+
+  it('allows shortening a parent repeating assignment when active child coverage still fits', async () => {
+    const client = createClient();
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_1',
+      fieldId: 'field_1',
+      timeSlotId: 'parent_timeslot_1',
+      status: 'PLANNED',
+    };
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'child_timeslot_1',
+      status: 'PLANNED',
+    };
+    const parentStart = new Date(2026, 6, 14, 14, 0, 0, 0);
+    const parentEnd = new Date(2026, 6, 14, 23, 59, 59, 999);
+    const childStart = new Date(2026, 6, 14, 14, 0, 0, 0);
+    const childEnd = new Date(2026, 6, 14, 15, 0, 0, 0);
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(parentAssignment);
+    client.staffScheduleAssignments.findMany.mockResolvedValue([childAssignment]);
+    client.timeSlots.findMany.mockResolvedValue([{
+      id: 'child_timeslot_1',
+      startDate: childStart,
+      endDate: childEnd,
+      repeating: false,
+      daysOfWeek: [1],
+      startTimeMinutes: 840,
+      endTimeMinutes: 900,
+    }]);
+
+    await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'parent_1',
+      timeSlot: {
+        startDate: parentStart,
+        endDate: parentEnd,
+        repeating: true,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.timeSlots.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['child_timeslot_1'] } },
+    });
+    expect(client.tx.timeSlots.update).toHaveBeenCalledWith({
+      where: { id: 'parent_timeslot_1' },
+      data: expect.objectContaining({
+        endDate: parentEnd,
+        repeating: true,
+      }),
+    });
+  });
+
+  it('rejects shortening a parent repeating assignment past active child coverage', async () => {
+    const client = createClient();
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      staffMemberId: null,
+      userId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      facilityId: 'facility_1',
+      fieldId: 'field_1',
+      timeSlotId: 'parent_timeslot_1',
+      status: 'PLANNED',
+    };
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'child_timeslot_1',
+      status: 'PLANNED',
+    };
+    client.staffScheduleAssignments.findFirst.mockResolvedValue(parentAssignment);
+    client.staffScheduleAssignments.findMany.mockResolvedValue([childAssignment]);
+    client.timeSlots.findMany.mockResolvedValue([{
+      id: 'child_timeslot_1',
+      startDate: new Date(2026, 6, 21, 14, 0, 0, 0),
+      endDate: new Date(2026, 6, 21, 15, 0, 0, 0),
+      repeating: false,
+      daysOfWeek: [1],
+      startTimeMinutes: 840,
+      endTimeMinutes: 900,
+    }]);
+
+    await expect(updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'parent_1',
+      timeSlot: {
+        startDate: new Date(2026, 6, 14, 14, 0, 0, 0),
+        endDate: new Date(2026, 6, 14, 23, 59, 59, 999),
+        repeating: true,
+        daysOfWeek: [1],
+        startTimeMinutes: 840,
+        endTimeMinutes: 900,
+      },
+      actingUserId: 'manager_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Assigned coverage must end within the parent assignment range.',
+    });
+
+    expect(client.tx.timeSlots.update).not.toHaveBeenCalled();
+    expect(client.tx.staffScheduleAssignments.update).not.toHaveBeenCalled();
+  });
+
+  it('updates a child assignment timeslot within the parent coverage window', async () => {
+    const client = createClient();
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'child_timeslot_1',
+      status: 'PLANNED',
+    };
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'parent_timeslot_1',
+      status: 'PLANNED',
+    };
+    const parentTimeSlot = {
+      id: 'parent_timeslot_1',
+      startDate: baseStart,
+      endDate: baseEnd,
+      repeating: false,
+      daysOfWeek: [0],
+      startTimeMinutes: 540,
+      endTimeMinutes: 660,
+    };
+    const nextStart = new Date(2026, 5, 22, 9, 30, 0, 0);
+    const nextEnd = new Date(2026, 5, 22, 10, 30, 0, 0);
+    client.staffScheduleAssignments.findFirst
+      .mockResolvedValueOnce(childAssignment)
+      .mockResolvedValueOnce(parentAssignment);
+    client.timeSlots.findUnique.mockResolvedValue(parentTimeSlot);
+
+    await updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      timeSlot: {
+        startDate: nextStart,
+        endDate: nextEnd,
+        repeating: false,
+        daysOfWeek: [0],
+        startTimeMinutes: 570,
+        endTimeMinutes: 630,
+      },
+      actingUserId: 'manager_1',
+    }, client);
+
+    expect(client.staffScheduleAssignments.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        parentAssignmentId: 'parent_1',
+        status: { not: 'CANCELLED' },
+      },
+    });
+    expect(client.tx.timeSlots.update).toHaveBeenCalledWith({
+      where: { id: 'child_timeslot_1' },
+      data: expect.objectContaining({
+        startDate: nextStart,
+        endDate: nextEnd,
+        startTimeMinutes: 570,
+        endTimeMinutes: 630,
+      }),
+    });
+    expect(client.tx.staffScheduleAssignments.update).toHaveBeenCalledWith({
+      where: { id: 'child_1' },
+      data: expect.objectContaining({
+        plannedStart: nextStart,
+        plannedEnd: nextEnd,
+        plannedMinutes: 60,
+        updatedBy: 'manager_1',
+      }),
+    });
+  });
+
+  it('rejects child assignment timeslot updates outside the parent coverage window', async () => {
+    const client = createClient();
+    const childAssignment = {
+      id: 'child_1',
+      organizationId: 'org_1',
+      parentAssignmentId: 'parent_1',
+      staffMemberId: 'staff_1',
+      userId: 'user_1',
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'child_timeslot_1',
+      status: 'PLANNED',
+    };
+    const parentAssignment = {
+      id: 'parent_1',
+      organizationId: 'org_1',
+      parentAssignmentId: null,
+      assignmentKind: 'STAFF_SHIFT',
+      timeSlotId: 'parent_timeslot_1',
+      status: 'PLANNED',
+    };
+    const parentTimeSlot = {
+      id: 'parent_timeslot_1',
+      startDate: baseStart,
+      endDate: baseEnd,
+      repeating: false,
+      daysOfWeek: [0],
+      startTimeMinutes: 540,
+      endTimeMinutes: 660,
+    };
+    client.staffScheduleAssignments.findFirst
+      .mockResolvedValueOnce(childAssignment)
+      .mockResolvedValueOnce(parentAssignment);
+    client.timeSlots.findUnique.mockResolvedValue(parentTimeSlot);
+
+    await expect(updateStaffScheduleAssignment({
+      organizationId: 'org_1',
+      assignmentId: 'child_1',
+      timeSlot: {
+        startDate: new Date(2026, 5, 22, 8, 30, 0, 0),
+        endDate: new Date(2026, 5, 22, 10, 30, 0, 0),
+        repeating: false,
+        daysOfWeek: [0],
+        startTimeMinutes: 510,
+        endTimeMinutes: 630,
+      },
+      actingUserId: 'manager_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Assigned coverage must stay within the parent assignment time.',
+    });
+
+    expect(client.tx.timeSlots.update).not.toHaveBeenCalled();
+    expect(client.tx.staffScheduleAssignments.update).not.toHaveBeenCalled();
+  });
+
   it('rejects changing resources on child coverage', async () => {
     const client = createClient();
     client.staffScheduleAssignments.findFirst.mockResolvedValue({

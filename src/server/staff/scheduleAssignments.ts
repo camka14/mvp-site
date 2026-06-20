@@ -38,6 +38,7 @@ export type StaffScheduleAssignmentUpdateInput = {
   rateOverrideType?: ScheduleWageType | string | null;
   rateOverrideCents?: number | null;
   notes?: string | null;
+  timeSlot?: StaffScheduleTimeSlotInput | null;
   action?: 'UNASSIGN' | null;
   actingUserId: string;
 };
@@ -321,8 +322,11 @@ const validateChildTimeSlot = (parentTimeSlot: any, childTimeSlot: NormalizedTim
     'parent.timeSlot.endTimeMinutes',
   );
 
-  if (childTimeSlot.startTimeMinutes !== parentStartMinutes || childTimeSlot.endTimeMinutes !== parentEndMinutes) {
-    throw new StaffScheduleAssignmentError(400, 'Assigned coverage must use the parent assignment time.');
+  if (
+    childTimeSlot.startTimeMinutes < parentStartMinutes
+    || childTimeSlot.endTimeMinutes > parentEndMinutes
+  ) {
+    throw new StaffScheduleAssignmentError(400, 'Assigned coverage must stay within the parent assignment time.');
   }
 
   if (!parentRepeating) {
@@ -354,11 +358,13 @@ const assertParentOccurrenceAvailable = async ({
   organizationId,
   parentAssignmentId,
   childTimeSlot,
+  excludeAssignmentId,
 }: {
   client: PrismaLike;
   organizationId: string;
   parentAssignmentId: string;
   childTimeSlot: NormalizedTimeSlot;
+  excludeAssignmentId?: string | null;
 }): Promise<void> => {
   const rangeStart = childTimeSlot.repeating
     ? startOfDate(childTimeSlot.startDate)
@@ -383,11 +389,15 @@ const assertParentOccurrenceAvailable = async ({
       status: { not: 'CANCELLED' },
     },
   });
-  if (!existingChildren.length) {
+  const normalizedExcludeAssignmentId = normalizeId(excludeAssignmentId);
+  const relevantChildren = normalizedExcludeAssignmentId
+    ? existingChildren.filter((child: any) => normalizeId(child.id) !== normalizedExcludeAssignmentId)
+    : existingChildren;
+  if (!relevantChildren.length) {
     return;
   }
 
-  const timeSlotIds = Array.from(new Set(existingChildren
+  const timeSlotIds = Array.from(new Set(relevantChildren
     .map((row: any) => normalizeId(row.timeSlotId))
     .filter((id: string | null): id is string => Boolean(id))));
   const childTimeSlots = timeSlotIds.length
@@ -395,7 +405,7 @@ const assertParentOccurrenceAvailable = async ({
     : [];
   const childTimeSlotsById = new Map(childTimeSlots.map((slot: any) => [String(slot.id), slot]));
 
-  const hasOverlap = existingChildren.some((child: any) => {
+  const hasOverlap = relevantChildren.some((child: any) => {
     const existingOccurrences = buildTimeSlotOccurrences(
       child,
       childTimeSlotsById.get(String(child.timeSlotId)),
@@ -718,10 +728,20 @@ export const updateStaffScheduleAssignment = async (
   const hasUserIdField = Object.prototype.hasOwnProperty.call(input, 'userId');
   const hasFacilityIdField = Object.prototype.hasOwnProperty.call(input, 'facilityId');
   const hasFieldIdField = Object.prototype.hasOwnProperty.call(input, 'fieldId');
+  const hasTimeSlotUpdate = Object.prototype.hasOwnProperty.call(input, 'timeSlot');
   const hasResourceUpdate = hasFacilityIdField || hasFieldIdField;
   const nextUserId = hasUserIdField ? normalizeId(input.userId) : normalizeId(existing.userId);
   const requestedFacilityId = hasFacilityIdField ? normalizeId(input.facilityId) : normalizeId(existing.facilityId);
   const nextFieldId = hasFieldIdField ? normalizeId(input.fieldId) : normalizeId(existing.fieldId);
+  if (hasTimeSlotUpdate && !input.timeSlot) {
+    throw new StaffScheduleAssignmentError(400, 'Assignment timeslot is required.');
+  }
+  const nextTimeSlot = hasTimeSlotUpdate
+    ? normalizeTimeSlotInput(input.timeSlot as StaffScheduleTimeSlotInput)
+    : null;
+  if (hasTimeSlotUpdate && !normalizeId(existing.timeSlotId)) {
+    throw new StaffScheduleAssignmentError(400, 'Assignment timeslot is missing.');
+  }
   if (isChildAssignment && hasUserIdField && nextUserId !== normalizeId(existing.userId)) {
     throw new StaffScheduleAssignmentError(400, 'Child coverage can only be unassigned or have its pay override changed.');
   }
@@ -779,6 +799,72 @@ export const updateStaffScheduleAssignment = async (
       }
     }
   }
+  if (!isChildAssignment && hasTimeSlotUpdate && nextTimeSlot) {
+    const childAssignments = await client.staffScheduleAssignments.findMany({
+      where: {
+        organizationId,
+        parentAssignmentId: assignmentId,
+        status: { not: 'CANCELLED' },
+      },
+    });
+    const childTimeSlotIds = childAssignments
+      .map((assignment: any) => normalizeId(assignment.timeSlotId))
+      .filter((id: string | null): id is string => Boolean(id));
+    const childTimeSlots = childTimeSlotIds.length
+      ? await client.timeSlots.findMany({
+        where: { id: { in: childTimeSlotIds } },
+      })
+      : [];
+    const childTimeSlotsById = new Map<string, any>(
+      childTimeSlots.map((timeSlot: any) => [String(timeSlot.id), timeSlot]),
+    );
+    for (const childAssignment of childAssignments) {
+      const childTimeSlotId = normalizeId(childAssignment.timeSlotId);
+      const childTimeSlot = childTimeSlotId ? childTimeSlotsById.get(childTimeSlotId) : null;
+      if (!childTimeSlot) {
+        throw new StaffScheduleAssignmentError(400, 'Assigned coverage timeslot is missing.');
+      }
+      validateChildTimeSlot(normalizedTimeSlotToRow(nextTimeSlot), normalizeTimeSlotInput({
+        startDate: childTimeSlot.startDate,
+        endDate: childTimeSlot.endDate,
+        repeating: childTimeSlot.repeating,
+        daysOfWeek: childTimeSlot.daysOfWeek,
+        startTimeMinutes: childTimeSlot.startTimeMinutes,
+        endTimeMinutes: childTimeSlot.endTimeMinutes,
+        timeZone: childTimeSlot.timeZone,
+      }));
+    }
+  }
+
+  if (isChildAssignment && nextTimeSlot) {
+    const parentAssignmentId = normalizeId(existing.parentAssignmentId);
+    const parentAssignment = parentAssignmentId
+      ? await client.staffScheduleAssignments.findFirst({
+        where: {
+          id: parentAssignmentId,
+          organizationId,
+          status: { not: 'CANCELLED' },
+        },
+      })
+      : null;
+    if (!parentAssignment || normalizeId(parentAssignment.parentAssignmentId)) {
+      throw new StaffScheduleAssignmentError(400, 'Parent assignment is missing.');
+    }
+    const parentTimeSlot = normalizeId(parentAssignment.timeSlotId)
+      ? await client.timeSlots.findUnique({ where: { id: parentAssignment.timeSlotId } })
+      : null;
+    if (!parentTimeSlot) {
+      throw new StaffScheduleAssignmentError(400, 'Parent assignment timeslot is missing.');
+    }
+    validateChildTimeSlot(parentTimeSlot, nextTimeSlot);
+    await assertParentOccurrenceAvailable({
+      client,
+      organizationId,
+      parentAssignmentId: parentAssignmentId as string,
+      childTimeSlot: nextTimeSlot,
+      excludeAssignmentId: assignmentId,
+    });
+  }
 
   let staffMember: any = null;
   if (!isChildAssignment && nextUserId) {
@@ -807,6 +893,11 @@ export const updateStaffScheduleAssignment = async (
     rateOverrideCents,
     updatedBy: input.actingUserId,
   };
+  if (nextTimeSlot) {
+    data.plannedStart = nextTimeSlot.plannedStart;
+    data.plannedEnd = nextTimeSlot.plannedEnd;
+    data.plannedMinutes = nextTimeSlot.plannedMinutes;
+  }
   if (!isChildAssignment) {
     data.userId = nextUserId;
     data.staffMemberId = staffMember?.id ?? null;
@@ -819,12 +910,30 @@ export const updateStaffScheduleAssignment = async (
   }
 
   const updated = await client.$transaction(async (tx: PrismaLike) => {
-    if (!isChildAssignment && hasResourceUpdate && normalizeId(existing.timeSlotId)) {
+    if ((nextTimeSlot || (!isChildAssignment && hasResourceUpdate)) && normalizeId(existing.timeSlotId)) {
+      const timeSlotData: Record<string, unknown> = {};
+      if (nextTimeSlot) {
+        Object.assign(timeSlotData, {
+          dayOfWeek: nextTimeSlot.dayOfWeek,
+          daysOfWeek: nextTimeSlot.daysOfWeek,
+          startTimeMinutes: nextTimeSlot.startTimeMinutes,
+          endTimeMinutes: nextTimeSlot.endTimeMinutes,
+          startDate: nextTimeSlot.startDate,
+          timeZone: nextTimeSlot.timeZone,
+          repeating: nextTimeSlot.repeating,
+          endDate: nextTimeSlot.endDate,
+        });
+      }
+      if (!isChildAssignment && hasResourceUpdate) {
+        Object.assign(timeSlotData, {
+          scheduledFieldId: nextFieldId,
+          scheduledFieldIds: nextFieldId ? [nextFieldId] : [],
+        });
+      }
       await tx.timeSlots.update({
         where: { id: existing.timeSlotId },
         data: {
-          scheduledFieldId: nextFieldId,
-          scheduledFieldIds: nextFieldId ? [nextFieldId] : [],
+          ...timeSlotData,
           updatedAt: new Date(),
         },
       });
