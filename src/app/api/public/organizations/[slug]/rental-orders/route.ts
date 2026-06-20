@@ -769,6 +769,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       };
     });
 
+    const createEventParams = new URLSearchParams({ create: '1' });
+    if (typeof booking.renterOrganizationId === 'string' && booking.renterOrganizationId.trim().length > 0) {
+      createEventParams.set('hostOrgId', booking.renterOrganizationId.trim());
+    }
+
     return NextResponse.json({
       bookingId: booking.id,
       billId: booking.billId,
@@ -782,7 +787,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         eventId: item.eventId ?? null,
         eventTimeSlotId: item.eventTimeSlotId ?? null,
       })),
-      createEventUrl: `/events/${encodeURIComponent(booking.id)}/schedule?create=1&rentalBookingId=${encodeURIComponent(booking.id)}`,
+      createEventUrl: `/events/${encodeURIComponent(booking.id)}/schedule?${createEventParams.toString()}`,
     }, { status: 201 });
   } catch (error) {
     if (error instanceof EventFieldConflictError) {

@@ -48,6 +48,33 @@ type RentalReservationCheckoutProps = {
   children: (props: RentalReservationCheckoutRenderProps) => ReactNode;
 };
 
+const RENTAL_EVENT_QUERY_KEYS = [
+  'rentalStart',
+  'rentalEnd',
+  'rentalFieldId',
+  'rentalFieldName',
+  'rentalFacilityId',
+  'rentalFacilityName',
+  'rentalFacilityLocation',
+  'rentalFacilityAddress',
+  'rentalLocation',
+  'rentalLat',
+  'rentalLng',
+  'rentalPriceCents',
+  'rentalRequiredTemplateIds',
+  'rentalHostRequiredTemplateIds',
+  'rentalSelections',
+  'rentalBookingId',
+  'rentalBookingItems',
+  'rentalOrgId',
+];
+
+const stripRentalQueryParams = (manageEventUrl: string): string => {
+  const url = new URL(manageEventUrl, 'http://localhost');
+  RENTAL_EVENT_QUERY_KEYS.forEach((key) => url.searchParams.delete(key));
+  return `${url.pathname}${url.search}`;
+};
+
 const getPaymentIntentId = (clientSecret: string | undefined): string | null => {
   if (!clientSecret) {
     return null;
@@ -116,18 +143,6 @@ const buildRentalPaymentDraft = (
   return { event, timeSlot };
 };
 
-const appendRentalBookingParams = (
-  manageEventUrl: string,
-  result: RentalOrderResult,
-): string => {
-  const url = new URL(manageEventUrl, 'http://localhost');
-  url.searchParams.set('rentalBookingId', result.bookingId);
-  if (Array.isArray(result.items) && result.items.length > 0) {
-    url.searchParams.set('rentalBookingItems', JSON.stringify(result.items));
-  }
-  return `${url.pathname}${url.search}`;
-};
-
 export default function RentalReservationCheckout({
   organization,
   rentalOrderSlug,
@@ -179,7 +194,9 @@ export default function RentalReservationCheckout({
         timeoutMs: 30_000,
       },
     );
-    const createEventUrl = appendRentalBookingParams(payload.manageEventUrl, result);
+    const createEventUrl = typeof result.createEventUrl === 'string' && result.createEventUrl.trim().length > 0
+      ? result.createEventUrl
+      : stripRentalQueryParams(payload.manageEventUrl);
     const message = `Resources reserved for ${organization.name}.`;
     setOrderCompleteMessage(message);
     setCompletedRentalOrder({

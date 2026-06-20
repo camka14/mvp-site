@@ -21,7 +21,7 @@ import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getFacilityScopedFieldDisplayName, getFieldDisplayName } from '@/lib/fieldUtils';
 
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 const MAX_STANDARD_NUMBER = 99_999;
@@ -360,7 +360,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   showPlayoffSettings = true,
   showTimeslots = true,
   unstyled = false,
-  emptyFieldsMessage = 'No fields found. Create a field first so you can attach weekly availability.',
+  emptyFieldsMessage = 'No resources found. Create a resource first so you can attach weekly availability.',
 }) => {
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
@@ -369,11 +369,11 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   const requiresSets = Boolean(sport?.usePointsPerSetWin);
 
   const availableFieldOptions = (fieldOptions && fieldOptions.length > 0)
-    ? fieldOptions
-    : fields.map((field) => ({
-        value: field.$id,
-        label: getFieldDisplayName(field, 'Unnamed field'),
-      }));
+        ? fieldOptions
+        : fields.map((field) => ({
+            value: field.$id,
+            label: getFacilityScopedFieldDisplayName(field, 'Unnamed resource'),
+          }));
 
   const setsPerMatch = leagueData.setsPerMatch ?? 1;
   const pointsToVictory = leagueData.pointsToVictory ?? [];
@@ -678,7 +678,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           {fieldsLoading && (
             <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
               <Loader size="sm" />
-              Loading fields...
+              Loading resources...
             </div>
           )}
 
@@ -799,9 +799,9 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                     <div className="md:col-span-6">
-                      <Text fw={500} size="sm" mb={6}>Fields</Text>
+                      <Text fw={500} size="sm" mb={6}>Resources</Text>
                       <TextInput
-                        placeholder="Search fields..."
+                        placeholder="Search resources..."
                         value={fieldSearch}
                         onChange={(event) => setSlotSearch(slot.key, event.currentTarget.value)}
                         disabled={readOnly}
@@ -840,10 +840,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         </Stack>
                       </div>
                       {fieldMissing && !readOnly ? (
-                        <Text size="xs" c="red" mt={4}>Select at least one field</Text>
+                        <Text size="xs" c="red" mt={4}>Select at least one resource</Text>
                       ) : null}
                       <Text size="xs" c="dimmed" mt={4}>
-                        Tip: Hold Shift and click another field to select a range.
+                        Tip: Hold Shift and click another resource to select a range.
                       </Text>
                     </div>
 

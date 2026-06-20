@@ -7,6 +7,7 @@ import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { fieldService } from '@/lib/fieldService';
+import { apiRequest } from '@/lib/apiClient';
 import { CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES } from '@/lib/taxPolicy';
 
 jest.setTimeout(20000);
@@ -288,6 +289,7 @@ describe('EventForm dirty state', () => {
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(null);
     (organizationService.getOrganizationByIdForEventForm as jest.Mock).mockResolvedValue(null);
     (fieldService.listFields as jest.Mock).mockResolvedValue([]);
+    (apiRequest as jest.Mock).mockResolvedValue({});
   });
 
   const buildEvent = () => ({
@@ -2963,7 +2965,7 @@ describe('EventForm dirty state', () => {
     );
   });
 
-  it('renders organization fields next to required documents in Event Details for managed events', async () => {
+  it('renders organization resources next to required documents in Event Details for managed events', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(
@@ -2985,11 +2987,11 @@ describe('EventForm dirty state', () => {
 
     expect(eventDetailsSection).not.toBeNull();
     expect(eventDetailsSection?.textContent).toContain('Required Documents');
-    expect(eventDetailsSection?.textContent).toContain('Organization Fields');
-    expect(divisionSettingsSection?.textContent).not.toContain('Organization Fields');
+    expect(eventDetailsSection?.textContent).toContain('Resources');
+    expect(divisionSettingsSection?.textContent).not.toContain('Resources');
   });
 
-  it('shows organization field selection without field-count controls for organization events', async () => {
+  it('shows organization resource selection without resource-count controls for organization events', async () => {
     const onDirtyStateChange = jest.fn();
     const organization = {
       ...buildOrganization(),
@@ -3021,9 +3023,9 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    expect(screen.getByLabelText('Organization Fields')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
-    expect(screen.queryByText('Field Names')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resource Names')).not.toBeInTheDocument();
   });
 
   it('builds organization event drafts by reusing selected org fields for event types', async () => {
@@ -3072,7 +3074,170 @@ describe('EventForm dirty state', () => {
     });
   });
 
-  it('shows organization fields without field-count controls for weekly events', async () => {
+  it('groups rented and organization resources by facility while preserving rented selections', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Main Court',
+          location: 'Home Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+          facilityId: 'facility_home',
+          facility: {
+            $id: 'facility_home',
+            organizationId: 'org_1',
+            name: 'Home Facility',
+            location: 'Home Gym',
+          },
+        },
+      ],
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+        fieldIds: ['rental_field_1'],
+        fields: [
+          {
+            $id: 'rental_field_1',
+            name: 'Rental Court',
+            location: 'Rented Gym',
+            lat: 0,
+            long: 0,
+            organization: 'rental_org_1',
+            facilityId: 'facility_rented',
+            facility: {
+              $id: 'facility_rented',
+              organizationId: 'rental_org_1',
+              name: 'Rented Facility',
+              location: 'Rented Gym',
+            },
+          },
+        ],
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Home Facility')).toBeInTheDocument();
+      expect(screen.getByText('Rented Facility')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Rented')).toBeInTheDocument();
+    expect(screen.getByLabelText('Rented Facility - Rental Court')).toBeChecked();
+
+    await userEvent.click(screen.getByRole('button', { name: /Home Facility/i }));
+    await userEvent.click(screen.getByLabelText('Home Facility - Main Court'));
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft().fieldIds).toEqual(['rental_field_1', 'org_field_1']);
+    });
+  });
+
+  it('loads reserved rental resources and serializes selected rentals as locked booking slots', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Main Court',
+          location: 'Home Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+          facilityId: 'facility_home',
+          facility: {
+            $id: 'facility_home',
+            organizationId: 'org_1',
+            name: 'Home Facility',
+            location: 'Home Gym',
+          },
+        },
+      ],
+    };
+
+    (apiRequest as jest.Mock).mockImplementation((url: string) => {
+      if (url.startsWith('/api/rentals/bookings')) {
+        return Promise.resolve({
+          bookings: [
+            {
+              $id: 'booking_1',
+              items: [
+                {
+                  $id: 'booking_item_1',
+                  fieldId: 'rental_field_1',
+                  start: '2026-03-12T15:00:00.000Z',
+                  end: '2026-03-12T16:00:00.000Z',
+                  field: {
+                    $id: 'rental_field_1',
+                    name: 'Rental Court',
+                    location: 'Rented Gym',
+                    lat: 0,
+                    long: 0,
+                    organization: 'rental_org_1',
+                    facilityId: 'facility_rented',
+                    facility: {
+                      $id: 'facility_rented',
+                      organizationId: 'rental_org_1',
+                      name: 'Rented Facility',
+                      location: 'Rented Gym',
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Rented Facility')).toBeInTheDocument();
+    });
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/rentals/bookings?organizationId=org_1');
+    await userEvent.click(screen.getByLabelText('Rented Facility - Rental Court'));
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.fieldIds).toEqual(['rental_field_1']);
+      expect(draft?.timeSlots).toEqual([
+        expect.objectContaining({
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+          scheduledFieldId: 'rental_field_1',
+          scheduledFieldIds: ['rental_field_1'],
+        }),
+      ]);
+    });
+  });
+
+  it('shows organization resources without resource-count controls for weekly events', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(
@@ -3090,8 +3255,8 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    expect(screen.getByLabelText('Organization Fields')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
   });
 
@@ -3112,7 +3277,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Fields')).toHaveValue('1');
+      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
     },
   );
 
@@ -3136,7 +3301,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Fields')).toHaveValue('0');
+      expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
     },
   );
 
@@ -3171,7 +3336,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText('Event Type'), {
         target: { value: eventType },
@@ -3179,7 +3344,7 @@ describe('EventForm dirty state', () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText('Event Type')).toHaveValue(eventType);
-        expect(screen.getByLabelText('Number of Fields')).toHaveValue('0');
+        expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
         expect(formRef.current?.getDraft().fields).toBeUndefined();
       });
       expect(formRef.current?.getDraft().fieldCount).toBe(0);

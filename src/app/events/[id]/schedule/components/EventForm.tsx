@@ -70,7 +70,7 @@ import {
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
-import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
+import { getFacilityScopedFieldDisplayName, getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 import type { EventTaxHandling } from '@/lib/taxPolicy';
 import {
@@ -122,6 +122,45 @@ type RentalPurchaseContext = {
     requiredTemplateIds?: string[];
 };
 
+type RentalBookingResourceOption = {
+    id: string;
+    bookingId: string;
+    bookingItemId: string;
+    fieldId: string;
+    field: Field;
+    start: string;
+    end: string;
+    timeZone?: string | null;
+    priceCents?: number | null;
+    requiredTemplateIds?: string[];
+    hostRequiredTemplateIds?: string[];
+    eventId?: string | null;
+    eventTimeSlotId?: string | null;
+};
+
+type RentalBookingsResponse = {
+    bookings?: Array<{
+        $id?: string;
+        id?: string;
+        organizationId?: string | null;
+        renterOrganizationId?: string | null;
+        items?: Array<{
+            $id?: string;
+            id?: string;
+            fieldId?: string | null;
+            start?: string | Date | null;
+            end?: string | Date | null;
+            timeZone?: string | null;
+            priceCents?: number | null;
+            requiredTemplateIds?: string[];
+            hostRequiredTemplateIds?: string[];
+            eventId?: string | null;
+            eventTimeSlotId?: string | null;
+            field?: Field | null;
+        }>;
+    }>;
+};
+
 type StaffAssignmentRole = 'OFFICIAL' | 'ASSISTANT_HOST';
 type EventInviteStaffType = 'OFFICIAL' | 'HOST';
 type StaffRosterStatus = 'active' | 'pending' | 'declined' | 'failed';
@@ -154,6 +193,428 @@ type AssignedStaffCard = {
     displayName: string;
     status: 'email_invite' | 'pending' | 'declined' | 'failed' | null;
     source: 'assigned' | 'draft';
+};
+
+type FacilityResourceGroup = {
+    key: string;
+    label: string;
+    description?: string;
+    isRental: boolean;
+    resources: Array<Field & { $id: string }>;
+};
+
+const normalizeResourceText = (value: unknown): string => (
+    typeof value === 'string' ? value.trim() : ''
+);
+
+const getFieldFacilityId = (field: Field): string | null => {
+    const directId = normalizeResourceText((field as { facilityId?: string | null }).facilityId);
+    if (directId) {
+        return directId;
+    }
+    const facility = field.facility;
+    if (facility && typeof facility === 'object') {
+        return normalizeResourceText((facility as { $id?: string | null }).$id)
+            || normalizeResourceText((facility as { id?: string | null }).id);
+    }
+    return null;
+};
+
+const getFieldFacilityLabel = (field: Field): string => {
+    const facility = field.facility;
+    if (typeof facility === 'string') {
+        return normalizeResourceText(facility);
+    }
+    if (facility && typeof facility === 'object') {
+        return normalizeResourceText(facility.name)
+            || normalizeResourceText(facility.location)
+            || normalizeResourceText(facility.address);
+    }
+    return '';
+};
+
+const getFieldFacilityDescription = (field: Field): string => {
+    const facility = field.facility;
+    if (facility && typeof facility === 'object') {
+        return normalizeResourceText(facility.address)
+            || normalizeResourceText(facility.location);
+    }
+    return normalizeResourceText(field.location);
+};
+
+const isRentedResourceForOrganization = (
+    field: Field,
+    eventOrganizationId?: string | null,
+): boolean => {
+    if ((field as { rentalResource?: boolean; _rentalResource?: boolean }).rentalResource
+        || (field as { rentalResource?: boolean; _rentalResource?: boolean })._rentalResource) {
+        return true;
+    }
+    const hostOrganizationId = normalizeResourceText(eventOrganizationId);
+    if (!hostOrganizationId) {
+        return false;
+    }
+    const fieldOrganizationId = normalizeResourceText(getFieldOrganizationId(field));
+    return fieldOrganizationId.length > 0 && fieldOrganizationId !== hostOrganizationId;
+};
+
+const isSelectableOrganizationResource = (
+    field: Field,
+    eventOrganizationId?: string | null,
+): boolean => {
+    const hostOrganizationId = normalizeResourceText(eventOrganizationId);
+    if (!hostOrganizationId) {
+        return true;
+    }
+    const fieldOrganizationId = normalizeResourceText(getFieldOrganizationId(field));
+    return fieldOrganizationId === hostOrganizationId || isRentedResourceForOrganization(field, hostOrganizationId);
+};
+
+const buildFacilityResourceGroups = (
+    fields: Field[],
+    eventOrganizationId?: string | null,
+): FacilityResourceGroup[] => {
+    const groups = new Map<string, FacilityResourceGroup>();
+
+    fields
+        .filter((field): field is Field & { $id: string } => (
+            typeof field?.$id === 'string' && field.$id.trim().length > 0
+        ))
+        .forEach((field) => {
+            const isRental = isRentedResourceForOrganization(field, eventOrganizationId);
+            const facilityId = getFieldFacilityId(field);
+            const facilityLabel = getFieldFacilityLabel(field);
+            const fallbackLabel = isRental ? 'Rented facility' : 'Ungrouped resources';
+            const groupLabel = facilityLabel || fallbackLabel;
+            const groupKey = [
+                isRental ? 'rental' : 'facility',
+                facilityId || groupLabel.toLowerCase(),
+            ].join(':');
+
+            const existing = groups.get(groupKey);
+            if (existing) {
+                existing.resources.push(field);
+                return;
+            }
+
+            groups.set(groupKey, {
+                key: groupKey,
+                label: groupLabel,
+                description: getFieldFacilityDescription(field),
+                isRental,
+                resources: [field],
+            });
+        });
+
+    return Array.from(groups.values()).map((group) => ({
+        ...group,
+        resources: [...group.resources].sort((left, right) => (
+            getFieldDisplayName(left).localeCompare(getFieldDisplayName(right), undefined, { numeric: true, sensitivity: 'base' })
+        )),
+    })).sort((left, right) => {
+        if (left.isRental !== right.isRental) {
+            return left.isRental ? 1 : -1;
+        }
+        return left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
+};
+
+const normalizeRentalDateString = (value: string | Date | null | undefined): string | null => {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    }
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+};
+
+const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): RentalBookingResourceOption[] => {
+    const options: RentalBookingResourceOption[] = [];
+    (response.bookings ?? []).forEach((booking) => {
+        const bookingId = normalizeResourceText(booking.$id) || normalizeResourceText(booking.id);
+        if (!bookingId) {
+            return;
+        }
+        (booking.items ?? []).forEach((item) => {
+            const bookingItemId = normalizeResourceText(item.$id) || normalizeResourceText(item.id);
+            const fieldId = normalizeResourceText(item.fieldId) || normalizeResourceText(item.field?.$id);
+            const start = normalizeRentalDateString(item.start);
+            const end = normalizeRentalDateString(item.end);
+            if (!bookingItemId || !fieldId || !start || !end || !item.field?.$id) {
+                return;
+            }
+            options.push({
+                id: bookingItemId,
+                bookingId,
+                bookingItemId,
+                fieldId,
+                field: {
+                    ...item.field,
+                    rentalResource: true,
+                    _rentalResource: true,
+                } as Field,
+                start,
+                end,
+                timeZone: item.timeZone ?? null,
+                priceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
+                requiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
+                hostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
+                eventId: item.eventId ?? null,
+                eventTimeSlotId: item.eventTimeSlotId ?? null,
+            });
+        });
+    });
+    return options.sort((left, right) => {
+        const startCompare = left.start.localeCompare(right.start);
+        if (startCompare !== 0) return startCompare;
+        return getFieldDisplayName(left.field).localeCompare(getFieldDisplayName(right.field), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+        });
+    });
+};
+
+const mergeFieldsById = (baseFields: Field[], incomingFields: Field[]): Field[] => {
+    const byId = new Map<string, Field>();
+    [...baseFields, ...incomingFields].forEach((field) => {
+        const fieldId = normalizeResourceText(field?.$id);
+        if (!fieldId) {
+            return;
+        }
+        byId.set(fieldId, field);
+    });
+    return sortFieldsByCreatedAt(Array.from(byId.values()));
+};
+
+const buildRentalBookingTimeSlot = (
+    option: RentalBookingResourceOption,
+    divisionKeys: string[],
+    eventTimeZone?: string | null,
+): TimeSlot | null => {
+    const start = parseLocalDateTime(option.start);
+    const end = parseLocalDateTime(option.end);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+        return null;
+    }
+    const dayOfWeek = ((start.getDay() + 6) % 7) as TimeSlot['dayOfWeek'];
+    const normalizedTimeZone = normalizeTimeZone(option.timeZone, eventTimeZone || getSystemTimeZone());
+    return {
+        $id: option.eventTimeSlotId || `rental-slot-${option.bookingItemId}`,
+        dayOfWeek,
+        daysOfWeek: [dayOfWeek] as TimeSlot['daysOfWeek'],
+        divisions: normalizeDivisionKeys(divisionKeys),
+        startTimeMinutes: start.getHours() * 60 + start.getMinutes(),
+        endTimeMinutes: end.getHours() * 60 + end.getMinutes(),
+        startDate: option.start,
+        endDate: option.end,
+        timeZone: normalizedTimeZone,
+        repeating: false,
+        price: Number.isFinite(Number(option.priceCents)) ? Number(option.priceCents) : undefined,
+        requiredTemplateIds: option.requiredTemplateIds ?? [],
+        hostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
+        scheduledFieldId: option.fieldId,
+        scheduledFieldIds: [option.fieldId],
+        sourceType: 'RENTAL_BOOKING',
+        rentalBookingId: option.bookingId,
+        rentalBookingItemId: option.bookingItemId,
+        rentalLocked: true,
+    };
+};
+
+const timeSlotsEqual = (left: TimeSlot[], right: TimeSlot[]): boolean => {
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+        const first = left[index];
+        const second = right[index];
+        if (
+            first.$id !== second.$id
+            || first.startDate !== second.startDate
+            || first.endDate !== second.endDate
+            || first.startTimeMinutes !== second.startTimeMinutes
+            || first.endTimeMinutes !== second.endTimeMinutes
+            || Boolean(first.repeating) !== Boolean(second.repeating)
+            || first.sourceType !== second.sourceType
+            || first.rentalBookingId !== second.rentalBookingId
+            || first.rentalBookingItemId !== second.rentalBookingItemId
+            || Boolean(first.rentalLocked) !== Boolean(second.rentalLocked)
+            || !stringSetsEqual(normalizeSlotFieldIds(first), normalizeSlotFieldIds(second))
+            || !stringSetsEqual(normalizeWeekdays(first).map(String), normalizeWeekdays(second).map(String))
+            || !stringSetsEqual(normalizeDivisionKeys(first.divisions), normalizeDivisionKeys(second.divisions))
+        ) {
+            return false;
+        }
+    }
+    return true;
+};
+
+type FacilityResourceSelectorProps = {
+    label: string;
+    description: string;
+    placeholder: string;
+    fields: Field[];
+    value: string[];
+    onChange: (values: string[]) => void;
+    eventOrganizationId?: string | null;
+    disabled?: boolean;
+    loading?: boolean;
+    error?: React.ReactNode;
+};
+
+const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
+    label,
+    description,
+    placeholder,
+    fields,
+    value,
+    onChange,
+    eventOrganizationId,
+    disabled = false,
+    loading = false,
+    error,
+}) => {
+    const groups = useMemo(
+        () => buildFacilityResourceGroups(fields, eventOrganizationId),
+        [eventOrganizationId, fields],
+    );
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const selectedValues = useMemo(
+        () => Array.from(new Set(value.map((fieldId) => String(fieldId).trim()).filter(Boolean))),
+        [value],
+    );
+    const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+    const showFacilityRows = groups.length > 1 || groups.some((group) => group.isRental);
+
+    useEffect(() => {
+        setExpandedGroups((previous) => {
+            const next: Record<string, boolean> = {};
+            groups.forEach((group) => {
+                next[group.key] = previous[group.key] ?? (group.isRental || groups.length === 1);
+            });
+            return next;
+        });
+    }, [groups]);
+
+    const toggleResource = useCallback((resourceId: string) => {
+        if (disabled) {
+            return;
+        }
+        const next = selectedSet.has(resourceId)
+            ? selectedValues.filter((fieldId) => fieldId !== resourceId)
+            : [...selectedValues, resourceId];
+        onChange(next);
+    }, [disabled, onChange, selectedSet, selectedValues]);
+
+    const renderResourceRow = (resource: Field & { $id: string }) => {
+        const resourceLabel = getFieldDisplayName(resource, 'Resource');
+        const facilityScopedLabel = getFacilityScopedFieldDisplayName(resource, resourceLabel);
+        const selected = selectedSet.has(resource.$id);
+        return (
+            <label
+                key={resource.$id}
+                className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition ${
+                    selected
+                        ? 'border-[#2c4d6f] bg-[#eaf2fa]'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+            >
+                <input
+                    type="checkbox"
+                    aria-label={facilityScopedLabel}
+                    checked={selected}
+                    disabled={disabled}
+                    onChange={() => toggleResource(resource.$id)}
+                    className="h-4 w-4 rounded border-gray-300 accent-[#2c4d6f]"
+                />
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-gray-900">{resourceLabel}</span>
+                    {resource.location ? (
+                        <span className="block truncate text-xs text-gray-500">{resource.location}</span>
+                    ) : null}
+                </span>
+            </label>
+        );
+    };
+
+    return (
+        <div className="space-y-2">
+            <div>
+                <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-900">{label}</label>
+                    {selectedValues.length > 0 ? (
+                        <Badge size="sm" variant="light" color="blue">
+                            {selectedValues.length} selected
+                        </Badge>
+                    ) : null}
+                </div>
+                <Text size="sm" c="dimmed">{description}</Text>
+            </div>
+            <div
+                role="group"
+                aria-label={label}
+                className={`rounded-md border p-2 ${error ? 'border-red-500' : 'border-gray-300'} ${disabled ? 'bg-gray-50' : 'bg-white'}`}
+            >
+                {loading ? (
+                    <Text size="sm" c="dimmed">Loading resources...</Text>
+                ) : groups.length === 0 ? (
+                    <Text size="sm" c="dimmed">{placeholder}</Text>
+                ) : showFacilityRows ? (
+                    <div className="space-y-2">
+                        {groups.map((group) => {
+                            const expanded = expandedGroups[group.key] ?? group.isRental;
+                            const selectedCount = group.resources.filter((resource) => selectedSet.has(resource.$id)).length;
+                            const panelId = `facility-resource-group-${group.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+                            return (
+                                <div key={group.key} className="rounded-md border border-gray-200 bg-gray-50">
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                                        aria-expanded={expanded}
+                                        aria-controls={panelId}
+                                        onClick={() => {
+                                            setExpandedGroups((previous) => ({
+                                                ...previous,
+                                                [group.key]: !expanded,
+                                            }));
+                                        }}
+                                    >
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex items-center gap-2">
+                                                <span className="truncate font-medium text-gray-900">{group.label}</span>
+                                                {group.isRental ? (
+                                                    <Badge size="xs" variant="light" color="green">Rented</Badge>
+                                                ) : null}
+                                            </span>
+                                            <span className="block truncate text-xs text-gray-500">
+                                                {selectedCount} of {group.resources.length} resources selected
+                                                {group.description ? ` • ${group.description}` : ''}
+                                            </span>
+                                        </span>
+                                        <span className="text-lg leading-none text-gray-500">{expanded ? '⌃' : '⌄'}</span>
+                                    </button>
+                                    <Collapse in={expanded} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                        <div id={panelId} className="space-y-2 border-t border-gray-200 p-2">
+                                            {group.resources.map(renderResourceRow)}
+                                        </div>
+                                    </Collapse>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {groups.flatMap((group) => group.resources).map(renderResourceRow)}
+                    </div>
+                )}
+            </div>
+            {error ? (
+                <Text size="xs" c="red">{error}</Text>
+            ) : null}
+        </div>
+    );
 };
 
 const normalizeDirtyTrackedIdList = (values: unknown[]): string[] => Array.from(
@@ -3599,7 +4060,7 @@ const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         if (requiresOrganizationEventFieldSelection(values.eventType, values.organizationId, values.selectedFieldIds)) {
             ctx.addIssue({
                 code: "custom",
-                message: 'Select at least one organization field for this event.',
+                message: 'Select at least one organization resource for this event.',
                 path: ['selectedFieldIds'],
             });
         }
@@ -3615,7 +4076,7 @@ const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         if ((values.eventType === 'EVENT' || values.eventType === 'WEEKLY_EVENT') && !hasAtLeastOneField) {
             ctx.addIssue({
                 code: "custom",
-                message: 'Select or create at least one field for this event.',
+                message: 'Select or create at least one resource for this event.',
                 path: ['fieldCount'],
             });
         }
@@ -3871,7 +4332,7 @@ const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 if (!normalizeSlotFieldIds(slot).length) {
                     ctx.addIssue({
                         code: "custom",
-                        message: 'Select at least one field',
+                        message: 'Select at least one resource',
                         path: ['leagueSlots', index, 'scheduledFieldIds'],
                     });
                 }
@@ -4514,7 +4975,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
         const allDefaultFieldIds = toFieldIdList(defaultFields);
         const defaultOrganizationFieldIds = hostedOrganizationId
-            ? toFieldIdList(defaultFields.filter((field) => getFieldOrganizationId(field) === hostedOrganizationId))
+            ? toFieldIdList(defaultFields.filter((field) => isSelectableOrganizationResource(field, hostedOrganizationId)))
             : [];
         const defaultSelectedFieldIds = (() => {
             const selectableFieldIds = hostedOrganizationId && supportsOrganizationFieldSelectionForDefault
@@ -5421,6 +5882,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [hostCardVisibleCount, setHostCardVisibleCount] = useState(5);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
+    const [rentalResourceOptions, setRentalResourceOptions] = useState<RentalBookingResourceOption[]>([]);
+    const [rentalResourcesLoading, setRentalResourcesLoading] = useState(false);
+    const [rentalResourcesError, setRentalResourcesError] = useState<string | null>(null);
     const organizationHostedEventId = (
         resolvedOrganization?.$id
         || eventData.organizationId
@@ -5439,6 +5903,73 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
         resolvedOrganization?.defaultEventTaxHandling,
     );
+
+    useEffect(() => {
+        if (!open || !supportsOrganizationFieldSelection) {
+            setRentalResourceOptions([]);
+            setRentalResourcesError(null);
+            setRentalResourcesLoading(false);
+            return undefined;
+        }
+
+        let cancelled = false;
+        const params = new URLSearchParams();
+        if (isEditMode && activeEditingEvent?.$id) {
+            params.set('eventId', activeEditingEvent.$id);
+        }
+        if (organizationHostedEventId) {
+            params.set('organizationId', organizationHostedEventId);
+        }
+
+        const loadRentalResources = async () => {
+            try {
+                setRentalResourcesLoading(true);
+                setRentalResourcesError(null);
+                const suffix = params.toString();
+                const response = await apiRequest<RentalBookingsResponse>(
+                    `/api/rentals/bookings${suffix ? `?${suffix}` : ''}`,
+                );
+                if (cancelled) {
+                    return;
+                }
+                const options = mapRentalBookingsToResourceOptions(response);
+                setRentalResourceOptions(options);
+                const rentalFields = options.map((option) => option.field);
+                setFields((previous) => {
+                    const withoutPreviousRentalFields = previous.filter((field) => {
+                        const marker = (field as { rentalResource?: boolean; _rentalResource?: boolean });
+                        return !marker.rentalResource && !marker._rentalResource;
+                    });
+                    return rentalFields.length
+                        ? mergeFieldsById(withoutPreviousRentalFields, rentalFields)
+                        : withoutPreviousRentalFields;
+                }, { shouldDirty: false, shouldValidate: false });
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setRentalResourceOptions([]);
+                setRentalResourcesError(error instanceof Error ? error.message : 'Failed to load reserved resources.');
+            } finally {
+                if (!cancelled) {
+                    setRentalResourcesLoading(false);
+                }
+            }
+        };
+
+        loadRentalResources();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        activeEditingEvent?.$id,
+        isEditMode,
+        open,
+        organizationHostedEventId,
+        setFields,
+        supportsOrganizationFieldSelection,
+    ]);
 
     useEffect(() => {
         const previousEventType = previousEventTypeRef.current;
@@ -8385,7 +8916,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     useEffect(() => {
         const availableFields = isOrganizationHostedEvent && supportsOrganizationFieldSelection
-            ? fields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId)
+            ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
             : fields;
         const availableFieldIds = toFieldIdList(availableFields);
         const allowed = new Set(availableFieldIds);
@@ -8992,15 +9523,53 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
+    const rentalResourceFields = useMemo(
+        () => mergeFieldsById([], rentalResourceOptions.map((option) => option.field)),
+        [rentalResourceOptions],
+    );
+    const rentalResourceOptionsByFieldId = useMemo(() => {
+        const byFieldId = new Map<string, RentalBookingResourceOption[]>();
+        rentalResourceOptions.forEach((option) => {
+            const fieldId = normalizeResourceText(option.fieldId);
+            if (!fieldId) {
+                return;
+            }
+            byFieldId.set(fieldId, [...(byFieldId.get(fieldId) ?? []), option]);
+        });
+        return byFieldId;
+    }, [rentalResourceOptions]);
+    const selectedRentalResourceOptions = useMemo(() => (
+        Array.from(
+            new Map(
+                selectedFieldIds
+                    .flatMap((fieldId) => rentalResourceOptionsByFieldId.get(fieldId) ?? [])
+                    .map((option) => [option.id, option] as const),
+            ).values(),
+        )
+    ), [rentalResourceOptionsByFieldId, selectedFieldIds]);
+    const selectedRentalFieldIds = useMemo(
+        () => Array.from(new Set(selectedRentalResourceOptions.map((option) => option.fieldId))),
+        [selectedRentalResourceOptions],
+    );
+    const selectedRentalLockedSlots = useMemo(() => (
+        selectedRentalResourceOptions
+            .map((option) => buildRentalBookingTimeSlot(option, slotDivisionKeys, eventData.timeZone))
+            .filter((slot): slot is TimeSlot => Boolean(slot))
+    ), [eventData.timeZone, selectedRentalResourceOptions, slotDivisionKeys]);
     const selectedFields = useMemo(() => {
         return fields;
     }, [fields]);
-    const organizationFieldPool = useMemo(
-        () => organizationHostedEventId
-            ? fields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId)
-            : [],
-        [fields, organizationHostedEventId],
-    );
+    const organizationResourcePool = useMemo(() => {
+        const baseFields = organizationHostedEventId
+            ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
+            : fields.filter((field) => {
+                const marker = field as { rentalResource?: boolean; _rentalResource?: boolean };
+                return marker.rentalResource || marker._rentalResource;
+            });
+        return rentalResourceFields.length
+            ? mergeFieldsById(baseFields, rentalResourceFields)
+            : baseFields;
+    }, [fields, organizationHostedEventId, rentalResourceFields]);
     const eventLocalFields = useMemo(
         () => fields.filter(isEventLocalField),
         [fields],
@@ -9010,17 +9579,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
             .map((field) => ({
                 value: field.$id,
-                label: getFieldDisplayName(field),
+                label: getFacilityScopedFieldDisplayName(field, 'Resource'),
             }));
     }, [selectedFields]);
-    const organizationFieldOptions = useMemo(() => {
-        return organizationFieldPool
-            .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
-            .map((field) => ({
-                value: field.$id,
-                label: getFieldDisplayName(field),
-            }));
-    }, [organizationFieldPool]);
 
     const eventOrganizationId = organizationHostedEventId;
 
@@ -9065,28 +9626,46 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
 
     useEffect(() => {
-        if (!hasExternalRentalField) {
-            setRentalLockedTimeSlots([]);
-            return;
-        }
         const fallbackFieldId = immutableFields[0]?.$id || (activeEditingEvent?.fields?.[0] as Field | undefined)?.$id;
-        const lockedSlots = (activeEditingEvent?.timeSlots ?? [])
-            .map((slot) => {
-                if (!slot) return null;
-                const { event: _ignored, ...rest } = slot as any;
-                const normalized: TimeSlot = {
-                    ...rest,
-                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                    scheduledFieldIds: normalizeSlotFieldIds({
+        const existingLockedSlots = hasExternalRentalField
+            ? (activeEditingEvent?.timeSlots ?? [])
+                .map((slot) => {
+                    if (!slot || slot.rentalLocked !== true) return null;
+                    const { event: _ignored, ...rest } = slot as any;
+                    const normalized: TimeSlot = {
+                        ...rest,
+                        sourceType: rest.sourceType ?? 'RENTAL_BOOKING',
+                        rentalLocked: true,
                         scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                        scheduledFieldIds: rest.scheduledFieldIds,
-                    }),
-                };
-                return normalized;
-            })
-            .filter((slot): slot is TimeSlot => Boolean(slot));
-        setRentalLockedTimeSlots(lockedSlots);
-    }, [activeEditingEvent?.fields, activeEditingEvent?.timeSlots, hasExternalRentalField, immutableFields]);
+                        scheduledFieldIds: normalizeSlotFieldIds({
+                            scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                            scheduledFieldIds: rest.scheduledFieldIds,
+                        }),
+                    };
+                    return normalized;
+                })
+                .filter((slot): slot is TimeSlot => Boolean(slot))
+            : [];
+        const mergedByKey = new Map<string, TimeSlot>();
+        [...existingLockedSlots, ...selectedRentalLockedSlots].forEach((slot) => {
+            const key = slot.rentalBookingItemId
+                || `${slot.rentalBookingId ?? ''}:${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}`
+                || slot.$id;
+            mergedByKey.set(key, slot);
+        });
+        const nextSlots = Array.from(mergedByKey.values()).sort((left, right) => {
+            const startCompare = String(left.startDate ?? '').localeCompare(String(right.startDate ?? ''));
+            if (startCompare !== 0) return startCompare;
+            return normalizeSlotFieldIds(left).join('|').localeCompare(normalizeSlotFieldIds(right).join('|'));
+        });
+        setRentalLockedTimeSlots((previous) => (timeSlotsEqual(previous, nextSlots) ? previous : nextSlots));
+    }, [
+        activeEditingEvent?.fields,
+        activeEditingEvent?.timeSlots,
+        hasExternalRentalField,
+        immutableFields,
+        selectedRentalLockedSlots,
+    ]);
 
     useEffect(() => {
         if (!eventData.singleDivision || hasExternalRentalField) {
@@ -9841,6 +10420,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const fieldIds = supportsOrganizationFieldSelectionForEvent(source.eventType, source.parentEvent)
                     ? resolveOrganizationEventFieldIds(source.selectedFieldIds, defaultOrganizationFieldIds)
                     : toIdList(fieldsToInclude);
+                selectedRentalFieldIds.forEach((fieldId) => {
+                    if (!fieldIds.includes(fieldId)) {
+                        fieldIds.push(fieldId);
+                    }
+                });
                 if (fieldIds.length) {
                     draft.fieldIds = fieldIds;
                 }
@@ -9851,12 +10435,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     previousEventFieldLocation,
                 ));
                 const fieldIds = toIdList(fieldsToInclude);
+                selectedRentalFieldIds.forEach((fieldId) => {
+                    if (!fieldIds.includes(fieldId)) {
+                        fieldIds.push(fieldId);
+                    }
+                });
                 if (fieldIds.length) {
                     draft.fieldIds = fieldIds;
                 }
             }
             if ((!draft.fieldIds || draft.fieldIds.length === 0) && rentalPurchase?.fieldId) {
                 draft.fieldIds = [rentalPurchase.fieldId];
+            } else if ((!draft.fieldIds || draft.fieldIds.length === 0) && selectedRentalFieldIds.length) {
+                draft.fieldIds = selectedRentalFieldIds;
             }
         } else {
             const localFields = sourceFields.filter(isEventLocalField);
@@ -9869,6 +10460,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             const fieldIds = Array.from(new Set([
                 ...selectedOrganizationFieldIds,
+                ...selectedRentalFieldIds,
                 ...toIdList(localFields),
             ]));
             if (fieldIds.length) {
@@ -10022,7 +10614,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         }
 
-        if (supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
+        if (!hasImmutableTimeSlots && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
             const slotDocuments = source.leagueSlots
                 .filter((slot) => {
                     if (!normalizeSlotFieldIds(slot).length) {
@@ -10153,6 +10745,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         currentUser,
         joinAsParticipant,
         rentalPurchase,
+        selectedRentalFieldIds,
         sportsById,
         shouldManageLocalFields,
         shouldProvisionFields,
@@ -10317,7 +10910,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const showsFixedTeamEventToggle = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
-    const showOrganizationFieldsInEventDetails = isOrganizationHostedEvent && supportsOrganizationFieldSelection;
+    const resourceSelectorLoading = fieldsLoading || rentalResourcesLoading;
+    const showOrganizationFieldsInEventDetails = (
+        isOrganizationHostedEvent || rentalResourceOptions.length > 0
+    ) && supportsOrganizationFieldSelection;
     const showMatchRulesSection = eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
     const showScoringConfigSection = eventData.eventType === 'LEAGUE'
         || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs);
@@ -11212,8 +11808,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         {shouldManageLocalFields && !hasExternalRentalField ? (
                                             <div>
                                                 <MantineSelect
-                                                    label="Number of Fields"
-                                                    placeholder="Select field count"
+                                                    label="Number of Resources"
+                                                    placeholder="Select resource count"
                                                     data={fieldCountOptions}
                                                     value={String(fieldCount)}
                                                     w="100%"
@@ -11269,22 +11865,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             name="selectedFieldIds"
                                             control={control}
                                             render={({ field, fieldState }) => (
-                                                <MantineMultiSelect
-                                                    label="Organization Fields"
-                                                    description="Choose which organization fields this event can use."
-                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
-                                                    data={organizationFieldOptions}
+                                                <FacilityResourceSelector
+                                                    label="Resources"
+                                                    description="Choose which resources this event can use."
+                                                    placeholder={resourceSelectorLoading ? 'Loading resources...' : 'Select one or more resources'}
+                                                    fields={organizationResourcePool}
                                                     value={Array.isArray(field.value) ? field.value : []}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    w="100%"
-                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                    disabled={resourceSelectorLoading || isImmutableField('fieldIds')}
+                                                    loading={resourceSelectorLoading}
+                                                    eventOrganizationId={organizationHostedEventId}
                                                     onChange={(values) => {
                                                         if (isImmutableField('fieldIds')) return;
                                                         field.onChange(values);
                                                     }}
-                                                    searchable
-                                                    clearable
-                                                    error={fieldState.error?.message}
+                                                    error={fieldState.error?.message || rentalResourcesError}
                                                 />
                                             )}
                                         />
@@ -11296,9 +11890,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
                                     <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
                                         <div>
-                                            <Title order={6}>Field Names</Title>
+                                            <Title order={6}>Resource Names</Title>
                                             <Text size="sm" c="dimmed">
-                                                Fields will be created for this event using the names you provide below.
+                                                Resources will be created for this event using the names you provide below.
                                             </Text>
                                         </div>
                                         <Button
@@ -11320,7 +11914,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             {eventLocalFields.map((field) => (
                                                 <TextInput
                                                     key={field.$id}
-                                                    label={`${getFieldDisplayName(field, 'Field')} Name`}
+                                                    label={`${getFieldDisplayName(field, 'Resource')} Name`}
                                                     value={field.name ?? ''}
                                                     w="100%"
                                                     maxLength={MAX_MEDIUM_TEXT_LENGTH}
@@ -13438,21 +14032,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     name="selectedFieldIds"
                                                     control={control}
                                                     render={({ field, fieldState }) => (
-                                                        <MantineMultiSelect
-                                                            label="Session Fields"
-                                                            description="Choose which fields this weekly child session can use."
-                                                            placeholder={fieldsLoading ? 'Loading fields...' : 'Select one or more fields'}
-                                                            data={leagueFieldOptions}
+                                                        <FacilityResourceSelector
+                                                            label="Session Resources"
+                                                            description="Choose which resources this weekly child session can use."
+                                                            placeholder={resourceSelectorLoading ? 'Loading resources...' : 'Select one or more resources'}
+                                                            fields={selectedFields}
                                                             value={Array.isArray(field.value) ? field.value : []}
-                                                            comboboxProps={sharedComboboxProps}
-                                                            disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                            disabled={resourceSelectorLoading || isImmutableField('fieldIds')}
+                                                            loading={resourceSelectorLoading}
+                                                            eventOrganizationId={organizationHostedEventId}
                                                             onChange={(values) => {
                                                                 if (isImmutableField('fieldIds')) return;
                                                                 field.onChange(values);
                                                             }}
-                                                            searchable
-                                                            clearable
-                                                            error={fieldState.error?.message}
+                                                            error={fieldState.error?.message || rentalResourcesError}
                                                         />
                                                     )}
                                                 />
@@ -13463,7 +14056,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             <div className="space-y-4">
                                                 <AnimatedSection in={isOrganizationManagedEvent}>
                                                     <Text size="xs" c="dimmed">
-                                                        Select event fields directly inside each timeslot.
+                                                        Select event resources directly inside each timeslot.
                                                     </Text>
                                                 </AnimatedSection>
 
@@ -13485,7 +14078,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     onRemoveSlot={handleRemoveSlot}
                                                     onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
                                                     fields={selectedFields}
-                                                    fieldsLoading={fieldsLoading}
+                                                    fieldsLoading={resourceSelectorLoading}
                                                     fieldOptions={leagueFieldOptions}
                                                     divisionOptions={divisionOptions}
                                                     eventStartDate={eventData.start}
@@ -13496,7 +14089,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     showPlayoffSettings={false}
                                                     showLeagueConfiguration={false}
                                                     emptyFieldsMessage={isOrganizationManagedEvent
-                                                        ? 'No fields found. Create a field on the Organizations page first, then return here to attach weekly availability.'
+                                                        ? 'No resources found. Create a resource on the Organizations page first, then return here to attach weekly availability.'
                                                         : undefined}
                                                 />
                                             </div>

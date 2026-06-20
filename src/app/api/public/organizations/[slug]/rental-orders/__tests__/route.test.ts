@@ -260,8 +260,7 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         }),
       ],
     });
-    expect(json.createEventUrl).toContain('/events/event_1/schedule?');
-    expect(json.createEventUrl).toContain('rentalBookingId=event_1');
+    expect(json.createEventUrl).toBe('/events/event_1/schedule?create=1');
     expect(txRentalBookingsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         id: 'event_1',
