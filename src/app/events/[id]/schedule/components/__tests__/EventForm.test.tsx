@@ -13,6 +13,7 @@ import { CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES } from '@/lib/taxPolicy';
 jest.setTimeout(20000);
 
 let mockDateTimePickerValuesByLabel: Record<string, string> = {};
+let mockLeagueFieldsProps: any[] = [];
 
 jest.mock('@mantine/core', () => {
   const actual = jest.requireActual('@mantine/core');
@@ -155,6 +156,7 @@ jest.mock('@/app/discover/components/TournamentFields', () => {
 });
 jest.mock('@/app/discover/components/LeagueFields', () => {
   function MockLeagueFields(props: any) {
+    mockLeagueFieldsProps.push(props);
     const conflictCount = Array.isArray(props?.slots)
       ? props.slots.reduce((count: number, slot: any) => count + (Array.isArray(slot?.conflicts) ? slot.conflicts.length : 0), 0)
       : 0;
@@ -278,6 +280,7 @@ describe('EventForm dirty state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDateTimePickerValuesByLabel = {};
+    mockLeagueFieldsProps = [];
     mockUseSportsState = buildMockUseSportsState();
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(null);
     (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
@@ -3224,6 +3227,138 @@ describe('EventForm dirty state', () => {
     await waitFor(() => {
       const draft = formRef.current?.getDraft();
       expect(draft?.fieldIds).toEqual(['rental_field_1']);
+      expect(draft?.timeSlots).toEqual([
+        expect.objectContaining({
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+          scheduledFieldId: 'rental_field_1',
+          scheduledFieldIds: ['rental_field_1'],
+        }),
+      ]);
+    });
+  });
+
+  it('keeps rental booking defaults out of editable league weekly resource selection', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Main Court',
+          location: 'Home Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+          facilityId: 'facility_home',
+          facility: {
+            $id: 'facility_home',
+            organizationId: 'org_1',
+            name: 'Home Facility',
+            location: 'Home Gym',
+          },
+        },
+      ],
+    };
+    const rentalField = {
+      $id: 'rental_field_1',
+      name: 'Rental Court',
+      location: 'Rented Gym',
+      lat: 0,
+      long: 0,
+      organization: 'rental_org_1',
+      facilityId: 'facility_rented',
+      facility: {
+        $id: 'facility_rented',
+        organizationId: 'rental_org_1',
+        name: 'Rented Facility',
+        location: 'Rented Gym',
+      },
+    };
+    const rentalSlot = {
+      $id: 'rental_slot_1',
+      sourceType: 'RENTAL_BOOKING',
+      rentalBookingId: 'booking_1',
+      rentalBookingItemId: 'booking_item_1',
+      rentalLocked: true,
+      scheduledFieldId: 'rental_field_1',
+      scheduledFieldIds: ['rental_field_1'],
+      dayOfWeek: 3,
+      daysOfWeek: [3],
+      startTimeMinutes: 15 * 60,
+      endTimeMinutes: 16 * 60,
+      startDate: '2026-03-12T15:00:00.000Z',
+      endDate: '2026-03-12T16:00:00.000Z',
+      repeating: false,
+    };
+
+    (apiRequest as jest.Mock).mockImplementation((url: string) => {
+      if (url.startsWith('/api/rentals/bookings')) {
+        return Promise.resolve({
+          bookings: [
+            {
+              $id: 'booking_1',
+              items: [
+                {
+                  $id: 'booking_item_1',
+                  fieldId: 'rental_field_1',
+                  start: '2026-03-12T15:00:00.000Z',
+                  end: '2026-03-12T16:00:00.000Z',
+                  field: rentalField,
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'LEAGUE',
+        organizationId: 'org_1',
+      },
+      organization,
+      {
+        isCreateMode: true,
+        immutableDefaults: {
+          fields: [rentalField],
+          fieldIds: ['rental_field_1'],
+          timeSlots: [rentalSlot],
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/rentals/bookings?organizationId=org_1');
+    });
+
+    expect(screen.getByLabelText('Number of Resources')).toBeInTheDocument();
+
+    await waitFor(() => {
+      const scheduleProps = [...mockLeagueFieldsProps].reverse().find((props) => (
+        props?.showTimeslots !== false && Array.isArray(props?.slots) && props.slots.length > 0
+      ));
+      expect(scheduleProps?.readOnly).toBe(false);
+      expect(scheduleProps?.fields.map((field: any) => field.$id)).toEqual(
+        expect.arrayContaining(['org_field_1', 'rental_field_1']),
+      );
+      expect(
+        scheduleProps?.fieldOptions
+          ?.filter((option: any) => option.fieldId === 'rental_field_1')
+          .map((option: any) => option.value),
+      ).toEqual(['rental:booking_item_1']);
+      expect(scheduleProps?.slots[0].scheduledFieldIds ?? []).toEqual([]);
+    });
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
       expect(draft?.timeSlots).toEqual([
         expect.objectContaining({
           sourceType: 'RENTAL_BOOKING',

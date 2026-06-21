@@ -13,6 +13,7 @@ import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
   isLeaguePlayoffTeamCountValidationError,
+  isRentalBookingReservationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -1064,6 +1065,9 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 },
       );
+    }
+    if (isRentalBookingReservationError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

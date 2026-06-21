@@ -32,6 +32,7 @@ import {
 } from '@/server/scheduler/types';
 import {
   canonicalizeTimeSlots,
+  type CanonicalTimeSlotInput,
   normalizeTimeSlotDays,
   normalizeTimeSlotFieldIds,
 } from '@/server/timeSlotCanonical';
@@ -112,6 +113,18 @@ export class LeaguePlayoffTeamCountValidationError extends Error {
 export const isLeaguePlayoffTeamCountValidationError = (
   error: unknown,
 ): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
+
+export class RentalBookingReservationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RentalBookingReservationError';
+  }
+}
+
+export const isRentalBookingReservationError = (
+  error: unknown,
+): error is RentalBookingReservationError => error instanceof RentalBookingReservationError;
+
 const EVENT_FIELDS_REQUIRED_MESSAGE =
   'Select or create at least one field for this event.';
 
@@ -1124,6 +1137,174 @@ const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+type RentalBookingSlotInput = Pick<
+  CanonicalTimeSlotInput,
+  | 'id'
+  | 'scheduledFieldIds'
+  | 'startDate'
+  | 'endDate'
+  | 'repeating'
+  | 'rentalBookingId'
+  | 'rentalBookingItemId'
+  | 'rentalLocked'
+  | 'sourceType'
+>;
+
+const RENTAL_BOOKING_ITEM_ACTIVE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
+
+const isRentalBookingSlot = (slot: RentalBookingSlotInput): boolean => (
+  slot.rentalLocked
+  || Boolean(slot.rentalBookingId)
+  || Boolean(slot.rentalBookingItemId)
+  || slot.sourceType === 'RENTAL_BOOKING'
+);
+
+export const reserveRentalBookingSlotsForEvent = async (
+  client: PrismaLike,
+  eventId: string,
+  slots: RentalBookingSlotInput[],
+  now: Date = new Date(),
+): Promise<void> => {
+  if (
+    !client.rentalBookingItems?.findMany
+    || !client.rentalBookingItems?.updateMany
+    || !client.rentalBookings?.updateMany
+  ) {
+    return;
+  }
+
+  const rentalSlots = slots.filter(isRentalBookingSlot);
+  if (!rentalSlots.length) {
+    return;
+  }
+
+  const slotsByBookingItemId = new Map<string, RentalBookingSlotInput>();
+  const duplicateItemIds = new Set<string>();
+  for (const slot of rentalSlots) {
+    const bookingItemId = normalizeEntityId(slot.rentalBookingItemId);
+    if (!bookingItemId) {
+      throw new RentalBookingReservationError('Rental-backed time slots must include a rental booking item.');
+    }
+    if (slotsByBookingItemId.has(bookingItemId)) {
+      duplicateItemIds.add(bookingItemId);
+    }
+    slotsByBookingItemId.set(bookingItemId, slot);
+  }
+  if (duplicateItemIds.size > 0) {
+    throw new RentalBookingReservationError('A rental reservation can only be used in one event timeslot.');
+  }
+
+  const bookingItemIds = Array.from(slotsByBookingItemId.keys());
+  const bookingItems = await client.rentalBookingItems.findMany({
+    where: { id: { in: bookingItemIds } },
+    select: {
+      id: true,
+      bookingId: true,
+      fieldId: true,
+      start: true,
+      end: true,
+      status: true,
+      eventId: true,
+      eventTimeSlotId: true,
+    } as any,
+  });
+  const bookingItemById = new Map<string, any>(
+    (bookingItems as any[]).map((item) => [String(item.id), item]),
+  );
+
+  for (const bookingItemId of bookingItemIds) {
+    const slot = slotsByBookingItemId.get(bookingItemId);
+    const item = bookingItemById.get(bookingItemId);
+    if (!slot || !item) {
+      throw new RentalBookingReservationError('Rental reservation could not be found.');
+    }
+
+    const expectedBookingId = normalizeEntityId(slot.rentalBookingId);
+    const actualBookingId = normalizeEntityId(item.bookingId);
+    if (expectedBookingId && actualBookingId !== expectedBookingId) {
+      throw new RentalBookingReservationError('Rental reservation does not match the selected booking.');
+    }
+
+    const itemEventId = normalizeEntityId(item.eventId);
+    const itemEventTimeSlotId = normalizeEntityId(item.eventTimeSlotId);
+    if (itemEventId && itemEventId !== eventId) {
+      throw new RentalBookingReservationError('This rental reservation is already attached to another event.');
+    }
+    if (itemEventTimeSlotId && itemEventTimeSlotId !== slot.id) {
+      throw new RentalBookingReservationError('This rental reservation is already attached to another event timeslot.');
+    }
+
+    const status = typeof item.status === 'string' ? item.status : '';
+    if (!RENTAL_BOOKING_ITEM_ACTIVE_STATUSES.includes(status)) {
+      throw new RentalBookingReservationError('This rental reservation is not available for event scheduling.');
+    }
+
+    const itemFieldId = normalizeEntityId(item.fieldId);
+    if (!itemFieldId || !slot.scheduledFieldIds.includes(itemFieldId)) {
+      throw new RentalBookingReservationError('Rental-backed time slots must include the rented resource.');
+    }
+
+    const itemStart = item.start instanceof Date ? item.start : new Date(item.start);
+    const itemEnd = item.end instanceof Date ? item.end : new Date(item.end);
+    if (
+      slot.repeating
+      || !slot.endDate
+      || !Number.isFinite(itemStart.getTime())
+      || !Number.isFinite(itemEnd.getTime())
+      || itemStart.getTime() !== slot.startDate.getTime()
+      || itemEnd.getTime() !== slot.endDate.getTime()
+    ) {
+      throw new RentalBookingReservationError('Rental-backed time slots must match the reserved date and time.');
+    }
+  }
+
+  for (const [bookingItemId, slot] of slotsByBookingItemId.entries()) {
+    const item = bookingItemById.get(bookingItemId);
+    const bookingId = normalizeEntityId(item?.bookingId);
+    const updateResult = await client.rentalBookingItems.updateMany({
+      where: {
+        id: bookingItemId,
+        status: { in: RENTAL_BOOKING_ITEM_ACTIVE_STATUSES },
+        OR: [
+          { eventId: null },
+          { eventId },
+        ],
+        AND: [
+          {
+            OR: [
+              { eventTimeSlotId: null },
+              { eventTimeSlotId: slot.id },
+            ],
+          },
+        ],
+      } as any,
+      data: {
+        eventId,
+        eventTimeSlotId: slot.id,
+        updatedAt: now,
+      } as any,
+    });
+    if (typeof updateResult?.count === 'number' && updateResult.count !== 1) {
+      throw new RentalBookingReservationError('This rental reservation was already attached to another event.');
+    }
+    if (bookingId) {
+      await client.rentalBookings.updateMany({
+        where: {
+          id: bookingId,
+          OR: [
+            { eventId: null },
+            { eventId },
+          ],
+        } as any,
+        data: {
+          eventId,
+          updatedAt: now,
+        } as any,
+      });
+    }
+  }
 };
 
 const buildDivisionFieldMap = (
@@ -4072,6 +4253,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     enforceAllDivisions: singleDivisionEnabled,
     normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
   });
+  await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
 
   const slotFieldIds = normalizeFieldIds(
     canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
@@ -4697,6 +4879,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const nextTimeSlotIdSet = new Set(timeSlotIds);
   const staleTimeSlotIds = existingTimeSlotIds.filter((slotId) => !nextTimeSlotIdSet.has(slotId));
   if (staleTimeSlotIds.length) {
+    if (client.rentalBookingItems?.updateMany) {
+      await client.rentalBookingItems.updateMany({
+        where: {
+          eventId: id,
+          eventTimeSlotId: { in: staleTimeSlotIds },
+        } as any,
+        data: {
+          eventId: null,
+          eventTimeSlotId: null,
+          updatedAt: new Date(),
+        } as any,
+      });
+    }
     await client.timeSlots.deleteMany({
       where: { id: { in: staleTimeSlotIds } },
     });

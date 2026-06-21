@@ -22,6 +22,8 @@ type MockClient = {
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
   teams: { upsert: jest.Mock };
   timeSlots: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+  rentalBookingItems: { findMany: jest.Mock; updateMany: jest.Mock };
+  rentalBookings: { updateMany: jest.Mock };
 };
 
 const createMockClient = (): MockClient => ({
@@ -78,6 +80,13 @@ const createMockClient = (): MockClient => ({
     findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
     deleteMany: jest.fn().mockResolvedValue(undefined),
+  },
+  rentalBookingItems: {
+    findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  },
+  rentalBookings: {
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
   },
 });
 
@@ -279,6 +288,120 @@ describe('upsertEventFromPayload', () => {
     expect(persistedSlot.timeZone).toBe('America/Los_Angeles');
     expect(persistedSlot.startDate).toEqual(new Date('2026-05-01T16:00:00.000Z'));
     expect(persistedSlot.endDate).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+  });
+
+  it('reserves the exact rental booking item for a rental-backed timeslot', async () => {
+    const client = createMockClient();
+    client.rentalBookingItems.findMany.mockResolvedValueOnce([
+      {
+        id: 'booking_item_1',
+        bookingId: 'booking_1',
+        fieldId: 'field_1',
+        start: new Date('2026-05-01T16:00:00.000Z'),
+        end: new Date('2026-05-01T18:00:00.000Z'),
+        status: 'CONFIRMED',
+        eventId: null,
+        eventTimeSlotId: null,
+      },
+    ]);
+    client.rentalBookingItems.updateMany.mockResolvedValueOnce({ count: 1 });
+    client.rentalBookings.updateMany.mockResolvedValueOnce({ count: 1 });
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T16:00:00.000Z',
+      end: '2026-05-01T18:00:00.000Z',
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          $id: 'slot_rental_1',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 16 * 60,
+          endTimeMinutes: 18 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          startDate: '2026-05-01T16:00:00.000Z',
+          endDate: '2026-05-01T18:00:00.000Z',
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.rentalBookingItems.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['booking_item_1'] } },
+    }));
+    expect(client.rentalBookingItems.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'booking_item_1',
+      }),
+      data: expect.objectContaining({
+        eventId: 'event_1',
+        eventTimeSlotId: 'slot_rental_1',
+      }),
+    }));
+    expect(client.rentalBookings.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'booking_1' }),
+      data: expect.objectContaining({ eventId: 'event_1' }),
+    }));
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a rental booking item already attached to another event', async () => {
+    const client = createMockClient();
+    client.rentalBookingItems.findMany.mockResolvedValueOnce([
+      {
+        id: 'booking_item_1',
+        bookingId: 'booking_1',
+        fieldId: 'field_1',
+        start: new Date('2026-05-01T16:00:00.000Z'),
+        end: new Date('2026-05-01T18:00:00.000Z'),
+        status: 'CONFIRMED',
+        eventId: 'other_event',
+        eventTimeSlotId: 'other_slot',
+      },
+    ]);
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T16:00:00.000Z',
+      end: '2026-05-01T18:00:00.000Z',
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          $id: 'slot_rental_1',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 16 * 60,
+          endTimeMinutes: 18 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          startDate: '2026-05-01T16:00:00.000Z',
+          endDate: '2026-05-01T18:00:00.000Z',
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'This rental reservation is already attached to another event.',
+    );
+    expect(client.rentalBookingItems.updateMany).not.toHaveBeenCalled();
+    expect(client.timeSlots.upsert).not.toHaveBeenCalled();
   });
 
   it('persists multi-day slot payloads as one canonical row', async () => {

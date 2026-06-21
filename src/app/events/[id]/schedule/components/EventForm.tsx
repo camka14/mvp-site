@@ -3,6 +3,7 @@ import { Controller, useForm, Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion } from 'motion/react';
+import { ChevronDown } from 'lucide-react';
 
 import { eventService } from '@/lib/eventService';
 import { teamService } from '@/lib/teamService';
@@ -330,6 +331,27 @@ const normalizeRentalDateString = (value: string | Date | null | undefined): str
     return normalized.length > 0 ? normalized : null;
 };
 
+const formatRentalBookingOptionWindow = (
+    startValue: string,
+    endValue: string,
+): string => {
+    const start = parseLocalDateTime(startValue);
+    const end = parseLocalDateTime(endValue);
+    if (!start || !end) {
+        return '';
+    }
+    const dateText = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    }).format(start);
+    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+    return `${dateText} ${timeFormatter.format(start)}-${timeFormatter.format(end)}`;
+};
+
 const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): RentalBookingResourceOption[] => {
     const options: RentalBookingResourceOption[] = [];
     (response.bookings ?? []).forEach((booking) => {
@@ -354,6 +376,22 @@ const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): R
                     ...item.field,
                     rentalResource: true,
                     _rentalResource: true,
+                    rentalBookingId: bookingId,
+                    _rentalBookingId: bookingId,
+                    rentalBookingItemId: bookingItemId,
+                    _rentalBookingItemId: bookingItemId,
+                    rentalStart: start,
+                    _rentalStart: start,
+                    rentalEnd: end,
+                    _rentalEnd: end,
+                    rentalTimeZone: item.timeZone ?? null,
+                    _rentalTimeZone: item.timeZone ?? null,
+                    rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
+                    _rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
+                    rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
+                    _rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
+                    rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
+                    _rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
                 } as Field,
                 start,
                 end,
@@ -451,6 +489,31 @@ const timeSlotsEqual = (left: TimeSlot[], right: TimeSlot[]): boolean => {
     return true;
 };
 
+const isRentalLockedTimeSlot = (slot: Partial<TimeSlot> | null | undefined): boolean => {
+    if (!slot) {
+        return false;
+    }
+    return slot.rentalLocked === true
+        || slot.sourceType === 'RENTAL_BOOKING'
+        || Boolean(slot.rentalBookingId)
+        || Boolean(slot.rentalBookingItemId);
+};
+
+const mergeRentalLockedTimeSlots = (slots: TimeSlot[]): TimeSlot[] => {
+    const mergedByKey = new Map<string, TimeSlot>();
+    slots.forEach((slot) => {
+        const key = slot.rentalBookingItemId
+            || `${slot.rentalBookingId ?? ''}:${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}`
+            || slot.$id;
+        mergedByKey.set(key, slot);
+    });
+    return Array.from(mergedByKey.values()).sort((left, right) => {
+        const startCompare = String(left.startDate ?? '').localeCompare(String(right.startDate ?? ''));
+        if (startCompare !== 0) return startCompare;
+        return normalizeSlotFieldIds(left).join('|').localeCompare(normalizeSlotFieldIds(right).join('|'));
+    });
+};
+
 type FacilityResourceSelectorProps = {
     label: string;
     description: string;
@@ -515,10 +578,10 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
         return (
             <label
                 key={resource.$id}
-                className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition ${
+                className={`flex cursor-pointer items-center gap-3 border-b px-3 py-2 pl-8 text-sm transition last:border-b-0 ${
                     selected
                         ? 'border-[#2c4d6f] bg-[#eaf2fa]'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
                 } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
             >
                 <input
@@ -555,20 +618,20 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
             <div
                 role="group"
                 aria-label={label}
-                className={`rounded-md border p-2 ${error ? 'border-red-500' : 'border-gray-300'} ${disabled ? 'bg-gray-50' : 'bg-white'}`}
+                className={`overflow-hidden rounded-lg border ${error ? 'border-red-500' : 'border-gray-300'} ${disabled ? 'bg-gray-50' : 'bg-white'}`}
             >
                 {loading ? (
                     <Text size="sm" c="dimmed">Loading resources...</Text>
                 ) : groups.length === 0 ? (
                     <Text size="sm" c="dimmed">{placeholder}</Text>
                 ) : showFacilityRows ? (
-                    <div className="space-y-2">
+                    <div>
                         {groups.map((group) => {
                             const expanded = expandedGroups[group.key] ?? group.isRental;
                             const selectedCount = group.resources.filter((resource) => selectedSet.has(resource.$id)).length;
                             const panelId = `facility-resource-group-${group.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
                             return (
-                                <div key={group.key} className="rounded-md border border-gray-200 bg-gray-50">
+                                <div key={group.key} className="border-b border-gray-200 bg-gray-50 last:border-b-0">
                                     <button
                                         type="button"
                                         className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
@@ -593,10 +656,13 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
                                                 {group.description ? ` • ${group.description}` : ''}
                                             </span>
                                         </span>
-                                        <span className="text-lg leading-none text-gray-500">{expanded ? '⌃' : '⌄'}</span>
+                                        <ChevronDown
+                                            aria-hidden="true"
+                                            className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                                        />
                                     </button>
                                     <Collapse in={expanded} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                        <div id={panelId} className="space-y-2 border-t border-gray-200 p-2">
+                                        <div id={panelId} className="border-t border-gray-200 bg-white">
                                             {group.resources.map(renderResourceRow)}
                                         </div>
                                     </Collapse>
@@ -3760,11 +3826,20 @@ const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     timeZone: z.string().optional(),
     startTimeMinutes: z.number().int().nonnegative().optional(),
     endTimeMinutes: z.number().int().positive().optional(),
+    price: z.number().int().nonnegative().optional(),
+    sourceType: z.string().nullable().optional(),
+    rentalBookingId: z.string().nullable().optional(),
+    rentalBookingItemId: z.string().nullable().optional(),
+    rentalLocked: z.boolean().optional(),
+    requiredTemplateIds: z.array(z.string()).optional(),
+    hostRequiredTemplateIds: z.array(z.string()).optional(),
     repeating: z.boolean().optional(),
     conflicts: z.array(z.any()).default([]),
     checking: z.boolean().default(false),
     error: z.string().optional(),
 });
+
+const RENTAL_SLOT_MISMATCH_ERROR_PREFIX = 'This rental resource is only available for ';
 
 const leagueConfigSchema = z.object({
     gamesPerOpponent: z.number().min(1),
@@ -4414,6 +4489,16 @@ const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                         path: ['leagueSlots', index, 'error'],
                     });
                 }
+                if (
+                    typeof slot.error === 'string' &&
+                    slot.error.trim().startsWith(RENTAL_SLOT_MISMATCH_ERROR_PREFIX)
+                ) {
+                    ctx.addIssue({
+                        code: "custom",
+                        message: slot.error,
+                        path: ['leagueSlots', index, 'error'],
+                    });
+                }
             });
             selectedDivisionKeys.forEach((divisionKey) => {
                 if (coveredDivisionKeys.has(divisionKey)) {
@@ -4456,6 +4541,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => ({}),
     );
     const previousEventTypeRef = useRef<EventType | null>(null);
+    const previousEditableScheduleModeRef = useRef<boolean | null>(null);
     const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
@@ -4496,6 +4582,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             endDate: normalizedEndDate,
             startTimeMinutes: slot?.startTimeMinutes,
             endTimeMinutes: slot?.endTimeMinutes,
+            price: typeof slot?.price === 'number' && Number.isFinite(slot.price) ? slot.price : undefined,
+            sourceType: typeof slot?.sourceType === 'string' && slot.sourceType.trim().length > 0 ? slot.sourceType : undefined,
+            rentalBookingId: typeof slot?.rentalBookingId === 'string' && slot.rentalBookingId.trim().length > 0 ? slot.rentalBookingId : undefined,
+            rentalBookingItemId: typeof slot?.rentalBookingItemId === 'string' && slot.rentalBookingItemId.trim().length > 0 ? slot.rentalBookingItemId : undefined,
+            rentalLocked: Boolean(slot?.rentalLocked),
+            requiredTemplateIds: normalizeFieldIds(slot?.requiredTemplateIds),
+            hostRequiredTemplateIds: normalizeFieldIds(slot?.hostRequiredTemplateIds),
             repeating: isRepeating,
             conflicts: [],
             checking: false,
@@ -4616,16 +4709,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             })
             .filter((slot): slot is TimeSlot => Boolean(slot));
     }, [immutableDefaultsMemo.timeSlots, immutableFields]);
-
-    const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
-    const immutableTimeSlots = useMemo(() => {
-        if (rentalLockedTimeSlots.length) {
-            return rentalLockedTimeSlots;
-        }
-        return immutableTimeSlotsFromDefaults;
-    }, [immutableTimeSlotsFromDefaults, rentalLockedTimeSlots]);
-
-    const hasImmutableTimeSlots = immutableTimeSlots.length > 0;
 
     const isImmutableField = useCallback(
         (key: keyof Event) => immutableDefaultsMemo[key] !== undefined,
@@ -4977,7 +5060,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultOrganizationFieldIds = hostedOrganizationId
             ? toFieldIdList(defaultFields.filter((field) => isSelectableOrganizationResource(field, hostedOrganizationId)))
             : [];
+        const defaults = immutableDefaults ?? {};
+        const defaultHasRentalLockedTimeSlots = Array.isArray(defaults.timeSlots)
+            && (defaults.timeSlots as TimeSlot[]).some(isRentalLockedTimeSlot);
         const defaultSelectedFieldIds = (() => {
+            if (isCreateMode && defaultHasRentalLockedTimeSlots) {
+                return [];
+            }
             const selectableFieldIds = hostedOrganizationId && supportsOrganizationFieldSelectionForDefault
                 ? defaultOrganizationFieldIds
                 : allDefaultFieldIds;
@@ -5045,13 +5134,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             availableFieldIdsForDivisions,
         );
 
-        const defaults = immutableDefaults ?? {};
         const defaultFieldId = Array.isArray(defaults.fields) && defaults.fields.length > 0
             ? (defaults.fields[0] as Field).$id
             : undefined;
 
         const defaultSlots = (() => {
-            if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
+            const defaultUsesEditableScheduleSlots = supportsScheduleSlotsForEvent(base.eventType, base.parentEvent);
+            if (!defaultUsesEditableScheduleSlots && Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
                     .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end, base.timeZone));
             }
@@ -5267,6 +5356,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
+    const eventSupportsScheduleSlots = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const hasRestrictedImmutableFields = hasImmutableFields && !eventSupportsScheduleSlots;
+    const immutableDefaultRentalTimeSlots = useMemo(
+        () => immutableTimeSlotsFromDefaults.filter(isRentalLockedTimeSlot),
+        [immutableTimeSlotsFromDefaults],
+    );
+    const immutableTimeSlots = useMemo(() => {
+        if (eventSupportsScheduleSlots) {
+            return [];
+        }
+        if (rentalLockedTimeSlots.length) {
+            return rentalLockedTimeSlots;
+        }
+        return immutableTimeSlotsFromDefaults;
+    }, [eventSupportsScheduleSlots, immutableTimeSlotsFromDefaults, rentalLockedTimeSlots]);
+    const hasImmutableTimeSlots = immutableTimeSlots.length > 0;
+    const rentalLockedSlotsForDraft = useMemo(
+        () => eventSupportsScheduleSlots
+            ? mergeRentalLockedTimeSlots([...immutableDefaultRentalTimeSlots, ...rentalLockedTimeSlots])
+            : rentalLockedTimeSlots,
+        [eventSupportsScheduleSlots, immutableDefaultRentalTimeSlots, rentalLockedTimeSlots],
+    );
     const automaticRefundsAvailable = useMemo(() => {
         if (!hasStripeAccount) {
             return false;
@@ -5897,7 +6009,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.eventType,
         eventData.parentEvent,
     );
-    const shouldManageLocalFields = !hasImmutableFields && supportsFieldCountForEvent(eventData.eventType);
+    const shouldLoadRentalResources = supportsOrganizationFieldSelection || eventSupportsScheduleSlots;
+    const shouldManageLocalFields = !hasRestrictedImmutableFields && supportsFieldCountForEvent(eventData.eventType);
     const shouldProvisionFields = shouldManageLocalFields;
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
@@ -5905,7 +6018,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     useEffect(() => {
-        if (!open || !supportsOrganizationFieldSelection) {
+        if (!open || !shouldLoadRentalResources) {
             setRentalResourceOptions([]);
             setRentalResourcesError(null);
             setRentalResourcesLoading(false);
@@ -5968,7 +6081,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         open,
         organizationHostedEventId,
         setFields,
-        supportsOrganizationFieldSelection,
+        shouldLoadRentalResources,
     ]);
 
     useEffect(() => {
@@ -5978,7 +6091,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!previousEventType || previousEventType === eventData.eventType) {
             return;
         }
-        if (!isCreateMode || !isOrganizationHostedEvent || hasImmutableFields) {
+        if (!isCreateMode || !isOrganizationHostedEvent || hasRestrictedImmutableFields) {
             return;
         }
         if (!supportsFieldCountForEvent(eventData.eventType) || supportsFieldCountForEvent(previousEventType)) {
@@ -5988,7 +6101,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setFieldCount(0);
     }, [
         eventData.eventType,
-        hasImmutableFields,
+        hasRestrictedImmutableFields,
         isCreateMode,
         isOrganizationHostedEvent,
         setFieldCount,
@@ -8863,11 +8976,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
 
     useEffect(() => {
-        if (!hasImmutableFields) {
+        if (!hasRestrictedImmutableFields) {
             return;
         }
         setFields(sanitizeFieldsForForm(immutableFields), { shouldDirty: false });
-    }, [hasImmutableFields, immutableFields, setFields]);
+    }, [hasRestrictedImmutableFields, immutableFields, setFields]);
 
     // When provisioning local fields, mirror count changes into the generated list.
     useEffect(() => {
@@ -9288,7 +9401,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     // Updates locally managed event fields without mutating reusable organization fields.
     const handleLocalFieldNameChange = useCallback((fieldId: string, name: string) => {
-        if (!shouldManageLocalFields || hasImmutableFields) {
+        if (!shouldManageLocalFields || hasRestrictedImmutableFields) {
             return;
         }
         setFields(prev => {
@@ -9298,7 +9411,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     : field
             ));
         });
-    }, [hasImmutableFields, setFields, shouldManageLocalFields]);
+    }, [hasRestrictedImmutableFields, setFields, shouldManageLocalFields]);
 
     // Hydrate schedule state and slots when opening the modal for an existing event.
     useEffect(() => {
@@ -9349,7 +9462,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
-            const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
+            const activeEventSlotsForEditor = supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)
+                ? (activeEditingEvent.timeSlots || []).filter((slot) => !isRentalLockedTimeSlot(slot))
+                : (activeEditingEvent.timeSlots || []);
+            const slots = mergeSlotPayloadsForForm(activeEventSlotsForEditor, fallbackFieldId)
                 .map((slot) => createSlotForm(
                     slot,
                     slotDivisionKeysRef.current,
@@ -9402,6 +9518,65 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setLeagueSlots,
     ]);
 
+    useEffect(() => {
+        const previousMode = previousEditableScheduleModeRef.current;
+        previousEditableScheduleModeRef.current = eventSupportsScheduleSlots;
+        if (previousMode === null || previousMode === eventSupportsScheduleSlots || !eventSupportsScheduleSlots) {
+            return;
+        }
+        if (!rentalLockedSlotsForDraft.length) {
+            return;
+        }
+
+        const dateValuesMatch = (left?: string | null, right?: string | null): boolean => {
+            const parsedLeft = parseLocalDateTime(left ?? null);
+            const parsedRight = parseLocalDateTime(right ?? null);
+            if (!parsedLeft && !parsedRight) {
+                return true;
+            }
+            return Boolean(parsedLeft && parsedRight && parsedLeft.getTime() === parsedRight.getTime());
+        };
+
+        const slotMatchesLockedRental = (slot: LeagueSlotForm, lockedSlot: TimeSlot): boolean => {
+            const slotFieldIds = normalizeSlotFieldIds(slot);
+            const lockedFieldIds = normalizeSlotFieldIds(lockedSlot);
+            if (!slotFieldIds.length || !stringSetsEqual(slotFieldIds, lockedFieldIds)) {
+                return false;
+            }
+            if (dateValuesMatch(slot.startDate, lockedSlot.startDate) && dateValuesMatch(slot.endDate, lockedSlot.endDate)) {
+                return true;
+            }
+            return slot.startTimeMinutes === lockedSlot.startTimeMinutes
+                && slot.endTimeMinutes === lockedSlot.endTimeMinutes
+                && normalizeWeekdays(slot).some((day) => normalizeWeekdays(lockedSlot).includes(day));
+        };
+
+        setLeagueSlots((previousSlots) => {
+            const seededFromRentalDefaults = previousSlots.length > 0
+                && previousSlots.every((slot) => rentalLockedSlotsForDraft.some((lockedSlot) => (
+                    slotMatchesLockedRental(slot, lockedSlot)
+                )));
+            if (!seededFromRentalDefaults) {
+                return previousSlots;
+            }
+            return normalizeSlotState(
+                [createSlotForm(undefined, slotDivisionKeysRef.current, eventData.start, eventData.end, eventData.timeZone)],
+                eventData.eventType,
+                eventData.parentEvent,
+            );
+        }, { shouldDirty: false });
+    }, [
+        createSlotForm,
+        eventData.end,
+        eventData.eventType,
+        eventData.parentEvent,
+        eventData.start,
+        eventData.timeZone,
+        eventSupportsScheduleSlots,
+        rentalLockedSlotsForDraft,
+        setLeagueSlots,
+    ]);
+
     // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
         let cancelled = false;
@@ -9412,7 +9587,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             };
         }
 
-        if (hasImmutableFields) {
+        if (hasRestrictedImmutableFields) {
             return () => {
                 cancelled = true;
             };
@@ -9489,7 +9664,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
     }, [
         resolvedOrganizationFieldSignature,
-        hasImmutableFields,
+        hasRestrictedImmutableFields,
         isEditMode,
         organizationHostedEventId,
         setFields,
@@ -9500,7 +9675,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isEditMode) {
             return;
         }
-        if (hasImmutableFields) {
+        if (hasRestrictedImmutableFields) {
             return;
         }
         if (activeEditingEvent?.fields) {
@@ -9515,7 +9690,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return Array.from(map.values());
             }, { shouldDirty: false });
         }
-    }, [activeEditingEvent?.fields, hasImmutableFields, isEditMode, setFields]);
+    }, [activeEditingEvent?.fields, hasRestrictedImmutableFields, isEditMode, setFields]);
 
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
@@ -9575,13 +9750,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [fields],
     );
     const leagueFieldOptions = useMemo(() => {
-        return selectedFields
-            .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
+        const rentalResourceFieldIds = new Set(
+            rentalResourceOptions.map((option) => normalizeResourceText(option.fieldId)).filter(Boolean),
+        );
+        const regularOptions = selectedFields
+            .filter((field): field is Field & { $id: string } => {
+                if (typeof field.$id !== 'string' || field.$id.length === 0) {
+                    return false;
+                }
+                const marker = field as { rentalResource?: boolean; _rentalResource?: boolean };
+                return !marker.rentalResource
+                    && !marker._rentalResource
+                    && !rentalResourceFieldIds.has(field.$id);
+            })
             .map((field) => ({
                 value: field.$id,
+                fieldId: field.$id,
                 label: getFacilityScopedFieldDisplayName(field, 'Resource'),
             }));
-    }, [selectedFields]);
+        const rentalOptions = rentalResourceOptions.map((option) => {
+            const windowLabel = formatRentalBookingOptionWindow(option.start, option.end);
+            const resourceLabel = getFacilityScopedFieldDisplayName(option.field, 'Resource');
+            return {
+                value: `rental:${option.bookingItemId}`,
+                fieldId: option.fieldId,
+                label: windowLabel ? `${resourceLabel} - ${windowLabel}` : resourceLabel,
+                rentalBookingId: option.bookingId,
+                rentalBookingItemId: option.bookingItemId,
+                rentalStart: option.start,
+                rentalEnd: option.end,
+                rentalTimeZone: option.timeZone ?? null,
+                rentalPriceCents: option.priceCents ?? null,
+                rentalRequiredTemplateIds: option.requiredTemplateIds ?? [],
+                rentalHostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
+            };
+        });
+        return [...regularOptions, ...rentalOptions];
+    }, [rentalResourceOptions, selectedFields]);
 
     const eventOrganizationId = organizationHostedEventId;
 
@@ -9624,6 +9829,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isEditMode,
         resolvedOrganization?.fields,
     ]);
+    const restrictLocalFieldCreationForRentalEvent = eventData.eventType === 'EVENT' && hasExternalRentalField;
+    const showLocalFieldCreationControls = shouldManageLocalFields && !restrictLocalFieldCreationForRentalEvent;
 
     useEffect(() => {
         const fallbackFieldId = immutableFields[0]?.$id || (activeEditingEvent?.fields?.[0] as Field | undefined)?.$id;
@@ -9683,7 +9890,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (availableFields.length) {
                 return availableFields;
             }
-            return hasImmutableFields ? immutableFields : ([] as Field[]);
+            return hasRestrictedImmutableFields ? immutableFields : ([] as Field[]);
         }
 
         const fieldMap = new Map<string, Field>();
@@ -9714,12 +9921,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return availableFields;
         }
 
-        if (!picked.length && hasImmutableFields) {
+        if (!picked.length && hasRestrictedImmutableFields) {
             return immutableFields;
         }
 
         return picked;
-    }, [hasImmutableFields, immutableFields, leagueSlots, selectedFields]);
+    }, [hasRestrictedImmutableFields, immutableFields, leagueSlots, selectedFields]);
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
@@ -10399,7 +10606,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
 
         const organizationId = source.organizationId || organizationHostedEventId || undefined;
-        const sourceFields = hasImmutableFields ? immutableFields : fields;
+        const sourceFields = hasRestrictedImmutableFields ? immutableFields : fields;
         const organizationFieldIds = organizationHostedEventId
             ? toFieldIdList(sourceFields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId))
             : [];
@@ -10412,7 +10619,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         if (!shouldManageLocalFields) {
             let fieldsToInclude = fieldsReferencedInSlots;
-            if (!fieldsToInclude.length && hasImmutableFields) {
+            if (!fieldsToInclude.length && hasRestrictedImmutableFields) {
                 fieldsToInclude = immutableFields;
             }
             if (isOrganizationManagedEvent) {
@@ -10615,7 +10822,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (!hasImmutableTimeSlots && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
-            const slotDocuments = source.leagueSlots
+            const rentalLockedSlotDocuments = rentalLockedSlotsForDraft.map((slot) => {
+                const slotDivisions = normalizeSlotDivisionIdsWithLookup(slot.divisions, slotDivisionLookupForDraft);
+                return {
+                    ...slot,
+                    divisions: singleDivisionEnabled
+                        ? normalizedDivisionKeys
+                        : slotDivisions,
+                };
+            });
+            const editableSlotDocuments = source.leagueSlots
                 .filter((slot) => {
                     if (!normalizeSlotFieldIds(slot).length) {
                         return false;
@@ -10672,6 +10888,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         startTimeMinutes,
                         endTimeMinutes,
                         repeating,
+                        price: typeof slot.price === 'number' && Number.isFinite(slot.price) ? slot.price : undefined,
+                        requiredTemplateIds: normalizeFieldIds(slot.requiredTemplateIds),
+                        hostRequiredTemplateIds: normalizeFieldIds(slot.hostRequiredTemplateIds),
+                        sourceType: typeof slot.sourceType === 'string' && slot.sourceType.trim().length > 0
+                            ? slot.sourceType
+                            : (slot.rentalLocked ? 'RENTAL_BOOKING' : undefined),
+                        rentalBookingId: typeof slot.rentalBookingId === 'string' && slot.rentalBookingId.trim().length > 0
+                            ? slot.rentalBookingId
+                            : undefined,
+                        rentalBookingItemId: typeof slot.rentalBookingItemId === 'string' && slot.rentalBookingItemId.trim().length > 0
+                            ? slot.rentalBookingItemId
+                            : undefined,
+                        rentalLocked: Boolean(slot.rentalLocked),
                     };
 
                     if (!repeating) {
@@ -10700,6 +10929,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                     return serialized;
                 });
+            const slotDocumentsByKey = new Map<string, TimeSlot>();
+            [...rentalLockedSlotDocuments, ...editableSlotDocuments].forEach((slot) => {
+                const key = slot.rentalBookingItemId
+                    || slot.$id
+                    || `${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}:${slot.startTimeMinutes ?? ''}:${slot.endTimeMinutes ?? ''}`;
+                slotDocumentsByKey.set(key, slot);
+            });
+            const slotDocuments = Array.from(slotDocumentsByKey.values());
 
             if (slotDocuments.length) {
                 draft.timeSlots = slotDocuments;
@@ -10728,7 +10965,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData,
         fields,
         fieldsReferencedInSlots,
-        hasImmutableFields,
+        hasRestrictedImmutableFields,
         hasImmutableTimeSlots,
         hasStripeAccount,
         immutableFields,
@@ -10745,6 +10982,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         currentUser,
         joinAsParticipant,
         rentalPurchase,
+        rentalLockedSlotsForDraft,
         selectedRentalFieldIds,
         sportsById,
         shouldManageLocalFields,
@@ -11805,7 +12043,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 )}
                                             />
                                         </div>
-                                        {shouldManageLocalFields && !hasExternalRentalField ? (
+                                        {showLocalFieldCreationControls ? (
                                             <div>
                                                 <MantineSelect
                                                     label="Number of Resources"
@@ -11886,7 +12124,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             ) : null}
 
-                            {shouldManageLocalFields && !hasExternalRentalField && eventLocalFields.length > 0 && (
+                            {showLocalFieldCreationControls && eventLocalFields.length > 0 && (
                                 <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
                                     <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
                                         <div>
@@ -14084,7 +14322,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     eventStartDate={eventData.start}
                                                     lockSlotDivisions={Boolean(eventData.singleDivision)}
                                                     lockedDivisionKeys={slotDivisionKeys}
-                                                    readOnly={hasImmutableTimeSlots || hasExternalRentalField}
+                                                    readOnly={hasImmutableTimeSlots}
                                                     allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
                                                     showPlayoffSettings={false}
                                                     showLeagueConfiguration={false}

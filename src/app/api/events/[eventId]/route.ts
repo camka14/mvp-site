@@ -9,10 +9,12 @@ import {
   isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
+  reserveRentalBookingSlotsForEvent,
   saveEventSchedule,
   saveMatches,
   syncEventParticipantRegistrationsFromCompatibilityIds,
   syncEventDivisions,
+  isRentalBookingReservationError,
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
@@ -2302,6 +2304,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           : [];
         const existingRentalLockedSlotById = new Map(existingRentalLockedSlots.map((slot: any) => [String(slot.id), slot]));
 
+        await reserveRentalBookingSlotsForEvent(tx, eventId, canonicalTimeSlots, new Date());
+
         for (const slot of canonicalTimeSlots) {
           const now = new Date();
           const existingRentalLockedSlot = existingRentalLockedSlotById.get(slot.id);
@@ -2357,35 +2361,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             update: upsertData as any,
           });
           await persistTimeSlotDivisions(tx, slot.id, slot.divisions, now);
-          if (slot.rentalBookingId && typeof tx.rentalBookingItems?.updateMany === 'function') {
-            await tx.rentalBookingItems.updateMany({
-              where: {
-                bookingId: slot.rentalBookingId,
-                fieldId: { in: slot.scheduledFieldIds },
-                status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] },
-                start: { lte: slot.startDate },
-                ...(slot.endDate ? { end: { gte: slot.endDate } } : {}),
-              } as any,
-              data: {
-                eventId,
-                eventTimeSlotId: slot.id,
-                updatedAt: now,
-              } as any,
-            });
-            await tx.rentalBookings.updateMany({
-              where: {
-                id: slot.rentalBookingId,
-                OR: [
-                  { eventId: null },
-                  { eventId },
-                ],
-              } as any,
-              data: {
-                eventId,
-                updatedAt: now,
-              } as any,
-            });
-          }
         }
 
         if (staleSlotIds.length) {
@@ -2731,6 +2706,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     );
   } catch (error) {
     if (error instanceof Response) return error;
+    if (isRentalBookingReservationError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
