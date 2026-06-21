@@ -8,6 +8,7 @@ const eventsMock = {
 };
 
 const timeSlotsMock = {
+  findMany: jest.fn(),
   upsert: jest.fn(),
   deleteMany: jest.fn(),
 };
@@ -19,7 +20,9 @@ const fieldsMock = {
 };
 
 const matchesMock = {
+  findMany: jest.fn(),
   deleteMany: jest.fn(),
+  update: jest.fn(),
 };
 
 const divisionsMock = {
@@ -47,6 +50,15 @@ const eventRegistrationsMock = {
   upsert: jest.fn(),
 };
 
+const rentalBookingItemsMock = {
+  findMany: jest.fn(),
+  updateMany: jest.fn(),
+};
+
+const rentalBookingsMock = {
+  updateMany: jest.fn(),
+};
+
 const organizationsMock = {
   findUnique: jest.fn(),
 };
@@ -68,6 +80,8 @@ const prismaMock = {
   sports: sportsMock,
   eventOfficials: eventOfficialsMock,
   eventRegistrations: eventRegistrationsMock,
+  rentalBookingItems: rentalBookingItemsMock,
+  rentalBookings: rentalBookingsMock,
   organizations: organizationsMock,
   staffMembers: staffMembersMock,
   invites: invitesMock,
@@ -119,6 +133,8 @@ describe('event PATCH route', () => {
       sports: sportsMock,
       eventOfficials: eventOfficialsMock,
       eventRegistrations: eventRegistrationsMock,
+      rentalBookingItems: rentalBookingItemsMock,
+      rentalBookings: rentalBookingsMock,
       leagueScoringConfigs: leagueScoringConfigsMock,
       organizations: organizationsMock,
       staffMembers: staffMembersMock,
@@ -139,8 +155,17 @@ describe('event PATCH route', () => {
     eventOfficialsMock.findMany.mockResolvedValue([]);
     eventOfficialsMock.deleteMany.mockResolvedValue({ count: 0 });
     eventOfficialsMock.create.mockResolvedValue({});
+    matchesMock.findMany.mockResolvedValue([]);
+    matchesMock.update.mockResolvedValue({});
+    matchesMock.deleteMany.mockResolvedValue({ count: 0 });
+    timeSlotsMock.findMany.mockResolvedValue([]);
+    timeSlotsMock.upsert.mockResolvedValue({});
+    timeSlotsMock.deleteMany.mockResolvedValue({ count: 0 });
     eventRegistrationsMock.updateMany.mockResolvedValue({ count: 0 });
     eventRegistrationsMock.upsert.mockResolvedValue({});
+    rentalBookingItemsMock.findMany.mockResolvedValue([]);
+    rentalBookingItemsMock.updateMany.mockResolvedValue({ count: 0 });
+    rentalBookingsMock.updateMany.mockResolvedValue({ count: 0 });
   });
 
   it('rejects unknown patch keys instead of silently ignoring them', async () => {
@@ -320,21 +345,30 @@ describe('event PATCH route', () => {
         hostId: 'host_1',
         organizationId: 'org_1',
         assistantHostIds: ['host_2'],
-        officialIds: ['official_org_1'],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
       })
       .mockResolvedValueOnce({
         id: 'event_1',
         hostId: 'owner_1',
         organizationId: 'org_1',
         assistantHostIds: ['host_2'],
-        officialIds: ['official_org_1'],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
       });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       hostId: 'owner_1',
       organizationId: 'org_1',
       assistantHostIds: ['host_2'],
-      officialIds: ['official_org_1'],
+      fieldIds: ['field_1'],
+      officialPositions: [
+        { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+      ],
     });
     divisionsMock.findMany.mockResolvedValue([]);
 
@@ -343,7 +377,22 @@ describe('event PATCH route', () => {
         event: {
           hostId: 'outside_host',
           assistantHostIds: ['host_2', 'outside_assistant'],
-          officialIds: ['official_org_1', 'outside_official'],
+          eventOfficials: [
+            {
+              id: 'event_official_official_org_1',
+              userId: 'official_org_1',
+              positionIds: ['event_pos_r1'],
+              fieldIds: ['field_1'],
+              isActive: true,
+            },
+            {
+              id: 'event_official_outside_official',
+              userId: 'outside_official',
+              positionIds: ['event_pos_r1'],
+              fieldIds: ['field_1'],
+              isActive: true,
+            },
+          ],
         },
       }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
@@ -363,6 +412,177 @@ describe('event PATCH route', () => {
         }),
       }),
     );
+  });
+
+  it('clears event official rows from explicit empty eventOfficials', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    organizationsMock.findUnique.mockResolvedValueOnce({
+      ownerId: 'owner_1',
+    });
+    staffMembersMock.findMany.mockResolvedValueOnce([
+      { organizationId: 'org_1', userId: 'host_1', types: ['HOST'] },
+    ]);
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        organizationId: 'org_1',
+        assistantHostIds: [],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
+        officialSchedulingMode: 'SCHEDULE',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        organizationId: 'org_1',
+        assistantHostIds: [],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
+        officialSchedulingMode: 'SCHEDULE',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      assistantHostIds: [],
+      fieldIds: ['field_1'],
+      officialPositions: [
+        { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+      ],
+      officialSchedulingMode: 'SCHEDULE',
+    });
+    eventOfficialsMock.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'event_official_host_1',
+          userId: 'host_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    matchesMock.findMany.mockResolvedValueOnce([
+      {
+        id: 'match_1',
+        officialId: 'host_1',
+        officialCheckedIn: true,
+        officialIds: [
+          {
+            positionId: 'event_pos_r1',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'host_1',
+            eventOfficialId: 'event_official_host_1',
+            checkedIn: true,
+          },
+        ],
+      },
+    ]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          eventOfficials: [],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(eventOfficialsMock.deleteMany).toHaveBeenCalledWith({ where: { eventId: 'event_1' } });
+    expect(eventOfficialsMock.create).not.toHaveBeenCalled();
+    expect(matchesMock.update).toHaveBeenCalledWith({
+      where: { id: 'match_1' },
+      data: {
+        officialIds: null,
+        officialId: null,
+        officialCheckedIn: false,
+      },
+    });
+    const json = await res.json();
+    expect(json.officialIds).toEqual([]);
+    expect(json.eventOfficials).toEqual([]);
+  });
+
+  it('does not persist stale host eventOfficials when officialIds are omitted', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    organizationsMock.findUnique.mockResolvedValueOnce({
+      ownerId: 'owner_1',
+    });
+    staffMembersMock.findMany.mockResolvedValueOnce([
+      { organizationId: 'org_1', userId: 'host_1', types: ['HOST'] },
+    ]);
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        organizationId: 'org_1',
+        assistantHostIds: [],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
+        officialSchedulingMode: 'SCHEDULE',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        organizationId: 'org_1',
+        assistantHostIds: [],
+        fieldIds: ['field_1'],
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        ],
+        officialSchedulingMode: 'SCHEDULE',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      assistantHostIds: [],
+      fieldIds: ['field_1'],
+      officialPositions: [
+        { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+      ],
+      officialSchedulingMode: 'SCHEDULE',
+    });
+    eventOfficialsMock.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          eventOfficials: [
+            {
+              id: 'event_official_host_1',
+              userId: 'host_1',
+              positionIds: ['event_pos_r1'],
+              fieldIds: ['field_1'],
+              isActive: true,
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(eventOfficialsMock.deleteMany).toHaveBeenCalledWith({ where: { eventId: 'event_1' } });
+    expect(eventOfficialsMock.create).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.officialIds).toEqual([]);
+    expect(json.eventOfficials).toEqual([]);
   });
 
   it('syncs division field mappings when divisionFieldIds are provided', async () => {
@@ -794,6 +1014,103 @@ describe('event PATCH route', () => {
 
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.data.fieldIds.sort()).toEqual(['field_keep', 'field_new']);
+  });
+
+  it('allows replacing a rental-backed timeslot with a normal resource and detaches the booking item', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const rentalStart = new Date('2026-06-24T15:00:00.000Z');
+    const rentalEnd = new Date('2026-06-24T17:00:00.000Z');
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['rental_field'],
+        timeSlotIds: ['slot_rental'],
+        start: new Date('2026-06-01T00:00:00.000Z'),
+        singleDivision: false,
+        organizationId: 'org_1',
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['owned_field'],
+        timeSlotIds: ['slot_rental'],
+        start: new Date('2026-06-01T00:00:00.000Z'),
+        singleDivision: false,
+        organizationId: 'org_1',
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      noFixedEndDateTime: true,
+      divisions: ['open'],
+      fieldIds: ['owned_field'],
+      timeSlotIds: ['slot_rental'],
+      start: new Date('2026-06-01T00:00:00.000Z'),
+      singleDivision: false,
+      organizationId: 'org_1',
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+    timeSlotsMock.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_rental',
+        startDate: rentalStart,
+        endDate: rentalEnd,
+        scheduledFieldId: 'rental_field',
+        scheduledFieldIds: ['rental_field'],
+        rentalBookingId: 'booking_1',
+      },
+    ]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          timeSlots: [
+            {
+              $id: 'slot_rental',
+              repeating: false,
+              startDate: rentalStart.toISOString(),
+              endDate: rentalEnd.toISOString(),
+              scheduledFieldIds: ['owned_field'],
+              divisions: ['open'],
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(rentalBookingItemsMock.updateMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'event_1',
+        eventTimeSlotId: 'slot_rental',
+      },
+      data: expect.objectContaining({
+        eventId: null,
+        eventTimeSlotId: null,
+      }),
+    });
+    expect(timeSlotsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'slot_rental' },
+        update: expect.objectContaining({
+          scheduledFieldId: 'owned_field',
+          scheduledFieldIds: ['owned_field'],
+          sourceType: null,
+          rentalBookingId: null,
+          rentalBookingItemId: null,
+          rentalLocked: false,
+        }),
+      }),
+    );
   });
 
   it('preserves existing field organization ownership when incoming nested fields omit organizationId', async () => {

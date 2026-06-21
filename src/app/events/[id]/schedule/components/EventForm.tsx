@@ -10,7 +10,7 @@ import { teamService } from '@/lib/teamService';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, Facility, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -125,10 +125,13 @@ type RentalPurchaseContext = {
 
 type RentalBookingResourceOption = {
     id: string;
+    selectorId: string;
     bookingId: string;
     bookingItemId: string;
     fieldId: string;
     field: Field;
+    selectorField: Field;
+    label: string;
     start: string;
     end: string;
     timeZone?: string | null;
@@ -157,6 +160,8 @@ type RentalBookingsResponse = {
             hostRequiredTemplateIds?: string[];
             eventId?: string | null;
             eventTimeSlotId?: string | null;
+            facilityId?: string | null;
+            facility?: Facility | null;
             field?: Field | null;
         }>;
     }>;
@@ -352,6 +357,17 @@ const formatRentalBookingOptionWindow = (
     return `${dateText} ${timeFormatter.format(start)}-${timeFormatter.format(end)}`;
 };
 
+const getRentalBookingSelectorId = (bookingItemId: string): string => `rental:${bookingItemId}`;
+const isRentalBookingSelectorId = (value: unknown): boolean => (
+    normalizeResourceText(value).startsWith('rental:')
+);
+
+const buildRentalBookingResourceLabel = (field: Field, start: string, end: string): string => {
+    const resourceLabel = getFieldDisplayName(field, 'Resource');
+    const windowLabel = formatRentalBookingOptionWindow(start, end);
+    return windowLabel ? `${resourceLabel} - ${windowLabel}` : resourceLabel;
+};
+
 const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): RentalBookingResourceOption[] => {
     const options: RentalBookingResourceOption[] = [];
     (response.bookings ?? []).forEach((booking) => {
@@ -367,32 +383,52 @@ const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): R
             if (!bookingItemId || !fieldId || !start || !end || !item.field?.$id) {
                 return;
             }
+            const itemFacility = item.facility && typeof item.facility === 'object' ? item.facility : null;
+            const itemFacilityId = normalizeResourceText(item.facilityId)
+                || normalizeResourceText(itemFacility?.$id)
+                || normalizeResourceText((itemFacility as { id?: string | null } | null)?.id)
+                || normalizeResourceText(item.field.facilityId);
+            const fieldFacility = item.field.facility && typeof item.field.facility === 'object'
+                ? item.field.facility
+                : itemFacility;
+            const selectorId = getRentalBookingSelectorId(bookingItemId);
+            const fieldWithRentalMetadata = {
+                ...item.field,
+                facilityId: itemFacilityId || item.field.facilityId || null,
+                facility: fieldFacility ?? item.field.facility ?? null,
+                rentalResource: true,
+                _rentalResource: true,
+                rentalBookingId: bookingId,
+                _rentalBookingId: bookingId,
+                rentalBookingItemId: bookingItemId,
+                _rentalBookingItemId: bookingItemId,
+                rentalStart: start,
+                _rentalStart: start,
+                rentalEnd: end,
+                _rentalEnd: end,
+                rentalTimeZone: item.timeZone ?? null,
+                _rentalTimeZone: item.timeZone ?? null,
+                rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
+                _rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
+                rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
+                _rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
+                rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
+                _rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
+            } as Field;
+            const selectorLabel = buildRentalBookingResourceLabel(fieldWithRentalMetadata, start, end);
             options.push({
                 id: bookingItemId,
+                selectorId,
                 bookingId,
                 bookingItemId,
                 fieldId,
-                field: {
-                    ...item.field,
-                    rentalResource: true,
-                    _rentalResource: true,
-                    rentalBookingId: bookingId,
-                    _rentalBookingId: bookingId,
-                    rentalBookingItemId: bookingItemId,
-                    _rentalBookingItemId: bookingItemId,
-                    rentalStart: start,
-                    _rentalStart: start,
-                    rentalEnd: end,
-                    _rentalEnd: end,
-                    rentalTimeZone: item.timeZone ?? null,
-                    _rentalTimeZone: item.timeZone ?? null,
-                    rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
-                    _rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
-                    rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
-                    _rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
-                    rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
-                    _rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
-                } as Field,
+                field: fieldWithRentalMetadata,
+                selectorField: {
+                    ...fieldWithRentalMetadata,
+                    $id: selectorId,
+                    name: selectorLabel,
+                },
+                label: selectorLabel,
                 start,
                 end,
                 timeZone: item.timeZone ?? null,
@@ -573,7 +609,6 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
 
     const renderResourceRow = (resource: Field & { $id: string }) => {
         const resourceLabel = getFieldDisplayName(resource, 'Resource');
-        const facilityScopedLabel = getFacilityScopedFieldDisplayName(resource, resourceLabel);
         const selected = selectedSet.has(resource.$id);
         return (
             <label
@@ -586,7 +621,7 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
             >
                 <input
                     type="checkbox"
-                    aria-label={facilityScopedLabel}
+                    aria-label={resourceLabel}
                     checked={selected}
                     disabled={disabled}
                     onChange={() => toggleResource(resource.$id)}
@@ -1149,13 +1184,25 @@ const normalizeEventOfficials = (
     officialIds: string[],
     positions: EventOfficialPosition[],
 ): EventOfficial[] => {
-    const normalizedOfficialIds = Array.from(
-        new Set(
-            officialIds
-                .map((id) => String(id).trim())
-                .filter((id) => id.length > 0),
-        ),
-    );
+    const normalizedOfficialIds = Array.isArray(value)
+        ? Array.from(
+            new Set(
+                value
+                    .map((entry) => (
+                        entry && typeof entry === 'object'
+                            ? String((entry as Record<string, unknown>).userId ?? '').trim()
+                            : ''
+                    ))
+                    .filter((id) => id.length > 0),
+            ),
+        )
+        : Array.from(
+            new Set(
+                officialIds
+                    .map((id) => String(id).trim())
+                    .filter((id) => id.length > 0),
+            ),
+        );
     const allowedOfficialIdSet = new Set(normalizedOfficialIds);
     const positionIds = positions.map((position) => position.id);
     const positionIdSet = new Set(positionIds);
@@ -1212,6 +1259,22 @@ const normalizeEventOfficials = (
         } satisfies EventOfficial;
     });
 };
+
+const getEventOfficialUserIds = (eventOfficials: unknown): string[] => (
+    Array.isArray(eventOfficials)
+        ? Array.from(
+            new Set(
+                eventOfficials
+                    .map((entry) => (
+                        entry && typeof entry === 'object'
+                            ? String((entry as Record<string, unknown>).userId ?? '').trim()
+                            : ''
+                    ))
+                    .filter((id) => id.length > 0),
+            ),
+        )
+        : []
+);
 
 const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; scheduledFieldIds?: string[] }): string[] => {
     const fromList = normalizeFieldIds(slot.scheduledFieldIds);
@@ -1276,7 +1339,7 @@ const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: strin
 );
 
 const supportsFieldCountForEvent = (eventType: EventType): boolean =>
-    eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+    eventType === 'EVENT' || eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
 
 const supportsOrganizationFieldSelectionForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
     eventType === 'EVENT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
@@ -1653,6 +1716,20 @@ const toFieldIdList = (fields: Field[]): string[] => {
 const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));
 
 const isEventLocalField = (field?: Field | null): boolean => !fieldHasOrganization(field);
+
+const isGeneratedLocalFieldPlaceholder = (field?: Field | null, index?: number): boolean => {
+    if (!field) {
+        return false;
+    }
+    const name = normalizeResourceText(field.name);
+    if (!name) {
+        return true;
+    }
+    if (typeof index === 'number') {
+        return name === `Field ${index + 1}`;
+    }
+    return /^Field\s+\d+$/i.test(name);
+};
 
 const withOrganizationFieldOwner = (field: Field, organizationId: string): Field => {
     if (!organizationId || getFieldOrganizationId(field)) {
@@ -3407,17 +3484,16 @@ const mapEventToFormState = (event: Event): EventFormState => {
         event.officialPositions,
         officialPositionTemplates,
     );
-    const normalizedOfficialIds = Array.isArray(event.officialIds)
-        ? Array.from(new Set(event.officialIds.map((officialId) => String(officialId)).filter(Boolean)))
-        : Array.isArray(event.eventOfficials)
-            ? Array.from(
-                new Set(
-                    event.eventOfficials
-                        .map((official) => String(official?.userId ?? '').trim())
-                        .filter((officialId) => officialId.length > 0),
-                ),
-            )
-            : [];
+    const normalizedEventOfficials = normalizeEventOfficials(
+        event.eventOfficials,
+        Array.isArray(event.eventOfficials)
+            ? []
+            : Array.isArray(event.officialIds)
+                ? event.officialIds.map((officialId) => String(officialId)).filter(Boolean)
+                : [],
+        normalizedOfficialPositions,
+    );
+    const normalizedOfficialIds = getEventOfficialUserIds(normalizedEventOfficials);
     const divisionReferenceDate = parseDateValue(event.start ?? null);
     const defaultEventInstallmentAmounts = normalizeInstallmentAmounts(event.installmentAmounts);
     const defaultEventInstallmentDueDates = Array.isArray(event.installmentDueDates)
@@ -3774,11 +3850,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     officialIds: normalizedOfficialIds,
     officialSchedulingMode,
     officialPositions: normalizedOfficialPositions,
-    eventOfficials: normalizeEventOfficials(
-        event.eventOfficials,
-        normalizedOfficialIds,
-        normalizedOfficialPositions,
-    ),
+    eventOfficials: normalizedEventOfficials,
     pendingStaffInvites: Array.isArray((event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites)
         && (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.length > 0
         ? (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.map((invite) => ({
@@ -4531,7 +4603,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     onDraftStateChange,
 }, ref) => {
     const open = isOpen ?? true;
-    const refsPrefilledRef = useRef<boolean>(false);
     const lastResetSourceRef = useRef<string | null>(null);
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
     const pendingInitialDirtyRebaseRef = useRef(false);
@@ -4797,11 +4868,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (Array.isArray((defaults as any).eventOfficials) || Array.isArray((defaults as any).officialIds)) {
             next.eventOfficials = normalizeEventOfficials(
                 (defaults as any).eventOfficials,
-                Array.isArray((defaults as any).officialIds)
+                !Array.isArray((defaults as any).eventOfficials) && Array.isArray((defaults as any).officialIds)
                     ? (defaults as any).officialIds.map((id: unknown) => String(id).trim()).filter(Boolean)
-                    : next.officialIds,
+                    : [],
                 next.officialPositions,
             );
+            next.officialIds = getEventOfficialUserIds(next.eventOfficials);
         }
         if (Array.isArray((defaults as any).divisionDetails)) {
             const referenceDate = parseDateValue(next.start ?? null);
@@ -4988,9 +5060,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     .map((field) => withOrganizationFieldOwner(field, hostedOrganizationId)),
             )
             : [];
+        const baseFields = (base as EventFormState & { fields?: Field[] }).fields;
+        const inputEventFields = Array.isArray(baseFields)
+            ? sortFieldsByCreatedAt(sanitizeFieldsForForm(baseFields as Field[]))
+            : [];
         const activeEventFields = Array.isArray(activeEditingEvent?.fields)
             ? sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields))
-            : [];
+            : inputEventFields;
         const activeEventLocalFields = activeEventFields.filter(isEventLocalField);
         const supportsOrganizationFieldSelectionForDefault = supportsOrganizationFieldSelectionForEvent(
             base.eventType,
@@ -4999,7 +5075,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const supportsFieldCountForDefault = supportsFieldCountForEvent(base.eventType);
         const hasReusableOrganizationFieldsForDefaultCount = Boolean(
             hostedOrganizationId
-            && supportsOrganizationFieldSelectionForDefault
             && (
                 defaultOrganizationFields.length > 0
                 || activeEventFields.some((field) => getFieldOrganizationId(field) === hostedOrganizationId)
@@ -5007,23 +5082,37 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         );
         const allowsDefaultLocalFields = supportsFieldCountForDefault
             || supportsOrganizationFieldSelectionForDefault;
+        const defaults = immutableDefaults ?? {};
+        const hasRentalBackedSlotsForDefaultCount = Boolean(
+            (Array.isArray(defaults.timeSlots) && (defaults.timeSlots as TimeSlot[]).some(isRentalLockedTimeSlot))
+            || (activeEditingEvent?.timeSlots ?? []).some(isRentalLockedTimeSlot)
+        );
+        const activeLocalFieldsAreOnlyPlaceholders = activeEventLocalFields.length > 0
+            && activeEventLocalFields.every((field, index) => isGeneratedLocalFieldPlaceholder(field, index));
+        const shouldKeepActiveLocalFieldDefaults = activeEventLocalFields.length > 0 && (
+            !hostedOrganizationId
+            || !isCreateMode
+            || !activeLocalFieldsAreOnlyPlaceholders
+            || (!hasReusableOrganizationFieldsForDefaultCount && !hasRentalBackedSlotsForDefaultCount)
+        );
 
         const defaultFieldCount = (() => {
-            if (activeEventLocalFields.length) {
+            if (shouldKeepActiveLocalFieldDefaults) {
                 return activeEventLocalFields.length;
             }
             if (hostedOrganizationId && isCreateMode) {
-                return 0;
+                return hasReusableOrganizationFieldsForDefaultCount || hasRentalBackedSlotsForDefaultCount ? 0 : 1;
             }
             if (
                 activeEditingEvent
                 && !hasReusableOrganizationFieldsForDefaultCount
+                && !hasRentalBackedSlotsForDefaultCount
                 && typeof (activeEditingEvent as any)?.fieldCount === 'number'
             ) {
                 const parsed = Number((activeEditingEvent as any).fieldCount);
                 return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
             }
-            if (hasReusableOrganizationFieldsForDefaultCount) {
+            if (hasReusableOrganizationFieldsForDefaultCount || hasRentalBackedSlotsForDefaultCount) {
                 return 0;
             }
             return allowsDefaultLocalFields || !hostedOrganizationId ? 1 : 0;
@@ -5035,6 +5124,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             if (hostedOrganizationId && defaultOrganizationFields.length) {
                 const retainedActiveFields = activeEventFields.filter((field) => {
+                    if (isEventLocalField(field)) {
+                        return shouldKeepActiveLocalFieldDefaults;
+                    }
                     const fieldOrganizationId = getFieldOrganizationId(field);
                     return !fieldOrganizationId || fieldOrganizationId !== hostedOrganizationId;
                 });
@@ -5060,29 +5152,52 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultOrganizationFieldIds = hostedOrganizationId
             ? toFieldIdList(defaultFields.filter((field) => isSelectableOrganizationResource(field, hostedOrganizationId)))
             : [];
-        const defaults = immutableDefaults ?? {};
         const defaultHasRentalLockedTimeSlots = Array.isArray(defaults.timeSlots)
             && (defaults.timeSlots as TimeSlot[]).some(isRentalLockedTimeSlot);
+        const activeRentalSelectorFieldIds = Array.from(
+            new Set(
+                (activeEditingEvent?.timeSlots ?? [])
+                    .map((slot) => normalizeResourceText(slot?.rentalBookingItemId))
+                    .filter(Boolean)
+                    .map(getRentalBookingSelectorId),
+            ),
+        );
+        const includeActiveRentalSelectors = (fieldIds: string[]) => Array.from(
+            new Set([...fieldIds, ...activeRentalSelectorFieldIds]),
+        );
         const defaultSelectedFieldIds = (() => {
-            if (isCreateMode && defaultHasRentalLockedTimeSlots) {
+            if (isCreateMode && defaultHasRentalLockedTimeSlots && !activeRentalSelectorFieldIds.length) {
                 return [];
             }
             const selectableFieldIds = hostedOrganizationId && supportsOrganizationFieldSelectionForDefault
                 ? defaultOrganizationFieldIds
                 : allDefaultFieldIds;
+            const selectableFieldIdSet = new Set(selectableFieldIds);
+            const defaultFieldById = new Map(defaultFields.map((field) => [field.$id, field] as const));
+            const canSelectFieldId = (fieldId: string): boolean => {
+                if (selectableFieldIdSet.has(fieldId)) {
+                    return true;
+                }
+                const field = defaultFieldById.get(fieldId);
+                return Boolean(field && hostedOrganizationId && isRentedResourceForOrganization(field, hostedOrganizationId));
+            };
             if (Array.isArray(base.selectedFieldIds)) {
-                return Array.from(new Set(base.selectedFieldIds.filter((fieldId) => selectableFieldIds.includes(fieldId))));
+                return includeActiveRentalSelectors(
+                    Array.from(new Set(base.selectedFieldIds.filter(canSelectFieldId))),
+                );
             }
             if (Array.isArray(activeEditingEvent?.fieldIds)) {
-                return Array.from(
-                    new Set(
-                        activeEditingEvent.fieldIds
-                            .map((fieldId) => String(fieldId))
-                            .filter((fieldId) => selectableFieldIds.includes(fieldId)),
+                return includeActiveRentalSelectors(
+                    Array.from(
+                        new Set(
+                            activeEditingEvent.fieldIds
+                                .map((fieldId) => String(fieldId))
+                                .filter(canSelectFieldId),
+                        ),
                     ),
                 );
             }
-            return [];
+            return includeActiveRentalSelectors([]);
         })();
         const availableFieldIdsForDivisions = defaultSelectedFieldIds.length
             ? defaultSelectedFieldIds
@@ -5272,7 +5387,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reset,
         clearErrors,
         trigger,
-        formState: { errors, isDirty },
+        formState: { errors, isDirty, dirtyFields: formDirtyFields },
     } = useForm<EventFormValues>({
         resolver: zodResolver(eventValidationSchema) as Resolver<EventFormValues>,
         mode: 'onBlur',
@@ -5952,7 +6067,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isEditMode) {
             return;
         }
-        const ids = eventData.officialIds || [];
+        const ids = getEventOfficialUserIds(eventData.eventOfficials);
         const refs = eventData.officials || [];
         const missingIds = ids.filter((id) => !refs.some((ref) => ref.$id === id));
         if (!missingIds.length) {
@@ -5977,7 +6092,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             cancelled = true;
         };
-    }, [eventData.officialIds, eventData.officials, isEditMode, setEventData]);
+    }, [eventData.eventOfficials, eventData.officials, isEditMode, setEventData]);
 
     const [assistantHostUsers, setAssistantHostUsers] = useState<UserData[]>([]);
     const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
@@ -6082,6 +6197,42 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         organizationHostedEventId,
         setFields,
         shouldLoadRentalResources,
+    ]);
+
+    useEffect(() => {
+        if (
+            !isCreateMode
+            || rentalResourcesLoading
+            || rentalResourceOptions.length === 0
+            || hasRestrictedImmutableFields
+            || (formDirtyFields as Record<string, unknown>).fieldCount
+            || (formDirtyFields as Record<string, unknown>).fields
+        ) {
+            return;
+        }
+
+        const currentFieldCount = Number(getValues('fieldCount'));
+        if (!Number.isFinite(currentFieldCount) || currentFieldCount <= 0) {
+            return;
+        }
+
+        const currentLocalFields = (getValues('fields') ?? []).filter((field) => isEventLocalField(field as Field));
+        const onlyGeneratedLocalFields = currentLocalFields.every((field, index) => (
+            isGeneratedLocalFieldPlaceholder(field as Field, index)
+        ));
+        if (!onlyGeneratedLocalFields) {
+            return;
+        }
+
+        setValue('fieldCount', 0, { shouldDirty: false, shouldValidate: true });
+    }, [
+        formDirtyFields,
+        getValues,
+        hasRestrictedImmutableFields,
+        isCreateMode,
+        rentalResourceOptions.length,
+        rentalResourcesLoading,
+        setValue,
     ]);
 
     useEffect(() => {
@@ -6282,8 +6433,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [currentEventStaffInvites]);
     const existingAssignedStaffUserIds = useMemo(() => {
         const source = activeEditingEvent ?? incomingEvent;
+        const sourceOfficialIds = getEventOfficialUserIds(source?.eventOfficials);
         const assignedIds = [
-            ...(Array.isArray(source?.officialIds) ? source.officialIds : []),
+            ...(sourceOfficialIds.length
+                ? sourceOfficialIds
+                : (Array.isArray(source?.officialIds) ? source.officialIds : [])),
             ...(Array.isArray(source?.assistantHostIds) ? source.assistantHostIds : []),
         ];
         return new Set(
@@ -6434,22 +6588,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!isOrganizationHostedEvent) {
             return;
         }
-        const normalizedCurrentOfficialIds = Array.from(
-            new Set(
-                [
-                    ...(eventData.officialIds || []),
-                    ...(eventData.officials || []).map((official) => official?.$id),
-                ]
-                    .map((id) => normalizeEntityId(id))
-                    .filter((id): id is string => Boolean(id)),
-            ),
+        const nextEventOfficials = normalizeEventOfficials(
+            (eventData.eventOfficials || []).filter((official) => organizationAllowedOfficialIdSet.has(official.userId)),
+            [],
+            eventData.officialPositions || [],
         );
-        const nextOfficialIds = normalizedCurrentOfficialIds.filter((id) => organizationAllowedOfficialIdSet.has(id));
+        const nextOfficialIds = getEventOfficialUserIds(nextEventOfficials);
         const nextOfficials = nextOfficialIds
             .map((id) => organizationOfficialsById.get(id))
             .filter((candidate): candidate is UserData => Boolean(candidate));
         if (
             stringArraysEqual((eventData.officialIds || []).map((id) => String(id)).filter(Boolean), nextOfficialIds)
+            && JSON.stringify(eventData.eventOfficials || []) === JSON.stringify(nextEventOfficials)
             && stringArraysEqual(
                 (eventData.officials || []).map((official) => official?.$id).filter((id): id is string => Boolean(id)),
                 nextOfficials.map((official) => official.$id),
@@ -6460,9 +6610,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData((prev) => ({
             ...prev,
             officialIds: nextOfficialIds,
+            eventOfficials: nextEventOfficials,
             officials: nextOfficials,
         }), { shouldDirty: false });
     }, [
+        eventData.eventOfficials,
+        eventData.officialPositions,
         eventData.officialIds,
         eventData.officials,
         isOrganizationHostedEvent,
@@ -7075,13 +7228,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     useEffect(() => {
         const normalized = normalizeEventOfficials(
             eventData.eventOfficials,
-            eventData.officialIds || [],
+            Array.isArray(eventData.eventOfficials) ? [] : eventData.officialIds || [],
             eventData.officialPositions || [],
         );
-        if (JSON.stringify(eventData.eventOfficials || []) === JSON.stringify(normalized)) {
+        const normalizedOfficialIds = getEventOfficialUserIds(normalized);
+        if (
+            JSON.stringify(eventData.eventOfficials || []) === JSON.stringify(normalized)
+            && stringArraysEqual((eventData.officialIds || []).map((id) => String(id)).filter(Boolean), normalizedOfficialIds)
+        ) {
             return;
         }
         setValue('eventOfficials', normalized, { shouldDirty: false, shouldValidate: false });
+        setValue('officialIds', normalizedOfficialIds, { shouldDirty: false, shouldValidate: false });
     }, [eventData.eventOfficials, eventData.officialIds, eventData.officialPositions, setValue]);
 
     const handleResetOfficialPositionsFromSport = useCallback(() => {
@@ -7089,7 +7247,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData((prev) => ({
             ...prev,
             officialPositions: nextPositions,
-            eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+            eventOfficials: normalizeEventOfficials(prev.eventOfficials, getEventOfficialUserIds(prev.eventOfficials), nextPositions),
+            officialIds: getEventOfficialUserIds(prev.eventOfficials),
         }));
     }, [setEventData, sportOfficialPositionTemplates]);
 
@@ -7107,7 +7266,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return {
                 ...prev,
                 officialPositions: nextPositions,
-                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, getEventOfficialUserIds(prev.eventOfficials), nextPositions),
+                officialIds: getEventOfficialUserIds(prev.eventOfficials),
             };
         });
     }, [setEventData]);
@@ -7132,7 +7292,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return {
                 ...prev,
                 officialPositions: nextPositions,
-                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, getEventOfficialUserIds(prev.eventOfficials), nextPositions),
+                officialIds: getEventOfficialUserIds(prev.eventOfficials),
             };
         });
     }, [setEventData]);
@@ -7145,7 +7306,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return {
                 ...prev,
                 officialPositions: nextPositions,
-                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, getEventOfficialUserIds(prev.eventOfficials), nextPositions),
+                officialIds: getEventOfficialUserIds(prev.eventOfficials),
             };
         });
     }, [setEventData]);
@@ -7156,7 +7318,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ) => {
         setEventData((prev) => {
             const nextPositions = prev.officialPositions || [];
-            const nextOfficials = normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions).map((official) => {
+            const nextOfficials = normalizeEventOfficials(prev.eventOfficials, getEventOfficialUserIds(prev.eventOfficials), nextPositions).map((official) => {
                 if (official.userId !== userId) {
                     return official;
                 }
@@ -7172,7 +7334,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             });
             return {
                 ...prev,
-                eventOfficials: normalizeEventOfficials(nextOfficials, prev.officialIds || [], nextPositions),
+                eventOfficials: normalizeEventOfficials(nextOfficials, getEventOfficialUserIds(nextOfficials), nextPositions),
+                officialIds: getEventOfficialUserIds(nextOfficials),
             };
         });
     }, [setEventData]);
@@ -7186,26 +7349,60 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setEventData((prev) => {
-            const nextIds = Array.from(new Set([...(prev.officialIds || []), officialId]));
+            const nextPositions = prev.officialPositions || [];
+            const existingOfficials = normalizeEventOfficials(
+                prev.eventOfficials,
+                getEventOfficialUserIds(prev.eventOfficials),
+                nextPositions,
+            );
+            const nextEventOfficials = normalizeEventOfficials(
+                existingOfficials.some((entry) => entry.userId === officialId)
+                    ? existingOfficials
+                    : [
+                        ...existingOfficials,
+                        {
+                            id: createClientId(),
+                            userId: officialId,
+                            positionIds: nextPositions.map((position) => position.id),
+                            fieldIds: [],
+                            isActive: true,
+                        } satisfies EventOfficial,
+                    ],
+                [],
+                nextPositions,
+            );
+            const nextIds = getEventOfficialUserIds(nextEventOfficials);
             const nextRefs = official.$id && !(prev.officials || []).some((ref) => ref.$id === official.$id)
                 ? [...(prev.officials || []), official as UserData]
                 : prev.officials || [];
-            return { ...prev, officialIds: nextIds, officials: nextRefs };
+            return {
+                ...prev,
+                officialIds: nextIds,
+                eventOfficials: nextEventOfficials,
+                officials: nextRefs,
+            };
         });
     }, [isOrganizationHostedEvent, organizationAllowedOfficialIdSet, setEventData]);
 
     const handleRemoveOfficial = useCallback((officialId: string) => {
         setEventData((prev) => ({
             ...prev,
-            officialIds: (prev.officialIds || []).filter((id) => id !== officialId),
+            eventOfficials: normalizeEventOfficials(
+                (prev.eventOfficials || []).filter((official) => official.userId !== officialId),
+                [],
+                prev.officialPositions || [],
+            ),
+            officialIds: getEventOfficialUserIds(
+                (prev.eventOfficials || []).filter((official) => official.userId !== officialId),
+            ),
             officials: (prev.officials || []).filter((ref) => ref.$id !== officialId),
         }));
     }, [setEventData]);
 
     const assignedUserIdsByRole = useMemo(() => ({
-        OFFICIAL: normalizeDirtyTrackedIdList(eventData.officialIds || []),
+        OFFICIAL: normalizeDirtyTrackedIdList(getEventOfficialUserIds(eventData.eventOfficials)),
         ASSISTANT_HOST: normalizeDirtyTrackedIdList([...(eventData.hostId ? [eventData.hostId] : []), ...assistantHostValue]),
-    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.hostId, eventData.officialIds]);
+    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.eventOfficials, eventData.hostId]);
 
     const assignedUserIdSetByRole = useMemo(() => ({
         OFFICIAL: new Set(assignedUserIdsByRole.OFFICIAL),
@@ -7226,7 +7423,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const assignedActiveOfficialsForStaffing = useMemo(() => {
         const normalizedOfficialIds = Array.from(
             new Set(
-                (eventData.officialIds || [])
+                getEventOfficialUserIds(eventData.eventOfficials)
                     .map((id) => String(id).trim())
                     .filter((id) => id.length > 0),
             ),
@@ -7252,7 +7449,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return official.positionIds.some((positionId) => allowedPositionIds.has(positionId));
         }).length;
-    }, [eventData.eventOfficials, eventData.officialIds, eventData.officialPositions]);
+    }, [eventData.eventOfficials, eventData.officialPositions]);
     const officialStaffingCoverageError = useMemo(() => {
         if (eventData.officialSchedulingMode !== 'STAFFING') {
             return null;
@@ -7404,7 +7601,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             targetRolesByUserId.set(normalizedUserId, roles);
         };
 
-        (eventData.officialIds || []).forEach((officialId) => addTargetRole(officialId, 'OFFICIAL'));
+        getEventOfficialUserIds(eventData.eventOfficials).forEach((officialId) => addTargetRole(officialId, 'OFFICIAL'));
         assistantHostValue.forEach((assistantHostId) => addTargetRole(assistantHostId, 'HOST'));
 
         const unresolvedEmailInvites: PendingStaffInvite[] = [];
@@ -7475,7 +7672,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             try {
                 const fetchedUsers = await userService.getUsersByIds(Array.from(resolvedUserIds));
                 setEventData((prev) => {
-                    const nextOfficialIds = new Set(prev.officialIds || []);
+                    const nextPositions = prev.officialPositions || [];
+                    let nextEventOfficials = normalizeEventOfficials(
+                        prev.eventOfficials,
+                        getEventOfficialUserIds(prev.eventOfficials),
+                        nextPositions,
+                    );
                     const nextAssistantHostIds = new Set(prev.assistantHostIds || []);
                     const nextOfficials = [...(prev.officials || [])];
                     fetchedUsers.forEach((userEntry) => {
@@ -7486,7 +7688,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 .filter((role): role is StaffAssignmentRole => Boolean(role))
                             : inviteRolesByEmail.get(getUserEmail(userEntry) ?? '') || [];
                         if (roles.includes('OFFICIAL')) {
-                            nextOfficialIds.add(userEntry.$id);
+                            nextEventOfficials = normalizeEventOfficials(
+                                nextEventOfficials.some((official) => official.userId === userEntry.$id)
+                                    ? nextEventOfficials
+                                    : [
+                                        ...nextEventOfficials,
+                                        {
+                                            id: createClientId(),
+                                            userId: userEntry.$id,
+                                            positionIds: nextPositions.map((position) => position.id),
+                                            fieldIds: [],
+                                            isActive: true,
+                                        } satisfies EventOfficial,
+                                    ],
+                                [],
+                                nextPositions,
+                            );
                             if (!nextOfficials.some((official) => official.$id === userEntry.$id)) {
                                 nextOfficials.push(userEntry);
                             }
@@ -7499,7 +7716,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     return {
                         ...prev,
                         officials: nextOfficials,
-                        officialIds: Array.from(nextOfficialIds),
+                        eventOfficials: nextEventOfficials,
+                        officialIds: getEventOfficialUserIds(nextEventOfficials),
                         assistantHostIds: Array.from(nextAssistantHostIds),
                     };
                 });
@@ -7509,7 +7727,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         const finalTargetUserIds = new Set<string>([
-            ...(eventData.officialIds || []),
+            ...getEventOfficialUserIds(eventData.eventOfficials),
             ...assistantHostValue,
             ...Array.from(resolvedUserIds),
         ]);
@@ -7528,7 +7746,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         cacheAssistantHostUser,
         currentEventStaffInvites,
         currentUser,
-        eventData.officialIds,
+        eventData.eventOfficials,
         getValues,
         isOrganizationHostedEvent,
         setEventData,
@@ -7538,7 +7756,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         currentEventStaffInviteByUserId,
     ]);
     const assignedOfficialCards = useMemo<AssignedStaffCard[]>(() => {
-        const cards: AssignedStaffCard[] = (eventData.officialIds || []).map((officialId) => {
+        const cards: AssignedStaffCard[] = getEventOfficialUserIds(eventData.eventOfficials).map((officialId) => {
             const official = (eventData.officials || []).find((candidate) => candidate.$id === officialId)
                 ?? organizationOfficialsById.get(officialId)
                 ?? nonOrgStaffResults.find((candidate) => candidate.$id === officialId)
@@ -7572,7 +7790,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             });
         });
         return cards;
-    }, [currentEventStaffInviteByUserId, eventData.pendingStaffInvites, eventData.officialIds, eventData.officials, nonOrgStaffResults, organizationOfficialsById]);
+    }, [currentEventStaffInviteByUserId, eventData.eventOfficials, eventData.pendingStaffInvites, eventData.officials, nonOrgStaffResults, organizationOfficialsById]);
     const assignedHostCards = useMemo<AssignedStaffCard[]>(() => {
         const cards: AssignedStaffCard[] = [];
         const primaryHostId = normalizeEntityId(eventData.hostId);
@@ -9032,7 +9250,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
             : fields;
         const availableFieldIds = toFieldIdList(availableFields);
-        const allowed = new Set(availableFieldIds);
+        const rentalSelectorFieldIds = rentalResourceOptions
+            .map((option) => normalizeResourceText(option.selectorId))
+            .filter(Boolean);
+        const pendingRentalSelectorFieldIds = rentalResourcesLoading || rentalResourceOptions.length === 0
+            ? selectedFieldIds.filter(isRentalBookingSelectorId)
+            : [];
+        const allowed = new Set([...availableFieldIds, ...rentalSelectorFieldIds, ...pendingRentalSelectorFieldIds]);
         const normalizedSelected = Array.from(
             new Set(
                 selectedFieldIds
@@ -9043,7 +9267,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!stringArraysEqual(selectedFieldIds, normalizedSelected)) {
             setValue('selectedFieldIds', normalizedSelected, { shouldDirty: false, shouldValidate: true });
         }
-    }, [fields, isOrganizationHostedEvent, organizationHostedEventId, selectedFieldIds, setValue, supportsOrganizationFieldSelection]);
+    }, [fields, isOrganizationHostedEvent, organizationHostedEventId, rentalResourceOptions, rentalResourcesLoading, selectedFieldIds, setValue, supportsOrganizationFieldSelection]);
 
     useEffect(() => {
         const divisionKeys = normalizeDivisionKeys(eventData.divisions);
@@ -9265,8 +9489,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     // Applies granular updates coming back from LeagueFields inputs before revalidating the array.
     const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
         const isDivisionOnlyUpdate = Object.keys(updates).every((key) => key === 'divisions');
+        const isResourceOnlyUpdate = Object.keys(updates).every((key) => (
+            key === 'scheduledFieldId'
+            || key === 'scheduledFieldIds'
+            || key === 'sourceType'
+            || key === 'rentalBookingId'
+            || key === 'rentalBookingItemId'
+            || key === 'rentalLocked'
+            || key === 'price'
+            || key === 'requiredTemplateIds'
+            || key === 'hostRequiredTemplateIds'
+            || key === 'error'
+        ));
         const allowRentalDivisionEditOnLockedSlots = hasExternalRentalField && !eventData.singleDivision;
-        const allowUpdateOnLockedSlots = hasImmutableTimeSlots && allowRentalDivisionEditOnLockedSlots && isDivisionOnlyUpdate;
+        const allowRentalResourceEditOnLockedSlots = hasExternalRentalField && isResourceOnlyUpdate;
+        const allowUpdateOnLockedSlots = hasImmutableTimeSlots && (
+            (allowRentalDivisionEditOnLockedSlots && isDivisionOnlyUpdate)
+            || allowRentalResourceEditOnLockedSlots
+        );
         if (hasImmutableTimeSlots && !allowUpdateOnLockedSlots) {
             return;
         }
@@ -9702,6 +9942,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => mergeFieldsById([], rentalResourceOptions.map((option) => option.field)),
         [rentalResourceOptions],
     );
+    const rentalResourceSelectorFields = useMemo(
+        () => mergeFieldsById([], rentalResourceOptions.map((option) => option.selectorField)),
+        [rentalResourceOptions],
+    );
+    const rentalResourceOptionsBySelectorId = useMemo(() => (
+        new Map(rentalResourceOptions.map((option) => [option.selectorId, option] as const))
+    ), [rentalResourceOptions]);
     const rentalResourceOptionsByFieldId = useMemo(() => {
         const byFieldId = new Map<string, RentalBookingResourceOption[]>();
         rentalResourceOptions.forEach((option) => {
@@ -9717,15 +9964,59 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         Array.from(
             new Map(
                 selectedFieldIds
-                    .flatMap((fieldId) => rentalResourceOptionsByFieldId.get(fieldId) ?? [])
+                    .flatMap((fieldId) => {
+                        const selectorOption = rentalResourceOptionsBySelectorId.get(fieldId);
+                        if (selectorOption) {
+                            return [selectorOption];
+                        }
+                        return rentalResourceOptionsByFieldId.get(fieldId) ?? [];
+                    })
                     .map((option) => [option.id, option] as const),
             ).values(),
         )
-    ), [rentalResourceOptionsByFieldId, selectedFieldIds]);
+    ), [rentalResourceOptionsByFieldId, rentalResourceOptionsBySelectorId, selectedFieldIds]);
     const selectedRentalFieldIds = useMemo(
         () => Array.from(new Set(selectedRentalResourceOptions.map((option) => option.fieldId))),
         [selectedRentalResourceOptions],
     );
+    const selectedRentedFieldIds = useMemo(() => {
+        if (!organizationHostedEventId || selectedFieldIds.length === 0) {
+            return selectedRentalFieldIds;
+        }
+        const selectedFieldIdSet = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
+        const sourceFields = mergeFieldsById(
+            mergeFieldsById(fields, Array.isArray(activeEditingEvent?.fields) ? activeEditingEvent.fields : []),
+            mergeFieldsById(immutableFields, rentalResourceFields),
+        );
+        const externalSelectedIds = sourceFields
+            .filter((field): field is Field & { $id: string } => (
+                typeof field?.$id === 'string'
+                && selectedFieldIdSet.has(normalizeResourceText(field.$id))
+                && isRentedResourceForOrganization(field, organizationHostedEventId)
+            ))
+            .map((field) => field.$id);
+        return Array.from(new Set([...selectedRentalFieldIds, ...externalSelectedIds]));
+    }, [
+        activeEditingEvent?.fields,
+        fields,
+        immutableFields,
+        organizationHostedEventId,
+        rentalResourceFields,
+        selectedFieldIds,
+        selectedRentalFieldIds,
+    ]);
+    const fieldById = useMemo(() => (
+        new Map(fields.map((field) => [normalizeResourceText(field.$id), field] as const))
+    ), [fields]);
+    const hasSelectedRentalResource = useMemo(() => (
+        selectedFieldIds.some((fieldId) => {
+            if (isRentalBookingSelectorId(fieldId)) {
+                return true;
+            }
+            const field = fieldById.get(normalizeResourceText(fieldId));
+            return field ? isRentedResourceForOrganization(field, organizationHostedEventId) : false;
+        })
+    ), [fieldById, organizationHostedEventId, selectedFieldIds]);
     const selectedRentalLockedSlots = useMemo(() => (
         selectedRentalResourceOptions
             .map((option) => buildRentalBookingTimeSlot(option, slotDivisionKeys, eventData.timeZone))
@@ -9735,16 +10026,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return fields;
     }, [fields]);
     const organizationResourcePool = useMemo(() => {
+        const selectedResourceIds = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
         const baseFields = organizationHostedEventId
             ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
-            : fields.filter((field) => {
-                const marker = field as { rentalResource?: boolean; _rentalResource?: boolean };
-                return marker.rentalResource || marker._rentalResource;
-            });
+                .filter((field) => {
+                    if (!isRentedResourceForOrganization(field, organizationHostedEventId)) {
+                        return true;
+                    }
+                    return selectedResourceIds.has(normalizeResourceText(field.$id));
+                })
+            : [];
         return rentalResourceFields.length
-            ? mergeFieldsById(baseFields, rentalResourceFields)
+            ? mergeFieldsById(baseFields, rentalResourceSelectorFields)
             : baseFields;
-    }, [fields, organizationHostedEventId, rentalResourceFields]);
+    }, [fields, organizationHostedEventId, rentalResourceFields.length, rentalResourceSelectorFields, selectedFieldIds]);
     const eventLocalFields = useMemo(
         () => fields.filter(isEventLocalField),
         [fields],
@@ -9766,25 +10061,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             .map((field) => ({
                 value: field.$id,
                 fieldId: field.$id,
-                label: getFacilityScopedFieldDisplayName(field, 'Resource'),
+                label: getFieldDisplayName(field, 'Resource'),
             }));
-        const rentalOptions = rentalResourceOptions.map((option) => {
-            const windowLabel = formatRentalBookingOptionWindow(option.start, option.end);
-            const resourceLabel = getFacilityScopedFieldDisplayName(option.field, 'Resource');
-            return {
-                value: `rental:${option.bookingItemId}`,
-                fieldId: option.fieldId,
-                label: windowLabel ? `${resourceLabel} - ${windowLabel}` : resourceLabel,
-                rentalBookingId: option.bookingId,
-                rentalBookingItemId: option.bookingItemId,
-                rentalStart: option.start,
-                rentalEnd: option.end,
-                rentalTimeZone: option.timeZone ?? null,
-                rentalPriceCents: option.priceCents ?? null,
-                rentalRequiredTemplateIds: option.requiredTemplateIds ?? [],
-                rentalHostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
-            };
-        });
+        const rentalOptions = rentalResourceOptions
+            .map((option) => {
+                return {
+                    value: option.selectorId,
+                    fieldId: option.fieldId,
+                    label: option.label,
+                    rentalBookingId: option.bookingId,
+                    rentalBookingItemId: option.bookingItemId,
+                    rentalStart: option.start,
+                    rentalEnd: option.end,
+                    rentalTimeZone: option.timeZone ?? null,
+                    rentalPriceCents: option.priceCents ?? null,
+                    rentalRequiredTemplateIds: option.requiredTemplateIds ?? [],
+                    rentalHostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
+                };
+            });
         return [...regularOptions, ...rentalOptions];
     }, [rentalResourceOptions, selectedFields]);
 
@@ -9829,7 +10123,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isEditMode,
         resolvedOrganization?.fields,
     ]);
-    const restrictLocalFieldCreationForRentalEvent = eventData.eventType === 'EVENT' && hasExternalRentalField;
+    const restrictLocalFieldCreationForRentalEvent = eventData.eventType === 'EVENT' && (
+        hasSelectedRentalResource
+        || hasImmutableTimeSlots
+        || Boolean(rentalPurchase?.fieldId)
+        || (activeEditingEvent?.timeSlots ?? []).some(isRentalLockedTimeSlot)
+    );
     const showLocalFieldCreationControls = shouldManageLocalFields && !restrictLocalFieldCreationForRentalEvent;
 
     useEffect(() => {
@@ -10006,15 +10305,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [isEditMode, eventData.location, eventData.coordinates, setEventData]);
 
-    useEffect(() => {
-        if (!hasExternalRentalField) {
-            return;
-        }
-        if (eventData.noFixedEndDateTime) {
-            setValue('noFixedEndDateTime', false, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
-
     const leagueWarning = (() => {
         if (hasPendingExternalConflictChecks) {
             return 'Checking field conflicts for timeslots. You can still save while this warning check finishes.';
@@ -10035,28 +10325,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? message
             : 'Please resolve schedule timeslot issues before submitting.';
     })();
-
-    useEffect(() => {
-        if (isEditMode || !resolvedOrganization) {
-            return;
-        }
-        if (refsPrefilledRef.current) {
-            return;
-        }
-        const orgOfficialIds = organizationAllowedOfficialIds;
-        const orgOfficialIdSet = new Set(orgOfficialIds);
-        const orgOfficials = (resolvedOrganization.officials ?? []).filter((official) => (
-            official?.$id && orgOfficialIdSet.has(official.$id)
-        ));
-        if (orgOfficialIds.length || orgOfficials.length) {
-            setEventData((prev) => ({
-                ...prev,
-                officialIds: orgOfficialIds,
-                officials: orgOfficials.length ? orgOfficials : prev.officials,
-            }));
-            refsPrefilledRef.current = true;
-        }
-    }, [organizationAllowedOfficialIds, resolvedOrganization, isEditMode, setEventData]);
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
@@ -10416,7 +10684,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 {
                     hostId: source.hostId || currentUser?.$id || null,
                     assistantHostIds: source.assistantHostIds || [],
-                    officialIds: source.officialIds || [],
+                    officialIds: getEventOfficialUserIds(source.eventOfficials),
                 },
                 {
                     ownerId: resolvedOrganization?.ownerId,
@@ -10437,18 +10705,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 new Set(
                     (source.assistantHostIds || [])
                         .map((id) => String(id))
-                        .filter((id) => id.length > 0 && id !== normalizedHostId),
+                    .filter((id) => id.length > 0 && id !== normalizedHostId),
                 ),
             );
-        const normalizedOfficialIds = organizationAssignments
-            ? organizationAssignments.officialIds
-            : Array.from(
-                new Set(
-                    (source.officialIds || [])
-                        .map((id) => String(id).trim())
-                        .filter((id) => id.length > 0),
-                ),
-            );
+        const normalizedOfficialPositionsForPayload = normalizeEventOfficialPositions(
+            source.officialPositions,
+            normalizeSportOfficialPositionTemplates(resolvedSport?.officialPositionTemplates),
+        );
+        const normalizedEventOfficials = normalizeEventOfficials(
+            source.eventOfficials,
+            Array.isArray(source.eventOfficials) ? [] : source.officialIds || [],
+            normalizedOfficialPositionsForPayload,
+        ).filter((official) => (
+            organizationAssignments ? organizationAssignments.officialIds.includes(official.userId) : true
+        ));
+        const normalizedOfficialIds = getEventOfficialUserIds(normalizedEventOfficials);
         const officialPoolById = new Map<string, UserData>();
         (source.officials || []).forEach((official) => {
             if (official?.$id) {
@@ -10585,18 +10856,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             officials: normalizedOfficials,
             officialIds: normalizedOfficialIds,
             officialSchedulingMode: normalizeOfficialSchedulingMode(source.officialSchedulingMode),
-            officialPositions: normalizeEventOfficialPositions(
-                source.officialPositions,
-                normalizeSportOfficialPositionTemplates(resolvedSport?.officialPositionTemplates),
-            ),
-            eventOfficials: normalizeEventOfficials(
-                source.eventOfficials,
-                normalizedOfficialIds,
-                normalizeEventOfficialPositions(
-                    source.officialPositions,
-                    normalizeSportOfficialPositionTemplates(resolvedSport?.officialPositionTemplates),
-                ),
-            ),
+            officialPositions: normalizedOfficialPositionsForPayload,
+            eventOfficials: normalizedEventOfficials,
             assistantHostIds: normalizedAssistantHostIds,
             doTeamsOfficiate: source.doTeamsOfficiate,
             teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
@@ -10627,7 +10888,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const fieldIds = supportsOrganizationFieldSelectionForEvent(source.eventType, source.parentEvent)
                     ? resolveOrganizationEventFieldIds(source.selectedFieldIds, defaultOrganizationFieldIds)
                     : toIdList(fieldsToInclude);
-                selectedRentalFieldIds.forEach((fieldId) => {
+                selectedRentedFieldIds.forEach((fieldId) => {
                     if (!fieldIds.includes(fieldId)) {
                         fieldIds.push(fieldId);
                     }
@@ -10642,7 +10903,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     previousEventFieldLocation,
                 ));
                 const fieldIds = toIdList(fieldsToInclude);
-                selectedRentalFieldIds.forEach((fieldId) => {
+                selectedRentedFieldIds.forEach((fieldId) => {
                     if (!fieldIds.includes(fieldId)) {
                         fieldIds.push(fieldId);
                     }
@@ -10653,8 +10914,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             if ((!draft.fieldIds || draft.fieldIds.length === 0) && rentalPurchase?.fieldId) {
                 draft.fieldIds = [rentalPurchase.fieldId];
-            } else if ((!draft.fieldIds || draft.fieldIds.length === 0) && selectedRentalFieldIds.length) {
-                draft.fieldIds = selectedRentalFieldIds;
+            } else if ((!draft.fieldIds || draft.fieldIds.length === 0) && selectedRentedFieldIds.length) {
+                draft.fieldIds = selectedRentedFieldIds;
             }
         } else {
             const localFields = sourceFields.filter(isEventLocalField);
@@ -10667,7 +10928,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             const fieldIds = Array.from(new Set([
                 ...selectedOrganizationFieldIds,
-                ...selectedRentalFieldIds,
+                ...selectedRentedFieldIds,
                 ...toIdList(localFields),
             ]));
             if (fieldIds.length) {
@@ -10929,8 +11190,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                     return serialized;
                 });
+            const editableSlotIds = new Set(
+                editableSlotDocuments
+                    .map((slot) => (typeof slot.$id === 'string' ? slot.$id.trim() : ''))
+                    .filter((slotId) => slotId.length > 0),
+            );
+            const retainedRentalLockedSlotDocuments = rentalLockedSlotDocuments.filter((slot) => {
+                const slotId = typeof slot.$id === 'string' ? slot.$id.trim() : '';
+                return !slotId || !editableSlotIds.has(slotId);
+            });
             const slotDocumentsByKey = new Map<string, TimeSlot>();
-            [...rentalLockedSlotDocuments, ...editableSlotDocuments].forEach((slot) => {
+            [...retainedRentalLockedSlotDocuments, ...editableSlotDocuments].forEach((slot) => {
                 const key = slot.rentalBookingItemId
                     || slot.$id
                     || `${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}:${slot.startTimeMinutes ?? ''}:${slot.endTimeMinutes ?? ''}`;
@@ -10983,7 +11253,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         joinAsParticipant,
         rentalPurchase,
         rentalLockedSlotsForDraft,
-        selectedRentalFieldIds,
+        selectedRentedFieldIds,
         sportsById,
         shouldManageLocalFields,
         shouldProvisionFields,
@@ -11152,6 +11422,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const showOrganizationFieldsInEventDetails = (
         isOrganizationHostedEvent || rentalResourceOptions.length > 0
     ) && supportsOrganizationFieldSelection;
+    const localFieldCreationControl = showLocalFieldCreationControls ? (
+        <MantineSelect
+            label="Number of Resources"
+            placeholder="Select resource count"
+            data={fieldCountOptions}
+            value={String(fieldCount)}
+            w="100%"
+            styles={alignedDetailsFieldStyles}
+            onChange={(val) => {
+                const parsed = Number(val);
+                setFieldCount(Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0);
+            }}
+            error={errors.fieldCount?.message as string | undefined}
+            comboboxProps={sharedComboboxProps}
+        />
+    ) : null;
     const showMatchRulesSection = eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
     const showScoringConfigSection = eventData.eventType === 'LEAGUE'
         || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs);
@@ -11762,7 +12048,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 valueFormat="MM/DD/YYYY hh:mm A"
                                                 value={parseLocalDateTime(field.value)}
                                                 styles={alignedDetailsFieldStyles}
-                                                disabled={isImmutableField('start') || hasExternalRentalField}
+                                                disabled={isImmutableField('start')}
                                                 onChange={(val) => {
                                                     if (isImmutableField('start')) return;
                                                     const parsed = parseLocalDateTime(val as Date | string | null);
@@ -11796,7 +12082,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     styles={alignedDetailsFieldStyles}
                                                     disabled={
                                                         isImmutableField('end')
-                                                        || hasExternalRentalField
                                                         || (supportsNoFixedEndDateTime && eventData.noFixedEndDateTime)
                                                     }
                                                     onChange={(val) => {
@@ -11820,7 +12105,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             size="xs"
                                                             label="No fixed end datetime scheduling"
                                                             checked={Boolean(eventData.noFixedEndDateTime)}
-                                                            disabled={isImmutableField('noFixedEndDateTime') || hasExternalRentalField}
+                                                            disabled={isImmutableField('noFixedEndDateTime')}
                                                             onChange={(event) => {
                                                                 if (isImmutableField('noFixedEndDateTime')) return;
                                                                 const checked = event.currentTarget.checked;
@@ -12043,23 +12328,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 )}
                                             />
                                         </div>
-                                        {showLocalFieldCreationControls ? (
-                                            <div>
-                                                <MantineSelect
-                                                    label="Number of Resources"
-                                                    placeholder="Select resource count"
-                                                    data={fieldCountOptions}
-                                                    value={String(fieldCount)}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    onChange={(val) => {
-                                                        const parsed = Number(val);
-                                                        setFieldCount(Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0);
-                                                    }}
-                                                    error={errors.fieldCount?.message as string | undefined}
-                                                    comboboxProps={sharedComboboxProps}
-                                                />
-                                            </div>
+                                        {localFieldCreationControl ? (
+                                            <div>{localFieldCreationControl}</div>
                                         ) : null}
                                         <Text size="xs" c="dimmed" className="sm:col-span-2">
                                             Leave age limits blank if anyone can register.
@@ -12443,7 +12713,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 >
                                                     {filteredOrganizationStaffEntries.slice(0, organizationStaffVisibleCount).map((entry) => {
                                                         const userId = entry.userId;
-                                                        const isOfficialAssigned = Boolean(userId && (eventData.officialIds || []).includes(userId));
+                                                        const isOfficialAssigned = Boolean(userId && assignedUserIdSetByRole.OFFICIAL.has(userId));
                                                         const isHostAssigned = Boolean(userId && userId === eventData.hostId);
                                                         const isAssistantAssigned = Boolean(userId && assistantHostValue.includes(userId));
                                                         const assignmentsDisabled = !userId;
@@ -12471,7 +12741,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         <Button
                                                                             type="button"
                                                                             size="xs"
-                                                                            disabled={assignmentsDisabled || !canAssignOfficial || isOfficialAssigned || isImmutableField('officialIds')}
+                                                                            disabled={assignmentsDisabled || !canAssignOfficial || isOfficialAssigned || isImmutableField('eventOfficials')}
                                                                             onClick={() => handleAddOfficial({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
                                                                         >
                                                                             Add as official
@@ -12529,7 +12799,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 ) : nonOrgStaffSearch.trim().length >= 2 ? (
                                                     <Stack gap="xs">
                                                         {nonOrgStaffResults.length > 0 ? nonOrgStaffResults.map((result) => {
-                                                            const isOfficialAssigned = (eventData.officialIds || []).includes(result.$id);
+                                                            const isOfficialAssigned = assignedUserIdSetByRole.OFFICIAL.has(result.$id);
                                                             const isHostAssigned = result.$id === eventData.hostId;
                                                             const isAssistantAssigned = assistantHostValue.includes(result.$id);
                                                             return (
@@ -12539,7 +12809,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         <Button
                                                                             type="button"
                                                                             size="xs"
-                                                                            disabled={isOfficialAssigned || isImmutableField('officialIds')}
+                                                                            disabled={isOfficialAssigned || isImmutableField('eventOfficials')}
                                                                             onClick={() => handleAddOfficial(result)}
                                                                         >
                                                                             Add as official
@@ -12673,7 +12943,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         variant="subtle"
                                                                         color="red"
                                                                         size="xs"
-                                                                        disabled={card.source === 'assigned' ? isImmutableField('officialIds') : false}
+                                                                        disabled={card.source === 'assigned' ? isImmutableField('eventOfficials') : false}
                                                                         onClick={() => {
                                                                             if (card.source === 'draft' && card.email) {
                                                                                 setPendingStaffInvites((prev) => prev.flatMap((invite) => {
@@ -14324,6 +14594,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     lockedDivisionKeys={slotDivisionKeys}
                                                     readOnly={hasImmutableTimeSlots}
                                                     allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
+                                                    allowResourceEditsWhenReadOnly={hasExternalRentalField}
                                                     showPlayoffSettings={false}
                                                     showLeagueConfiguration={false}
                                                     emptyFieldsMessage={isOrganizationManagedEvent

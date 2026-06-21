@@ -157,6 +157,43 @@ const cloneValue = <T,>(value: T): T => {
   return cloneRecursive(value);
 };
 
+const getActionErrorDetail = (error: unknown): string | null => {
+  if (isApiRequestError(error)) {
+    const apiError = error.data;
+    if (apiError && typeof apiError === 'object' && 'error' in apiError) {
+      const message = String((apiError as { error?: unknown }).error ?? '').trim();
+      if (message) {
+        const unknownKeys = Array.isArray((apiError as { unknownKeys?: unknown }).unknownKeys)
+          ? (apiError as { unknownKeys?: unknown[] }).unknownKeys
+            ?.map((key) => String(key).trim())
+            .filter((key) => key.length > 0)
+          : [];
+        if (unknownKeys?.length) {
+          return `${message} Unknown fields: ${unknownKeys.join(', ')}.`;
+        }
+        return message;
+      }
+    }
+  }
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    return message || null;
+  }
+  if (typeof error === 'string') {
+    const message = error.trim();
+    return message || null;
+  }
+  return null;
+};
+
+const formatActionErrorMessage = (fallback: string, error: unknown): string => {
+  const detail = getActionErrorDetail(error);
+  if (!detail || detail === fallback || detail.startsWith(fallback)) {
+    return detail || fallback;
+  }
+  return `${fallback} ${detail}`;
+};
+
 const formatLatLngLabel = (lat?: number, lng?: number): string => {
   if (typeof lat !== 'number' || typeof lng !== 'number') {
     return '';
@@ -6238,7 +6275,7 @@ function EventScheduleContent() {
       }
     } catch (err) {
       console.error('Failed to load league schedule:', err);
-      setError('Failed to load league schedule. Please try again.');
+      setError(formatActionErrorMessage('Failed to load league schedule. Please try again.', err));
     } finally {
       if (showPageLoader) {
         setLoading(false);
@@ -7532,7 +7569,7 @@ function EventScheduleContent() {
         }
       } catch (err) {
         console.error('Failed to apply schedule changes:', err);
-        setError('Failed to apply schedule changes.');
+        setError(formatActionErrorMessage('Failed to apply schedule changes.', err));
       } finally {
         setPublishing(false);
       }
@@ -7576,7 +7613,7 @@ function EventScheduleContent() {
         return result.event;
       } catch (err) {
         console.error('Failed to create event:', err);
-        setError('Failed to create event.');
+        setError(formatActionErrorMessage('Failed to create event.', err));
         return null;
       } finally {
         setPublishing(false);
@@ -9793,7 +9830,7 @@ function EventScheduleContent() {
     );
   }
 
-  if (error) {
+  if (error && !activeEvent) {
     return (
       <>
         <Navigation />
@@ -9802,7 +9839,7 @@ function EventScheduleContent() {
             <Stack gap="md" align="center">
               <Text fw={600} size="lg">Something went wrong.</Text>
               <Button variant="default" onClick={() => loadSchedule()}>Try Again</Button>
-              <Text size="sm" c="red" ta="center">{error}</Text>
+              <Text size="sm" c="red" ta="center" role="alert" aria-live="assertive">{error}</Text>
             </Stack>
           </Paper>
         </div>

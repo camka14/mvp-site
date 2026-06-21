@@ -135,7 +135,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ bookings: [] }, { status: 200 });
   }
 
-  const [bookingOrganizations] = await Promise.all([
+  const bookingIdSet = new Set(bookingIds);
+  const items = matchingItems.filter((item: any) => bookingIdSet.has(String(item.bookingId)));
+
+  const [bookingOrganizations, bookingItemFacilities] = await Promise.all([
     (prisma as any).organizations.findMany({
       where: { id: { in: uniqueStrings(bookings.map((booking: any) => booking.organizationId)) } },
       select: {
@@ -146,9 +149,12 @@ export async function GET(req: NextRequest) {
         coordinates: true,
       },
     }),
+    typeof (prisma as any).facilities?.findMany === 'function'
+      ? (prisma as any).facilities.findMany({
+          where: { id: { in: uniqueStrings(items.map((item: any) => item.facilityId)) } },
+        })
+      : Promise.resolve([]),
   ]);
-  const bookingIdSet = new Set(bookingIds);
-  const items = matchingItems.filter((item: any) => bookingIdSet.has(String(item.bookingId)));
 
   const fields = await attachFacilitiesToFieldRows(
     await (prisma as any).fields.findMany({
@@ -161,6 +167,9 @@ export async function GET(req: NextRequest) {
   const organizationById = new Map<string, any>(
     bookingOrganizations.map((organization: any) => [String(organization.id), withLegacyFields(organization)]),
   );
+  const facilityById = new Map<string, any>(
+    bookingItemFacilities.map((facility: any) => [String(facility.id), withLegacyFields(facility)]),
+  );
   const itemsByBookingId = new Map<string, any[]>();
   items.forEach((item: any) => {
     const bookingId = String(item.bookingId);
@@ -172,12 +181,23 @@ export async function GET(req: NextRequest) {
       .map((booking: any) => ({
         ...withLegacyFields(booking),
         organization: organizationById.get(String(booking.organizationId)) ?? null,
-        items: (itemsByBookingId.get(String(booking.id)) ?? []).map((item: any) => ({
-          ...withLegacyFields(item),
-          start: item.start instanceof Date ? item.start.toISOString() : item.start,
-          end: item.end instanceof Date ? item.end.toISOString() : item.end,
-          field: fieldById.get(String(item.fieldId)) ?? null,
-        })),
+        items: (itemsByBookingId.get(String(booking.id)) ?? []).map((item: any) => {
+          const facility = item.facilityId ? facilityById.get(String(item.facilityId)) ?? null : null;
+          const field = fieldById.get(String(item.fieldId)) ?? null;
+          return {
+            ...withLegacyFields(item),
+            start: item.start instanceof Date ? item.start.toISOString() : item.start,
+            end: item.end instanceof Date ? item.end.toISOString() : item.end,
+            facility,
+            field: field
+              ? {
+                  ...field,
+                  facilityId: field.facilityId ?? item.facilityId ?? null,
+                  facility: field.facility ?? facility,
+                }
+              : null,
+          };
+        }),
       }))
       .filter((booking: any) => booking.items.length > 0),
   }, { status: 200 });

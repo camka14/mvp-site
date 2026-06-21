@@ -39,9 +39,9 @@ import {
 import {
   buildEventOfficialPositionsFromTemplates,
   buildLegacyOfficialAssignment,
-  deriveEventOfficialsFromLegacyOfficialIds,
   deriveLegacyOfficialCheckedInFromAssignments,
   deriveLegacyOfficialIdFromAssignments,
+  filterEventOfficialsByUserIds,
   normalizeEventOfficials,
   normalizeEventOfficialPositions,
   normalizeMatchOfficialAssignments,
@@ -390,6 +390,97 @@ const persistEventOfficialRows = async (
       },
     });
   }
+};
+
+const shouldKeepMatchOfficialAssignment = (
+  assignment: unknown,
+  allowedEventOfficialIds: Set<string>,
+  allowedOfficialUserIds: Set<string>,
+): boolean => {
+  if (!assignment || typeof assignment !== 'object') {
+    return false;
+  }
+  const row = assignment as Record<string, unknown>;
+  const holderType = typeof row.holderType === 'string' ? row.holderType.trim().toUpperCase() : '';
+  if (holderType !== 'OFFICIAL') {
+    return true;
+  }
+  const userId = normalizeEntityId(row.userId);
+  if (!userId || !allowedOfficialUserIds.has(userId)) {
+    return false;
+  }
+  const eventOfficialId = normalizeEntityId(row.eventOfficialId);
+  return !eventOfficialId || allowedEventOfficialIds.has(eventOfficialId);
+};
+
+export const clearRemovedEventOfficialMatchAssignments = async (
+  client: PrismaLike,
+  eventId: string,
+  eventOfficials: EventOfficialRecord[],
+): Promise<number> => {
+  if (
+    typeof (client as any).matches?.findMany !== 'function'
+    || typeof (client as any).matches?.update !== 'function'
+  ) {
+    return 0;
+  }
+  const allowedEventOfficialIds = new Set(
+    eventOfficials
+      .map((official) => normalizeEntityId(official.id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const allowedOfficialUserIds = new Set(
+    eventOfficials
+      .filter((official) => official.isActive !== false)
+      .map((official) => normalizeEntityId(official.userId))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const matches = await (client as any).matches.findMany({
+    where: { eventId },
+    select: {
+      id: true,
+      officialId: true,
+      officialIds: true,
+      officialCheckedIn: true,
+    },
+  });
+  let updatedCount = 0;
+  for (const match of matches as Array<Record<string, unknown>>) {
+    const rawAssignments = Array.isArray(match.officialIds) ? match.officialIds : [];
+    const nextAssignments = rawAssignments.filter((assignment) => (
+      shouldKeepMatchOfficialAssignment(assignment, allowedEventOfficialIds, allowedOfficialUserIds)
+    ));
+    const nextPrimaryOfficialId = nextAssignments.length
+      ? deriveLegacyOfficialIdFromAssignments(nextAssignments as MatchOfficialAssignment[])
+      : null;
+    const nextPrimaryOfficialCheckedIn = nextAssignments.length
+      ? deriveLegacyOfficialCheckedInFromAssignments(nextAssignments as MatchOfficialAssignment[])
+      : false;
+    const existingPrimaryOfficialId = normalizeEntityId(match.officialId);
+    const shouldClearLegacyOfficial = Boolean(
+      existingPrimaryOfficialId && !allowedOfficialUserIds.has(existingPrimaryOfficialId),
+    );
+    const assignmentsChanged = nextAssignments.length !== rawAssignments.length;
+    if (!assignmentsChanged && !shouldClearLegacyOfficial) {
+      continue;
+    }
+    const matchId = normalizeEntityId(match.id);
+    if (!matchId) {
+      continue;
+    }
+    await (client as any).matches.update({
+      where: { id: matchId },
+      data: {
+        officialIds: nextAssignments.length
+          ? (nextAssignments as unknown as Record<string, unknown>[])
+          : null,
+        officialId: nextPrimaryOfficialId,
+        officialCheckedIn: nextPrimaryOfficialCheckedIn,
+      },
+    });
+    updatedCount += 1;
+  }
+  return updatedCount;
 };
 
 const resolveBillingOwnerHasStripeAccount = async (
@@ -4128,12 +4219,23 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     })
     : [];
   const requestedPayloadHostId = normalizeEntityId(payload.hostId);
+  const requestedEventOfficialIds: string[] = Array.isArray(payload.eventOfficials)
+    ? Array.from(new Set(
+        payload.eventOfficials
+          .map((entry: unknown) => (
+            entry && typeof entry === 'object'
+              ? normalizeEntityId((entry as Record<string, unknown>).userId)
+              : null
+          ))
+          .filter((userId: string | null): userId is string => Boolean(userId)),
+      ))
+    : [];
   const organizationAssignments = resolvedOrganizationId
     ? sanitizeOrganizationEventAssignments(
       {
         hostId: payload.hostId ?? resolvedHostId ?? null,
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
-        officialIds: ensureStringArray(payload.officialIds),
+        officialIds: requestedEventOfficialIds,
       },
       organizationAccess
         ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites }
@@ -4146,7 +4248,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : ensureStringArray(payload.assistantHostIds);
   const normalizedOfficialIds = organizationAssignments
     ? organizationAssignments.officialIds
-    : ensureStringArray(payload.officialIds);
+    : requestedEventOfficialIds;
   const [existingEventOfficialRows, sportRow] = await Promise.all([
     existingEvent ? loadEventOfficialRows(client, id) : Promise.resolve([]),
     (normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId))
@@ -4296,19 +4398,21 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       isActive: row.isActive !== false,
     }))
     .filter((row: any) => row.positionIds.length > 0);
+  const allowedEventOfficialUserIds = hasExplicitEventOfficials
+    ? normalizedOfficialIds
+    : existingEventOfficials.map((row: any) => row.userId);
+  const eventOfficialsInput = hasExplicitEventOfficials
+    ? filterEventOfficialsByUserIds(payload.eventOfficials, allowedEventOfficialUserIds)
+    : payload.eventOfficials;
   const resolvedEventOfficials = hasExplicitEventOfficials
-    ? normalizeEventOfficials(payload.eventOfficials, {
+    ? normalizeEventOfficials(eventOfficialsInput, {
         eventId: id,
         positionIds: resolvedOfficialPositions.map((position) => position.id),
         fieldIds,
       })
     : existingEventOfficials.length
       ? existingEventOfficials
-      : deriveEventOfficialsFromLegacyOfficialIds({
-          eventId: id,
-          officialIds: normalizedOfficialIds,
-          positionIds: resolvedOfficialPositions.map((position) => position.id),
-        });
+      : [];
   const allowedFieldIdSet = new Set(fieldIds);
   const fieldsToPersist = allowedFieldIdSet.size
     ? fields.filter((field: any) => {
@@ -4656,6 +4760,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   });
   if (hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
     await persistEventOfficialRows(client, id, resolvedEventOfficials);
+    await clearRemovedEventOfficialMatchAssignments(client, id, resolvedEventOfficials);
   }
 
   const syncedDivisionIds = await syncEventDivisions({

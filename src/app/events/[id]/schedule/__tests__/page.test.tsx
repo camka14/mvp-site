@@ -9,6 +9,8 @@ import { formatLocalDateTime } from '@/lib/dateUtils';
 import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 jest.setTimeout(20000);
+jest.mock('react-big-calendar/lib/css/react-big-calendar.css', () => ({}));
+jest.mock('react-big-calendar/lib/addons/dragAndDrop/styles.css', () => ({}));
 
 const useSearchParamsMock = jest.fn();
 const mockRouter = {
@@ -116,6 +118,7 @@ jest.mock('../components/EventForm', () => {
       getDraft: () => mockEventFormDraft ?? props.event ?? {},
       validate: async () => mockEventFormValidateResult,
       getValidationErrors: () => mockEventFormValidationErrors,
+      getRegistrationQuestionDrafts: () => [],
       validatePendingStaffAssignments: async () => mockValidatePendingStaffAssignments(),
       commitDirtyBaseline: () => mockCommitDirtyBaseline(),
       submitPendingStaffInvites: (eventId: string) => mockSubmitPendingStaffInvites(eventId),
@@ -1308,7 +1311,7 @@ describe('League schedule page', () => {
     renderWithMantine(<LeagueSchedulePage />);
 
     const retryButton = await screen.findByRole('button', { name: /try again/i });
-    const errorMessage = await screen.findByText('Failed to load league schedule. Please try again.');
+    const errorMessage = await screen.findByText('Failed to load league schedule. Please try again. Network down');
     expect(retryButton.compareDocumentPosition(errorMessage)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -2645,6 +2648,84 @@ describe('League schedule page', () => {
     expect(eventService.scheduleEvent).not.toHaveBeenCalled();
     expect(eventService.createEvent).not.toHaveBeenCalled();
     expect(eventService.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it('shows create event failure details returned by the server', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    mockEventFormDraft = {
+      $id: 'event_create_regular',
+      name: 'Create Regular Event',
+      description: '',
+      location: 'Main Gym',
+      coordinates: [-83.0, 42.0],
+      start: '2026-01-05T09:00:00.000',
+      end: '2026-01-05T11:00:00.000',
+      eventType: 'EVENT',
+      sportId: 'volleyball',
+      price: 0,
+      maxParticipants: 8,
+      teamSizeLimit: 2,
+      teamSignup: true,
+      singleDivision: true,
+      divisions: ['open'],
+      cancellationRefundHours: 24,
+      registrationCutoffHours: 2,
+      requiredTemplateIds: [],
+      imageId: 'image_1',
+      seedColor: 0,
+      waitListIds: [],
+      freeAgentIds: [],
+      eventOfficials: [],
+      fields: [
+        {
+          $id: 'field_local_1',
+          name: 'Court A',
+          location: '',
+          lat: 0,
+          long: 0,
+          divisions: ['open'],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_regular',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: ['open'],
+          startTimeMinutes: 540,
+          endTimeMinutes: 660,
+          repeating: false,
+          scheduledFieldId: 'field_local_1',
+          startDate: '2026-01-05T09:00:00.000',
+          endDate: '2026-01-05T11:00:00.000',
+        },
+      ],
+    };
+    (eventService.scheduleEvent as jest.Mock).mockRejectedValue(
+      new Error('Selected resources and time range conflict with an existing reservation.'),
+    );
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /create event/i });
+    await waitFor(() => {
+      expect(publishButton).toBeEnabled();
+    });
+    fireEvent.click(publishButton);
+
+    expect(await screen.findByText(
+      'Failed to create event. Selected resources and time range conflict with an existing reservation.',
+    )).toBeInTheDocument();
+    expect(screen.getByTestId('event-form')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
   });
 
   it('normalizes create payload with multi-day slots and slot divisions before schedule preview', async () => {

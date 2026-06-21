@@ -76,7 +76,6 @@ const EVENT_CREATE_FORBIDDEN_EVENT_KEYS = new Set<string>([
 
 const EVENT_CREATE_ID_LIST_FIELDS = [
   'assistantHostIds',
-  'officialIds',
   'fieldIds',
   'teamIds',
   'userIds',

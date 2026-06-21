@@ -204,6 +204,30 @@ export const normalizeEventOfficials = (
   return records;
 };
 
+export const filterEventOfficialsByUserIds = (
+  value: unknown,
+  userIds: string[],
+): unknown[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const allowedUserIds = new Set(
+    userIds
+      .map((userId) => normalizeString(userId))
+      .filter((userId): userId is string => Boolean(userId)),
+  );
+  if (!allowedUserIds.size) {
+    return [];
+  }
+  return value.filter((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+    const userId = normalizeString((entry as Record<string, unknown>).userId);
+    return Boolean(userId && allowedUserIds.has(userId));
+  });
+};
+
 export const deriveEventOfficialsFromLegacyOfficialIds = (params: {
   eventId: string;
   officialIds: string[];

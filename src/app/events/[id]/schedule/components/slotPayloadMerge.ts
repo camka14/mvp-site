@@ -98,8 +98,11 @@ export const mergeSlotPayloadsForForm = (
       slot.startDate ?? '',
       slot.endDate ?? '',
     ].join('|');
+    const rentalBookingItemId = typeof slot.rentalBookingItemId === 'string' && slot.rentalBookingItemId.trim().length > 0
+      ? slot.rentalBookingItemId.trim()
+      : null;
     const baseId = normalizeSlotMergeBaseId(slot.$id);
-    const key = baseId ?? scheduleKey;
+    const key = rentalBookingItemId ?? baseId ?? scheduleKey;
 
     const existing = groups.get(key);
     if (!existing) {
@@ -113,6 +116,14 @@ export const mergeSlotPayloadsForForm = (
           repeating: slot.repeating,
           startDate: slot.startDate,
           endDate: slot.endDate,
+          timeZone: slot.timeZone,
+          price: slot.price,
+          requiredTemplateIds: Array.isArray(slot.requiredTemplateIds) ? [...slot.requiredTemplateIds] : undefined,
+          hostRequiredTemplateIds: Array.isArray(slot.hostRequiredTemplateIds) ? [...slot.hostRequiredTemplateIds] : undefined,
+          sourceType: slot.sourceType,
+          rentalBookingId: slot.rentalBookingId,
+          rentalBookingItemId: slot.rentalBookingItemId,
+          rentalLocked: slot.rentalLocked,
         },
         days: new Set(normalizedDays),
         divisions: new Set(normalizeDivisionKeys(slot.divisions)),

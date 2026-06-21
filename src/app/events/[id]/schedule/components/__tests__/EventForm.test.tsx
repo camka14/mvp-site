@@ -2994,7 +2994,7 @@ describe('EventForm dirty state', () => {
     expect(divisionSettingsSection?.textContent).not.toContain('Resources');
   });
 
-  it('shows organization resource selection without resource-count controls for organization events', async () => {
+  it('shows organization resource selection with zero default resource count for organization events with resources', async () => {
     const onDirtyStateChange = jest.fn();
     const organization = {
       ...buildOrganization(),
@@ -3027,11 +3027,33 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
     expect(screen.queryByText('Resource Names')).not.toBeInTheDocument();
   });
 
-  it('builds organization event drafts by reusing selected org fields for event types', async () => {
+  it('defaults organization event creation to host only without assigning officials', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+      },
+      buildOrganization(),
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.hostId).toBe('host_1');
+      expect(draft?.officialIds).toEqual([]);
+    });
+  });
+
+  it('builds organization event drafts with selected org fields and unassigned local resources', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
     const organization = {
@@ -3072,8 +3094,13 @@ describe('EventForm dirty state', () => {
 
     await waitFor(() => {
       const draft = formRef.current?.getDraft();
-      expect(draft?.fieldIds).toEqual(['org_field_1']);
-      expect(draft?.fields).toBeUndefined();
+      expect(draft?.fieldIds).toEqual(['org_field_1', 'local_field_1']);
+      expect(draft?.fields).toEqual([
+        expect.objectContaining({
+          $id: 'local_field_1',
+          name: 'Pop-up Court',
+        }),
+      ]);
     });
   });
 
@@ -3136,13 +3163,15 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getByText('Rented')).toBeInTheDocument();
-    expect(screen.getByLabelText('Rented Facility - Rental Court')).toBeChecked();
+    expect(screen.getByLabelText('Rental Court')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Start Date & Time' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'End Date & Time' })).not.toBeDisabled();
 
     await userEvent.click(screen.getByRole('button', { name: /Home Facility/i }));
-    await userEvent.click(screen.getByLabelText('Home Facility - Main Court'));
+    await userEvent.click(screen.getByLabelText('Main Court'));
 
     await waitFor(() => {
-      expect(formRef.current?.getDraft().fieldIds).toEqual(['rental_field_1', 'org_field_1']);
+      expect(new Set(formRef.current?.getDraft().fieldIds)).toEqual(new Set(['rental_field_1', 'org_field_1']));
     });
   });
 
@@ -3180,6 +3209,13 @@ describe('EventForm dirty state', () => {
                 {
                   $id: 'booking_item_1',
                   fieldId: 'rental_field_1',
+                  facilityId: 'facility_rented',
+                  facility: {
+                    $id: 'facility_rented',
+                    organizationId: 'rental_org_1',
+                    name: 'Rented Facility',
+                    location: 'Rented Gym',
+                  },
                   start: '2026-03-12T15:00:00.000Z',
                   end: '2026-03-12T16:00:00.000Z',
                   field: {
@@ -3189,13 +3225,27 @@ describe('EventForm dirty state', () => {
                     lat: 0,
                     long: 0,
                     organization: 'rental_org_1',
-                    facilityId: 'facility_rented',
-                    facility: {
-                      $id: 'facility_rented',
-                      organizationId: 'rental_org_1',
-                      name: 'Rented Facility',
-                      location: 'Rented Gym',
-                    },
+                  },
+                },
+                {
+                  $id: 'booking_item_2',
+                  fieldId: 'rental_field_1',
+                  facilityId: 'facility_rented',
+                  facility: {
+                    $id: 'facility_rented',
+                    organizationId: 'rental_org_1',
+                    name: 'Rented Facility',
+                    location: 'Rented Gym',
+                  },
+                  start: '2026-03-13T17:00:00.000Z',
+                  end: '2026-03-13T18:00:00.000Z',
+                  field: {
+                    $id: 'rental_field_1',
+                    name: 'Rental Court',
+                    location: 'Rented Gym',
+                    lat: 0,
+                    long: 0,
+                    organization: 'rental_org_1',
                   },
                 },
               ],
@@ -3222,7 +3272,14 @@ describe('EventForm dirty state', () => {
     });
 
     expect(apiRequest).toHaveBeenCalledWith('/api/rentals/bookings?organizationId=org_1');
-    await userEvent.click(screen.getByLabelText('Rented Facility - Rental Court'));
+    expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
+    const firstRentalResource = screen.getByLabelText(/Rental Court - Mar 12, 2026/i);
+    const secondRentalResource = screen.getByLabelText(/Rental Court - Mar 13, 2026/i);
+    expect(screen.queryByLabelText('Rental Court')).not.toBeInTheDocument();
+    expect(firstRentalResource).not.toBeChecked();
+    expect(secondRentalResource).not.toBeChecked();
+
+    await userEvent.click(firstRentalResource);
 
     await waitFor(() => {
       const draft = formRef.current?.getDraft();
@@ -3237,10 +3294,273 @@ describe('EventForm dirty state', () => {
           scheduledFieldIds: ['rental_field_1'],
         }),
       ]);
+      expect(secondRentalResource).not.toBeChecked();
     });
   });
 
-  it('keeps rental booking defaults out of editable league weekly resource selection', async () => {
+  it('rehydrates selected rental bookings from a failed create draft', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [],
+    };
+    const rentalField = {
+      $id: 'rental_field_1',
+      name: 'Rental Court',
+      location: 'Rented Gym',
+      lat: 0,
+      long: 0,
+      organization: 'rental_org_1',
+      facilityId: 'facility_rented',
+      facility: {
+        $id: 'facility_rented',
+        organizationId: 'rental_org_1',
+        name: 'Rented Facility',
+        location: 'Rented Gym',
+      },
+    };
+
+    (apiRequest as jest.Mock).mockImplementation((url: string) => {
+      if (url.startsWith('/api/rentals/bookings')) {
+        return Promise.resolve({
+          bookings: [
+            {
+              $id: 'booking_1',
+              items: [
+                {
+                  $id: 'booking_item_1',
+                  fieldId: 'rental_field_1',
+                  start: '2026-03-12T15:00:00.000Z',
+                  end: '2026-03-12T16:00:00.000Z',
+                  field: rentalField,
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+        fieldIds: ['rental_field_1'],
+        fields: [rentalField],
+        timeSlots: [
+          {
+            $id: 'slot_rental_1',
+            sourceType: 'RENTAL_BOOKING',
+            rentalBookingId: 'booking_1',
+            rentalBookingItemId: 'booking_item_1',
+            rentalLocked: true,
+            scheduledFieldId: 'rental_field_1',
+            scheduledFieldIds: ['rental_field_1'],
+            dayOfWeek: 3,
+            daysOfWeek: [3],
+            startTimeMinutes: 15 * 60,
+            endTimeMinutes: 16 * 60,
+            startDate: '2026-03-12T15:00:00.000Z',
+            endDate: '2026-03-12T16:00:00.000Z',
+            repeating: false,
+          },
+        ],
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    const selectedRentalResource = await screen.findByLabelText(/Rental Court - Mar 12, 2026/i);
+    expect(selectedRentalResource).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Start Date & Time' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'End Date & Time' })).not.toBeDisabled();
+  });
+
+  it('allows selected rental resources to use no fixed end datetime scheduling for leagues', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [],
+    };
+    const rentalField = {
+      $id: 'rental_field_1',
+      name: 'Rental Court',
+      location: 'Rented Gym',
+      lat: 0,
+      long: 0,
+      organization: 'rental_org_1',
+      facilityId: 'facility_rented',
+      facility: {
+        $id: 'facility_rented',
+        organizationId: 'rental_org_1',
+        name: 'Rented Facility',
+        location: 'Rented Gym',
+      },
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        organizationId: 'org_1',
+        start: '2026-04-20T09:00:00',
+        end: '2026-05-03T17:00:00',
+        noFixedEndDateTime: false,
+        fieldIds: ['rental_field_1'],
+        selectedFieldIds: ['rental_field_1'],
+        fields: [rentalField],
+        timeSlots: [
+          {
+            $id: 'slot_rental_1',
+            sourceType: 'RENTAL_BOOKING',
+            rentalBookingId: 'booking_1',
+            rentalBookingItemId: 'booking_item_1',
+            rentalLocked: true,
+            scheduledFieldId: 'rental_field_1',
+            scheduledFieldIds: ['rental_field_1'],
+            dayOfWeek: 3,
+            daysOfWeek: [3],
+            divisions: ['open'],
+            startTimeMinutes: 15 * 60,
+            endTimeMinutes: 16 * 60,
+            startDate: '2026-03-12T15:00:00.000Z',
+            endDate: '2026-03-12T16:00:00.000Z',
+            repeating: false,
+          },
+        ],
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    const noFixedEndDateTimeCheckbox = await screen.findByRole('checkbox', { name: 'No fixed end datetime scheduling' });
+    expect(noFixedEndDateTimeCheckbox).not.toBeDisabled();
+    expect(noFixedEndDateTimeCheckbox).not.toBeChecked();
+
+    await userEvent.click(noFixedEndDateTimeCheckbox);
+
+    expect(noFixedEndDateTimeCheckbox).toBeChecked();
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.noFixedEndDateTime).toBe(true);
+      expect(draft?.fieldIds).toEqual(['rental_field_1']);
+      expect(draft?.timeSlots?.[0]).toEqual(expect.objectContaining({
+        sourceType: 'RENTAL_BOOKING',
+        rentalBookingItemId: 'booking_item_1',
+        rentalLocked: true,
+      }));
+    });
+  });
+
+  it('replaces a preserved rental timeslot when the same slot is edited to an organization resource', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Main Court',
+          location: 'Home Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+        },
+      ],
+    };
+    const rentalField = {
+      $id: 'rental_field_1',
+      name: 'Rental Court',
+      location: 'Rented Gym',
+      lat: 0,
+      long: 0,
+      organization: 'rental_org_1',
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        organizationId: 'org_1',
+        fields: [rentalField],
+        fieldIds: ['rental_field_1'],
+        selectedFieldIds: ['rental_field_1'],
+        timeSlots: [
+          {
+            $id: 'slot_rental_1',
+            sourceType: 'RENTAL_BOOKING',
+            rentalBookingId: 'booking_1',
+            rentalBookingItemId: 'booking_item_1',
+            rentalLocked: true,
+            scheduledFieldId: 'rental_field_1',
+            scheduledFieldIds: ['rental_field_1'],
+            dayOfWeek: 3,
+            daysOfWeek: [3],
+            divisions: ['open'],
+            startTimeMinutes: 15 * 60,
+            endTimeMinutes: 16 * 60,
+            startDate: '2026-03-12T15:00:00.000Z',
+            endDate: '2026-03-12T16:00:00.000Z',
+            repeating: false,
+          },
+        ],
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(mockLeagueFieldsProps.some((props) => typeof props?.onUpdateSlot === 'function')).toBe(true);
+    });
+
+    const scheduleProps = [...mockLeagueFieldsProps].reverse().find((props) => (
+      typeof props?.onUpdateSlot === 'function' && Array.isArray(props?.slots) && props.slots.length > 0
+    ));
+
+    await act(async () => {
+      scheduleProps?.onUpdateSlot(0, {
+        $id: 'slot_rental_1',
+        scheduledFieldId: 'org_field_1',
+        scheduledFieldIds: ['org_field_1'],
+        sourceType: undefined,
+        rentalBookingId: undefined,
+        rentalBookingItemId: undefined,
+        rentalLocked: false,
+        repeating: true,
+        dayOfWeek: 3,
+        daysOfWeek: [3],
+        startTimeMinutes: 15 * 60,
+        endTimeMinutes: 16 * 60,
+        startDate: '2026-03-12T10:00:00',
+        endDate: '2026-03-19T10:00:00',
+      });
+    });
+
+    await waitFor(() => {
+      const draftSlots = formRef.current?.getDraft().timeSlots ?? [];
+      expect(draftSlots).toHaveLength(1);
+      expect(draftSlots[0]).toEqual(expect.objectContaining({
+        $id: 'slot_rental_1',
+        scheduledFieldId: 'org_field_1',
+        scheduledFieldIds: ['org_field_1'],
+        rentalLocked: false,
+      }));
+      expect(draftSlots[0]?.sourceType).toBeUndefined();
+      expect(draftSlots[0]?.rentalBookingId).toBeUndefined();
+      expect(draftSlots[0]?.rentalBookingItemId).toBeUndefined();
+    });
+  });
+
+  it('does not auto-select rental booking defaults in editable league weekly resource selection', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
     const organization = {
@@ -3395,7 +3715,32 @@ describe('EventForm dirty state', () => {
     expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
   });
 
-  it.each(['LEAGUE', 'TOURNAMENT'] as const)(
+  it('defaults organization event creation to one local resource when the org has no resources or rentals', async () => {
+    const onDirtyStateChange = jest.fn();
+    const organization = {
+      ...buildOrganization(),
+      fields: [],
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+  });
+
+  it.each(['EVENT', 'LEAGUE', 'TOURNAMENT'] as const)(
     'shows field-count controls for non-organization %s creation',
     async (eventType) => {
       const onDirtyStateChange = jest.fn();
@@ -3417,7 +3762,44 @@ describe('EventForm dirty state', () => {
   );
 
   it.each(['LEAGUE', 'TOURNAMENT'] as const)(
-    'defaults organization %s creation to zero local fields while keeping the count control',
+    'defaults organization %s creation to zero local resources when the org has resources',
+    async (eventType) => {
+      const onDirtyStateChange = jest.fn();
+      const organization = {
+        ...buildOrganization(),
+        fields: [
+          {
+            $id: 'org_field_1',
+            name: 'Main Court',
+            location: 'Main Gym',
+            lat: 0,
+            long: 0,
+            organization: 'org_1',
+          },
+        ],
+      };
+
+      renderForm(
+        onDirtyStateChange,
+        undefined,
+        {
+          eventType,
+          organizationId: 'org_1',
+        },
+        organization,
+        { isCreateMode: true },
+      );
+
+      await waitFor(() => {
+        expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+      });
+
+      expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
+    },
+  );
+
+  it.each(['LEAGUE', 'TOURNAMENT'] as const)(
+    'defaults organization %s creation to one local resource when the org has no resources or rentals',
     async (eventType) => {
       const onDirtyStateChange = jest.fn();
 
@@ -3436,12 +3818,12 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
+      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
     },
   );
 
   it.each(['LEAGUE', 'TOURNAMENT'] as const)(
-    'resets organization create field count to zero when switching from event to %s',
+    'preserves organization local resource count when switching from event to %s',
     async (eventType) => {
       const onDirtyStateChange = jest.fn();
       const formRef = React.createRef<EventFormHandle>();
@@ -3471,7 +3853,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
 
       fireEvent.change(screen.getByLabelText('Event Type'), {
         target: { value: eventType },
@@ -3479,10 +3861,15 @@ describe('EventForm dirty state', () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText('Event Type')).toHaveValue(eventType);
-        expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
-        expect(formRef.current?.getDraft().fields).toBeUndefined();
+        expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+        expect(formRef.current?.getDraft().fields).toEqual([
+          expect.objectContaining({
+            $id: 'local_field_1',
+            name: 'Field 1',
+          }),
+        ]);
       });
-      expect(formRef.current?.getDraft().fieldCount).toBe(0);
+      expect(formRef.current?.getDraft().fieldCount).toBe(1);
     },
   );
 

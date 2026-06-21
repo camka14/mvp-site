@@ -18,7 +18,7 @@ type MockClient = {
   leagueScoringConfigs: { upsert: jest.Mock };
   eventOfficials: { findMany: jest.Mock; deleteMany: jest.Mock; create: jest.Mock };
   fields: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
-  matches: { findMany: jest.Mock; deleteMany: jest.Mock };
+  matches: { findMany: jest.Mock; deleteMany: jest.Mock; update: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
   teams: { upsert: jest.Mock };
   timeSlots: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
@@ -67,6 +67,7 @@ const createMockClient = (): MockClient => ({
   matches: {
     findMany: jest.fn().mockResolvedValue([]),
     deleteMany: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
   },
   divisions: {
     findMany: jest.fn().mockResolvedValue([]),
@@ -1827,6 +1828,194 @@ describe('upsertEventFromPayload', () => {
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
       }),
+    });
+  });
+
+  it('persists event official rows when eventOfficials are supplied and legacy official ids are empty', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+      ],
+      officialIds: [],
+      eventOfficials: [
+        {
+          id: 'event_official_host_1',
+          userId: 'host_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event_1' },
+    });
+    expect(client.eventOfficials.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'event_official_host_1',
+        eventId: 'event_1',
+        userId: 'host_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('persists event official rows when eventOfficials are supplied and legacy official ids are omitted', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_host_1',
+          userId: 'host_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event_1' },
+    });
+    expect(client.eventOfficials.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'event_official_host_1',
+        eventId: 'event_1',
+        userId: 'host_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('clears removed event official assignments from persisted matches', async () => {
+    const client = createMockClient();
+    client.matches.findMany.mockImplementation((args: any) => {
+      if (args?.select?.officialIds) {
+        return Promise.resolve([
+          {
+            id: 'match_1',
+            officialId: 'removed_official',
+            officialCheckedIn: true,
+            officialIds: [
+              {
+                positionId: 'event_pos_r1',
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: 'removed_official',
+                eventOfficialId: 'event_official_removed',
+                checkedIn: true,
+              },
+              {
+                positionId: 'event_pos_r2',
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: 'kept_official',
+                eventOfficialId: 'event_official_kept',
+                checkedIn: false,
+              },
+              {
+                positionId: 'event_pos_line',
+                slotIndex: 0,
+                holderType: 'PLAYER',
+                teamId: 'team_1',
+                checkedIn: true,
+              },
+            ],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+        {
+          id: 'event_pos_r2',
+          name: 'R2',
+          count: 1,
+          order: 1,
+        },
+        {
+          id: 'event_pos_line',
+          name: 'Line Judge',
+          count: 1,
+          order: 2,
+        },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_kept',
+          userId: 'kept_official',
+          positionIds: ['event_pos_r2'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.matches.update).toHaveBeenCalledWith({
+      where: { id: 'match_1' },
+      data: {
+        officialIds: [
+          {
+            positionId: 'event_pos_r2',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'kept_official',
+            eventOfficialId: 'event_official_kept',
+            checkedIn: false,
+          },
+          {
+            positionId: 'event_pos_line',
+            slotIndex: 0,
+            holderType: 'PLAYER',
+            teamId: 'team_1',
+            checkedIn: true,
+          },
+        ],
+        officialId: 'kept_official',
+        officialCheckedIn: false,
+      },
     });
   });
 

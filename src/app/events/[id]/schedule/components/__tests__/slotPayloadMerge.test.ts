@@ -62,4 +62,43 @@ describe('mergeSlotPayloadsForForm', () => {
     expect(merged[1]?.$id).toBe('slot_2');
     expect(merged[1]?.daysOfWeek).toEqual([6]);
   });
+
+  it('preserves rental booking metadata when merging slot payloads for the form', () => {
+    const merged = mergeSlotPayloadsForForm([
+      {
+        $id: 'slot_rental_1',
+        dayOfWeek: 3,
+        daysOfWeek: [3],
+        startTimeMinutes: 900,
+        endTimeMinutes: 960,
+        repeating: false,
+        scheduledFieldId: 'rental_field_1',
+        scheduledFieldIds: ['rental_field_1'],
+        divisions: ['open'],
+        startDate: '2026-03-12T15:00:00.000Z',
+        endDate: '2026-03-12T16:00:00.000Z',
+        sourceType: 'RENTAL_BOOKING',
+        rentalBookingId: 'booking_1',
+        rentalBookingItemId: 'booking_item_1',
+        rentalLocked: true,
+        price: 5000,
+        requiredTemplateIds: ['template_1'],
+        hostRequiredTemplateIds: ['host_template_1'],
+      } as any,
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      $id: 'slot_rental_1',
+      scheduledFieldId: 'rental_field_1',
+      scheduledFieldIds: ['rental_field_1'],
+      sourceType: 'RENTAL_BOOKING',
+      rentalBookingId: 'booking_1',
+      rentalBookingItemId: 'booking_item_1',
+      rentalLocked: true,
+      price: 5000,
+      requiredTemplateIds: ['template_1'],
+      hostRequiredTemplateIds: ['host_template_1'],
+    });
+  });
 });

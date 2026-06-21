@@ -646,6 +646,11 @@ class EventService {
         "status",
         "leagueConfig",
         "refType",
+        "officialIds",
+        "sourceType",
+        "sourceId",
+        "rentalBookingId",
+        "rentalBookingItemId",
       ].forEach((key) => {
         delete payload[key];
       });
@@ -687,11 +692,7 @@ class EventService {
         this.withNormalizedEventEnums(event),
       );
       const payload = buildPayload(normalizedEvent);
-      if (
-        Object.prototype.hasOwnProperty.call(normalizedEvent, "officialIds")
-      ) {
-        payload.officialIds = normalizedEvent.officialIds ?? [];
-      }
+      delete payload.officialIds;
       await apiRequest(`/api/events/${event.$id}`, {
         method: "DELETE",
         body: { event: payload },
@@ -890,11 +891,7 @@ class EventService {
         string,
         unknown
       >;
-      if (
-        Object.prototype.hasOwnProperty.call(normalizedEvent, "officialIds")
-      ) {
-        payload.officialIds = normalizedEvent.officialIds ?? [];
-      }
+      delete payload.officialIds;
       const eventId = (() => {
         const fromLegacyId =
           typeof payload.$id === "string" ? payload.$id.trim() : "";
@@ -982,30 +979,22 @@ class EventService {
   }
 
   private withNormalizedOfficials<T extends Partial<Event>>(event: T): T {
-    const explicitOfficialIds = Array.isArray(event.officialIds)
+    const officialPositions = this.mapEventOfficialPositions(
+      event.officialPositions,
+    );
+    const fallbackOfficialIds = Array.isArray(event.officialIds)
       ? event.officialIds.map((id) => String(id))
-      : event.officialIds === undefined
-        ? undefined
-        : [];
-
-    if (explicitOfficialIds !== undefined) {
-      return { ...event, officialIds: explicitOfficialIds } as T;
-    }
-
-    if (Array.isArray((event as any).officials)) {
-      const derived = (event as any).officials
-        .map((ref: any) => {
-          if (typeof ref === "string") return ref;
-          if (ref && typeof ref === "object" && "$id" in ref) {
-            return (ref as { $id?: string }).$id ?? "";
-          }
-          return "";
-        })
-        .filter((id: string) => Boolean(id));
-      return { ...event, officialIds: derived } as T;
-    }
-
-    return event;
+      : [];
+    const eventOfficials = this.mapEventOfficials(
+      event.eventOfficials,
+      fallbackOfficialIds,
+      officialPositions,
+    );
+    return {
+      ...event,
+      eventOfficials,
+      officialIds: eventOfficials.map((official) => official.userId),
+    } as T;
   }
 
   private normalizeOfficialSchedulingMode(
@@ -1066,11 +1055,23 @@ class EventService {
     fallbackOfficialIds: string[],
     officialPositions: NonNullable<Event["officialPositions"]>,
   ): NonNullable<Event["eventOfficials"]> {
-    const officialIds = Array.from(
-      new Set(
-        fallbackOfficialIds.map((id) => String(id).trim()).filter(Boolean),
-      ),
-    );
+    const officialIds = Array.isArray(value)
+      ? Array.from(
+          new Set(
+            value
+              .map((entry) => (
+                entry && typeof entry === "object"
+                  ? String((entry as Record<string, unknown>).userId ?? "").trim()
+                  : ""
+              ))
+              .filter(Boolean),
+          ),
+        )
+      : Array.from(
+          new Set(
+            fallbackOfficialIds.map((id) => String(id).trim()).filter(Boolean),
+          ),
+        );
     const officialIdSet = new Set(officialIds);
     const positionIds = officialPositions.map((position) => position.id);
     const positionIdSet = new Set(positionIds);
@@ -1226,17 +1227,15 @@ class EventService {
     const officialPositions = this.mapEventOfficialPositions(
       row.officialPositions,
     );
-    const officialIds = Array.isArray(row.officialIds)
+    const legacyOfficialIds = Array.isArray(row.officialIds)
       ? row.officialIds.map((id: unknown) => String(id))
-      : Array.isArray(row.eventOfficials)
-        ? Array.from(
-            new Set(
-              row.eventOfficials
-                .map((entry: any) => String(entry?.userId ?? "").trim())
-                .filter((id: string) => id.length > 0),
-            ),
-          )
-        : [];
+      : [];
+    const eventOfficials = this.mapEventOfficials(
+      row.eventOfficials,
+      legacyOfficialIds,
+      officialPositions,
+    );
+    const officialIds = eventOfficials.map((official) => official.userId);
     const normalizeObjectValue = (
       value: unknown,
     ): Record<string, unknown> | null | undefined => {
@@ -1302,11 +1301,7 @@ class EventService {
       officialIds,
       officialSchedulingMode,
       officialPositions,
-      eventOfficials: this.mapEventOfficials(
-        row.eventOfficials,
-        officialIds,
-        officialPositions,
-      ),
+      eventOfficials,
       assistantHostIds: Array.isArray(row.assistantHostIds)
         ? row.assistantHostIds.map((id: unknown) => String(id))
         : [],
@@ -1896,20 +1891,22 @@ class EventService {
       data.timeSlotIds ?? event.timeSlotIds ?? [],
     );
     const userIds = this.extractStringIds(data.userIds ?? event.userIds ?? []);
-    const officialIds = this.extractStringIds(
-      data.officialIds ??
-        event.officialIds ??
-        (Array.isArray(data.eventOfficials)
-          ? data.eventOfficials.map((entry: any) => entry?.userId)
-          : []) ??
-        [],
-    );
     const assistantHostIds = this.extractStringIds(
       data.assistantHostIds ?? event.assistantHostIds ?? [],
     );
     const officialPositions = this.mapEventOfficialPositions(
       data.officialPositions ?? event.officialPositions ?? [],
     );
+    const eventOfficials = this.mapEventOfficials(
+      data.eventOfficials ?? event.eventOfficials,
+      this.extractStringIds(
+        data.eventOfficials === undefined && event.eventOfficials === undefined
+          ? data.officialIds ?? event.officialIds ?? []
+          : [],
+      ),
+      officialPositions,
+    );
+    const officialIds = eventOfficials.map((official) => official.userId);
 
     const [
       teams,
@@ -1963,11 +1960,7 @@ class EventService {
       data.officialSchedulingMode ?? event.officialSchedulingMode,
     );
     event.officialPositions = officialPositions;
-    event.eventOfficials = this.mapEventOfficials(
-      data.eventOfficials ?? event.eventOfficials,
-      officialIds,
-      officialPositions,
-    );
+    event.eventOfficials = eventOfficials;
     event.officials = officials;
     event.assistantHostIds = assistantHostIds;
     event.assistantHosts = assistantHosts;

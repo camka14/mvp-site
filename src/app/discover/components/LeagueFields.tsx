@@ -634,6 +634,7 @@ interface LeagueFieldsProps {
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
   allowDivisionEditsWhenReadOnly?: boolean;
+  allowResourceEditsWhenReadOnly?: boolean;
   onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
   configurationTitle?: string;
@@ -661,6 +662,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockedDivisionKeys = [],
   readOnly = false,
   allowDivisionEditsWhenReadOnly = false,
+  allowResourceEditsWhenReadOnly = false,
   onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
   configurationTitle = 'League Configuration',
@@ -810,6 +812,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     let next = [...current];
     let rentalUpdates: Partial<LeagueSlotForm> = {};
     const optionSelected = isSlotResourceOptionSelected(slot, option);
+    const slotHasSelectedResources = current.length > 0;
     const currentRentalFieldId = slot.rentalBookingItemId
       ? fieldOptionsForSlot.find((candidate) => getOptionRentalMetadata(candidate).rentalBookingItemId === slot.rentalBookingItemId)?.fieldId
       : null;
@@ -842,7 +845,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
       if (optionSelected) {
         rentalUpdates = clearRentalLockUpdates();
       } else {
-        const rentalSelectionError = getRentalSelectionError(slot, option);
+        const rentalSelectionError = slotHasSelectedResources ? getRentalSelectionError(slot, option) : null;
         if (rentalSelectionError) {
           onUpdateSlot(slotIndex, { error: rentalSelectionError });
           return;
@@ -1195,6 +1198,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               slotEndDate.getTime() <= slotStartDate.getTime(),
             );
             const divisionsReadOnly = readOnly && !allowDivisionEditsWhenReadOnly;
+            const resourcesReadOnly = readOnly && !allowResourceEditsWhenReadOnly;
+            const resourceError = isRentalSlotMismatchError(slot.error) ? slot.error : null;
             const hasConflicts = conflictCount > 0;
             const slotTimingReadOnly = readOnly || slot.rentalLocked === true;
             const resourceGroups = buildSlotResourceGroups(fieldOptionsForSlot, fieldSearch);
@@ -1233,12 +1238,12 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         placeholder="Search resources..."
                         value={fieldSearch}
                         onChange={(event) => setSlotSearch(slot.key, event.currentTarget.value)}
-                        disabled={readOnly}
+                        disabled={resourcesReadOnly}
                         maw={360}
                         mb="xs"
                       />
                       <div
-                        className={`overflow-hidden rounded-xl border bg-white shadow-sm ${fieldMissing && !readOnly ? 'border-red-500' : 'border-gray-300'}`}
+                        className={`overflow-hidden rounded-xl border bg-white shadow-sm ${fieldMissing && !resourcesReadOnly ? 'border-red-500' : 'border-gray-300'}`}
                       >
                         <div className="max-h-44 overflow-y-auto [scrollbar-gutter:stable]">
                           {resourceGroups.length > 0 ? (
@@ -1255,7 +1260,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                                       type="button"
                                       className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
                                       onClick={() => toggleResourceGroup(slot.key, group.key)}
-                                      disabled={readOnly && group.options.length === 0}
+                                      disabled={resourcesReadOnly && group.options.length === 0}
                                     >
                                       <span className="min-w-0">
                                         <span className="flex items-center gap-2 font-semibold text-gray-900">
@@ -1295,7 +1300,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                                               onClick={(event) => {
                                                 handleFieldToggle(index, slot, fieldOptionsForSlot, option.value, event.shiftKey);
                                               }}
-                                              disabled={readOnly}
+                                              disabled={resourcesReadOnly}
                                             >
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="min-w-0">
@@ -1322,8 +1327,13 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           )}
                         </div>
                       </div>
-                      {fieldMissing && !readOnly ? (
+                      {fieldMissing && !resourcesReadOnly ? (
                         <Text size="xs" c="red" mt={4}>Select at least one resource</Text>
+                      ) : null}
+                      {resourceError ? (
+                        <Alert color="red" radius="md" mt="xs">
+                          {resourceError}
+                        </Alert>
                       ) : null}
                       <Text size="xs" c="dimmed" mt={4}>
                         Tip: Hold Shift and click another resource to select a range.
@@ -1501,7 +1511,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     </Alert>
                   )}
 
-                  {slot.error && (
+                  {slot.error && !resourceError && (
                     <Alert color="red" radius="md">
                       {slot.error}
                     </Alert>
