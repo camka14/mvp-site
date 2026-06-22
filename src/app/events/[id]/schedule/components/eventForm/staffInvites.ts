@@ -51,12 +51,123 @@ export type StaffInviteSubmissionPayloadItem = {
     replaceStaffTypes: true;
 };
 
+export type AssignedStaffUserIdsByRole = Record<StaffAssignmentRole, string[]>;
+export type AssignedStaffUserIdSetsByRole = Record<StaffAssignmentRole, Set<string>>;
+
 export const createEmptyStaffInvite = (): PendingStaffInvite => ({
     firstName: '',
     lastName: '',
     email: '',
     roles: [],
 });
+
+const normalizeStaffIdList = (values: unknown[]): string[] => Array.from(
+    new Set(
+        values
+            .map((id) => normalizeEntityId(id))
+            .filter((id): id is string => Boolean(id)),
+    ),
+);
+
+type BuildCurrentEventStaffInvitesOptions = {
+    activeStaffInvites?: unknown;
+    incomingStaffInvites?: unknown;
+    eventId?: string | null;
+};
+
+export const buildCurrentEventStaffInvites = ({
+    activeStaffInvites,
+    incomingStaffInvites,
+    eventId,
+}: BuildCurrentEventStaffInvitesOptions): Invite[] => (
+    Array.isArray(activeStaffInvites)
+        ? activeStaffInvites
+        : Array.isArray(incomingStaffInvites)
+            ? incomingStaffInvites
+            : []
+)
+    .map((invite) => {
+        const inviteId = normalizeEntityId(
+            (invite as { $id?: string | null; id?: string | null } | null)?.$id
+            ?? (invite as { $id?: string | null; id?: string | null } | null)?.id,
+        );
+        if (!inviteId) {
+            return null;
+        }
+        return {
+            ...(invite as Invite),
+            $id: inviteId,
+        };
+    })
+    .filter((invite): invite is Invite => {
+        if (!invite) {
+            return false;
+        }
+        return invite.type === 'STAFF' && invite.eventId === eventId;
+    });
+
+export const buildStaffInviteByUserId = (staffInvites: Invite[]): Map<string, Invite> => {
+    const map = new Map<string, Invite>();
+    staffInvites.forEach((invite) => {
+        const normalizedUserId = normalizeEntityId(invite.userId);
+        if (normalizedUserId) {
+            map.set(normalizedUserId, invite);
+        }
+    });
+    return map;
+};
+
+type BuildExistingAssignedStaffUserIdsOptions = {
+    preferredOfficialIds: unknown[];
+    fallbackOfficialIds?: unknown;
+    assistantHostIds?: unknown;
+};
+
+export const buildExistingAssignedStaffUserIds = ({
+    preferredOfficialIds,
+    fallbackOfficialIds,
+    assistantHostIds,
+}: BuildExistingAssignedStaffUserIdsOptions): Set<string> => {
+    const officialIds = preferredOfficialIds.length
+        ? preferredOfficialIds
+        : Array.isArray(fallbackOfficialIds) ? fallbackOfficialIds : [];
+    return new Set(normalizeStaffIdList([
+        ...officialIds,
+        ...(Array.isArray(assistantHostIds) ? assistantHostIds : []),
+    ]));
+};
+
+type BuildAssignedUserIdsByRoleOptions = {
+    officialIds: unknown[];
+    hostId?: unknown;
+    assistantHostIds: unknown[];
+};
+
+export const buildAssignedUserIdsByRole = ({
+    officialIds,
+    hostId,
+    assistantHostIds,
+}: BuildAssignedUserIdsByRoleOptions): AssignedStaffUserIdsByRole => ({
+    OFFICIAL: normalizeStaffIdList(officialIds),
+    ASSISTANT_HOST: normalizeStaffIdList([
+        ...(hostId ? [hostId] : []),
+        ...assistantHostIds,
+    ]),
+});
+
+export const buildAssignedUserIdSetsByRole = (
+    assignedUserIdsByRole: AssignedStaffUserIdsByRole,
+): AssignedStaffUserIdSetsByRole => ({
+    OFFICIAL: new Set(assignedUserIdsByRole.OFFICIAL),
+    ASSISTANT_HOST: new Set(assignedUserIdsByRole.ASSISTANT_HOST),
+});
+
+export const buildAssignedStaffUserIds = (
+    assignedUserIdsByRole: AssignedStaffUserIdsByRole,
+): string[] => Array.from(new Set([
+    ...assignedUserIdsByRole.OFFICIAL,
+    ...assignedUserIdsByRole.ASSISTANT_HOST,
+]));
 
 export const buildOrganizationStaffAssignmentIds = (
     organization?: Organization | null,

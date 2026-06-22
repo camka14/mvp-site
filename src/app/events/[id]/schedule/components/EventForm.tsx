@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import TournamentFields from '@/app/discover/components/TournamentFields';
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, Invite, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Select as MantineSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
@@ -103,7 +103,6 @@ import {
     applyDivisionAgeCutoff,
 } from './eventForm/divisionForm';
 import {
-    normalizeDirtyTrackedIdList,
     normalizeDirtyTrackedPendingStaffInvites,
 } from './eventForm/dirtyDraft';
 import {
@@ -167,10 +166,16 @@ import {
 } from './eventForm/slotConflictHelpers';
 import {
     type AssignedStaffCard,
+    buildAssignedStaffUserIds,
     buildAssignedHostCards,
     buildAssignedOfficialCards,
+    buildAssignedUserIdsByRole,
+    buildAssignedUserIdSetsByRole,
+    buildCurrentEventStaffInvites,
+    buildExistingAssignedStaffUserIds,
     buildOrganizationStaffAssignmentIds,
     buildOrganizationStaffRosterEntries,
+    buildStaffInviteByUserId,
     buildStaffInviteSubmissionPayload,
     createEmptyStaffInvite,
     filterOrganizationStaffRosterEntries,
@@ -1409,61 +1414,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return map;
     }, [assistantHostUsers]);
     const currentEventStaffInvites = useMemo(
-        () => (
-            Array.isArray(activeEditingEvent?.staffInvites)
-                ? activeEditingEvent.staffInvites
-                : Array.isArray(incomingEvent?.staffInvites)
-                    ? incomingEvent.staffInvites
-                    : []
-        )
-            .map((invite) => {
-                const inviteId = normalizeEntityId(
-                    (invite as { $id?: string | null; id?: string | null } | null)?.$id
-                    ?? (invite as { $id?: string | null; id?: string | null } | null)?.id,
-                );
-                if (!inviteId) {
-                    return null;
-                }
-                return {
-                    ...(invite as Invite),
-                    $id: inviteId,
-                };
-            })
-            .filter((invite): invite is Invite => {
-                if (!invite) {
-                    return false;
-                }
-                return (
-                    invite.type === 'STAFF'
-                    && invite.eventId === (activeEditingEvent?.$id ?? incomingEvent?.$id)
-                );
-            }),
+        () => buildCurrentEventStaffInvites({
+            activeStaffInvites: activeEditingEvent?.staffInvites,
+            incomingStaffInvites: incomingEvent?.staffInvites,
+            eventId: activeEditingEvent?.$id ?? incomingEvent?.$id,
+        }),
         [activeEditingEvent?.$id, activeEditingEvent?.staffInvites, incomingEvent?.$id, incomingEvent?.staffInvites],
     );
-    const currentEventStaffInviteByUserId = useMemo(() => {
-        const map = new Map<string, Invite>();
-        currentEventStaffInvites.forEach((invite) => {
-            const normalizedUserId = normalizeEntityId(invite.userId);
-            if (normalizedUserId) {
-                map.set(normalizedUserId, invite);
-            }
-        });
-        return map;
-    }, [currentEventStaffInvites]);
+    const currentEventStaffInviteByUserId = useMemo(
+        () => buildStaffInviteByUserId(currentEventStaffInvites),
+        [currentEventStaffInvites],
+    );
     const existingAssignedStaffUserIds = useMemo(() => {
         const source = activeEditingEvent ?? incomingEvent;
-        const sourceOfficialIds = getEventOfficialUserIds(source?.eventOfficials);
-        const assignedIds = [
-            ...(sourceOfficialIds.length
-                ? sourceOfficialIds
-                : (Array.isArray(source?.officialIds) ? source.officialIds : [])),
-            ...(Array.isArray(source?.assistantHostIds) ? source.assistantHostIds : []),
-        ];
-        return new Set(
-            assignedIds
-                .map((id) => normalizeEntityId(id))
-                .filter((id): id is string => Boolean(id)),
-        );
+        return buildExistingAssignedStaffUserIds({
+            preferredOfficialIds: getEventOfficialUserIds(source?.eventOfficials),
+            fallbackOfficialIds: source?.officialIds,
+            assistantHostIds: source?.assistantHostIds,
+        });
     }, [activeEditingEvent, incomingEvent]);
     const organizationStaffRosterEntries = useMemo<StaffRosterEntry[]>(
         () => buildOrganizationStaffRosterEntries(resolvedOrganization),
@@ -2342,18 +2310,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [setEventData]);
 
-    const assignedUserIdsByRole = useMemo(() => ({
-        OFFICIAL: normalizeDirtyTrackedIdList(getEventOfficialUserIds(eventData.eventOfficials)),
-        ASSISTANT_HOST: normalizeDirtyTrackedIdList([...(eventData.hostId ? [eventData.hostId] : []), ...assistantHostValue]),
-    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.eventOfficials, eventData.hostId]);
+    const assignedUserIdsByRole = useMemo(
+        () => buildAssignedUserIdsByRole({
+            officialIds: getEventOfficialUserIds(eventData.eventOfficials),
+            hostId: eventData.hostId,
+            assistantHostIds: assistantHostValue,
+        }),
+        [assistantHostValue, eventData.eventOfficials, eventData.hostId],
+    );
 
-    const assignedUserIdSetByRole = useMemo(() => ({
-        OFFICIAL: new Set(assignedUserIdsByRole.OFFICIAL),
-        ASSISTANT_HOST: new Set(assignedUserIdsByRole.ASSISTANT_HOST),
-    }) satisfies Record<StaffAssignmentRole, Set<string>>, [assignedUserIdsByRole]);
+    const assignedUserIdSetByRole = useMemo(
+        () => buildAssignedUserIdSetsByRole(assignedUserIdsByRole),
+        [assignedUserIdsByRole],
+    );
 
     const assignedStaffUserIds = useMemo(
-        () => Array.from(new Set([...assignedUserIdsByRole.OFFICIAL, ...assignedUserIdsByRole.ASSISTANT_HOST])),
+        () => buildAssignedStaffUserIds(assignedUserIdsByRole),
         [assignedUserIdsByRole],
     );
     const requiredOfficialSlotsPerMatch = useMemo(
