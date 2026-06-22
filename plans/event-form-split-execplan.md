@@ -56,6 +56,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T19:12Z) Extracted section navigation and collapse state into `useEventFormSectionNavigation`.
   - [x] (2026-06-22T19:16Z) Extracted template document loading and row normalization into `useTemplateDocuments`.
   - [x] (2026-06-22T19:21Z) Extracted rental booking resource loading and rental-field merging into `useRentalBookingResources`.
+  - [x] (2026-06-22T19:26Z) Extracted organization field hydration and loading state into `useOrganizationFieldHydration`.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -198,6 +199,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract rental booking resource loading while keeping selection reconciliation in `EventForm`.
   Rationale: The booking API fetch and rental field merge are a cohesive async state boundary. The downstream rules that reconcile selected resources, local field counts, and time slots still coordinate broader form state and should remain in the parent for now.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract organization field hydration while keeping field sanitization local.
+  Rationale: Fetching organization fields and tracking `fieldsLoading` is a cohesive async boundary. The field sanitizer is still shared by many local default/build paths, so the hook accepts it as a parameter until helper extraction can move that logic safely.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -378,6 +382,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted section navigation and collapse state into `useEventFormSectionNavigation`.
 - 2026-06-22 / Codex: Extracted template document loading and row normalization into `useTemplateDocuments`.
 - 2026-06-22 / Codex: Extracted rental booking resource loading and rental-field merging into `useRentalBookingResources`.
+- 2026-06-22 / Codex: Extracted organization field hydration and loading state into `useOrganizationFieldHydration`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

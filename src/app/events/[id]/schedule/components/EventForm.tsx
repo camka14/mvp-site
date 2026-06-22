@@ -16,8 +16,6 @@ import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
-import { organizationService } from '@/lib/organizationService';
-import { fieldService } from '@/lib/fieldService';
 import {
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
@@ -115,7 +113,6 @@ import {
     isSelectableOrganizationResource,
     mergeFieldsById,
     mergeOrganizationFieldsIntoPool,
-    removeOrganizationFieldsFromPool,
     toFieldIdList,
     withOrganizationFieldOwner,
 } from './eventForm/resourceGroups';
@@ -171,6 +168,7 @@ import { DivisionModeControls } from './eventForm/sections/DivisionModeControls'
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
+import { useOrganizationFieldHydration } from './eventForm/hooks/useOrganizationFieldHydration';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useRentalBookingResources } from './eventForm/hooks/useRentalBookingResources';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -4482,7 +4480,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [officialCardVisibleCount, setOfficialCardVisibleCount] = useState(5);
     const [hostCardVisibleCount, setHostCardVisibleCount] = useState(5);
 
-    const [fieldsLoading, setFieldsLoading] = useState(false);
     const organizationHostedEventId = (
         resolvedOrganization?.$id
         || eventData.organizationId
@@ -4502,6 +4499,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
         resolvedOrganization?.defaultEventTaxHandling,
     );
+    const { fieldsLoading } = useOrganizationFieldHydration({
+        hasRestrictedImmutableFields,
+        isEditMode,
+        organizationFieldSignature: resolvedOrganizationFieldSignature,
+        organizationId: organizationHostedEventId,
+        resolvedOrganizationFields: Array.isArray(resolvedOrganizationFields)
+            ? (resolvedOrganizationFields as Field[])
+            : null,
+        resolvedOrganizationId: resolvedOrganization?.$id,
+        sanitizeFields: sanitizeFieldsForForm,
+        setFields,
+        setHydratedOrganization,
+    });
 
     const {
         options: rentalResourceOptions,
@@ -8175,99 +8185,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventSupportsScheduleSlots,
         rentalLockedSlotsForDraft,
         setLeagueSlots,
-    ]);
-
-    // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
-    useEffect(() => {
-        let cancelled = false;
-
-        if (isEditMode) {
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        if (hasRestrictedImmutableFields) {
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        if (!organizationHostedEventId) {
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        const hydrateOrganizationFields = async () => {
-            const seededFields = Array.isArray(resolvedOrganization?.fields)
-                ? sortFieldsByCreatedAt(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
-                : [];
-            if (seededFields.length) {
-                setFields(
-                    (prev) => mergeOrganizationFieldsIntoPool(prev, seededFields, organizationHostedEventId),
-                    { shouldDirty: false, shouldValidate: false },
-                );
-                setFieldsLoading(false);
-                return;
-            }
-
-            try {
-                setFieldsLoading(true);
-                const fetchedOrganization = await (
-                    organizationService.getOrganizationByIdForEventForm
-                        ? organizationService.getOrganizationByIdForEventForm(organizationHostedEventId)
-                        : organizationService.getOrganizationById(organizationHostedEventId, true)
-                );
-                if (cancelled) return;
-                if (fetchedOrganization) {
-                    setHydratedOrganization(fetchedOrganization);
-                }
-
-                let resolvedFields = Array.isArray(fetchedOrganization?.fields)
-                    ? sortFieldsByCreatedAt(sanitizeFieldsForForm(fetchedOrganization.fields as Field[]))
-                    : seededFields;
-                if (!resolvedFields.length) {
-                    const fallbackOrganizationId = fetchedOrganization?.$id
-                        ?? resolvedOrganization?.$id
-                        ?? organizationHostedEventId;
-                    if (fallbackOrganizationId) {
-                        const fetchedFields = await fieldService.listFields({ organizationId: fallbackOrganizationId });
-                        if (cancelled) return;
-                        resolvedFields = sortFieldsByCreatedAt(sanitizeFieldsForForm(fetchedFields));
-                    }
-                }
-                if (resolvedFields.length) {
-                    setFields(
-                        (prev) => mergeOrganizationFieldsIntoPool(prev, resolvedFields, organizationHostedEventId),
-                        { shouldDirty: false, shouldValidate: false },
-                    );
-                } else {
-                    setFields(
-                        (prev) => removeOrganizationFieldsFromPool(prev, organizationHostedEventId),
-                        { shouldDirty: false, shouldValidate: false },
-                    );
-                }
-            } catch (error) {
-                console.warn('Failed to hydrate organization fields for event form:', error);
-            } finally {
-                if (!cancelled) {
-                    setFieldsLoading(false);
-                }
-            }
-        };
-
-        hydrateOrganizationFields();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        resolvedOrganizationFieldSignature,
-        hasRestrictedImmutableFields,
-        isEditMode,
-        organizationHostedEventId,
-        setFields,
     ]);
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
