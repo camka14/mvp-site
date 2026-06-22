@@ -4,7 +4,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
-import TournamentFields from '@/app/discover/components/TournamentFields';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
@@ -26,7 +25,7 @@ import {
     parseLocalDateTime,
 } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
-import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
+import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import {
     resolveOrganizationEventFieldIds,
 } from './eventFieldSelection';
@@ -305,8 +304,8 @@ import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSectio
 import { SingleDivisionCapacityControls } from './eventForm/sections/SingleDivisionCapacityControls';
 import { SingleDivisionEditorNotice } from './eventForm/sections/SingleDivisionEditorNotice';
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
-import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
+import { SingleDivisionScheduleControls } from './eventForm/sections/SingleDivisionScheduleControls';
 import { StaffAssignedCardsGrid } from './eventForm/sections/StaffAssignedCardsGrid';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
@@ -6352,79 +6351,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     }));
                                                 }}
                                             />
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'LEAGUE'}
-                                                className="md:col-span-12"
-                                            >
-                                                <LeagueFields
-                                                    leagueData={leagueData}
-                                                    sport={eventData.sportConfig ?? undefined}
-                                                    participantCount={eventData.maxParticipants ?? undefined}
-                                                    onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
-                                                    slots={[]}
-                                                    onAddSlot={() => undefined}
-                                                    onUpdateSlot={() => undefined}
-                                                    onRemoveSlot={() => undefined}
-                                                    fields={[]}
-                                                    fieldsLoading={false}
-                                                    showPlayoffSettings={false}
-                                                    showTimeslots={false}
-                                                    unstyled
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}
-                                                className="md:col-span-12"
-                                            >
-                                                <TournamentFields
-                                                    title="Playoff Configuration"
-                                                    tournamentData={playoffData}
-                                                    setTournamentData={setPlayoffData}
-                                                    sport={eventData.sportConfig ?? undefined}
-                                                    unstyled
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <SingleDivisionPoolControls
-                                                visible={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                defaults={singleDivisionPoolPlayDefaults}
+                                            <SingleDivisionScheduleControls
+                                                singleDivision={Boolean(eventData.singleDivision)}
+                                                eventType={eventData.eventType}
+                                                includePlayoffs={Boolean(leagueData.includePlayoffs)}
+                                                splitLeaguePlayoffDivisions={eventData.splitLeaguePlayoffDivisions}
+                                                leagueData={leagueData}
+                                                playoffData={playoffData}
+                                                tournamentData={tournamentData}
+                                                sport={eventData.sportConfig ?? undefined}
+                                                participantCount={eventData.maxParticipants ?? undefined}
+                                                poolDefaults={singleDivisionPoolPlayDefaults}
                                                 maxStandardNumber={MAX_STANDARD_NUMBER}
                                                 numberInputStyles={alignedDetailsFieldStyles}
                                                 disabled={isImmutableField('divisions')}
-                                                onChange={updateSingleDivisionTournamentPoolDefaults}
+                                                onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
+                                                onPlayoffDataChange={setPlayoffData}
+                                                onTournamentDataChange={setTournamentData}
+                                                onPoolDefaultsChange={updateSingleDivisionTournamentPoolDefaults}
                                             />
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-12"
-                                            >
-                                                <LeagueFields
-                                                    configurationTitle="Pool Configuration"
-                                                    leagueData={leagueData}
-                                                    sport={eventData.sportConfig ?? undefined}
-                                                    participantCount={eventData.maxParticipants ?? undefined}
-                                                    onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
-                                                    slots={[]}
-                                                    onAddSlot={() => undefined}
-                                                    onUpdateSlot={() => undefined}
-                                                    onRemoveSlot={() => undefined}
-                                                    fields={[]}
-                                                    fieldsLoading={false}
-                                                    showPlayoffSettings={false}
-                                                    showTimeslots={false}
-                                                    unstyled
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT'}
-                                                className="md:col-span-12"
-                                            >
-                                                <TournamentFields
-                                                    title="Tournament Configuration"
-                                                    tournamentData={tournamentData}
-                                                    setTournamentData={setTournamentData}
-                                                    sport={eventData.sportConfig ?? undefined}
-                                                    unstyled
-                                                />
-                                            </AnimatedLayoutSection>
                                             <SingleDivisionPricingControls
                                                 visible={eventData.singleDivision && !eventData.allowPaymentPlans}
                                                 control={control}
