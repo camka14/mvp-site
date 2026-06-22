@@ -146,6 +146,7 @@ import { mapEventToFormState } from './eventForm/eventStateMapping';
 import { applyImmutableEventDefaults } from './eventForm/immutableDefaults';
 import {
     buildDefaultSlotForms,
+    createLeagueSlotForm,
     normalizeFieldIds,
     normalizeSlotFieldIds,
     normalizeWeekdays,
@@ -223,7 +224,6 @@ import {
 } from './eventForm/paymentPlanHelpers';
 import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpers';
 import {
-    formatEventDateTimeForForm,
     parseDateValue,
 } from './eventForm/dateHelpers';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
@@ -344,6 +344,7 @@ const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
+const createSlotForm = createLeagueSlotForm;
 const maybeExtendVisibleCountOnScroll = (
     event: React.UIEvent<HTMLDivElement>,
     total: number,
@@ -386,57 +387,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const previousEditableScheduleModeRef = useRef<boolean | null>(null);
     const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
-    // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
-    const createSlotForm = useCallback((
-        slot?: Partial<TimeSlot>,
-        fallbackDivisions: string[] = [],
-        fallbackEventStart?: string | Date | null,
-        fallbackEventEnd?: string | Date | null,
-        fallbackTimeZone?: string | null,
-    ): LeagueSlotForm => {
-        const slotTimeZone = normalizeTimeZone(slot?.timeZone, fallbackTimeZone || getSystemTimeZone());
-        const normalizedDays = normalizeWeekdays({
-            dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
-            daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
-        });
-        const normalizedDivisions = normalizeDivisionKeys(slot?.divisions);
-        const normalizedFieldIds = normalizeSlotFieldIds({
-            scheduledFieldId: slot?.scheduledFieldId,
-            scheduledFieldIds: slot?.scheduledFieldIds,
-        });
-        const isRepeating = slot?.repeating ?? true;
-        const normalizedStartDate = isRepeating
-            ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null, slotTimeZone)
-            : formatEventDateTimeForForm(slot?.startDate ?? null, slotTimeZone) || undefined;
-        const normalizedEndDate = isRepeating
-            ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null, slotTimeZone)
-            : formatEventDateTimeForForm(slot?.endDate ?? null, slotTimeZone) || undefined;
-        return {
-            key: slot?.$id ?? createClientId(),
-            $id: slot?.$id,
-            timeZone: slotTimeZone,
-            scheduledFieldId: normalizedFieldIds[0],
-            scheduledFieldIds: normalizedFieldIds,
-            dayOfWeek: normalizedDays[0],
-            daysOfWeek: normalizedDays,
-            divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
-            startDate: normalizedStartDate,
-            endDate: normalizedEndDate,
-            startTimeMinutes: slot?.startTimeMinutes,
-            endTimeMinutes: slot?.endTimeMinutes,
-            price: typeof slot?.price === 'number' && Number.isFinite(slot.price) ? slot.price : undefined,
-            sourceType: typeof slot?.sourceType === 'string' && slot.sourceType.trim().length > 0 ? slot.sourceType : undefined,
-            rentalBookingId: typeof slot?.rentalBookingId === 'string' && slot.rentalBookingId.trim().length > 0 ? slot.rentalBookingId : undefined,
-            rentalBookingItemId: typeof slot?.rentalBookingItemId === 'string' && slot.rentalBookingItemId.trim().length > 0 ? slot.rentalBookingItemId : undefined,
-            rentalLocked: Boolean(slot?.rentalLocked),
-            requiredTemplateIds: normalizeFieldIds(slot?.requiredTemplateIds),
-            hostRequiredTemplateIds: normalizeFieldIds(slot?.hostRequiredTemplateIds),
-            repeating: isRepeating,
-            conflicts: [],
-            checking: false,
-            error: undefined,
-        };
-    }, []);
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);

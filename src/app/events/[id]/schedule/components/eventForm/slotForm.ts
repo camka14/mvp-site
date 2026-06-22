@@ -1,9 +1,16 @@
 import type { Event, Field, TimeSlot } from '@/types';
 import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
+import { createClientId } from '@/lib/clientId';
+import {
+    getSystemTimeZone,
+    normalizeTimeZone,
+} from '@/lib/dateUtils';
 
 import { mergeSlotPayloadsForForm } from '../slotPayloadMerge';
+import { formatEventDateTimeForForm } from './dateHelpers';
 import { normalizeDivisionKeys } from './divisionForm';
 import { supportsScheduleSlotsForEvent } from './eventRules';
+import { normalizeSlotBoundaryOverrideForForm } from './slotConflictHelpers';
 import { stringSetsEqual } from './shared';
 
 export const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
@@ -42,6 +49,57 @@ export const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; schedul
     return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0
         ? [slot.scheduledFieldId]
         : [];
+};
+
+export const createLeagueSlotForm = (
+    slot?: Partial<TimeSlot>,
+    fallbackDivisions: string[] = [],
+    fallbackEventStart?: string | Date | null,
+    fallbackEventEnd?: string | Date | null,
+    fallbackTimeZone?: string | null,
+): LeagueSlotForm => {
+    const slotTimeZone = normalizeTimeZone(slot?.timeZone, fallbackTimeZone || getSystemTimeZone());
+    const normalizedDays = normalizeWeekdays({
+        dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
+        daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
+    });
+    const normalizedDivisions = normalizeDivisionKeys(slot?.divisions);
+    const normalizedFieldIds = normalizeSlotFieldIds({
+        scheduledFieldId: slot?.scheduledFieldId,
+        scheduledFieldIds: slot?.scheduledFieldIds,
+    });
+    const isRepeating = slot?.repeating ?? true;
+    const normalizedStartDate = isRepeating
+        ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null, slotTimeZone)
+        : formatEventDateTimeForForm(slot?.startDate ?? null, slotTimeZone) || undefined;
+    const normalizedEndDate = isRepeating
+        ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null, slotTimeZone)
+        : formatEventDateTimeForForm(slot?.endDate ?? null, slotTimeZone) || undefined;
+    return {
+        key: slot?.$id ?? createClientId(),
+        $id: slot?.$id,
+        timeZone: slotTimeZone,
+        scheduledFieldId: normalizedFieldIds[0],
+        scheduledFieldIds: normalizedFieldIds,
+        dayOfWeek: normalizedDays[0],
+        daysOfWeek: normalizedDays,
+        divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
+        startDate: normalizedStartDate,
+        endDate: normalizedEndDate,
+        startTimeMinutes: slot?.startTimeMinutes,
+        endTimeMinutes: slot?.endTimeMinutes,
+        price: typeof slot?.price === 'number' && Number.isFinite(slot.price) ? slot.price : undefined,
+        sourceType: typeof slot?.sourceType === 'string' && slot.sourceType.trim().length > 0 ? slot.sourceType : undefined,
+        rentalBookingId: typeof slot?.rentalBookingId === 'string' && slot.rentalBookingId.trim().length > 0 ? slot.rentalBookingId : undefined,
+        rentalBookingItemId: typeof slot?.rentalBookingItemId === 'string' && slot.rentalBookingItemId.trim().length > 0 ? slot.rentalBookingItemId : undefined,
+        rentalLocked: Boolean(slot?.rentalLocked),
+        requiredTemplateIds: normalizeFieldIds(slot?.requiredTemplateIds),
+        hostRequiredTemplateIds: normalizeFieldIds(slot?.hostRequiredTemplateIds),
+        repeating: isRepeating,
+        conflicts: [],
+        checking: false,
+        error: undefined,
+    };
 };
 
 export const timeSlotsEqual = (left: TimeSlot[], right: TimeSlot[]): boolean => {
