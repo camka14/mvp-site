@@ -330,6 +330,18 @@ export const deriveSingleDivisionPoolPlayDefaults = ({
     };
 };
 
+export const getSingleDivisionEditorNotice = (
+    eventType?: Event['eventType'] | null,
+): string => {
+    if (eventType === 'LEAGUE') {
+        return 'Division price, capacity, payment plan, league schedule settings, and playoff settings apply to the single combined schedule.';
+    }
+    if (eventType === 'TOURNAMENT') {
+        return 'Division price, capacity, payment plan, and pool-play settings apply to every selected division while single division is enabled.';
+    }
+    return 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.';
+};
+
 export type DivisionDetailForm = {
     id: string;
     key: string;

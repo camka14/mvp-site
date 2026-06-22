@@ -557,3 +557,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted pending staff invite role removal into `eventForm/staffInvites.ts`.
 - 2026-06-22 / Codex: Extracted the assigned staff cards grid into `eventForm/sections/StaffAssignedCardsGrid.tsx`.
 - 2026-06-22 / Codex: Extracted the division editor heading and type selector into `eventForm/sections/DivisionEditorHeader.tsx`.
+- 2026-06-22 / Codex: Extracted the single-division editor notice into `eventForm/sections/SingleDivisionEditorNotice.tsx`.

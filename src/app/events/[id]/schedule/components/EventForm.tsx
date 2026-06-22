@@ -302,6 +302,7 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
+import { SingleDivisionEditorNotice } from './eventForm/sections/SingleDivisionEditorNotice';
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
@@ -6711,15 +6712,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         onTournamentDataChange={setDivisionEditorPlayoffConfig}
                                     />
                                 </motion.div>
-                                <AnimatedLayoutSection in={eventData.singleDivision}>
-                                    <Text size="xs" c="dimmed">
-                                        {eventData.eventType === 'LEAGUE'
-                                            ? 'Division price, capacity, payment plan, league schedule settings, and playoff settings apply to the single combined schedule.'
-                                            : eventData.eventType === 'TOURNAMENT'
-                                                ? 'Division price, capacity, payment plan, and pool-play settings apply to every selected division while single division is enabled.'
-                                                : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
-                                    </Text>
-                                </AnimatedLayoutSection>
+                                <SingleDivisionEditorNotice
+                                    visible={eventData.singleDivision}
+                                    eventType={eventData.eventType}
+                                />
                                 </AnimatedSection>
                                 <DivisionEditorPlayoffDivisionControls
                                     visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}

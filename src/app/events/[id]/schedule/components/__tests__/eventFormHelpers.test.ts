@@ -11,6 +11,7 @@ import {
   deriveScheduleParticipantCount,
   deriveSingleDivisionPoolPlayDefaults,
   divisionFieldIdsEqual,
+  getSingleDivisionEditorNotice,
   normalizeDivisionFieldIds,
   normalizeDivisionKeys,
   normalizePlayoffDivisionParticipantCount,
@@ -962,6 +963,12 @@ describe('event form division helpers', () => {
       poolCount: 3,
       poolTeamCount: undefined,
     });
+  });
+
+  it('returns single-division editor notice copy by event type', () => {
+    expect(getSingleDivisionEditorNotice('LEAGUE')).toContain('league schedule settings');
+    expect(getSingleDivisionEditorNotice('TOURNAMENT')).toContain('pool-play settings');
+    expect(getSingleDivisionEditorNotice('EVENT')).toContain('mirror event-level values');
   });
 
   it('normalizes composite division ids and participant counts', () => {
