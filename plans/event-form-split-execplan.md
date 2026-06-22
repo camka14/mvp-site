@@ -16,6 +16,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T06:16Z) Extracted the first pure-helper set without changing render behavior: shared normalizers/equality, rental resource mapping and locked slots, resource grouping and field pool helpers, staff invite helpers, official normalization, dirty tracking, slot normalization, and division helpers.
 - [x] (2026-06-22T06:45Z) Ran the schema/default dependency pass and confirmed those helpers should remain inline for now because they are still coupled to form-local validation and normalization.
 - [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
+  - [x] (2026-06-22T19:40Z) Extracted event-type rule predicates and coordinate helpers into shared pure modules as a prerequisite to schema extraction.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -209,6 +210,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Defer larger state hooks until schema/default extraction is narrowed.
   Rationale: Remaining state clusters such as division editor state, dirty tracking, and draft building are still entangled with schema/default helpers. Extracting them now would either create very large prop surfaces or move validation/default behavior at the same time.
   Date/Author: 2026-06-22 / Codex
+- Decision: Extract shared event-rule and location helpers before moving the schema.
+  Rationale: The schema and default builder both depend on event-type predicates and coordinate checks, and rendering also uses the same helpers. Moving those first reduces the next schema extraction diff without changing validation behavior.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
@@ -390,6 +394,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted rental booking resource loading and rental-field merging into `useRentalBookingResources`.
 - 2026-06-22 / Codex: Extracted organization field hydration and loading state into `useOrganizationFieldHydration`.
 - 2026-06-22 / Codex: Completed the stable hook extraction pass and deferred larger form-state hooks until schema/default helpers can be separated with a narrower behavior surface.
+- 2026-06-22 / Codex: Extracted shared event-rule predicates and coordinate helpers as a prerequisite to moving form schema/default logic.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

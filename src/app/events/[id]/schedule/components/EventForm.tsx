@@ -41,6 +41,19 @@ import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './externalRentalField';
+import {
+    hasParentEventRef,
+    isTournamentPoolPlayFormEnabled,
+    supportsFieldCountForEvent,
+    supportsOrganizationFieldSelectionForEvent,
+    supportsScheduleSlotsForEvent,
+} from './eventForm/eventRules';
+import {
+    coordinatesAreSet,
+    formatLatLngLabel,
+    getLatitudeFromCoordinates,
+    getLongitudeFromCoordinates,
+} from './eventForm/locationHelpers';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import {
@@ -301,27 +314,6 @@ const parseDateValue = (value?: string | null): Date | null => {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
-
-const supportsScheduleSlots = (eventType: EventType): boolean =>
-    eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'WEEKLY_EVENT';
-
-const hasParentEventRef = (value?: string | null): boolean =>
-    typeof value === 'string' && value.trim().length > 0;
-
-const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: string | null): boolean => (
-    supportsScheduleSlots(eventType)
-    && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
-);
-
-const supportsFieldCountForEvent = (eventType: EventType): boolean =>
-    eventType === 'EVENT' || eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
-
-const supportsOrganizationFieldSelectionForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
-    eventType === 'EVENT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
-
-const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePlayoffs: boolean): boolean => (
-    eventType === 'TOURNAMENT' && includePlayoffs
-);
 
 const derivePoolTeamCount = (
     maxTeams: unknown,
@@ -1365,41 +1357,6 @@ const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig |
             && entry !== undefined
         ));
     return entries.length > 0 ? Object.fromEntries(entries) as MatchRulesConfig : null;
-};
-
-const formatLatLngLabel = (lat?: number, lng?: number): string => {
-    if (typeof lat !== 'number' || typeof lng !== 'number') {
-        return '';
-    }
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return '';
-    }
-    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-};
-
-const getLongitudeFromCoordinates = (coordinates?: [number, number]): number | undefined => {
-    if (!Array.isArray(coordinates)) {
-        return undefined;
-    }
-    const [lng] = coordinates;
-    return typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined;
-};
-
-const getLatitudeFromCoordinates = (coordinates?: [number, number]): number | undefined => {
-    if (!Array.isArray(coordinates)) {
-        return undefined;
-    }
-    const lat = coordinates[1];
-    return typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined;
-};
-
-const coordinatesAreSet = (coordinates?: [number, number]): boolean => {
-    const lat = getLatitudeFromCoordinates(coordinates);
-    const lng = getLongitudeFromCoordinates(coordinates);
-    if (typeof lat !== 'number' || typeof lng !== 'number') {
-        return false;
-    }
-    return !(lat === 0 && lng === 0);
 };
 
 const toUserLabel = (user: Partial<UserData> | undefined, fallbackId: string): string => {
