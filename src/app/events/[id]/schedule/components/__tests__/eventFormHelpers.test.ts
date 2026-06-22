@@ -88,6 +88,11 @@ import {
   normalizeWeekdays,
   timeSlotsEqual,
 } from '../eventForm/slotForm';
+import {
+  buildSlotConflictCheckKey,
+  buildSlotConflictContext,
+  buildSlotConflictPayload,
+} from '../eventForm/slotConflictHelpers';
 
 const makeField = (overrides: Partial<Field> & { $id: string }): Field => ({
   $id: overrides.$id,
@@ -609,6 +614,73 @@ describe('event form slot helpers', () => {
 
     expect(timeSlotsEqual([baseSlot], [sameSlot])).toBe(true);
     expect(timeSlotsEqual([baseSlot], [changedSlot])).toBe(false);
+  });
+
+  it('builds normalized slot conflict payloads and context values', () => {
+    const payload = buildSlotConflictPayload({
+      eventId: 'event_1',
+      eventType: 'LEAGUE',
+      parentEvent: null,
+      eventStart: '2026-06-24T09:00',
+      eventEnd: null,
+      slots: [
+        {
+          key: 'slot_1',
+          $id: 'slot_db_1',
+          scheduledFieldIds: [' field_1 ', 'field_2', 'field_1'],
+          daysOfWeek: [4, 2, 2],
+          divisions: [' Open ', 'open', 'null'],
+          startDate: '2026-06-24T15:00',
+          endDate: '2026-06-24T17:00',
+          startTimeMinutes: 900,
+          endTimeMinutes: 1020,
+          repeating: false,
+          conflicts: [],
+          checking: false,
+        },
+      ] as any,
+    });
+
+    expect(payload).toMatchObject({
+      eventId: 'event_1',
+      eventType: 'LEAGUE',
+      parentEvent: null,
+      eventStart: '2026-06-24T09:00',
+      eventEnd: undefined,
+    });
+    expect(payload.slots[0]).toMatchObject({
+      key: 'slot_1',
+      $id: 'slot_db_1',
+      scheduledFieldId: 'field_1',
+      scheduledFieldIds: ['field_1', 'field_2'],
+      dayOfWeek: 2,
+      daysOfWeek: [2, 4],
+      divisions: ['open'],
+      startDate: '2026-06-24T15:00:00',
+      endDate: '2026-06-24T17:00:00',
+      startTimeMinutes: 900,
+      endTimeMinutes: 1020,
+      repeating: false,
+    });
+    expect(JSON.parse(buildSlotConflictCheckKey({
+      eventId: 'event_1',
+      eventType: 'LEAGUE',
+      slots: [],
+    }))).toEqual({
+      eventId: 'event_1',
+      eventType: 'LEAGUE',
+      parentEvent: null,
+      slots: [],
+    });
+    expect(buildSlotConflictContext({
+      eventId: null,
+      eventStart: '2026-06-24T09:00',
+      eventEnd: null,
+    })).toEqual({
+      eventId: '',
+      eventStart: '2026-06-24T09:00',
+      eventEnd: undefined,
+    });
   });
 });
 

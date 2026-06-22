@@ -3,6 +3,7 @@ import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
 import { formatEventDateTimeForForm } from './dateHelpers';
+import { normalizeDivisionKeys } from './divisionForm';
 import { hasParentEventRef } from './eventRules';
 import { normalizeSlotFieldIds, normalizeWeekdays } from './slotForm';
 import { slotDateTimeRangesOverlap, slotsOverlap } from './slotValidation';
@@ -44,6 +45,15 @@ export type SlotConflictContext = {
     eventId: string;
     eventStart?: string;
     eventEnd?: string;
+};
+
+type BuildSlotConflictPayloadOptions = {
+    eventId?: string | null;
+    eventType: EventType;
+    parentEvent?: string | null;
+    eventStart?: string | null;
+    eventEnd?: string | null;
+    slots: LeagueSlotForm[];
 };
 
 type ComparableConflictSlot = {
@@ -152,6 +162,55 @@ const parseExplicitSlotRange = (
     }
     return { start, end };
 };
+
+export const buildSlotConflictSnapshot = (slot: LeagueSlotForm): SlotConflictSnapshot => {
+    const normalizedDays = normalizeWeekdays(slot);
+    const normalizedFieldIds = normalizeSlotFieldIds(slot);
+    return {
+        key: slot.key,
+        $id: slot.$id,
+        scheduledFieldId: normalizedFieldIds[0],
+        scheduledFieldIds: normalizedFieldIds,
+        dayOfWeek: normalizedDays[0],
+        daysOfWeek: normalizedDays,
+        divisions: normalizeDivisionKeys(slot.divisions),
+        startDate: formatLocalDateTime(slot.startDate ?? null) || undefined,
+        endDate: formatLocalDateTime(slot.endDate ?? null) || undefined,
+        startTimeMinutes: typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : undefined,
+        endTimeMinutes: typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : undefined,
+        repeating: slot.repeating !== false,
+    };
+};
+
+export const buildSlotConflictPayload = ({
+    eventId,
+    eventType,
+    parentEvent,
+    eventStart,
+    eventEnd,
+    slots,
+}: BuildSlotConflictPayloadOptions): SlotConflictPayload => ({
+    eventId: eventId ?? '',
+    eventType,
+    parentEvent: parentEvent ?? null,
+    eventStart: eventStart ?? undefined,
+    eventEnd: eventEnd ?? undefined,
+    slots: slots.map(buildSlotConflictSnapshot),
+});
+
+export const buildSlotConflictCheckKey = (options: BuildSlotConflictPayloadOptions): string => (
+    JSON.stringify(buildSlotConflictPayload(options))
+);
+
+export const buildSlotConflictContext = ({
+    eventId,
+    eventStart,
+    eventEnd,
+}: Pick<BuildSlotConflictPayloadOptions, 'eventId' | 'eventStart' | 'eventEnd'>): SlotConflictContext => ({
+    eventId: eventId ?? '',
+    eventStart: eventStart ?? undefined,
+    eventEnd: eventEnd ?? undefined,
+});
 
 export const normalizeSlotBoundaryOverrideForForm = (
     slotValue: string | Date | null | undefined,

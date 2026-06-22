@@ -185,6 +185,8 @@ import {
 import {
     buildAutoResolvedSlotUpdate,
     buildExternalSlotConflicts,
+    buildSlotConflictCheckKey,
+    buildSlotConflictContext,
     CONFLICT_LOOKUP_END,
     CONFLICT_LOOKUP_START,
     normalizeSlotBoundaryOverrideForForm,
@@ -192,7 +194,6 @@ import {
     snapshotToSlotForm,
     type SlotConflictContext,
     type SlotConflictPayload,
-    type SlotConflictSnapshot,
 } from './eventForm/slotConflictHelpers';
 import {
     buildLeagueScheduleError,
@@ -1648,44 +1649,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => slotDivisionLookup.options,
         [slotDivisionLookup],
     );
-    const slotConflictCheckKey = useMemo(() => JSON.stringify({
-        eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
+    const slotConflictEventId = activeEditingEvent?.$id ?? eventData.$id ?? '';
+    const slotConflictCheckKey = useMemo(() => buildSlotConflictCheckKey({
+        eventId: slotConflictEventId,
         eventType: eventData.eventType,
-        parentEvent: eventData.parentEvent ?? null,
-        eventStart: eventData.start ?? undefined,
-        eventEnd: eventData.end ?? undefined,
-        slots: leagueSlots.map((slot) => {
-            const normalizedDays = normalizeWeekdays(slot);
-            const normalizedFieldIds = normalizeSlotFieldIds(slot);
-            return {
-                key: slot.key,
-                $id: slot.$id,
-                scheduledFieldId: normalizedFieldIds[0],
-                scheduledFieldIds: normalizedFieldIds,
-                dayOfWeek: normalizedDays[0],
-                daysOfWeek: normalizedDays,
-                divisions: normalizeDivisionKeys(slot.divisions),
-                startDate: formatLocalDateTime(slot.startDate ?? null) || undefined,
-                endDate: formatLocalDateTime(slot.endDate ?? null) || undefined,
-                startTimeMinutes: typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : undefined,
-                endTimeMinutes: typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : undefined,
-                repeating: slot.repeating !== false,
-            } satisfies SlotConflictSnapshot;
-        }),
-    } satisfies SlotConflictPayload), [
-        activeEditingEvent?.$id,
-        eventData.$id,
+        parentEvent: eventData.parentEvent,
+        eventStart: eventData.start,
+        eventEnd: eventData.end,
+        slots: leagueSlots,
+    }), [
         eventData.end,
         eventData.eventType,
         eventData.parentEvent,
         eventData.start,
         leagueSlots,
+        slotConflictEventId,
     ]);
-    const slotConflictContext = useMemo<SlotConflictContext>(() => ({
-        eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
-        eventStart: eventData.start ?? undefined,
-        eventEnd: eventData.end ?? undefined,
-    }), [activeEditingEvent?.$id, eventData.$id, eventData.end, eventData.start]);
+    const slotConflictContext = useMemo<SlotConflictContext>(() => buildSlotConflictContext({
+        eventId: slotConflictEventId,
+        eventStart: eventData.start,
+        eventEnd: eventData.end,
+    }), [eventData.end, eventData.start, slotConflictEventId]);
     const { hasPendingExternalConflictChecks, hasExternalSlotConflictWarnings } = useMemo(() => {
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
             return {
