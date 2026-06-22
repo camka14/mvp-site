@@ -36,6 +36,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T21:21Z) Extracted event payload-to-form-state hydration into `eventForm/eventStateMapping.ts`.
   - [x] (2026-06-22T21:32Z) Extracted immutable event default overlays into `eventForm/immutableDefaults.ts`.
   - [x] (2026-06-22T21:40Z) Moved league slot form construction into `eventForm/slotForm.ts`.
+  - [x] (2026-06-22T21:50Z) Extracted create/edit default value assembly into `eventForm/defaultValues.ts`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -291,10 +292,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Move slot form construction into the slot helper module.
   Rationale: `createSlotForm` is used by defaults and later schedule mutations, but it only builds the `LeagueSlotForm` shape from slot inputs. Keeping it in `slotForm.ts` makes all slot form construction share the same helper without introducing new state.
   Date/Author: 2026-06-22 / Codex
+- Decision: Extract default value assembly as an option-driven helper.
+  Rationale: After event hydration, immutable overlays, field defaults, config defaults, and slot construction were separated, the remaining default builder could be moved behind explicit inputs. The parent still owns the reset timing and dirty-tracking effects.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, and slot form construction now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, slot form construction, and default value assembly now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
@@ -482,3 +486,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted persisted event-to-form-state hydration into `eventForm/eventStateMapping.ts`.
 - 2026-06-22 / Codex: Extracted immutable default overlays into `eventForm/immutableDefaults.ts`.
 - 2026-06-22 / Codex: Moved league slot form construction into `eventForm/slotForm.ts`.
+- 2026-06-22 / Codex: Extracted create/edit default value assembly into `eventForm/defaultValues.ts`.

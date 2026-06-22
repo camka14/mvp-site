@@ -50,7 +50,6 @@ import {
     getLongitudeFromCoordinates,
 } from './eventForm/locationHelpers';
 import {
-    buildDefaultFieldState,
     defaultFieldLocationForEvent,
     sanitizeFieldsForForm,
     withEventFieldLocationDefault,
@@ -142,10 +141,9 @@ import type {
     EventFormState,
     EventFormValues,
 } from './eventForm/formTypes';
-import { mapEventToFormState } from './eventForm/eventStateMapping';
+import { buildEventFormDefaultValues } from './eventForm/defaultValues';
 import { applyImmutableEventDefaults } from './eventForm/immutableDefaults';
 import {
-    buildDefaultSlotForms,
     createLeagueSlotForm,
     normalizeFieldIds,
     normalizeSlotFieldIds,
@@ -204,9 +202,6 @@ import {
 } from './eventForm/constants';
 import {
     buildDivisionLeagueConfig,
-    buildDefaultLeagueData,
-    buildDefaultPlayoffData,
-    buildDefaultTournamentData,
     buildTournamentConfig,
     derivePoolTeamCount,
     extractTournamentConfigFromEvent,
@@ -477,155 +472,31 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })
     ), [immutableDefaultsMemo, sportsById]);
 
-    const buildDefaultFormValues = useCallback((): EventFormValues => {
-        const defaultLocationLabel = (defaultLocation?.location ?? '').trim();
-        const defaultLocationAddress = (defaultLocation?.address ?? '').trim();
-        const defaultLocationCoordinates = defaultLocation?.coordinates;
-
-        const base = (() => {
-            const initial = applyImmutableDefaults(mapEventToFormState(activeEditingEvent));
-            const normalizedSportId = typeof initial.sportId === 'string' ? initial.sportId.trim() : '';
-            if (normalizedSportId) {
-                initial.sportId = normalizedSportId;
-                const hydratedSport = sportsById.get(normalizedSportId);
-                if (hydratedSport) {
-                    initial.sportConfig = hydratedSport;
-                }
-            }
-            if (!initial.location && defaultLocationLabel) {
-                initial.location = defaultLocationLabel;
-            }
-            if (!initial.address && defaultLocationAddress) {
-                initial.address = defaultLocationAddress;
-            }
-            if (!coordinatesAreSet(initial.coordinates) && defaultLocationCoordinates) {
-                initial.coordinates = defaultLocationCoordinates;
-            }
-            return initial;
-        })();
-
-        base.timeZone = normalizeTimeZone(base.timeZone, getSystemTimeZone());
-        base.allowPaymentPlans = Boolean(base.allowPaymentPlans);
-        base.installmentAmounts = Array.isArray(base.installmentAmounts) ? base.installmentAmounts : [];
-        base.installmentDueDates = Array.isArray(base.installmentDueDates) ? base.installmentDueDates : [];
-        base.installmentDueRelativeDays = normalizeInstallmentRelativeDays(base.installmentDueRelativeDays);
-        base.requiredTemplateIds = Array.isArray(base.requiredTemplateIds)
-            ? base.requiredTemplateIds
-            : [];
-        const normalizedInstallmentCount = Number.isFinite(base.installmentCount)
-            ? Number(base.installmentCount)
-            : base.installmentAmounts.length;
-        base.installmentCount = normalizedInstallmentCount || 0;
-        base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
-        if (!base.organizationId && resolvedOrganizationId) {
-            base.organizationId = resolvedOrganizationId;
-        }
-        const defaults = immutableDefaults ?? {};
-        const {
-            defaultFields,
-            defaultFieldCount,
-            defaultSelectedFieldIds,
-            allDefaultFieldIds,
-        } = buildDefaultFieldState({
-            base,
+    const buildDefaultFormValues = useCallback((): EventFormValues => (
+        buildEventFormDefaultValues({
             activeEditingEvent,
-            immutableDefaults: defaults,
-            immutableFields,
+            applyImmutableDefaults,
+            defaultLocation: {
+                location: defaultLocation?.location,
+                address: defaultLocation?.address,
+                coordinates: defaultLocation?.coordinates,
+            },
             hasImmutableFields,
+            immutableDefaults,
+            immutableFields,
+            isCreateMode,
             resolvedOrganizationFields: Array.isArray(resolvedOrganizationFields)
                 ? (resolvedOrganizationFields as Field[])
                 : [],
             resolvedOrganizationId,
-            isCreateMode,
-        });
-        const availableFieldIdsForDivisions = defaultSelectedFieldIds.length
-            ? defaultSelectedFieldIds
-            : allDefaultFieldIds;
-        const defaultDivisionDetails = (() => {
-            const normalized = Array.isArray(base.divisionDetails)
-                ? base.divisionDetails.filter((detail) => detail && detail.id)
-                : [];
-            if (normalized.length) {
-                return normalized;
-            }
-            return [];
-        })();
-        const baseLeagueIncludesPlayoffs = Boolean(
-            base.eventType === 'LEAGUE'
-            && (
-                (immutableDefaults && typeof (immutableDefaults as any).includePlayoffs === 'boolean'
-                    ? Boolean((immutableDefaults as any).includePlayoffs)
-                    : undefined)
-                ?? (immutableDefaults && typeof (immutableDefaults as any).leagueData?.includePlayoffs === 'boolean'
-                    ? Boolean((immutableDefaults as any).leagueData.includePlayoffs)
-                    : undefined)
-                ??
-                activeEditingEvent?.leagueConfig?.includePlayoffs
-                ?? activeEditingEvent?.includePlayoffs
-                ?? false
-            ),
-        );
-        const defaultSlotDivisionKeys = buildSlotDivisionLookup(
-            defaultDivisionDetails,
-            base.eventType === 'LEAGUE' && baseLeagueIncludesPlayoffs && base.splitLeaguePlayoffDivisions
-                ? (base.playoffDivisionDetails || [])
-                : [],
-        ).keys;
-        const defaultDivisionKeys = (() => {
-            const normalizedFromDetails = normalizeDivisionKeys(defaultDivisionDetails.map((detail) => detail.id));
-            if (normalizedFromDetails.length) {
-                return normalizedFromDetails;
-            }
-            const normalized = normalizeDivisionKeys(base.divisions);
-            if (normalized.length) {
-                return normalized;
-            }
-            return [];
-        })();
-        const defaultDivisionFieldIds = normalizeDivisionFieldIds(
-            base.divisionFieldIds,
-            defaultDivisionKeys,
-            availableFieldIdsForDivisions,
-        );
-
-        const defaultSlots = buildDefaultSlotForms({
-            base,
-            activeEditingEvent,
-            immutableDefaults: defaults,
-            defaultSlotDivisionKeys,
-            createSlotForm,
-        });
-
-        const defaultLeagueData = buildDefaultLeagueData({
-            base,
-            activeEditingEvent,
-            defaultDivisionDetails,
             sportsById,
-        });
-        const defaultTournamentData = buildDefaultTournamentData(activeEditingEvent);
-        const defaultPlayoffData = buildDefaultPlayoffData(activeEditingEvent);
-
-        return {
-            ...base,
-            divisions: defaultDivisionKeys,
-            divisionDetails: defaultDivisionDetails,
-            divisionFieldIds: defaultDivisionFieldIds,
-            selectedFieldIds: defaultSelectedFieldIds,
-            leagueSlots: normalizeSlotState(defaultSlots, base.eventType, base.parentEvent),
-            leagueData: defaultLeagueData,
-            playoffData: defaultPlayoffData,
-            tournamentData: defaultTournamentData,
-            fields: defaultFields,
-            fieldCount: defaultFieldCount,
-            joinAsParticipant: false,
-        };
-    }, [
+        })
+    ), [
         activeEditingEvent,
         applyImmutableDefaults,
-        createSlotForm,
-      defaultLocation?.coordinates,
-      defaultLocation?.address,
-      defaultLocation?.location,
+        defaultLocation?.address,
+        defaultLocation?.coordinates,
+        defaultLocation?.location,
         hasImmutableFields,
         immutableDefaults,
         immutableFields,
