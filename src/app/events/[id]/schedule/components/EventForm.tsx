@@ -277,6 +277,7 @@ import { EventFormShell } from './eventForm/components/EventFormShell';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
+import { DivisionEditorHeader } from './eventForm/sections/DivisionEditorHeader';
 import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
 import { DivisionEditorPlayoffDivisionControls } from './eventForm/sections/DivisionEditorPlayoffDivisionControls';
@@ -6517,24 +6518,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Stack>
                                 </div>
                                 ) : null}
-                                <div className="space-y-3">
-                                    <Text size="sm" fw={600}>
-                                        {divisionEditor.editingId ? 'Edit Division' : 'New Division'}
-                                    </Text>
-                                    <AnimatedSection in={splitDivisionEditorEnabled} collapseClassName="max-w-xs">
-                                        <MantineSelect
-                                            label="Division Type"
-                                            data={[
-                                                { value: 'LEAGUE', label: 'League' },
-                                                { value: 'PLAYOFF', label: 'Playoff' },
-                                            ]}
-                                            value={divisionEditor.divisionKind}
-                                            comboboxProps={sharedComboboxProps}
-                                            disabled={isImmutableField('divisions')}
-                                            onChange={handleDivisionEditorKindChange}
-                                        />
-                                    </AnimatedSection>
-                                </div>
+                                <DivisionEditorHeader
+                                    editing={Boolean(divisionEditor.editingId)}
+                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
+                                    divisionKind={divisionEditor.divisionKind}
+                                    disabled={isImmutableField('divisions')}
+                                    comboboxProps={sharedComboboxProps}
+                                    onDivisionKindChange={handleDivisionEditorKindChange}
+                                />
                                 <AnimatedSection in={!splitDivisionEditorEnabled || divisionEditor.divisionKind === 'LEAGUE'}>
                                     <motion.div
                                         layout
