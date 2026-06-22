@@ -172,6 +172,7 @@ import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
+import { EventDetailsTimingControls } from './eventForm/sections/EventDetailsTimingControls';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
@@ -10341,177 +10342,36 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     </AnimatedSection>
                                 </div>
-                                <div className="md:col-span-2">
-                                    <Controller
-                                        name="start"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <DateTimePicker
-                                                label="Start Date & Time"
-                                                valueFormat="MM/DD/YYYY hh:mm A"
-                                                value={parseLocalDateTime(field.value)}
-                                                styles={alignedDetailsFieldStyles}
-                                                disabled={isImmutableField('start')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('start')) return;
-                                                    const parsed = parseLocalDateTime(val as Date | string | null);
-                                                    if (!parsed) return;
-                                                    setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                                                }}
-                                                minDate={todaysDate}
-                                                timePickerProps={{
-                                                    withDropdown: true,
-                                                    format: '12h',
-                                                }}
-                                                popoverProps={sharedPopoverProps}
-                                                style={{ width: '100%' }}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <AnimatedSection
-                                    in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}
-                                    collapseClassName="md:col-span-2"
-                                >
-                                    <Controller
-                                        name="end"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <div className="space-y-2">
-                                                <DateTimePicker
-                                                    label="End Date & Time"
-                                                    valueFormat="MM/DD/YYYY hh:mm A"
-                                                    value={parseLocalDateTime(field.value)}
-                                                    styles={alignedDetailsFieldStyles}
-                                                    disabled={
-                                                        isImmutableField('end')
-                                                        || (supportsNoFixedEndDateTime && eventData.noFixedEndDateTime)
-                                                    }
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('end')) return;
-                                                        const parsed = parseLocalDateTime(val as Date | string | null);
-                                                        if (!parsed) return;
-                                                        setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                                                    }}
-                                                    minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
-                                                    timePickerProps={{
-                                                        withDropdown: true,
-                                                        format: '12h',
-                                                    }}
-                                                    popoverProps={sharedPopoverProps}
-                                                    style={{ width: '100%' }}
-                                                    error={fieldState.error?.message as string | undefined}
-                                                />
-                                                {supportsNoFixedEndDateTime ? (
-                                                    <div className="space-y-1">
-                                                        <Checkbox
-                                                            size="xs"
-                                                            label="No fixed end datetime scheduling"
-                                                            checked={Boolean(eventData.noFixedEndDateTime)}
-                                                            disabled={isImmutableField('noFixedEndDateTime')}
-                                                            onChange={(event) => {
-                                                                if (isImmutableField('noFixedEndDateTime')) return;
-                                                                const checked = event.currentTarget.checked;
-                                                                setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                                                if (checked) return;
-                                                                const parsedStart = parseLocalDateTime(getValues('start'));
-                                                                const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                                if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                                    const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                                    setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        )}
-                                    />
-                                </AnimatedSection>
-                                <div className="md:col-span-2">
-                                    <Controller
-                                        name="registrationCutoffHours"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label="Registration Cutoff (Hours)"
-                                                min={0}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={typeof field.value === 'number' && field.value > 0 ? field.value : ''}
-                                                w="100%"
-                                                styles={alignedDetailsFieldStyles}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('registrationCutoffHours')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('registrationCutoffHours')) return;
-                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                        ? val
-                                                        : Number(val);
-                                                    field.onChange(Number.isFinite(numeric)
-                                                        ? Math.max(0, Math.trunc(numeric))
-                                                        : 0);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <Controller
-                                        name="cancellationRefundHours"
-                                        control={control}
-                                        render={({ field, fieldState }) => {
-                                            const automaticRefundsChecked = field.value != null;
-                                            const automaticRefundsImmutable = isImmutableField('cancellationRefundHours');
-                                            const automaticRefundsInputDisabled = automaticRefundsImmutable
-                                                || !automaticRefundsAvailable
-                                                || !automaticRefundsChecked;
-                                            const automaticRefundsToggleDisabled = automaticRefundsImmutable
-                                                || !automaticRefundsAvailable;
-
-                                            return (
-                                                <Stack gap={6}>
-                                                    <NumberInput
-                                                        label="Refund Cutoff (Hours)"
-                                                        min={0}
-                                                        max={MAX_STANDARD_NUMBER}
-                                                        value={
-                                                            automaticRefundsChecked
-                                                            && typeof field.value === 'number'
-                                                            && field.value > 0
-                                                                ? field.value
-                                                                : ''
-                                                        }
-                                                        w="100%"
-                                                        styles={alignedDetailsFieldStyles}
-                                                        clampBehavior="strict"
-                                                        disabled={automaticRefundsInputDisabled}
-                                                        onChange={(val) => {
-                                                            if (automaticRefundsInputDisabled) return;
-                                                            const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                                ? val
-                                                                : Number(val);
-                                                            field.onChange(Number.isFinite(numeric)
-                                                                ? Math.max(0, Math.trunc(numeric))
-                                                                : 0);
-                                                        }}
-                                                        error={fieldState.error?.message as string | undefined}
-                                                    />
-                                                    <Checkbox
-                                                        size="xs"
-                                                        label="Automatic Refunds"
-                                                        checked={automaticRefundsChecked}
-                                                        disabled={automaticRefundsToggleDisabled}
-                                                        onChange={(event) => {
-                                                            if (automaticRefundsToggleDisabled) return;
-                                                            field.onChange(event.currentTarget.checked ? field.value ?? 0 : null);
-                                                        }}
-                                                    />
-                                                </Stack>
-                                            );
-                                        }}
-                                    />
-                                </div>
+                                <EventDetailsTimingControls
+                                    control={control}
+                                    eventType={eventData.eventType}
+                                    startValue={eventData.start}
+                                    noFixedEndDateTime={Boolean(eventData.noFixedEndDateTime)}
+                                    supportsNoFixedEndDateTime={supportsNoFixedEndDateTime}
+                                    automaticRefundsAvailable={automaticRefundsAvailable}
+                                    todaysDate={todaysDate}
+                                    maxStandardNumber={MAX_STANDARD_NUMBER}
+                                    dateTimePickerStyles={alignedDetailsFieldStyles}
+                                    numberInputStyles={alignedDetailsFieldStyles}
+                                    popoverProps={sharedPopoverProps}
+                                    isImmutableField={isImmutableField}
+                                    onStartChange={(parsed) => {
+                                        setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                                    }}
+                                    onEndChange={(parsed) => {
+                                        setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                                    }}
+                                    onNoFixedEndDateTimeChange={(checked) => {
+                                        setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
+                                        if (checked) return;
+                                        const parsedStart = parseLocalDateTime(getValues('start'));
+                                        const parsedEnd = parseLocalDateTime(getValues('end'));
+                                        if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                            const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                            setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                        }
+                                    }}
+                                />
                             </div>
 
                             <EventDetailsLocationControls
