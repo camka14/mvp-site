@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import TournamentFields from '@/app/discover/components/TournamentFields';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import { useSports } from '@/app/hooks/useSports';
 
@@ -59,7 +59,6 @@ import {
 } from '@/lib/divisionTypes';
 import {
     getRequiredSignerTypeLabel,
-    normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
@@ -176,6 +175,7 @@ import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSe
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
+import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
 import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
@@ -532,49 +532,6 @@ const leagueSlotsEqual = (left: LeagueSlotForm[], right: LeagueSlotForm[]): bool
         }
     }
     return true;
-};
-
-const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
-    if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
-        return 'TEXT';
-    }
-    return 'PDF';
-};
-
-const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
-    const roleIndexRaw = row?.roleIndex;
-    const roleIndex = typeof roleIndexRaw === 'number' ? roleIndexRaw : Number(roleIndexRaw);
-    const roleIndexesRaw = Array.isArray(row?.roleIndexes) ? row.roleIndexes : undefined;
-    const roleIndexes = roleIndexesRaw
-        ? roleIndexesRaw
-            .map((entry: unknown) => Number(entry))
-            .filter((value: number) => Number.isFinite(value))
-        : undefined;
-    const signerRolesRaw = Array.isArray(row?.signerRoles) ? row.signerRoles : undefined;
-    const signerRoles = signerRolesRaw
-        ? signerRolesRaw
-            .filter((entry: unknown): entry is string => typeof entry === 'string' && Boolean(entry.trim()))
-            .map((entry: string) => entry.trim())
-        : undefined;
-    const signOnceRaw = row?.signOnce;
-    const requiredSignerType = normalizeRequiredSignerType(row?.requiredSignerType);
-
-    return {
-        $id: String(row?.$id ?? ''),
-        templateId: row?.templateId ?? undefined,
-        organizationId: row?.organizationId ?? '',
-        title: row?.title ?? 'Untitled Template',
-        description: row?.description ?? undefined,
-        signOnce: typeof signOnceRaw === 'boolean' ? signOnceRaw : signOnceRaw == null ? true : Boolean(signOnceRaw),
-        status: row?.status ?? undefined,
-        roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
-        roleIndexes: roleIndexes && roleIndexes.length ? roleIndexes : undefined,
-        signerRoles: signerRoles && signerRoles.length ? signerRoles : undefined,
-        requiredSignerType,
-        type: normalizeTemplateType(row?.type),
-        content: row?.content ?? undefined,
-        $createdAt: row?.$createdAt ?? undefined,
-    };
 };
 
 // Compares two numeric start/end pairs to detect overlapping minutes within the same day.
@@ -3168,9 +3125,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const hasStripeAccount = resolvedOrganization
         ? canOrganizationUsePaidBilling(resolvedOrganization)
         : Boolean(currentUser?.hasStripeAccount);
-    const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
-    const [templatesLoading, setTemplatesLoading] = useState(false);
-    const [templatesError, setTemplatesError] = useState<string | null>(null);
     const activeEditingEvent = incomingEvent ?? null;
 
     const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
@@ -4005,6 +3959,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = resolvedOrganization?.$id ?? eventData.organizationId;
     const templateOrganizationId = templateOrganizationIdProp ?? organizationId;
+    const {
+        documents: templateDocuments,
+        loading: templatesLoading,
+        error: templatesError,
+    } = useTemplateDocuments(templateOrganizationId);
 
     useEffect(() => {
         if (!isCreateMode || hasStripeAccount) {
@@ -4111,46 +4070,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }),
         [templateDocuments],
     );
-
-    useEffect(() => {
-        if (!templateOrganizationId) {
-            setTemplateDocuments([]);
-            setTemplatesError(null);
-            return;
-        }
-
-        let cancelled = false;
-        const loadTemplates = async () => {
-            try {
-                setTemplatesLoading(true);
-                setTemplatesError(null);
-                const response = await apiRequest<{ templates?: any[] }>(
-                    `/api/organizations/${templateOrganizationId}/templates`,
-                );
-                const rows = Array.isArray(response.templates) ? response.templates : [];
-                if (!cancelled) {
-                    setTemplateDocuments(rows.map((row) => mapTemplateRow(row)));
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    setTemplateDocuments([]);
-                    setTemplatesError(
-                        error instanceof Error ? error.message : 'Failed to load templates.',
-                    );
-                }
-            } finally {
-                if (!cancelled) {
-                    setTemplatesLoading(false);
-                }
-            }
-        };
-
-        loadTemplates();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [templateOrganizationId]);
 
     const setEventData = useCallback(
         (
