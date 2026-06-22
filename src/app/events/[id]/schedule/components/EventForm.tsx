@@ -181,6 +181,7 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
+import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
 import { StaffSection } from './eventForm/sections/StaffSection';
@@ -11078,138 +11079,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 connectingStripe={connectingStripe}
                                                 onConnectStripe={handleConnectStripe}
                                             />
-                                            <motion.div
-                                                layout
-                                                className={eventData.allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
-                                                transition={DIVISION_LAYOUT_TRANSITION}
-                                            >
-                                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                                    <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                                        <div>
-                                                            <Title order={6}>Payment Plans</Title>
-                                                            <Text size="sm" c="dimmed">
-                                                                Offer installments.
-                                                            </Text>
-                                                        </div>
-                                                        <Switch
-                                                            checked={eventData.allowPaymentPlans}
-                                                            onChange={(e) => {
-                                                                const next = e.currentTarget.checked;
-                                                                setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
-                                                                if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
-                                                                    syncInstallmentCount((eventData.installmentCount || 1));
-                                                                } else if (next) {
-                                                                    setValue('price', sumInstallmentAmounts(eventData.installmentAmounts), {
-                                                                        shouldDirty: true,
-                                                                        shouldValidate: true,
-                                                                    });
-                                                                }
-                                                            }}
-                                                            disabled={!hasStripeAccount}
-                                                        />
-                                                    </Group>
-
-                                                    <AnimatedSection in={eventData.allowPaymentPlans}>
-                                                        <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
-                                                            <Group align="flex-start" gap="md">
-                                                                <NumberInput
-                                                                    label="Installments"
-                                                                    min={1}
-                                                                    max={MAX_STANDARD_NUMBER}
-                                                                    value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
-                                                                    onChange={(val) => syncInstallmentCount(Number(val) || 1)}
-                                                                    clampBehavior="strict"
-                                                                    maw={180}
-                                                                />
-                                                                {eventData.teamSignup && (
-                                                                    <Switch
-                                                                        checked={eventData.allowTeamSplitDefault}
-                                                                        onChange={(e) =>
-                                                                            setValue('allowTeamSplitDefault', e.currentTarget.checked, {
-                                                                                shouldDirty: true,
-                                                                                shouldValidate: true,
-                                                                            })
-                                                                        }
-                                                                        label="Allow team bill splitting by default"
-                                                                    />
-                                                                )}
-                                                            </Group>
-
-                                                            <Stack gap="sm">
-                                                                {(eventData.installmentAmounts || []).map((amount, idx) => {
-                                                                    const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
-                                                                    const dueDateValue = parseLocalDateTime(
-                                                                        eventData.installmentDueDates?.[idx] || eventData.start,
-                                                                    );
-                                                                    return (
-                                                                        <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                            {useRelativeDueDates ? (
-                                                                                <NumberInput
-                                                                                    label={`Installment ${idx + 1} due date offset`}
-                                                                                    description="0 = session day; negative = days before session; positive = days after session"
-                                                                                    value={eventData.installmentDueRelativeDays?.[idx] ?? 0}
-                                                                                    onChange={(val) => setInstallmentDueRelativeDay(idx, Number(val) || 0)}
-                                                                                    min={-MAX_STANDARD_NUMBER}
-                                                                                    max={MAX_STANDARD_NUMBER}
-                                                                                    clampBehavior="strict"
-                                                                                    style={{ flex: '1 1 300px', maxWidth: 360 }}
-                                                                                />
-                                                                            ) : (
-                                                                                <DateTimePicker
-                                                                                    label={`Installment ${idx + 1} due`}
-                                                                                    value={dueDateValue}
-                                                                                    onChange={(val) => setInstallmentDueDate(idx, val)}
-                                                                                    valueFormat="MM/DD/YYYY hh:mm A"
-                                                                                    timePickerProps={{
-                                                                                        withDropdown: true,
-                                                                                        format: '12h',
-                                                                                    }}
-                                                                                    style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                                                />
-                                                                            )}
-                                                                            <CentsInput
-                                                                                label="Amount"
-                                                                                maxCents={MAX_PRICE_CENTS}
-                                                                                value={amount}
-                                                                                onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
-                                                                                maw={180}
-                                                                            />
-                                                                            <PriceWithFeesPreview
-                                                                                amountCents={amount}
-                                                                                baseLabel={`Installment ${idx + 1} amount`}
-                                                                                eventType={eventData.eventType}
-                                                                                taxable={eventTaxableForPreview}
-                                                                                className="min-w-[220px] flex-[1_1_220px]"
-                                                                            />
-                                                                            {eventData.installmentAmounts.length > 1 && (
-                                                                                <ActionIcon
-                                                                                    variant="light"
-                                                                                    color="red"
-                                                                                    aria-label="Remove installment"
-                                                                                    onClick={() => removeInstallment(idx)}
-                                                                                >
-                                                                                    x
-                                                                                </ActionIcon>
-                                                                            )}
-                                                                        </Group>
-                                                                    );
-                                                                })}
-                                                                <Group justify="space-between" align="center">
-                                                                    <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
-                                                                        Add installment
-                                                                    </Button>
-                                                                    <Text
-                                                                        size="sm"
-                                                                        c="dimmed"
-                                                                    >
-                                                                        Installment total: {formatBillAmount(sumInstallmentAmounts(eventData.installmentAmounts))}
-                                                                    </Text>
-                                                                </Group>
-                                                            </Stack>
-                                                        </div>
-                                                    </AnimatedSection>
-                                                </div>
-                                            </motion.div>
+                                            <SingleDivisionPaymentPlanControls
+                                                allowPaymentPlans={eventData.allowPaymentPlans}
+                                                installmentCount={eventData.installmentCount || 0}
+                                                installmentAmounts={eventData.installmentAmounts || []}
+                                                installmentDueDates={eventData.installmentDueDates || []}
+                                                installmentDueRelativeDays={eventData.installmentDueRelativeDays || []}
+                                                teamSignup={eventData.teamSignup}
+                                                allowTeamSplitDefault={eventData.allowTeamSplitDefault}
+                                                eventType={eventData.eventType}
+                                                parentEvent={eventData.parentEvent}
+                                                eventStart={eventData.start}
+                                                taxable={eventTaxableForPreview}
+                                                hasStripeAccount={hasStripeAccount}
+                                                maxStandardNumber={MAX_STANDARD_NUMBER}
+                                                maxPriceCents={MAX_PRICE_CENTS}
+                                                onAllowPaymentPlansChange={(next) => {
+                                                    setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
+                                                    if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
+                                                        syncInstallmentCount((eventData.installmentCount || 1));
+                                                    } else if (next) {
+                                                        setValue('price', sumInstallmentAmounts(eventData.installmentAmounts), {
+                                                            shouldDirty: true,
+                                                            shouldValidate: true,
+                                                        });
+                                                    }
+                                                }}
+                                                onInstallmentCountChange={(count) => syncInstallmentCount(count)}
+                                                onTeamSplitDefaultChange={(checked) => setValue('allowTeamSplitDefault', checked, {
+                                                    shouldDirty: true,
+                                                    shouldValidate: true,
+                                                })}
+                                                onInstallmentDueRelativeDayChange={setInstallmentDueRelativeDay}
+                                                onInstallmentDueDateChange={setInstallmentDueDate}
+                                                onInstallmentAmountChange={setInstallmentAmount}
+                                                onRemoveInstallment={removeInstallment}
+                                                onAddInstallment={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}
+                                            />
                                         </motion.div>
                                     </Stack>
                                 </div>
