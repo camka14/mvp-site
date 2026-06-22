@@ -17,6 +17,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T06:45Z) Ran the schema/default dependency pass and confirmed those helpers should remain inline for now because they are still coupled to form-local validation and normalization.
 - [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
   - [x] (2026-06-22T19:40Z) Extracted event-type rule predicates and coordinate helpers into shared pure modules as a prerequisite to schema extraction.
+  - [x] (2026-06-22T19:45Z) Extracted slot overlap validation into `slotValidation.ts` so schema extraction can import slot errors without depending on `EventForm`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -213,10 +214,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Extract shared event-rule and location helpers before moving the schema.
   Rationale: The schema and default builder both depend on event-type predicates and coordinate checks, and rendering also uses the same helpers. Moving those first reduces the next schema extraction diff without changing validation behavior.
   Date/Author: 2026-06-22 / Codex
+- Decision: Extract slot validation before moving the schema.
+  Rationale: `buildEventFormSchema` and schedule state normalization both depend on slot overlap and error logic. Moving it as a pure helper keeps the schema move smaller and preserves `EventForm` ownership of side effects.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
