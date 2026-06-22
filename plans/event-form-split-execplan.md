@@ -28,6 +28,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T10:08Z) Extracted the Event Details location, documents, age, registration questions slot, and capacity warning block into `EventDetailsLocationControls`.
   - [x] (2026-06-22T10:31Z) Extracted the Event Details start/end, cutoff, and refund timing controls into `EventDetailsTimingControls`.
   - [x] (2026-06-22T10:52Z) Extracted the Event Details event type, playoff/pool toggle, team size, and team mode controls into `EventDetailsTypeControls`.
+  - [x] (2026-06-22T11:08Z) Extracted the Event Details section shell into `EventDetailsSection`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -90,6 +91,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Keep event-type transition side effects in `EventForm` while extracting the event type/team controls.
   Rationale: Changing event type resets slot errors and toggles team, division, no-fixed-end, and minimum-end state. The extracted control component owns rendering, while `EventForm` still owns those form-wide side effects through callbacks.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract the Event Details shell after its subsections were isolated.
+  Rationale: Moving only the Paper, header, collapse behavior, and content slot keeps the section component small while avoiding another broad prop pass. `EventForm` still composes the Event Details subsections and owns their side effects.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -243,6 +247,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted Event Details location/document/age controls as a second smaller split from Event Details.
 - 2026-06-22 / Codex: Extracted Event Details timing controls while leaving multi-field date side effects in `EventForm`.
 - 2026-06-22 / Codex: Extracted Event Details type/team controls while leaving event-type transition side effects in `EventForm`.
+- 2026-06-22 / Codex: Extracted the Event Details section shell after the subsection controls were split out.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

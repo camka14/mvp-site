@@ -172,6 +172,7 @@ import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
+import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
 import { EventDetailsTimingControls } from './eventForm/sections/EventDetailsTimingControls';
 import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeControls';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
@@ -10177,30 +10178,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onImageChange={handleImageChange}
                         />
 
-                        {/* Event Details */}
-                        <Paper
-                            id="section-event-details"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-20 bg-gray-50"
+                        <EventDetailsSection
+                            collapsed={collapsedSections['section-event-details']}
+                            onToggle={() => toggleSectionCollapse('section-event-details')}
                         >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Event Details</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-event-details']}
-                                    aria-controls="section-event-details-content"
-                                    onClick={() => toggleSectionCollapse('section-event-details')}
-                                >
-                                    {collapsedSections['section-event-details'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-event-details']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-
                             <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
                                 <EventDetailsTypeControls
                                     control={control}
@@ -10331,8 +10312,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 maxResourceNameLength={MAX_MEDIUM_TEXT_LENGTH}
                                 onLocalFieldNameChange={handleLocalFieldNameChange}
                             />
-                            </Collapse>
-                        </Paper>
+                        </EventDetailsSection>
 
                         <MatchRulesConfigSection
                             visible={showMatchRulesSection}
