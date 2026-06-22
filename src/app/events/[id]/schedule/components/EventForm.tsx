@@ -224,6 +224,7 @@ import {
     mapInviteStaffTypeToRole,
     normalizeInviteEmail,
     normalizePendingStaffInvite,
+    removePendingStaffInviteRoleByEmail,
     type PendingStaffInvite,
     type StaffAssignmentRole,
     type StaffRosterEntry,
@@ -6267,16 +6268,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
                                             onRemoveCard={(card) => {
                                                 if (card.source === 'draft' && card.email) {
-                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
-                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
-                                                            return [invite];
-                                                        }
-                                                        const nextRoles = invite.roles.filter((role) => role !== 'OFFICIAL');
-                                                        if (!nextRoles.length) {
-                                                            return [];
-                                                        }
-                                                        return [{ ...invite, roles: nextRoles }];
-                                                    }));
+                                                    setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'OFFICIAL'));
                                                     return;
                                                 }
                                                 if (card.userId) {
@@ -6293,16 +6285,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
                                             onRemoveCard={(card) => {
                                                 if (card.source === 'draft' && card.email) {
-                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
-                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
-                                                            return [invite];
-                                                        }
-                                                        const nextRoles = invite.roles.filter((role) => role !== 'ASSISTANT_HOST');
-                                                        if (!nextRoles.length) {
-                                                            return [];
-                                                        }
-                                                        return [{ ...invite, roles: nextRoles }];
-                                                    }));
+                                                    setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'ASSISTANT_HOST'));
                                                     return;
                                                 }
                                                 if (card.userId) {

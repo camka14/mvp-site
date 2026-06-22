@@ -515,6 +515,24 @@ export const normalizePendingStaffInvite = (invite: PendingStaffInvite): Pending
     )))),
 });
 
+export const removePendingStaffInviteRoleByEmail = (
+    invites: PendingStaffInvite[],
+    email: string | null | undefined,
+    roleToRemove: StaffAssignmentRole,
+): PendingStaffInvite[] => {
+    const normalizedEmail = normalizeInviteEmail(email);
+    return invites.flatMap((invite) => {
+        if (normalizeInviteEmail(invite.email) !== normalizedEmail) {
+            return [invite];
+        }
+        const nextRoles = invite.roles.filter((role) => role !== roleToRemove);
+        if (!nextRoles.length) {
+            return [];
+        }
+        return [{ ...invite, roles: nextRoles }];
+    });
+};
+
 export const mapRoleToInviteStaffType = (role: StaffAssignmentRole): EventInviteStaffType => (
     role === 'OFFICIAL' ? 'OFFICIAL' : 'HOST'
 );

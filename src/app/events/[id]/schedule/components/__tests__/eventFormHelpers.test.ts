@@ -81,6 +81,7 @@ import {
   normalizeInviteStatusToken,
   normalizePendingStaffInvite,
   normalizeRosterStaffTypes,
+  removePendingStaffInviteRoleByEmail,
 } from '../eventForm/staffInvites';
 import {
   normalizeFieldIds,
@@ -707,6 +708,29 @@ describe('event form staff invite helpers', () => {
     expect(mapRoleToInviteStaffType('ASSISTANT_HOST')).toBe('HOST');
     expect(mapInviteStaffTypeToRole('HOST')).toBe('ASSISTANT_HOST');
     expect(mapInviteStaffTypeToRole('STAFF')).toBeNull();
+    expect(removePendingStaffInviteRoleByEmail([
+      {
+        firstName: 'Sam',
+        lastName: 'Raz',
+        email: 'sam@example.com',
+        roles: ['OFFICIAL', 'ASSISTANT_HOST'],
+      },
+    ], ' SAM@EXAMPLE.COM ', 'OFFICIAL')).toEqual([
+      {
+        firstName: 'Sam',
+        lastName: 'Raz',
+        email: 'sam@example.com',
+        roles: ['ASSISTANT_HOST'],
+      },
+    ]);
+    expect(removePendingStaffInviteRoleByEmail([
+      {
+        firstName: 'Sam',
+        lastName: 'Raz',
+        email: 'sam@example.com',
+        roles: ['ASSISTANT_HOST'],
+      },
+    ], 'sam@example.com', 'ASSISTANT_HOST')).toEqual([]);
   });
 
   it('normalizes roster statuses, types, labels, colors, and user email', () => {
