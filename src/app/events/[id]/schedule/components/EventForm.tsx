@@ -167,8 +167,11 @@ import {
 } from './eventForm/slotConflictHelpers';
 import {
     type AssignedStaffCard,
+    buildOrganizationStaffAssignmentIds,
+    buildOrganizationStaffRosterEntries,
     createEmptyStaffInvite,
     type EventInviteStaffType,
+    filterOrganizationStaffRosterEntries,
     formatStaffRoleLabel,
     getUserEmail,
     mapInviteStaffTypeToRole,
@@ -177,7 +180,6 @@ import {
     normalizeInviteStaffTypes,
     normalizeInviteStatusToken,
     normalizePendingStaffInvite,
-    normalizeRosterStaffTypes,
     toUserLabel,
     type PendingStaffInvite,
     type StaffAssignmentRole,
@@ -1326,38 +1328,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizerTaxCollectionAllowed = eventTaxPolicyForPreview.liabilityParty === 'ORGANIZER';
     const organizerManualTaxSelected = organizerTaxCollectionAllowed
         && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
-    const organizationStaffAssignmentIds = useMemo(() => {
-        const hostUserIds = new Set<string>();
-        const officialUserIds = new Set<string>();
-        const addByTypes = (userId: unknown, staffTypes: unknown, status: StaffRosterStatus) => {
-            const normalizedUserId = normalizeEntityId(userId);
-            if (!normalizedUserId || status !== 'active') {
-                return;
-            }
-            const types = normalizeRosterStaffTypes(staffTypes);
-            if (types.includes('HOST')) {
-                hostUserIds.add(normalizedUserId);
-            }
-            if (types.includes('OFFICIAL')) {
-                officialUserIds.add(normalizedUserId);
-            }
-        };
-
-        if (resolvedOrganization?.ownerId) {
-            hostUserIds.add(resolvedOrganization.ownerId);
-        }
-        (Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers : []).forEach((member) => {
-            addByTypes(member.userId, member.types, normalizeInviteStatusToken(member.invite?.status));
-        });
-        (Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites : []).forEach((invite) => {
-            addByTypes(invite.userId, invite.staffTypes, normalizeInviteStatusToken(invite.status));
-        });
-
-        return {
-            hostUserIds: Array.from(hostUserIds),
-            officialUserIds: Array.from(officialUserIds),
-        };
-    }, [resolvedOrganization?.ownerId, resolvedOrganization?.staffInvites, resolvedOrganization?.staffMembers]);
+    const organizationStaffAssignmentIds = useMemo(
+        () => buildOrganizationStaffAssignmentIds(resolvedOrganization),
+        [resolvedOrganization],
+    );
     const organizationAllowedHostIds = useMemo(
         () => organizationStaffAssignmentIds.hostUserIds,
         [organizationStaffAssignmentIds],
@@ -1493,91 +1467,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 .filter((id): id is string => Boolean(id)),
         );
     }, [activeEditingEvent, incomingEvent]);
-    const organizationStaffRosterEntries = useMemo<StaffRosterEntry[]>(() => {
-        const entries: StaffRosterEntry[] = [];
-        const seen = new Set<string>();
-        const staffMembers = Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers : [];
-        const staffInvites = Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites : [];
-
-        if (resolvedOrganization?.ownerId) {
-            entries.push({
-                id: resolvedOrganization.ownerId,
-                userId: resolvedOrganization.ownerId,
-                fullName: toUserLabel(resolvedOrganization.owner, resolvedOrganization.ownerId),
-                userName: resolvedOrganization.owner?.userName ?? null,
-                email: resolvedOrganization.staffEmailsByUserId?.[resolvedOrganization.ownerId] ?? getUserEmail(resolvedOrganization.owner),
-                user: resolvedOrganization.owner ?? null,
-                status: 'active',
-                subtitle: 'Owner',
-                types: ['HOST'],
-            });
-            seen.add(resolvedOrganization.ownerId);
-        }
-
-        staffMembers.forEach((staffMember) => {
-            if (!staffMember.userId || seen.has(staffMember.userId) || staffMember.userId === resolvedOrganization?.ownerId) {
-                return;
-            }
-            entries.push({
-                id: staffMember.$id,
-                userId: staffMember.userId,
-                fullName: toUserLabel(staffMember.user, staffMember.userId),
-                userName: staffMember.user?.userName ?? null,
-                email: resolvedOrganization?.staffEmailsByUserId?.[staffMember.userId] ?? getUserEmail(staffMember.user),
-                user: staffMember.user ?? null,
-                status: normalizeInviteStatusToken(staffMember.invite?.status),
-                subtitle: null,
-                types: normalizeRosterStaffTypes(staffMember.types),
-            });
-            seen.add(staffMember.userId);
-        });
-
-        staffInvites.forEach((invite) => {
-            if (!invite.userId || seen.has(invite.userId) || invite.userId === resolvedOrganization?.ownerId) {
-                return;
-            }
-            entries.push({
-                id: invite.$id,
-                userId: invite.userId,
-                fullName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email || invite.userId,
-                userName: null,
-                email: invite.email ?? null,
-                user: null,
-                status: normalizeInviteStatusToken(invite.status),
-                subtitle: null,
-                types: normalizeRosterStaffTypes(invite.staffTypes),
-            });
-            seen.add(invite.userId);
-        });
-
-        return entries;
-    }, [
-        resolvedOrganization?.owner,
-        resolvedOrganization?.ownerId,
-        resolvedOrganization?.staffEmailsByUserId,
-        resolvedOrganization?.staffInvites,
-        resolvedOrganization?.staffMembers,
-    ]);
+    const organizationStaffRosterEntries = useMemo<StaffRosterEntry[]>(
+        () => buildOrganizationStaffRosterEntries(resolvedOrganization),
+        [resolvedOrganization],
+    );
     const filteredOrganizationStaffEntries = useMemo(
-        () => organizationStaffRosterEntries.filter((entry) => {
-            if (organizationStaffTypeFilter !== 'all' && !entry.types.includes(organizationStaffTypeFilter)) {
-                return false;
-            }
-            if (organizationStaffStatusFilter !== 'all' && entry.status !== organizationStaffStatusFilter) {
-                return false;
-            }
-            const query = organizationStaffSearch.trim().toLowerCase();
-            if (!query.length) {
-                return true;
-            }
-            return [
-                entry.fullName,
-                entry.userName ?? '',
-                entry.email ?? '',
-                entry.subtitle ?? '',
-            ]
-                .map((value) => value.toLowerCase())
-                .some((value) => value.includes(query));
+        () => filterOrganizationStaffRosterEntries(organizationStaffRosterEntries, {
+            search: organizationStaffSearch,
+            statusFilter: organizationStaffStatusFilter,
+            typeFilter: organizationStaffTypeFilter,
         }),
         [
             organizationStaffRosterEntries,
