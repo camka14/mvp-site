@@ -148,6 +148,10 @@ export const toFieldIdList = (fields: Field[]): string[] => {
     );
 };
 
+export const buildFieldById = (fields: Field[]): Map<string, Field> => (
+    new Map(fields.map((field) => [normalizeResourceText(field.$id), field] as const))
+);
+
 export const buildFieldCountOptions = (
     isOrganizationHostedEvent: boolean,
 ): Array<{ value: string; label: string }> => {
@@ -208,6 +212,69 @@ export const resolveFieldsReferencedInSlots = ({
     }
 
     return picked;
+};
+
+export const resolveSelectedRentedFieldIds = ({
+    organizationHostedEventId,
+    selectedFieldIds,
+    selectedRentalFieldIds,
+    fields,
+    activeEventFields,
+    immutableFields,
+    rentalResourceFields,
+}: {
+    organizationHostedEventId?: string | null;
+    selectedFieldIds: string[];
+    selectedRentalFieldIds: string[];
+    fields: Field[];
+    activeEventFields: Field[];
+    immutableFields: Field[];
+    rentalResourceFields: Field[];
+}): string[] => {
+    if (!organizationHostedEventId || selectedFieldIds.length === 0) {
+        return selectedRentalFieldIds;
+    }
+    const selectedFieldIdSet = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
+    const sourceFields = mergeFieldsById(
+        mergeFieldsById(fields, activeEventFields),
+        mergeFieldsById(immutableFields, rentalResourceFields),
+    );
+    const externalSelectedIds = sourceFields
+        .filter((field): field is Field & { $id: string } => (
+            typeof field?.$id === 'string'
+            && selectedFieldIdSet.has(normalizeResourceText(field.$id))
+            && isRentedResourceForOrganization(field, organizationHostedEventId)
+        ))
+        .map((field) => field.$id);
+    return Array.from(new Set([...selectedRentalFieldIds, ...externalSelectedIds]));
+};
+
+export const buildOrganizationResourcePool = ({
+    organizationHostedEventId,
+    fields,
+    rentalResourceFields,
+    rentalResourceSelectorFields,
+    selectedFieldIds,
+}: {
+    organizationHostedEventId?: string | null;
+    fields: Field[];
+    rentalResourceFields: Field[];
+    rentalResourceSelectorFields: Field[];
+    selectedFieldIds: string[];
+}): Field[] => {
+    const selectedResourceIds = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
+    const baseFields = organizationHostedEventId
+        ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
+            .filter((field) => {
+                if (!isRentedResourceForOrganization(field, organizationHostedEventId)) {
+                    return true;
+                }
+                return selectedResourceIds.has(normalizeResourceText(field.$id));
+            })
+        : [];
+    return rentalResourceFields.length
+        ? mergeFieldsById(baseFields, rentalResourceSelectorFields)
+        : baseFields;
 };
 
 export const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));

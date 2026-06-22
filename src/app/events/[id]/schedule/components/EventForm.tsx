@@ -120,6 +120,8 @@ import {
 } from './eventForm/officials';
 import {
     buildFieldCountOptions,
+    buildFieldById,
+    buildOrganizationResourcePool,
     fieldsEqual,
     isEventLocalField,
     isGeneratedLocalFieldPlaceholder,
@@ -127,6 +129,7 @@ import {
     isSelectableOrganizationResource,
     mergeFieldsById,
     resolveFieldsReferencedInSlots,
+    resolveSelectedRentedFieldIds,
     toFieldIdList,
 } from './eventForm/resourceGroups';
 import {
@@ -4656,34 +4659,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => buildSelectedRentalFieldIds(selectedRentalResourceOptions),
         [selectedRentalResourceOptions],
     );
-    const selectedRentedFieldIds = useMemo(() => {
-        if (!organizationHostedEventId || selectedFieldIds.length === 0) {
-            return selectedRentalFieldIds;
-        }
-        const selectedFieldIdSet = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
-        const sourceFields = mergeFieldsById(
-            mergeFieldsById(fields, Array.isArray(activeEditingEvent?.fields) ? activeEditingEvent.fields : []),
-            mergeFieldsById(immutableFields, rentalResourceFields),
-        );
-        const externalSelectedIds = sourceFields
-            .filter((field): field is Field & { $id: string } => (
-                typeof field?.$id === 'string'
-                && selectedFieldIdSet.has(normalizeResourceText(field.$id))
-                && isRentedResourceForOrganization(field, organizationHostedEventId)
-            ))
-            .map((field) => field.$id);
-        return Array.from(new Set([...selectedRentalFieldIds, ...externalSelectedIds]));
-    }, [
-        activeEditingEvent?.fields,
-        fields,
-        immutableFields,
-        organizationHostedEventId,
-        rentalResourceFields,
-        selectedFieldIds,
-        selectedRentalFieldIds,
-    ]);
+    const selectedRentedFieldIds = useMemo(
+        () => resolveSelectedRentedFieldIds({
+            organizationHostedEventId,
+            selectedFieldIds,
+            selectedRentalFieldIds,
+            fields,
+            activeEventFields: Array.isArray(activeEditingEvent?.fields) ? activeEditingEvent.fields : [],
+            immutableFields,
+            rentalResourceFields,
+        }),
+        [
+            activeEditingEvent?.fields,
+            fields,
+            immutableFields,
+            organizationHostedEventId,
+            rentalResourceFields,
+            selectedFieldIds,
+            selectedRentalFieldIds,
+        ],
+    );
     const fieldById = useMemo(() => (
-        new Map(fields.map((field) => [normalizeResourceText(field.$id), field] as const))
+        buildFieldById(fields)
     ), [fields]);
     const hasSelectedRentalResource = useMemo(() => (
         selectedFieldIds.some((fieldId) => {
@@ -4702,21 +4699,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const selectedFields = useMemo(() => {
         return fields;
     }, [fields]);
-    const organizationResourcePool = useMemo(() => {
-        const selectedResourceIds = new Set(selectedFieldIds.map(normalizeResourceText).filter(Boolean));
-        const baseFields = organizationHostedEventId
-            ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
-                .filter((field) => {
-                    if (!isRentedResourceForOrganization(field, organizationHostedEventId)) {
-                        return true;
-                    }
-                    return selectedResourceIds.has(normalizeResourceText(field.$id));
-                })
-            : [];
-        return rentalResourceFields.length
-            ? mergeFieldsById(baseFields, rentalResourceSelectorFields)
-            : baseFields;
-    }, [fields, organizationHostedEventId, rentalResourceFields.length, rentalResourceSelectorFields, selectedFieldIds]);
+    const organizationResourcePool = useMemo(
+        () => buildOrganizationResourcePool({
+            organizationHostedEventId,
+            fields,
+            rentalResourceFields,
+            rentalResourceSelectorFields,
+            selectedFieldIds,
+        }),
+        [fields, organizationHostedEventId, rentalResourceFields, rentalResourceSelectorFields, selectedFieldIds],
+    );
     const eventLocalFields = useMemo(
         () => fields.filter(isEventLocalField),
         [fields],

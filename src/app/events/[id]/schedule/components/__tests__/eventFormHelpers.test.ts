@@ -37,12 +37,15 @@ import {
 } from '../eventForm/rentalResources';
 import {
   buildFacilityResourceGroups,
+  buildFieldById,
+  buildOrganizationResourcePool,
   fieldsEqual,
   isGeneratedLocalFieldPlaceholder,
   mergeFieldsById,
   mergeOrganizationFieldsIntoPool,
   removeOrganizationFieldsFromPool,
   resolveFieldsReferencedInSlots,
+  resolveSelectedRentedFieldIds,
   toFieldIdList,
 } from '../eventForm/resourceGroups';
 import {
@@ -400,6 +403,39 @@ describe('event form resource grouping helpers', () => {
       slots: [],
       hasRestrictedImmutableFields: true,
     })).toEqual([immutable]);
+  });
+
+  it('resolves selected rented fields and builds organization resource pools', () => {
+    const owned = makeField({ $id: 'owned_1', name: 'Owned 1', organization: 'host_org' });
+    const rented = makeField({ $id: 'rented_1', name: 'Rented 1', organization: 'owner_org' });
+    const rentalSelector = makeField({ $id: 'rental:item_1', name: 'Rented 1 - Jun 24', organization: 'owner_org' });
+
+    expect(buildFieldById([owned]).get('owned_1')).toBe(owned);
+    expect(resolveSelectedRentedFieldIds({
+      organizationHostedEventId: 'host_org',
+      selectedFieldIds: ['owned_1', 'rented_1'],
+      selectedRentalFieldIds: ['rental_base'],
+      fields: [owned, rented],
+      activeEventFields: [],
+      immutableFields: [],
+      rentalResourceFields: [],
+    })).toEqual(['rental_base', 'rented_1']);
+
+    expect(buildOrganizationResourcePool({
+      organizationHostedEventId: 'host_org',
+      fields: [owned, rented],
+      rentalResourceFields: [rented],
+      rentalResourceSelectorFields: [rentalSelector],
+      selectedFieldIds: [],
+    }).map((field) => field.$id)).toEqual(['owned_1', 'rental:item_1']);
+
+    expect(buildOrganizationResourcePool({
+      organizationHostedEventId: 'host_org',
+      fields: [owned, rented],
+      rentalResourceFields: [rented],
+      rentalResourceSelectorFields: [rentalSelector],
+      selectedFieldIds: ['rented_1'],
+    }).map((field) => field.$id)).toEqual(['owned_1', 'rented_1', 'rental:item_1']);
   });
 
   it('compares fields with division sets independent of division order', () => {
