@@ -169,6 +169,7 @@ import {
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
+import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
@@ -11367,45 +11368,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     }}
                                     onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
                                 />
-                                <Group justify="space-between" align="center">
-                                    <Button
-                                        variant="light"
-                                        onClick={handleSaveDivisionDetail}
-                                        disabled={isImmutableField('divisions')}
-                                    >
-                                        {divisionEditor.editingId ? 'Update Division' : 'Add Division'}
-                                    </Button>
-                                    {divisionEditor.editingId ? (
-                                        <Button variant="subtle" color="gray" onClick={resetDivisionEditor}>
-                                            Cancel Edit
-                                        </Button>
-                                    ) : null}
-                                </Group>
-                                {divisionEditor.error && (
-                                    <Text size="sm" c="red">
-                                        {divisionEditor.error}
-                                    </Text>
-                                )}
-                                {errors.divisions?.message && (
-                                    <Text size="sm" c="red">
-                                        {errors.divisions.message as string}
-                                    </Text>
-                                )}
-                                {errors.divisionDetails?.message && (
-                                    <Text size="sm" c="red">
-                                        {errors.divisionDetails.message as string}
-                                    </Text>
-                                )}
-                                {splitDivisionEditorEnabled && (eventData.playoffDivisionDetails || []).length === 0 ? (
-                                    <Alert color="yellow" radius="md">
-                                        Add at least one playoff division before saving split league/playoff divisions.
-                                    </Alert>
-                                ) : null}
-                                {errors.playoffDivisionDetails?.message && (
-                                    <Text size="sm" c="red">
-                                        {errors.playoffDivisionDetails.message as string}
-                                    </Text>
-                                )}
+                                <DivisionEditorActionsAndErrors
+                                    isEditing={Boolean(divisionEditor.editingId)}
+                                    disabled={isImmutableField('divisions')}
+                                    editorError={divisionEditor.error}
+                                    divisionsError={errors.divisions?.message as string | undefined}
+                                    divisionDetailsError={errors.divisionDetails?.message as string | undefined}
+                                    playoffDivisionDetailsError={errors.playoffDivisionDetails?.message as string | undefined}
+                                    showMissingPlayoffDivisionWarning={splitDivisionEditorEnabled && (eventData.playoffDivisionDetails || []).length === 0}
+                                    onSave={handleSaveDivisionDetail}
+                                    onCancelEdit={resetDivisionEditor}
+                                />
                                 <div className="space-y-3">
                                     <Text size="sm" fw={600}>Divisions</Text>
                                     {(eventData.divisionDetails || []).length === 0
