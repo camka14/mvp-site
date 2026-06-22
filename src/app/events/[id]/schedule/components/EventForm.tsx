@@ -170,6 +170,7 @@ import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/A
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
+import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
 import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
@@ -11237,78 +11238,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onAddInstallment={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
                                         />
                                     ) : null}
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
-                                        className="md:col-span-12"
-                                    >
-                                        <LeagueFields
-                                            leagueData={divisionEditor.leagueConfig}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            participantCount={divisionEditor.maxParticipants ?? undefined}
-                                            onLeagueDataChange={setDivisionEditorLeagueConfig}
-                                            slots={[]}
-                                            onAddSlot={() => undefined}
-                                            onUpdateSlot={() => undefined}
-                                            onRemoveSlot={() => undefined}
-                                            fields={[]}
-                                            fieldsLoading={false}
-                                            showPlayoffSettings={false}
-                                            showTimeslots={false}
-                                            unstyled
-                                        />
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
-                                        className="md:col-span-3"
-                                    >
-                                        <NumberInput
-                                            label="Division Playoff Team Count"
-                                            min={2}
-                                            max={MAX_STANDARD_NUMBER}
-                                            w="100%"
-                                            styles={alignedDetailsFieldStyles}
-                                            maw={220}
-                                            value={divisionEditor.playoffTeamCount ?? ''}
-                                            clampBehavior="strict"
-                                            disabled={
-                                                isImmutableField('divisions')
-                                                || !divisionEditorReady
-                                            }
-                                            onChange={(val) => {
-                                                if (
-                                                    isImmutableField('divisions')
-                                                    || !divisionEditorReady
-                                                ) {
-                                                    return;
-                                                }
-                                                const numeric = typeof val === 'number' ? val : Number(val);
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    playoffTeamCount: Number.isFinite(numeric)
-                                                        ? Math.max(2, Math.trunc(numeric))
-                                                        : null,
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={
+                                    <DivisionEditorLeagueConfigControls
+                                        leagueConfigVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
+                                        playoffTeamCountVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
+                                        playoffConfigVisible={
                                             eventData.eventType === 'LEAGUE'
                                             && !eventData.singleDivision
                                             && leagueData.includePlayoffs
                                             && !eventData.splitLeaguePlayoffDivisions
                                         }
-                                        className="md:col-span-12"
-                                    >
-                                        <TournamentFields
-                                            title="Playoff Configuration"
-                                            tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                            setTournamentData={setDivisionEditorPlayoffConfig}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            unstyled
-                                        />
-                                    </AnimatedLayoutSection>
+                                        leagueData={divisionEditor.leagueConfig}
+                                        sport={eventData.sportConfig ?? undefined}
+                                        participantCount={divisionEditor.maxParticipants ?? undefined}
+                                        playoffTeamCount={divisionEditor.playoffTeamCount}
+                                        playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                        maxStandardNumber={MAX_STANDARD_NUMBER}
+                                        numberInputStyles={alignedDetailsFieldStyles}
+                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                        onLeagueDataChange={setDivisionEditorLeagueConfig}
+                                        onPlayoffTeamCountChange={(playoffTeamCount) => {
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                playoffTeamCount,
+                                                error: null,
+                                            }));
+                                        }}
+                                        onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
+                                    />
                                     <AnimatedLayoutSection
                                         in={splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
                                         className="md:col-span-9"
