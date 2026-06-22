@@ -179,11 +179,16 @@ import {
 } from './eventForm/staffInvites';
 import {
     normalizeBoolean,
-    nullableNumbersEqual,
     normalizeResourceText,
     stringArraysEqual,
     stringSetsEqual,
 } from './eventForm/shared';
+import {
+    leagueConfigEqual,
+    leagueSlotsEqual,
+    slotConflictsEqual,
+    tournamentConfigEqual,
+} from './eventForm/formEquality';
 import {
     DIVISION_LAYOUT_TRANSITION,
     SECTION_ANIMATION_DURATION_MS,
@@ -374,72 +379,6 @@ const derivePoolTeamCount = (
     return normalizedMaxTeams / normalizedPoolCount;
 };
 
-const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig): boolean => (
-    left.doubleElimination === right.doubleElimination
-    && left.winnerSetCount === right.winnerSetCount
-    && left.loserSetCount === right.loserSetCount
-    && left.prize === right.prize
-    && left.fieldCount === right.fieldCount
-    && left.restTimeMinutes === right.restTimeMinutes
-    && left.usesSets === right.usesSets
-    && left.matchDurationMinutes === right.matchDurationMinutes
-    && left.setDurationMinutes === right.setDurationMinutes
-    && stringArraysEqual(
-        (left.winnerBracketPointsToVictory || []).map((value) => String(value)),
-        (right.winnerBracketPointsToVictory || []).map((value) => String(value)),
-    )
-    && stringArraysEqual(
-        (left.loserBracketPointsToVictory || []).map((value) => String(value)),
-        (right.loserBracketPointsToVictory || []).map((value) => String(value)),
-    )
-);
-
-const leagueConfigEqual = (left: LeagueConfig, right: LeagueConfig): boolean => (
-    left.gamesPerOpponent === right.gamesPerOpponent
-    && left.includePlayoffs === right.includePlayoffs
-    && left.playoffTeamCount === right.playoffTeamCount
-    && left.usesSets === right.usesSets
-    && nullableNumbersEqual(left.matchDurationMinutes, right.matchDurationMinutes)
-    && left.restTimeMinutes === right.restTimeMinutes
-    && nullableNumbersEqual(left.setDurationMinutes, right.setDurationMinutes)
-    && left.setsPerMatch === right.setsPerMatch
-    && stringArraysEqual(
-        (left.pointsToVictory || []).map((value) => String(value)),
-        (right.pointsToVictory || []).map((value) => String(value)),
-    )
-);
-
-const leagueSlotsEqual = (left: LeagueSlotForm[], right: LeagueSlotForm[]): boolean => {
-    if (left.length !== right.length) {
-        return false;
-    }
-    for (let index = 0; index < left.length; index += 1) {
-        const first = left[index];
-        const second = right[index];
-        if (
-            first.key !== second.key
-            || first.$id !== second.$id
-            || !stringSetsEqual(normalizeSlotFieldIds(first), normalizeSlotFieldIds(second))
-            || !stringSetsEqual(
-                normalizeWeekdays(first).map((value) => String(value)),
-                normalizeWeekdays(second).map((value) => String(value)),
-            )
-            || !stringSetsEqual(normalizeDivisionKeys(first.divisions), normalizeDivisionKeys(second.divisions))
-            || first.startDate !== second.startDate
-            || first.endDate !== second.endDate
-            || first.startTimeMinutes !== second.startTimeMinutes
-            || first.endTimeMinutes !== second.endTimeMinutes
-            || Boolean(first.repeating) !== Boolean(second.repeating)
-            || Boolean(first.checking) !== Boolean(second.checking)
-            || (first.error ?? '') !== (second.error ?? '')
-            || !slotConflictsEqual(first.conflicts, second.conflicts)
-        ) {
-            return false;
-        }
-    }
-    return true;
-};
-
 const CONFLICT_LOOKUP_START = '1970-01-01T00:00:00.000Z';
 const CONFLICT_LOOKUP_END = '2100-01-01T00:00:00.000Z';
 const AUTO_RESOLVE_STEP_MINUTES = 15;
@@ -497,22 +436,6 @@ const withMinutesOnDay = (day: Date, minutes: number): Date =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0);
 
 const mondayFirstDay = (date: Date): number => (date.getDay() + 6) % 7;
-
-const toSlotConflictSignature = (conflict: LeagueSlotForm['conflicts'][number]): string => (
-    `${String(conflict.event?.$id ?? '')}|${String(conflict.schedule?.$id ?? '')}|${conflict.event?.start ?? ''}|${conflict.event?.end ?? ''}`
-);
-
-const slotConflictsEqual = (
-    left: LeagueSlotForm['conflicts'],
-    right: LeagueSlotForm['conflicts'],
-): boolean => {
-    if (left.length !== right.length) {
-        return false;
-    }
-    const leftKeys = left.map(toSlotConflictSignature).sort();
-    const rightKeys = right.map(toSlotConflictSignature).sort();
-    return leftKeys.every((value, index) => value === rightKeys[index]);
-};
 
 const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
     const start = parseLocalDateTime(event.start ?? null);
