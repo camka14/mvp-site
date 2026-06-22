@@ -15,6 +15,7 @@ import { normalizePriceCents } from '@/lib/priceUtils';
 
 import {
     buildTournamentConfig,
+    derivePoolTeamCount,
     extractTournamentConfigFromEvent,
     leagueConfigToDivisionFields,
     normalizeLeagueConfigForSetMode,
@@ -298,6 +299,35 @@ export const deriveScheduleParticipantCount = ({
     ), 0);
 
     return divisionTotal > 0 ? divisionTotal : fallbackCount;
+};
+
+export const deriveSingleDivisionPoolPlayDefaults = ({
+    firstDivisionDetail,
+    editorPlayoffTeamCount,
+    editorPoolCount,
+    maxParticipants,
+}: {
+    firstDivisionDetail?: Pick<DivisionDetailForm, 'playoffTeamCount' | 'poolCount'> | null;
+    editorPlayoffTeamCount?: number | null;
+    editorPoolCount?: number | null;
+    maxParticipants?: number | null;
+}): {
+    bracketTeams: number | null | undefined;
+    poolCount: number | null | undefined;
+    poolTeamCount: number | undefined;
+} => {
+    const bracketTeams = typeof firstDivisionDetail?.playoffTeamCount === 'number'
+        ? Math.max(2, Math.trunc(firstDivisionDetail.playoffTeamCount))
+        : editorPlayoffTeamCount;
+    const poolCount = typeof firstDivisionDetail?.poolCount === 'number'
+        ? Math.max(1, Math.trunc(firstDivisionDetail.poolCount))
+        : editorPoolCount;
+
+    return {
+        bracketTeams,
+        poolCount,
+        poolTeamCount: derivePoolTeamCount(maxParticipants, poolCount),
+    };
 };
 
 export type DivisionDetailForm = {

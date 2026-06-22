@@ -85,6 +85,7 @@ import {
     buildSlotDivisionLookup,
     buildUniqueDivisionIdForToken,
     deriveScheduleParticipantCount,
+    deriveSingleDivisionPoolPlayDefaults,
     DIVISION_GENDER_OPTIONS,
     type DivisionDetailForm,
     type DivisionEditorKind,
@@ -1790,24 +1791,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => (Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails[0] : undefined),
         [eventData.divisionDetails],
     );
-    const singleDivisionPoolPlayDefaults = useMemo(() => {
-        const bracketTeams = typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
-            ? Math.max(2, Math.trunc(firstDivisionDetailForDefaults.playoffTeamCount))
-            : divisionEditor.playoffTeamCount;
-        const poolCount = typeof firstDivisionDetailForDefaults?.poolCount === 'number'
-            ? Math.max(1, Math.trunc(firstDivisionDetailForDefaults.poolCount))
-            : divisionEditor.poolCount;
-        return {
-            bracketTeams,
-            poolCount,
-            poolTeamCount: derivePoolTeamCount(eventData.maxParticipants, poolCount),
-        };
-    }, [
+    const singleDivisionPoolPlayDefaults = useMemo(() => deriveSingleDivisionPoolPlayDefaults({
+        firstDivisionDetail: firstDivisionDetailForDefaults,
+        editorPlayoffTeamCount: divisionEditor.playoffTeamCount,
+        editorPoolCount: divisionEditor.poolCount,
+        maxParticipants: eventData.maxParticipants,
+    }), [
         divisionEditor.playoffTeamCount,
         divisionEditor.poolCount,
         eventData.maxParticipants,
-        firstDivisionDetailForDefaults?.playoffTeamCount,
-        firstDivisionDetailForDefaults?.poolCount,
+        firstDivisionDetailForDefaults,
     ]);
     const splitDivisionEditorEnabled = Boolean(
         eventData.eventType === 'LEAGUE'

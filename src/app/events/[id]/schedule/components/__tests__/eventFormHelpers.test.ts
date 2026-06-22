@@ -9,6 +9,7 @@ import {
   buildPlayoffDivisionSelectOptions,
   deriveTournamentPoolSettingsByBracketId,
   deriveScheduleParticipantCount,
+  deriveSingleDivisionPoolPlayDefaults,
   divisionFieldIdsEqual,
   normalizeDivisionFieldIds,
   normalizeDivisionKeys,
@@ -837,6 +838,34 @@ describe('event form division helpers', () => {
       maxParticipants: 12,
       divisionDetails: [makeDivisionDetail({ id: 'division_1', maxParticipants: 0 })],
     })).toBe(12);
+  });
+
+  it('derives single-division pool defaults from persisted division values before editor values', () => {
+    expect(deriveSingleDivisionPoolPlayDefaults({
+      firstDivisionDetail: makeDivisionDetail({
+        id: 'division_1',
+        playoffTeamCount: 6,
+        poolCount: 2,
+      }),
+      editorPlayoffTeamCount: 4,
+      editorPoolCount: 1,
+      maxParticipants: 12,
+    })).toEqual({
+      bracketTeams: 6,
+      poolCount: 2,
+      poolTeamCount: 6,
+    });
+
+    expect(deriveSingleDivisionPoolPlayDefaults({
+      firstDivisionDetail: null,
+      editorPlayoffTeamCount: 4,
+      editorPoolCount: 3,
+      maxParticipants: 10,
+    })).toEqual({
+      bracketTeams: 4,
+      poolCount: 3,
+      poolTeamCount: undefined,
+    });
   });
 
   it('normalizes composite division ids and participant counts', () => {

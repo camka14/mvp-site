@@ -550,3 +550,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted available official resource option construction into `eventForm/officials.ts`.
 - 2026-06-22 / Codex: Extracted selected sport resolution and set-scoring detection into `eventForm/formOptions.ts`.
 - 2026-06-22 / Codex: Extracted schedule participant-count derivation into `eventForm/divisionForm.ts`.
+- 2026-06-22 / Codex: Extracted single-division pool-play default derivation into `eventForm/divisionForm.ts`.
