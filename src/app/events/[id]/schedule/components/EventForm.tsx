@@ -11,7 +11,6 @@ import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
-import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse, Badge } from '@mantine/core';
@@ -172,6 +171,7 @@ import {
 } from './eventForm/constants';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
+import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -12928,40 +12928,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </Collapse>
                         </Paper>
 
-                        <AnimatedSection in={showScoringConfigSection}>
-                            <Paper
-                                id="section-league-scoring-config"
-                                shadow="xs"
-                                radius="md"
-                                withBorder
-                                p="lg"
-                                className="scroll-mt-20 bg-gray-50"
-                            >
-                                <div className="flex items-center justify-between gap-3">
-                                    <h3 className="text-lg font-semibold">{scoringConfigSectionLabel}</h3>
-                                    <Button
-                                        type="button"
-                                        variant="subtle"
-                                        size="xs"
-                                        aria-expanded={!collapsedSections['section-league-scoring-config']}
-                                        aria-controls="section-league-scoring-config-content"
-                                        onClick={() => toggleSectionCollapse('section-league-scoring-config')}
-                                    >
-                                        {collapsedSections['section-league-scoring-config'] ? 'Expand' : 'Collapse'}
-                                    </Button>
-                                </div>
-                                <Collapse in={!collapsedSections['section-league-scoring-config']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                    <div id="section-league-scoring-config-content" className="mt-4">
-                                        <LeagueScoringConfigPanel
-                                            value={eventData.leagueScoringConfig}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            editable={!isImmutableField('leagueScoringConfig')}
-                                            onChange={handleLeagueScoringConfigChange}
-                                        />
-                                    </div>
-                                </Collapse>
-                            </Paper>
-                        </AnimatedSection>
+                        <LeagueScoringConfigSection
+                            visible={showScoringConfigSection}
+                            collapsed={collapsedSections['section-league-scoring-config']}
+                            title={scoringConfigSectionLabel}
+                            value={eventData.leagueScoringConfig}
+                            sport={eventData.sportConfig ?? undefined}
+                            editable={!isImmutableField('leagueScoringConfig')}
+                            onToggle={() => toggleSectionCollapse('section-league-scoring-config')}
+                            onChange={handleLeagueScoringConfigChange}
+                        />
 
                         <AnimatedSection in={showScheduleConfig}>
                             <Paper
