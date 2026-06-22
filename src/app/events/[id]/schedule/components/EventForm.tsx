@@ -8,7 +8,7 @@ import TournamentFields from '@/app/discover/components/TournamentFields';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, Switch, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -309,6 +309,7 @@ import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOr
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
 import { StaffOfficialPositionEditor } from './eventForm/sections/StaffOfficialPositionEditor';
+import { TeamOfficiatingControls } from './eventForm/sections/TeamOfficiatingControls';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -6171,41 +6172,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             collapsed={collapsedSections['section-officials']}
                             onToggle={() => toggleSectionCollapse('section-officials')}
                         >
-                                    <Controller
-                                        name="doTeamsOfficiate"
+                                    <TeamOfficiatingControls
                                         control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Teams provide officials"
-                                                description="Allow assigning team officials alongside dedicated staff refs."
-                                                checked={field.value}
-                                                onChange={(e) => {
-                                                    const checked = e?.currentTarget?.checked ?? false;
-                                                    field.onChange(checked);
-                                                    if (!checked) {
-                                                        setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
-                                                        if (eventData.officialSchedulingMode === 'TEAM_STAFFING') {
-                                                            setValue('officialSchedulingMode', 'SCHEDULE', { shouldDirty: true, shouldValidate: true });
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                        )}
+                                        doTeamsOfficiate={Boolean(eventData.doTeamsOfficiate)}
+                                        onTeamsOfficiateChange={(checked) => {
+                                            if (!checked) {
+                                                setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                if (eventData.officialSchedulingMode === 'TEAM_STAFFING') {
+                                                    setValue('officialSchedulingMode', 'SCHEDULE', { shouldDirty: true, shouldValidate: true });
+                                                }
+                                            }
+                                        }}
                                     />
-                                    {eventData.doTeamsOfficiate && (
-                                        <Controller
-                                            name="teamOfficialsMaySwap"
-                                            control={control}
-                                            render={({ field }) => (
-                                                <Switch
-                                                    label="Team officials may swap"
-                                                    description="Allow any participating team to take over officiating a match."
-                                                    checked={field.value}
-                                                    onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
-                                                />
-                                            )}
-                                        />
-                                    )}
                                     <StaffOfficialPositionEditor
                                         officialSchedulingMode={eventData.officialSchedulingMode}
                                         officialPositions={eventData.officialPositions || []}
