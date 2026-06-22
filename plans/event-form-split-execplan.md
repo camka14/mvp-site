@@ -41,6 +41,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T18:08Z) Extracted division-editor core fields into `DivisionEditorCoreControls`.
   - [x] (2026-06-22T18:13Z) Extracted division-editor tournament pool controls into `DivisionEditorTournamentPoolControls`.
   - [x] (2026-06-22T18:18Z) Extracted division-editor league/playoff config controls into `DivisionEditorLeagueConfigControls`.
+  - [x] (2026-06-22T18:24Z) Extracted division-editor playoff placement mapping into `DivisionEditorPlayoffPlacementControls`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -142,6 +143,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract division-editor league/playoff config controls without moving placement mapping.
   Rationale: League settings, playoff team count, and playoff configuration share the same editor state callbacks and can move as a UI-only group. Placement mapping has a separate select-options dependency, so it should remain in `EventForm` until it can be extracted independently.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract division-editor playoff placement mapping while keeping mapping mutation in `EventForm`.
+  Rationale: Placement mapping has a compact visual boundary and a dedicated playoff-division option set. Passing normalized placement IDs and an indexed callback preserves the existing normalization and editor state ownership.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -308,6 +312,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted division-editor core fields while leaving editor state and normalization in `EventForm`.
 - 2026-06-22 / Codex: Extracted division-editor tournament pool controls while leaving derived pool state in `EventForm`.
 - 2026-06-22 / Codex: Extracted division-editor league/playoff config controls while leaving placement mapping and editor state in `EventForm`.
+- 2026-06-22 / Codex: Extracted division-editor playoff placement mapping while leaving normalized mapping mutation in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

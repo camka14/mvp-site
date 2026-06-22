@@ -172,6 +172,7 @@ import { BasicInformationSection } from './eventForm/sections/BasicInformationSe
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
+import { DivisionEditorPlayoffPlacementControls } from './eventForm/sections/DivisionEditorPlayoffPlacementControls';
 import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
@@ -11265,50 +11266,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         }}
                                         onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
                                     />
-                                    <AnimatedLayoutSection
-                                        in={splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
-                                        className="md:col-span-9"
-                                    >
-                                        <div className="space-y-2">
-                                            <Text size="sm" fw={600}>Playoff Placement Mapping</Text>
-                                            {playoffDivisionSelectOptions.length === 0 ? (
-                                                <Text size="xs" c="red">
-                                                    Add a playoff division before mapping placements.
-                                                </Text>
-                                            ) : (
-                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                                    {Array.from({ length: Math.max(0, Math.trunc(divisionEditor.playoffTeamCount ?? 0)) }).map((_, placementIndex) => (
-                                                        <MantineSelect
-                                                            key={`editor-placement-${placementIndex}`}
-                                                            label={`Placement #${placementIndex + 1}`}
-                                                            placeholder="Select playoff division"
-                                                            data={playoffDivisionSelectOptions}
-                                                            value={normalizeDivisionKeys([
-                                                                divisionEditor.playoffPlacementDivisionIds?.[placementIndex] ?? '',
-                                                            ])[0] ?? null}
-                                                            comboboxProps={sharedComboboxProps}
-                                                            disabled={isImmutableField('divisions')}
-                                                            onChange={(value) => {
-                                                                const normalizedValue = normalizeDivisionKeys([value ?? ''])[0] ?? '';
-                                                                setDivisionEditor((prev) => {
-                                                                    const nextMapping = [...prev.playoffPlacementDivisionIds];
-                                                                    while (nextMapping.length <= placementIndex) {
-                                                                        nextMapping.push('');
-                                                                    }
-                                                                    nextMapping[placementIndex] = normalizedValue;
-                                                                    return {
-                                                                        ...prev,
-                                                                        playoffPlacementDivisionIds: nextMapping,
-                                                                        error: null,
-                                                                    };
-                                                                });
-                                                            }}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </AnimatedLayoutSection>
+                                    <DivisionEditorPlayoffPlacementControls
+                                        visible={splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
+                                        playoffTeamCount={divisionEditor.playoffTeamCount}
+                                        playoffDivisionOptions={playoffDivisionSelectOptions}
+                                        placementDivisionIds={normalizeDivisionKeys(divisionEditor.playoffPlacementDivisionIds || [])}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('divisions')}
+                                        onPlacementDivisionChange={(placementIndex, value) => {
+                                            const normalizedValue = normalizeDivisionKeys([value ?? ''])[0] ?? '';
+                                            setDivisionEditor((prev) => {
+                                                const nextMapping = [...prev.playoffPlacementDivisionIds];
+                                                while (nextMapping.length <= placementIndex) {
+                                                    nextMapping.push('');
+                                                }
+                                                nextMapping[placementIndex] = normalizedValue;
+                                                return {
+                                                    ...prev,
+                                                    playoffPlacementDivisionIds: nextMapping,
+                                                    error: null,
+                                                };
+                                            });
+                                        }}
+                                    />
                                     <DivisionEditorTournamentPoolControls
                                         visible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
                                         playoffTeamCount={divisionEditor.playoffTeamCount}
