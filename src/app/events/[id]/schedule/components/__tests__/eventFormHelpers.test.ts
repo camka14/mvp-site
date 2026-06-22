@@ -22,11 +22,18 @@ import {
 } from '../eventForm/officials';
 import {
   buildRentalBookingTimeSlot,
+  buildRentalLeagueFieldOptions,
+  buildRentalResourceFields,
+  buildRentalResourceOptionsByFieldId,
+  buildRentalResourceOptionsBySelectorId,
+  buildRentalResourceSelectorFields,
+  buildSelectedRentalFieldIds,
   getRentalBookingSelectorId,
   isRentalBookingSelectorId,
   isRentalLockedTimeSlot,
   mapRentalBookingsToResourceOptions,
   mergeRentalLockedTimeSlots,
+  resolveSelectedRentalResourceOptions,
 } from '../eventForm/rentalResources';
 import {
   buildFacilityResourceGroups,
@@ -221,6 +228,58 @@ describe('event form rental resource helpers', () => {
     expect(isRentalLockedTimeSlot(slot)).toBe(true);
     expect(isRentalLockedTimeSlot({ rentalBookingItemId: 'item_1' })).toBe(true);
     expect(isRentalLockedTimeSlot({ sourceType: 'ORGANIZATION' } as any)).toBe(false);
+  });
+
+  it('builds rental selector maps and league field options from booking resources', () => {
+    const options = mapRentalBookingsToResourceOptions({
+      bookings: [
+        {
+          $id: 'booking_1',
+          items: [
+            {
+              $id: 'item_early',
+              fieldId: 'court_1',
+              start: '2026-06-24T15:00:00.000Z',
+              end: '2026-06-24T17:00:00.000Z',
+              field: makeField({ $id: 'court_1', name: 'Court 1' }),
+            },
+            {
+              $id: 'item_late',
+              fieldId: 'court_1',
+              start: '2026-06-26T11:00:00.000Z',
+              end: '2026-06-26T13:00:00.000Z',
+              field: makeField({ $id: 'court_1', name: 'Court 1' }),
+            },
+          ],
+        },
+      ],
+    });
+    const optionsBySelectorId = buildRentalResourceOptionsBySelectorId(options);
+    const optionsByFieldId = buildRentalResourceOptionsByFieldId(options);
+
+    expect(buildRentalResourceFields(options).map((field) => field.$id)).toEqual(['court_1']);
+    expect(buildRentalResourceSelectorFields(options).map((field) => field.$id)).toEqual([
+      'rental:item_early',
+      'rental:item_late',
+    ]);
+    expect(optionsBySelectorId.get('rental:item_early')?.bookingItemId).toBe('item_early');
+    expect(optionsByFieldId.get('court_1')?.map((option) => option.bookingItemId)).toEqual(['item_early', 'item_late']);
+
+    const selectedRentalOptions = resolveSelectedRentalResourceOptions({
+      selectedFieldIds: ['rental:item_early', 'court_1'],
+      optionsBySelectorId,
+      optionsByFieldId,
+    });
+    expect(selectedRentalOptions.map((option) => option.bookingItemId)).toEqual(['item_early', 'item_late']);
+    expect(buildSelectedRentalFieldIds(selectedRentalOptions)).toEqual(['court_1']);
+
+    expect(buildRentalLeagueFieldOptions({
+      rentalResourceOptions: options,
+      selectedFields: [
+        makeField({ $id: 'owned_1', name: 'Owned 1' }),
+        options[0].field,
+      ],
+    }).map((option) => option.value)).toEqual(['owned_1', 'rental:item_early', 'rental:item_late']);
   });
 
   it('deduplicates and sorts rental-locked slots by booking item and start date', () => {

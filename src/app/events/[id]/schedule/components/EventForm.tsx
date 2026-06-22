@@ -131,10 +131,16 @@ import {
 } from './eventForm/resourceGroups';
 import {
     buildRentalBookingTimeSlot,
+    buildRentalLeagueFieldOptions,
+    buildRentalResourceFields,
+    buildRentalResourceOptionsByFieldId,
+    buildRentalResourceOptionsBySelectorId,
+    buildRentalResourceSelectorFields,
+    buildSelectedRentalFieldIds,
     isRentalBookingSelectorId,
     isRentalLockedTimeSlot,
     mergeRentalLockedTimeSlots,
-    type RentalBookingResourceOption,
+    resolveSelectedRentalResourceOptions,
 } from './eventForm/rentalResources';
 import { buildEventFormSchema } from './eventForm/schema';
 import {
@@ -4625,44 +4631,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
     const rentalResourceFields = useMemo(
-        () => mergeFieldsById([], rentalResourceOptions.map((option) => option.field)),
+        () => buildRentalResourceFields(rentalResourceOptions),
         [rentalResourceOptions],
     );
     const rentalResourceSelectorFields = useMemo(
-        () => mergeFieldsById([], rentalResourceOptions.map((option) => option.selectorField)),
+        () => buildRentalResourceSelectorFields(rentalResourceOptions),
         [rentalResourceOptions],
     );
     const rentalResourceOptionsBySelectorId = useMemo(() => (
-        new Map(rentalResourceOptions.map((option) => [option.selectorId, option] as const))
+        buildRentalResourceOptionsBySelectorId(rentalResourceOptions)
     ), [rentalResourceOptions]);
-    const rentalResourceOptionsByFieldId = useMemo(() => {
-        const byFieldId = new Map<string, RentalBookingResourceOption[]>();
-        rentalResourceOptions.forEach((option) => {
-            const fieldId = normalizeResourceText(option.fieldId);
-            if (!fieldId) {
-                return;
-            }
-            byFieldId.set(fieldId, [...(byFieldId.get(fieldId) ?? []), option]);
-        });
-        return byFieldId;
-    }, [rentalResourceOptions]);
+    const rentalResourceOptionsByFieldId = useMemo(
+        () => buildRentalResourceOptionsByFieldId(rentalResourceOptions),
+        [rentalResourceOptions],
+    );
     const selectedRentalResourceOptions = useMemo(() => (
-        Array.from(
-            new Map(
-                selectedFieldIds
-                    .flatMap((fieldId) => {
-                        const selectorOption = rentalResourceOptionsBySelectorId.get(fieldId);
-                        if (selectorOption) {
-                            return [selectorOption];
-                        }
-                        return rentalResourceOptionsByFieldId.get(fieldId) ?? [];
-                    })
-                    .map((option) => [option.id, option] as const),
-            ).values(),
-        )
+        resolveSelectedRentalResourceOptions({
+            selectedFieldIds,
+            optionsBySelectorId: rentalResourceOptionsBySelectorId,
+            optionsByFieldId: rentalResourceOptionsByFieldId,
+        })
     ), [rentalResourceOptionsByFieldId, rentalResourceOptionsBySelectorId, selectedFieldIds]);
     const selectedRentalFieldIds = useMemo(
-        () => Array.from(new Set(selectedRentalResourceOptions.map((option) => option.fieldId))),
+        () => buildSelectedRentalFieldIds(selectedRentalResourceOptions),
         [selectedRentalResourceOptions],
     );
     const selectedRentedFieldIds = useMemo(() => {
@@ -4730,43 +4721,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => fields.filter(isEventLocalField),
         [fields],
     );
-    const leagueFieldOptions = useMemo(() => {
-        const rentalResourceFieldIds = new Set(
-            rentalResourceOptions.map((option) => normalizeResourceText(option.fieldId)).filter(Boolean),
-        );
-        const regularOptions = selectedFields
-            .filter((field): field is Field & { $id: string } => {
-                if (typeof field.$id !== 'string' || field.$id.length === 0) {
-                    return false;
-                }
-                const marker = field as { rentalResource?: boolean; _rentalResource?: boolean };
-                return !marker.rentalResource
-                    && !marker._rentalResource
-                    && !rentalResourceFieldIds.has(field.$id);
-            })
-            .map((field) => ({
-                value: field.$id,
-                fieldId: field.$id,
-                label: getFieldDisplayName(field, 'Resource'),
-            }));
-        const rentalOptions = rentalResourceOptions
-            .map((option) => {
-                return {
-                    value: option.selectorId,
-                    fieldId: option.fieldId,
-                    label: option.label,
-                    rentalBookingId: option.bookingId,
-                    rentalBookingItemId: option.bookingItemId,
-                    rentalStart: option.start,
-                    rentalEnd: option.end,
-                    rentalTimeZone: option.timeZone ?? null,
-                    rentalPriceCents: option.priceCents ?? null,
-                    rentalRequiredTemplateIds: option.requiredTemplateIds ?? [],
-                    rentalHostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
-                };
-            });
-        return [...regularOptions, ...rentalOptions];
-    }, [rentalResourceOptions, selectedFields]);
+    const leagueFieldOptions = useMemo(
+        () => buildRentalLeagueFieldOptions({ rentalResourceOptions, selectedFields }),
+        [rentalResourceOptions, selectedFields],
+    );
 
     const eventOrganizationId = organizationHostedEventId;
 

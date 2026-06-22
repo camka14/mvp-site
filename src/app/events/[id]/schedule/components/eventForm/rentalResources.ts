@@ -1,4 +1,5 @@
 import type { Facility, Field, TimeSlot } from '@/types';
+import type { LeagueFieldOption } from '@/app/discover/components/LeagueFields';
 import {
     getSystemTimeZone,
     normalizeTimeZone,
@@ -7,6 +8,7 @@ import {
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 
 import { normalizeDivisionKeys } from './divisionForm';
+import { mergeFieldsById } from './resourceGroups';
 import { normalizeSlotFieldIds } from './slotForm';
 import { normalizeResourceText } from './shared';
 
@@ -213,6 +215,103 @@ export const buildRentalBookingTimeSlot = (
         rentalBookingItemId: option.bookingItemId,
         rentalLocked: true,
     };
+};
+
+export const buildRentalResourceFields = (options: RentalBookingResourceOption[]): Field[] => (
+    mergeFieldsById([], options.map((option) => option.field))
+);
+
+export const buildRentalResourceSelectorFields = (options: RentalBookingResourceOption[]): Field[] => (
+    mergeFieldsById([], options.map((option) => option.selectorField))
+);
+
+export const buildRentalResourceOptionsBySelectorId = (
+    options: RentalBookingResourceOption[],
+): Map<string, RentalBookingResourceOption> => (
+    new Map(options.map((option) => [option.selectorId, option] as const))
+);
+
+export const buildRentalResourceOptionsByFieldId = (
+    options: RentalBookingResourceOption[],
+): Map<string, RentalBookingResourceOption[]> => {
+    const byFieldId = new Map<string, RentalBookingResourceOption[]>();
+    options.forEach((option) => {
+        const fieldId = normalizeResourceText(option.fieldId);
+        if (!fieldId) {
+            return;
+        }
+        byFieldId.set(fieldId, [...(byFieldId.get(fieldId) ?? []), option]);
+    });
+    return byFieldId;
+};
+
+export const resolveSelectedRentalResourceOptions = ({
+    selectedFieldIds,
+    optionsBySelectorId,
+    optionsByFieldId,
+}: {
+    selectedFieldIds: string[];
+    optionsBySelectorId: Map<string, RentalBookingResourceOption>;
+    optionsByFieldId: Map<string, RentalBookingResourceOption[]>;
+}): RentalBookingResourceOption[] => (
+    Array.from(
+        new Map(
+            selectedFieldIds
+                .flatMap((fieldId) => {
+                    const selectorOption = optionsBySelectorId.get(fieldId);
+                    if (selectorOption) {
+                        return [selectorOption];
+                    }
+                    return optionsByFieldId.get(fieldId) ?? [];
+                })
+                .map((option) => [option.id, option] as const),
+        ).values(),
+    )
+);
+
+export const buildSelectedRentalFieldIds = (options: RentalBookingResourceOption[]): string[] => (
+    Array.from(new Set(options.map((option) => option.fieldId)))
+);
+
+export const buildRentalLeagueFieldOptions = ({
+    rentalResourceOptions,
+    selectedFields,
+}: {
+    rentalResourceOptions: RentalBookingResourceOption[];
+    selectedFields: Field[];
+}): LeagueFieldOption[] => {
+    const rentalResourceFieldIds = new Set(
+        rentalResourceOptions.map((option) => normalizeResourceText(option.fieldId)).filter(Boolean),
+    );
+    const regularOptions = selectedFields
+        .filter((field): field is Field & { $id: string } => {
+            if (typeof field.$id !== 'string' || field.$id.length === 0) {
+                return false;
+            }
+            const marker = field as { rentalResource?: boolean; _rentalResource?: boolean };
+            return !marker.rentalResource
+                && !marker._rentalResource
+                && !rentalResourceFieldIds.has(field.$id);
+        })
+        .map((field) => ({
+            value: field.$id,
+            fieldId: field.$id,
+            label: getFieldDisplayName(field, 'Resource'),
+        }));
+    const rentalOptions = rentalResourceOptions.map((option) => ({
+        value: option.selectorId,
+        fieldId: option.fieldId,
+        label: option.label,
+        rentalBookingId: option.bookingId,
+        rentalBookingItemId: option.bookingItemId,
+        rentalStart: option.start,
+        rentalEnd: option.end,
+        rentalTimeZone: option.timeZone ?? null,
+        rentalPriceCents: option.priceCents ?? null,
+        rentalRequiredTemplateIds: option.requiredTemplateIds ?? [],
+        rentalHostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
+    }));
+    return [...regularOptions, ...rentalOptions];
 };
 
 export const isRentalLockedTimeSlot = (slot: Partial<TimeSlot> | null | undefined): boolean => {
