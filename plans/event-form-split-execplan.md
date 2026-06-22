@@ -83,6 +83,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T22:08Z) Extracted assigned staff display card assembly into `eventForm/staffInvites.ts`.
 - [x] (2026-06-22T22:14Z) Extracted staff invite submission payload construction into `eventForm/staffInvites.ts`.
 - [x] (2026-06-22T22:20Z) Extracted staff invite lookup and assigned-staff ID derivation into `eventForm/staffInvites.ts`.
+- [x] (2026-06-22T22:25Z) Extracted official staffing coverage counts and error-message construction into `eventForm/officials.ts`.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -311,10 +312,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Extract staff invite lookup and assigned ID derivations into staff helpers.
   Rationale: Current event staff invite filtering, invite-by-user maps, existing assignment IDs, and role-based assigned ID sets are pure normalization mechanics. Moving them keeps staff actions in `EventForm` while reducing local map/set construction.
   Date/Author: 2026-06-22 / Codex
+- Decision: Move official staffing coverage calculations into official helpers.
+  Rationale: Required official counts, active assigned coverage, and the STAFFING validation message are pure official-domain derivations. Keeping them in `officials.ts` trims the staff workflow area without changing validation ownership in `EventForm`.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, slot form construction, default value assembly, organization staff roster derivation, assigned staff display card assembly, staff invite submission payload construction, and staff invite lookup/assigned-ID derivation now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, slot form construction, default value assembly, organization staff roster derivation, assigned staff display card assembly, staff invite submission payload construction, staff invite lookup/assigned-ID derivation, and official staffing coverage derivation now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
@@ -507,3 +511,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted assigned official and host display card assembly into `eventForm/staffInvites.ts`.
 - 2026-06-22 / Codex: Extracted staff invite submission payload construction while keeping submit side effects in `EventForm`.
 - 2026-06-22 / Codex: Extracted staff invite lookup and assigned-staff ID derivation into `eventForm/staffInvites.ts`.
+- 2026-06-22 / Codex: Extracted official staffing coverage counts and error-message construction into `eventForm/officials.ts`.

@@ -106,7 +106,10 @@ import {
     normalizeDirtyTrackedPendingStaffInvites,
 } from './eventForm/dirtyDraft';
 import {
+    buildOfficialStaffingCoverageError,
     buildOfficialPositionsFromTemplates,
+    countAssignedActiveOfficialsForStaffing,
+    countRequiredOfficialSlotsPerMatch,
     getEventOfficialUserIds,
     normalizeEventOfficialPositions,
     normalizeEventOfficials,
@@ -2329,56 +2332,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [assignedUserIdsByRole],
     );
     const requiredOfficialSlotsPerMatch = useMemo(
-        () => (eventData.officialPositions || []).reduce(
-            (total, position) => total + Math.max(1, Number(position.count) || 1),
-            0,
-        ),
+        () => countRequiredOfficialSlotsPerMatch(eventData.officialPositions),
         [eventData.officialPositions],
     );
-    const assignedActiveOfficialsForStaffing = useMemo(() => {
-        const normalizedOfficialIds = Array.from(
-            new Set(
-                getEventOfficialUserIds(eventData.eventOfficials)
-                    .map((id) => String(id).trim())
-                    .filter((id) => id.length > 0),
-            ),
-        );
-        if (!normalizedOfficialIds.length) {
-            return 0;
-        }
-        const normalizedEventOfficials = normalizeEventOfficials(
-            eventData.eventOfficials,
-            normalizedOfficialIds,
-            eventData.officialPositions || [],
-        );
-        const allowedPositionIds = new Set((eventData.officialPositions || []).map((position) => position.id));
-        return normalizedEventOfficials.filter((official) => {
-            if (official.isActive === false) {
-                return false;
-            }
-            if (!official.userId || !normalizedOfficialIds.includes(official.userId)) {
-                return false;
-            }
-            if (!allowedPositionIds.size) {
-                return true;
-            }
-            return official.positionIds.some((positionId) => allowedPositionIds.has(positionId));
-        }).length;
-    }, [eventData.eventOfficials, eventData.officialPositions]);
-    const officialStaffingCoverageError = useMemo(() => {
-        if (eventData.officialSchedulingMode !== 'STAFFING') {
-            return null;
-        }
-        if (requiredOfficialSlotsPerMatch <= 0) {
-            return null;
-        }
-        if (assignedActiveOfficialsForStaffing >= requiredOfficialSlotsPerMatch) {
-            return null;
-        }
-        const requiredLabel = requiredOfficialSlotsPerMatch === 1 ? 'official' : 'officials';
-        const assignedLabel = assignedActiveOfficialsForStaffing === 1 ? 'is' : 'are';
-        return `STAFFING requires at least ${requiredOfficialSlotsPerMatch} ${requiredLabel} for each match, but only ${assignedActiveOfficialsForStaffing} ${assignedLabel} assigned to this event.`;
-    }, [assignedActiveOfficialsForStaffing, eventData.officialSchedulingMode, requiredOfficialSlotsPerMatch]);
+    const assignedActiveOfficialsForStaffing = useMemo(
+        () => countAssignedActiveOfficialsForStaffing(eventData.eventOfficials, eventData.officialPositions),
+        [eventData.eventOfficials, eventData.officialPositions],
+    );
+    const officialStaffingCoverageError = useMemo(
+        () => buildOfficialStaffingCoverageError({
+            mode: eventData.officialSchedulingMode,
+            requiredOfficialSlotsPerMatch,
+            assignedActiveOfficialsForStaffing,
+        }),
+        [assignedActiveOfficialsForStaffing, eventData.officialSchedulingMode, requiredOfficialSlotsPerMatch],
+    );
 
     const lookupPendingStaffInviteMembership = useCallback(async (pendingInvites: PendingStaffInvite[]) => {
         const pendingEmails = Array.from(new Set(
