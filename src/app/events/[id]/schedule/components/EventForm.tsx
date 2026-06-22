@@ -192,6 +192,7 @@ import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDi
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
 import { StaffSection } from './eventForm/sections/StaffSection';
+import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
 import { StaffOfficialPositionEditor } from './eventForm/sections/StaffOfficialPositionEditor';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -10411,117 +10412,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
 
                                     {isOrganizationHostedEvent ? (
-                                        <Paper withBorder radius="md" p="md" bg="white">
-                                            <Stack gap="sm">
-                                                <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
-                                                    <div>
-                                                        <Title order={6}>Organization Staff</Title>
-                                                        <Text size="sm" c="dimmed">
-                                                            Search the organization roster and assign staff directly to this event.
-                                                        </Text>
-                                                    </div>
-                                                </Group>
-                                                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-                                                    <TextInput
-                                                        label="Search staff"
-                                                        placeholder="Search by name or email"
-                                                        value={organizationStaffSearch}
-                                                        onChange={(event) => setOrganizationStaffSearch(event.currentTarget.value)}
-                                                        maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                                    />
-                                                    <MantineSelect
-                                                        label="Role filter"
-                                                        data={[
-                                                            { value: 'all', label: 'All roles' },
-                                                            { value: 'HOST', label: 'Host' },
-                                                            { value: 'OFFICIAL', label: 'Official' },
-                                                            { value: 'STAFF', label: 'Staff' },
-                                                        ]}
-                                                        value={organizationStaffTypeFilter}
-                                                        onChange={(value) => setOrganizationStaffTypeFilter((value as 'all' | StaffMemberType) ?? 'all')}
-                                                        comboboxProps={sharedComboboxProps}
-                                                    />
-                                                    <MantineSelect
-                                                        label="Status filter"
-                                                        data={[
-                                                            { value: 'all', label: 'All statuses' },
-                                                            { value: 'active', label: 'Active' },
-                                                            { value: 'pending', label: 'Pending' },
-                                                            { value: 'declined', label: 'Declined' },
-                                                        ]}
-                                                        value={organizationStaffStatusFilter}
-                                                        onChange={(value) => setOrganizationStaffStatusFilter((value as 'all' | StaffRosterStatus) ?? 'all')}
-                                                        comboboxProps={sharedComboboxProps}
-                                                    />
-                                                </SimpleGrid>
-                                                <div
-                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
-                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, filteredOrganizationStaffEntries.length, setOrganizationStaffVisibleCount)}
-                                                >
-                                                    {filteredOrganizationStaffEntries.slice(0, organizationStaffVisibleCount).map((entry) => {
-                                                        const userId = entry.userId;
-                                                        const isOfficialAssigned = Boolean(userId && assignedUserIdSetByRole.OFFICIAL.has(userId));
-                                                        const isHostAssigned = Boolean(userId && userId === eventData.hostId);
-                                                        const isAssistantAssigned = Boolean(userId && assistantHostValue.includes(userId));
-                                                        const assignmentsDisabled = !userId;
-                                                        const canAssignOfficial = entry.status === 'active' && entry.types.includes('OFFICIAL');
-                                                        const canAssignHost = entry.status === 'active' && entry.types.includes('HOST');
-                                                        return (
-                                                            <Paper key={entry.id} withBorder radius="md" p="sm">
-                                                                <Stack gap="xs">
-                                                                    <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
-                                                                        <div className="flex-1 min-w-0">
-                                                                            {entry.user ? (
-                                                                                <UserCard user={entry.user} className="!p-0 !shadow-none" />
-                                                                            ) : (
-                                                                                <Stack gap={2}>
-                                                                                    <Text fw={600}>{entry.fullName}</Text>
-                                                                                    {entry.email && <Text size="xs" c="dimmed">{entry.email}</Text>}
-                                                                                </Stack>
-                                                                            )}
-                                                                        </div>
-                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(entry.status)}>
-                                                                            {formatStaffStatusLabel(entry.status)}
-                                                                        </Badge>
-                                                                    </Group>
-                                                                    <Group gap="xs" wrap="wrap">
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="xs"
-                                                                            disabled={assignmentsDisabled || !canAssignOfficial || isOfficialAssigned || isImmutableField('eventOfficials')}
-                                                                            onClick={() => handleAddOfficial({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
-                                                                        >
-                                                                            Add as official
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="xs"
-                                                                            variant="default"
-                                                                            disabled={assignmentsDisabled || !canAssignHost || isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
-                                                                            onClick={() => handleAddAssistantHost({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
-                                                                        >
-                                                                            Add as assistant
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="xs"
-                                                                            variant="light"
-                                                                            disabled={assignmentsDisabled || !canAssignHost || isHostAssigned || isImmutableField('hostId')}
-                                                                            onClick={() => handleHostChange(userId)}
-                                                                        >
-                                                                            Set as host
-                                                                        </Button>
-                                                                    </Group>
-                                                                </Stack>
-                                                            </Paper>
-                                                        );
-                                                    })}
-                                                    {filteredOrganizationStaffEntries.length === 0 && (
-                                                        <Text size="sm" c="dimmed">No organization staff matched your filters.</Text>
-                                                    )}
-                                                </div>
-                                            </Stack>
-                                        </Paper>
+                                        <StaffOrganizationRosterPicker
+                                            search={organizationStaffSearch}
+                                            typeFilter={organizationStaffTypeFilter}
+                                            statusFilter={organizationStaffStatusFilter}
+                                            entries={filteredOrganizationStaffEntries}
+                                            visibleCount={organizationStaffVisibleCount}
+                                            assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
+                                            assistantHostIds={assistantHostValue}
+                                            hostId={eventData.hostId}
+                                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                            eventOfficialsDisabled={isImmutableField('eventOfficials')}
+                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
+                                            hostDisabled={isImmutableField('hostId')}
+                                            comboboxProps={sharedComboboxProps}
+                                            onSearchChange={setOrganizationStaffSearch}
+                                            onTypeFilterChange={setOrganizationStaffTypeFilter}
+                                            onStatusFilterChange={setOrganizationStaffStatusFilter}
+                                            onScrollRoster={(event) => maybeExtendVisibleCountOnScroll(event, filteredOrganizationStaffEntries.length, setOrganizationStaffVisibleCount)}
+                                            onAddOfficial={handleAddOfficial}
+                                            onAddAssistantHost={handleAddAssistantHost}
+                                            onSetHost={handleHostChange}
+                                        />
                                     ) : (
                                         <Paper withBorder radius="md" p="md" bg="white">
                                             <Stack gap="sm">

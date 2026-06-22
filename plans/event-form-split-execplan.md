@@ -47,6 +47,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T18:36Z) Extracted division-editor actions and errors into `DivisionEditorActionsAndErrors`.
   - [x] (2026-06-22T18:38Z) Extracted division summary cards into `DivisionSummaryList`.
   - [x] (2026-06-22T18:42Z) Extracted staff official-position editor into `StaffOfficialPositionEditor`.
+  - [x] (2026-06-22T18:45Z) Extracted organization staff roster picker into `StaffOrganizationRosterPicker`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -166,6 +167,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract staff official-position editor without moving scheduling-mode normalization.
   Rationale: The official scheduling mode and event-specific position rows form a cohesive staff card. `EventForm` still owns mode normalization and position mutations.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract organization staff roster picker while preserving roster filtering state in `EventForm`.
+  Rationale: The roster picker is a display and selection card with stable filter props and assignment callbacks. `EventForm` still owns filter state, pagination state, and assignment mutations.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -338,6 +342,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted division-editor actions and validation messages into a plain footer component.
 - 2026-06-22 / Codex: Extracted division summary cards while leaving edit/remove mutations and normalizers in `EventForm`.
 - 2026-06-22 / Codex: Extracted staff official-position editor while leaving scheduling-mode normalization and position mutations in `EventForm`.
+- 2026-06-22 / Codex: Extracted organization staff roster picker while leaving filters, pagination, and assignment mutations in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
