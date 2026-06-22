@@ -191,6 +191,7 @@ import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSectio
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
+import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
 import { StaffOfficialPositionEditor } from './eventForm/sections/StaffOfficialPositionEditor';
@@ -10435,133 +10436,31 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onSetHost={handleHostChange}
                                         />
                                     ) : (
-                                        <Paper withBorder radius="md" p="md" bg="white">
-                                            <Stack gap="sm">
-                                                <div>
-                                                    <Title order={6}>Add / Invite Staff</Title>
-                                                    <Text size="sm" c="dimmed">
-                                                        Add existing users or stage email invites as officials and assistant hosts.
-                                                    </Text>
-                                                </div>
-                                                <TextInput
-                                                    label="Search users"
-                                                    placeholder="Search by name or username"
-                                                    value={nonOrgStaffSearch}
-                                                    onChange={(event) => setNonOrgStaffSearch(event.currentTarget.value)}
-                                                    maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                                />
-                                                {nonOrgStaffError && (
-                                                    <Text size="xs" c="red">{nonOrgStaffError}</Text>
-                                                )}
-                                                {nonOrgStaffSearchLoading ? (
-                                                    <Text size="sm" c="dimmed">Searching staff...</Text>
-                                                ) : nonOrgStaffSearch.trim().length >= 2 ? (
-                                                    <Stack gap="xs">
-                                                        {nonOrgStaffResults.length > 0 ? nonOrgStaffResults.map((result) => {
-                                                            const isOfficialAssigned = assignedUserIdSetByRole.OFFICIAL.has(result.$id);
-                                                            const isHostAssigned = result.$id === eventData.hostId;
-                                                            const isAssistantAssigned = assistantHostValue.includes(result.$id);
-                                                            return (
-                                                                <Group key={result.$id} justify="space-between" align="center" gap="sm">
-                                                                    <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                                                                    <Group gap="xs">
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="xs"
-                                                                            disabled={isOfficialAssigned || isImmutableField('eventOfficials')}
-                                                                            onClick={() => handleAddOfficial(result)}
-                                                                        >
-                                                                            Add as official
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="xs"
-                                                                            variant="default"
-                                                                            disabled={isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
-                                                                            onClick={() => handleAddAssistantHost(result)}
-                                                                        >
-                                                                            Add as assistant host
-                                                                        </Button>
-                                                                    </Group>
-                                                                </Group>
-                                                            );
-                                                        }) : (
-                                                            <Text size="sm" c="dimmed">No users found.</Text>
-                                                        )}
-                                                    </Stack>
-                                                ) : (
-                                                    <Text size="sm" c="dimmed">Type at least 2 characters to search existing users.</Text>
-                                                )}
-                                                <Paper withBorder radius="md" p="sm" bg="gray.0">
-                                                    <Stack gap="sm">
-                                                        <Title order={6}>Invite by email</Title>
-                                                        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-                                                            <TextInput
-                                                                label="First name"
-                                                                value={newStaffInvite.firstName}
-                                                                onChange={(event) => {
-                                                                    const value = event.currentTarget.value;
-                                                                    setNewStaffInvite((prev) => ({ ...prev, firstName: value }));
-                                                                }}
-                                                                maxLength={MAX_SHORT_TEXT_LENGTH}
-                                                            />
-                                                            <TextInput
-                                                                label="Last name"
-                                                                value={newStaffInvite.lastName}
-                                                                onChange={(event) => {
-                                                                    const value = event.currentTarget.value;
-                                                                    setNewStaffInvite((prev) => ({ ...prev, lastName: value }));
-                                                                }}
-                                                                maxLength={MAX_SHORT_TEXT_LENGTH}
-                                                            />
-                                                            <TextInput
-                                                                label="Email"
-                                                                value={newStaffInvite.email}
-                                                                onChange={(event) => {
-                                                                    const value = event.currentTarget.value;
-                                                                    setNewStaffInvite((prev) => ({ ...prev, email: value }));
-                                                                }}
-                                                                maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                                            />
-                                                        </SimpleGrid>
-                                                        <Group gap="xs">
-                                                            <Button
-                                                                type="button"
-                                                                size="xs"
-                                                                variant={newStaffInvite.roles.includes('OFFICIAL') ? 'filled' : 'default'}
-                                                                onClick={() => setNewStaffInvite((prev) => ({
-                                                                    ...prev,
-                                                                    roles: prev.roles.includes('OFFICIAL')
-                                                                        ? prev.roles.filter((role) => role !== 'OFFICIAL')
-                                                                        : [...prev.roles, 'OFFICIAL'],
-                                                                }))}
-                                                            >
-                                                                Official
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                size="xs"
-                                                                variant={newStaffInvite.roles.includes('ASSISTANT_HOST') ? 'filled' : 'default'}
-                                                                onClick={() => setNewStaffInvite((prev) => ({
-                                                                    ...prev,
-                                                                    roles: prev.roles.includes('ASSISTANT_HOST')
-                                                                        ? prev.roles.filter((role) => role !== 'ASSISTANT_HOST')
-                                                                        : [...prev.roles, 'ASSISTANT_HOST'],
-                                                                }))}
-                                                            >
-                                                                Assistant host
-                                                            </Button>
-                                                            <Button type="button" size="xs" onClick={handleStagePendingStaffInvite}>
-                                                                Add email invite
-                                                            </Button>
-                                                        </Group>
-                                                        <Text size="xs" c="dimmed">
-                                                            Email-invite cards stay labeled as Email invite until you save the event.
-                                                        </Text>
-                                                    </Stack>
-                                                </Paper>
-                                            </Stack>
-                                        </Paper>
+                                        <StaffNonOrganizationInvitePanel
+                                            search={nonOrgStaffSearch}
+                                            searchResults={nonOrgStaffResults}
+                                            searchLoading={nonOrgStaffSearchLoading}
+                                            searchError={nonOrgStaffError}
+                                            inviteDraft={newStaffInvite}
+                                            assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
+                                            assistantHostIds={assistantHostValue}
+                                            hostId={eventData.hostId}
+                                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                            maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
+                                            eventOfficialsDisabled={isImmutableField('eventOfficials')}
+                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
+                                            onSearchChange={setNonOrgStaffSearch}
+                                            onAddOfficial={handleAddOfficial}
+                                            onAddAssistantHost={handleAddAssistantHost}
+                                            onInviteFieldChange={(field, value) => setNewStaffInvite((prev) => ({ ...prev, [field]: value }))}
+                                            onInviteRoleToggle={(role) => setNewStaffInvite((prev) => ({
+                                                ...prev,
+                                                roles: prev.roles.includes(role)
+                                                    ? prev.roles.filter((existingRole) => existingRole !== role)
+                                                    : [...prev.roles, role],
+                                            }))}
+                                            onStageInvite={handleStagePendingStaffInvite}
+                                        />
                                     )}
 
                                     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
