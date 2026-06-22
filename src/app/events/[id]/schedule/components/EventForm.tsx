@@ -173,6 +173,7 @@ import { BasicInformationSection } from './eventForm/sections/BasicInformationSe
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
 import { EventDetailsTimingControls } from './eventForm/sections/EventDetailsTimingControls';
+import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeControls';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
@@ -10201,147 +10202,60 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             <Collapse in={!collapsedSections['section-event-details']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
 
                             <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
-                                <div className="md:col-span-2">
-                                    <Controller
-                                        name="eventType"
-                                        control={control}
-                                        rules={{ required: true }}
-                                        render={({ field }) => (
-                                            <div className="space-y-2">
-                                                <MantineSelect
-                                                    label="Event Type"
-                                                    data={eventTypeOptions}
-                                                    value={field.value}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    styles={alignedDetailsFieldStyles}
-                                                    disabled={isImmutableField('eventType')}
-                                                    onChange={(value) => {
-                                                        if (isImmutableField('eventType')) return;
-                                                        if (!value) return;
-                                                        clearErrors('leagueSlots');
-                                                        const nextType = value as EventType;
-                                                        const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
-                                                        field.onChange(nextType);
-                                                        if (enforcingTeamSettings) {
-                                                            setValue('teamSignup', true, { shouldDirty: true });
-                                                            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                                            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                                        } else {
-                                                            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                                            const parsedStart = parseLocalDateTime(getValues('start'));
-                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                                            }
-                                                        }
-                                                    }}
-                                                    w="100%"
-                                                />
-                                                <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
-                                                    <Checkbox
-                                                        size="xs"
-                                                        label="Include playoffs"
-                                                        checked={Boolean(leagueData.includePlayoffs)}
-                                                        disabled={isImmutableField('includePlayoffs')}
-                                                        onChange={(event) => {
-                                                            if (isImmutableField('includePlayoffs')) return;
-                                                            handleIncludePlayoffsToggle(event.currentTarget.checked);
-                                                        }}
-                                                    />
-                                                </AnimatedSection>
-                                                <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
-                                                    <Checkbox
-                                                        size="xs"
-                                                        label="Include pool play"
-                                                        checked={Boolean(leagueData.includePlayoffs)}
-                                                        disabled={isImmutableField('includePlayoffs')}
-                                                        onChange={(event) => {
-                                                            if (isImmutableField('includePlayoffs')) return;
-                                                            const checked = event.currentTarget.checked;
-                                                            setLeagueData((prev) => ({
-                                                                ...prev,
-                                                                includePlayoffs: checked,
-                                                                playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
-                                                            }));
-                                                            if (!checked) {
-                                                                const currentDetails = Array.isArray(eventData.divisionDetails)
-                                                                    ? eventData.divisionDetails
-                                                                    : [];
-                                                                setValue(
-                                                                    'divisionDetails',
-                                                                    currentDetails.map((detail) => ({
-                                                                        ...detail,
-                                                                        playoffTeamCount: undefined,
-                                                                        poolCount: undefined,
-                                                                        poolTeamCount: undefined,
-                                                                    })),
-                                                                    { shouldDirty: true, shouldValidate: true },
-                                                                );
-                                                            }
-                                                        }}
-                                                    />
-                                                </AnimatedSection>
-                                            </div>
-                                        )}
-                                    />
-                                </div>
-                                <div className="space-y-2 md:col-span-1" data-testid="team-size-control">
-                                    <Controller
-                                        name="teamSizeLimit"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label="Team Size"
-                                                min={1}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value ?? ''}
-                                                w="100%"
-                                                styles={alignedDetailsFieldStyles}
-                                                clampBehavior="blur"
-                                                disabled={isImmutableField('teamSizeLimit')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('teamSizeLimit')) return;
-                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                        ? Math.trunc(val)
-                                                        : null;
-                                                    field.onChange(numeric);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                    <AnimatedSection in={supportsEditableTeamSignup} className="pt-1">
-                                        <Controller
-                                            name="teamSignup"
-                                            control={control}
-                                            render={({ field: teamSignupField }) => (
-                                                <Checkbox
-                                                    data-testid="team-signup-switch"
-                                                    size="xs"
-                                                    label="Use teams"
-                                                    aria-label="Use teams"
-                                                    checked={Boolean(teamSignupField.value)}
-                                                    disabled={isImmutableField('teamSignup')}
-                                                    onChange={(event) => {
-                                                        if (isImmutableField('teamSignup')) return;
-                                                        teamSignupField.onChange(event.currentTarget.checked);
-                                                    }}
-                                                />
-                                            )}
-                                        />
-                                    </AnimatedSection>
-                                    <AnimatedSection in={showsFixedTeamEventToggle} className="pt-1">
-                                        <Checkbox
-                                            data-testid="team-event-checkbox"
-                                            size="xs"
-                                            label="Team Event"
-                                            aria-label="Team Event"
-                                            checked
-                                            disabled
-                                        />
-                                    </AnimatedSection>
-                                </div>
+                                <EventDetailsTypeControls
+                                    control={control}
+                                    eventType={eventData.eventType}
+                                    eventTypeOptions={eventTypeOptions}
+                                    includePlayoffs={Boolean(leagueData.includePlayoffs)}
+                                    supportsEditableTeamSignup={supportsEditableTeamSignup}
+                                    showsFixedTeamEventToggle={showsFixedTeamEventToggle}
+                                    maxStandardNumber={MAX_STANDARD_NUMBER}
+                                    selectStyles={alignedDetailsFieldStyles}
+                                    numberInputStyles={alignedDetailsFieldStyles}
+                                    comboboxProps={sharedComboboxProps}
+                                    isImmutableField={isImmutableField}
+                                    onEventTypeChange={(nextType, applyValue) => {
+                                        clearErrors('leagueSlots');
+                                        const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                        applyValue(nextType);
+                                        if (enforcingTeamSettings) {
+                                            setValue('teamSignup', true, { shouldDirty: true });
+                                            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+                                            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                        } else {
+                                            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+                                            const parsedStart = parseLocalDateTime(getValues('start'));
+                                            const parsedEnd = parseLocalDateTime(getValues('end'));
+                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                            }
+                                        }
+                                    }}
+                                    onIncludePlayoffsChange={handleIncludePlayoffsToggle}
+                                    onIncludePoolPlayChange={(checked) => {
+                                        setLeagueData((prev) => ({
+                                            ...prev,
+                                            includePlayoffs: checked,
+                                            playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
+                                        }));
+                                        if (!checked) {
+                                            const currentDetails = Array.isArray(eventData.divisionDetails)
+                                                ? eventData.divisionDetails
+                                                : [];
+                                            setValue(
+                                                'divisionDetails',
+                                                currentDetails.map((detail) => ({
+                                                    ...detail,
+                                                    playoffTeamCount: undefined,
+                                                    poolCount: undefined,
+                                                    poolTeamCount: undefined,
+                                                })),
+                                                { shouldDirty: true, shouldValidate: true },
+                                            );
+                                        }
+                                    }}
+                                />
                                 <EventDetailsTimingControls
                                     control={control}
                                     eventType={eventData.eventType}
