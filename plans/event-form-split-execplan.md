@@ -17,7 +17,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T06:45Z) Ran the schema/default dependency pass and confirmed those helpers should remain inline for now because they are still coupled to form-local validation and normalization.
 - [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
-- [ ] Add focused unit tests for the extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
+- [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [ ] Extract major JSX sections into section components with explicit props and no new shared context.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
@@ -35,6 +35,8 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Evidence: `wc -l src/app/events/[id]/schedule/components/EventForm.tsx` reported 13,333 lines after the extraction.
 - Observation: Schema/default extraction is still too coupled for a safe one-shot move.
   Evidence: The schema calls local slot-conflict, rental mismatch, resource-count, and division coverage validation helpers. The event default builder also shares local normalization helpers that have not yet been separated.
+- Observation: Rental slot helper tests should use local datetime strings when asserting local slot minute math.
+  Evidence: A first fixture used a `Z` timestamp and correctly flowed through `parseLocalDateTime` as UTC before local conversion, which shifted the expected start/end minutes.
 
 ## Decision Log
 
@@ -56,7 +58,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
@@ -200,3 +202,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Created this ExecPlan to track the EventForm split as a behavior-preserving refactor. The plan starts with low-risk pure helper extraction and postpones hooks/context until module boundaries are clearer.
 - 2026-06-22 / Codex: Completed the first helper extraction pass and updated the Jest command to use `--runTestsByPath` for the bracketed Next.js route path. Schema and default helper extraction remain as the next part of helper cleanup.
 - 2026-06-22 / Codex: Deferred schema/default extraction after a dependency pass and completed the leaf component extraction milestone instead.
+- 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
