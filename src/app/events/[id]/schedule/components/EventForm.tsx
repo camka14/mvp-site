@@ -117,6 +117,7 @@ import {
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
 import {
+    buildFieldCountOptions,
     fieldsEqual,
     isEventLocalField,
     isGeneratedLocalFieldPlaceholder,
@@ -1636,13 +1637,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [setEventData]);
     const fieldCountOptions = useMemo(
-        () => {
-            const start = isOrganizationHostedEvent ? 0 : 1;
-            return Array.from({ length: 13 - start }, (_, idx) => {
-                const value = start + idx;
-                return { value: String(value), label: String(value) };
-            });
-        },
+        () => buildFieldCountOptions(isOrganizationHostedEvent),
         [isOrganizationHostedEvent],
     );
     const slotDivisionLookup = useMemo(

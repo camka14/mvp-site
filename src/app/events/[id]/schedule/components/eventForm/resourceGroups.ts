@@ -147,6 +147,16 @@ export const toFieldIdList = (fields: Field[]): string[] => {
     );
 };
 
+export const buildFieldCountOptions = (
+    isOrganizationHostedEvent: boolean,
+): Array<{ value: string; label: string }> => {
+    const start = isOrganizationHostedEvent ? 0 : 1;
+    return Array.from({ length: 13 - start }, (_, index) => {
+        const value = start + index;
+        return { value: String(value), label: String(value) };
+    });
+};
+
 export const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));
 
 export const isEventLocalField = (field?: Field | null): boolean => !fieldHasOrganization(field);
