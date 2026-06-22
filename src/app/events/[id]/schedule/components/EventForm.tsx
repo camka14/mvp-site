@@ -170,6 +170,7 @@ import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/A
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
+import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
 import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
@@ -10896,30 +10897,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     )}
                         </StaffSection>
 
-                        {/* Divisions */}
-                        <Paper
-                            id="section-division-settings"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-20 bg-gray-50"
+                        <DivisionSettingsSection
+                            collapsed={collapsedSections['section-division-settings']}
+                            onToggle={() => toggleSectionCollapse('section-division-settings')}
                         >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Divisions</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-division-settings']}
-                                    aria-controls="section-division-settings-content"
-                                    onClick={() => toggleSectionCollapse('section-division-settings')}
-                                >
-                                    {collapsedSections['section-division-settings'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-division-settings']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
                                 {supportsEditableTeamSignup ? (
                                     <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3" data-testid="division-mode-switches">
@@ -12256,8 +12237,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             </div>
 
-                            </Collapse>
-                        </Paper>
+                        </DivisionSettingsSection>
 
                         <LeagueScoringConfigSection
                             visible={showScoringConfigSection}
