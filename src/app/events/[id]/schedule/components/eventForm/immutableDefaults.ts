@@ -12,10 +12,13 @@ import {
 import { normalizePriceCents } from '@/lib/priceUtils';
 import type {
     Event,
+    Field,
     LeagueScoringConfig,
     Sport,
+    TimeSlot,
 } from '@/types';
 
+import { sanitizeFieldsForForm } from './fieldDefaults';
 import {
     applyDivisionAgeCutoff,
     buildCompositeDivisionTypeId,
@@ -44,11 +47,48 @@ import {
     formatEventDateTimeForForm,
     parseDateValue,
 } from './dateHelpers';
+import { normalizeSlotFieldIds } from './slotForm';
 
 type ApplyImmutableEventDefaultsOptions = {
     state: EventFormState;
     defaults?: Partial<Event>;
     sportsById: Map<string, Sport>;
+};
+
+export const normalizeImmutableFields = (fields?: Partial<Event>['fields']): Field[] => {
+    if (!Array.isArray(fields)) {
+        return [];
+    }
+    return sanitizeFieldsForForm(
+        (fields as Field[]).filter((field): field is Field => Boolean(field && field.$id)),
+    );
+};
+
+export const normalizeImmutableTimeSlots = (
+    timeSlots: Partial<Event>['timeSlots'] | undefined,
+    immutableFields: Field[],
+): TimeSlot[] => {
+    if (!Array.isArray(timeSlots)) {
+        return [];
+    }
+    const fallbackFieldId = immutableFields[0]?.$id;
+    return (timeSlots as TimeSlot[])
+        .map((slot) => {
+            if (!slot) {
+                return null;
+            }
+            const { event: _ignoredEvent, ...rest } = slot;
+            const normalized: TimeSlot = {
+                ...rest,
+                scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                scheduledFieldIds: normalizeSlotFieldIds({
+                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                    scheduledFieldIds: rest.scheduledFieldIds,
+                }),
+            };
+            return normalized;
+        })
+        .filter((slot): slot is TimeSlot => Boolean(slot));
 };
 
 export const applyImmutableEventDefaults = ({

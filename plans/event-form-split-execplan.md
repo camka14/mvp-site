@@ -541,3 +541,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted slot-referenced resource resolution into `eventForm/resourceGroups.ts` with helper coverage.
 - 2026-06-22 / Codex: Extracted rental resource selector maps and league field option construction into `eventForm/rentalResources.ts`.
 - 2026-06-22 / Codex: Extracted selected rented resource and organization resource-pool derivation into `eventForm/resourceGroups.ts`.
+- 2026-06-22 / Codex: Extracted immutable field and timeslot normalization into `eventForm/immutableDefaults.ts`.

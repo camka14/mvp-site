@@ -157,7 +157,11 @@ import type {
     EventFormValues,
 } from './eventForm/formTypes';
 import { buildEventFormDefaultValues } from './eventForm/defaultValues';
-import { applyImmutableEventDefaults } from './eventForm/immutableDefaults';
+import {
+    applyImmutableEventDefaults,
+    normalizeImmutableFields,
+    normalizeImmutableTimeSlots,
+} from './eventForm/immutableDefaults';
 import {
     createLeagueSlotForm,
     normalizeFieldIds,
@@ -458,40 +462,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setHydratedOrganization(organization ?? null);
     }, [organization]);
 
-    const immutableFields = useMemo(() => {
-        if (!Array.isArray(immutableDefaultsMemo.fields)) {
-            return [] as Field[];
-        }
-        return sanitizeFieldsForForm(
-            (immutableDefaultsMemo.fields as Field[]).filter((field): field is Field => Boolean(field && field.$id))
-        );
-    }, [immutableDefaultsMemo.fields]);
+    const immutableFields = useMemo(
+        () => normalizeImmutableFields(immutableDefaultsMemo.fields),
+        [immutableDefaultsMemo.fields],
+    );
 
     const hasImmutableFields = immutableFields.length > 0;
 
-    const immutableTimeSlotsFromDefaults = useMemo(() => {
-        if (!Array.isArray(immutableDefaultsMemo.timeSlots)) {
-            return [] as TimeSlot[];
-        }
-        const fallbackFieldId = immutableFields[0]?.$id;
-        return (immutableDefaultsMemo.timeSlots as TimeSlot[])
-            .map((slot) => {
-                if (!slot) {
-                    return null;
-                }
-                const { event: _ignoredEvent, ...rest } = slot;
-                const normalized: TimeSlot = {
-                    ...rest,
-                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                    scheduledFieldIds: normalizeSlotFieldIds({
-                        scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                        scheduledFieldIds: rest.scheduledFieldIds,
-                    }),
-                };
-                return normalized;
-            })
-            .filter((slot): slot is TimeSlot => Boolean(slot));
-    }, [immutableDefaultsMemo.timeSlots, immutableFields]);
+    const immutableTimeSlotsFromDefaults = useMemo(
+        () => normalizeImmutableTimeSlots(immutableDefaultsMemo.timeSlots, immutableFields),
+        [immutableDefaultsMemo.timeSlots, immutableFields],
+    );
 
     const isImmutableField = useCallback(
         (key: keyof Event) => immutableDefaultsMemo[key] !== undefined,

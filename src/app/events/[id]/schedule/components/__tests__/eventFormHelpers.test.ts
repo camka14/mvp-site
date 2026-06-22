@@ -21,6 +21,10 @@ import {
   normalizeSportOfficialPositionTemplates,
 } from '../eventForm/officials';
 import {
+  normalizeImmutableFields,
+  normalizeImmutableTimeSlots,
+} from '../eventForm/immutableDefaults';
+import {
   buildRentalBookingTimeSlot,
   buildRentalLeagueFieldOptions,
   buildRentalResourceFields,
@@ -99,6 +103,33 @@ const makeDivisionDetail = (overrides: Partial<DivisionDetailForm> & { id: strin
   installmentAmounts: overrides.installmentAmounts ?? [],
   fieldIds: overrides.fieldIds ?? [],
   ...overrides,
+});
+
+describe('event form immutable default helpers', () => {
+  it('sanitizes immutable fields and normalizes timeslots with fallback resource ids', () => {
+    const field = makeField({
+      $id: 'court_1',
+      name: 'Court 1',
+      matches: [{ $id: 'match_1' }],
+    } as any);
+    const immutableFields = normalizeImmutableFields([field, null as any]);
+    const immutableSlots = normalizeImmutableTimeSlots([
+      {
+        $id: 'slot_1',
+        startTimeMinutes: 540,
+        endTimeMinutes: 600,
+        event: { $id: 'event_1' },
+      } as any,
+    ], immutableFields);
+
+    expect((immutableFields[0] as any).matches).toBeUndefined();
+    expect(immutableSlots).toHaveLength(1);
+    expect((immutableSlots[0] as any).event).toBeUndefined();
+    expect(immutableSlots[0]).toMatchObject({
+      scheduledFieldId: 'court_1',
+      scheduledFieldIds: ['court_1'],
+    });
+  });
 });
 
 describe('event form rental resource helpers', () => {
