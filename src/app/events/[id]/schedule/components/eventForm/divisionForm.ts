@@ -1,13 +1,29 @@
-import type { Sport, TournamentConfig } from '@/types';
+import type { Division as CoreDivision, Event, LeagueConfig, Sport, TournamentConfig } from '@/types';
 import {
     buildDivisionName,
     buildDivisionToken,
     buildEventDivisionId,
+    cleanDivisionDisplayName,
     evaluateDivisionAgeEligibility,
+    getDivisionTypeById,
     getDivisionTypeOptionsForSport,
+    inferDivisionDetails,
+    normalizeDivisionGender,
+    normalizeDivisionRatingType,
 } from '@/lib/divisionTypes';
+import { normalizePriceCents } from '@/lib/priceUtils';
 
-import { stringArraysEqual } from './shared';
+import {
+    buildTournamentConfig,
+    extractTournamentConfigFromEvent,
+    leagueConfigToDivisionFields,
+    normalizeLeagueConfigForSetMode,
+} from './configDefaults';
+import {
+    normalizeInstallmentDates,
+    normalizeInstallmentRelativeDays,
+} from './paymentPlanHelpers';
+import { normalizeBoolean, stringArraysEqual } from './shared';
 
 export const DEFAULT_DIVISION_KEY = 'open';
 export const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
@@ -210,6 +226,250 @@ export type PlayoffDivisionDetailForm = Omit<
     name: string;
     maxParticipants: number | null;
     playoffConfig: TournamentConfig;
+};
+
+export const divisionIdFromValue = (value: string | CoreDivision): string => {
+    if (typeof value === 'string') {
+        return value.trim().toLowerCase();
+    }
+    const fallback = (
+        value.id
+        || (value as { $id?: string }).$id
+        || value.key
+        || value.skillLevel
+        || value.name
+        || ''
+    ).toString();
+    return fallback.trim().toLowerCase();
+};
+
+export const normalizeDivisionDetailEntry = (
+    entry: unknown,
+    eventId: string,
+    sportInput?: string | null,
+    referenceDate?: Date | null,
+    valuesStoredInCents: boolean = true,
+): DivisionDetailForm | null => {
+    if (!entry || typeof entry !== 'object') {
+        return null;
+    }
+    const row = entry as Record<string, unknown>;
+    const rawId = normalizeDivisionKeys([row.id ?? row.$id])[0];
+    const inferred = inferDivisionDetails({
+        identifier: (row.key ?? rawId ?? row.name ?? 'c_skill_open') as string,
+        sportInput: sportInput ?? undefined,
+        fallbackName: typeof row.name === 'string' ? row.name : undefined,
+    });
+    const defaults = getDefaultDivisionTypeSelectionsForSport(sportInput ?? undefined);
+    const rawDivisionTypeId = normalizeDivisionKeys([row.divisionTypeId])[0] || inferred.divisionTypeId;
+    const parsedComposite = parseCompositeDivisionTypeId(row.divisionTypeId ?? rawDivisionTypeId);
+    const rawSkillDivisionTypeId = normalizeDivisionKeys([row.skillDivisionTypeId])[0];
+    const rawAgeDivisionTypeId = normalizeDivisionKeys([row.ageDivisionTypeId])[0];
+    const ratingType = parsedComposite || rawSkillDivisionTypeId || rawAgeDivisionTypeId
+        ? 'SKILL'
+        : (normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType);
+    const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
+    const skillDivisionTypeId = rawSkillDivisionTypeId
+        ?? parsedComposite?.skillDivisionTypeId
+        ?? (ratingType === 'SKILL' ? rawDivisionTypeId : defaults.skillDivisionTypeId);
+    const ageDivisionTypeId = rawAgeDivisionTypeId
+        ?? parsedComposite?.ageDivisionTypeId
+        ?? (ratingType === 'AGE' ? rawDivisionTypeId : defaults.ageDivisionTypeId);
+    const skillDivisionTypeName = typeof row.skillDivisionTypeName === 'string' && row.skillDivisionTypeName.trim().length > 0
+        ? row.skillDivisionTypeName.trim()
+        : (
+            getDivisionTypeById(sportInput ?? null, skillDivisionTypeId, 'SKILL')?.name
+            ?? defaults.skillDivisionTypeName
+        );
+    const ageDivisionTypeName = typeof row.ageDivisionTypeName === 'string' && row.ageDivisionTypeName.trim().length > 0
+        ? row.ageDivisionTypeName.trim()
+        : (
+            getDivisionTypeById(sportInput ?? null, ageDivisionTypeId, 'AGE')?.name
+            ?? defaults.ageDivisionTypeName
+        );
+    const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+    const divisionTypeName = buildDivisionName({
+        gender,
+        sportInput,
+        skillDivisionTypeId,
+        ageDivisionTypeId,
+    });
+    const key = normalizeDivisionKeys([row.key])[0] || buildDivisionToken({
+        gender,
+        ratingType: 'SKILL',
+        divisionTypeId,
+    });
+    const id = rawId || buildEventDivisionId(eventId, key);
+    const name = cleanDivisionDisplayName(
+        row.name,
+        divisionTypeName,
+    );
+    const rawDivisionPriceCents = typeof row.price === 'number'
+        ? row.price
+        : Number.isFinite(Number(row.price))
+            ? Number(row.price)
+            : 0;
+    const rawDivisionMaxParticipants = typeof row.maxParticipants === 'number'
+        ? row.maxParticipants
+        : Number.isFinite(Number(row.maxParticipants))
+            ? Number(row.maxParticipants)
+            : 10;
+    const rawDivisionPlayoffTeamCount = typeof row.playoffTeamCount === 'number'
+        ? row.playoffTeamCount
+        : Number.isFinite(Number(row.playoffTeamCount))
+            ? Number(row.playoffTeamCount)
+            : undefined;
+    const rawPoolCount = typeof row.poolCount === 'number'
+        ? row.poolCount
+        : Number.isFinite(Number(row.poolCount))
+            ? Number(row.poolCount)
+            : undefined;
+    const rawPoolTeamCount = typeof row.poolTeamCount === 'number'
+        ? row.poolTeamCount
+        : Number.isFinite(Number(row.poolTeamCount))
+            ? Number(row.poolTeamCount)
+            : undefined;
+    const rawLeagueConfigSource = row.leagueConfig && typeof row.leagueConfig === 'object' && !Array.isArray(row.leagueConfig)
+        ? row.leagueConfig as Partial<LeagueConfig>
+        : row as Partial<LeagueConfig>;
+    const rawLeagueConfig = normalizeLeagueConfigForSetMode(
+        rawLeagueConfigSource,
+        Boolean(rawLeagueConfigSource.usesSets),
+    );
+    const rawPlayoffConfig = extractTournamentConfigFromEvent(row as unknown as Partial<Event>) ?? undefined;
+    const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds);
+    const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
+    const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
+        ? row.installmentAmounts.map((value) => {
+            const parsed = typeof value === 'number' ? value : Number(value);
+            return valuesStoredInCents
+                ? normalizePriceCents(parsed)
+                : normalizePriceCents(Number.isFinite(parsed) ? parsed * 100 : 0);
+        })
+        : [];
+    const rawInstallmentDueDates = normalizeInstallmentDates(row.installmentDueDates);
+    const rawInstallmentDueRelativeDays = normalizeInstallmentRelativeDays(row.installmentDueRelativeDays);
+    const rawInstallmentCount = Number.isFinite(Number(row.installmentCount))
+        ? Math.max(0, Math.trunc(Number(row.installmentCount)))
+        : rawInstallmentAmounts.length;
+
+    const baseDetail: DivisionDetailForm = {
+        id,
+        key,
+        kind: typeof row.kind === 'string' && row.kind.toUpperCase() === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
+        name,
+        divisionTypeId,
+        divisionTypeName,
+        ratingType,
+        gender,
+        skillDivisionTypeId,
+        skillDivisionTypeName,
+        ageDivisionTypeId,
+        ageDivisionTypeName,
+        price: valuesStoredInCents
+            ? normalizePriceCents(rawDivisionPriceCents)
+            : normalizePriceCents(rawDivisionPriceCents * 100),
+        maxParticipants: Math.max(2, Math.trunc(rawDivisionMaxParticipants)),
+        playoffTeamCount: Number.isFinite(rawDivisionPlayoffTeamCount)
+            ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount as number))
+            : undefined,
+        poolCount: Number.isFinite(rawPoolCount)
+            ? Math.max(1, Math.trunc(rawPoolCount as number))
+            : undefined,
+        poolTeamCount: Number.isFinite(rawPoolTeamCount)
+            ? Math.max(1, Math.trunc(rawPoolTeamCount as number))
+            : undefined,
+        playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
+        ...leagueConfigToDivisionFields(rawLeagueConfig),
+        ...(rawPlayoffConfig ? { playoffConfig: rawPlayoffConfig } : {}),
+        allowPaymentPlans: rawAllowPaymentPlans,
+        installmentCount: rawAllowPaymentPlans
+            ? (rawInstallmentCount || rawInstallmentAmounts.length || 0)
+            : 0,
+        installmentDueDates: rawAllowPaymentPlans ? rawInstallmentDueDates : [],
+        installmentDueRelativeDays: rawAllowPaymentPlans ? rawInstallmentDueRelativeDays : [],
+        installmentAmounts: rawAllowPaymentPlans ? rawInstallmentAmounts : [],
+        sportId: typeof row.sportId === 'string' ? row.sportId : sportInput ?? undefined,
+        fieldIds: Array.isArray(row.fieldIds)
+            ? row.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+            : [],
+        ageCutoffDate: typeof row.ageCutoffDate === 'string' ? row.ageCutoffDate : undefined,
+        ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : undefined,
+        ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : undefined,
+    };
+    return applyDivisionAgeCutoff(baseDetail, sportInput, referenceDate);
+};
+
+export const normalizePlayoffDivisionDetailEntry = (
+    entry: unknown,
+    eventId: string,
+    fallbackPlayoffConfig?: TournamentConfig,
+    sportInput?: string | null,
+    referenceDate?: Date | null,
+): PlayoffDivisionDetailForm | null => {
+    if (!entry || typeof entry !== 'object') {
+        return null;
+    }
+
+    const row = entry as Record<string, unknown>;
+    const rawId = normalizeDivisionKeys([row.id ?? row.$id])[0];
+    const rawKey = normalizeDivisionKeys([row.key])[0];
+    const key = rawKey || `playoff_${Math.max(1, Math.trunc(Number(row.seed) || 1))}`;
+    const id = rawId || buildEventDivisionId(eventId, key);
+    const name = typeof row.name === 'string' && row.name.trim().length > 0
+        ? row.name.trim()
+        : `Playoff Division ${key.replace(/^playoff_/, '')}`;
+    const maxParticipantsRaw = normalizePlayoffDivisionParticipantCount(row.maxParticipants);
+    const playoffConfig = extractTournamentConfigFromEvent(row as unknown as Partial<Event>)
+        ?? buildTournamentConfig(fallbackPlayoffConfig);
+    const normalizedDivision = normalizeDivisionDetailEntry(
+        {
+            ...row,
+            id,
+            key,
+            kind: 'PLAYOFF',
+            name,
+            maxParticipants: maxParticipantsRaw,
+        },
+        eventId,
+        typeof row.sportId === 'string' ? row.sportId : sportInput,
+        referenceDate,
+    );
+
+    return {
+        ...(normalizedDivision
+            ? {
+                divisionTypeId: normalizedDivision.divisionTypeId,
+                divisionTypeName: normalizedDivision.divisionTypeName,
+                ratingType: normalizedDivision.ratingType,
+                gender: normalizedDivision.gender,
+                skillDivisionTypeId: normalizedDivision.skillDivisionTypeId,
+                skillDivisionTypeName: normalizedDivision.skillDivisionTypeName,
+                ageDivisionTypeId: normalizedDivision.ageDivisionTypeId,
+                ageDivisionTypeName: normalizedDivision.ageDivisionTypeName,
+                price: normalizedDivision.price,
+                playoffTeamCount: normalizedDivision.playoffTeamCount,
+                poolCount: normalizedDivision.poolCount,
+                poolTeamCount: normalizedDivision.poolTeamCount,
+                allowPaymentPlans: normalizedDivision.allowPaymentPlans,
+                installmentCount: normalizedDivision.installmentCount,
+                installmentDueDates: normalizedDivision.installmentDueDates,
+                installmentDueRelativeDays: normalizedDivision.installmentDueRelativeDays,
+                installmentAmounts: normalizedDivision.installmentAmounts,
+                sportId: normalizedDivision.sportId,
+                ageCutoffDate: normalizedDivision.ageCutoffDate,
+                ageCutoffLabel: normalizedDivision.ageCutoffLabel,
+                ageCutoffSource: normalizedDivision.ageCutoffSource,
+                fieldIds: normalizedDivision.fieldIds,
+            }
+            : {}),
+        id,
+        key,
+        kind: 'PLAYOFF',
+        name,
+        maxParticipants: maxParticipantsRaw,
+        playoffConfig,
+    };
 };
 
 export type DivisionEditorKind = 'LEAGUE' | 'PLAYOFF';
