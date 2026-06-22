@@ -602,7 +602,7 @@ export interface LeagueSlotForm {
   error?: string;
 }
 
-type LeagueFieldOption = {
+export type LeagueFieldOption = {
   value: string;
   label: string;
   fieldId?: string;

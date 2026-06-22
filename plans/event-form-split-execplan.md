@@ -32,6 +32,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T11:25Z) Extracted the Staff section shell into `StaffSection`.
   - [x] (2026-06-22T11:44Z) Extracted the Divisions section shell into `DivisionSettingsSection`.
   - [x] (2026-06-22T12:03Z) Extracted the Schedule section shell into `ScheduleConfigSection`.
+  - [x] (2026-06-22T17:24Z) Extracted the Schedule section body into `ScheduleConfigBody`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -106,6 +107,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract the Schedule section shell before splitting schedule controls.
   Rationale: The schedule body still coordinates rental-only messaging, weekly-child resources, and editable league slots. Moving the repeated visible/collapsible section chrome keeps scheduling behavior in place while making the wrapper reusable.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract the Schedule body before moving scheduling state.
+  Rationale: The body has a stable prop boundary around rental schedule messaging, weekly child resource selection, and `LeagueFields`. Keeping slot mutation callbacks in `EventForm` preserves the existing scheduling state ownership while removing the repeated JSX from the parent.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -263,6 +267,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted the Staff section shell while leaving the staff workflow body in `EventForm`.
 - 2026-06-22 / Codex: Extracted the Divisions section shell while leaving the division editor body in `EventForm`.
 - 2026-06-22 / Codex: Extracted the Schedule section shell while leaving scheduling controls in `EventForm`.
+- 2026-06-22 / Codex: Extracted the Schedule section body while leaving schedule state and mutation callbacks in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

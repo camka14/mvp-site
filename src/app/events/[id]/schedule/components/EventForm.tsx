@@ -167,7 +167,6 @@ import {
     SECTION_ANIMATION_DURATION_MS,
 } from './eventForm/constants';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
-import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
@@ -179,6 +178,7 @@ import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeC
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
+import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
 import { StaffSection } from './eventForm/sections/StaffSection';
 
@@ -12256,93 +12256,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             collapsed={collapsedSections['section-schedule-config']}
                             onToggle={() => toggleSectionCollapse('section-schedule-config')}
                         >
-                                    <div id="section-schedule-config-content" className="mt-4 space-y-6">
-                                        {!isSchedulableEventType && usesRentalSlots ? (
-                                            <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                                <Text fw={600} size="sm">Rental Slot Schedule</Text>
-                                                <Text size="sm" c="dimmed">
-                                                    This event uses pre-booked rental slots. Slot scheduling is managed by the rental reservation.
-                                                </Text>
-                                                <Text size="sm" c="dimmed" mt="xs">
-                                                    Linked slots: {immutableTimeSlots.length}
-                                                </Text>
-                                            </div>
-                                        ) : null}
-
-                                        {isWeeklyChildEvent ? (
-                                            <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-                                                <Text fw={600} size="sm">Weekly Session Schedule</Text>
-                                                <Text size="sm" c="dimmed">
-                                                    Older parent-linked weekly rows use fixed start/end times from the selected session. New weekly registrations use the parent event slot and occurrence date.
-                                                </Text>
-                                                <Controller
-                                                    name="selectedFieldIds"
-                                                    control={control}
-                                                    render={({ field, fieldState }) => (
-                                                        <FacilityResourceSelector
-                                                            label="Session Resources"
-                                                            description="Choose which resources this weekly child session can use."
-                                                            placeholder={resourceSelectorLoading ? 'Loading resources...' : 'Select one or more resources'}
-                                                            fields={selectedFields}
-                                                            value={Array.isArray(field.value) ? field.value : []}
-                                                            disabled={resourceSelectorLoading || isImmutableField('fieldIds')}
-                                                            loading={resourceSelectorLoading}
-                                                            eventOrganizationId={organizationHostedEventId}
-                                                            onChange={(values) => {
-                                                                if (isImmutableField('fieldIds')) return;
-                                                                field.onChange(values);
-                                                            }}
-                                                            error={fieldState.error?.message || rentalResourcesError}
-                                                        />
-                                                    )}
-                                                />
-                                            </div>
-                                        ) : null}
-
-                                        {isSchedulableEventType ? (
-                                            <div className="space-y-4">
-                                                <AnimatedSection in={isOrganizationManagedEvent}>
-                                                    <Text size="xs" c="dimmed">
-                                                        Select event resources directly inside each timeslot.
-                                                    </Text>
-                                                </AnimatedSection>
-
-                                                <LeagueFields
-                                                    leagueData={leagueData}
-                                                    sport={eventData.sportConfig ?? undefined}
-                                                    participantCount={eventData.singleDivision
-                                                        ? (eventData.maxParticipants ?? 0)
-                                                        : (() => {
-                                                            const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
-                                                                sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
-                                                            ), 0);
-                                                            return total > 0 ? total : (eventData.maxParticipants ?? 0);
-                                                        })()}
-                                                    onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
-                                                    slots={leagueSlots}
-                                                    onAddSlot={handleAddSlot}
-                                                    onUpdateSlot={handleUpdateSlot}
-                                                    onRemoveSlot={handleRemoveSlot}
-                                                    onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
-                                                    fields={selectedFields}
-                                                    fieldsLoading={resourceSelectorLoading}
-                                                    fieldOptions={leagueFieldOptions}
-                                                    divisionOptions={divisionOptions}
-                                                    eventStartDate={eventData.start}
-                                                    lockSlotDivisions={Boolean(eventData.singleDivision)}
-                                                    lockedDivisionKeys={slotDivisionKeys}
-                                                    readOnly={hasImmutableTimeSlots}
-                                                    allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
-                                                    allowResourceEditsWhenReadOnly={hasExternalRentalField}
-                                                    showPlayoffSettings={false}
-                                                    showLeagueConfiguration={false}
-                                                    emptyFieldsMessage={isOrganizationManagedEvent
-                                                        ? 'No resources found. Create a resource on the Organizations page first, then return here to attach weekly availability.'
-                                                        : undefined}
-                                                />
-                                            </div>
-                                        ) : null}
-                                    </div>
+                            <ScheduleConfigBody
+                                control={control}
+                                usesRentalSlots={usesRentalSlots}
+                                immutableTimeSlotCount={immutableTimeSlots.length}
+                                isWeeklyChildEvent={isWeeklyChildEvent}
+                                isSchedulableEventType={isSchedulableEventType}
+                                isOrganizationManagedEvent={isOrganizationManagedEvent}
+                                organizationHostedEventId={organizationHostedEventId}
+                                selectedFields={selectedFields}
+                                resourceSelectorLoading={resourceSelectorLoading}
+                                rentalResourcesError={rentalResourcesError}
+                                isImmutableField={isImmutableField}
+                                leagueData={leagueData}
+                                sport={eventData.sportConfig ?? undefined}
+                                participantCount={eventData.singleDivision
+                                    ? (eventData.maxParticipants ?? 0)
+                                    : (() => {
+                                        const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
+                                            sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
+                                        ), 0);
+                                        return total > 0 ? total : (eventData.maxParticipants ?? 0);
+                                    })()}
+                                leagueSlots={leagueSlots}
+                                leagueFieldOptions={leagueFieldOptions}
+                                divisionOptions={divisionOptions}
+                                eventStartDate={eventData.start}
+                                lockSlotDivisions={Boolean(eventData.singleDivision)}
+                                lockedDivisionKeys={slotDivisionKeys}
+                                readOnly={hasImmutableTimeSlots}
+                                allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
+                                allowResourceEditsWhenReadOnly={hasExternalRentalField}
+                                onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
+                                onAddSlot={handleAddSlot}
+                                onUpdateSlot={handleUpdateSlot}
+                                onRemoveSlot={handleRemoveSlot}
+                                onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
+                            />
                         </ScheduleConfigSection>
                     </form>
                 </div>
