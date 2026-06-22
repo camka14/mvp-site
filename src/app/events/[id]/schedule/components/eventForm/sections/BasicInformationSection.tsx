@@ -13,7 +13,7 @@ import {
 import type { Event, Sport } from '@/types';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { SECTION_ANIMATION_DURATION_MS } from '../constants';
 
 type BasicInformationSectionProps = {

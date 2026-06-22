@@ -7,7 +7,7 @@ import LeagueFields, {
 } from '@/app/discover/components/LeagueFields';
 import type { Event, Field, LeagueConfig, Sport } from '@/types';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { AnimatedSection } from '../components/AnimatedSection';
 import { FacilityResourceSelector } from '../components/FacilityResourceSelector';
 

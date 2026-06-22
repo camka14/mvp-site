@@ -8,7 +8,7 @@ import {
 
 import type { Event } from '@/types';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { AnimatedSection } from '../components/AnimatedSection';
 
 type EventDetailsTypeControlsProps = {

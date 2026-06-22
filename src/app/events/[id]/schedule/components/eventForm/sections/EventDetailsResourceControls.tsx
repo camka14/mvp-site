@@ -5,7 +5,7 @@ import { Button, Collapse, Group, Text, TextInput, Title } from '@mantine/core';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import type { Event, Field } from '@/types';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { SECTION_ANIMATION_DURATION_MS } from '../constants';
 import { FacilityResourceSelector } from '../components/FacilityResourceSelector';
 

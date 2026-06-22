@@ -3,7 +3,7 @@ import { Switch, Text } from '@mantine/core';
 
 import type { Event } from '@/types';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 
 type DivisionModeControlsProps = {
     control: Control<EventFormValues>;

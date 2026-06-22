@@ -10,7 +10,7 @@ import {
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import type { Event } from '@/types';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { AnimatedSection } from '../components/AnimatedSection';
 
 type EventDetailsLocationControlsProps = {

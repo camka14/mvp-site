@@ -6,7 +6,7 @@ import { DateTimePicker } from '@mantine/dates';
 import type { Event } from '@/types';
 import { parseLocalDateTime } from '@/lib/dateUtils';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { AnimatedSection } from '../components/AnimatedSection';
 
 type EventDetailsTimingControlsProps = {

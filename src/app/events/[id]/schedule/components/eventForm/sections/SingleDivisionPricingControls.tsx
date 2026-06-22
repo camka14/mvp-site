@@ -15,7 +15,7 @@ import {
     type EventTaxHandling,
 } from '@/lib/taxPolicy';
 
-import type { EventFormValues } from '../../EventForm';
+import type { EventFormValues } from '../formTypes';
 import { AnimatedLayoutSection, AnimatedSection } from '../components/AnimatedSection';
 
 type SingleDivisionPricingControlsProps = {

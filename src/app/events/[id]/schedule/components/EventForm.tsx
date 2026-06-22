@@ -143,6 +143,10 @@ import {
     flattenZodIssues,
     type FlattenedFormError,
 } from './eventForm/validationErrors';
+import type {
+    EventFormState,
+    EventFormValues,
+} from './eventForm/formTypes';
 import {
     buildDefaultSlotForms,
     normalizeFieldIds,
@@ -356,69 +360,6 @@ const maybeExtendVisibleCountOnScroll = (
     setVisibleCount((prev) => (
         prev >= total ? prev : Math.min(prev + 5, total)
     ));
-};
-
-type EventFormState = {
-    $id: string;
-    name: string;
-    description: string;
-    location: string;
-    address: string;
-    coordinates: [number, number];
-    start: string;
-    end: string;
-    timeZone: string;
-    state: EventState;
-    eventType: EventType;
-    parentEvent?: string;
-    sportId: string;
-    sportConfig: Sport | null;
-    price: number;
-    taxHandling: EventTaxHandling;
-    organizerManualTaxRateBps: number;
-    minAge?: number;
-    maxAge?: number;
-    allowPaymentPlans: boolean;
-    installmentCount?: number;
-    installmentDueDates: string[];
-    installmentDueRelativeDays: number[];
-    installmentAmounts: number[];
-    allowTeamSplitDefault: boolean;
-    maxParticipants: number | null;
-    teamSizeLimit: number | null;
-    teamSignup: boolean;
-    singleDivision: boolean;
-    splitLeaguePlayoffDivisions: boolean;
-    registrationByDivisionType: boolean;
-    divisions: string[];
-    divisionDetails: DivisionDetailForm[];
-    playoffDivisionDetails: PlayoffDivisionDetailForm[];
-    divisionFieldIds: Record<string, string[]>;
-    selectedFieldIds: string[];
-    cancellationRefundHours: number | null;
-    registrationCutoffHours: number;
-    organizationId?: string;
-    requiredTemplateIds: string[];
-    hostId?: string;
-    noFixedEndDateTime: boolean;
-    imageId: string;
-    seedColor: number;
-    waitList: string[];
-    freeAgents: string[];
-    players: UserData[];
-    teams: Team[];
-    officials: UserData[];
-    officialIds: string[];
-    officialSchedulingMode: OfficialSchedulingMode;
-    officialPositions: EventOfficialPosition[];
-    eventOfficials: EventOfficial[];
-    pendingStaffInvites: PendingStaffInvite[];
-    assistantHostIds: string[];
-    doTeamsOfficiate: boolean;
-    teamOfficialsMaySwap: boolean;
-    matchRulesOverride: MatchRulesConfig | null;
-    autoCreatePointMatchIncidents: boolean;
-    leagueScoringConfig: LeagueScoringConfig;
 };
 
 const mapEventToFormState = (event: Event): EventFormState => {
@@ -847,16 +788,6 @@ const mapEventToFormState = (event: Event): EventFormState => {
             : undefined
     ),
 };
-};
-
-export type EventFormValues = EventFormState & {
-    leagueSlots: LeagueSlotForm[];
-    leagueData: LeagueConfig;
-    playoffData: TournamentConfig;
-    tournamentData: TournamentConfig;
-    fields: Field[];
-    fieldCount: number;
-    joinAsParticipant: boolean;
 };
 
 const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
