@@ -140,7 +140,13 @@ import {
     type RentalBookingResourceOption,
 } from './eventForm/rentalResources';
 import { buildEventFormSchema } from './eventForm/schema';
-import { normalizeFieldIds, normalizeSlotFieldIds, normalizeWeekdays, timeSlotsEqual } from './eventForm/slotForm';
+import {
+    buildDefaultSlotForms,
+    normalizeFieldIds,
+    normalizeSlotFieldIds,
+    normalizeWeekdays,
+    timeSlotsEqual,
+} from './eventForm/slotForm';
 import {
     normalizeSlotState,
     slotDateTimeRangesOverlap,
@@ -2627,27 +2633,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             availableFieldIdsForDivisions,
         );
 
-        const defaultFieldId = Array.isArray(defaults.fields) && defaults.fields.length > 0
-            ? (defaults.fields[0] as Field).$id
-            : undefined;
-
-        const defaultSlots = (() => {
-            const defaultUsesEditableScheduleSlots = supportsScheduleSlotsForEvent(base.eventType, base.parentEvent);
-            if (!defaultUsesEditableScheduleSlots && Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
-                return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end, base.timeZone));
-            }
-
-            if (
-                activeEditingEvent
-                && supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)
-                && activeEditingEvent.timeSlots?.length
-            ) {
-                return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end, base.timeZone));
-            }
-            return [createSlotForm(undefined, defaultSlotDivisionKeys, base.start, base.end, base.timeZone)];
-        })();
+        const defaultSlots = buildDefaultSlotForms({
+            base,
+            activeEditingEvent,
+            immutableDefaults: defaults,
+            defaultSlotDivisionKeys,
+            createSlotForm,
+        });
 
         const defaultLeagueData: LeagueConfig = (() => {
             const selectedSport = base.sportConfig
