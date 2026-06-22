@@ -119,6 +119,7 @@ import {
     buildFieldCountOptions,
     buildFieldById,
     buildOrganizationResourcePool,
+    buildResolvedOrganizationFieldSignature,
     fieldsEqual,
     isEventLocalField,
     isGeneratedLocalFieldPlaceholder,
@@ -665,19 +666,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [formValues.selectedFieldIds],
     );
     const resolvedOrganizationFieldSignature = useMemo(
-        () => (
-            Array.isArray(resolvedOrganization?.fields)
-                ? resolvedOrganization.fields
-                    .map((field) => {
-                        const fieldId = normalizeEntityId((field as Field | undefined)?.$id) ?? '';
-                        const fieldCreatedAt = String((field as Field | undefined)?.$createdAt ?? (field as Field | undefined)?.createdAt ?? '').trim();
-                        const fieldName = String((field as Field | undefined)?.name ?? '').trim();
-                        return `${fieldId}:${fieldCreatedAt}:${fieldName}`;
-                    })
-                    .sort()
-                    .join('|')
-                : ''
-        ),
+        () => buildResolvedOrganizationFieldSignature(resolvedOrganization?.fields as Field[] | undefined),
         [resolvedOrganization?.fields],
     );
     const divisionFieldIds = useMemo(

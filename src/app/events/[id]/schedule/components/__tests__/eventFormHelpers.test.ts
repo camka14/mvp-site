@@ -50,6 +50,7 @@ import {
   buildFacilityResourceGroups,
   buildFieldById,
   buildOrganizationResourcePool,
+  buildResolvedOrganizationFieldSignature,
   fieldsEqual,
   isGeneratedLocalFieldPlaceholder,
   mergeFieldsById,
@@ -524,6 +525,14 @@ describe('event form resource grouping helpers', () => {
       rentalResourceSelectorFields: [rentalSelector],
       selectedFieldIds: ['rented_1'],
     }).map((field) => field.$id)).toEqual(['owned_1', 'rented_1', 'rental:item_1']);
+  });
+
+  it('builds stable organization field signatures from id, created date, and name', () => {
+    expect(buildResolvedOrganizationFieldSignature([
+      makeField({ $id: 'field_b', name: ' B ', $createdAt: '2026-01-02T00:00:00.000Z' } as any),
+      makeField({ $id: 'field_a', name: 'A', createdAt: '2026-01-01T00:00:00.000Z' } as any),
+    ])).toBe('field_a:2026-01-01T00:00:00.000Z:A|field_b:2026-01-02T00:00:00.000Z:B');
+    expect(buildResolvedOrganizationFieldSignature(null)).toBe('');
   });
 
   it('compares fields with division sets independent of division order', () => {

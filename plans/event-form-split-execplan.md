@@ -544,3 +544,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted immutable field and timeslot normalization into `eventForm/immutableDefaults.ts`.
 - 2026-06-22 / Codex: Extracted sport and template select-option builders into `eventForm/formOptions.ts`.
 - 2026-06-22 / Codex: Extracted automatic-refund availability into `eventForm/paymentPlanHelpers.ts`.
+- 2026-06-22 / Codex: Extracted organization field signature construction into `eventForm/resourceGroups.ts`.

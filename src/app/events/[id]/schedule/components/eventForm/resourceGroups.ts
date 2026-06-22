@@ -152,6 +152,21 @@ export const buildFieldById = (fields: Field[]): Map<string, Field> => (
     new Map(fields.map((field) => [normalizeResourceText(field.$id), field] as const))
 );
 
+export const buildResolvedOrganizationFieldSignature = (fields?: Field[] | null): string => {
+    if (!Array.isArray(fields)) {
+        return '';
+    }
+    return fields
+        .map((field) => {
+            const fieldId = normalizeResourceText(field?.$id);
+            const fieldCreatedAt = String(field?.$createdAt ?? field?.createdAt ?? '').trim();
+            const fieldName = String(field?.name ?? '').trim();
+            return `${fieldId}:${fieldCreatedAt}:${fieldName}`;
+        })
+        .sort()
+        .join('|');
+};
+
 export const buildFieldCountOptions = (
     isOrganizationHostedEvent: boolean,
 ): Array<{ value: string; label: string }> => {
