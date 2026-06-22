@@ -33,7 +33,6 @@ import {
 } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
-import { apiRequest } from '@/lib/apiClient';
 import {
     requiresOrganizationEventFieldSelection,
     resolveOrganizationEventFieldIds,
@@ -125,10 +124,8 @@ import {
     getRentalBookingSelectorId,
     isRentalBookingSelectorId,
     isRentalLockedTimeSlot,
-    mapRentalBookingsToResourceOptions,
     mergeRentalLockedTimeSlots,
     type RentalBookingResourceOption,
-    type RentalBookingsResponse,
 } from './eventForm/rentalResources';
 import { normalizeFieldIds, normalizeSlotFieldIds, normalizeWeekdays, timeSlotsEqual } from './eventForm/slotForm';
 import {
@@ -175,6 +172,7 @@ import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSe
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
+import { useRentalBookingResources } from './eventForm/hooks/useRentalBookingResources';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
@@ -4485,9 +4483,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [hostCardVisibleCount, setHostCardVisibleCount] = useState(5);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
-    const [rentalResourceOptions, setRentalResourceOptions] = useState<RentalBookingResourceOption[]>([]);
-    const [rentalResourcesLoading, setRentalResourcesLoading] = useState(false);
-    const [rentalResourcesError, setRentalResourcesError] = useState<string | null>(null);
     const organizationHostedEventId = (
         resolvedOrganization?.$id
         || eventData.organizationId
@@ -4508,72 +4503,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         resolvedOrganization?.defaultEventTaxHandling,
     );
 
-    useEffect(() => {
-        if (!open || !shouldLoadRentalResources) {
-            setRentalResourceOptions([]);
-            setRentalResourcesError(null);
-            setRentalResourcesLoading(false);
-            return undefined;
-        }
-
-        let cancelled = false;
-        const params = new URLSearchParams();
-        if (isEditMode && activeEditingEvent?.$id) {
-            params.set('eventId', activeEditingEvent.$id);
-        }
-        if (organizationHostedEventId) {
-            params.set('organizationId', organizationHostedEventId);
-        }
-
-        const loadRentalResources = async () => {
-            try {
-                setRentalResourcesLoading(true);
-                setRentalResourcesError(null);
-                const suffix = params.toString();
-                const response = await apiRequest<RentalBookingsResponse>(
-                    `/api/rentals/bookings${suffix ? `?${suffix}` : ''}`,
-                );
-                if (cancelled) {
-                    return;
-                }
-                const options = mapRentalBookingsToResourceOptions(response);
-                setRentalResourceOptions(options);
-                const rentalFields = options.map((option) => option.field);
-                setFields((previous) => {
-                    const withoutPreviousRentalFields = previous.filter((field) => {
-                        const marker = (field as { rentalResource?: boolean; _rentalResource?: boolean });
-                        return !marker.rentalResource && !marker._rentalResource;
-                    });
-                    return rentalFields.length
-                        ? mergeFieldsById(withoutPreviousRentalFields, rentalFields)
-                        : withoutPreviousRentalFields;
-                }, { shouldDirty: false, shouldValidate: false });
-            } catch (error) {
-                if (cancelled) {
-                    return;
-                }
-                setRentalResourceOptions([]);
-                setRentalResourcesError(error instanceof Error ? error.message : 'Failed to load reserved resources.');
-            } finally {
-                if (!cancelled) {
-                    setRentalResourcesLoading(false);
-                }
-            }
-        };
-
-        loadRentalResources();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        activeEditingEvent?.$id,
+    const {
+        options: rentalResourceOptions,
+        loading: rentalResourcesLoading,
+        error: rentalResourcesError,
+    } = useRentalBookingResources({
+        eventId: activeEditingEvent?.$id,
         isEditMode,
         open,
-        organizationHostedEventId,
+        organizationId: organizationHostedEventId,
+        shouldLoad: shouldLoadRentalResources,
         setFields,
-        shouldLoadRentalResources,
-    ]);
+    });
 
     useEffect(() => {
         if (
