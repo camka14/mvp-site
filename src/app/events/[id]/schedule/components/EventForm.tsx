@@ -168,6 +168,10 @@ import {
     type SlotConflictSnapshot,
 } from './eventForm/slotConflictHelpers';
 import {
+    buildLeagueScheduleError,
+    buildLeagueScheduleWarning,
+} from './eventForm/scheduleMessages';
+import {
     type AssignedStaffCard,
     buildAssignedStaffUserIds,
     buildAssignedHostCards,
@@ -4985,26 +4989,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [isEditMode, eventData.location, eventData.coordinates, setEventData]);
 
-    const leagueWarning = (() => {
-        if (hasPendingExternalConflictChecks) {
-            return 'Checking field conflicts for timeslots. You can still save while this warning check finishes.';
-        }
-        if (hasExternalSlotConflictWarnings) {
-            return 'Timeslot field conflicts are warnings. The scheduler will avoid overlaps when building matches, but review or auto resolve the affected slots if needed.';
-        }
-        return null;
-    })();
+    const leagueWarning = buildLeagueScheduleWarning({
+        hasPendingExternalConflictChecks,
+        hasExternalSlotConflictWarnings,
+    });
 
-    const leagueError = (() => {
-        const issue = errors.leagueSlots;
-        if (!issue) {
-            return null;
-        }
-        const message = typeof issue.message === 'string' ? issue.message : null;
-        return message && message.trim().length > 0
-            ? message
-            : 'Please resolve schedule timeslot issues before submitting.';
-    })();
+    const leagueError = buildLeagueScheduleError(errors.leagueSlots);
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
