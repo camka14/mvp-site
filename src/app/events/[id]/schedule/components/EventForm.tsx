@@ -53,6 +53,11 @@ import {
     getLatitudeFromCoordinates,
     getLongitudeFromCoordinates,
 } from './eventForm/locationHelpers';
+import {
+    defaultFieldLocationForEvent,
+    sanitizeFieldsForForm,
+    withEventFieldLocationDefault,
+} from './eventForm/fieldDefaults';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import {
@@ -1272,42 +1277,6 @@ const userMatchesSearch = (candidate: Partial<UserData> | undefined, query: stri
         .map((value) => value.trim().toLowerCase())
         .filter((value) => value.length > 0);
     return tokens.some((value) => value.includes(normalizedQuery));
-};
-
-// Drop match back-references to avoid circular data when React Hook Form clones defaults.
-const sanitizeFieldForForm = (field: Field): Field => {
-    const { matches: _matches, ...rest } = field as Field & { matches?: unknown };
-    return { ...rest } as Field;
-};
-
-const sanitizeFieldsForForm = (fields?: Field[] | null): Field[] =>
-    Array.isArray(fields) ? fields.map(sanitizeFieldForForm) : [];
-
-const defaultFieldLocationForEvent = (eventLocation?: string | null): string => {
-    const trimmed = typeof eventLocation === 'string' ? eventLocation.trim() : '';
-    return trimmed.length ? trimmed : '';
-};
-
-const withEventFieldLocationDefault = (
-    field: Field,
-    eventLocation?: string | null,
-    previousEventLocation?: string | null,
-): Field => {
-    const defaultLocation = defaultFieldLocationForEvent(eventLocation);
-    const previousDefaultLocation = defaultFieldLocationForEvent(previousEventLocation);
-    const currentLocation = typeof field.location === 'string' ? field.location.trim() : '';
-
-    if (!defaultLocation) {
-        return previousDefaultLocation && currentLocation === previousDefaultLocation
-            ? { ...field, location: '' }
-            : field;
-    }
-
-    if (!currentLocation || (previousDefaultLocation && currentLocation === previousDefaultLocation)) {
-        return { ...field, location: defaultLocation };
-    }
-
-    return field;
 };
 
 type EventFormState = {
