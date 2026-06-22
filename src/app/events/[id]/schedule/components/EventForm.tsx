@@ -10,7 +10,7 @@ import { teamService } from '@/lib/teamService';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, Facility, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -59,7 +59,6 @@ import {
     buildDivisionToken,
     buildEventDivisionId,
     cleanDivisionDisplayName,
-    evaluateDivisionAgeEligibility,
     getDivisionTypeById,
     getDivisionTypeOptionsForSport,
     inferDivisionDetails,
@@ -71,7 +70,7 @@ import {
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
-import { getFacilityScopedFieldDisplayName, getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
+import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 import type { EventTaxHandling } from '@/lib/taxPolicy';
 import {
@@ -81,6 +80,94 @@ import {
     resolvePurchaseTaxPolicy,
     taxPolicyRequiresStripeTaxCalculation,
 } from '@/lib/taxPolicy';
+import {
+    buildCompositeDivisionTypeId,
+    buildDefaultDivisionDetailsForSport,
+    buildSlotDivisionLookup,
+    buildUniqueDivisionIdForToken,
+    deriveTournamentPoolSettingsByBracketId,
+    DIVISION_GENDER_OPTIONS,
+    type DivisionDetailForm,
+    type DivisionEditorKind,
+    divisionFieldIdsEqual,
+    formatPlayoffDivisionParticipantCount,
+    getDefaultDivisionTypeSelectionsForSport,
+    normalizeDivisionFieldIds,
+    normalizeDivisionKeys,
+    normalizeDivisionNameKey,
+    normalizeDivisionTokenPart,
+    normalizePlacementDivisionIds,
+    normalizePlayoffDivisionParticipantCount,
+    normalizeSlotDivisionIdsWithLookup,
+    normalizeSlotDivisionKeysWithLookup,
+    parseCompositeDivisionTypeId,
+    type PlayoffDivisionDetailForm,
+    resolveSportInput,
+    type TournamentPoolSettings,
+    applyDivisionAgeCutoff,
+} from './eventForm/divisionForm';
+import {
+    normalizeDirtyTrackedIdList,
+    normalizeDirtyTrackedPendingStaffInvites,
+} from './eventForm/dirtyDraft';
+import {
+    buildOfficialPositionsFromTemplates,
+    getEventOfficialUserIds,
+    normalizeEventOfficialPositions,
+    normalizeEventOfficials,
+    normalizeOfficialSchedulingMode,
+    normalizeSportOfficialPositionTemplates,
+} from './eventForm/officials';
+import {
+    buildFacilityResourceGroups,
+    fieldsEqual,
+    isEventLocalField,
+    isGeneratedLocalFieldPlaceholder,
+    isRentedResourceForOrganization,
+    isSelectableOrganizationResource,
+    mergeFieldsById,
+    mergeOrganizationFieldsIntoPool,
+    removeOrganizationFieldsFromPool,
+    toFieldIdList,
+    withOrganizationFieldOwner,
+} from './eventForm/resourceGroups';
+import {
+    buildRentalBookingTimeSlot,
+    getRentalBookingSelectorId,
+    isRentalBookingSelectorId,
+    isRentalLockedTimeSlot,
+    mapRentalBookingsToResourceOptions,
+    mergeRentalLockedTimeSlots,
+    type RentalBookingResourceOption,
+    type RentalBookingsResponse,
+} from './eventForm/rentalResources';
+import { normalizeFieldIds, normalizeSlotFieldIds, normalizeWeekdays, timeSlotsEqual } from './eventForm/slotForm';
+import {
+    type AssignedStaffCard,
+    createEmptyStaffInvite,
+    type EventInviteStaffType,
+    formatStaffRoleLabel,
+    formatStaffStatusLabel,
+    getStaffStatusColor,
+    getUserEmail,
+    mapInviteStaffTypeToRole,
+    mapRoleToInviteStaffType,
+    normalizeInviteEmail,
+    normalizeInviteStaffTypes,
+    normalizeInviteStatusToken,
+    normalizePendingStaffInvite,
+    normalizeRosterStaffTypes,
+    type PendingStaffInvite,
+    type StaffAssignmentRole,
+    type StaffRosterEntry,
+    type StaffRosterStatus,
+} from './eventForm/staffInvites';
+import {
+    nullableNumbersEqual,
+    normalizeResourceText,
+    stringArraysEqual,
+    stringSetsEqual,
+} from './eventForm/shared';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -121,433 +208,6 @@ type RentalPurchaseContext = {
     organizationEmail?: string | null;
     priceCents?: number;
     requiredTemplateIds?: string[];
-};
-
-type RentalBookingResourceOption = {
-    id: string;
-    selectorId: string;
-    bookingId: string;
-    bookingItemId: string;
-    fieldId: string;
-    field: Field;
-    selectorField: Field;
-    label: string;
-    start: string;
-    end: string;
-    timeZone?: string | null;
-    priceCents?: number | null;
-    requiredTemplateIds?: string[];
-    hostRequiredTemplateIds?: string[];
-    eventId?: string | null;
-    eventTimeSlotId?: string | null;
-};
-
-type RentalBookingsResponse = {
-    bookings?: Array<{
-        $id?: string;
-        id?: string;
-        organizationId?: string | null;
-        renterOrganizationId?: string | null;
-        items?: Array<{
-            $id?: string;
-            id?: string;
-            fieldId?: string | null;
-            start?: string | Date | null;
-            end?: string | Date | null;
-            timeZone?: string | null;
-            priceCents?: number | null;
-            requiredTemplateIds?: string[];
-            hostRequiredTemplateIds?: string[];
-            eventId?: string | null;
-            eventTimeSlotId?: string | null;
-            facilityId?: string | null;
-            facility?: Facility | null;
-            field?: Field | null;
-        }>;
-    }>;
-};
-
-type StaffAssignmentRole = 'OFFICIAL' | 'ASSISTANT_HOST';
-type EventInviteStaffType = 'OFFICIAL' | 'HOST';
-type StaffRosterStatus = 'active' | 'pending' | 'declined' | 'failed';
-
-type PendingStaffInvite = {
-    firstName: string;
-    lastName: string;
-    email: string;
-    roles: StaffAssignmentRole[];
-};
-
-type StaffRosterEntry = {
-    id: string;
-    userId: string | null;
-    fullName: string;
-    userName: string | null;
-    email?: string | null;
-    user?: UserData | null;
-    status: StaffRosterStatus;
-    subtitle?: string | null;
-    types: StaffMemberType[];
-};
-
-type AssignedStaffCard = {
-    key: string;
-    role: 'OFFICIAL' | 'HOST' | 'ASSISTANT_HOST';
-    userId: string | null;
-    user?: UserData | null;
-    email?: string | null;
-    displayName: string;
-    status: 'email_invite' | 'pending' | 'declined' | 'failed' | null;
-    source: 'assigned' | 'draft';
-};
-
-type FacilityResourceGroup = {
-    key: string;
-    label: string;
-    description?: string;
-    isRental: boolean;
-    resources: Array<Field & { $id: string }>;
-};
-
-const normalizeResourceText = (value: unknown): string => (
-    typeof value === 'string' ? value.trim() : ''
-);
-
-const getFieldFacilityId = (field: Field): string | null => {
-    const directId = normalizeResourceText((field as { facilityId?: string | null }).facilityId);
-    if (directId) {
-        return directId;
-    }
-    const facility = field.facility;
-    if (facility && typeof facility === 'object') {
-        return normalizeResourceText((facility as { $id?: string | null }).$id)
-            || normalizeResourceText((facility as { id?: string | null }).id);
-    }
-    return null;
-};
-
-const getFieldFacilityLabel = (field: Field): string => {
-    const facility = field.facility;
-    if (typeof facility === 'string') {
-        return normalizeResourceText(facility);
-    }
-    if (facility && typeof facility === 'object') {
-        return normalizeResourceText(facility.name)
-            || normalizeResourceText(facility.location)
-            || normalizeResourceText(facility.address);
-    }
-    return '';
-};
-
-const getFieldFacilityDescription = (field: Field): string => {
-    const facility = field.facility;
-    if (facility && typeof facility === 'object') {
-        return normalizeResourceText(facility.address)
-            || normalizeResourceText(facility.location);
-    }
-    return normalizeResourceText(field.location);
-};
-
-const isRentedResourceForOrganization = (
-    field: Field,
-    eventOrganizationId?: string | null,
-): boolean => {
-    if ((field as { rentalResource?: boolean; _rentalResource?: boolean }).rentalResource
-        || (field as { rentalResource?: boolean; _rentalResource?: boolean })._rentalResource) {
-        return true;
-    }
-    const hostOrganizationId = normalizeResourceText(eventOrganizationId);
-    if (!hostOrganizationId) {
-        return false;
-    }
-    const fieldOrganizationId = normalizeResourceText(getFieldOrganizationId(field));
-    return fieldOrganizationId.length > 0 && fieldOrganizationId !== hostOrganizationId;
-};
-
-const isSelectableOrganizationResource = (
-    field: Field,
-    eventOrganizationId?: string | null,
-): boolean => {
-    const hostOrganizationId = normalizeResourceText(eventOrganizationId);
-    if (!hostOrganizationId) {
-        return true;
-    }
-    const fieldOrganizationId = normalizeResourceText(getFieldOrganizationId(field));
-    return fieldOrganizationId === hostOrganizationId || isRentedResourceForOrganization(field, hostOrganizationId);
-};
-
-const buildFacilityResourceGroups = (
-    fields: Field[],
-    eventOrganizationId?: string | null,
-): FacilityResourceGroup[] => {
-    const groups = new Map<string, FacilityResourceGroup>();
-
-    fields
-        .filter((field): field is Field & { $id: string } => (
-            typeof field?.$id === 'string' && field.$id.trim().length > 0
-        ))
-        .forEach((field) => {
-            const isRental = isRentedResourceForOrganization(field, eventOrganizationId);
-            const facilityId = getFieldFacilityId(field);
-            const facilityLabel = getFieldFacilityLabel(field);
-            const fallbackLabel = isRental ? 'Rented facility' : 'Ungrouped resources';
-            const groupLabel = facilityLabel || fallbackLabel;
-            const groupKey = [
-                isRental ? 'rental' : 'facility',
-                facilityId || groupLabel.toLowerCase(),
-            ].join(':');
-
-            const existing = groups.get(groupKey);
-            if (existing) {
-                existing.resources.push(field);
-                return;
-            }
-
-            groups.set(groupKey, {
-                key: groupKey,
-                label: groupLabel,
-                description: getFieldFacilityDescription(field),
-                isRental,
-                resources: [field],
-            });
-        });
-
-    return Array.from(groups.values()).map((group) => ({
-        ...group,
-        resources: [...group.resources].sort((left, right) => (
-            getFieldDisplayName(left).localeCompare(getFieldDisplayName(right), undefined, { numeric: true, sensitivity: 'base' })
-        )),
-    })).sort((left, right) => {
-        if (left.isRental !== right.isRental) {
-            return left.isRental ? 1 : -1;
-        }
-        return left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: 'base' });
-    });
-};
-
-const normalizeRentalDateString = (value: string | Date | null | undefined): string | null => {
-    if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? null : value.toISOString();
-    }
-    if (typeof value !== 'string') {
-        return null;
-    }
-    const normalized = value.trim();
-    return normalized.length > 0 ? normalized : null;
-};
-
-const formatRentalBookingOptionWindow = (
-    startValue: string,
-    endValue: string,
-): string => {
-    const start = parseLocalDateTime(startValue);
-    const end = parseLocalDateTime(endValue);
-    if (!start || !end) {
-        return '';
-    }
-    const dateText = new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    }).format(start);
-    const timeFormatter = new Intl.DateTimeFormat('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-    });
-    return `${dateText} ${timeFormatter.format(start)}-${timeFormatter.format(end)}`;
-};
-
-const getRentalBookingSelectorId = (bookingItemId: string): string => `rental:${bookingItemId}`;
-const isRentalBookingSelectorId = (value: unknown): boolean => (
-    normalizeResourceText(value).startsWith('rental:')
-);
-
-const buildRentalBookingResourceLabel = (field: Field, start: string, end: string): string => {
-    const resourceLabel = getFieldDisplayName(field, 'Resource');
-    const windowLabel = formatRentalBookingOptionWindow(start, end);
-    return windowLabel ? `${resourceLabel} - ${windowLabel}` : resourceLabel;
-};
-
-const mapRentalBookingsToResourceOptions = (response: RentalBookingsResponse): RentalBookingResourceOption[] => {
-    const options: RentalBookingResourceOption[] = [];
-    (response.bookings ?? []).forEach((booking) => {
-        const bookingId = normalizeResourceText(booking.$id) || normalizeResourceText(booking.id);
-        if (!bookingId) {
-            return;
-        }
-        (booking.items ?? []).forEach((item) => {
-            const bookingItemId = normalizeResourceText(item.$id) || normalizeResourceText(item.id);
-            const fieldId = normalizeResourceText(item.fieldId) || normalizeResourceText(item.field?.$id);
-            const start = normalizeRentalDateString(item.start);
-            const end = normalizeRentalDateString(item.end);
-            if (!bookingItemId || !fieldId || !start || !end || !item.field?.$id) {
-                return;
-            }
-            const itemFacility = item.facility && typeof item.facility === 'object' ? item.facility : null;
-            const itemFacilityId = normalizeResourceText(item.facilityId)
-                || normalizeResourceText(itemFacility?.$id)
-                || normalizeResourceText((itemFacility as { id?: string | null } | null)?.id)
-                || normalizeResourceText(item.field.facilityId);
-            const fieldFacility = item.field.facility && typeof item.field.facility === 'object'
-                ? item.field.facility
-                : itemFacility;
-            const selectorId = getRentalBookingSelectorId(bookingItemId);
-            const fieldWithRentalMetadata = {
-                ...item.field,
-                facilityId: itemFacilityId || item.field.facilityId || null,
-                facility: fieldFacility ?? item.field.facility ?? null,
-                rentalResource: true,
-                _rentalResource: true,
-                rentalBookingId: bookingId,
-                _rentalBookingId: bookingId,
-                rentalBookingItemId: bookingItemId,
-                _rentalBookingItemId: bookingItemId,
-                rentalStart: start,
-                _rentalStart: start,
-                rentalEnd: end,
-                _rentalEnd: end,
-                rentalTimeZone: item.timeZone ?? null,
-                _rentalTimeZone: item.timeZone ?? null,
-                rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
-                _rentalPriceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
-                rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
-                _rentalRequiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
-                rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
-                _rentalHostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
-            } as Field;
-            const selectorLabel = buildRentalBookingResourceLabel(fieldWithRentalMetadata, start, end);
-            options.push({
-                id: bookingItemId,
-                selectorId,
-                bookingId,
-                bookingItemId,
-                fieldId,
-                field: fieldWithRentalMetadata,
-                selectorField: {
-                    ...fieldWithRentalMetadata,
-                    $id: selectorId,
-                    name: selectorLabel,
-                },
-                label: selectorLabel,
-                start,
-                end,
-                timeZone: item.timeZone ?? null,
-                priceCents: Number.isFinite(Number(item.priceCents)) ? Number(item.priceCents) : null,
-                requiredTemplateIds: Array.isArray(item.requiredTemplateIds) ? item.requiredTemplateIds : [],
-                hostRequiredTemplateIds: Array.isArray(item.hostRequiredTemplateIds) ? item.hostRequiredTemplateIds : [],
-                eventId: item.eventId ?? null,
-                eventTimeSlotId: item.eventTimeSlotId ?? null,
-            });
-        });
-    });
-    return options.sort((left, right) => {
-        const startCompare = left.start.localeCompare(right.start);
-        if (startCompare !== 0) return startCompare;
-        return getFieldDisplayName(left.field).localeCompare(getFieldDisplayName(right.field), undefined, {
-            numeric: true,
-            sensitivity: 'base',
-        });
-    });
-};
-
-const mergeFieldsById = (baseFields: Field[], incomingFields: Field[]): Field[] => {
-    const byId = new Map<string, Field>();
-    [...baseFields, ...incomingFields].forEach((field) => {
-        const fieldId = normalizeResourceText(field?.$id);
-        if (!fieldId) {
-            return;
-        }
-        byId.set(fieldId, field);
-    });
-    return sortFieldsByCreatedAt(Array.from(byId.values()));
-};
-
-const buildRentalBookingTimeSlot = (
-    option: RentalBookingResourceOption,
-    divisionKeys: string[],
-    eventTimeZone?: string | null,
-): TimeSlot | null => {
-    const start = parseLocalDateTime(option.start);
-    const end = parseLocalDateTime(option.end);
-    if (!start || !end || end.getTime() <= start.getTime()) {
-        return null;
-    }
-    const dayOfWeek = ((start.getDay() + 6) % 7) as TimeSlot['dayOfWeek'];
-    const normalizedTimeZone = normalizeTimeZone(option.timeZone, eventTimeZone || getSystemTimeZone());
-    return {
-        $id: option.eventTimeSlotId || `rental-slot-${option.bookingItemId}`,
-        dayOfWeek,
-        daysOfWeek: [dayOfWeek] as TimeSlot['daysOfWeek'],
-        divisions: normalizeDivisionKeys(divisionKeys),
-        startTimeMinutes: start.getHours() * 60 + start.getMinutes(),
-        endTimeMinutes: end.getHours() * 60 + end.getMinutes(),
-        startDate: option.start,
-        endDate: option.end,
-        timeZone: normalizedTimeZone,
-        repeating: false,
-        price: Number.isFinite(Number(option.priceCents)) ? Number(option.priceCents) : undefined,
-        requiredTemplateIds: option.requiredTemplateIds ?? [],
-        hostRequiredTemplateIds: option.hostRequiredTemplateIds ?? [],
-        scheduledFieldId: option.fieldId,
-        scheduledFieldIds: [option.fieldId],
-        sourceType: 'RENTAL_BOOKING',
-        rentalBookingId: option.bookingId,
-        rentalBookingItemId: option.bookingItemId,
-        rentalLocked: true,
-    };
-};
-
-const timeSlotsEqual = (left: TimeSlot[], right: TimeSlot[]): boolean => {
-    if (left.length !== right.length) {
-        return false;
-    }
-    for (let index = 0; index < left.length; index += 1) {
-        const first = left[index];
-        const second = right[index];
-        if (
-            first.$id !== second.$id
-            || first.startDate !== second.startDate
-            || first.endDate !== second.endDate
-            || first.startTimeMinutes !== second.startTimeMinutes
-            || first.endTimeMinutes !== second.endTimeMinutes
-            || Boolean(first.repeating) !== Boolean(second.repeating)
-            || first.sourceType !== second.sourceType
-            || first.rentalBookingId !== second.rentalBookingId
-            || first.rentalBookingItemId !== second.rentalBookingItemId
-            || Boolean(first.rentalLocked) !== Boolean(second.rentalLocked)
-            || !stringSetsEqual(normalizeSlotFieldIds(first), normalizeSlotFieldIds(second))
-            || !stringSetsEqual(normalizeWeekdays(first).map(String), normalizeWeekdays(second).map(String))
-            || !stringSetsEqual(normalizeDivisionKeys(first.divisions), normalizeDivisionKeys(second.divisions))
-        ) {
-            return false;
-        }
-    }
-    return true;
-};
-
-const isRentalLockedTimeSlot = (slot: Partial<TimeSlot> | null | undefined): boolean => {
-    if (!slot) {
-        return false;
-    }
-    return slot.rentalLocked === true
-        || slot.sourceType === 'RENTAL_BOOKING'
-        || Boolean(slot.rentalBookingId)
-        || Boolean(slot.rentalBookingItemId);
-};
-
-const mergeRentalLockedTimeSlots = (slots: TimeSlot[]): TimeSlot[] => {
-    const mergedByKey = new Map<string, TimeSlot>();
-    slots.forEach((slot) => {
-        const key = slot.rentalBookingItemId
-            || `${slot.rentalBookingId ?? ''}:${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}`
-            || slot.$id;
-        mergedByKey.set(key, slot);
-    });
-    return Array.from(mergedByKey.values()).sort((left, right) => {
-        const startCompare = String(left.startDate ?? '').localeCompare(String(right.startDate ?? ''));
-        if (startCompare !== 0) return startCompare;
-        return normalizeSlotFieldIds(left).join('|').localeCompare(normalizeSlotFieldIds(right).join('|'));
-    });
 };
 
 type FacilityResourceSelectorProps = {
@@ -718,28 +378,6 @@ const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
     );
 };
 
-const normalizeDirtyTrackedIdList = (values: unknown[]): string[] => Array.from(
-    new Set(
-        values
-            .map((value) => normalizeEntityId(value))
-            .filter((value): value is string => Boolean(value)),
-    ),
-).sort();
-
-const normalizeDirtyTrackedPendingStaffInvites = (invites: PendingStaffInvite[]): PendingStaffInvite[] => invites
-    .map((invite) => ({
-        firstName: invite.firstName.trim(),
-        lastName: invite.lastName.trim(),
-        email: invite.email.trim(),
-        roles: Array.from(new Set(invite.roles)).sort(),
-    }))
-    .filter((invite) => (
-        invite.email.length > 0
-        || invite.firstName.length > 0
-        || invite.lastName.length > 0
-        || invite.roles.length > 0
-    ));
-
 type EventType = Event['eventType'];
 
 type DefaultLocation = {
@@ -783,9 +421,6 @@ const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
-const DEFAULT_DIVISION_KEY = 'open';
-const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
-const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 const formatEventDateTimeForForm = (
     value: Date | string | null | undefined,
     timeZone: string,
@@ -794,131 +429,6 @@ const formatEventDateTimeForForm = (
         return formatLocalDateTime(value);
     }
     return formatDateTimeInTimeZone(value, timeZone) || formatLocalDateTime(value);
-};
-const DIVISION_GENDER_OPTIONS = [
-    { value: 'M', label: 'Mens' },
-    { value: 'F', label: 'Womens' },
-    { value: 'C', label: 'CoEd' },
-] as const;
-
-const createEmptyStaffInvite = (): PendingStaffInvite => ({
-    firstName: '',
-    lastName: '',
-    email: '',
-    roles: [],
-});
-
-const normalizeInviteEmail = (value: unknown): string => String(value ?? '').trim().toLowerCase();
-
-const normalizePendingStaffInvite = (invite: PendingStaffInvite): PendingStaffInvite => ({
-    firstName: invite.firstName.trim(),
-    lastName: invite.lastName.trim(),
-    email: normalizeInviteEmail(invite.email),
-    roles: Array.from(new Set((invite.roles || []).filter((role): role is StaffAssignmentRole => (
-        role === 'OFFICIAL' || role === 'ASSISTANT_HOST'
-    )))),
-});
-
-const mapRoleToInviteStaffType = (role: StaffAssignmentRole): EventInviteStaffType => (
-    role === 'OFFICIAL' ? 'OFFICIAL' : 'HOST'
-);
-
-const mapInviteStaffTypeToRole = (type: StaffMemberType): StaffAssignmentRole | null => {
-    if (type === 'OFFICIAL') {
-        return 'OFFICIAL';
-    }
-    if (type === 'HOST') {
-        return 'ASSISTANT_HOST';
-    }
-    return null;
-};
-
-const normalizeInviteStatusToken = (status: unknown): StaffRosterStatus => {
-    if (typeof status === 'string') {
-        const normalized = status.trim().toLowerCase();
-        if (normalized === 'declined') {
-            return 'declined';
-        }
-        if (normalized === 'failed') {
-            return 'failed';
-        }
-        if (normalized === 'pending') {
-            return 'pending';
-        }
-    }
-    return 'active';
-};
-
-const normalizeInviteStaffTypes = (staffTypes: unknown): EventInviteStaffType[] => (
-    Array.isArray(staffTypes)
-        ? Array.from(
-            new Set(
-                staffTypes
-                    .map((type) => String(type).trim().toUpperCase())
-                    .filter((type): type is EventInviteStaffType => type === 'HOST' || type === 'OFFICIAL'),
-            ),
-        ).sort()
-        : []
-);
-
-const normalizeRosterStaffTypes = (staffTypes: unknown): StaffMemberType[] => (
-    Array.isArray(staffTypes)
-        ? Array.from(
-            new Set(
-                staffTypes
-                    .map((type) => String(type).trim().toUpperCase())
-                    .filter((type): type is StaffMemberType => (
-                        type === 'HOST' || type === 'OFFICIAL' || type === 'STAFF'
-                    )),
-            ),
-        )
-        : []
-);
-
-const getUserEmail = (candidate?: Partial<UserData> | null): string | null => {
-    const email = typeof (candidate as { email?: unknown } | undefined)?.email === 'string'
-        ? String((candidate as { email?: string }).email).trim().toLowerCase()
-        : '';
-    return email.length > 0 ? email : null;
-};
-
-const formatStaffRoleLabel = (role: AssignedStaffCard['role'] | StaffAssignmentRole): string => {
-    if (role === 'OFFICIAL') {
-        return 'Official';
-    }
-    if (role === 'HOST') {
-        return 'Host';
-    }
-    return 'Assistant Host';
-};
-
-const formatStaffStatusLabel = (status: AssignedStaffCard['status'] | StaffRosterStatus): string => {
-    if (status === 'email_invite') {
-        return 'Email invite';
-    }
-    if (status === 'failed') {
-        return 'Email failed';
-    }
-    if (status === 'declined') {
-        return 'Declined';
-    }
-    if (status === 'pending') {
-        return 'Pending';
-    }
-    return 'Active';
-};
-
-const getStaffStatusColor = (status: AssignedStaffCard['status'] | StaffRosterStatus): 'gray' | 'blue' | 'teal' | 'red' => {
-    if (status === 'failed') {
-        return 'red';
-    }
-    if (status === 'declined') {
-        return 'gray';
-    }
-    if (status === 'pending' || status === 'email_invite') {
-        return 'blue';
-    }
-    return 'teal';
 };
 
 const maybeExtendVisibleCountOnScroll = (
@@ -984,343 +494,6 @@ const AnimatedLayoutSection = ({
     </AnimatePresence>
 );
 
-const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
-    const normalizedSkill = normalizeDivisionTokenPart(skillDivisionTypeId) || 'open';
-    const normalizedAge = normalizeDivisionTokenPart(ageDivisionTypeId) || DEFAULT_AGE_DIVISION_FALLBACK;
-    return `skill_${normalizedSkill}_age_${normalizedAge}`;
-};
-
-const parseCompositeDivisionTypeId = (
-    divisionTypeId: unknown,
-): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
-    const normalized = normalizeDivisionTokenPart(divisionTypeId);
-    if (!normalized.length) {
-        return null;
-    }
-    const match = normalized.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
-    if (!match) {
-        return null;
-    }
-    return {
-        skillDivisionTypeId: match[1],
-        ageDivisionTypeId: match[2],
-    };
-};
-
-const buildDivisionTypeCompositeName = (skillDivisionTypeName: string, ageDivisionTypeName: string): string => (
-    [skillDivisionTypeName, ageDivisionTypeName]
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .join(' ')
-        || 'Open 18+'
-);
-
-const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
-    const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-        ? slot.daysOfWeek
-        : typeof slot.dayOfWeek === 'number'
-            ? [slot.dayOfWeek]
-            : [];
-    return Array.from(
-        new Set(
-            source
-                .map((value) => Number(value))
-                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-        ),
-    ).sort((a, b) => a - b);
-};
-
-const normalizeDivisionKeys = (values: unknown): string[] => {
-    if (!Array.isArray(values)) {
-        return [];
-    }
-    return Array.from(
-        new Set(
-            values
-                .map((value) => {
-                    if (typeof value !== 'string' && typeof value !== 'number') {
-                        return '';
-                    }
-                    const normalized = String(value).trim().toLowerCase();
-                    if (normalized === 'undefined' || normalized === 'null') {
-                        return '';
-                    }
-                    return normalized;
-                })
-                .filter((value) => value.length > 0),
-        ),
-    );
-};
-
-const normalizePlacementDivisionIds = (values: unknown): string[] => {
-    if (!Array.isArray(values)) {
-        return [];
-    }
-    return values.map((value) => normalizeDivisionKeys([value])[0] ?? '');
-};
-
-const normalizeDivisionNameKey = (value: unknown): string => String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-
-const buildUniqueDivisionIdForToken = (params: {
-    eventId: string;
-    token: string;
-    existingDivisionIds: string[];
-}): string => {
-    const usedDivisionIds = new Set(normalizeDivisionKeys(params.existingDivisionIds));
-    let suffix = 1;
-    while (true) {
-        const scopedEventId = suffix === 1 ? params.eventId : `${params.eventId}_${suffix}`;
-        const candidate = buildEventDivisionId(scopedEventId, params.token);
-        if (!usedDivisionIds.has(candidate)) {
-            return candidate;
-        }
-        suffix += 1;
-    }
-};
-
-const normalizeFieldIds = (values: unknown): string[] => {
-    if (!Array.isArray(values)) {
-        return [];
-    }
-    return Array.from(
-        new Set(
-            values
-                .map((value) => String(value).trim())
-                .filter((value) => value.length > 0),
-        ),
-    );
-};
-
-const normalizeOfficialSchedulingMode = (value: unknown): OfficialSchedulingMode => {
-    if (value === 'NONE') {
-        return 'OFF';
-    }
-    if (value === 'STAFFING' || value === 'TEAM_STAFFING' || value === 'SCHEDULE' || value === 'OFF') {
-        return value;
-    }
-    return 'SCHEDULE';
-};
-
-const normalizeSportOfficialPositionTemplates = (value: unknown): SportOfficialPositionTemplate[] => {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-    return value
-        .map((entry) => {
-            if (!entry || typeof entry !== 'object') {
-                return null;
-            }
-            const row = entry as Record<string, unknown>;
-            const name = String(row.name ?? '').trim();
-            if (!name) {
-                return null;
-            }
-            const count = Number(row.count);
-            return {
-                name,
-                count: Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1,
-            } satisfies SportOfficialPositionTemplate;
-        })
-        .filter((entry): entry is SportOfficialPositionTemplate => Boolean(entry));
-};
-
-const buildOfficialPositionsFromTemplates = (
-    templates: SportOfficialPositionTemplate[],
-): EventOfficialPosition[] => templates.map((template, index) => ({
-    id: createClientId(),
-    name: template.name,
-    count: Math.max(1, Math.trunc(template.count || 1)),
-    order: index,
-}));
-
-const normalizeEventOfficialPositions = (
-    value: unknown,
-    fallbackTemplates: SportOfficialPositionTemplate[] = [],
-): EventOfficialPosition[] => {
-    if (!Array.isArray(value) || value.length === 0) {
-        return buildOfficialPositionsFromTemplates(fallbackTemplates);
-    }
-
-    const normalized = value
-        .map((entry, index) => {
-            if (!entry || typeof entry !== 'object') {
-                return null;
-            }
-            const row = entry as Record<string, unknown>;
-            const name = String(row.name ?? '').trim();
-            if (!name) {
-                return null;
-            }
-            const id = String(row.id ?? '').trim() || createClientId();
-            const count = Number(row.count);
-            const order = Number(row.order);
-            return {
-                id,
-                name,
-                count: Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1,
-                order: Number.isFinite(order) ? Math.max(0, Math.trunc(order)) : index,
-            } satisfies EventOfficialPosition;
-        })
-        .filter((entry): entry is EventOfficialPosition => Boolean(entry))
-        .sort((left, right) => left.order - right.order);
-
-    return normalized.map((entry, index) => ({
-        ...entry,
-        order: index,
-    }));
-};
-
-const normalizeEventOfficials = (
-    value: unknown,
-    officialIds: string[],
-    positions: EventOfficialPosition[],
-): EventOfficial[] => {
-    const normalizedOfficialIds = Array.isArray(value)
-        ? Array.from(
-            new Set(
-                value
-                    .map((entry) => (
-                        entry && typeof entry === 'object'
-                            ? String((entry as Record<string, unknown>).userId ?? '').trim()
-                            : ''
-                    ))
-                    .filter((id) => id.length > 0),
-            ),
-        )
-        : Array.from(
-            new Set(
-                officialIds
-                    .map((id) => String(id).trim())
-                    .filter((id) => id.length > 0),
-            ),
-        );
-    const allowedOfficialIdSet = new Set(normalizedOfficialIds);
-    const positionIds = positions.map((position) => position.id);
-    const positionIdSet = new Set(positionIds);
-
-    const byUserId = new Map<string, EventOfficial>();
-    if (Array.isArray(value)) {
-        value.forEach((entry) => {
-            if (!entry || typeof entry !== 'object') {
-                return;
-            }
-            const row = entry as Record<string, unknown>;
-            const userId = String(row.userId ?? '').trim();
-            if (!userId || !allowedOfficialIdSet.has(userId)) {
-                return;
-            }
-            const positionIdsForOfficial = Array.isArray(row.positionIds)
-                ? Array.from(
-                    new Set(
-                        row.positionIds
-                            .map((positionId) => String(positionId).trim())
-                            .filter((positionId) => positionId.length > 0 && positionIdSet.has(positionId)),
-                    ),
-                )
-                : [];
-            byUserId.set(userId, {
-                id: String(row.id ?? '').trim() || createClientId(),
-                userId,
-                positionIds: positionIdsForOfficial.length ? positionIdsForOfficial : [...positionIds],
-                fieldIds: Array.isArray(row.fieldIds)
-                    ? Array.from(
-                        new Set(
-                            row.fieldIds
-                                .map((fieldId) => String(fieldId).trim())
-                                .filter((fieldId) => fieldId.length > 0),
-                        ),
-                    )
-                    : [],
-                isActive: row.isActive === undefined ? true : Boolean(row.isActive),
-            });
-        });
-    }
-
-    return normalizedOfficialIds.map((userId) => {
-        const existing = byUserId.get(userId);
-        if (existing) {
-            return existing;
-        }
-        return {
-            id: createClientId(),
-            userId,
-            positionIds: [...positionIds],
-            fieldIds: [],
-            isActive: true,
-        } satisfies EventOfficial;
-    });
-};
-
-const getEventOfficialUserIds = (eventOfficials: unknown): string[] => (
-    Array.isArray(eventOfficials)
-        ? Array.from(
-            new Set(
-                eventOfficials
-                    .map((entry) => (
-                        entry && typeof entry === 'object'
-                            ? String((entry as Record<string, unknown>).userId ?? '').trim()
-                            : ''
-                    ))
-                    .filter((id) => id.length > 0),
-            ),
-        )
-        : []
-);
-
-const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; scheduledFieldIds?: string[] }): string[] => {
-    const fromList = normalizeFieldIds(slot.scheduledFieldIds);
-    if (fromList.length) {
-        return fromList;
-    }
-    return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0
-        ? [slot.scheduledFieldId]
-        : [];
-};
-
-const resolveSportInput = (sportInput?: Sport | string | null): string => {
-    const sportName = typeof sportInput === 'string'
-        ? sportInput
-        : sportInput?.name ?? sportInput?.$id ?? '';
-    return sportName.toLowerCase();
-};
-
-const getDefaultDivisionTypeSelectionsForSport = (sportInput?: string | null): {
-    skillDivisionTypeId: string;
-    skillDivisionTypeName: string;
-    ageDivisionTypeId: string;
-    ageDivisionTypeName: string;
-} => {
-    const options = getDivisionTypeOptionsForSport(sportInput ?? '');
-    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
-        ?? options.find((option) => option.ratingType === 'SKILL')
-        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
-    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
-    if (!fallbackAge) {
-        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
-            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
-            if (fallbackAge) break;
-        }
-    }
-    fallbackAge = fallbackAge
-        ?? options.find((option) => option.ratingType === 'AGE')
-        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
-    return {
-        skillDivisionTypeId: fallbackSkill.id,
-        skillDivisionTypeName: fallbackSkill.name,
-        ageDivisionTypeId: fallbackAge.id,
-        ageDivisionTypeName: fallbackAge.name,
-    };
-};
-
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
@@ -1364,463 +537,6 @@ const derivePoolTeamCount = (
     return normalizedMaxTeams / normalizedPoolCount;
 };
 
-const normalizePlayoffDivisionParticipantCount = (value: unknown): number | null => {
-    if (typeof value === 'string' && value.trim().length === 0) {
-        return null;
-    }
-    if (value === null || value === undefined) {
-        return null;
-    }
-    const numeric = typeof value === 'number' ? value : Number(value);
-    if (!Number.isFinite(numeric)) {
-        return null;
-    }
-    return Math.max(0, Math.trunc(numeric));
-};
-
-const formatPlayoffDivisionParticipantCount = (value: unknown): string => {
-    const normalized = normalizePlayoffDivisionParticipantCount(value);
-    return typeof normalized === 'number' ? String(normalized) : 'Not set';
-};
-
-type DivisionDetailForm = {
-    id: string;
-    key: string;
-    kind?: 'LEAGUE' | 'PLAYOFF';
-    name: string;
-    divisionTypeId: string;
-    divisionTypeName: string;
-    ratingType: 'AGE' | 'SKILL';
-    gender: 'M' | 'F' | 'C';
-    skillDivisionTypeId: string;
-    skillDivisionTypeName: string;
-    ageDivisionTypeId: string;
-    ageDivisionTypeName: string;
-    // Stored as integer cents throughout the form state.
-    price: number;
-    maxParticipants: number;
-    playoffTeamCount?: number;
-    poolCount?: number;
-    poolTeamCount?: number;
-    playoffPlacementDivisionIds?: string[];
-    gamesPerOpponent?: number;
-    restTimeMinutes?: number;
-    usesSets?: boolean;
-    matchDurationMinutes?: number | null;
-    setDurationMinutes?: number | null;
-    setsPerMatch?: number;
-    pointsToVictory?: number[];
-    playoffConfig?: TournamentConfig;
-    allowPaymentPlans: boolean;
-    installmentCount?: number;
-    installmentDueDates: string[];
-    installmentDueRelativeDays: number[];
-    // Stored as integer cents throughout the form state.
-    installmentAmounts: number[];
-    sportId?: string;
-    fieldIds?: string[];
-    ageCutoffDate?: string;
-    ageCutoffLabel?: string;
-    ageCutoffSource?: string;
-};
-
-type PlayoffDivisionDetailForm = Omit<
-    Partial<DivisionDetailForm>,
-    'id' | 'key' | 'kind' | 'name' | 'maxParticipants'
-> & {
-    id: string;
-    key: string;
-    kind: 'PLAYOFF';
-    name: string;
-    maxParticipants: number | null;
-    playoffConfig: TournamentConfig;
-};
-
-type DivisionEditorKind = 'LEAGUE' | 'PLAYOFF';
-
-type TournamentPoolSettings = {
-    poolCount: number;
-    poolTeamCount?: number;
-};
-
-const deriveTournamentPoolSettingsByBracketId = (
-    poolDivisionDetails: DivisionDetailForm[],
-): Map<string, TournamentPoolSettings> => {
-    const grouped = new Map<string, {
-        poolIds: Set<string>;
-        totalPoolTeams: number;
-        poolTeamCounts: Set<number>;
-    }>();
-
-    poolDivisionDetails.forEach((detail) => {
-        const parentBracketIds = Array.from(
-            new Set(normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds).filter(Boolean)),
-        );
-        if (!parentBracketIds.length) {
-            return;
-        }
-
-        const poolId = normalizeDivisionKeys([detail.id])[0] || detail.id;
-        const poolTeamCount = Number.isFinite(detail.maxParticipants)
-            ? Math.max(1, Math.trunc(detail.maxParticipants))
-            : undefined;
-
-        parentBracketIds.forEach((bracketId) => {
-            const current = grouped.get(bracketId) ?? {
-                poolIds: new Set<string>(),
-                totalPoolTeams: 0,
-                poolTeamCounts: new Set<number>(),
-            };
-            if (!current.poolIds.has(poolId)) {
-                current.poolIds.add(poolId);
-                if (typeof poolTeamCount === 'number') {
-                    current.totalPoolTeams += poolTeamCount;
-                    current.poolTeamCounts.add(poolTeamCount);
-                }
-            }
-            grouped.set(bracketId, current);
-        });
-    });
-
-    const settingsByBracketId = new Map<string, TournamentPoolSettings>();
-    grouped.forEach((group, bracketId) => {
-        const poolCount = group.poolIds.size;
-        if (!poolCount) {
-            return;
-        }
-        const uniformPoolTeamCount = group.poolTeamCounts.size === 1
-            ? Array.from(group.poolTeamCounts)[0]
-            : undefined;
-        const evenlyDerivedPoolTeamCount = group.totalPoolTeams > 0 && group.totalPoolTeams % poolCount === 0
-            ? group.totalPoolTeams / poolCount
-            : undefined;
-        settingsByBracketId.set(bracketId, {
-            poolCount,
-            poolTeamCount: uniformPoolTeamCount ?? evenlyDerivedPoolTeamCount,
-        });
-    });
-
-    return settingsByBracketId;
-};
-
-type SlotDivisionLookup = {
-    options: Array<{ value: string; label: string }>;
-    keys: string[];
-    valueToId: Map<string, string>;
-};
-
-type SlotDivisionLookupDetail = {
-    id: string;
-    name: string;
-    gender?: 'M' | 'F' | 'C';
-    sportId?: string;
-    skillDivisionTypeId?: string;
-    ageDivisionTypeId?: string;
-    divisionTypeName?: string;
-};
-
-const getDivisionDetailLabel = (
-    detail: SlotDivisionLookupDetail,
-): string => {
-    if (typeof detail.name === 'string' && detail.name.trim().length > 0) {
-        return detail.name.trim();
-    }
-    if (detail.skillDivisionTypeId && detail.ageDivisionTypeId) {
-        return buildDivisionName({
-            gender: detail.gender ?? 'C',
-            sportInput: detail.sportId,
-            skillDivisionTypeId: detail.skillDivisionTypeId,
-            ageDivisionTypeId: detail.ageDivisionTypeId,
-        });
-    }
-    return detail.divisionTypeName?.trim() || detail.id;
-};
-
-const buildSlotDivisionLookup = (
-    details: SlotDivisionLookupDetail[],
-    playoffDetails: PlayoffDivisionDetailForm[] = [],
-): SlotDivisionLookup => {
-    const allDetails: SlotDivisionLookupDetail[] = [
-        ...details,
-        ...playoffDetails.map((division) => ({
-            id: division.id,
-            name: division.name,
-            gender: 'C' as const,
-            divisionTypeName: 'Playoff',
-        })),
-    ];
-    const optionByValue = new Map<string, { value: string; label: string }>();
-    const orderedKeys: string[] = [];
-    const seenKeys = new Set<string>();
-    const valueToId = new Map<string, string>();
-
-    allDetails.forEach((detail) => {
-        const normalizedId = normalizeDivisionKeys([detail.id])[0];
-        const label = getDivisionDetailLabel(detail);
-        if (!normalizedId) {
-            return;
-        }
-
-        if (!optionByValue.has(normalizedId)) {
-            optionByValue.set(normalizedId, {
-                value: normalizedId,
-                label,
-            });
-        }
-        if (!seenKeys.has(normalizedId)) {
-            seenKeys.add(normalizedId);
-            orderedKeys.push(normalizedId);
-        }
-
-        const normalizedName = normalizeDivisionNameKey(label);
-        valueToId.set(normalizedId, normalizedId);
-        valueToId.set(normalizeDivisionNameKey(detail.id), normalizedId);
-        if (normalizedName.length > 0 && !valueToId.has(normalizedName)) {
-            valueToId.set(normalizedName, normalizedId);
-        }
-    });
-
-    return {
-        options: Array.from(optionByValue.values()).sort((left, right) => left.label.localeCompare(right.label)),
-        keys: orderedKeys,
-        valueToId,
-    };
-};
-
-const normalizeSlotDivisionIdsWithLookup = (
-    values: unknown,
-    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
-): string[] => (
-    Array.from(
-        new Set(
-            (Array.isArray(values) ? values : [])
-                .map((value) => String(value).trim())
-                .filter((value) => value.length > 0)
-                .map((value) => {
-                    const normalizedId = normalizeDivisionKeys([value])[0];
-                    if (normalizedId) {
-                        const byId = lookup.valueToId.get(normalizedId);
-                        if (byId) {
-                            return byId;
-                        }
-                    }
-                    const byLabel = lookup.valueToId.get(normalizeDivisionNameKey(value));
-                    return byLabel ?? normalizedId ?? '';
-                })
-                .filter((value) => value.length > 0),
-        ),
-    )
-);
-
-const normalizeSlotDivisionKeysWithLookup = (
-    values: unknown,
-    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
-): string[] => normalizeSlotDivisionIdsWithLookup(values, lookup);
-
-const applyDivisionAgeCutoff = (
-    detail: DivisionDetailForm,
-    sportInput?: string | null,
-    referenceDate?: Date | null,
-): DivisionDetailForm => {
-    const eligibility = evaluateDivisionAgeEligibility({
-        divisionTypeId: detail.ageDivisionTypeId || detail.divisionTypeId,
-        sportInput: sportInput ?? detail.sportId ?? undefined,
-        referenceDate: referenceDate ?? null,
-    });
-    if (!eligibility.applies) {
-        return {
-            ...detail,
-            ageCutoffDate: undefined,
-            ageCutoffLabel: undefined,
-            ageCutoffSource: undefined,
-        };
-    }
-    return {
-        ...detail,
-        ageCutoffDate: eligibility.cutoffDate.toISOString(),
-        ageCutoffLabel: eligibility.message ?? undefined,
-        ageCutoffSource: eligibility.cutoffRule.source,
-    };
-};
-
-const buildDefaultDivisionDetailsForSport = (
-    eventId: string,
-    sportInput?: Sport | string | null,
-    referenceDate?: Date | null,
-): DivisionDetailForm[] => {
-    const sport = resolveSportInput(sportInput);
-    const options = getDivisionTypeOptionsForSport(sport);
-    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
-        ?? options.find((option) => option.ratingType === 'SKILL')
-        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
-    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
-    if (!fallbackAge) {
-        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
-            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
-            if (fallbackAge) break;
-        }
-    }
-    fallbackAge = fallbackAge
-        ?? options.find((option) => option.ratingType === 'AGE')
-        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
-    const compositeDivisionTypeId = buildCompositeDivisionTypeId(fallbackSkill.id, fallbackAge.id);
-    const token = buildDivisionToken({
-        gender: 'C',
-        ratingType: 'SKILL',
-        divisionTypeId: compositeDivisionTypeId,
-    });
-    const divisionTypeName = buildDivisionName({
-        gender: 'C',
-        sportInput: sport,
-        skillDivisionTypeId: fallbackSkill.id,
-        ageDivisionTypeId: fallbackAge.id,
-    });
-    const detail: DivisionDetailForm = {
-        id: buildEventDivisionId(eventId, token),
-        key: token,
-        kind: 'LEAGUE',
-        name: divisionTypeName,
-        divisionTypeId: compositeDivisionTypeId,
-        divisionTypeName,
-        ratingType: 'SKILL',
-        gender: 'C',
-        skillDivisionTypeId: fallbackSkill.id,
-        skillDivisionTypeName: fallbackSkill.name,
-        ageDivisionTypeId: fallbackAge.id,
-        ageDivisionTypeName: fallbackAge.name,
-        price: 0,
-        maxParticipants: 10,
-        playoffTeamCount: 10,
-        playoffPlacementDivisionIds: [],
-        allowPaymentPlans: false,
-        installmentCount: 0,
-        installmentDueDates: [],
-        installmentDueRelativeDays: [],
-        installmentAmounts: [],
-        sportId: sport || undefined,
-        fieldIds: [],
-    };
-    return [applyDivisionAgeCutoff(detail, sport, referenceDate)];
-};
-
-const toFieldIdList = (fields: Field[]): string[] => {
-    return Array.from(
-        new Set(
-            fields
-                .map((field) => field?.$id)
-                .filter((fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.length > 0),
-        ),
-    );
-};
-
-const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));
-
-const isEventLocalField = (field?: Field | null): boolean => !fieldHasOrganization(field);
-
-const isGeneratedLocalFieldPlaceholder = (field?: Field | null, index?: number): boolean => {
-    if (!field) {
-        return false;
-    }
-    const name = normalizeResourceText(field.name);
-    if (!name) {
-        return true;
-    }
-    if (typeof index === 'number') {
-        return name === `Field ${index + 1}`;
-    }
-    return /^Field\s+\d+$/i.test(name);
-};
-
-const withOrganizationFieldOwner = (field: Field, organizationId: string): Field => {
-    if (!organizationId || getFieldOrganizationId(field)) {
-        return field;
-    }
-    return {
-        ...field,
-        organization: organizationId as unknown as Organization,
-    };
-};
-
-const mergeOrganizationFieldsIntoPool = (
-    currentFields: Field[],
-    organizationFields: Field[],
-    organizationId: string,
-): Field[] => {
-    const normalizedOrganizationFields = sortFieldsByCreatedAt(
-        organizationFields.map((field) => withOrganizationFieldOwner(field, organizationId)),
-    );
-    const organizationFieldIds = new Set(toFieldIdList(normalizedOrganizationFields));
-    const retainedFields = currentFields.filter((field) => {
-        const fieldId = typeof field?.$id === 'string' ? field.$id : '';
-        if (organizationFieldIds.has(fieldId)) {
-            return false;
-        }
-        return getFieldOrganizationId(field) !== organizationId;
-    });
-    return [...normalizedOrganizationFields, ...retainedFields];
-};
-
-const removeOrganizationFieldsFromPool = (
-    currentFields: Field[],
-    organizationId: string,
-): Field[] => currentFields.filter((field) => getFieldOrganizationId(field) !== organizationId);
-
-const normalizeDivisionFieldIds = (
-    value: unknown,
-    divisionKeys: string[],
-    availableFieldIds: string[],
-): Record<string, string[]> => {
-    const source = value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : {};
-    const allowed = new Set(availableFieldIds);
-    const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
-    const result: Record<string, string[]> = {};
-
-    normalizedDivisionKeys.forEach((divisionKey) => {
-        const rawFieldIds = source[divisionKey];
-        const selected = Array.isArray(rawFieldIds)
-            ? Array.from(new Set(rawFieldIds.map((entry) => String(entry)).filter((entry) => allowed.has(entry))))
-            : [];
-        result[divisionKey] = selected.length ? selected : [...availableFieldIds];
-    });
-
-    return result;
-};
-
-const divisionFieldIdsEqual = (
-    left: Record<string, string[]>,
-    right: Record<string, string[]>,
-): boolean => {
-    const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
-    for (const key of keys) {
-        const leftValues = Array.from(new Set((left[key] ?? []).map(String))).sort();
-        const rightValues = Array.from(new Set((right[key] ?? []).map(String))).sort();
-        if (leftValues.length !== rightValues.length) {
-            return false;
-        }
-        for (let index = 0; index < leftValues.length; index += 1) {
-            if (leftValues[index] !== rightValues[index]) {
-                return false;
-            }
-        }
-    }
-    return true;
-};
-
-const stringArraysEqual = (left: string[], right: string[]): boolean => {
-    if (left.length !== right.length) {
-        return false;
-    }
-    return left.every((value, index) => value === right[index]);
-};
-
-const stringSetsEqual = (left: string[], right: string[]): boolean => {
-    const normalizedLeft = Array.from(new Set(left)).sort();
-    const normalizedRight = Array.from(new Set(right)).sort();
-    return stringArraysEqual(normalizedLeft, normalizedRight);
-};
-
 const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig): boolean => (
     left.doubleElimination === right.doubleElimination
     && left.winnerSetCount === right.winnerSetCount
@@ -1840,11 +556,6 @@ const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig):
         (right.loserBracketPointsToVictory || []).map((value) => String(value)),
     )
 );
-
-const nullableNumbersEqual = (
-    left: number | null | undefined,
-    right: number | null | undefined,
-): boolean => (left ?? null) === (right ?? null);
 
 const leagueConfigEqual = (left: LeagueConfig, right: LeagueConfig): boolean => (
     left.gamesPerOpponent === right.gamesPerOpponent
@@ -1985,31 +696,6 @@ const leagueConfigToDivisionFields = (config: LeagueConfig): Pick<
     setsPerMatch: config.setsPerMatch,
     pointsToVictory: Array.isArray(config.pointsToVictory) ? [...config.pointsToVictory] : undefined,
 });
-
-const fieldsEqual = (left: Field[], right: Field[]): boolean => {
-    if (left.length !== right.length) {
-        return false;
-    }
-    for (let index = 0; index < left.length; index += 1) {
-        const first = left[index];
-        const second = right[index];
-        if (
-            first?.$id !== second?.$id
-            || (first?.name ?? '') !== (second?.name ?? '')
-            || (first?.$createdAt ?? first?.createdAt ?? '') !== (second?.$createdAt ?? second?.createdAt ?? '')
-            || (first?.location ?? '') !== (second?.location ?? '')
-            || Number(first?.lat ?? 0) !== Number(second?.lat ?? 0)
-            || Number(first?.long ?? 0) !== Number(second?.long ?? 0)
-            || !stringSetsEqual(
-                normalizeDivisionKeys(first?.divisions),
-                normalizeDivisionKeys(second?.divisions),
-            )
-        ) {
-            return false;
-        }
-    }
-    return true;
-};
 
 const leagueSlotsEqual = (left: LeagueSlotForm[], right: LeagueSlotForm[]): boolean => {
     if (left.length !== right.length) {

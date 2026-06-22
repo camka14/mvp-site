@@ -1,0 +1,521 @@
+import type { Sport, TournamentConfig } from '@/types';
+import {
+    buildDivisionName,
+    buildDivisionToken,
+    buildEventDivisionId,
+    evaluateDivisionAgeEligibility,
+    getDivisionTypeOptionsForSport,
+} from '@/lib/divisionTypes';
+
+import { stringArraysEqual } from './shared';
+
+export const DEFAULT_DIVISION_KEY = 'open';
+export const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
+export const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19'] as const;
+
+export const DIVISION_GENDER_OPTIONS = [
+    { value: 'M', label: 'Mens' },
+    { value: 'F', label: 'Womens' },
+    { value: 'C', label: 'CoEd' },
+] as const;
+
+export const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+export const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
+    const normalizedSkill = normalizeDivisionTokenPart(skillDivisionTypeId) || 'open';
+    const normalizedAge = normalizeDivisionTokenPart(ageDivisionTypeId) || DEFAULT_AGE_DIVISION_FALLBACK;
+    return `skill_${normalizedSkill}_age_${normalizedAge}`;
+};
+
+export const parseCompositeDivisionTypeId = (
+    divisionTypeId: unknown,
+): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+    const normalized = normalizeDivisionTokenPart(divisionTypeId);
+    if (!normalized.length) {
+        return null;
+    }
+    const match = normalized.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+    if (!match) {
+        return null;
+    }
+    return {
+        skillDivisionTypeId: match[1],
+        ageDivisionTypeId: match[2],
+    };
+};
+
+export const buildDivisionTypeCompositeName = (skillDivisionTypeName: string, ageDivisionTypeName: string): string => (
+    [skillDivisionTypeName, ageDivisionTypeName]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(' ')
+    || 'Open 18+'
+);
+
+export const normalizeDivisionKeys = (values: unknown): string[] => {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    return Array.from(
+        new Set(
+            values
+                .map((value) => {
+                    if (typeof value !== 'string' && typeof value !== 'number') {
+                        return '';
+                    }
+                    const normalized = String(value).trim().toLowerCase();
+                    if (normalized === 'undefined' || normalized === 'null') {
+                        return '';
+                    }
+                    return normalized;
+                })
+                .filter((value) => value.length > 0),
+        ),
+    );
+};
+
+export const normalizePlacementDivisionIds = (values: unknown): string[] => {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    return values.map((value) => normalizeDivisionKeys([value])[0] ?? '');
+};
+
+export const normalizeDivisionNameKey = (value: unknown): string => String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+export const buildUniqueDivisionIdForToken = (params: {
+    eventId: string;
+    token: string;
+    existingDivisionIds: string[];
+}): string => {
+    const usedDivisionIds = new Set(normalizeDivisionKeys(params.existingDivisionIds));
+    let suffix = 1;
+    while (true) {
+        const scopedEventId = suffix === 1 ? params.eventId : `${params.eventId}_${suffix}`;
+        const candidate = buildEventDivisionId(scopedEventId, params.token);
+        if (!usedDivisionIds.has(candidate)) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+};
+
+export const resolveSportInput = (sportInput?: Sport | string | null): string => {
+    const sportName = typeof sportInput === 'string'
+        ? sportInput
+        : sportInput?.name ?? sportInput?.$id ?? '';
+    return sportName.toLowerCase();
+};
+
+export const getDefaultDivisionTypeSelectionsForSport = (sportInput?: string | null): {
+    skillDivisionTypeId: string;
+    skillDivisionTypeName: string;
+    ageDivisionTypeId: string;
+    ageDivisionTypeName: string;
+} => {
+    const options = getDivisionTypeOptionsForSport(sportInput ?? '');
+    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+        ?? options.find((option) => option.ratingType === 'SKILL')
+        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
+    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
+    if (!fallbackAge) {
+        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
+            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
+            if (fallbackAge) break;
+        }
+    }
+    fallbackAge = fallbackAge
+        ?? options.find((option) => option.ratingType === 'AGE')
+        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
+    return {
+        skillDivisionTypeId: fallbackSkill.id,
+        skillDivisionTypeName: fallbackSkill.name,
+        ageDivisionTypeId: fallbackAge.id,
+        ageDivisionTypeName: fallbackAge.name,
+    };
+};
+
+export const normalizePlayoffDivisionParticipantCount = (value: unknown): number | null => {
+    if (typeof value === 'string' && value.trim().length === 0) {
+        return null;
+    }
+    if (value === null || value === undefined) {
+        return null;
+    }
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) {
+        return null;
+    }
+    return Math.max(0, Math.trunc(numeric));
+};
+
+export const formatPlayoffDivisionParticipantCount = (value: unknown): string => {
+    const normalized = normalizePlayoffDivisionParticipantCount(value);
+    return typeof normalized === 'number' ? String(normalized) : 'Not set';
+};
+
+export type DivisionDetailForm = {
+    id: string;
+    key: string;
+    kind?: 'LEAGUE' | 'PLAYOFF';
+    name: string;
+    divisionTypeId: string;
+    divisionTypeName: string;
+    ratingType: 'AGE' | 'SKILL';
+    gender: 'M' | 'F' | 'C';
+    skillDivisionTypeId: string;
+    skillDivisionTypeName: string;
+    ageDivisionTypeId: string;
+    ageDivisionTypeName: string;
+    price: number;
+    maxParticipants: number;
+    playoffTeamCount?: number;
+    poolCount?: number;
+    poolTeamCount?: number;
+    playoffPlacementDivisionIds?: string[];
+    gamesPerOpponent?: number;
+    restTimeMinutes?: number;
+    usesSets?: boolean;
+    matchDurationMinutes?: number | null;
+    setDurationMinutes?: number | null;
+    setsPerMatch?: number;
+    pointsToVictory?: number[];
+    playoffConfig?: TournamentConfig;
+    allowPaymentPlans: boolean;
+    installmentCount?: number;
+    installmentDueDates: string[];
+    installmentDueRelativeDays: number[];
+    installmentAmounts: number[];
+    sportId?: string;
+    fieldIds?: string[];
+    ageCutoffDate?: string;
+    ageCutoffLabel?: string;
+    ageCutoffSource?: string;
+};
+
+export type PlayoffDivisionDetailForm = Omit<
+    Partial<DivisionDetailForm>,
+    'id' | 'key' | 'kind' | 'name' | 'maxParticipants'
+> & {
+    id: string;
+    key: string;
+    kind: 'PLAYOFF';
+    name: string;
+    maxParticipants: number | null;
+    playoffConfig: TournamentConfig;
+};
+
+export type DivisionEditorKind = 'LEAGUE' | 'PLAYOFF';
+
+export type TournamentPoolSettings = {
+    poolCount: number;
+    poolTeamCount?: number;
+};
+
+export const deriveTournamentPoolSettingsByBracketId = (
+    poolDivisionDetails: DivisionDetailForm[],
+): Map<string, TournamentPoolSettings> => {
+    const grouped = new Map<string, {
+        poolIds: Set<string>;
+        totalPoolTeams: number;
+        poolTeamCounts: Set<number>;
+    }>();
+
+    poolDivisionDetails.forEach((detail) => {
+        const parentBracketIds = Array.from(
+            new Set(normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds).filter(Boolean)),
+        );
+        if (!parentBracketIds.length) {
+            return;
+        }
+
+        const poolId = normalizeDivisionKeys([detail.id])[0] || detail.id;
+        const poolTeamCount = Number.isFinite(detail.maxParticipants)
+            ? Math.max(1, Math.trunc(detail.maxParticipants))
+            : undefined;
+
+        parentBracketIds.forEach((bracketId) => {
+            const current = grouped.get(bracketId) ?? {
+                poolIds: new Set<string>(),
+                totalPoolTeams: 0,
+                poolTeamCounts: new Set<number>(),
+            };
+            if (!current.poolIds.has(poolId)) {
+                current.poolIds.add(poolId);
+                if (typeof poolTeamCount === 'number') {
+                    current.totalPoolTeams += poolTeamCount;
+                    current.poolTeamCounts.add(poolTeamCount);
+                }
+            }
+            grouped.set(bracketId, current);
+        });
+    });
+
+    const settingsByBracketId = new Map<string, TournamentPoolSettings>();
+    grouped.forEach((group, bracketId) => {
+        const poolCount = group.poolIds.size;
+        if (!poolCount) {
+            return;
+        }
+        const uniformPoolTeamCount = group.poolTeamCounts.size === 1
+            ? Array.from(group.poolTeamCounts)[0]
+            : undefined;
+        const evenlyDerivedPoolTeamCount = group.totalPoolTeams > 0 && group.totalPoolTeams % poolCount === 0
+            ? group.totalPoolTeams / poolCount
+            : undefined;
+        settingsByBracketId.set(bracketId, {
+            poolCount,
+            poolTeamCount: uniformPoolTeamCount ?? evenlyDerivedPoolTeamCount,
+        });
+    });
+
+    return settingsByBracketId;
+};
+
+export type SlotDivisionLookup = {
+    options: Array<{ value: string; label: string }>;
+    keys: string[];
+    valueToId: Map<string, string>;
+};
+
+export type SlotDivisionLookupDetail = {
+    id: string;
+    name: string;
+    gender?: 'M' | 'F' | 'C';
+    sportId?: string;
+    skillDivisionTypeId?: string;
+    ageDivisionTypeId?: string;
+    divisionTypeName?: string;
+};
+
+export const getDivisionDetailLabel = (
+    detail: SlotDivisionLookupDetail,
+): string => {
+    if (typeof detail.name === 'string' && detail.name.trim().length > 0) {
+        return detail.name.trim();
+    }
+    if (detail.skillDivisionTypeId && detail.ageDivisionTypeId) {
+        return buildDivisionName({
+            gender: detail.gender ?? 'C',
+            sportInput: detail.sportId,
+            skillDivisionTypeId: detail.skillDivisionTypeId,
+            ageDivisionTypeId: detail.ageDivisionTypeId,
+        });
+    }
+    return detail.divisionTypeName?.trim() || detail.id;
+};
+
+export const buildSlotDivisionLookup = (
+    details: SlotDivisionLookupDetail[],
+    playoffDetails: PlayoffDivisionDetailForm[] = [],
+): SlotDivisionLookup => {
+    const allDetails: SlotDivisionLookupDetail[] = [
+        ...details,
+        ...playoffDetails.map((division) => ({
+            id: division.id,
+            name: division.name,
+            gender: 'C' as const,
+            divisionTypeName: 'Playoff',
+        })),
+    ];
+    const optionByValue = new Map<string, { value: string; label: string }>();
+    const orderedKeys: string[] = [];
+    const seenKeys = new Set<string>();
+    const valueToId = new Map<string, string>();
+
+    allDetails.forEach((detail) => {
+        const normalizedId = normalizeDivisionKeys([detail.id])[0];
+        const label = getDivisionDetailLabel(detail);
+        if (!normalizedId) {
+            return;
+        }
+
+        if (!optionByValue.has(normalizedId)) {
+            optionByValue.set(normalizedId, {
+                value: normalizedId,
+                label,
+            });
+        }
+        if (!seenKeys.has(normalizedId)) {
+            seenKeys.add(normalizedId);
+            orderedKeys.push(normalizedId);
+        }
+
+        const normalizedName = normalizeDivisionNameKey(label);
+        valueToId.set(normalizedId, normalizedId);
+        valueToId.set(normalizeDivisionNameKey(detail.id), normalizedId);
+        if (normalizedName.length > 0 && !valueToId.has(normalizedName)) {
+            valueToId.set(normalizedName, normalizedId);
+        }
+    });
+
+    return {
+        options: Array.from(optionByValue.values()).sort((left, right) => left.label.localeCompare(right.label)),
+        keys: orderedKeys,
+        valueToId,
+    };
+};
+
+export const normalizeSlotDivisionIdsWithLookup = (
+    values: unknown,
+    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
+): string[] => (
+    Array.from(
+        new Set(
+            (Array.isArray(values) ? values : [])
+                .map((value) => String(value).trim())
+                .filter((value) => value.length > 0)
+                .map((value) => {
+                    const normalizedId = normalizeDivisionKeys([value])[0];
+                    if (normalizedId) {
+                        const byId = lookup.valueToId.get(normalizedId);
+                        if (byId) {
+                            return byId;
+                        }
+                    }
+                    const byLabel = lookup.valueToId.get(normalizeDivisionNameKey(value));
+                    return byLabel ?? normalizedId ?? '';
+                })
+                .filter((value) => value.length > 0),
+        ),
+    )
+);
+
+export const normalizeSlotDivisionKeysWithLookup = (
+    values: unknown,
+    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
+): string[] => normalizeSlotDivisionIdsWithLookup(values, lookup);
+
+export const applyDivisionAgeCutoff = (
+    detail: DivisionDetailForm,
+    sportInput?: string | null,
+    referenceDate?: Date | null,
+): DivisionDetailForm => {
+    const eligibility = evaluateDivisionAgeEligibility({
+        divisionTypeId: detail.ageDivisionTypeId || detail.divisionTypeId,
+        sportInput: sportInput ?? detail.sportId ?? undefined,
+        referenceDate: referenceDate ?? null,
+    });
+    if (!eligibility.applies) {
+        return {
+            ...detail,
+            ageCutoffDate: undefined,
+            ageCutoffLabel: undefined,
+            ageCutoffSource: undefined,
+        };
+    }
+    return {
+        ...detail,
+        ageCutoffDate: eligibility.cutoffDate.toISOString(),
+        ageCutoffLabel: eligibility.message ?? undefined,
+        ageCutoffSource: eligibility.cutoffRule.source,
+    };
+};
+
+export const buildDefaultDivisionDetailsForSport = (
+    eventId: string,
+    sportInput?: Sport | string | null,
+    referenceDate?: Date | null,
+): DivisionDetailForm[] => {
+    const sport = resolveSportInput(sportInput);
+    const options = getDivisionTypeOptionsForSport(sport);
+    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+        ?? options.find((option) => option.ratingType === 'SKILL')
+        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
+    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
+    if (!fallbackAge) {
+        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
+            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
+            if (fallbackAge) break;
+        }
+    }
+    fallbackAge = fallbackAge
+        ?? options.find((option) => option.ratingType === 'AGE')
+        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
+    const compositeDivisionTypeId = buildCompositeDivisionTypeId(fallbackSkill.id, fallbackAge.id);
+    const token = buildDivisionToken({
+        gender: 'C',
+        ratingType: 'SKILL',
+        divisionTypeId: compositeDivisionTypeId,
+    });
+    const divisionTypeName = buildDivisionName({
+        gender: 'C',
+        sportInput: sport,
+        skillDivisionTypeId: fallbackSkill.id,
+        ageDivisionTypeId: fallbackAge.id,
+    });
+    const detail: DivisionDetailForm = {
+        id: buildEventDivisionId(eventId, token),
+        key: token,
+        kind: 'LEAGUE',
+        name: divisionTypeName,
+        divisionTypeId: compositeDivisionTypeId,
+        divisionTypeName,
+        ratingType: 'SKILL',
+        gender: 'C',
+        skillDivisionTypeId: fallbackSkill.id,
+        skillDivisionTypeName: fallbackSkill.name,
+        ageDivisionTypeId: fallbackAge.id,
+        ageDivisionTypeName: fallbackAge.name,
+        price: 0,
+        maxParticipants: 10,
+        playoffTeamCount: 10,
+        playoffPlacementDivisionIds: [],
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentDueDates: [],
+        installmentDueRelativeDays: [],
+        installmentAmounts: [],
+        sportId: sport || undefined,
+        fieldIds: [],
+    };
+    return [applyDivisionAgeCutoff(detail, sport, referenceDate)];
+};
+
+export const normalizeDivisionFieldIds = (
+    value: unknown,
+    divisionKeys: string[],
+    availableFieldIds: string[],
+): Record<string, string[]> => {
+    const source = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+    const allowed = new Set(availableFieldIds);
+    const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
+    const result: Record<string, string[]> = {};
+
+    normalizedDivisionKeys.forEach((divisionKey) => {
+        const rawFieldIds = source[divisionKey];
+        const selected = Array.isArray(rawFieldIds)
+            ? Array.from(new Set(rawFieldIds.map((entry) => String(entry)).filter((entry) => allowed.has(entry))))
+            : [];
+        result[divisionKey] = selected.length ? selected : [...availableFieldIds];
+    });
+
+    return result;
+};
+
+export const divisionFieldIdsEqual = (
+    left: Record<string, string[]>,
+    right: Record<string, string[]>,
+): boolean => {
+    const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+    for (const key of keys) {
+        const leftValues = Array.from(new Set((left[key] ?? []).map(String))).sort();
+        const rightValues = Array.from(new Set((right[key] ?? []).map(String))).sort();
+        if (leftValues.length !== rightValues.length) {
+            return false;
+        }
+        if (!stringArraysEqual(leftValues, rightValues)) {
+            return false;
+        }
+    }
+    return true;
+};
