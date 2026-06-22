@@ -20,6 +20,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T19:45Z) Extracted slot overlap validation into `slotValidation.ts` so schema extraction can import slot errors without depending on `EventForm`.
   - [x] (2026-06-22T19:51Z) Extracted the Zod event form schema into `eventForm/schema.ts` while leaving default construction in `EventForm`.
   - [x] (2026-06-22T19:55Z) Extracted reusable field sanitization and event-location default helpers into `eventForm/fieldDefaults.ts`.
+  - [x] (2026-06-22T20:00Z) Extracted default resource/field selection state into `buildDefaultFieldState`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -227,10 +228,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Extract field default helpers before moving default construction.
   Rationale: `buildDefaultFormValues`, organization field hydration, field-count sync, and draft serialization all share field sanitization and event-location fallback behavior. Moving those pure helpers first reduces repeated dependencies without changing form reset behavior.
   Date/Author: 2026-06-22 / Codex
+- Decision: Extract default field state separately from full form defaults.
+  Rationale: The full default builder still coordinates divisions, slots, league config, tournament config, immutable defaults, and sports hydration. The default field/resource selection portion has a clear data-only boundary and carries the most organization/rental branching, so extracting it first lowers the risk of the later default-builder move.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field default helpers are separated from the default builder. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field default/resource selection helpers are separated from the default builder. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
