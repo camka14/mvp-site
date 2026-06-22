@@ -178,6 +178,7 @@ import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeC
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
+import { StaffSection } from './eventForm/sections/StaffSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -10336,29 +10337,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-match-rules')}
                         />
 
-                        <Paper
-                            id="section-officials"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-20 bg-gray-50"
+                        <StaffSection
+                            collapsed={collapsedSections['section-officials']}
+                            onToggle={() => toggleSectionCollapse('section-officials')}
                         >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Staff</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-officials']}
-                                    aria-controls="section-officials-content"
-                                    onClick={() => toggleSectionCollapse('section-officials')}
-                                >
-                                    {collapsedSections['section-officials'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-officials']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                <Stack id="section-officials-content" gap="md" mt="md">
                                     <Controller
                                         name="doTeamsOfficiate"
                                         control={control}
@@ -10912,9 +10894,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             {staffInviteError}
                                         </Text>
                                     )}
-                                </Stack>
-                            </Collapse>
-                        </Paper>
+                        </StaffSection>
 
                         {/* Divisions */}
                         <Paper
