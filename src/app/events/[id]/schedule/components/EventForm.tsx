@@ -203,6 +203,7 @@ import {
     normalizeInstallmentRelativeDays,
     sumInstallmentAmounts,
 } from './eventForm/paymentPlanHelpers';
+import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpers';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
@@ -1063,19 +1064,6 @@ const buildAutoResolvedSlotUpdate = (
     }
 
     return null;
-};
-
-const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig | null => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return null;
-    }
-    const entries = Object.entries(value as Record<string, unknown>)
-        .filter(([key, entry]) => (
-            key !== 'segmentCount'
-            && key !== 'pointIncidentRequiresParticipant'
-            && entry !== undefined
-        ));
-    return entries.length > 0 ? Object.fromEntries(entries) as MatchRulesConfig : null;
 };
 
 type EventFormState = {
