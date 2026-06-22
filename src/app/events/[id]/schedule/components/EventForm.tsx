@@ -174,12 +174,17 @@ import {
     buildAssignedOfficialCards,
     buildAssignedUserIdsByRole,
     buildAssignedUserIdSetsByRole,
+    buildAssistantHostValue,
     buildCurrentEventStaffInvites,
     buildExistingAssignedStaffUserIds,
+    buildHostStaffUserIds,
     buildOrganizationStaffAssignmentIds,
     buildOrganizationStaffRosterEntries,
+    buildOrganizationOfficialsById,
+    buildOrganizationUsersById,
     buildStaffInviteByUserId,
     buildStaffInviteSubmissionPayload,
+    buildUserDataById,
     createEmptyStaffInvite,
     filterOrganizationStaffRosterEntries,
     formatStaffRoleLabel,
@@ -1354,68 +1359,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => new Set(organizationAllowedOfficialIds),
         [organizationAllowedOfficialIds],
     );
-    const organizationUsersById = useMemo(() => {
-        const map = new Map<string, Partial<UserData>>();
-        const addUser = (candidate?: UserData | null) => {
-            if (candidate?.$id) {
-                map.set(candidate.$id, candidate);
-            }
-        };
-        addUser(resolvedOrganization?.owner);
-        (resolvedOrganization?.hosts || []).forEach((host) => addUser(host));
-        addUser(currentUser);
-        return map;
-    }, [currentUser, resolvedOrganization?.hosts, resolvedOrganization?.owner]);
-    const organizationOfficialsById = useMemo(() => {
-        const map = new Map<string, UserData>();
-        (resolvedOrganization?.officials || []).forEach((official) => {
-            if (official?.$id && organizationAllowedOfficialIdSet.has(official.$id)) {
-                map.set(official.$id, official);
-            }
-        });
-        (eventData.officials || []).forEach((official) => {
-            if (!official?.$id) {
-                return;
-            }
-            if (!organizationAllowedOfficialIdSet.has(official.$id)) {
-                return;
-            }
-            if (!map.has(official.$id)) {
-                map.set(official.$id, official);
-            }
-        });
-        return map;
-    }, [eventData.officials, resolvedOrganization?.officials, organizationAllowedOfficialIdSet]);
+    const organizationUsersById = useMemo(() => buildOrganizationUsersById({
+        owner: resolvedOrganization?.owner,
+        hosts: resolvedOrganization?.hosts,
+        currentUser,
+    }), [currentUser, resolvedOrganization?.hosts, resolvedOrganization?.owner]);
+    const organizationOfficialsById = useMemo(() => buildOrganizationOfficialsById({
+        organizationOfficials: resolvedOrganization?.officials,
+        eventOfficials: eventData.officials,
+        allowedOfficialIds: organizationAllowedOfficialIdSet,
+    }), [eventData.officials, resolvedOrganization?.officials, organizationAllowedOfficialIdSet]);
     const assistantHostValue = useMemo(
-        () => Array.from(
-            new Set(
-                (eventData.assistantHostIds || [])
-                    .map((id) => String(id))
-                    .filter((id) => id.length > 0 && id !== eventData.hostId),
-            ),
-        ),
+        () => buildAssistantHostValue(eventData.assistantHostIds, eventData.hostId),
         [eventData.assistantHostIds, eventData.hostId],
     );
     const hostStaffUserIds = useMemo(
-        () => Array.from(
-            new Set(
-                [
-                    normalizeEntityId(eventData.hostId),
-                    ...assistantHostValue,
-                ].filter((id): id is string => Boolean(id)),
-            ),
-        ),
+        () => buildHostStaffUserIds(eventData.hostId, assistantHostValue),
         [assistantHostValue, eventData.hostId],
     );
-    const assistantHostUsersById = useMemo(() => {
-        const map = new Map<string, UserData>();
-        assistantHostUsers.forEach((userEntry) => {
-            if (userEntry?.$id) {
-                map.set(userEntry.$id, userEntry);
-            }
-        });
-        return map;
-    }, [assistantHostUsers]);
+    const assistantHostUsersById = useMemo(
+        () => buildUserDataById(assistantHostUsers),
+        [assistantHostUsers],
+    );
     const currentEventStaffInvites = useMemo(
         () => buildCurrentEventStaffInvites({
             activeStaffInvites: activeEditingEvent?.staffInvites,

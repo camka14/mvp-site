@@ -69,6 +69,92 @@ const normalizeStaffIdList = (values: unknown[]): string[] => Array.from(
     ),
 );
 
+type BuildOrganizationUsersByIdOptions = {
+    owner?: UserData | null;
+    hosts?: UserData[] | null;
+    currentUser?: UserData | null;
+};
+
+export const buildOrganizationUsersById = ({
+    owner,
+    hosts,
+    currentUser,
+}: BuildOrganizationUsersByIdOptions): Map<string, Partial<UserData>> => {
+    const map = new Map<string, Partial<UserData>>();
+    const addUser = (candidate?: UserData | null) => {
+        if (candidate?.$id) {
+            map.set(candidate.$id, candidate);
+        }
+    };
+    addUser(owner);
+    (hosts || []).forEach((host) => addUser(host));
+    addUser(currentUser);
+    return map;
+};
+
+type BuildOrganizationOfficialsByIdOptions = {
+    organizationOfficials?: UserData[] | null;
+    eventOfficials?: UserData[] | null;
+    allowedOfficialIds: Set<string> | string[];
+};
+
+export const buildOrganizationOfficialsById = ({
+    organizationOfficials,
+    eventOfficials,
+    allowedOfficialIds,
+}: BuildOrganizationOfficialsByIdOptions): Map<string, UserData> => {
+    const allowedOfficialIdSet = allowedOfficialIds instanceof Set
+        ? allowedOfficialIds
+        : new Set(allowedOfficialIds);
+    const map = new Map<string, UserData>();
+    (organizationOfficials || []).forEach((official) => {
+        if (official?.$id && allowedOfficialIdSet.has(official.$id)) {
+            map.set(official.$id, official);
+        }
+    });
+    (eventOfficials || []).forEach((official) => {
+        if (!official?.$id) {
+            return;
+        }
+        if (!allowedOfficialIdSet.has(official.$id)) {
+            return;
+        }
+        if (!map.has(official.$id)) {
+            map.set(official.$id, official);
+        }
+    });
+    return map;
+};
+
+export const buildAssistantHostValue = (
+    assistantHostIds?: unknown,
+    hostId?: unknown,
+): string[] => {
+    const normalizedHostId = String(hostId ?? '');
+    return Array.from(
+        new Set(
+            (Array.isArray(assistantHostIds) ? assistantHostIds : [])
+                .map((id) => String(id))
+                .filter((id) => id.length > 0 && id !== normalizedHostId),
+        ),
+    );
+};
+
+export const buildHostStaffUserIds = (
+    hostId: unknown,
+    assistantHostIds: string[],
+): string[] => normalizeStaffIdList([hostId, ...assistantHostIds]);
+
+export const buildUserDataById = (users: UserData[]): Map<string, UserData> => {
+    const map = new Map<string, UserData>();
+    users.forEach((userEntry) => {
+        if (userEntry?.$id) {
+            map.set(userEntry.$id, userEntry);
+        }
+    });
+    return map;
+};
+
 type BuildCurrentEventStaffInvitesOptions = {
     activeStaffInvites?: unknown;
     incomingStaffInvites?: unknown;
