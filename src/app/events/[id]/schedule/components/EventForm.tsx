@@ -47,7 +47,6 @@ import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './externalRentalField';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
-import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
     buildDivisionToken,
@@ -139,8 +138,6 @@ import {
     createEmptyStaffInvite,
     type EventInviteStaffType,
     formatStaffRoleLabel,
-    formatStaffStatusLabel,
-    getStaffStatusColor,
     getUserEmail,
     mapInviteStaffTypeToRole,
     mapRoleToInviteStaffType,
@@ -191,6 +188,7 @@ import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSectio
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
+import { StaffAssignedHostsList } from './eventForm/sections/StaffAssignedHostsList';
 import { StaffAssignedOfficialsList } from './eventForm/sections/StaffAssignedOfficialsList';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
@@ -10495,82 +10493,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onUpdateEligibility={handleUpdateEventOfficialEligibility}
                                         />
 
-                                        <Paper withBorder radius="md" p="md" bg="white">
-                                            <Stack gap="sm">
-                                                <Group justify="space-between" align="center">
-                                                    <Title order={6}>Host Staff</Title>
-                                                    <Badge radius="xl" variant="light">{assignedHostCards.length}</Badge>
-                                                </Group>
-                                                <div
-                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
-                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
-                                                >
-                                                    {assignedHostCards.slice(0, hostCardVisibleCount).map((card) => (
-                                                        <Paper key={card.key} withBorder radius="md" p="sm">
-                                                            <Stack gap="xs">
-                                                                <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
-                                                                    <div className="flex-1 min-w-0">
-                                                                        {card.user ? (
-                                                                            <UserCard user={card.user} className="!p-0 !shadow-none" />
-                                                                        ) : (
-                                                                            <Stack gap={2}>
-                                                                                <Text fw={600}>{card.displayName}</Text>
-                                                                                {card.email && <Text size="xs" c="dimmed">{card.email}</Text>}
-                                                                            </Stack>
-                                                                        )}
-                                                                    </div>
-                                                                    {card.status && (
-                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(card.status)}>
-                                                                            {formatStaffStatusLabel(card.status)}
-                                                                        </Badge>
-                                                                    )}
-                                                                </Group>
-                                                                <Group gap="xs" wrap="wrap">
-                                                                    <Badge variant="outline">{formatStaffRoleLabel(card.role)}</Badge>
-                                                                    {card.role !== 'HOST' && (
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="subtle"
-                                                                            color="red"
-                                                                            size="xs"
-                                                                            disabled={card.source === 'assigned' ? isImmutableField('assistantHostIds') : false}
-                                                                            onClick={() => {
-                                                                                if (card.source === 'draft' && card.email) {
-                                                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
-                                                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
-                                                                                            return [invite];
-                                                                                        }
-                                                                                        const nextRoles = invite.roles.filter((role) => role !== 'ASSISTANT_HOST');
-                                                                                        if (!nextRoles.length) {
-                                                                                            return [];
-                                                                                        }
-                                                                                        return [{ ...invite, roles: nextRoles }];
-                                                                                    }));
-                                                                                    return;
-                                                                                }
-                                                                                if (card.userId) {
-                                                                                    handleRemoveAssistantHost(card.userId);
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            Remove
-                                                                        </Button>
-                                                                    )}
-                                                                </Group>
-                                                                {card.status === 'failed' && (
-                                                                    <Text size="xs" c="red">
-                                                                        Email likely failed to send. Remove and re-add this invite to retry.
-                                                                    </Text>
-                                                                )}
-                                                            </Stack>
-                                                        </Paper>
-                                                    ))}
-                                                    {assignedHostCards.length === 0 && (
-                                                        <Text size="sm" c="dimmed">No host-side staff assigned.</Text>
-                                                    )}
-                                                </div>
-                                            </Stack>
-                                        </Paper>
+                                        <StaffAssignedHostsList
+                                            cards={assignedHostCards}
+                                            visibleCount={hostCardVisibleCount}
+                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
+                                            onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
+                                            onRemoveCard={(card) => {
+                                                if (card.source === 'draft' && card.email) {
+                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
+                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
+                                                            return [invite];
+                                                        }
+                                                        const nextRoles = invite.roles.filter((role) => role !== 'ASSISTANT_HOST');
+                                                        if (!nextRoles.length) {
+                                                            return [];
+                                                        }
+                                                        return [{ ...invite, roles: nextRoles }];
+                                                    }));
+                                                    return;
+                                                }
+                                                if (card.userId) {
+                                                    handleRemoveAssistantHost(card.userId);
+                                                }
+                                            }}
+                                        />
                                     </SimpleGrid>
                                     {staffInviteError && (
                                         <Text size="xs" c="red">
