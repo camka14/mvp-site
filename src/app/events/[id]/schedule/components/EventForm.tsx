@@ -171,18 +171,14 @@ import {
     buildAssignedOfficialCards,
     buildOrganizationStaffAssignmentIds,
     buildOrganizationStaffRosterEntries,
+    buildStaffInviteSubmissionPayload,
     createEmptyStaffInvite,
-    type EventInviteStaffType,
     filterOrganizationStaffRosterEntries,
     formatStaffRoleLabel,
     getUserEmail,
     mapInviteStaffTypeToRole,
-    mapRoleToInviteStaffType,
     normalizeInviteEmail,
-    normalizeInviteStaffTypes,
-    normalizeInviteStatusToken,
     normalizePendingStaffInvite,
-    toUserLabel,
     type PendingStaffInvite,
     type StaffAssignmentRole,
     type StaffRosterEntry,
@@ -2537,65 +2533,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         const pendingInvites = normalizeDirtyTrackedPendingStaffInvites(getValues('pendingStaffInvites') ?? []);
         const pendingInviteMembershipByEmail = await validatePendingStaffInvites(pendingInvites);
-        const targetRolesByUserId = new Map<string, Set<EventInviteStaffType>>();
-        const addTargetRole = (userId: string | null | undefined, role: EventInviteStaffType) => {
-            const normalizedUserId = normalizeEntityId(userId);
-            if (!normalizedUserId) {
-                return;
-            }
-            const roles = targetRolesByUserId.get(normalizedUserId) ?? new Set<EventInviteStaffType>();
-            roles.add(role);
-            targetRolesByUserId.set(normalizedUserId, roles);
-        };
-
-        getEventOfficialUserIds(eventData.eventOfficials).forEach((officialId) => addTargetRole(officialId, 'OFFICIAL'));
-        assistantHostValue.forEach((assistantHostId) => addTargetRole(assistantHostId, 'HOST'));
-
-        const unresolvedEmailInvites: PendingStaffInvite[] = [];
-        pendingInvites.forEach((invite) => {
-            const knownUserId = Array.from(pendingInviteMembershipByEmail.get(invite.email) ?? [])[0] ?? null;
-            if (knownUserId) {
-                invite.roles.forEach((role) => addTargetRole(knownUserId, mapRoleToInviteStaffType(role)));
-                return;
-            }
-            unresolvedEmailInvites.push(invite);
+        const {
+            payload,
+            unresolvedEmailInvites,
+        } = buildStaffInviteSubmissionPayload({
+            eventId,
+            officialIds: getEventOfficialUserIds(eventData.eventOfficials),
+            assistantHostIds: assistantHostValue,
+            pendingInvites,
+            pendingInviteMembershipByEmail,
+            currentEventStaffInviteByUserId,
+            existingAssignedStaffUserIds,
         });
-
-        const payload = [
-            ...Array.from(targetRolesByUserId.entries()).flatMap(([userId, roles]) => {
-                const normalizedUserId = normalizeEntityId(userId);
-                if (!normalizedUserId) {
-                    return [];
-                }
-                const targetStaffTypes = Array.from(roles).sort();
-                const existingInvite = currentEventStaffInviteByUserId.get(normalizedUserId);
-                const existingStatus = normalizeInviteStatusToken(existingInvite?.status);
-                const existingStaffTypes = normalizeInviteStaffTypes(existingInvite?.staffTypes);
-                const isExistingInviteUpdate = Boolean(existingInvite)
-                    && existingStatus !== 'active'
-                    && JSON.stringify(existingStaffTypes) !== JSON.stringify(targetStaffTypes);
-                const isNewAssignment = !existingAssignedStaffUserIds.has(normalizedUserId);
-                if (!isExistingInviteUpdate && !isNewAssignment) {
-                    return [];
-                }
-                return [{
-                    userId: normalizedUserId,
-                    type: 'STAFF' as const,
-                    eventId,
-                    staffTypes: targetStaffTypes,
-                    replaceStaffTypes: true,
-                }];
-            }),
-            ...unresolvedEmailInvites.map((invite) => ({
-                firstName: invite.firstName,
-                lastName: invite.lastName,
-                email: invite.email,
-                type: 'STAFF' as const,
-                eventId,
-                staffTypes: invite.roles.map(mapRoleToInviteStaffType),
-                replaceStaffTypes: true,
-            })),
-        ];
 
         const result = payload.length > 0
             ? await userService.inviteUsersByEmail(currentUser.$id, payload)

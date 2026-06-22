@@ -40,6 +40,17 @@ export type AssignedStaffCard = {
     source: 'assigned' | 'draft';
 };
 
+export type StaffInviteSubmissionPayloadItem = {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    userId?: string;
+    type: 'STAFF';
+    eventId: string;
+    staffTypes: EventInviteStaffType[];
+    replaceStaffTypes: true;
+};
+
 export const createEmptyStaffInvite = (): PendingStaffInvite => ({
     firstName: '',
     lastName: '',
@@ -348,6 +359,94 @@ export const normalizeInviteStaffTypes = (staffTypes: unknown): EventInviteStaff
         ).sort()
         : []
 );
+
+type BuildStaffInviteSubmissionPayloadOptions = {
+    eventId: string;
+    officialIds: string[];
+    assistantHostIds: string[];
+    pendingInvites: PendingStaffInvite[];
+    pendingInviteMembershipByEmail: Map<string, Set<string>>;
+    currentEventStaffInviteByUserId: Map<string, Invite>;
+    existingAssignedStaffUserIds: Set<string>;
+};
+
+type BuildStaffInviteSubmissionPayloadResult = {
+    payload: StaffInviteSubmissionPayloadItem[];
+    unresolvedEmailInvites: PendingStaffInvite[];
+};
+
+export const buildStaffInviteSubmissionPayload = ({
+    eventId,
+    officialIds,
+    assistantHostIds,
+    pendingInvites,
+    pendingInviteMembershipByEmail,
+    currentEventStaffInviteByUserId,
+    existingAssignedStaffUserIds,
+}: BuildStaffInviteSubmissionPayloadOptions): BuildStaffInviteSubmissionPayloadResult => {
+    const targetRolesByUserId = new Map<string, Set<EventInviteStaffType>>();
+    const addTargetRole = (userId: string | null | undefined, role: EventInviteStaffType) => {
+        const normalizedUserId = normalizeEntityId(userId);
+        if (!normalizedUserId) {
+            return;
+        }
+        const roles = targetRolesByUserId.get(normalizedUserId) ?? new Set<EventInviteStaffType>();
+        roles.add(role);
+        targetRolesByUserId.set(normalizedUserId, roles);
+    };
+
+    officialIds.forEach((officialId) => addTargetRole(officialId, 'OFFICIAL'));
+    assistantHostIds.forEach((assistantHostId) => addTargetRole(assistantHostId, 'HOST'));
+
+    const unresolvedEmailInvites: PendingStaffInvite[] = [];
+    pendingInvites.forEach((invite) => {
+        const knownUserId = Array.from(pendingInviteMembershipByEmail.get(invite.email) ?? [])[0] ?? null;
+        if (knownUserId) {
+            invite.roles.forEach((role) => addTargetRole(knownUserId, mapRoleToInviteStaffType(role)));
+            return;
+        }
+        unresolvedEmailInvites.push(invite);
+    });
+
+    return {
+        payload: [
+            ...Array.from(targetRolesByUserId.entries()).flatMap(([userId, roles]) => {
+                const normalizedUserId = normalizeEntityId(userId);
+                if (!normalizedUserId) {
+                    return [];
+                }
+                const targetStaffTypes = Array.from(roles).sort();
+                const existingInvite = currentEventStaffInviteByUserId.get(normalizedUserId);
+                const existingStatus = normalizeInviteStatusToken(existingInvite?.status);
+                const existingStaffTypes = normalizeInviteStaffTypes(existingInvite?.staffTypes);
+                const isExistingInviteUpdate = Boolean(existingInvite)
+                    && existingStatus !== 'active'
+                    && JSON.stringify(existingStaffTypes) !== JSON.stringify(targetStaffTypes);
+                const isNewAssignment = !existingAssignedStaffUserIds.has(normalizedUserId);
+                if (!isExistingInviteUpdate && !isNewAssignment) {
+                    return [];
+                }
+                return [{
+                    userId: normalizedUserId,
+                    type: 'STAFF' as const,
+                    eventId,
+                    staffTypes: targetStaffTypes,
+                    replaceStaffTypes: true as const,
+                }];
+            }),
+            ...unresolvedEmailInvites.map((invite) => ({
+                firstName: invite.firstName,
+                lastName: invite.lastName,
+                email: invite.email,
+                type: 'STAFF' as const,
+                eventId,
+                staffTypes: invite.roles.map(mapRoleToInviteStaffType),
+                replaceStaffTypes: true as const,
+            })),
+        ],
+        unresolvedEmailInvites,
+    };
+};
 
 export const normalizeRosterStaffTypes = (staffTypes: unknown): StaffMemberType[] => (
     Array.isArray(staffTypes)
