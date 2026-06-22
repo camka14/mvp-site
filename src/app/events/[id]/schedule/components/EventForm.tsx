@@ -47,7 +47,6 @@ import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './externalRentalField';
-import MatchRulesSection from './MatchRulesSection';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import UserCard from '@/components/ui/UserCard';
@@ -172,6 +171,7 @@ import {
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
+import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -6348,6 +6348,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [eventData.leagueScoringConfig, getValues, setEventData, setValue]
     );
 
+    const handleMatchRulesOverrideChange = useCallback((nextValue: MatchRulesConfig | null) => {
+        const sanitized = sanitizeMatchRulesOverrideForEditor(nextValue);
+        setValue('matchRulesOverride', sanitized, { shouldDirty: true, shouldValidate: false });
+        const template = (selectedSportForOfficials?.matchRulesTemplate ?? null) as MatchRulesConfig | null;
+        const templateTimekeeping = template?.timekeeping ?? null;
+        const overrideTimekeeping = sanitized?.timekeeping ?? null;
+        const timerMode = overrideTimekeeping?.timerMode ?? templateTimekeeping?.timerMode;
+        const segmentDuration = normalizeNumber(
+            overrideTimekeeping?.segmentDurationMinutes
+            ?? templateTimekeeping?.segmentDurationMinutes,
+        );
+        const segmentCount = normalizeNumber(template?.segmentCount)
+            ?? (eventData.eventType === 'TOURNAMENT'
+                ? normalizeNumber(tournamentData.winnerSetCount)
+                : normalizeNumber(leagueData.setsPerMatch))
+            ?? 1;
+        if (timerMode === 'COUNT_UP' && segmentDuration && segmentCount > 0) {
+            const totalMatchDuration = Math.max(1, Math.trunc(segmentDuration * segmentCount));
+            if (eventData.eventType === 'LEAGUE') {
+                setLeagueData((previous) => ({
+                    ...previous,
+                    usesSets: false,
+                    matchDurationMinutes: totalMatchDuration,
+                    setDurationMinutes: undefined,
+                }));
+            } else if (eventData.eventType === 'TOURNAMENT') {
+                setTournamentData((previous) => ({
+                    ...previous,
+                    matchDurationMinutes: totalMatchDuration,
+                    setDurationMinutes: undefined,
+                }));
+            }
+        }
+    }, [
+        eventData.eventType,
+        leagueData.setsPerMatch,
+        selectedSportForOfficials,
+        setLeagueData,
+        setTournamentData,
+        setValue,
+        tournamentData.winnerSetCount,
+    ]);
+
     const handleIncludePlayoffsToggle = useCallback((checked: boolean) => {
         if (!checked) {
             setLeagueData((prev) => ({
@@ -10905,85 +10948,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </Collapse>
                         </Paper>
 
-                        {showMatchRulesSection && (
-                            <Paper
-                                id="section-match-rules"
-                                shadow="xs"
-                                radius="md"
-                                withBorder
-                                p="lg"
-                                className="scroll-mt-20 bg-gray-50"
-                            >
-                                <div className="flex items-center justify-between gap-3">
-                                    <h3 className="text-lg font-semibold">Match Rules</h3>
-                                    <Button
-                                        type="button"
-                                        variant="subtle"
-                                        size="xs"
-                                        aria-expanded={!collapsedSections['section-match-rules']}
-                                        aria-controls="section-match-rules-content"
-                                        onClick={() => toggleSectionCollapse('section-match-rules')}
-                                    >
-                                        {collapsedSections['section-match-rules'] ? 'Expand' : 'Collapse'}
-                                    </Button>
-                                </div>
-                                <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                    <div id="section-match-rules-content" className="mt-4">
-                                        <MatchRulesSection
-                                            sport={selectedSportForOfficials ?? undefined}
-                                            usesSets={eventData.eventType === 'LEAGUE'
-                                                ? Boolean(leagueData.usesSets)
-                                                : eventData.eventType === 'TOURNAMENT'
-                                                    ? Boolean(tournamentData.usesSets)
-                                                    : Boolean(selectedSportForOfficials?.usePointsPerSetWin)}
-                                            setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
-                                            winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
-                                            officialPositions={eventData.officialPositions}
-                                            value={eventData.matchRulesOverride}
-                                            onChange={(nextValue) => {
-                                                const sanitized = sanitizeMatchRulesOverrideForEditor(nextValue);
-                                                setValue('matchRulesOverride', sanitized, { shouldDirty: true, shouldValidate: false });
-                                                const template = (selectedSportForOfficials?.matchRulesTemplate ?? null) as MatchRulesConfig | null;
-                                                const templateTimekeeping = template?.timekeeping ?? null;
-                                                const overrideTimekeeping = sanitized?.timekeeping ?? null;
-                                                const timerMode = overrideTimekeeping?.timerMode ?? templateTimekeeping?.timerMode;
-                                                const segmentDuration = normalizeNumber(
-                                                    overrideTimekeeping?.segmentDurationMinutes
-                                                    ?? templateTimekeeping?.segmentDurationMinutes,
-                                                );
-                                                const segmentCount = normalizeNumber(template?.segmentCount)
-                                                    ?? (eventData.eventType === 'TOURNAMENT'
-                                                        ? normalizeNumber(tournamentData.winnerSetCount)
-                                                        : normalizeNumber(leagueData.setsPerMatch))
-                                                    ?? 1;
-                                                if (timerMode === 'COUNT_UP' && segmentDuration && segmentCount > 0) {
-                                                    const totalMatchDuration = Math.max(1, Math.trunc(segmentDuration * segmentCount));
-                                                    if (eventData.eventType === 'LEAGUE') {
-                                                        setLeagueData((previous) => ({
-                                                            ...previous,
-                                                            usesSets: false,
-                                                            matchDurationMinutes: totalMatchDuration,
-                                                            setDurationMinutes: undefined,
-                                                        }));
-                                                    } else if (eventData.eventType === 'TOURNAMENT') {
-                                                        setTournamentData((previous) => ({
-                                                            ...previous,
-                                                            matchDurationMinutes: totalMatchDuration,
-                                                            setDurationMinutes: undefined,
-                                                        }));
-                                                    }
-                                                }
-                                            }}
-                                            autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
-                                            onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
-                                            disabled={isImmutableField('matchRulesOverride')}
-                                            incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
-                                            comboboxProps={sharedComboboxProps}
-                                        />
-                                    </div>
-                                </Collapse>
-                            </Paper>
-                        )}
+                        <MatchRulesConfigSection
+                            visible={showMatchRulesSection}
+                            collapsed={collapsedSections['section-match-rules']}
+                            sport={selectedSportForOfficials}
+                            usesSets={eventData.eventType === 'LEAGUE'
+                                ? Boolean(leagueData.usesSets)
+                                : eventData.eventType === 'TOURNAMENT'
+                                    ? Boolean(tournamentData.usesSets)
+                                    : Boolean(selectedSportForOfficials?.usePointsPerSetWin)}
+                            setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
+                            winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
+                            officialPositions={eventData.officialPositions}
+                            value={eventData.matchRulesOverride}
+                            onChange={handleMatchRulesOverrideChange}
+                            autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
+                            onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
+                            disabled={isImmutableField('matchRulesOverride')}
+                            incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
+                            comboboxProps={sharedComboboxProps}
+                            onToggle={() => toggleSectionCollapse('section-match-rules')}
+                        />
 
                         <Paper
                             id="section-officials"

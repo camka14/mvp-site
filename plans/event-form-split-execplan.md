@@ -20,6 +20,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [ ] Extract major JSX sections into section components with explicit props and no new shared context.
   - [x] (2026-06-22T07:48Z) Extracted `LeagueScoringConfigSection` as the first section component.
+  - [x] (2026-06-22T08:14Z) Extracted `MatchRulesConfigSection` while keeping match-rules mutation logic in `EventForm`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -58,6 +59,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Start section extraction with League Scoring Config.
   Rationale: It is a complete visual section with a small explicit prop surface, which makes it a low-risk first section move before tackling Event Details, Officials, Divisions, or Schedule.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract Match Rules as a wrapper section but keep update logic in `EventForm`.
+  Rationale: The card shell and `MatchRulesSection` render path have a stable prop surface, while the update logic still coordinates league/tournament timing side effects that belong with the form state for now.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -208,3 +212,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Deferred schema/default extraction after a dependency pass and completed the leaf component extraction milestone instead.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
+- 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
