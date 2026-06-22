@@ -27,6 +27,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T20:24Z) Extracted payment-plan and installment normalization helpers into `eventForm/paymentPlanHelpers.ts`.
   - [x] (2026-06-22T20:28Z) Extracted boolean normalization plus staff user label/search helpers into existing shared modules.
   - [x] (2026-06-22T20:30Z) Extracted match-rules override sanitization into `eventForm/matchRulesHelpers.ts`.
+  - [x] (2026-06-22T20:34Z) Extracted flattened validation error helpers into `eventForm/validationErrors.ts`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -255,10 +256,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Keep match-rules override sanitization in a dedicated helper.
   Rationale: The sanitizer is shared by event hydration, immutable default application, and editor updates. A dedicated match-rules helper keeps that behavior reusable without tying it to the section component.
   Date/Author: 2026-06-22 / Codex
+- Decision: Extract validation-error flattening separately from schema validation.
+  Rationale: Error flattening is used by the validation reporting path and no longer needs to live next to render logic. Moving it separately keeps the larger submit/save workflow untouched.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, and match-rules sanitizer calls now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, and validation-error flattening calls now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
