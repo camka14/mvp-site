@@ -279,6 +279,27 @@ export const formatPlayoffDivisionParticipantCount = (value: unknown): string =>
     return typeof normalized === 'number' ? String(normalized) : 'Not set';
 };
 
+export const deriveScheduleParticipantCount = ({
+    singleDivision,
+    maxParticipants,
+    divisionDetails,
+}: {
+    singleDivision?: boolean | null;
+    maxParticipants?: number | null;
+    divisionDetails?: DivisionDetailForm[] | null;
+}): number => {
+    const fallbackCount = maxParticipants ?? 0;
+    if (singleDivision) {
+        return fallbackCount;
+    }
+
+    const divisionTotal = (divisionDetails || []).reduce((sum, detail) => (
+        sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
+    ), 0);
+
+    return divisionTotal > 0 ? divisionTotal : fallbackCount;
+};
+
 export type DivisionDetailForm = {
     id: string;
     key: string;

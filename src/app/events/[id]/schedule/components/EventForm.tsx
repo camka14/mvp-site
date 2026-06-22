@@ -84,6 +84,7 @@ import {
     buildPlayoffDivisionSelectOptions,
     buildSlotDivisionLookup,
     buildUniqueDivisionIdForToken,
+    deriveScheduleParticipantCount,
     DIVISION_GENDER_OPTIONS,
     type DivisionDetailForm,
     type DivisionEditorKind,
@@ -6903,14 +6904,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 isImmutableField={isImmutableField}
                                 leagueData={leagueData}
                                 sport={eventData.sportConfig ?? undefined}
-                                participantCount={eventData.singleDivision
-                                    ? (eventData.maxParticipants ?? 0)
-                                    : (() => {
-                                        const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
-                                            sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
-                                        ), 0);
-                                        return total > 0 ? total : (eventData.maxParticipants ?? 0);
-                                    })()}
+                                participantCount={deriveScheduleParticipantCount({
+                                    singleDivision: eventData.singleDivision,
+                                    maxParticipants: eventData.maxParticipants,
+                                    divisionDetails: eventData.divisionDetails,
+                                })}
                                 leagueSlots={leagueSlots}
                                 leagueFieldOptions={leagueFieldOptions}
                                 divisionOptions={divisionOptions}

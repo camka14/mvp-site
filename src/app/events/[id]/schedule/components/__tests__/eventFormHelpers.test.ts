@@ -8,6 +8,7 @@ import {
   buildPlayoffDivisionCapacityWarnings,
   buildPlayoffDivisionSelectOptions,
   deriveTournamentPoolSettingsByBracketId,
+  deriveScheduleParticipantCount,
   divisionFieldIdsEqual,
   normalizeDivisionFieldIds,
   normalizeDivisionKeys,
@@ -810,6 +811,32 @@ describe('event form division helpers', () => {
       divisionDetails: [],
       playoffDivisionDetails: playoffDivisions,
     })).toEqual([]);
+  });
+
+  it('derives schedule participant count from single or split division capacity', () => {
+    expect(deriveScheduleParticipantCount({
+      singleDivision: true,
+      maxParticipants: 12,
+      divisionDetails: [
+        makeDivisionDetail({ id: 'division_1', maxParticipants: 6 }),
+        makeDivisionDetail({ id: 'division_2', maxParticipants: 8 }),
+      ],
+    })).toBe(12);
+
+    expect(deriveScheduleParticipantCount({
+      singleDivision: false,
+      maxParticipants: 12,
+      divisionDetails: [
+        makeDivisionDetail({ id: 'division_1', maxParticipants: 6 }),
+        makeDivisionDetail({ id: 'division_2', maxParticipants: 8 }),
+      ],
+    })).toBe(14);
+
+    expect(deriveScheduleParticipantCount({
+      singleDivision: false,
+      maxParticipants: 12,
+      divisionDetails: [makeDivisionDetail({ id: 'division_1', maxParticipants: 0 })],
+    })).toBe(12);
   });
 
   it('normalizes composite division ids and participant counts', () => {
