@@ -555,3 +555,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted the EventForm render shell, section navigation wrapper, and footer alerts into `eventForm/components/EventFormShell.tsx`.
 - 2026-06-22 / Codex: Extracted team-officiating staff switches into `eventForm/sections/TeamOfficiatingControls.tsx`.
 - 2026-06-22 / Codex: Extracted pending staff invite role removal into `eventForm/staffInvites.ts`.
+- 2026-06-22 / Codex: Extracted the assigned staff cards grid into `eventForm/sections/StaffAssignedCardsGrid.tsx`.

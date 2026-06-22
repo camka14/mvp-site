@@ -8,7 +8,7 @@ import TournamentFields from '@/app/discover/components/TournamentFields';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -304,8 +304,7 @@ import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSectio
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
-import { StaffAssignedHostsList } from './eventForm/sections/StaffAssignedHostsList';
-import { StaffAssignedOfficialsList } from './eventForm/sections/StaffAssignedOfficialsList';
+import { StaffAssignedCardsGrid } from './eventForm/sections/StaffAssignedCardsGrid';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
@@ -6256,17 +6255,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     )}
 
-                                    <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-                                        <StaffAssignedOfficialsList
-                                            cards={assignedOfficialCards}
-                                            visibleCount={officialCardVisibleCount}
-                                            officialPositions={eventData.officialPositions || []}
-                                            eventOfficialByUserId={eventOfficialByUserId}
-                                            availableFieldOptions={availableOfficialFieldOptions}
-                                            assignedOfficialsDisabled={isImmutableField('eventOfficials')}
-                                            comboboxProps={sharedComboboxProps}
-                                            onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
-                                            onRemoveCard={(card) => {
+                                    <StaffAssignedCardsGrid
+                                        officialsListProps={{
+                                            cards: assignedOfficialCards,
+                                            visibleCount: officialCardVisibleCount,
+                                            officialPositions: eventData.officialPositions || [],
+                                            eventOfficialByUserId,
+                                            availableFieldOptions: availableOfficialFieldOptions,
+                                            assignedOfficialsDisabled: isImmutableField('eventOfficials'),
+                                            comboboxProps: sharedComboboxProps,
+                                            onScroll: (event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount),
+                                            onRemoveCard: (card) => {
                                                 if (card.source === 'draft' && card.email) {
                                                     setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'OFFICIAL'));
                                                     return;
@@ -6274,16 +6273,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 if (card.userId) {
                                                     handleRemoveOfficial(card.userId);
                                                 }
-                                            }}
-                                            onUpdateEligibility={handleUpdateEventOfficialEligibility}
-                                        />
-
-                                        <StaffAssignedHostsList
-                                            cards={assignedHostCards}
-                                            visibleCount={hostCardVisibleCount}
-                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
-                                            onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
-                                            onRemoveCard={(card) => {
+                                            },
+                                            onUpdateEligibility: handleUpdateEventOfficialEligibility,
+                                        }}
+                                        hostsListProps={{
+                                            cards: assignedHostCards,
+                                            visibleCount: hostCardVisibleCount,
+                                            assistantHostsDisabled: isImmutableField('assistantHostIds'),
+                                            onScroll: (event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount),
+                                            onRemoveCard: (card) => {
                                                 if (card.source === 'draft' && card.email) {
                                                     setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'ASSISTANT_HOST'));
                                                     return;
@@ -6291,9 +6289,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 if (card.userId) {
                                                     handleRemoveAssistantHost(card.userId);
                                                 }
-                                            }}
-                                        />
-                                    </SimpleGrid>
+                                            },
+                                        }}
+                                    />
                                     {staffInviteError && (
                                         <Text size="xs" c="red">
                                             {staffInviteError}
