@@ -20,10 +20,8 @@ import {
     sanitizeOrganizationEventAssignments,
 } from '@/lib/organizationEventAccess';
 import {
-    formatDateTimeInTimeZone,
     formatLocalDateTime,
     getSystemTimeZone,
-    hasExplicitTimeZoneOffset,
     normalizeTimeZone,
     nowLocalDateTimeString,
     parseLocalDateTime,
@@ -199,6 +197,7 @@ import {
     buildDefaultPlayoffData,
     buildDefaultTournamentData,
     buildTournamentConfig,
+    derivePoolTeamCount,
     extractTournamentConfigFromEvent,
     leagueConfigToDivisionFields,
     normalizeLeagueConfigForSetMode,
@@ -214,6 +213,10 @@ import {
     sumInstallmentAmounts,
 } from './eventForm/paymentPlanHelpers';
 import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpers';
+import {
+    formatEventDateTimeForForm,
+    parseDateValue,
+} from './eventForm/dateHelpers';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
@@ -332,16 +335,6 @@ const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
-const formatEventDateTimeForForm = (
-    value: Date | string | null | undefined,
-    timeZone: string,
-): string => {
-    if (typeof value === 'string' && value.trim() && !hasExplicitTimeZoneOffset(value)) {
-        return formatLocalDateTime(value);
-    }
-    return formatDateTimeInTimeZone(value, timeZone) || formatLocalDateTime(value);
-};
-
 const maybeExtendVisibleCountOnScroll = (
     event: React.UIEvent<HTMLDivElement>,
     total: number,
@@ -355,28 +348,6 @@ const maybeExtendVisibleCountOnScroll = (
     setVisibleCount((prev) => (
         prev >= total ? prev : Math.min(prev + 5, total)
     ));
-};
-
-const parseDateValue = (value?: string | null): Date | null => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const derivePoolTeamCount = (
-    maxTeams: unknown,
-    poolCount: unknown,
-): number | undefined => {
-    const normalizedMaxTeams = Number.isFinite(Number(maxTeams))
-        ? Math.max(2, Math.trunc(Number(maxTeams)))
-        : null;
-    const normalizedPoolCount = Number.isFinite(Number(poolCount))
-        ? Math.max(1, Math.trunc(Number(poolCount)))
-        : null;
-    if (!normalizedMaxTeams || !normalizedPoolCount || normalizedMaxTeams % normalizedPoolCount !== 0) {
-        return undefined;
-    }
-    return normalizedMaxTeams / normalizedPoolCount;
 };
 
 const CONFLICT_LOOKUP_START = '1970-01-01T00:00:00.000Z';

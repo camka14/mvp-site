@@ -14,6 +14,22 @@ export const normalizeNumber = (value: unknown, fallback?: number): number | und
     return fallback;
 };
 
+export const derivePoolTeamCount = (
+    maxTeams: unknown,
+    poolCount: unknown,
+): number | undefined => {
+    const normalizedMaxTeams = Number.isFinite(Number(maxTeams))
+        ? Math.max(2, Math.trunc(Number(maxTeams)))
+        : null;
+    const normalizedPoolCount = Number.isFinite(Number(poolCount))
+        ? Math.max(1, Math.trunc(Number(poolCount)))
+        : null;
+    if (!normalizedMaxTeams || !normalizedPoolCount || normalizedMaxTeams % normalizedPoolCount !== 0) {
+        return undefined;
+    }
+    return normalizedMaxTeams / normalizedPoolCount;
+};
+
 export const normalizeLeagueConfigForSetMode = (
     source: Partial<LeagueConfig> | undefined,
     usesSets: boolean,
