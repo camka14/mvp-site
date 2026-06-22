@@ -161,6 +161,8 @@ import type {
 import {
     buildSportOptions,
     buildTemplateOptions,
+    resolveSelectedSport,
+    sportRequiresSets,
 } from './eventForm/formOptions';
 import { buildEventFormDefaultValues } from './eventForm/defaultValues';
 import {
@@ -1841,12 +1843,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => buildMobileEditUnsupportedWarning(mobileEditUnsupportedReasons),
         [mobileEditUnsupportedReasons],
     );
-    const currentSportRequiresSets = useMemo(() => {
-        const selectedSport = (
-            eventData.sportId ? sportsById.get(eventData.sportId) : null
-        ) ?? eventData.sportConfig;
-        return Boolean(selectedSport?.usePointsPerSetWin);
-    }, [eventData.sportConfig, eventData.sportId, sportsById]);
+    const currentSportRequiresSets = useMemo(
+        () => sportRequiresSets(resolveSelectedSport({
+            sportId: eventData.sportId,
+            sportConfig: eventData.sportConfig,
+            sportsById,
+        })),
+        [eventData.sportConfig, eventData.sportId, sportsById],
+    );
 
     useEffect(() => {
         if (!isCreateMode || hasStripeAccount) {
@@ -1983,11 +1987,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     const selectedSportForOfficials = useMemo(
-        () => (
-            (eventData.sportId ? sportsById.get(eventData.sportId) : null)
-            ?? eventData.sportConfig
-            ?? null
-        ),
+        () => resolveSelectedSport({
+            sportId: eventData.sportId,
+            sportConfig: eventData.sportConfig,
+            sportsById,
+        }),
         [eventData.sportConfig, eventData.sportId, sportsById],
     );
     const sportOfficialPositionTemplates = useMemo(

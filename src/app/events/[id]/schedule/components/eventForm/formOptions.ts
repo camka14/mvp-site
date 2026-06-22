@@ -20,3 +20,21 @@ export const buildTemplateOptions = (templates: TemplateDocument[]): SelectOptio
         };
     })
 );
+
+export const resolveSelectedSport = ({
+    sportId,
+    sportConfig,
+    sportsById,
+}: {
+    sportId?: string | null;
+    sportConfig?: Sport | null;
+    sportsById: Map<string, Sport>;
+}): Sport | null => (
+    (sportId ? sportsById.get(sportId) : null)
+    ?? sportConfig
+    ?? null
+);
+
+export const sportRequiresSets = (sport?: Sport | null): boolean => (
+    Boolean(sport?.usePointsPerSetWin)
+);

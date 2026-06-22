@@ -32,6 +32,8 @@ import {
 import {
   buildSportOptions,
   buildTemplateOptions,
+  resolveSelectedSport,
+  sportRequiresSets,
 } from '../eventForm/formOptions';
 import {
   canUseAutomaticRefunds,
@@ -167,6 +169,25 @@ describe('event form option helpers', () => {
     ])).toEqual([
       { value: 'template_1', label: 'Untitled Template (TEXT, Parent/Guardian)' },
     ]);
+  });
+
+  it('resolves selected sports from ids before fallback config and detects set scoring', () => {
+    const catalogSport = { $id: 'volleyball', name: 'Volleyball', usePointsPerSetWin: true };
+    const fallbackSport = { $id: 'custom', name: 'Custom', usePointsPerSetWin: false };
+    const sportsById = new Map([[catalogSport.$id, catalogSport as any]]);
+
+    expect(resolveSelectedSport({
+      sportId: 'volleyball',
+      sportConfig: fallbackSport as any,
+      sportsById,
+    })).toBe(catalogSport);
+    expect(resolveSelectedSport({
+      sportId: 'missing',
+      sportConfig: fallbackSport as any,
+      sportsById,
+    })).toBe(fallbackSport);
+    expect(sportRequiresSets(catalogSport as any)).toBe(true);
+    expect(sportRequiresSets(null)).toBe(false);
   });
 });
 
