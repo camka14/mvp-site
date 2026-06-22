@@ -18,6 +18,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
   - [x] (2026-06-22T19:40Z) Extracted event-type rule predicates and coordinate helpers into shared pure modules as a prerequisite to schema extraction.
   - [x] (2026-06-22T19:45Z) Extracted slot overlap validation into `slotValidation.ts` so schema extraction can import slot errors without depending on `EventForm`.
+  - [x] (2026-06-22T19:51Z) Extracted the Zod event form schema into `eventForm/schema.ts` while leaving default construction in `EventForm`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -79,6 +80,8 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Evidence: A first fixture used a `Z` timestamp and correctly flowed through `parseLocalDateTime` as UTC before local conversion, which shifted the expected start/end minutes.
 - Observation: Schema/default extraction is still coupled after the first stable hook pass.
   Evidence: `buildEventFormSchema` still validates through slot conflicts, rental mismatch errors, organization/local resource counts, division coverage, and playoff/pool placement rules. `buildDefaultFormValues` still depends on active event state, immutable defaults, sports hydration, organization/rental fields, and local field sanitization.
+- Observation: Moving the schema module drops `EventForm.tsx` below 10,000 lines before default extraction.
+  Evidence: `wc -l src/app/events/[id]/schedule/components/EventForm.tsx` reported 9,908 lines after the schema move.
 
 ## Decision Log
 
@@ -217,10 +220,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Extract slot validation before moving the schema.
   Rationale: `buildEventFormSchema` and schedule state normalization both depend on slot overlap and error logic. Moving it as a pure helper keeps the schema move smaller and preserves `EventForm` ownership of side effects.
   Date/Author: 2026-06-22 / Codex
+- Decision: Move the Zod schema before default-building helpers.
+  Rationale: After event rules, location checks, and slot validation were extracted, the schema no longer depended on React state. Default construction still depends on active event state, immutable defaults, sports hydration, and local sanitizer functions, so it should remain local until those dependencies are narrowed.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
