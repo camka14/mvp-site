@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { eventService } from '@/lib/eventService';
 import { teamService } from '@/lib/teamService';
 import TournamentFields from '@/app/discover/components/TournamentFields';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import { useSports } from '@/app/hooks/useSports';
 
@@ -48,7 +48,6 @@ import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './extern
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import UserCard from '@/components/ui/UserCard';
-import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import {
     buildDivisionName,
     buildDivisionToken,
@@ -85,7 +84,6 @@ import {
     type DivisionDetailForm,
     type DivisionEditorKind,
     divisionFieldIdsEqual,
-    formatPlayoffDivisionParticipantCount,
     getDefaultDivisionTypeSelectionsForSport,
     normalizeDivisionFieldIds,
     normalizeDivisionKeys,
@@ -179,6 +177,7 @@ import { DivisionEditorTournamentConfigControls } from './eventForm/sections/Div
 import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
+import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
 import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
@@ -11379,188 +11378,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     onSave={handleSaveDivisionDetail}
                                     onCancelEdit={resetDivisionEditor}
                                 />
-                                <div className="space-y-3">
-                                    <Text size="sm" fw={600}>Divisions</Text>
-                                    {(eventData.divisionDetails || []).length === 0
-                                        && (!splitDivisionEditorEnabled || (eventData.playoffDivisionDetails || []).length === 0) ? (
-                                        <Text size="sm" c="dimmed">
-                                            No divisions added yet.
-                                        </Text>
-                                    ) : (
-                                        <ResponsiveCardGrid maxCardWidth={300}>
-                                            {(eventData.divisionDetails || []).map((detail) => {
-                                                const effectiveDivisionPrice = eventData.singleDivision
-                                                    ? Math.max(0, eventData.price || 0)
-                                                    : Math.max(0, detail.price || 0);
-                                                const effectiveDivisionCapacity = eventData.singleDivision
-                                                    ? Math.max(2, Math.trunc(eventData.maxParticipants || 2))
-                                                    : Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2));
-                                                const effectiveDivisionPlayoffTeamCount = eventData.eventType === 'TOURNAMENT'
-                                                    ? (typeof detail.playoffTeamCount === 'number'
-                                                        ? Math.max(2, Math.trunc(detail.playoffTeamCount))
-                                                        : undefined)
-                                                    : eventData.singleDivision
-                                                        ? (typeof leagueData.playoffTeamCount === 'number'
-                                                            ? Math.max(2, Math.trunc(leagueData.playoffTeamCount))
-                                                            : undefined)
-                                                        : (typeof detail.playoffTeamCount === 'number'
-                                                            ? Math.max(2, Math.trunc(detail.playoffTeamCount))
-                                                            : undefined);
-                                                const effectivePoolCount = typeof detail.poolCount === 'number'
-                                                    ? Math.max(1, Math.trunc(detail.poolCount))
-                                                    : undefined;
-                                                const effectivePoolTeamCount = detail.poolTeamCount
-                                                    ?? derivePoolTeamCount(effectiveDivisionCapacity, effectivePoolCount);
-                                                const effectiveDivisionAllowPaymentPlans = eventData.singleDivision
-                                                    ? Boolean(eventData.allowPaymentPlans)
-                                                    : Boolean(detail.allowPaymentPlans);
-                                                const effectiveDivisionInstallmentAmounts = effectiveDivisionAllowPaymentPlans
-                                                    ? (
-                                                        eventData.singleDivision
-                                                            ? (eventData.installmentAmounts || [])
-                                                            : (detail.installmentAmounts || [])
-                                                    ).map((value) => Math.max(0, Number(value) || 0))
-                                                    : [];
-                                                const effectiveDivisionInstallmentCount = effectiveDivisionAllowPaymentPlans
-                                                    ? (
-                                                        eventData.singleDivision
-                                                            ? (eventData.installmentCount || effectiveDivisionInstallmentAmounts.length || 0)
-                                                            : (detail.installmentCount || effectiveDivisionInstallmentAmounts.length || 0)
-                                                    )
-                                                    : 0;
-                                                const divisionTypeSummary = [
-                                                    detail.skillDivisionTypeName,
-                                                    detail.ageDivisionTypeName,
-                                                ]
-                                                    .map((part) => String(part ?? '').trim())
-                                                    .filter(Boolean)
-                                                    .join(' ')
-                                                    || detail.divisionTypeName
-                                                    || 'Open 18+';
-                                                const mappedPlacementCount = normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds)
-                                                    .filter(Boolean)
-                                                    .length;
-                                                return (
-                                                    <Paper key={detail.id} withBorder radius={0} p="sm" className="bg-white">
-                                                        <div className="space-y-3">
-                                                            <div className="space-y-1">
-                                                                <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
-                                                                    <Text fw={700} size="sm" lineClamp={2}>{detail.name}</Text>
-                                                                    <Badge size="sm" radius="sm" variant="light">League</Badge>
-                                                                </Group>
-                                                                <Text size="xs" c="dimmed">Division Type: League</Text>
-                                                                <Text size="xs" c="dimmed">{divisionTypeSummary}</Text>
-                                                                <Text size="xs" c="dimmed">
-                                                                    {`Price: ${formatPrice(effectiveDivisionPrice)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
-                                                                </Text>
-                                                                <Text size="xs" c="dimmed">
-                                                                    {effectiveDivisionAllowPaymentPlans
-                                                                        ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
-                                                                        : 'Payment plan: disabled'}
-                                                                </Text>
-                                                                {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {`Playoff teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'}`}
-                                                                    </Text>
-                                                                )}
-                                                                {splitDivisionEditorEnabled && typeof effectiveDivisionPlayoffTeamCount === 'number' ? (
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {`Mapped placements: ${mappedPlacementCount}/${effectiveDivisionPlayoffTeamCount}`}
-                                                                    </Text>
-                                                                ) : null}
-                                                                {eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && (
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {`Bracket teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'} - Pools: ${effectivePoolCount ?? 'Not set'} - Pool teams: ${effectivePoolTeamCount ?? 'Not set'}`}
-                                                                    </Text>
-                                                                )}
-                                                                {detail.ageCutoffLabel && (
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {detail.ageCutoffLabel}
-                                                                    </Text>
-                                                                )}
-                                                            </div>
-                                                            <Group gap="xs" justify="flex-end">
-                                                                <Button
-                                                                    size="xs"
-                                                                    variant="subtle"
-                                                                    onClick={() => handleEditDivisionDetail(detail.id)}
-                                                                    disabled={isImmutableField('divisions')}
-                                                                >
-                                                                    Edit
-                                                                </Button>
-                                                                <Button
-                                                                    size="xs"
-                                                                    variant="subtle"
-                                                                    color="red"
-                                                                    onClick={() => handleRemoveDivisionDetail(detail.id)}
-                                                                    disabled={isImmutableField('divisions')}
-                                                                >
-                                                                    Remove
-                                                                </Button>
-                                                            </Group>
-                                                        </div>
-                                                    </Paper>
-                                                );
-                                            })}
-                                            {splitDivisionEditorEnabled
-                                                ? (eventData.playoffDivisionDetails || []).map((playoffDivision) => {
-                                                    const playoffConfig = buildTournamentConfig(playoffDivision.playoffConfig);
-                                                    return (
-                                                        <Paper key={playoffDivision.id} withBorder radius={0} p="sm" className="bg-white">
-                                                            <div className="space-y-3">
-                                                                <div className="space-y-1">
-                                                                    <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
-                                                                        <Text fw={700} size="sm" lineClamp={2}>{playoffDivision.name}</Text>
-                                                                        <Badge size="sm" radius="sm" variant="light" color="grape">Playoff</Badge>
-                                                                    </Group>
-                                                                    <Text size="xs" c="dimmed">Division Type: Playoff</Text>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {`${eventData.teamSignup ? 'Teams' : 'Participants'} count: ${formatPlayoffDivisionParticipantCount(playoffDivision.maxParticipants)}`}
-                                                                    </Text>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {playoffConfig.doubleElimination ? 'Format: Double elimination' : 'Format: Single elimination'}
-                                                                    </Text>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {`Rest time: ${playoffConfig.restTimeMinutes ?? 0} min`}
-                                                                    </Text>
-                                                                </div>
-                                                                <Group gap="xs" justify="flex-end">
-                                                                    <Button
-                                                                        size="xs"
-                                                                        variant="subtle"
-                                                                        onClick={() => handleEditPlayoffDivisionDetail(playoffDivision.id)}
-                                                                        disabled={isImmutableField('divisions')}
-                                                                    >
-                                                                        Edit
-                                                                    </Button>
-                                                                    <Button
-                                                                        size="xs"
-                                                                        variant="subtle"
-                                                                        color="red"
-                                                                        onClick={() => handleRemovePlayoffDivision(playoffDivision.id)}
-                                                                        disabled={isImmutableField('divisions')}
-                                                                    >
-                                                                        Remove
-                                                                    </Button>
-                                                                </Group>
-                                                            </div>
-                                                        </Paper>
-                                                    );
-                                                })
-                                                : null}
-                                        </ResponsiveCardGrid>
-                                    )}
-
-                                    {playoffDivisionCapacityWarnings.length > 0 && (
-                                        <Alert color="yellow" radius="md">
-                                            <Stack gap={2}>
-                                                {playoffDivisionCapacityWarnings.map((warning) => (
-                                                    <Text key={warning} size="sm">{warning}</Text>
-                                                ))}
-                                            </Stack>
-                                        </Alert>
-                                    )}
-                                </div>
+                                <DivisionSummaryList
+                                    divisionDetails={eventData.divisionDetails || []}
+                                    playoffDivisionDetails={eventData.playoffDivisionDetails || []}
+                                    singleDivision={eventData.singleDivision}
+                                    teamSignup={eventData.teamSignup}
+                                    eventType={eventData.eventType}
+                                    includePlayoffs={leagueData.includePlayoffs}
+                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
+                                    eventPrice={eventData.price}
+                                    eventMaxParticipants={eventData.maxParticipants}
+                                    eventAllowPaymentPlans={Boolean(eventData.allowPaymentPlans)}
+                                    eventInstallmentCount={eventData.installmentCount}
+                                    eventInstallmentAmounts={eventData.installmentAmounts || []}
+                                    leaguePlayoffTeamCount={leagueData.playoffTeamCount}
+                                    disabled={isImmutableField('divisions')}
+                                    playoffDivisionCapacityWarnings={playoffDivisionCapacityWarnings}
+                                    derivePoolTeamCount={derivePoolTeamCount}
+                                    buildTournamentConfig={buildTournamentConfig}
+                                    onEditDivision={handleEditDivisionDetail}
+                                    onRemoveDivision={handleRemoveDivisionDetail}
+                                    onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
+                                    onRemovePlayoffDivision={handleRemovePlayoffDivision}
+                                />
                             </div>
 
                         </DivisionSettingsSection>
