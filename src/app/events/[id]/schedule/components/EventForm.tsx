@@ -11,7 +11,7 @@ import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData
 import { createLeagueScoringConfig } from '@/types/defaults';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -192,6 +192,7 @@ import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDi
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
 import { StaffSection } from './eventForm/sections/StaffSection';
+import { StaffOfficialPositionEditor } from './eventForm/sections/StaffOfficialPositionEditor';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -10389,94 +10390,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         />
                                     )}
-                                    <Paper withBorder radius="md" p="md" bg="white">
-                                        <Stack gap="sm">
-                                            <MantineSelect
-                                                label="Official scheduling mode"
-                                                description="Choose how the scheduler should prioritize staffing requirements."
-                                                data={[
-                                                    { value: 'STAFFING', label: 'STAFFING - Requires each match be fully staffed with no conflicts' },
-                                                    { value: 'TEAM_STAFFING', label: 'TEAM STAFFING - Requires each match to have a team official with no conflicts' },
-                                                    { value: 'SCHEDULE', label: 'SCHEDULE - Matches do not need to be fully staffed' },
-                                                    { value: 'OFF', label: 'NONE - Fully staffed matches, but conflicts allowed' },
-                                                ]}
-                                                value={eventData.officialSchedulingMode}
-                                                onChange={(value) => {
-                                                    const nextMode = normalizeOfficialSchedulingMode(value);
-                                                    setValue('officialSchedulingMode', nextMode, { shouldDirty: true, shouldValidate: true });
-                                                    if (nextMode === 'TEAM_STAFFING' && !eventData.doTeamsOfficiate) {
-                                                        setValue('doTeamsOfficiate', true, { shouldDirty: true, shouldValidate: true });
-                                                    }
-                                                }}
-                                                comboboxProps={sharedComboboxProps}
-                                                error={officialStaffingCoverageError ?? undefined}
-                                            />
-                                            {officialStaffingCoverageError && (
-                                                <Alert color="yellow" variant="light">
-                                                    {officialStaffingCoverageError}
-                                                </Alert>
-                                            )}
-                                            <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
-                                                <div>
-                                                    <Title order={6}>Official Positions</Title>
-                                                    <Text size="sm" c="dimmed">
-                                                        Edit the event-specific official positions and slot counts. Sport defaults only seed this list.
-                                                    </Text>
-                                                </div>
-                                                <Group gap="xs">
-                                                    <Button
-                                                        type="button"
-                                                        size="xs"
-                                                        variant="default"
-                                                        disabled={sportOfficialPositionTemplates.length === 0}
-                                                        onClick={handleResetOfficialPositionsFromSport}
-                                                    >
-                                                        Load sport defaults
-                                                    </Button>
-                                                    <Button type="button" size="xs" onClick={handleAddOfficialPosition}>
-                                                        Add position
-                                                    </Button>
-                                                </Group>
-                                            </Group>
-                                            <Stack gap="xs">
-                                                {(eventData.officialPositions || []).map((position) => (
-                                                    <Group key={position.id} align="flex-end" gap="sm" wrap="nowrap">
-                                                        <TextInput
-                                                            label="Position"
-                                                            placeholder="Referee"
-                                                            value={position.name}
-                                                            onChange={(event) => handleUpdateOfficialPosition(position.id, { name: event.currentTarget.value })}
-                                                            maxLength={MAX_SHORT_TEXT_LENGTH}
-                                                            className="flex-1"
-                                                        />
-                                                        <NumberInput
-                                                            label="Count"
-                                                            value={position.count}
-                                                            min={1}
-                                                            allowDecimal={false}
-                                                            clampBehavior="strict"
-                                                            onChange={(value) => handleUpdateOfficialPosition(position.id, { count: Number(value) || 1 })}
-                                                            maw={120}
-                                                        />
-                                                        <ActionIcon
-                                                            type="button"
-                                                            variant="subtle"
-                                                            color="red"
-                                                            aria-label={`Remove ${position.name || 'official position'}`}
-                                                            onClick={() => handleRemoveOfficialPosition(position.id)}
-                                                        >
-                                                            <span aria-hidden="true">×</span>
-                                                        </ActionIcon>
-                                                    </Group>
-                                                ))}
-                                                {(!eventData.officialPositions || eventData.officialPositions.length === 0) && (
-                                                    <Text size="sm" c="dimmed">
-                                                        No official positions configured yet. Add them here or load the sport defaults.
-                                                    </Text>
-                                                )}
-                                            </Stack>
-                                        </Stack>
-                                    </Paper>
+                                    <StaffOfficialPositionEditor
+                                        officialSchedulingMode={eventData.officialSchedulingMode}
+                                        officialPositions={eventData.officialPositions || []}
+                                        sportDefaultPositionCount={sportOfficialPositionTemplates.length}
+                                        coverageError={officialStaffingCoverageError}
+                                        maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
+                                        comboboxProps={sharedComboboxProps}
+                                        onSchedulingModeChange={(value) => {
+                                            const nextMode = normalizeOfficialSchedulingMode(value);
+                                            setValue('officialSchedulingMode', nextMode, { shouldDirty: true, shouldValidate: true });
+                                            if (nextMode === 'TEAM_STAFFING' && !eventData.doTeamsOfficiate) {
+                                                setValue('doTeamsOfficiate', true, { shouldDirty: true, shouldValidate: true });
+                                            }
+                                        }}
+                                        onLoadSportDefaults={handleResetOfficialPositionsFromSport}
+                                        onAddPosition={handleAddOfficialPosition}
+                                        onUpdatePosition={handleUpdateOfficialPosition}
+                                        onRemovePosition={handleRemoveOfficialPosition}
+                                    />
 
                                     {isOrganizationHostedEvent ? (
                                         <Paper withBorder radius="md" p="md" bg="white">
