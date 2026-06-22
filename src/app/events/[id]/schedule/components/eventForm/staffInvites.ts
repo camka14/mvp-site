@@ -115,6 +115,35 @@ export const getUserEmail = (candidate?: Partial<UserData> | null): string | nul
     return email.length > 0 ? email : null;
 };
 
+export const toUserLabel = (user: Partial<UserData> | undefined, fallbackId: string): string => {
+    const firstName = typeof user?.firstName === 'string' ? user.firstName.trim() : '';
+    const lastName = typeof user?.lastName === 'string' ? user.lastName.trim() : '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (fullName.length > 0) {
+        return fullName;
+    }
+    if (typeof user?.userName === 'string' && user.userName.trim().length > 0) {
+        return user.userName.trim();
+    }
+    return fallbackId;
+};
+
+export const userMatchesSearch = (candidate: Partial<UserData> | undefined, query: string): boolean => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery.length) {
+        return true;
+    }
+    const tokens = [
+        `${candidate?.firstName ?? ''} ${candidate?.lastName ?? ''}`.trim(),
+        candidate?.userName ?? '',
+        candidate?.fullName ?? '',
+        candidate?.$id ?? '',
+    ]
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => value.length > 0);
+    return tokens.some((value) => value.includes(normalizedQuery));
+};
+
 export const formatStaffRoleLabel = (role: AssignedStaffCard['role'] | StaffAssignmentRole): string => {
     if (role === 'OFFICIAL') {
         return 'Official';

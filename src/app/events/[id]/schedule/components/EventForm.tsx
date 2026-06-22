@@ -165,12 +165,15 @@ import {
     normalizeInviteStatusToken,
     normalizePendingStaffInvite,
     normalizeRosterStaffTypes,
+    toUserLabel,
     type PendingStaffInvite,
     type StaffAssignmentRole,
     type StaffRosterEntry,
     type StaffRosterStatus,
+    userMatchesSearch,
 } from './eventForm/staffInvites';
 import {
+    normalizeBoolean,
     nullableNumbersEqual,
     normalizeResourceText,
     stringArraysEqual,
@@ -1062,22 +1065,6 @@ const buildAutoResolvedSlotUpdate = (
     return null;
 };
 
-const normalizeBoolean = (value: unknown): boolean | undefined => {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        if (value === 1) return true;
-        if (value === 0) return false;
-    }
-    if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
-        if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
-    }
-    return undefined;
-};
-
 const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig | null => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return null;
@@ -1089,35 +1076,6 @@ const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig |
             && entry !== undefined
         ));
     return entries.length > 0 ? Object.fromEntries(entries) as MatchRulesConfig : null;
-};
-
-const toUserLabel = (user: Partial<UserData> | undefined, fallbackId: string): string => {
-    const firstName = typeof user?.firstName === 'string' ? user.firstName.trim() : '';
-    const lastName = typeof user?.lastName === 'string' ? user.lastName.trim() : '';
-    const fullName = `${firstName} ${lastName}`.trim();
-    if (fullName.length > 0) {
-        return fullName;
-    }
-    if (typeof user?.userName === 'string' && user.userName.trim().length > 0) {
-        return user.userName.trim();
-    }
-    return fallbackId;
-};
-
-const userMatchesSearch = (candidate: Partial<UserData> | undefined, query: string): boolean => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery.length) {
-        return true;
-    }
-    const tokens = [
-        `${candidate?.firstName ?? ''} ${candidate?.lastName ?? ''}`.trim(),
-        candidate?.userName ?? '',
-        candidate?.fullName ?? '',
-        candidate?.$id ?? '',
-    ]
-        .map((value) => value.trim().toLowerCase())
-        .filter((value) => value.length > 0);
-    return tokens.some((value) => value.includes(normalizedQuery));
 };
 
 type EventFormState = {

@@ -2,6 +2,22 @@ export const normalizeResourceText = (value: unknown): string => (
     typeof value === 'string' ? value.trim() : ''
 );
 
+export const normalizeBoolean = (value: unknown): boolean | undefined => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        if (value === 1) return true;
+        if (value === 0) return false;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+    }
+    return undefined;
+};
+
 export const stringArraysEqual = (left: string[], right: string[]): boolean => {
     if (left.length !== right.length) {
         return false;
