@@ -33,6 +33,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T20:48Z) Extracted external slot-conflict detection and auto-resolve helpers into `eventForm/slotConflictHelpers.ts`.
   - [x] (2026-06-22T20:55Z) Extracted persisted division and playoff-division entry normalization into `eventForm/divisionForm.ts`.
   - [x] (2026-06-22T21:10Z) Extracted shared `EventFormState` and `EventFormValues` types into `eventForm/formTypes.ts` and pointed section props at that type module.
+  - [x] (2026-06-22T21:21Z) Extracted event payload-to-form-state hydration into `eventForm/eventStateMapping.ts`.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [x] Extract major JSX sections into section components with explicit props and no new shared context.
@@ -279,10 +280,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Extract form value types before moving the event mapper.
   Rationale: Section components and the parent were importing form value types from `EventForm.tsx`, which kept UI components coupled to the orchestrator. A shared type module gives the remaining mapper/default extraction a stable type boundary.
   Date/Author: 2026-06-22 / Codex
+- Decision: Move event hydration as a pure mapper before moving the full default builder.
+  Rationale: `mapEventToFormState` is a large pure transformation with no React state dependency. Extracting it removes the persisted-event normalization branch from the orchestrator while keeping create-mode defaults and live form effects local for the next smaller slices.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, and the shared form value type contract now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, and persisted event-to-form hydration now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
@@ -467,3 +471,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted Registration Questions into `eventForm/sections/RegistrationQuestionsSection.tsx`.
 - 2026-06-22 / Codex: Extracted Basic Information into `eventForm/sections/BasicInformationSection.tsx`.
 - 2026-06-22 / Codex: Extracted shared EventForm state/value types into `eventForm/formTypes.ts` so sections no longer import types from the orchestrator component.
+- 2026-06-22 / Codex: Extracted persisted event-to-form-state hydration into `eventForm/eventStateMapping.ts`.
