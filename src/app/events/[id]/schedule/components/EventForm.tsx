@@ -181,6 +181,7 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
+import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { StaffSection } from './eventForm/sections/StaffSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -11017,70 +11018,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     unstyled
                                                 />
                                             </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-6"
-                                            >
-                                                <NumberInput
-                                                    label="Bracket Teams"
-                                                    min={2}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={singleDivisionPoolPlayDefaults.bracketTeams ?? ''}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('divisions')}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('divisions')) {
-                                                            return;
-                                                        }
-                                                        const numeric = typeof val === 'number' ? val : Number(val);
-                                                        updateSingleDivisionTournamentPoolDefaults({
-                                                            playoffTeamCount: Number.isFinite(numeric)
-                                                                ? Math.max(2, Math.trunc(numeric))
-                                                                : null,
-                                                        });
-                                                    }}
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-6"
-                                            >
-                                                <NumberInput
-                                                    label="Pool Count"
-                                                    min={1}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={singleDivisionPoolPlayDefaults.poolCount ?? ''}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('divisions')}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('divisions')) {
-                                                            return;
-                                                        }
-                                                        const numeric = typeof val === 'number' ? val : Number(val);
-                                                        updateSingleDivisionTournamentPoolDefaults({
-                                                            poolCount: Number.isFinite(numeric)
-                                                                ? Math.max(1, Math.trunc(numeric))
-                                                                : null,
-                                                        });
-                                                    }}
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-6"
-                                            >
-                                                <NumberInput
-                                                    label="Pool Team Count"
-                                                    value={singleDivisionPoolPlayDefaults.poolTeamCount ?? ''}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    disabled
-                                                />
-                                            </AnimatedLayoutSection>
+                                            <SingleDivisionPoolControls
+                                                visible={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                                defaults={singleDivisionPoolPlayDefaults}
+                                                maxStandardNumber={MAX_STANDARD_NUMBER}
+                                                numberInputStyles={alignedDetailsFieldStyles}
+                                                disabled={isImmutableField('divisions')}
+                                                onChange={updateSingleDivisionTournamentPoolDefaults}
+                                            />
                                             <AnimatedLayoutSection
                                                 in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
                                                 className="md:col-span-12"

@@ -34,6 +34,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T12:03Z) Extracted the Schedule section shell into `ScheduleConfigSection`.
   - [x] (2026-06-22T17:24Z) Extracted the Schedule section body into `ScheduleConfigBody`.
   - [x] (2026-06-22T17:30Z) Extracted the Divisions mode switches into `DivisionModeControls`.
+  - [x] (2026-06-22T17:36Z) Extracted single-division tournament pool controls into `SingleDivisionPoolControls`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -114,6 +115,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract division mode switches before the larger division editor.
   Rationale: The single-division, registration-by-division-type, and split-playoff switches have a compact form-control boundary and repeat no editor-specific state. Moving them first reduces Divisions JSX while leaving the larger division editor workflow untouched.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract single-division tournament pool controls as a small Divisions subsection.
+  Rationale: Bracket teams, pool count, and derived pool team count share one display condition and one mutation callback. Moving them together reduces inline Divisions JSX without moving tournament pool default state.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -273,6 +277,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted the Schedule section shell while leaving scheduling controls in `EventForm`.
 - 2026-06-22 / Codex: Extracted the Schedule section body while leaving schedule state and mutation callbacks in `EventForm`.
 - 2026-06-22 / Codex: Extracted the Divisions mode switches while leaving the larger division editor state in `EventForm`.
+- 2026-06-22 / Codex: Extracted single-division tournament pool controls while leaving tournament pool defaults in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
