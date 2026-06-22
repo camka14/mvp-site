@@ -172,6 +172,7 @@ import { BasicInformationSection } from './eventForm/sections/BasicInformationSe
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
+import { DivisionEditorPlayoffDivisionControls } from './eventForm/sections/DivisionEditorPlayoffDivisionControls';
 import { DivisionEditorPlayoffPlacementControls } from './eventForm/sections/DivisionEditorPlayoffPlacementControls';
 import { DivisionEditorTournamentConfigControls } from './eventForm/sections/DivisionEditorTournamentConfigControls';
 import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
@@ -11339,57 +11340,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Text>
                                 </AnimatedLayoutSection>
                                 </AnimatedSection>
-                                <AnimatedSection in={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}>
-                                    <motion.div
-                                        layout
-                                        className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-start"
-                                        transition={DIVISION_LAYOUT_TRANSITION}
-                                    >
-                                        <TextInput
-                                            label="Playoff Division Name"
-                                            placeholder="Division display name"
-                                            value={divisionEditor.name}
-                                            className="md:col-span-6"
-                                            maw={520}
-                                            maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                            disabled={isImmutableField('divisions')}
-                                            onChange={(event) => {
-                                                const nextName = event.currentTarget.value;
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    name: nextName,
-                                                    nameTouched: true,
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                        <NumberInput
-                                            label={eventData.teamSignup ? 'Teams Count' : 'Participants Count'}
-                                            value={divisionEditor.maxParticipants ?? ''}
-                                            max={MAX_STANDARD_NUMBER}
-                                            maw={220}
-                                            clampBehavior="none"
-                                            disabled={isImmutableField('divisions')}
-                                            className="md:col-span-3"
-                                            onChange={(value) => {
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    maxParticipants: normalizePlayoffDivisionParticipantCount(value),
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                        <div className="md:col-span-12">
-                                            <TournamentFields
-                                                title="Playoff Configuration"
-                                                tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                                setTournamentData={setDivisionEditorPlayoffConfig}
-                                                sport={eventData.sportConfig ?? undefined}
-                                                unstyled
-                                            />
-                                        </div>
-                                    </motion.div>
-                                </AnimatedSection>
+                                <DivisionEditorPlayoffDivisionControls
+                                    visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}
+                                    name={divisionEditor.name}
+                                    maxParticipants={divisionEditor.maxParticipants}
+                                    teamSignup={eventData.teamSignup}
+                                    playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                    sport={eventData.sportConfig ?? undefined}
+                                    maxStandardNumber={MAX_STANDARD_NUMBER}
+                                    maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                    disabled={isImmutableField('divisions')}
+                                    onNameChange={(name) => {
+                                        setDivisionEditor((prev) => ({
+                                            ...prev,
+                                            name,
+                                            nameTouched: true,
+                                            error: null,
+                                        }));
+                                    }}
+                                    onMaxParticipantsChange={(value) => {
+                                        setDivisionEditor((prev) => ({
+                                            ...prev,
+                                            maxParticipants: normalizePlayoffDivisionParticipantCount(value),
+                                            error: null,
+                                        }));
+                                    }}
+                                    onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
+                                />
                                 <Group justify="space-between" align="center">
                                     <Button
                                         variant="light"
