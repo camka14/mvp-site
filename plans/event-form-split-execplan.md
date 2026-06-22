@@ -18,7 +18,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
 - [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [x] (2026-06-22T07:25Z) Added focused unit tests for extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
-- [ ] Extract major JSX sections into section components with explicit props and no new shared context.
+- [x] Extract major JSX sections into section components with explicit props and no new shared context.
   - [x] (2026-06-22T07:48Z) Extracted `LeagueScoringConfigSection` as the first section component.
   - [x] (2026-06-22T08:14Z) Extracted `MatchRulesConfigSection` while keeping match-rules mutation logic in `EventForm`.
   - [x] (2026-06-22T08:34Z) Extracted `RegistrationQuestionsSection` with explicit draft update callbacks.
@@ -52,6 +52,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T18:52Z) Extracted assigned officials list into `StaffAssignedOfficialsList`.
   - [x] (2026-06-22T18:59Z) Extracted assigned host-side staff list into `StaffAssignedHostsList`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
+  - [x] (2026-06-22T19:08Z) Extracted registration question draft loading into `useRegistrationQuestionDrafts`.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -182,6 +183,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract assigned host-side staff list while keeping draft-removal logic in `EventForm`.
   Rationale: The host staff list mirrors the assigned officials list visually, but assistant-host draft removal still updates shared pending invite state. A card-level remove callback keeps that mutation boundary explicit.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Start hook extraction with registration-question drafts.
+  Rationale: The loading state and event fetch effect are isolated from the rest of the form, while the existing editor callbacks can keep mutating the returned draft list through the hook setter.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -358,6 +362,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted non-organization staff search and invite UI while leaving search and invite draft state in `EventForm`.
 - 2026-06-22 / Codex: Extracted assigned officials list while leaving pending invite role removal and eligibility mutation in `EventForm`.
 - 2026-06-22 / Codex: Extracted assigned host-side staff list while leaving pending invite role removal in `EventForm`.
+- 2026-06-22 / Codex: Extracted registration question draft loading into `useRegistrationQuestionDrafts` while preserving existing editor callbacks in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.

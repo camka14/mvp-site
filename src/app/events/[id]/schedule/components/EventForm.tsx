@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
-import { teamService } from '@/lib/teamService';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
@@ -175,6 +174,7 @@ import { DivisionEditorTournamentPoolControls } from './eventForm/sections/Divis
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
+import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
 import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
 import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
@@ -3170,10 +3170,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
-    const [registrationQuestionDrafts, setRegistrationQuestionDrafts] = useState<RegistrationQuestionDraft[]>([]);
-    const [registrationQuestionsLoading, setRegistrationQuestionsLoading] = useState(false);
-    const [registrationQuestionsError, setRegistrationQuestionsError] = useState<string | null>(null);
-
     const activeEditingEvent = incomingEvent ?? null;
 
     const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
@@ -3186,47 +3182,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [isRentalCreateFlow],
     );
 
-    useEffect(() => {
-        const eventId = activeEditingEvent?.$id;
-        if (!open || !eventId || isCreateMode) {
-            setRegistrationQuestionDrafts([]);
-            setRegistrationQuestionsLoading(false);
-            setRegistrationQuestionsError(null);
-            return undefined;
-        }
-
-        let cancelled = false;
-        setRegistrationQuestionsLoading(true);
-        setRegistrationQuestionsError(null);
-        teamService.getRegistrationQuestions('EVENT', eventId, 'edit')
-            .then((questions) => {
-                if (cancelled) {
-                    return;
-                }
-                setRegistrationQuestionDrafts(questions.map((question, index) => ({
-                    id: question.id,
-                    prompt: question.prompt,
-                    answerType: question.answerType,
-                    required: question.required,
-                    sortOrder: question.sortOrder ?? index,
-                })));
-            })
-            .catch((error) => {
-                if (cancelled) {
-                    return;
-                }
-                setRegistrationQuestionDrafts([]);
-                setRegistrationQuestionsError(error instanceof Error ? error.message : 'Failed to load registration questions.');
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setRegistrationQuestionsLoading(false);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [activeEditingEvent?.$id, isCreateMode, open]);
+    const {
+        drafts: registrationQuestionDrafts,
+        setDrafts: setRegistrationQuestionDrafts,
+        loading: registrationQuestionsLoading,
+        error: registrationQuestionsError,
+    } = useRegistrationQuestionDrafts({
+        eventId: activeEditingEvent?.$id,
+        isCreateMode,
+        open,
+    });
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
