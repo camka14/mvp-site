@@ -53,6 +53,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T18:59Z) Extracted assigned host-side staff list into `StaffAssignedHostsList`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
   - [x] (2026-06-22T19:08Z) Extracted registration question draft loading into `useRegistrationQuestionDrafts`.
+  - [x] (2026-06-22T19:12Z) Extracted section navigation and collapse state into `useEventFormSectionNavigation`.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -186,6 +187,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Start hook extraction with registration-question drafts.
   Rationale: The loading state and event fetch effect are isolated from the rest of the form, while the existing editor callbacks can keep mutating the returned draft list through the hook setter.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract section navigation state as a UI-only hook.
+  Rationale: Active section tracking, collapse state, scroll targeting, and field-name collapse are independent from form data. Passing the existing item list, collapse defaults, and scroll offset keeps the hook behavior-compatible without moving constants in the same step.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -363,6 +367,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted assigned officials list while leaving pending invite role removal and eligibility mutation in `EventForm`.
 - 2026-06-22 / Codex: Extracted assigned host-side staff list while leaving pending invite role removal in `EventForm`.
 - 2026-06-22 / Codex: Extracted registration question draft loading into `useRegistrationQuestionDrafts` while preserving existing editor callbacks in `EventForm`.
+- 2026-06-22 / Codex: Extracted section navigation and collapse state into `useEventFormSectionNavigation`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
