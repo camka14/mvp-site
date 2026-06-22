@@ -29,6 +29,9 @@ import {
   buildTemplateOptions,
 } from '../eventForm/formOptions';
 import {
+  canUseAutomaticRefunds,
+} from '../eventForm/paymentPlanHelpers';
+import {
   buildRentalBookingTimeSlot,
   buildRentalLeagueFieldOptions,
   buildRentalResourceFields,
@@ -158,6 +161,31 @@ describe('event form option helpers', () => {
     ])).toEqual([
       { value: 'template_1', label: 'Untitled Template (TEXT, Parent/Guardian)' },
     ]);
+  });
+});
+
+describe('event form payment helpers', () => {
+  it('allows automatic refunds only when Stripe and paid pricing are available', () => {
+    expect(canUseAutomaticRefunds({
+      hasStripeAccount: false,
+      singleDivision: true,
+      price: 2500,
+    })).toBe(false);
+    expect(canUseAutomaticRefunds({
+      hasStripeAccount: true,
+      singleDivision: true,
+      price: 0,
+    })).toBe(false);
+    expect(canUseAutomaticRefunds({
+      hasStripeAccount: true,
+      singleDivision: true,
+      price: '2500',
+    })).toBe(true);
+    expect(canUseAutomaticRefunds({
+      hasStripeAccount: true,
+      singleDivision: false,
+      divisionDetails: [{ price: 0 }, { price: '1500' }],
+    })).toBe(true);
   });
 });
 

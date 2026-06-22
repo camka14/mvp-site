@@ -77,6 +77,27 @@ export const buildMobileEditUnsupportedWarning = (reasons: string[]): string | n
         : null
 );
 
+export const canUseAutomaticRefunds = ({
+    hasStripeAccount,
+    singleDivision,
+    price,
+    divisionDetails,
+}: {
+    hasStripeAccount: boolean;
+    singleDivision?: boolean | null;
+    price?: number | string | null;
+    divisionDetails?: Array<{ price?: number | string | null }> | null;
+}): boolean => {
+    if (!hasStripeAccount) {
+        return false;
+    }
+    if (singleDivision) {
+        return Math.max(0, Number(price) || 0) > 0;
+    }
+    const details = Array.isArray(divisionDetails) ? divisionDetails : [];
+    return details.some((detail) => Math.max(0, Number(detail.price) || 0) > 0);
+};
+
 const parseInstallmentDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);

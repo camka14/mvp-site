@@ -248,6 +248,7 @@ import {
 import {
     buildMobileEditUnsupportedReasons,
     buildMobileEditUnsupportedWarning,
+    canUseAutomaticRefunds,
     normalizeInstallmentAmounts,
     normalizeInstallmentRelativeDays,
     sumInstallmentAmounts,
@@ -637,21 +638,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : rentalLockedTimeSlots,
         [eventSupportsScheduleSlots, immutableDefaultRentalTimeSlots, rentalLockedTimeSlots],
     );
-    const automaticRefundsAvailable = useMemo(() => {
-        if (!hasStripeAccount) {
-            return false;
-        }
-        if (eventData.singleDivision) {
-            return Math.max(0, Number(eventData.price) || 0) > 0;
-        }
-        const details = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        return details.some((detail) => Math.max(0, Number(detail.price) || 0) > 0);
-    }, [
-        eventData.divisionDetails,
-        eventData.price,
-        eventData.singleDivision,
-        hasStripeAccount,
-    ]);
+    const automaticRefundsAvailable = useMemo(
+        () => canUseAutomaticRefunds({
+            hasStripeAccount,
+            singleDivision: eventData.singleDivision,
+            price: eventData.price,
+            divisionDetails: eventData.divisionDetails,
+        }),
+        [
+            eventData.divisionDetails,
+            eventData.price,
+            eventData.singleDivision,
+            hasStripeAccount,
+        ],
+    );
     const hasUnsetTeamCapacityLimits = eventData.teamSizeLimit == null
         || (eventData.singleDivision && eventData.maxParticipants == null);
     const leagueSlots = formValues.leagueSlots;
