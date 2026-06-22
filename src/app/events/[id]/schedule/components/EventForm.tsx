@@ -63,7 +63,6 @@ import {
     buildDivisionToken,
     buildEventDivisionId,
     getDivisionTypeById,
-    getDivisionTypeOptionsForSport,
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
@@ -79,6 +78,8 @@ import {
 import {
     buildCompositeDivisionTypeId,
     buildDefaultDivisionDetailsForSport,
+    buildDivisionTypeOptionsForEvent,
+    buildDivisionTypeSelectOptions,
     buildSlotDivisionLookup,
     buildUniqueDivisionIdForToken,
     DIVISION_GENDER_OPTIONS,
@@ -1708,42 +1709,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             hasExternalSlotConflictWarnings: hasConflicts,
         };
     }, [eventData.eventType, eventData.parentEvent, leagueSlots, slotConflictContext]);
-    const divisionTypeOptions = useMemo(() => {
-        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
-        const catalogOptions = getDivisionTypeOptionsForSport(sportInput);
-        const detailSkillOptions = (eventData.divisionDetails || []).map((detail) => ({
-            id: detail.skillDivisionTypeId || detail.divisionTypeId,
-            name: detail.skillDivisionTypeName || detail.divisionTypeName,
-            ratingType: 'SKILL' as const,
-            sportKey: sportInput || 'event',
-        }));
-        const detailAgeOptions = (eventData.divisionDetails || []).map((detail) => ({
-            id: detail.ageDivisionTypeId || detail.divisionTypeId,
-            name: detail.ageDivisionTypeName || detail.divisionTypeName,
-            ratingType: 'AGE' as const,
-            sportKey: sportInput || 'event',
-        }));
-        const merged = [...catalogOptions, ...detailSkillOptions, ...detailAgeOptions];
-        const seen = new Set<string>();
-        return merged.filter((option) => {
-            const key = `${option.ratingType}:${option.id}`;
-            if (seen.has(key)) {
-                return false;
-            }
-            seen.add(key);
-            return true;
-        });
-    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId]);
+    const divisionTypeOptions = useMemo(
+        () => buildDivisionTypeOptionsForEvent(
+            eventData.sportConfig ?? eventData.sportId,
+            eventData.divisionDetails,
+        ),
+        [eventData.divisionDetails, eventData.sportConfig, eventData.sportId],
+    );
     const skillDivisionTypeSelectOptions = useMemo(
-        () => divisionTypeOptions
-            .filter((option) => option.ratingType === 'SKILL')
-            .map((option) => ({ value: option.id, label: option.name })),
+        () => buildDivisionTypeSelectOptions(divisionTypeOptions, 'SKILL'),
         [divisionTypeOptions],
     );
     const ageDivisionTypeSelectOptions = useMemo(
-        () => divisionTypeOptions
-            .filter((option) => option.ratingType === 'AGE')
-            .map((option) => ({ value: option.id, label: option.name })),
+        () => buildDivisionTypeSelectOptions(divisionTypeOptions, 'AGE'),
         [divisionTypeOptions],
     );
     const defaultDivisionTypeSelections = useMemo(

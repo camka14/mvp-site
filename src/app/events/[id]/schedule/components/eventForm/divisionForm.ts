@@ -158,6 +158,47 @@ export const getDefaultDivisionTypeSelectionsForSport = (sportInput?: string | n
     };
 };
 
+export type DivisionTypeOption = ReturnType<typeof getDivisionTypeOptionsForSport>[number];
+
+export const buildDivisionTypeOptionsForEvent = (
+    sportInput: Sport | string | null | undefined,
+    divisionDetails: DivisionDetailForm[] = [],
+): DivisionTypeOption[] => {
+    const resolvedSportInput = resolveSportInput(sportInput);
+    const catalogOptions = getDivisionTypeOptionsForSport(resolvedSportInput);
+    const detailSkillOptions = divisionDetails.map((detail) => ({
+        id: detail.skillDivisionTypeId || detail.divisionTypeId,
+        name: detail.skillDivisionTypeName || detail.divisionTypeName,
+        ratingType: 'SKILL' as const,
+        sportKey: resolvedSportInput || 'event',
+    }));
+    const detailAgeOptions = divisionDetails.map((detail) => ({
+        id: detail.ageDivisionTypeId || detail.divisionTypeId,
+        name: detail.ageDivisionTypeName || detail.divisionTypeName,
+        ratingType: 'AGE' as const,
+        sportKey: resolvedSportInput || 'event',
+    }));
+    const merged = [...catalogOptions, ...detailSkillOptions, ...detailAgeOptions];
+    const seen = new Set<string>();
+    return merged.filter((option) => {
+        const key = `${option.ratingType}:${option.id}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+};
+
+export const buildDivisionTypeSelectOptions = (
+    options: DivisionTypeOption[],
+    ratingType: DivisionTypeOption['ratingType'],
+): Array<{ value: string; label: string }> => (
+    options
+        .filter((option) => option.ratingType === ratingType)
+        .map((option) => ({ value: option.id, label: option.name }))
+);
+
 export const normalizePlayoffDivisionParticipantCount = (value: unknown): number | null => {
     if (typeof value === 'string' && value.trim().length === 0) {
         return null;

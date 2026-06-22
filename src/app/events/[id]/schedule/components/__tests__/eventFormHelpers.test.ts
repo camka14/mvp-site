@@ -3,6 +3,8 @@ import type { EventOfficialPosition, Field, TimeSlot } from '@/types';
 import {
   buildSlotDivisionLookup,
   buildCompositeDivisionTypeId,
+  buildDivisionTypeOptionsForEvent,
+  buildDivisionTypeSelectOptions,
   deriveTournamentPoolSettingsByBracketId,
   divisionFieldIdsEqual,
   normalizeDivisionFieldIds,
@@ -705,6 +707,29 @@ describe('event form official helpers', () => {
 });
 
 describe('event form division helpers', () => {
+  it('merges catalog and persisted division type options for selects', () => {
+    const options = buildDivisionTypeOptionsForEvent('soccer', [
+      makeDivisionDetail({
+        id: 'division_1',
+        skillDivisionTypeId: 'custom_skill',
+        skillDivisionTypeName: 'Custom Skill',
+        ageDivisionTypeId: 'u21',
+        ageDivisionTypeName: 'U21',
+      }),
+      makeDivisionDetail({
+        id: 'division_2',
+        skillDivisionTypeId: 'custom_skill',
+        skillDivisionTypeName: 'Custom Skill Duplicate',
+        ageDivisionTypeId: 'u21',
+        ageDivisionTypeName: 'U21 Duplicate',
+      }),
+    ]);
+
+    expect(options.some((option) => option.ratingType === 'SKILL' && option.id === 'custom_skill')).toBe(true);
+    expect(options.filter((option) => option.ratingType === 'SKILL' && option.id === 'custom_skill')).toHaveLength(1);
+    expect(buildDivisionTypeSelectOptions(options, 'AGE').some((option) => option.value === 'u21')).toBe(true);
+  });
+
   it('normalizes composite division ids and participant counts', () => {
     const compositeId = buildCompositeDivisionTypeId(' Open Skill ', '18+');
 
