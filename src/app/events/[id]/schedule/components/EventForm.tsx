@@ -169,6 +169,7 @@ import {
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
+import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
@@ -11269,136 +11270,47 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         </div>
                                     </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={!eventData.singleDivision}
-                                        className={divisionEditor.allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
-                                    >
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                            <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                                <div>
-                                                    <Text fw={600} size="sm">Division Payment Plan</Text>
-                                                    <Text size="xs" c="dimmed">
-                                                        Configure installments for this division only.
-                                                    </Text>
-                                                </div>
-                                                <Switch
-                                                    checked={divisionEditor.allowPaymentPlans}
-                                                    disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
-                                                    onChange={(event) => {
-                                                        if (isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount) {
-                                                            return;
-                                                        }
-                                                        const checked = event.currentTarget.checked;
-                                                        setDivisionEditor((prev) => ({
-                                                            ...prev,
-                                                            allowPaymentPlans: checked,
-                                                            price: checked && prev.installmentAmounts.length
-                                                                ? sumInstallmentAmounts(prev.installmentAmounts)
-                                                                : prev.price,
-                                                            installmentCount: checked
-                                                                ? (prev.installmentCount || prev.installmentAmounts.length || 1)
-                                                                : 0,
-                                                            installmentDueDates: checked ? prev.installmentDueDates : [],
-                                                            installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
-                                                            installmentAmounts: checked ? prev.installmentAmounts : [],
-                                                            error: null,
-                                                        }));
-                                                        if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
-                                                            syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
-                                                        }
-                                                    }}
-                                                />
-                                            </Group>
-
-                                            <AnimatedSection in={divisionEditor.allowPaymentPlans}>
-                                                <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
-                                                    <NumberInput
-                                                        label="Installments"
-                                                        min={1}
-                                                        max={MAX_STANDARD_NUMBER}
-                                                        value={divisionEditor.installmentCount || divisionEditor.installmentAmounts.length || 1}
-                                                        onChange={(value) => syncDivisionInstallmentCount(Number(value) || 1)}
-                                                        clampBehavior="strict"
-                                                        maw={180}
-                                                    />
-                                                    <Stack gap="sm">
-                                                        {(divisionEditor.installmentAmounts || []).map((amount, idx) => {
-                                                            const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
-                                                            const dueDateValue = parseLocalDateTime(
-                                                                divisionEditor.installmentDueDates?.[idx] || eventData.start,
-                                                            );
-                                                            return (
-                                                                <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                    {useRelativeDueDates ? (
-                                                                        <NumberInput
-                                                                            label={`Installment ${idx + 1} due date offset`}
-                                                                            description="0 = session day; negative = days before session; positive = days after session"
-                                                                            value={divisionEditor.installmentDueRelativeDays?.[idx] ?? 0}
-                                                                            onChange={(value) => setDivisionInstallmentDueRelativeDay(idx, Number(value) || 0)}
-                                                                            min={-MAX_STANDARD_NUMBER}
-                                                                            max={MAX_STANDARD_NUMBER}
-                                                                            clampBehavior="strict"
-                                                                            style={{ flex: '1 1 300px', maxWidth: 360 }}
-                                                                        />
-                                                                    ) : (
-                                                                        <DateTimePicker
-                                                                            label={`Installment ${idx + 1} due`}
-                                                                            value={dueDateValue}
-                                                                            onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
-                                                                            valueFormat="MM/DD/YYYY hh:mm A"
-                                                                            timePickerProps={{
-                                                                                withDropdown: true,
-                                                                                format: '12h',
-                                                                            }}
-                                                                            style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                                        />
-                                                                    )}
-                                                                    <CentsInput
-                                                                        label="Amount"
-                                                                        maxCents={MAX_PRICE_CENTS}
-                                                                        value={amount}
-                                                                        onChange={(nextValue) => setDivisionInstallmentAmount(idx, nextValue)}
-                                                                        maw={180}
-                                                                    />
-                                                                    <PriceWithFeesPreview
-                                                                        amountCents={amount}
-                                                                        baseLabel={`Installment ${idx + 1} amount`}
-                                                                        eventType={eventData.eventType}
-                                                                        taxable={eventTaxableForPreview}
-                                                                        className="min-w-[220px] flex-[1_1_220px]"
-                                                                    />
-                                                                    {divisionEditor.installmentAmounts.length > 1 && (
-                                                                        <ActionIcon
-                                                                            variant="light"
-                                                                            color="red"
-                                                                            aria-label="Remove division installment"
-                                                                            onClick={() => removeDivisionInstallment(idx)}
-                                                                        >
-                                                                            ×
-                                                                        </ActionIcon>
-                                                                    )}
-                                                                </Group>
-                                                            );
-                                                        })}
-                                                        <Group justify="space-between" align="center">
-                                                            <Button
-                                                                variant="light"
-                                                                onClick={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
-                                                            >
-                                                                Add installment
-                                                            </Button>
-                                                            <Text
-                                                                size="sm"
-                                                                c="dimmed"
-                                                            >
-                                                                Installment total: {formatBillAmount(sumInstallmentAmounts(divisionEditor.installmentAmounts))}
-                                                            </Text>
-                                                        </Group>
-                                                    </Stack>
-                                                </div>
-                                            </AnimatedSection>
-                                        </div>
-                                    </AnimatedLayoutSection>
+                                    {!eventData.singleDivision ? (
+                                        <DivisionEditorPaymentPlanControls
+                                            allowPaymentPlans={divisionEditor.allowPaymentPlans}
+                                            installmentCount={divisionEditor.installmentCount || 0}
+                                            installmentAmounts={divisionEditor.installmentAmounts || []}
+                                            installmentDueDates={divisionEditor.installmentDueDates || []}
+                                            installmentDueRelativeDays={divisionEditor.installmentDueRelativeDays || []}
+                                            eventType={eventData.eventType}
+                                            parentEvent={eventData.parentEvent}
+                                            eventStart={eventData.start}
+                                            taxable={eventTaxableForPreview}
+                                            disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
+                                            maxStandardNumber={MAX_STANDARD_NUMBER}
+                                            maxPriceCents={MAX_PRICE_CENTS}
+                                            onAllowPaymentPlansChange={(checked) => {
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    allowPaymentPlans: checked,
+                                                    price: checked && prev.installmentAmounts.length
+                                                        ? sumInstallmentAmounts(prev.installmentAmounts)
+                                                        : prev.price,
+                                                    installmentCount: checked
+                                                        ? (prev.installmentCount || prev.installmentAmounts.length || 1)
+                                                        : 0,
+                                                    installmentDueDates: checked ? prev.installmentDueDates : [],
+                                                    installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
+                                                    installmentAmounts: checked ? prev.installmentAmounts : [],
+                                                    error: null,
+                                                }));
+                                                if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
+                                                    syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
+                                                }
+                                            }}
+                                            onInstallmentCountChange={(count) => syncDivisionInstallmentCount(count)}
+                                            onInstallmentDueRelativeDayChange={setDivisionInstallmentDueRelativeDay}
+                                            onInstallmentDueDateChange={setDivisionInstallmentDueDate}
+                                            onInstallmentAmountChange={setDivisionInstallmentAmount}
+                                            onRemoveInstallment={removeDivisionInstallment}
+                                            onAddInstallment={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
+                                        />
+                                    ) : null}
                                     <AnimatedLayoutSection
                                         in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
                                         className="md:col-span-12"

@@ -37,6 +37,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T17:36Z) Extracted single-division tournament pool controls into `SingleDivisionPoolControls`.
   - [x] (2026-06-22T17:45Z) Extracted single-division pricing and tax controls into `SingleDivisionPricingControls`.
   - [x] (2026-06-22T17:57Z) Extracted single-division payment plan controls into `SingleDivisionPaymentPlanControls`.
+  - [x] (2026-06-22T18:03Z) Extracted division-editor payment plan controls into `DivisionEditorPaymentPlanControls`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -126,6 +127,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract single-division payment plan controls without moving installment state.
   Rationale: The payment plan toggle, installment count, due-date editors, amount editors, and installment total are one cohesive subsection. Passing callbacks keeps the existing payment-plan mutation behavior in `EventForm` while reducing the Divisions render body.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract division-editor payment plan controls separately from the division editor state.
+  Rationale: The division payment-plan card mirrors the event-level payment-plan workflow but mutates `divisionEditor`. Moving the UI behind callbacks reduces the editor body without prematurely introducing a shared payment-plan abstraction.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -288,6 +292,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted single-division tournament pool controls while leaving tournament pool defaults in `EventForm`.
 - 2026-06-22 / Codex: Extracted single-division pricing and tax controls while leaving billing and tax policy state in `EventForm`.
 - 2026-06-22 / Codex: Extracted single-division payment plan controls while leaving installment state and mutations in `EventForm`.
+- 2026-06-22 / Codex: Extracted division-editor payment plan controls while leaving division installment state and mutations in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
