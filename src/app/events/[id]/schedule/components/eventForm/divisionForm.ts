@@ -199,6 +199,67 @@ export const buildDivisionTypeSelectOptions = (
         .map((option) => ({ value: option.id, label: option.name }))
 );
 
+export const buildPlayoffDivisionSelectOptions = (
+    playoffDivisionDetails: PlayoffDivisionDetailForm[] = [],
+): Array<{ value: string; label: string }> => (
+    playoffDivisionDetails.map((division) => ({
+        value: division.id,
+        label: division.name,
+    }))
+);
+
+export const buildPlayoffDivisionCapacityWarnings = ({
+    eventType,
+    includePlayoffs,
+    splitLeaguePlayoffDivisions,
+    divisionDetails,
+    playoffDivisionDetails,
+}: {
+    eventType?: Event['eventType'] | null;
+    includePlayoffs?: boolean | null;
+    splitLeaguePlayoffDivisions?: boolean | null;
+    divisionDetails?: DivisionDetailForm[] | null;
+    playoffDivisionDetails?: PlayoffDivisionDetailForm[] | null;
+}): string[] => {
+    if (eventType !== 'LEAGUE' || !includePlayoffs || !splitLeaguePlayoffDivisions) {
+        return [];
+    }
+
+    const assignmentCounts = new Map<string, number>();
+    const playoffDivisions = Array.isArray(playoffDivisionDetails) ? playoffDivisionDetails : [];
+
+    (divisionDetails || []).forEach((division) => {
+        const playoffTeamCount = Number.isFinite(division.playoffTeamCount)
+            ? Math.max(0, Math.trunc(division.playoffTeamCount as number))
+            : 0;
+        const mapping = Array.isArray(division.playoffPlacementDivisionIds)
+            ? division.playoffPlacementDivisionIds
+            : [];
+        for (let index = 0; index < playoffTeamCount; index += 1) {
+            const mappedDivisionId = normalizeDivisionKeys([mapping[index]])[0];
+            if (!mappedDivisionId) {
+                continue;
+            }
+            assignmentCounts.set(mappedDivisionId, (assignmentCounts.get(mappedDivisionId) ?? 0) + 1);
+        }
+    });
+
+    return playoffDivisions
+        .map((division) => {
+            const normalizedId = normalizeDivisionKeys([division.id])[0];
+            if (!normalizedId) {
+                return null;
+            }
+            const assigned = assignmentCounts.get(normalizedId) ?? 0;
+            const capacity = normalizePlayoffDivisionParticipantCount(division.maxParticipants) ?? 0;
+            if (assigned > capacity) {
+                return `${division.name} has ${assigned} mapped teams but only ${capacity} slots.`;
+            }
+            return null;
+        })
+        .filter((message): message is string => Boolean(message));
+};
+
 export const normalizePlayoffDivisionParticipantCount = (value: unknown): number | null => {
     if (typeof value === 'string' && value.trim().length === 0) {
         return null;

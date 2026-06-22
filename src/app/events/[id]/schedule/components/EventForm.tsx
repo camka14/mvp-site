@@ -80,6 +80,8 @@ import {
     buildDefaultDivisionDetailsForSport,
     buildDivisionTypeOptionsForEvent,
     buildDivisionTypeSelectOptions,
+    buildPlayoffDivisionCapacityWarnings,
+    buildPlayoffDivisionSelectOptions,
     buildSlotDivisionLookup,
     buildUniqueDivisionIdForToken,
     DIVISION_GENDER_OPTIONS,
@@ -1958,64 +1960,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.divisionDetails, eventData.playoffDivisionDetails, setValue]);
 
     const playoffDivisionSelectOptions = useMemo(
-        () => (eventData.playoffDivisionDetails || []).map((division) => ({
-            value: division.id,
-            label: division.name,
-        })),
+        () => buildPlayoffDivisionSelectOptions(eventData.playoffDivisionDetails),
         [eventData.playoffDivisionDetails],
     );
 
-    const playoffDivisionCapacityWarnings = useMemo(() => {
-        if (
-            eventData.eventType !== 'LEAGUE'
-            || !leagueData.includePlayoffs
-            || !eventData.splitLeaguePlayoffDivisions
-        ) {
-            return [] as string[];
-        }
-
-        const assignmentCounts = new Map<string, number>();
-        const playoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
-            ? eventData.playoffDivisionDetails
-            : [];
-
-        (eventData.divisionDetails || []).forEach((division) => {
-            const playoffTeamCount = Number.isFinite(division.playoffTeamCount)
-                ? Math.max(0, Math.trunc(division.playoffTeamCount as number))
-                : 0;
-            const mapping = Array.isArray(division.playoffPlacementDivisionIds)
-                ? division.playoffPlacementDivisionIds
-                : [];
-            for (let index = 0; index < playoffTeamCount; index += 1) {
-                const mappedDivisionId = normalizeDivisionKeys([mapping[index]])[0];
-                if (!mappedDivisionId) {
-                    continue;
-                }
-                assignmentCounts.set(mappedDivisionId, (assignmentCounts.get(mappedDivisionId) ?? 0) + 1);
-            }
-        });
-
-        return playoffDivisions
-            .map((division) => {
-                const normalizedId = normalizeDivisionKeys([division.id])[0];
-                if (!normalizedId) {
-                    return null;
-                }
-                const assigned = assignmentCounts.get(normalizedId) ?? 0;
-                const capacity = normalizePlayoffDivisionParticipantCount(division.maxParticipants) ?? 0;
-                if (assigned > capacity) {
-                    return `${division.name} has ${assigned} mapped teams but only ${capacity} slots.`;
-                }
-                return null;
-            })
-            .filter((message): message is string => Boolean(message));
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.playoffDivisionDetails,
-        eventData.splitLeaguePlayoffDivisions,
-        leagueData.includePlayoffs,
-    ]);
+    const playoffDivisionCapacityWarnings = useMemo(
+        () => buildPlayoffDivisionCapacityWarnings({
+            eventType: eventData.eventType,
+            includePlayoffs: leagueData.includePlayoffs,
+            splitLeaguePlayoffDivisions: eventData.splitLeaguePlayoffDivisions,
+            divisionDetails: eventData.divisionDetails,
+            playoffDivisionDetails: eventData.playoffDivisionDetails,
+        }),
+        [
+            eventData.divisionDetails,
+            eventData.eventType,
+            eventData.playoffDivisionDetails,
+            eventData.splitLeaguePlayoffDivisions,
+            leagueData.includePlayoffs,
+        ],
+    );
 
     const selectedSportForOfficials = useMemo(
         () => (

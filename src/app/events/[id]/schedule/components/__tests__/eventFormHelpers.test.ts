@@ -5,6 +5,8 @@ import {
   buildCompositeDivisionTypeId,
   buildDivisionTypeOptionsForEvent,
   buildDivisionTypeSelectOptions,
+  buildPlayoffDivisionCapacityWarnings,
+  buildPlayoffDivisionSelectOptions,
   deriveTournamentPoolSettingsByBracketId,
   divisionFieldIdsEqual,
   normalizeDivisionFieldIds,
@@ -728,6 +730,52 @@ describe('event form division helpers', () => {
     expect(options.some((option) => option.ratingType === 'SKILL' && option.id === 'custom_skill')).toBe(true);
     expect(options.filter((option) => option.ratingType === 'SKILL' && option.id === 'custom_skill')).toHaveLength(1);
     expect(buildDivisionTypeSelectOptions(options, 'AGE').some((option) => option.value === 'u21')).toBe(true);
+  });
+
+  it('builds playoff division options and capacity warnings', () => {
+    const playoffDivisions = [
+      {
+        id: 'gold',
+        key: 'gold',
+        kind: 'PLAYOFF',
+        name: 'Gold',
+        maxParticipants: 1,
+        playoffConfig: {} as any,
+      },
+      {
+        id: 'silver',
+        key: 'silver',
+        kind: 'PLAYOFF',
+        name: 'Silver',
+        maxParticipants: 4,
+        playoffConfig: {} as any,
+      },
+    ];
+
+    expect(buildPlayoffDivisionSelectOptions(playoffDivisions)).toEqual([
+      { value: 'gold', label: 'Gold' },
+      { value: 'silver', label: 'Silver' },
+    ]);
+    expect(buildPlayoffDivisionCapacityWarnings({
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: true,
+      divisionDetails: [
+        makeDivisionDetail({
+          id: 'division_1',
+          playoffTeamCount: 2,
+          playoffPlacementDivisionIds: ['gold', 'gold'],
+        }),
+      ],
+      playoffDivisionDetails: playoffDivisions,
+    })).toEqual(['Gold has 2 mapped teams but only 1 slots.']);
+    expect(buildPlayoffDivisionCapacityWarnings({
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: true,
+      divisionDetails: [],
+      playoffDivisionDetails: playoffDivisions,
+    })).toEqual([]);
   });
 
   it('normalizes composite division ids and participant counts', () => {
