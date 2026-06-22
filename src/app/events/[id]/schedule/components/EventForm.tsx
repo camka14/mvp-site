@@ -302,6 +302,7 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
+import { SingleDivisionCapacityControls } from './eventForm/sections/SingleDivisionCapacityControls';
 import { SingleDivisionEditorNotice } from './eventForm/sections/SingleDivisionEditorNotice';
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
@@ -6332,61 +6333,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
                                             transition={DIVISION_LAYOUT_TRANSITION}
                                         >
-                                            <AnimatedLayoutSection in={eventData.singleDivision} className="md:col-span-3">
-                                                <Controller
-                                                    name="maxParticipants"
-                                                    control={control}
-                                                    render={({ field, fieldState }) => (
-                                                        <NumberInput
-                                                            label={eventData.teamSignup ? 'Max Teams' : 'Max Participants'}
-                                                            min={2}
-                                                            max={MAX_STANDARD_NUMBER}
-                                                            value={field.value ?? ''}
-                                                            w="100%"
-                                                            styles={alignedDetailsFieldStyles}
-                                                            clampBehavior="blur"
-                                                            disabled={isImmutableField('maxParticipants')}
-                                                            onChange={(val) => {
-                                                                if (isImmutableField('maxParticipants')) return;
-                                                                const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                                    ? Math.trunc(val)
-                                                                    : null;
-                                                                field.onChange(numeric);
-                                                            }}
-                                                            error={fieldState.error?.message as string | undefined}
-                                                        />
-                                                    )}
-                                                />
-                                            </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
-                                                className="md:col-span-3"
-                                            >
-                                                <NumberInput
-                                                    label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                                    min={2}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                                    disabled={isImmutableField('playoffTeamCount')}
-                                                    clampBehavior="strict"
-                                                    onChange={(value) => {
-                                                        if (isImmutableField('playoffTeamCount')) return;
-                                                        const numeric = typeof value === 'number' ? value : Number(value);
-                                                        setLeagueData((prev) => ({
-                                                            ...prev,
-                                                            playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                        }));
-                                                    }}
-                                                    error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                                />
-                                                {!eventData.singleDivision ? (
-                                                    <Text size="xs" c="dimmed" mt="xs">
-                                                        Used as the default for new divisions.
-                                                    </Text>
-                                                ) : null}
-                                            </AnimatedLayoutSection>
+                                            <SingleDivisionCapacityControls
+                                                control={control}
+                                                singleDivision={Boolean(eventData.singleDivision)}
+                                                teamSignup={Boolean(eventData.teamSignup)}
+                                                eventType={eventData.eventType}
+                                                includePlayoffs={Boolean(leagueData.includePlayoffs)}
+                                                playoffTeamCount={leagueData.playoffTeamCount}
+                                                maxStandardNumber={MAX_STANDARD_NUMBER}
+                                                numberInputStyles={alignedDetailsFieldStyles}
+                                                maxParticipantsDisabled={isImmutableField('maxParticipants')}
+                                                playoffTeamCountDisabled={isImmutableField('playoffTeamCount')}
+                                                playoffTeamCountError={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                                onPlayoffTeamCountChange={(playoffTeamCount) => {
+                                                    setLeagueData((prev) => ({
+                                                        ...prev,
+                                                        playoffTeamCount,
+                                                    }));
+                                                }}
+                                            />
                                             <AnimatedLayoutSection
                                                 in={eventData.singleDivision && eventData.eventType === 'LEAGUE'}
                                                 className="md:col-span-12"
