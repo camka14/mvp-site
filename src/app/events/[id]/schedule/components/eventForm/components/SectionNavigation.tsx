@@ -5,6 +5,38 @@ export type SectionNavigationItem = {
     label: string;
 };
 
+type EventFormSectionNavigationItem = SectionNavigationItem & {
+    visible: boolean;
+};
+
+type BuildEventFormSectionNavigationItemsOptions = {
+    showMatchRulesSection: boolean;
+    scoringConfigSectionLabel: string;
+    showScoringConfigSection: boolean;
+    showScheduleConfig: boolean;
+};
+
+export const buildEventFormSectionNavigationItems = ({
+    showMatchRulesSection,
+    scoringConfigSectionLabel,
+    showScoringConfigSection,
+    showScheduleConfig,
+}: BuildEventFormSectionNavigationItemsOptions): EventFormSectionNavigationItem[] => [
+    { id: 'section-basic-information', label: 'Basic Information', visible: true },
+    { id: 'section-event-details', label: 'Event Details', visible: true },
+    { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
+    { id: 'section-officials', label: 'Officials', visible: true },
+    { id: 'section-division-settings', label: 'Divisions', visible: true },
+    { id: 'section-league-scoring-config', label: scoringConfigSectionLabel, visible: showScoringConfigSection },
+    { id: 'section-schedule-config', label: 'Schedule', visible: showScheduleConfig },
+];
+
+export const getVisibleSectionNavigationItems = (
+    items: EventFormSectionNavigationItem[],
+): SectionNavigationItem[] => items
+    .filter((item) => item.visible)
+    .map(({ id, label }) => ({ id, label }));
+
 type SectionNavigationProps = {
     items: SectionNavigationItem[];
     activeSectionId: string;

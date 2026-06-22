@@ -239,7 +239,11 @@ import {
     parseDateValue,
 } from './eventForm/dateHelpers';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
-import { SectionNavigation } from './eventForm/components/SectionNavigation';
+import {
+    buildEventFormSectionNavigationItems,
+    getVisibleSectionNavigationItems,
+    SectionNavigation,
+} from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
@@ -6115,19 +6119,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ? 'Pool Scoring Config'
         : 'League Scoring Config';
     const sectionNavItems = useMemo(
-        () => [
-            { id: 'section-basic-information', label: 'Basic Information', visible: true },
-            { id: 'section-event-details', label: 'Event Details', visible: true },
-            { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
-            { id: 'section-officials', label: 'Officials', visible: true },
-            { id: 'section-division-settings', label: 'Divisions', visible: true },
-            { id: 'section-league-scoring-config', label: scoringConfigSectionLabel, visible: showScoringConfigSection },
-            { id: 'section-schedule-config', label: 'Schedule', visible: showScheduleConfig },
-        ],
+        () => buildEventFormSectionNavigationItems({
+            showMatchRulesSection,
+            scoringConfigSectionLabel,
+            showScoringConfigSection,
+            showScheduleConfig,
+        }),
         [scoringConfigSectionLabel, showMatchRulesSection, showScheduleConfig, showScoringConfigSection],
     );
     const visibleSectionNavItems = useMemo(
-        () => sectionNavItems.filter((item) => item.visible),
+        () => getVisibleSectionNavigationItems(sectionNavItems),
         [sectionNavItems],
     );
     const {

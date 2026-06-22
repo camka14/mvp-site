@@ -87,6 +87,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - [x] (2026-06-22T22:31Z) Extracted mobile edit unsupported reason and warning construction into `eventForm/paymentPlanHelpers.ts`.
 - [x] (2026-06-22T22:40Z) Extracted organization staff user maps and host staff ID derivation into `eventForm/staffInvites.ts`.
 - [x] (2026-06-22T22:45Z) Extracted schedule warning/error message construction into `eventForm/scheduleMessages.ts`.
+- [x] (2026-06-22T22:50Z) Extracted EventForm section navigation item construction into `eventForm/components/SectionNavigation.tsx`.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -327,10 +328,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
 - Decision: Move schedule warning and error message construction into a dedicated helper.
   Rationale: League schedule warning/error text is a pure presentation derivation from conflict state and validation error shape. A small `scheduleMessages.ts` module keeps message text out of the parent without mixing it into validation or conflict helper internals.
   Date/Author: 2026-06-22 / Codex
+- Decision: Keep section navigation item construction with the SectionNavigation component.
+  Rationale: The nav item list is display metadata derived from section visibility flags. Keeping the builder next to `SectionNavigation` centralizes section labels and keeps EventForm from owning presentation-only item shape.
+  Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
 
-The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, slot form construction, default value assembly, organization staff roster derivation, assigned staff display card assembly, staff invite submission payload construction, staff invite lookup/assigned-ID derivation, official staffing coverage derivation, mobile edit warning derivation, organization staff user-map/host-ID derivation, and schedule warning/error message construction now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
+The first helper extraction landed with no TypeScript or focused EventForm test regression. The leaf component extraction also landed cleanly. The helper test milestone now covers rental booking mapping and locked slots, resource grouping, slot normalization, staff invite normalization, official normalization, and division helper behavior. Slot overlap/error logic now lives in a pure helper module that can be shared by the schema and schedule state normalization. The Zod validation schema now lives outside the parent component, and field/slot/config default helpers are separated from the default builder. League, tournament, playoff, payment-plan, shared boolean, staff label/search, match-rules sanitizer, validation-error flattening, form equality, date formatting, pool-team, external conflict, persisted division-normalization helper calls, the shared form value type contract, persisted event-to-form hydration, immutable default overlays, slot form construction, default value assembly, organization staff roster derivation, assigned staff display card assembly, staff invite submission payload construction, staff invite lookup/assigned-ID derivation, official staffing coverage derivation, mobile edit warning derivation, organization staff user-map/host-ID derivation, schedule warning/error message construction, and section navigation item construction now live outside `EventForm`. The expected final outcome remains a much smaller `EventForm.tsx` that coordinates smaller modules, with no regression in event create/edit behavior.
 
 ## Context and Orientation
 
@@ -527,3 +531,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted mobile edit unsupported reason and warning construction into `eventForm/paymentPlanHelpers.ts`.
 - 2026-06-22 / Codex: Extracted organization staff user maps and host staff ID derivation into `eventForm/staffInvites.ts`.
 - 2026-06-22 / Codex: Extracted schedule warning/error message construction into `eventForm/scheduleMessages.ts`.
+- 2026-06-22 / Codex: Extracted section navigation item construction into `eventForm/components/SectionNavigation.tsx`.
