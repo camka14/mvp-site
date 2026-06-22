@@ -1,6 +1,10 @@
 import type { Event } from '@/types';
 
 type EventType = Event['eventType'];
+type EventTypeOption = {
+    value: EventType;
+    label: string;
+};
 
 export const supportsScheduleSlots = (eventType: EventType): boolean =>
     eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'WEEKLY_EVENT';
@@ -21,4 +25,24 @@ export const supportsOrganizationFieldSelectionForEvent = (eventType: EventType,
 
 export const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePlayoffs: boolean): boolean => (
     eventType === 'TOURNAMENT' && includePlayoffs
+);
+
+export const buildEventTypeOptions = (isRentalCreateFlow: boolean): EventTypeOption[] => [
+    { value: 'EVENT', label: 'Event' },
+    { value: 'TOURNAMENT', label: 'Tournament' },
+    { value: 'LEAGUE', label: 'League' },
+    ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT' as const, label: 'Weekly Event' }]),
+];
+
+export const shouldShowOrganizationFieldsInEventDetails = ({
+    isOrganizationHostedEvent,
+    hasRentalResourceOptions,
+    supportsOrganizationFieldSelection,
+}: {
+    isOrganizationHostedEvent: boolean;
+    hasRentalResourceOptions: boolean;
+    supportsOrganizationFieldSelection: boolean;
+}): boolean => (
+    (isOrganizationHostedEvent || hasRentalResourceOptions)
+    && supportsOrganizationFieldSelection
 );

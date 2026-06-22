@@ -37,8 +37,10 @@ import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './externalRentalField';
 import {
+    buildEventTypeOptions,
     hasParentEventRef,
     isTournamentPoolPlayFormEnabled,
+    shouldShowOrganizationFieldsInEventDetails,
     supportsFieldCountForEvent,
     supportsOrganizationFieldSelectionForEvent,
     supportsScheduleSlotsForEvent,
@@ -4916,15 +4918,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [selectedImageId],
     );
 
-    const eventTypeOptions = useMemo(
-        () => [
-            { value: 'EVENT', label: 'Event' },
-            { value: 'TOURNAMENT', label: 'Tournament' },
-            { value: 'LEAGUE', label: 'League' },
-            ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT', label: 'Weekly Event' }]),
-        ],
-        [isRentalCreateFlow],
-    );
+    const eventTypeOptions = useMemo(() => buildEventTypeOptions(isRentalCreateFlow), [isRentalCreateFlow]);
     const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEffect(() => {
         if (!isRentalCreateFlow) {
@@ -6088,9 +6082,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
     const resourceSelectorLoading = fieldsLoading || rentalResourcesLoading;
-    const showOrganizationFieldsInEventDetails = (
-        isOrganizationHostedEvent || rentalResourceOptions.length > 0
-    ) && supportsOrganizationFieldSelection;
+    const showOrganizationFieldsInEventDetails = shouldShowOrganizationFieldsInEventDetails({
+        isOrganizationHostedEvent,
+        hasRentalResourceOptions: rentalResourceOptions.length > 0,
+        supportsOrganizationFieldSelection,
+    });
     const localFieldCreationControl = showLocalFieldCreationControls ? (
         <MantineSelect
             label="Number of Resources"

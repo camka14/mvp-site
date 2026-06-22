@@ -537,3 +537,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted schedule warning/error message construction into `eventForm/scheduleMessages.ts`.
 - 2026-06-22 / Codex: Extracted section navigation item construction into `eventForm/components/SectionNavigation.tsx`.
 - 2026-06-22 / Codex: Extracted resource count select-option construction into `eventForm/resourceGroups.ts`.
+- 2026-06-22 / Codex: Extracted event-type options and organization resource visibility rules into `eventForm/eventRules.ts`.
