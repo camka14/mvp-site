@@ -14,8 +14,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
 
 - [x] (2026-06-22T05:54Z) Reviewed the current `EventForm.tsx` size and responsibilities and created this ExecPlan.
 - [x] (2026-06-22T06:16Z) Extracted the first pure-helper set without changing render behavior: shared normalizers/equality, rental resource mapping and locked slots, resource grouping and field pool helpers, staff invite helpers, official normalization, dirty tracking, slot normalization, and division helpers.
-- [ ] Extract schema and default-building helpers after a follow-up dependency pass. They remain in `EventForm.tsx` for now because the schema still calls form-local validation helpers and the default builder still shares several event-normalization functions.
-- [ ] Extract leaf UI components that already exist inside `EventForm.tsx`, starting with `FacilityResourceSelector` and the animated section wrappers.
+- [x] (2026-06-22T06:45Z) Ran the schema/default dependency pass and confirmed those helpers should remain inline for now because they are still coupled to form-local validation and normalization.
+- [ ] Extract schema and default-building helpers after the local validation/default dependencies are separated.
+- [x] (2026-06-22T07:02Z) Extracted leaf UI components that already existed inside `EventForm.tsx`: `FacilityResourceSelector`, `AnimatedSection`, and `AnimatedLayoutSection`.
 - [ ] Add focused unit tests for the extracted pure helpers while keeping the existing `EventForm.test.tsx` integration coverage in place.
 - [ ] Extract major JSX sections into section components with explicit props and no new shared context.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
@@ -32,6 +33,8 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Evidence: `npm test -- 'src/app/events/[id]/schedule/components/__tests__/EventForm.test.tsx' --runInBand` found zero tests, while `npm test -- --runTestsByPath 'src/app/events/[id]/schedule/components/__tests__/EventForm.test.tsx' --runInBand` ran and passed 91 tests.
 - Observation: The first helper extraction reduced `EventForm.tsx` from approximately 14,647 lines to 13,333 lines.
   Evidence: `wc -l src/app/events/[id]/schedule/components/EventForm.tsx` reported 13,333 lines after the extraction.
+- Observation: Schema/default extraction is still too coupled for a safe one-shot move.
+  Evidence: The schema calls local slot-conflict, rental mismatch, resource-count, and division coverage validation helpers. The event default builder also shares local normalization helpers that have not yet been separated.
 
 ## Decision Log
 
@@ -46,6 +49,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Defer schema and default extraction from the first helper pass.
   Rationale: The schema currently depends on form-local slot validation, rental mismatch, resource-count, and division coverage helpers. The default builder still sits near event-normalization functions. Moving those now would create a larger behavior-change surface than the pure helper extraction needs.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Move leaf UI components before schema/default helpers.
+  Rationale: `FacilityResourceSelector` and the animation wrappers already had stable prop boundaries. Extracting them reduces the file size and creates reusable component homes while avoiding the higher-risk validation/default dependency knot.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -193,3 +199,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 
 - 2026-06-22 / Codex: Created this ExecPlan to track the EventForm split as a behavior-preserving refactor. The plan starts with low-risk pure helper extraction and postpones hooks/context until module boundaries are clearer.
 - 2026-06-22 / Codex: Completed the first helper extraction pass and updated the Jest command to use `--runTestsByPath` for the bracketed Next.js route path. Schema and default helper extraction remain as the next part of helper cleanup.
+- 2026-06-22 / Codex: Deferred schema/default extraction after a dependency pass and completed the leaf component extraction milestone instead.

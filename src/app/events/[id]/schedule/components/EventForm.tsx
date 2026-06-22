@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useImperative
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown } from 'lucide-react';
+import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import { teamService } from '@/lib/teamService';
@@ -119,7 +118,6 @@ import {
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
 import {
-    buildFacilityResourceGroups,
     fieldsEqual,
     isEventLocalField,
     isGeneratedLocalFieldPlaceholder,
@@ -168,6 +166,12 @@ import {
     stringArraysEqual,
     stringSetsEqual,
 } from './eventForm/shared';
+import {
+    DIVISION_LAYOUT_TRANSITION,
+    SECTION_ANIMATION_DURATION_MS,
+} from './eventForm/constants';
+import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
+import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -210,174 +214,6 @@ type RentalPurchaseContext = {
     requiredTemplateIds?: string[];
 };
 
-type FacilityResourceSelectorProps = {
-    label: string;
-    description: string;
-    placeholder: string;
-    fields: Field[];
-    value: string[];
-    onChange: (values: string[]) => void;
-    eventOrganizationId?: string | null;
-    disabled?: boolean;
-    loading?: boolean;
-    error?: React.ReactNode;
-};
-
-const FacilityResourceSelector: React.FC<FacilityResourceSelectorProps> = ({
-    label,
-    description,
-    placeholder,
-    fields,
-    value,
-    onChange,
-    eventOrganizationId,
-    disabled = false,
-    loading = false,
-    error,
-}) => {
-    const groups = useMemo(
-        () => buildFacilityResourceGroups(fields, eventOrganizationId),
-        [eventOrganizationId, fields],
-    );
-    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-    const selectedValues = useMemo(
-        () => Array.from(new Set(value.map((fieldId) => String(fieldId).trim()).filter(Boolean))),
-        [value],
-    );
-    const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
-    const showFacilityRows = groups.length > 1 || groups.some((group) => group.isRental);
-
-    useEffect(() => {
-        setExpandedGroups((previous) => {
-            const next: Record<string, boolean> = {};
-            groups.forEach((group) => {
-                next[group.key] = previous[group.key] ?? (group.isRental || groups.length === 1);
-            });
-            return next;
-        });
-    }, [groups]);
-
-    const toggleResource = useCallback((resourceId: string) => {
-        if (disabled) {
-            return;
-        }
-        const next = selectedSet.has(resourceId)
-            ? selectedValues.filter((fieldId) => fieldId !== resourceId)
-            : [...selectedValues, resourceId];
-        onChange(next);
-    }, [disabled, onChange, selectedSet, selectedValues]);
-
-    const renderResourceRow = (resource: Field & { $id: string }) => {
-        const resourceLabel = getFieldDisplayName(resource, 'Resource');
-        const selected = selectedSet.has(resource.$id);
-        return (
-            <label
-                key={resource.$id}
-                className={`flex cursor-pointer items-center gap-3 border-b px-3 py-2 pl-8 text-sm transition last:border-b-0 ${
-                    selected
-                        ? 'border-[#2c4d6f] bg-[#eaf2fa]'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
-            >
-                <input
-                    type="checkbox"
-                    aria-label={resourceLabel}
-                    checked={selected}
-                    disabled={disabled}
-                    onChange={() => toggleResource(resource.$id)}
-                    className="h-4 w-4 rounded border-gray-300 accent-[#2c4d6f]"
-                />
-                <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-gray-900">{resourceLabel}</span>
-                    {resource.location ? (
-                        <span className="block truncate text-xs text-gray-500">{resource.location}</span>
-                    ) : null}
-                </span>
-            </label>
-        );
-    };
-
-    return (
-        <div className="space-y-2">
-            <div>
-                <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-900">{label}</label>
-                    {selectedValues.length > 0 ? (
-                        <Badge size="sm" variant="light" color="blue">
-                            {selectedValues.length} selected
-                        </Badge>
-                    ) : null}
-                </div>
-                <Text size="sm" c="dimmed">{description}</Text>
-            </div>
-            <div
-                role="group"
-                aria-label={label}
-                className={`overflow-hidden rounded-lg border ${error ? 'border-red-500' : 'border-gray-300'} ${disabled ? 'bg-gray-50' : 'bg-white'}`}
-            >
-                {loading ? (
-                    <Text size="sm" c="dimmed">Loading resources...</Text>
-                ) : groups.length === 0 ? (
-                    <Text size="sm" c="dimmed">{placeholder}</Text>
-                ) : showFacilityRows ? (
-                    <div>
-                        {groups.map((group) => {
-                            const expanded = expandedGroups[group.key] ?? group.isRental;
-                            const selectedCount = group.resources.filter((resource) => selectedSet.has(resource.$id)).length;
-                            const panelId = `facility-resource-group-${group.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-                            return (
-                                <div key={group.key} className="border-b border-gray-200 bg-gray-50 last:border-b-0">
-                                    <button
-                                        type="button"
-                                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-                                        aria-expanded={expanded}
-                                        aria-controls={panelId}
-                                        onClick={() => {
-                                            setExpandedGroups((previous) => ({
-                                                ...previous,
-                                                [group.key]: !expanded,
-                                            }));
-                                        }}
-                                    >
-                                        <span className="min-w-0 flex-1">
-                                            <span className="flex items-center gap-2">
-                                                <span className="truncate font-medium text-gray-900">{group.label}</span>
-                                                {group.isRental ? (
-                                                    <Badge size="xs" variant="light" color="green">Rented</Badge>
-                                                ) : null}
-                                            </span>
-                                            <span className="block truncate text-xs text-gray-500">
-                                                {selectedCount} of {group.resources.length} resources selected
-                                                {group.description ? ` • ${group.description}` : ''}
-                                            </span>
-                                        </span>
-                                        <ChevronDown
-                                            aria-hidden="true"
-                                            className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                                        />
-                                    </button>
-                                    <Collapse in={expanded} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                        <div id={panelId} className="border-t border-gray-200 bg-white">
-                                            {group.resources.map(renderResourceRow)}
-                                        </div>
-                                    </Collapse>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <div className="space-y-2">
-                        {groups.flatMap((group) => group.resources).map(renderResourceRow)}
-                    </div>
-                )}
-            </div>
-            {error ? (
-                <Text size="xs" c="red">{error}</Text>
-            ) : null}
-        </div>
-    );
-};
-
 type EventType = Event['eventType'];
 
 type DefaultLocation = {
@@ -402,11 +238,6 @@ const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
 const MAX_PRICE_CENTS = MAX_PRICE_NUMBER * 100;
 const SECTION_SCROLL_OFFSET = 80;
-const SECTION_ANIMATION_DURATION_MS = 220;
-const DIVISION_LAYOUT_TRANSITION = {
-    duration: SECTION_ANIMATION_DURATION_MS / 1000,
-    ease: 'easeInOut',
-} as const;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
@@ -445,54 +276,6 @@ const maybeExtendVisibleCountOnScroll = (
         prev >= total ? prev : Math.min(prev + 5, total)
     ));
 };
-
-const AnimatedSection = ({
-    in: inProp,
-    children,
-    className,
-    collapseClassName,
-}: {
-    in: boolean;
-    children: React.ReactNode;
-    className?: string;
-    collapseClassName?: string;
-}) => (
-    <Collapse
-        in={inProp}
-        transitionDuration={SECTION_ANIMATION_DURATION_MS}
-        transitionTimingFunction="ease"
-        animateOpacity
-        className={collapseClassName}
-    >
-        {className ? <div className={className}>{children}</div> : children}
-    </Collapse>
-);
-
-const AnimatedLayoutSection = ({
-    in: inProp,
-    children,
-    className,
-}: {
-    in: boolean;
-    children: React.ReactNode;
-    className?: string;
-}) => (
-    <AnimatePresence initial={false} mode="popLayout">
-        {inProp ? (
-            <motion.div
-                layout
-                className={className}
-                initial={{ opacity: 0, height: 0, y: -6 }}
-                animate={{ opacity: 1, height: 'auto', y: 0 }}
-                exit={{ opacity: 0, height: 0, y: -6 }}
-                transition={DIVISION_LAYOUT_TRANSITION}
-                style={{ overflow: 'hidden' }}
-            >
-                {children}
-            </motion.div>
-        ) : null}
-    </AnimatePresence>
-);
 
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
