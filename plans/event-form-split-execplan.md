@@ -25,6 +25,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T09:02Z) Extracted `BasicInformationSection` with typed form props.
   - [x] (2026-06-22T09:24Z) Extracted the repeated desktop/mobile section navigation into `SectionNavigation`.
   - [x] (2026-06-22T09:46Z) Extracted the Event Details resource selector and local resource names block into `EventDetailsResourceControls`.
+  - [x] (2026-06-22T10:08Z) Extracted the Event Details location, documents, age, registration questions slot, and capacity warning block into `EventDetailsLocationControls`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -78,6 +79,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Split the Event Details resource controls before extracting the whole Event Details section.
   Rationale: Event Details still coordinates event type, dates, documents, location, age limits, organization resources, rental-backed resources, and local resource names. Moving the resource block first keeps resource/rental behavior isolated while avoiding a single oversized section extraction.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Continue splitting Event Details by cohesive lower-page subsections.
+  Rationale: The location, required documents, age limits, registration question editor slot, and capacity warning share layout but do not own event type or schedule mutation rules. Extracting them keeps the parent in charge of form state while reducing the remaining Event Details JSX.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -228,6 +232,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Deferred schema/default extraction after a dependency pass and completed the leaf component extraction milestone instead.
 - 2026-06-22 / Codex: Extracted section navigation as a small UI checkpoint before continuing into the remaining larger sections.
 - 2026-06-22 / Codex: Extracted Event Details resource controls as the first smaller split from the still-large Event Details section.
+- 2026-06-22 / Codex: Extracted Event Details location/document/age controls as a second smaller split from Event Details.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
