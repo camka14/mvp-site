@@ -179,6 +179,7 @@ import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeC
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
+import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
 import { StaffSection } from './eventForm/sections/StaffSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -12250,29 +12251,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onChange={handleLeagueScoringConfigChange}
                         />
 
-                        <AnimatedSection in={showScheduleConfig}>
-                            <Paper
-                                id="section-schedule-config"
-                                shadow="xs"
-                                radius="md"
-                                withBorder
-                                p="lg"
-                                className="scroll-mt-20 bg-gray-50"
-                            >
-                                <div className="flex items-center justify-between gap-3">
-                                    <h3 className="text-lg font-semibold">Schedule</h3>
-                                    <Button
-                                        type="button"
-                                        variant="subtle"
-                                        size="xs"
-                                        aria-expanded={!collapsedSections['section-schedule-config']}
-                                        aria-controls="section-schedule-config-content"
-                                        onClick={() => toggleSectionCollapse('section-schedule-config')}
-                                    >
-                                        {collapsedSections['section-schedule-config'] ? 'Expand' : 'Collapse'}
-                                    </Button>
-                                </div>
-                                <Collapse in={!collapsedSections['section-schedule-config']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                        <ScheduleConfigSection
+                            visible={showScheduleConfig}
+                            collapsed={collapsedSections['section-schedule-config']}
+                            onToggle={() => toggleSectionCollapse('section-schedule-config')}
+                        >
                                     <div id="section-schedule-config-content" className="mt-4 space-y-6">
                                         {!isSchedulableEventType && usesRentalSlots ? (
                                             <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -12360,9 +12343,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </div>
                                         ) : null}
                                     </div>
-                                </Collapse>
-                            </Paper>
-                        </AnimatedSection>
+                        </ScheduleConfigSection>
                     </form>
                 </div>
 
