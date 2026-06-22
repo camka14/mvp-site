@@ -547,3 +547,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted organization field signature construction into `eventForm/resourceGroups.ts`.
 - 2026-06-22 / Codex: Extracted division type option merging and select-option mapping into `eventForm/divisionForm.ts`.
 - 2026-06-22 / Codex: Extracted playoff division select options and capacity warning construction into `eventForm/divisionForm.ts`.
+- 2026-06-22 / Codex: Extracted available official resource option construction into `eventForm/officials.ts`.

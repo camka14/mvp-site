@@ -17,6 +17,7 @@ import {
   type DivisionDetailForm,
 } from '../eventForm/divisionForm';
 import {
+  buildAvailableOfficialFieldOptions,
   buildOfficialPositionsFromTemplates,
   getEventOfficialUserIds,
   normalizeEventOfficials,
@@ -628,6 +629,18 @@ describe('event form staff invite helpers', () => {
 });
 
 describe('event form official helpers', () => {
+  it('builds official field options from selected and local event resources', () => {
+    const owned = makeField({ $id: 'owned_1', name: 'Owned 1', organization: 'host_org' });
+    const selected = makeField({ $id: 'selected_1', name: 'Selected 1', organization: 'host_org' });
+    const local = makeField({ $id: 'local_1', name: 'Local 1' });
+
+    expect(buildAvailableOfficialFieldOptions([owned, selected, local], ['selected_1']).map((option) => option.value)).toEqual([
+      'selected_1',
+      'local_1',
+    ]);
+    expect(buildAvailableOfficialFieldOptions([owned], []).map((option) => option.value)).toEqual(['owned_1']);
+  });
+
   it('normalizes scheduling mode aliases and position templates', () => {
     expect(normalizeOfficialSchedulingMode('NONE')).toBe('OFF');
     expect(normalizeOfficialSchedulingMode('STAFFING')).toBe('STAFFING');

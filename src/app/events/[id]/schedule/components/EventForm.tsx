@@ -108,6 +108,7 @@ import {
     normalizeDirtyTrackedPendingStaffInvites,
 } from './eventForm/dirtyDraft';
 import {
+    buildAvailableOfficialFieldOptions,
     buildOfficialStaffingCoverageError,
     buildOfficialPositionsFromTemplates,
     countAssignedActiveOfficialsForStaffing,
@@ -1993,24 +1994,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => normalizeSportOfficialPositionTemplates(selectedSportForOfficials?.officialPositionTemplates),
         [selectedSportForOfficials],
     );
-    const availableOfficialFieldOptions = useMemo(() => {
-        const localFieldIds = toFieldIdList(fields.filter(isEventLocalField));
-        const allowedFieldIdSet = selectedFieldIds.length > 0
-            ? new Set([...selectedFieldIds, ...localFieldIds])
-            : null;
-        return fields
-            .filter((field) => {
-                const fieldId = String(field?.$id ?? '').trim();
-                if (!fieldId) {
-                    return false;
-                }
-                return allowedFieldIdSet ? allowedFieldIdSet.has(fieldId) : true;
-            })
-            .map((field) => ({
-                value: field.$id,
-                label: getFieldDisplayName(field),
-            }));
-    }, [fields, selectedFieldIds]);
+    const availableOfficialFieldOptions = useMemo(
+        () => buildAvailableOfficialFieldOptions(fields, selectedFieldIds),
+        [fields, selectedFieldIds],
+    );
     const eventOfficialByUserId = useMemo(
         () => new Map((eventData.eventOfficials || []).map((official) => [official.userId, official] as const)),
         [eventData.eventOfficials],

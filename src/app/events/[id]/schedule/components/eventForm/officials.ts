@@ -1,10 +1,17 @@
 import type {
     EventOfficial,
     EventOfficialPosition,
+    Field,
     OfficialSchedulingMode,
     SportOfficialPositionTemplate,
 } from '@/types';
 import { createClientId } from '@/lib/clientId';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
+
+import {
+    isEventLocalField,
+    toFieldIdList,
+} from './resourceGroups';
 
 export const normalizeOfficialSchedulingMode = (value: unknown): OfficialSchedulingMode => {
     if (value === 'NONE') {
@@ -47,6 +54,28 @@ export const buildOfficialPositionsFromTemplates = (
     count: Math.max(1, Math.trunc(template.count || 1)),
     order: index,
 }));
+
+export const buildAvailableOfficialFieldOptions = (
+    fields: Field[],
+    selectedFieldIds: string[],
+): Array<{ value: string; label: string }> => {
+    const localFieldIds = toFieldIdList(fields.filter(isEventLocalField));
+    const allowedFieldIdSet = selectedFieldIds.length > 0
+        ? new Set([...selectedFieldIds, ...localFieldIds])
+        : null;
+    return fields
+        .filter((field) => {
+            const fieldId = String(field?.$id ?? '').trim();
+            if (!fieldId) {
+                return false;
+            }
+            return allowedFieldIdSet ? allowedFieldIdSet.has(fieldId) : true;
+        })
+        .map((field) => ({
+            value: field.$id,
+            label: getFieldDisplayName(field),
+        }));
+};
 
 export const normalizeEventOfficialPositions = (
     value: unknown,
