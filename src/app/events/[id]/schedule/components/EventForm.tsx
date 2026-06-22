@@ -172,6 +172,7 @@ import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/A
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
+import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -10078,113 +10079,54 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }, settleMs);
     }, [expandSection]);
 
+    const handleAddRegistrationQuestion = useCallback(() => {
+        expandSection('section-registration-questions');
+        setRegistrationQuestionDrafts((current) => [
+            ...current,
+            {
+                id: createClientId(),
+                prompt: '',
+                answerType: 'TEXT',
+                required: false,
+                sortOrder: current.length,
+            },
+        ]);
+    }, [expandSection]);
+
+    const handleRegistrationQuestionPromptChange = useCallback((index: number, prompt: string) => {
+        setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+            entryIndex === index
+                ? { ...entry, prompt, sortOrder: index }
+                : entry
+        )));
+    }, []);
+
+    const handleRegistrationQuestionRequiredChange = useCallback((index: number, required: boolean) => {
+        setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+            entryIndex === index
+                ? { ...entry, required, sortOrder: index }
+                : entry
+        )));
+    }, []);
+
+    const handleRemoveRegistrationQuestion = useCallback((index: number) => {
+        setRegistrationQuestionDrafts((current) => current
+            .filter((_, entryIndex) => entryIndex !== index)
+            .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })));
+    }, []);
+
     const registrationQuestionsEditor = (
-        <Paper id="section-registration-questions" withBorder radius="md" p="sm" className="scroll-mt-20 bg-white sm:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-                <div>
-                    <Text fw={600} size="sm">Registration questions</Text>
-                    <Text size="xs" c="dimmed">Players answer these during event registration.</Text>
-                </div>
-                <Group gap="xs" wrap="nowrap">
-                    <Button
-                        type="button"
-                        variant="subtle"
-                        size="xs"
-                        aria-expanded={!collapsedSections['section-registration-questions']}
-                        aria-controls="section-registration-questions-content"
-                        onClick={() => toggleSectionCollapse('section-registration-questions')}
-                    >
-                        {collapsedSections['section-registration-questions'] ? 'Expand' : 'Collapse'}
-                    </Button>
-                    <Button
-                        type="button"
-                        size="xs"
-                        onClick={() => {
-                            expandSection('section-registration-questions');
-                            setRegistrationQuestionDrafts((current) => [
-                                ...current,
-                                {
-                                    id: createClientId(),
-                                    prompt: '',
-                                    answerType: 'TEXT',
-                                    required: false,
-                                    sortOrder: current.length,
-                                },
-                            ]);
-                        }}
-                    >
-                        Add Question
-                    </Button>
-                </Group>
-            </div>
-            <Collapse in={!collapsedSections['section-registration-questions']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                <Stack id="section-registration-questions-content" gap="sm" mt="md">
-                    {registrationQuestionsError ? (
-                        <Alert color="red" variant="light">
-                            {registrationQuestionsError}
-                        </Alert>
-                    ) : null}
-                    {registrationQuestionsLoading ? (
-                        <Group gap="sm">
-                            <Loader size="sm" />
-                            <Text size="sm" c="dimmed">Loading questions...</Text>
-                        </Group>
-                    ) : null}
-                    {registrationQuestionDrafts.length > 0 ? (
-                        <Stack gap="sm">
-                            {registrationQuestionDrafts.map((question, index) => (
-                                <Stack key={question.id ?? index} gap="xs">
-                                    <Textarea
-                                        label={`Question ${index + 1}`}
-                                        value={question.prompt ?? ''}
-                                        autosize
-                                        minRows={2}
-                                        maxLength={500}
-                                        onChange={(event) => {
-                                            const value = event.currentTarget.value;
-                                            setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-                                                entryIndex === index
-                                                    ? { ...entry, prompt: value, sortOrder: index }
-                                                    : entry
-                                            )));
-                                        }}
-                                    />
-                                    <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-                                        <Checkbox
-                                            label="Required"
-                                            checked={Boolean(question.required)}
-                                            onChange={(event) => {
-                                                const checked = event.currentTarget.checked;
-                                                setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-                                                    entryIndex === index
-                                                        ? { ...entry, required: checked, sortOrder: index }
-                                                        : entry
-                                                )));
-                                            }}
-                                        />
-                                        <Button
-                                            type="button"
-                                            variant="subtle"
-                                            color="red"
-                                            size="xs"
-                                            onClick={() => setRegistrationQuestionDrafts((current) => current
-                                                .filter((_, entryIndex) => entryIndex !== index)
-                                                .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })))}
-                                        >
-                                            Remove
-                                        </Button>
-                                    </Group>
-                                </Stack>
-                            ))}
-                        </Stack>
-                    ) : (
-                        <Text size="sm" c="dimmed">
-                            No registration questions configured.
-                        </Text>
-                    )}
-                </Stack>
-            </Collapse>
-        </Paper>
+        <RegistrationQuestionsSection
+            collapsed={collapsedSections['section-registration-questions']}
+            questions={registrationQuestionDrafts}
+            loading={registrationQuestionsLoading}
+            error={registrationQuestionsError}
+            onToggle={() => toggleSectionCollapse('section-registration-questions')}
+            onAddQuestion={handleAddRegistrationQuestion}
+            onPromptChange={handleRegistrationQuestionPromptChange}
+            onRequiredChange={handleRegistrationQuestionRequiredChange}
+            onRemoveQuestion={handleRemoveRegistrationQuestion}
+        />
     );
 
     const sheetContent = (
