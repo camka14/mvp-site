@@ -77,7 +77,7 @@ import {
 } from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
-import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
+import { normalizePriceCents } from '@/lib/priceUtils';
 import type { EventTaxHandling } from '@/lib/taxPolicy';
 import {
     normalizeOrganizerManualTaxRateBps,
@@ -192,6 +192,14 @@ import {
     normalizeNumber,
     normalizeTournamentConfigForSetMode,
 } from './eventForm/configDefaults';
+import {
+    formatMobileEditUnsupportedReasons,
+    hasMobileBlockingPaymentPlanConfig,
+    normalizeInstallmentAmounts,
+    normalizeInstallmentDates,
+    normalizeInstallmentRelativeDays,
+    sumInstallmentAmounts,
+} from './eventForm/paymentPlanHelpers';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
@@ -1068,52 +1076,6 @@ const normalizeBoolean = (value: unknown): boolean | undefined => {
         if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
     }
     return undefined;
-};
-
-const normalizeInstallmentAmounts = (amounts: unknown): number[] => normalizePriceCentsArray(amounts);
-
-const sumInstallmentAmounts = (amounts: unknown): number => (
-    normalizeInstallmentAmounts(amounts).reduce((sum, amount) => sum + amount, 0)
-);
-
-const hasMobileBlockingPaymentPlanConfig = (config: {
-    allowPaymentPlans?: boolean | null;
-    installmentCount?: number | null;
-    installmentAmounts?: unknown;
-    installmentDueDates?: unknown;
-    installmentDueRelativeDays?: unknown;
-}): boolean => {
-    const installmentCount = Number.isFinite(Number(config.installmentCount))
-        ? Math.max(0, Math.trunc(Number(config.installmentCount)))
-        : 0;
-    return Boolean(config.allowPaymentPlans)
-        || installmentCount > 0
-        || normalizeInstallmentAmounts(config.installmentAmounts).length > 0
-        || (Array.isArray(config.installmentDueDates) && config.installmentDueDates.length > 0)
-        || (Array.isArray(config.installmentDueRelativeDays) && config.installmentDueRelativeDays.length > 0);
-};
-
-const formatMobileEditUnsupportedReasons = (reasons: string[]): string => {
-    if (reasons.length === 0) return 'unsupported settings';
-    if (reasons.length === 1) return reasons[0];
-    if (reasons.length === 2) return `${reasons[0]} and ${reasons[1]}`;
-    return `${reasons.slice(0, -1).join(', ')}, and ${reasons[reasons.length - 1]}`;
-};
-
-const normalizeInstallmentDates = (dates: unknown): string[] => {
-    if (!Array.isArray(dates)) return [];
-    return dates
-        .map((entry) => parseDateValue(typeof entry === 'string' ? entry : String(entry ?? '')))
-        .filter((value): value is Date => Boolean(value))
-        .map((value) => value.toISOString());
-};
-
-const normalizeInstallmentRelativeDays = (value: unknown): number[] => {
-    if (!Array.isArray(value)) return [];
-    return value
-        .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
-        .filter((entry) => Number.isFinite(entry))
-        .map((entry) => Math.trunc(entry));
 };
 
 const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig | null => {
