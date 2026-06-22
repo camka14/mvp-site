@@ -182,6 +182,7 @@ import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQ
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
+import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
 import { StaffSection } from './eventForm/sections/StaffSection';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -11059,118 +11060,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     unstyled
                                                 />
                                             </AnimatedLayoutSection>
-                                            <AnimatedLayoutSection
-                                                in={eventData.singleDivision && !eventData.allowPaymentPlans}
-                                                className="md:col-span-3 md:col-start-1"
-                                            >
-                                                <Controller
-                                                    name="price"
-                                                    control={control}
-                                                    render={({ field }) => (
-                                                        <CentsInput
-                                                            label="Price"
-                                                            maxCents={MAX_PRICE_CENTS}
-                                                            value={field.value}
-                                                            w="100%"
-                                                            onChange={(nextValue) => {
-                                                                if (isImmutableField('price')) return;
-                                                                field.onChange(nextValue);
-                                                            }}
-                                                            disabled={!hasStripeAccount || isImmutableField('price')}
-                                                        />
-                                                    )}
-                                                />
-                                                <PriceWithFeesPreview
-                                                    amountCents={eventData.price}
-                                                    eventType={eventData.eventType}
-                                                    taxable={eventTaxableForPreview}
-                                                    helperText={null}
-                                                />
-                                                <AnimatedSection in={organizerTaxCollectionAllowed}>
-                                                    <Alert color="yellow" variant="light" mt="sm">
-                                                        {eventTaxPolicyForPreview.organizerResponsibilityMessage}
-                                                    </Alert>
-                                                </AnimatedSection>
-                                                <AnimatedSection in={isOrganizationHostedEvent || organizerTaxCollectionAllowed}>
-                                                    <div className="mt-3">
-                                                        <Controller
-                                                            name="taxHandling"
-                                                            control={control}
-                                                            render={({ field }) => (
-                                                                <MantineSelect
-                                                                    label="Tax handling"
-                                                                    value={field.value}
-                                                                    data={organizerTaxCollectionAllowed
-                                                                        ? [
-                                                                            { value: 'INHERIT_ORG', label: 'Choose tax collection method' },
-                                                                            { value: 'ORGANIZER_MANUAL_TAX', label: 'Enter a sales tax rate' },
-                                                                            { value: 'ORGANIZER_STRIPE_TAX', label: 'Use Stripe Tax calculator' },
-                                                                        ]
-                                                                        : [
-                                                                            { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
-                                                                            { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
-                                                                            { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
-                                                                        ]}
-                                                                    onChange={(value) => {
-                                                                        field.onChange(normalizeEventTaxHandling(value));
-                                                                    }}
-                                                                    disabled={isImmutableField('price')}
-                                                                />
-                                                            )}
-                                                        />
-                                                        <AnimatedSection in={organizerManualTaxSelected}>
-                                                            <div className="mt-3">
-                                                                <Controller
-                                                                    name="organizerManualTaxRateBps"
-                                                                    control={control}
-                                                                    render={({ field }) => (
-                                                                        <NumberInput
-                                                                            label="Sales tax rate"
-                                                                            min={0}
-                                                                            max={25}
-                                                                            suffix="%"
-                                                                            decimalScale={3}
-                                                                            value={(Number(field.value) || 0) / 100}
-                                                                            w="100%"
-                                                                            styles={alignedDetailsFieldStyles}
-                                                                            clampBehavior="blur"
-                                                                            disabled={isImmutableField('price')}
-                                                                            onChange={(value) => {
-                                                                                const numeric = typeof value === 'number' && Number.isFinite(value)
-                                                                                    ? value
-                                                                                    : Number(value);
-                                                                                field.onChange(normalizeOrganizerManualTaxRateBps(numeric * 100));
-                                                                            }}
-                                                                        />
-                                                                    )}
-                                                                />
-                                                            </div>
-                                                        </AnimatedSection>
-                                                    </div>
-                                                </AnimatedSection>
-                                                <AnimatedSection in={!hasStripeAccount}>
-                                                    <div className="mt-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleConnectStripe}
-                                                            disabled={connectingStripe}
-                                                            className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                                        >
-                                                            {connectingStripe ? (
-                                                                <span className="inline-flex items-center gap-2">
-                                                                    <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                                                                    Connecting...
-                                                                </span>
-                                                            ) : (
-                                                                'Connect Stripe Account'
-                                                            )}
-                                                        </button>
-                                                        <p className="text-sm text-gray-600 mt-1">
-                                                            Connect your Stripe account to enable paid events and set a price.
-                                                        </p>
-                                                    </div>
-                                                </AnimatedSection>
-                                            </AnimatedLayoutSection>
+                                            <SingleDivisionPricingControls
+                                                visible={eventData.singleDivision && !eventData.allowPaymentPlans}
+                                                control={control}
+                                                priceCents={eventData.price}
+                                                eventType={eventData.eventType}
+                                                taxable={eventTaxableForPreview}
+                                                maxPriceCents={MAX_PRICE_CENTS}
+                                                numberInputStyles={alignedDetailsFieldStyles}
+                                                hasStripeAccount={hasStripeAccount}
+                                                priceImmutable={isImmutableField('price')}
+                                                organizerTaxCollectionAllowed={organizerTaxCollectionAllowed}
+                                                organizerResponsibilityMessage={eventTaxPolicyForPreview.organizerResponsibilityMessage}
+                                                showTaxHandlingControls={isOrganizationHostedEvent || organizerTaxCollectionAllowed}
+                                                organizerManualTaxSelected={organizerManualTaxSelected}
+                                                organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
+                                                connectingStripe={connectingStripe}
+                                                onConnectStripe={handleConnectStripe}
+                                            />
                                             <motion.div
                                                 layout
                                                 className={eventData.allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
