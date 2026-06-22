@@ -11,7 +11,7 @@ import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData
 import { createLeagueScoringConfig } from '@/types/defaults';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -191,6 +191,7 @@ import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSectio
 import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
 import { SingleDivisionPoolControls } from './eventForm/sections/SingleDivisionPoolControls';
 import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
+import { StaffAssignedOfficialsList } from './eventForm/sections/StaffAssignedOfficialsList';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
@@ -10464,109 +10465,35 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     )}
 
                                     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-                                        <Paper withBorder radius="md" p="md" bg="white">
-                                            <Stack gap="sm">
-                                                <Group justify="space-between" align="center">
-                                                    <Title order={6}>Officials</Title>
-                                                    <Badge radius="xl" variant="light">{assignedOfficialCards.length}</Badge>
-                                                </Group>
-                                                <div
-                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
-                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
-                                                >
-                                                    {assignedOfficialCards.slice(0, officialCardVisibleCount).map((card) => (
-                                                        <Paper key={card.key} withBorder radius="md" p="sm">
-                                                            <Stack gap="xs">
-                                                                <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
-                                                                    <div className="flex-1 min-w-0">
-                                                                        {card.user ? (
-                                                                            <UserCard user={card.user} className="!p-0 !shadow-none" />
-                                                                        ) : (
-                                                                            <Stack gap={2}>
-                                                                                <Text fw={600}>{card.displayName}</Text>
-                                                                                {card.email && <Text size="xs" c="dimmed">{card.email}</Text>}
-                                                                            </Stack>
-                                                                        )}
-                                                                    </div>
-                                                                    {card.status && (
-                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(card.status)}>
-                                                                            {formatStaffStatusLabel(card.status)}
-                                                                        </Badge>
-                                                                    )}
-                                                                </Group>
-                                                                <Group gap="xs" wrap="wrap">
-                                                                    <Badge variant="outline">{formatStaffRoleLabel(card.role)}</Badge>
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="subtle"
-                                                                        color="red"
-                                                                        size="xs"
-                                                                        disabled={card.source === 'assigned' ? isImmutableField('eventOfficials') : false}
-                                                                        onClick={() => {
-                                                                            if (card.source === 'draft' && card.email) {
-                                                                                setPendingStaffInvites((prev) => prev.flatMap((invite) => {
-                                                                                    if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
-                                                                                        return [invite];
-                                                                                    }
-                                                                                    const nextRoles = invite.roles.filter((role) => role !== 'OFFICIAL');
-                                                                                    if (!nextRoles.length) {
-                                                                                        return [];
-                                                                                    }
-                                                                                    return [{ ...invite, roles: nextRoles }];
-                                                                                }));
-                                                                                return;
-                                                                            }
-                                                                            if (card.userId) {
-                                                                                handleRemoveOfficial(card.userId);
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        Remove
-                                                                    </Button>
-                                                                </Group>
-                                                                {card.userId && card.source === 'assigned' && (
-                                                                    <SimpleGrid cols={{ base: 1, md: availableOfficialFieldOptions.length > 0 ? 2 : 1 }} spacing="sm">
-                                                                        <MantineMultiSelect
-                                                                            label="Eligible positions"
-                                                                            description="Used by the scheduler when assigning this official."
-                                                                            data={(eventData.officialPositions || []).map((position) => ({
-                                                                                value: position.id,
-                                                                                label: `${position.name} (${position.count})`,
-                                                                            }))}
-                                                                            value={eventOfficialByUserId.get(card.userId)?.positionIds || []}
-                                                                            onChange={(value) => handleUpdateEventOfficialEligibility(card.userId!, { positionIds: value })}
-                                                                            searchable
-                                                                            clearable={false}
-                                                                            comboboxProps={sharedComboboxProps}
-                                                                        />
-                                                                        {availableOfficialFieldOptions.length > 0 && (
-                                                                            <MantineMultiSelect
-                                                                                label="Eligible fields"
-                                                                                description="Leave empty to allow all event fields."
-                                                                                data={availableOfficialFieldOptions}
-                                                                                value={eventOfficialByUserId.get(card.userId)?.fieldIds || []}
-                                                                                onChange={(value) => handleUpdateEventOfficialEligibility(card.userId!, { fieldIds: value })}
-                                                                                searchable
-                                                                                clearable
-                                                                                comboboxProps={sharedComboboxProps}
-                                                                            />
-                                                                        )}
-                                                                    </SimpleGrid>
-                                                                )}
-                                                                {card.status === 'failed' && (
-                                                                    <Text size="xs" c="red">
-                                                                        Email likely failed to send. Remove and re-add this invite to retry.
-                                                                    </Text>
-                                                                )}
-                                                            </Stack>
-                                                        </Paper>
-                                                    ))}
-                                                    {assignedOfficialCards.length === 0 && (
-                                                        <Text size="sm" c="dimmed">No officials assigned.</Text>
-                                                    )}
-                                                </div>
-                                            </Stack>
-                                        </Paper>
+                                        <StaffAssignedOfficialsList
+                                            cards={assignedOfficialCards}
+                                            visibleCount={officialCardVisibleCount}
+                                            officialPositions={eventData.officialPositions || []}
+                                            eventOfficialByUserId={eventOfficialByUserId}
+                                            availableFieldOptions={availableOfficialFieldOptions}
+                                            assignedOfficialsDisabled={isImmutableField('eventOfficials')}
+                                            comboboxProps={sharedComboboxProps}
+                                            onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
+                                            onRemoveCard={(card) => {
+                                                if (card.source === 'draft' && card.email) {
+                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
+                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
+                                                            return [invite];
+                                                        }
+                                                        const nextRoles = invite.roles.filter((role) => role !== 'OFFICIAL');
+                                                        if (!nextRoles.length) {
+                                                            return [];
+                                                        }
+                                                        return [{ ...invite, roles: nextRoles }];
+                                                    }));
+                                                    return;
+                                                }
+                                                if (card.userId) {
+                                                    handleRemoveOfficial(card.userId);
+                                                }
+                                            }}
+                                            onUpdateEligibility={handleUpdateEventOfficialEligibility}
+                                        />
 
                                         <Paper withBorder radius="md" p="md" bg="white">
                                             <Stack gap="sm">
