@@ -171,6 +171,7 @@ import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
+import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
@@ -11352,79 +11353,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         </div>
                                     </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-6"
-                                    >
-                                        <NumberInput
-                                            label="Bracket Teams"
-                                            min={2}
-                                            max={MAX_STANDARD_NUMBER}
-                                            value={divisionEditor.playoffTeamCount ?? ''}
-                                            w="100%"
-                                            styles={alignedDetailsFieldStyles}
-                                            clampBehavior="strict"
-                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                            onChange={(val) => {
-                                                if (isImmutableField('divisions') || !divisionEditorReady) {
-                                                    return;
-                                                }
-                                                const numeric = typeof val === 'number' ? val : Number(val);
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    playoffTeamCount: Number.isFinite(numeric)
-                                                        ? Math.max(2, Math.trunc(numeric))
-                                                        : null,
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-6"
-                                    >
-                                        <NumberInput
-                                            label="Pool Count"
-                                            min={1}
-                                            max={MAX_STANDARD_NUMBER}
-                                            value={divisionEditor.poolCount ?? ''}
-                                            w="100%"
-                                            styles={alignedDetailsFieldStyles}
-                                            clampBehavior="strict"
-                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                            onChange={(val) => {
-                                                if (isImmutableField('divisions') || !divisionEditorReady) {
-                                                    return;
-                                                }
-                                                const numeric = typeof val === 'number' ? val : Number(val);
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    poolCount: Number.isFinite(numeric)
-                                                        ? Math.max(1, Math.trunc(numeric))
-                                                        : null,
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-6"
-                                    >
-                                        <NumberInput
-                                            label="Pool Team Count"
-                                            value={derivePoolTeamCount(
-                                                eventData.singleDivision
-                                                    ? eventData.maxParticipants
-                                                    : divisionEditor.maxParticipants,
-                                                divisionEditor.poolCount,
-                                            ) ?? ''}
-                                            w="100%"
-                                            styles={alignedDetailsFieldStyles}
-                                            disabled
-                                        />
-                                    </AnimatedLayoutSection>
+                                    <DivisionEditorTournamentPoolControls
+                                        visible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
+                                        playoffTeamCount={divisionEditor.playoffTeamCount}
+                                        poolCount={divisionEditor.poolCount}
+                                        poolTeamCount={derivePoolTeamCount(
+                                            eventData.singleDivision
+                                                ? eventData.maxParticipants
+                                                : divisionEditor.maxParticipants,
+                                            divisionEditor.poolCount,
+                                        )}
+                                        maxStandardNumber={MAX_STANDARD_NUMBER}
+                                        numberInputStyles={alignedDetailsFieldStyles}
+                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                        onPlayoffTeamCountChange={(playoffTeamCount) => {
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                playoffTeamCount,
+                                                error: null,
+                                            }));
+                                        }}
+                                        onPoolCountChange={(poolCount) => {
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                poolCount,
+                                                error: null,
+                                            }));
+                                        }}
+                                    />
                                     <AnimatedLayoutSection
                                         in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
                                         className="md:col-span-12"

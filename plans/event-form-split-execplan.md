@@ -39,6 +39,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T17:57Z) Extracted single-division payment plan controls into `SingleDivisionPaymentPlanControls`.
   - [x] (2026-06-22T18:03Z) Extracted division-editor payment plan controls into `DivisionEditorPaymentPlanControls`.
   - [x] (2026-06-22T18:08Z) Extracted division-editor core fields into `DivisionEditorCoreControls`.
+  - [x] (2026-06-22T18:13Z) Extracted division-editor tournament pool controls into `DivisionEditorTournamentPoolControls`.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -134,6 +135,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract division-editor core fields without moving editor selection logic.
   Rationale: Gender, skill, age, name, capacity, and direct price controls form the first visible editor row group. Passing explicit callbacks keeps selection normalization and editor state ownership in `EventForm` while reducing inline editor JSX.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Extract division-editor tournament pool controls as a small subsection.
+  Rationale: Bracket teams, pool count, and derived pool team count are displayed together and share the same visibility condition. Keeping derived pool calculations in `EventForm` preserves existing editor state ownership while reducing inline JSX.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -298,6 +302,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted single-division payment plan controls while leaving installment state and mutations in `EventForm`.
 - 2026-06-22 / Codex: Extracted division-editor payment plan controls while leaving division installment state and mutations in `EventForm`.
 - 2026-06-22 / Codex: Extracted division-editor core fields while leaving editor state and normalization in `EventForm`.
+- 2026-06-22 / Codex: Extracted division-editor tournament pool controls while leaving derived pool state in `EventForm`.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
