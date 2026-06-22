@@ -4,6 +4,7 @@ import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { getFieldOrganizationId } from '../externalRentalField';
 import { normalizeDivisionKeys } from './divisionForm';
 import { normalizeResourceText, stringSetsEqual } from './shared';
+import { normalizeSlotFieldIds } from './slotForm';
 
 export type FacilityResourceGroup = {
     key: string;
@@ -155,6 +156,58 @@ export const buildFieldCountOptions = (
         const value = start + index;
         return { value: String(value), label: String(value) };
     });
+};
+
+export const resolveFieldsReferencedInSlots = ({
+    selectedFields,
+    immutableFields,
+    slots,
+    hasRestrictedImmutableFields,
+}: {
+    selectedFields: Field[];
+    immutableFields: Field[];
+    slots: Array<{ scheduledFieldId?: string; scheduledFieldIds?: string[] }>;
+    hasRestrictedImmutableFields: boolean;
+}): Field[] => {
+    if (!slots.length) {
+        if (selectedFields.length) {
+            return selectedFields;
+        }
+        return hasRestrictedImmutableFields ? immutableFields : [];
+    }
+
+    const fieldMap = new Map<string, Field>();
+    selectedFields.forEach((field) => {
+        if (field?.$id) {
+            fieldMap.set(field.$id, field);
+        }
+    });
+
+    const seen = new Set<string>();
+    const picked: Field[] = [];
+
+    slots.forEach((slot) => {
+        normalizeSlotFieldIds(slot).forEach((slotFieldId) => {
+            if (seen.has(slotFieldId)) {
+                return;
+            }
+            const resolved = fieldMap.get(slotFieldId);
+            if (resolved) {
+                picked.push(resolved);
+            }
+            seen.add(slotFieldId);
+        });
+    });
+
+    if (!picked.length && selectedFields.length) {
+        return selectedFields;
+    }
+
+    if (!picked.length && hasRestrictedImmutableFields) {
+        return immutableFields;
+    }
+
+    return picked;
 };
 
 export const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));

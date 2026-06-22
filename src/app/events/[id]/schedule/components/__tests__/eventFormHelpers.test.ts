@@ -35,6 +35,7 @@ import {
   mergeFieldsById,
   mergeOrganizationFieldsIntoPool,
   removeOrganizationFieldsFromPool,
+  resolveFieldsReferencedInSlots,
   toFieldIdList,
 } from '../eventForm/resourceGroups';
 import {
@@ -317,6 +318,29 @@ describe('event form resource grouping helpers', () => {
     expect(removeOrganizationFieldsFromPool(merged, 'host_org').map((field) => field.$id)).toEqual(['local_1']);
     expect(isGeneratedLocalFieldPlaceholder(makeField({ $id: 'local_1', name: 'Field 1' }), 0)).toBe(true);
     expect(isGeneratedLocalFieldPlaceholder(makeField({ $id: 'local_1', name: 'Custom Court' }), 0)).toBe(false);
+  });
+
+  it('resolves selected fields referenced by slots and falls back to immutable fields when restricted', () => {
+    const main = makeField({ $id: 'main', name: 'Main' });
+    const side = makeField({ $id: 'side', name: 'Side' });
+    const immutable = makeField({ $id: 'locked', name: 'Locked' });
+
+    expect(resolveFieldsReferencedInSlots({
+      selectedFields: [main, side],
+      immutableFields: [immutable],
+      slots: [
+        { scheduledFieldIds: ['side', 'main', 'side'] },
+        { scheduledFieldId: 'missing' },
+      ],
+      hasRestrictedImmutableFields: true,
+    }).map((field) => field.$id)).toEqual(['side', 'main']);
+
+    expect(resolveFieldsReferencedInSlots({
+      selectedFields: [],
+      immutableFields: [immutable],
+      slots: [],
+      hasRestrictedImmutableFields: true,
+    })).toEqual([immutable]);
   });
 
   it('compares fields with division sets independent of division order', () => {

@@ -126,6 +126,7 @@ import {
     isRentedResourceForOrganization,
     isSelectableOrganizationResource,
     mergeFieldsById,
+    resolveFieldsReferencedInSlots,
     toFieldIdList,
 } from './eventForm/resourceGroups';
 import {
@@ -4868,49 +4869,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
     }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
 
-    const fieldsReferencedInSlots = useMemo(() => {
-        const availableFields = selectedFields;
-        if (!leagueSlots.length) {
-            if (availableFields.length) {
-                return availableFields;
-            }
-            return hasRestrictedImmutableFields ? immutableFields : ([] as Field[]);
-        }
-
-        const fieldMap = new Map<string, Field>();
-        availableFields.forEach(field => {
-            if (field?.$id) {
-                fieldMap.set(field.$id, field);
-            }
-        });
-
-        const seen = new Set<string>();
-        const picked: Field[] = [];
-
-        leagueSlots.forEach(slot => {
-            const slotFieldIds = normalizeSlotFieldIds(slot);
-            slotFieldIds.forEach((slotFieldId) => {
-                if (seen.has(slotFieldId)) {
-                    return;
-                }
-                const resolved = fieldMap.get(slotFieldId);
-                if (resolved) {
-                    picked.push(resolved);
-                }
-                seen.add(slotFieldId);
-            });
-        });
-
-        if (!picked.length && availableFields.length) {
-            return availableFields;
-        }
-
-        if (!picked.length && hasRestrictedImmutableFields) {
-            return immutableFields;
-        }
-
-        return picked;
-    }, [hasRestrictedImmutableFields, immutableFields, leagueSlots, selectedFields]);
+    const fieldsReferencedInSlots = useMemo(
+        () => resolveFieldsReferencedInSlots({
+            selectedFields,
+            immutableFields,
+            slots: leagueSlots,
+            hasRestrictedImmutableFields,
+        }),
+        [hasRestrictedImmutableFields, immutableFields, leagueSlots, selectedFields],
+    );
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
