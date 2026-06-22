@@ -51,12 +51,13 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T18:49Z) Extracted non-organization staff search and invite UI into `StaffNonOrganizationInvitePanel`.
   - [x] (2026-06-22T18:52Z) Extracted assigned officials list into `StaffAssignedOfficialsList`.
   - [x] (2026-06-22T18:59Z) Extracted assigned host-side staff list into `StaffAssignedHostsList`.
-- [ ] Extract stateful hooks only after section props reveal stable boundaries.
+- [x] Extract stateful hooks only after section props reveal stable boundaries.
   - [x] (2026-06-22T19:08Z) Extracted registration question draft loading into `useRegistrationQuestionDrafts`.
   - [x] (2026-06-22T19:12Z) Extracted section navigation and collapse state into `useEventFormSectionNavigation`.
   - [x] (2026-06-22T19:16Z) Extracted template document loading and row normalization into `useTemplateDocuments`.
   - [x] (2026-06-22T19:21Z) Extracted rental booking resource loading and rental-field merging into `useRentalBookingResources`.
   - [x] (2026-06-22T19:26Z) Extracted organization field hydration and loading state into `useOrganizationFieldHydration`.
+- [x] (2026-06-22T19:30Z) Completed the stable hook extraction pass. Larger form-state hooks remain intentionally deferred until schema/default helpers are separated further.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
 
@@ -74,6 +75,8 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Evidence: The schema calls local slot-conflict, rental mismatch, resource-count, and division coverage validation helpers. The event default builder also shares local normalization helpers that have not yet been separated.
 - Observation: Rental slot helper tests should use local datetime strings when asserting local slot minute math.
   Evidence: A first fixture used a `Z` timestamp and correctly flowed through `parseLocalDateTime` as UTC before local conversion, which shifted the expected start/end minutes.
+- Observation: Schema/default extraction is still coupled after the first stable hook pass.
+  Evidence: `buildEventFormSchema` still validates through slot conflicts, rental mismatch errors, organization/local resource counts, division coverage, and playoff/pool placement rules. `buildDefaultFormValues` still depends on active event state, immutable defaults, sports hydration, organization/rental fields, and local field sanitization.
 
 ## Decision Log
 
@@ -202,6 +205,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract organization field hydration while keeping field sanitization local.
   Rationale: Fetching organization fields and tracking `fieldsLoading` is a cohesive async boundary. The field sanitizer is still shared by many local default/build paths, so the hook accepts it as a parameter until helper extraction can move that logic safely.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Defer larger state hooks until schema/default extraction is narrowed.
+  Rationale: Remaining state clusters such as division editor state, dirty tracking, and draft building are still entangled with schema/default helpers. Extracting them now would either create very large prop surfaces or move validation/default behavior at the same time.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -383,6 +389,7 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted template document loading and row normalization into `useTemplateDocuments`.
 - 2026-06-22 / Codex: Extracted rental booking resource loading and rental-field merging into `useRentalBookingResources`.
 - 2026-06-22 / Codex: Extracted organization field hydration and loading state into `useOrganizationFieldHydration`.
+- 2026-06-22 / Codex: Completed the stable hook extraction pass and deferred larger form-state hooks until schema/default helpers can be separated with a narrower behavior surface.
 - 2026-06-22 / Codex: Added focused helper tests for the extracted pure modules and kept the existing EventForm integration suite passing.
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
