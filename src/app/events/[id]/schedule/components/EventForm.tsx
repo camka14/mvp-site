@@ -173,6 +173,7 @@ import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorC
 import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
 import { DivisionEditorPlayoffPlacementControls } from './eventForm/sections/DivisionEditorPlayoffPlacementControls';
+import { DivisionEditorTournamentConfigControls } from './eventForm/sections/DivisionEditorTournamentConfigControls';
 import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
@@ -11317,39 +11318,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             }));
                                         }}
                                     />
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                        className="md:col-span-12"
-                                    >
-                                        <LeagueFields
-                                            configurationTitle="Pool Configuration"
-                                            leagueData={divisionEditor.leagueConfig}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            participantCount={divisionEditor.maxParticipants ?? undefined}
-                                            onLeagueDataChange={setDivisionEditorLeagueConfig}
-                                            slots={[]}
-                                            onAddSlot={() => undefined}
-                                            onUpdateSlot={() => undefined}
-                                            onRemoveSlot={() => undefined}
-                                            fields={[]}
-                                            fieldsLoading={false}
-                                            showPlayoffSettings={false}
-                                            showTimeslots={false}
-                                            unstyled
-                                        />
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
-                                        className="md:col-span-12"
-                                    >
-                                        <TournamentFields
-                                            title="Tournament Configuration"
-                                            tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                            setTournamentData={setDivisionEditorPlayoffConfig}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            unstyled
-                                        />
-                                    </AnimatedLayoutSection>
+                                    <DivisionEditorTournamentConfigControls
+                                        poolConfigVisible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                        tournamentConfigVisible={eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
+                                        leagueData={divisionEditor.leagueConfig}
+                                        tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                        sport={eventData.sportConfig ?? undefined}
+                                        participantCount={divisionEditor.maxParticipants ?? undefined}
+                                        onLeagueDataChange={setDivisionEditorLeagueConfig}
+                                        onTournamentDataChange={setDivisionEditorPlayoffConfig}
+                                    />
                                 </motion.div>
                                 <AnimatedLayoutSection in={eventData.singleDivision}>
                                     <Text size="xs" c="dimmed">
