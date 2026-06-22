@@ -30,6 +30,53 @@ export const formatMobileEditUnsupportedReasons = (reasons: string[]): string =>
     return `${reasons.slice(0, -1).join(', ')}, and ${reasons[reasons.length - 1]}`;
 };
 
+type MobileEditPaymentPlanConfig = {
+    allowPaymentPlans?: boolean | null;
+    installmentCount?: number | null;
+    installmentAmounts?: unknown;
+    installmentDueDates?: unknown;
+    installmentDueRelativeDays?: unknown;
+};
+
+type BuildMobileEditUnsupportedReasonsOptions = {
+    eventType?: string | null;
+    includePlayoffs?: boolean | null;
+    splitLeaguePlayoffDivisions?: boolean | null;
+    eventPaymentPlanConfig: MobileEditPaymentPlanConfig;
+    divisionPaymentPlanConfigs?: MobileEditPaymentPlanConfig[];
+    editorPaymentPlanConfig?: MobileEditPaymentPlanConfig;
+};
+
+export const buildMobileEditUnsupportedReasons = ({
+    eventType,
+    includePlayoffs,
+    splitLeaguePlayoffDivisions,
+    eventPaymentPlanConfig,
+    divisionPaymentPlanConfigs = [],
+    editorPaymentPlanConfig,
+}: BuildMobileEditUnsupportedReasonsOptions): string[] => {
+    const reasons: string[] = [];
+    if (eventType === 'LEAGUE' && includePlayoffs && splitLeaguePlayoffDivisions) {
+        reasons.push('split league/playoff divisions');
+    }
+    const hasEventPaymentPlans = hasMobileBlockingPaymentPlanConfig(eventPaymentPlanConfig);
+    const hasDivisionPaymentPlans = divisionPaymentPlanConfigs
+        .some((detail) => hasMobileBlockingPaymentPlanConfig(detail));
+    const hasEditorPaymentPlans = editorPaymentPlanConfig
+        ? hasMobileBlockingPaymentPlanConfig(editorPaymentPlanConfig)
+        : false;
+    if (hasEventPaymentPlans || hasDivisionPaymentPlans || hasEditorPaymentPlans) {
+        reasons.push('payment plans/installments');
+    }
+    return reasons;
+};
+
+export const buildMobileEditUnsupportedWarning = (reasons: string[]): string | null => (
+    reasons.length > 0
+        ? `This event is not editable on mobile because it uses ${formatMobileEditUnsupportedReasons(reasons)}. Teams and matches can still be managed from mobile.`
+        : null
+);
+
 const parseInstallmentDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);

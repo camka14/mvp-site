@@ -219,8 +219,8 @@ import {
     normalizeTournamentConfigForSetMode,
 } from './eventForm/configDefaults';
 import {
-    formatMobileEditUnsupportedReasons,
-    hasMobileBlockingPaymentPlanConfig,
+    buildMobileEditUnsupportedReasons,
+    buildMobileEditUnsupportedWarning,
     normalizeInstallmentAmounts,
     normalizeInstallmentRelativeDays,
     sumInstallmentAmounts,
@@ -1887,30 +1887,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         && eventData.splitLeaguePlayoffDivisions
         && !eventData.singleDivision,
     );
-    const mobileEditUnsupportedReasons = useMemo(() => {
-        const reasons: string[] = [];
-        if (
-            eventData.eventType === 'LEAGUE'
-            && leagueData.includePlayoffs
-            && eventData.splitLeaguePlayoffDivisions
-        ) {
-            reasons.push('split league/playoff divisions');
-        }
-        const hasEventPaymentPlans = hasMobileBlockingPaymentPlanConfig({
+    const mobileEditUnsupportedReasons = useMemo(() => buildMobileEditUnsupportedReasons({
+        eventType: eventData.eventType,
+        includePlayoffs: leagueData.includePlayoffs,
+        splitLeaguePlayoffDivisions: eventData.splitLeaguePlayoffDivisions,
+        eventPaymentPlanConfig: {
             allowPaymentPlans: eventData.allowPaymentPlans,
             installmentCount: eventData.installmentCount,
             installmentAmounts: eventData.installmentAmounts,
             installmentDueDates: eventData.installmentDueDates,
             installmentDueRelativeDays: eventData.installmentDueRelativeDays,
-        });
-        const hasDivisionPaymentPlans = (eventData.divisionDetails || [])
-            .some((detail) => hasMobileBlockingPaymentPlanConfig(detail));
-        const hasEditorPaymentPlans = hasMobileBlockingPaymentPlanConfig(divisionEditor);
-        if (hasEventPaymentPlans || hasDivisionPaymentPlans || hasEditorPaymentPlans) {
-            reasons.push('payment plans/installments');
-        }
-        return reasons;
-    }, [
+        },
+        divisionPaymentPlanConfigs: eventData.divisionDetails || [],
+        editorPaymentPlanConfig: divisionEditor,
+    }), [
         divisionEditor,
         eventData.allowPaymentPlans,
         eventData.divisionDetails,
@@ -1922,9 +1912,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.splitLeaguePlayoffDivisions,
         leagueData.includePlayoffs,
     ]);
-    const mobileEditUnsupportedWarning = mobileEditUnsupportedReasons.length > 0
-        ? `This event is not editable on mobile because it uses ${formatMobileEditUnsupportedReasons(mobileEditUnsupportedReasons)}. Teams and matches can still be managed from mobile.`
-        : null;
+    const mobileEditUnsupportedWarning = useMemo(
+        () => buildMobileEditUnsupportedWarning(mobileEditUnsupportedReasons),
+        [mobileEditUnsupportedReasons],
+    );
     const currentSportRequiresSets = useMemo(() => {
         const selectedSport = (
             eventData.sportId ? sportsById.get(eventData.sportId) : null
