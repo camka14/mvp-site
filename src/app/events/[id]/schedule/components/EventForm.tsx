@@ -169,6 +169,7 @@ import {
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
+import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
@@ -11145,59 +11146,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
                                         transition={DIVISION_LAYOUT_TRANSITION}
                                     >
-                                    <MantineSelect
-                                        label="Gender"
-                                        placeholder="Select gender"
-                                        data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-                                        value={divisionEditor.gender || null}
-                                        className="md:col-span-4"
-                                        maw={280}
+                                    <DivisionEditorCoreControls
+                                        gender={divisionEditor.gender}
+                                        skillDivisionTypeId={divisionEditor.skillDivisionTypeId}
+                                        ageDivisionTypeId={divisionEditor.ageDivisionTypeId}
+                                        name={divisionEditor.name}
+                                        maxParticipants={divisionEditor.maxParticipants}
+                                        price={divisionEditor.price}
+                                        allowPaymentPlans={divisionEditor.allowPaymentPlans}
+                                        singleDivision={eventData.singleDivision}
+                                        teamSignup={eventData.teamSignup}
+                                        eventType={eventData.eventType}
+                                        taxable={eventTaxableForPreview}
+                                        divisionEditorReady={divisionEditorReady}
+                                        divisionsImmutable={isImmutableField('divisions')}
+                                        hasStripeAccount={hasStripeAccount}
+                                        maxStandardNumber={MAX_STANDARD_NUMBER}
+                                        maxPriceCents={MAX_PRICE_CENTS}
+                                        maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                        divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
+                                        genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                        skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
+                                        ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
                                         comboboxProps={sharedComboboxProps}
-                                        disabled={isImmutableField('divisions')}
-                                        onChange={(value) => updateDivisionEditorSelection({
-                                            gender: (value as '' | 'M' | 'F' | 'C') || '',
-                                        })}
-                                    />
-                                    <MantineSelect
-                                        label="Skill Division"
-                                        placeholder="Select skill division"
-                                        data={skillDivisionTypeSelectOptions}
-                                        value={divisionEditor.skillDivisionTypeId || null}
-                                        className="md:col-span-4"
-                                        maw={280}
-                                        comboboxProps={sharedComboboxProps}
-                                        disabled={isImmutableField('divisions')}
-                                        searchable
-                                        allowDeselect={false}
-                                        onChange={(value) => updateDivisionEditorSelection({
-                                            skillDivisionTypeId: value || '',
-                                        })}
-                                    />
-                                    <MantineSelect
-                                        label="Age Division"
-                                        placeholder="Select age division"
-                                        data={ageDivisionTypeSelectOptions}
-                                        value={divisionEditor.ageDivisionTypeId || null}
-                                        className="md:col-span-4"
-                                        maw={320}
-                                        comboboxProps={sharedComboboxProps}
-                                        disabled={isImmutableField('divisions')}
-                                        searchable
-                                        allowDeselect={false}
-                                        onChange={(value) => updateDivisionEditorSelection({
-                                            ageDivisionTypeId: value || '',
-                                        })}
-                                    />
-                                    <TextInput
-                                        label="Division Name"
-                                        placeholder="Division display name"
-                                        value={divisionEditor.name}
-                                        className="md:col-span-6"
-                                        maw={520}
-                                        maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                        onChange={(event) => {
-                                            const nextName = event.currentTarget.value;
+                                        onGenderChange={(gender) => updateDivisionEditorSelection({ gender })}
+                                        onSkillDivisionChange={(skillDivisionTypeId) => updateDivisionEditorSelection({ skillDivisionTypeId })}
+                                        onAgeDivisionChange={(ageDivisionTypeId) => updateDivisionEditorSelection({ ageDivisionTypeId })}
+                                        onNameChange={(nextName) => {
                                             setDivisionEditor((prev) => ({
                                                 ...prev,
                                                 name: nextName,
@@ -11205,71 +11180,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 error: null,
                                             }));
                                         }}
+                                        onMaxParticipantsChange={(value) => {
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                maxParticipants: normalizePlayoffDivisionParticipantCount(value),
+                                                error: null,
+                                            }));
+                                        }}
+                                        onPriceChange={(nextValue) => {
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                price: normalizePriceCents(nextValue),
+                                                error: null,
+                                            }));
+                                        }}
                                     />
-                                    <AnimatedLayoutSection in={!eventData.singleDivision} className="md:col-span-3">
-                                        <NumberInput
-                                            label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
-                                            min={0}
-                                            max={MAX_STANDARD_NUMBER}
-                                            value={divisionEditor.maxParticipants ?? ''}
-                                            w="100%"
-                                            maw={220}
-                                            clampBehavior="strict"
-                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                            onChange={(val) => {
-                                                if (isImmutableField('divisions') || !divisionEditorReady) {
-                                                    return;
-                                                }
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    maxParticipants: normalizePlayoffDivisionParticipantCount(val),
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                        {divisionMaxParticipantsWarning ? (
-                                            <Text size="xs" c="orange.7" mt={4}>
-                                                {divisionMaxParticipantsWarning}
-                                            </Text>
-                                        ) : null}
-                                    </AnimatedLayoutSection>
-                                    <AnimatedLayoutSection
-                                        in={!eventData.singleDivision && !divisionEditor.allowPaymentPlans}
-                                        className="md:col-span-3 md:col-start-1"
-                                    >
-                                        <div>
-                                            <CentsInput
-                                                label="Division Price"
-                                                maxCents={MAX_PRICE_CENTS}
-                                                value={divisionEditor.price}
-                                                maw={220}
-                                                disabled={
-                                                    isImmutableField('divisions')
-                                                    || !divisionEditorReady
-                                                    || !hasStripeAccount
-                                                }
-                                                onChange={(nextValue) => {
-                                                    if (
-                                                        isImmutableField('divisions')
-                                                        || !divisionEditorReady
-                                                        || !hasStripeAccount
-                                                    ) {
-                                                        return;
-                                                    }
-                                                    setDivisionEditor((prev) => ({
-                                                        ...prev,
-                                                        price: normalizePriceCents(nextValue),
-                                                        error: null,
-                                                    }));
-                                                }}
-                                            />
-                                            <PriceWithFeesPreview
-                                                amountCents={divisionEditor.price}
-                                                eventType={eventData.eventType}
-                                                taxable={eventTaxableForPreview}
-                                            />
-                                        </div>
-                                    </AnimatedLayoutSection>
                                     {!eventData.singleDivision ? (
                                         <DivisionEditorPaymentPlanControls
                                             allowPaymentPlans={divisionEditor.allowPaymentPlans}
