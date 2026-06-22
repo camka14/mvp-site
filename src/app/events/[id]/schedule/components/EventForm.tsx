@@ -8,7 +8,7 @@ import TournamentFields from '@/app/discover/components/TournamentFields';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, Switch, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -271,8 +271,8 @@ import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/A
 import {
     buildEventFormSectionNavigationItems,
     getVisibleSectionNavigationItems,
-    SectionNavigation,
 } from './eventForm/components/SectionNavigation';
+import { EventFormShell } from './eventForm/components/EventFormShell';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
@@ -5981,30 +5981,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     const sheetContent = (
-        <div className="w-full space-y-6">
-            <div className="p-4">
-                <div className="grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-                    <SectionNavigation
-                        items={visibleSectionNavItems}
-                        activeSectionId={activeSectionId}
-                        variant="desktop"
-                        onSelectSection={scrollToSection}
-                    />
-
-                    <div className="min-w-0">
-                        <SectionNavigation
-                            items={visibleSectionNavItems}
-                            activeSectionId={activeSectionId}
-                            variant="mobile"
-                            onSelectSection={scrollToSection}
-                        />
-                        <div className="w-full">
-                            <form id={formId} className="space-y-8">
-                        {mobileEditUnsupportedWarning && (
-                            <Alert color="yellow" variant="light" radius="md">
-                                {mobileEditUnsupportedWarning}
-                            </Alert>
-                        )}
+        <EventFormShell
+            formId={formId}
+            sectionNavItems={visibleSectionNavItems}
+            activeSectionId={activeSectionId}
+            mobileEditUnsupportedWarning={mobileEditUnsupportedWarning}
+            leagueWarning={leagueWarning}
+            leagueError={leagueError}
+            onSelectSection={scrollToSection}
+        >
                         <BasicInformationSection
                             collapsed={collapsedSections['section-basic-information']}
                             control={control}
@@ -6902,28 +6887,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
                             />
                         </ScheduleConfigSection>
-                    </form>
-                </div>
-
-                {/* Footer */}
-                <div className="border-t p-6 flex justify-between items-center">
-                    <div className="flex flex-col gap-3">
-                        {leagueWarning && (
-                            <Alert color="yellow" radius="md">
-                                {leagueWarning}
-                            </Alert>
-                        )}
-                        {leagueError && (
-                            <Alert color="red" radius="md">
-                                {leagueError}
-                            </Alert>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-            </div>
-        </div>
+        </EventFormShell>
     );
 
     if (!open) {
