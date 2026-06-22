@@ -25,6 +25,10 @@ import {
   normalizeImmutableTimeSlots,
 } from '../eventForm/immutableDefaults';
 import {
+  buildSportOptions,
+  buildTemplateOptions,
+} from '../eventForm/formOptions';
+import {
   buildRentalBookingTimeSlot,
   buildRentalLeagueFieldOptions,
   buildRentalResourceFields,
@@ -129,6 +133,31 @@ describe('event form immutable default helpers', () => {
       scheduledFieldId: 'court_1',
       scheduledFieldIds: ['court_1'],
     });
+  });
+});
+
+describe('event form option helpers', () => {
+  it('builds sport and template select options with fallback labels', () => {
+    expect(buildSportOptions([
+      { $id: 'soccer', name: 'Soccer' },
+      { $id: 'pickleball', name: 'Pickleball' },
+    ] as any)).toEqual([
+      { value: 'soccer', label: 'Soccer' },
+      { value: 'pickleball', label: 'Pickleball' },
+    ]);
+
+    expect(buildTemplateOptions([
+      {
+        $id: 'template_1',
+        organizationId: 'org_1',
+        title: '',
+        signOnce: true,
+        type: 'TEXT',
+        requiredSignerType: 'PARENT_GUARDIAN',
+      },
+    ])).toEqual([
+      { value: 'template_1', label: 'Untitled Template (TEXT, Parent/Guardian)' },
+    ]);
   });
 });
 

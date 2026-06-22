@@ -66,9 +66,6 @@ import {
     getDivisionTypeOptionsForSport,
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
-import {
-    getRequiredSignerTypeLabel,
-} from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents } from '@/lib/priceUtils';
@@ -156,6 +153,10 @@ import type {
     EventFormState,
     EventFormValues,
 } from './eventForm/formTypes';
+import {
+    buildSportOptions,
+    buildTemplateOptions,
+} from './eventForm/formOptions';
 import { buildEventFormDefaultValues } from './eventForm/defaultValues';
 import {
     applyImmutableEventDefaults,
@@ -454,7 +455,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     });
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
-    const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
+    const sportOptions = useMemo(() => buildSportOptions(sports), [sports]);
 
     const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
 
@@ -791,14 +792,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
 
     const templateOptions = useMemo(
-        () => templateDocuments.map((template) => {
-            const templateType = template.type ?? 'PDF';
-            const signerLabel = getRequiredSignerTypeLabel(template.requiredSignerType);
-            return {
-                value: template.$id,
-                label: `${template.title || 'Untitled Template'} (${templateType}, ${signerLabel})`,
-            };
-        }),
+        () => buildTemplateOptions(templateDocuments),
         [templateDocuments],
     );
 
