@@ -22,6 +22,7 @@ The visible behavior should not change as a result of this plan. A manager or pl
   - [x] (2026-06-22T07:48Z) Extracted `LeagueScoringConfigSection` as the first section component.
   - [x] (2026-06-22T08:14Z) Extracted `MatchRulesConfigSection` while keeping match-rules mutation logic in `EventForm`.
   - [x] (2026-06-22T08:34Z) Extracted `RegistrationQuestionsSection` with explicit draft update callbacks.
+  - [x] (2026-06-22T09:02Z) Extracted `BasicInformationSection` with typed form props.
 - [ ] Extract stateful hooks only after section props reveal stable boundaries.
 - [ ] Run focused tests, TypeScript, and browser smoke checks after each milestone.
 - [ ] Update this plan after each stopping point with completed work, discoveries, and any design decisions.
@@ -66,6 +67,9 @@ The visible behavior should not change as a result of this plan. A manager or pl
   Date/Author: 2026-06-22 / Codex
 - Decision: Extract Registration Questions with callbacks instead of passing the state setter through.
   Rationale: Explicit add, prompt, required, and remove callbacks keep mutation rules in `EventForm` while allowing the repeated editor UI to move into a section component.
+  Date/Author: 2026-06-22 / Codex
+- Decision: Export `EventFormValues` as a type-only contract for section components.
+  Rationale: Basic Information needs `react-hook-form` control, errors, and `setValue` types. Exporting the type keeps the section typed without moving schema/default logic prematurely.
   Date/Author: 2026-06-22 / Codex
 
 ## Outcomes & Retrospective
@@ -218,3 +222,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Started section extraction by moving League Scoring Config into `eventForm/sections/LeagueScoringConfigSection.tsx`.
 - 2026-06-22 / Codex: Extracted Match Rules into `eventForm/sections/MatchRulesConfigSection.tsx` and added a named match-rules change handler in `EventForm`.
 - 2026-06-22 / Codex: Extracted Registration Questions into `eventForm/sections/RegistrationQuestionsSection.tsx`.
+- 2026-06-22 / Codex: Extracted Basic Information into `eventForm/sections/BasicInformationSection.tsx`.

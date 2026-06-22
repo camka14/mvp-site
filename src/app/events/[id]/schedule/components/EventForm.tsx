@@ -8,7 +8,6 @@ import { eventService } from '@/lib/eventService';
 import { teamService } from '@/lib/teamService';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
-import { ImageUploader } from '@/components/ui/ImageUploader';
 import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import { useSports } from '@/app/hooks/useSports';
@@ -170,6 +169,7 @@ import {
 } from './eventForm/constants';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
+import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
@@ -2345,7 +2345,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
 };
 };
 
-type EventFormValues = EventFormState & {
+export type EventFormValues = EventFormState & {
     leagueSlots: LeagueSlotForm[];
     leagueData: LeagueConfig;
     playoffData: TournamentConfig;
@@ -10192,139 +10192,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 {mobileEditUnsupportedWarning}
                             </Alert>
                         )}
-                        {/* Basic Information */}
-                        <Paper
-                            id="section-basic-information"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-20 bg-gray-50"
-                        >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Basic Information</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-basic-information']}
-                                    aria-controls="section-basic-information-content"
-                                    onClick={() => toggleSectionCollapse('section-basic-information')}
-                                >
-                                    {collapsedSections['section-basic-information'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-basic-information']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                            <div id="section-basic-information-content" className="mt-4 mb-6">
-                                <div className="block text-sm font-medium mb-2">Event Image</div>
-                                <ImageUploader
-                                    currentImageUrl={selectedImageUrl}
-                                    className="w-full max-w-md"
-                                    placeholder="Select event image"
-                                    onChange={allowImageEdit ? handleImageChange : undefined}
-                                    readOnly={!allowImageEdit}
-                                />
-                                {errors.imageId && (
-                                    <p className="text-red-600 text-sm mt-1">{errors.imageId.message as string}</p>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-                                <Controller
-                                    name="name"
-                                    control={control}
-                                    rules={{ required: 'Event name is required' }}
-                                    render={({ field, fieldState }) => (
-                                        <TextInput
-                                            label="Event Name"
-                                            withAsterisk
-                                            disabled={isImmutableField('name')}
-                                            placeholder="Enter event name"
-                                            error={fieldState.error?.message as string | undefined}
-                                            maw={520}
-                                            maxLength={MAX_EVENT_NAME_LENGTH}
-                                            className="md:col-span-6"
-                                            value={field.value ?? ''}
-                                            name={field.name}
-                                            onBlur={field.onBlur}
-                                            ref={field.ref}
-                                            onChange={(event) => {
-                                                if (isImmutableField('name')) return;
-                                                setValue('name', event.currentTarget.value, { shouldDirty: true, shouldValidate: true });
-                                            }}
-                                        />
-                                    )}
-                                />
-
-                                <div className="md:col-span-6">
-                                    <Controller
-                                        name="sportId"
-                                        control={control}
-                                        rules={{ required: 'Sport is required' }}
-                                        render={({ field, fieldState }) => (
-                                            <MantineSelect
-                                                label="Sport"
-                                                placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
-                                                data={sportOptions}
-                                                value={field.value || null}
-                                                comboboxProps={sharedComboboxProps}
-                                                disabled={isImmutableField('sport') || sportsLoading}
-                                                onChange={(value) => {
-                                                    if (isImmutableField('sport')) return;
-                                                    const next = (value || '').trim();
-                                                    if (next === (field.value || '').trim()) {
-                                                        return;
-                                                    }
-                                                    setValue(
-                                                        'sportConfig',
-                                                        next ? (sportsById.get(next) ?? null) : null,
-                                                        { shouldDirty: false, shouldValidate: false },
-                                                    );
-                                                    setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
-                                                    field.onChange(next);
-                                                }}
-                                                searchable
-                                                nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
-                                                rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
-                                                error={fieldState.error?.message}
-                                                withAsterisk
-                                                maw={360}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                            </div>
-
-                            {sportsError && (
-                                <Alert color="red" radius="md" mt="sm">
-                                    Unable to load sports at the moment. Please refresh the page and try again.
-                                </Alert>
-                            )}
-
-                            <Controller
-                                name="description"
-                                control={control}
-                                render={({ field }) => (
-                                    <Textarea
-                                        label="Description"
-                                        disabled={isImmutableField('description')}
-                                        placeholder="Describe your event..."
-                                        autosize
-                                        minRows={3}
-                                        className="mt-4"
-                                        maxLength={MAX_DESCRIPTION_LENGTH}
-                                        value={field.value ?? ''}
-                                        name={field.name}
-                                        onBlur={field.onBlur}
-                                        ref={field.ref}
-                                        onChange={(event) => {
-                                            if (isImmutableField('description')) return;
-                                            setValue('description', event.currentTarget.value, { shouldDirty: true, shouldValidate: false });
-                                        }}
-                                    />
-                                )}
-                            />
-                            </Collapse>
-                        </Paper>
+                        <BasicInformationSection
+                            collapsed={collapsedSections['section-basic-information']}
+                            control={control}
+                            errors={errors}
+                            selectedImageUrl={selectedImageUrl}
+                            allowImageEdit={allowImageEdit}
+                            sportsLoading={sportsLoading}
+                            sportOptions={sportOptions}
+                            sportsById={sportsById}
+                            sportsError={sportsError}
+                            comboboxProps={sharedComboboxProps}
+                            maxEventNameLength={MAX_EVENT_NAME_LENGTH}
+                            maxDescriptionLength={MAX_DESCRIPTION_LENGTH}
+                            isImmutableField={isImmutableField}
+                            setValue={setValue}
+                            onToggle={() => toggleSectionCollapse('section-basic-information')}
+                            onImageChange={handleImageChange}
+                        />
 
                         {/* Event Details */}
                         <Paper
