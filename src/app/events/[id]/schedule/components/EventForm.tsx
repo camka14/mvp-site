@@ -182,6 +182,9 @@ import {
 } from './eventForm/constants';
 import {
     buildDivisionLeagueConfig,
+    buildDefaultLeagueData,
+    buildDefaultPlayoffData,
+    buildDefaultTournamentData,
     buildTournamentConfig,
     extractTournamentConfigFromEvent,
     leagueConfigToDivisionFields,
@@ -2395,83 +2398,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             createSlotForm,
         });
 
-        const defaultLeagueData: LeagueConfig = (() => {
-            const selectedSport = base.sportConfig
-                ?? (base.sportId ? sportsById.get(base.sportId) : null);
-            const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
-            if (
-                activeEditingEvent
-                && (activeEditingEvent.eventType === 'LEAGUE' || activeEditingEvent.eventType === 'TOURNAMENT')
-            ) {
-                const divisionLeagueDetail = activeEditingEvent.eventType === 'LEAGUE' && Array.isArray(defaultDivisionDetails)
-                    ? defaultDivisionDetails.find((detail) => typeof detail?.gamesPerOpponent === 'number')
-                    : undefined;
-                const eventLeagueFallback = normalizeLeagueConfigForSetMode({
-                    ...(activeEditingEvent.leagueConfig || activeEditingEvent),
-                    gamesPerOpponent: activeEditingEvent.leagueConfig?.gamesPerOpponent ?? activeEditingEvent.gamesPerOpponent ?? 1,
-                    includePlayoffs: Boolean(
-                        (activeEditingEvent as any)?.includePlayoffsOrPools
-                        ?? activeEditingEvent.leagueConfig?.includePlayoffs
-                        ?? activeEditingEvent.includePlayoffs,
-                    ),
-                    playoffTeamCount: activeEditingEvent.leagueConfig?.playoffTeamCount ?? activeEditingEvent.playoffTeamCount,
-                }, requiresSets);
-                const source = divisionLeagueDetail
-                    ? buildDivisionLeagueConfig(divisionLeagueDetail, eventLeagueFallback, requiresSets)
-                    : eventLeagueFallback;
-                return normalizeLeagueConfigForSetMode({
-                    ...source,
-                    gamesPerOpponent: source?.gamesPerOpponent ?? 1,
-                    includePlayoffs: Boolean(
-                        (source as any)?.includePlayoffsOrPools
-                        ?? source?.includePlayoffs
-                        ?? (activeEditingEvent as any)?.includePlayoffsOrPools
-                        ?? activeEditingEvent.includePlayoffs,
-                    ),
-                    playoffTeamCount: source?.playoffTeamCount ?? activeEditingEvent.playoffTeamCount,
-                }, requiresSets);
-            }
-            return normalizeLeagueConfigForSetMode({
-                gamesPerOpponent: 1,
-                includePlayoffs: false,
-                playoffTeamCount: undefined,
-                usesSets: false,
-                matchDurationMinutes: 60,
-                restTimeMinutes: 0,
-                setDurationMinutes: undefined,
-                setsPerMatch: undefined,
-                pointsToVictory: undefined,
-            }, requiresSets);
-        })();
-
-        const defaultTournamentData = (() => {
-            if (activeEditingEvent && activeEditingEvent.eventType === 'TOURNAMENT') {
-                return buildTournamentConfig({
-                    doubleElimination: activeEditingEvent.doubleElimination,
-                    winnerSetCount: activeEditingEvent.winnerSetCount,
-                    loserSetCount: activeEditingEvent.loserSetCount,
-                    winnerBracketPointsToVictory: activeEditingEvent.winnerBracketPointsToVictory,
-                    loserBracketPointsToVictory: activeEditingEvent.loserBracketPointsToVictory,
-                    prize: activeEditingEvent.prize,
-                    fieldCount: activeEditingEvent.fieldCount ?? activeEditingEvent.fields?.length ?? 1,
-                    restTimeMinutes: normalizeNumber(activeEditingEvent.restTimeMinutes, 0) ?? 0,
-                    usesSets: activeEditingEvent.usesSets,
-                    matchDurationMinutes: normalizeNumber(activeEditingEvent.matchDurationMinutes),
-                    setDurationMinutes: normalizeNumber(activeEditingEvent.setDurationMinutes),
-                });
-            }
-            return buildTournamentConfig();
-        })();
-
-        const defaultPlayoffData = (() => {
-            if (activeEditingEvent?.includePlayoffs) {
-                const extractedPlayoff = extractTournamentConfigFromEvent(activeEditingEvent);
-                if (extractedPlayoff) {
-                    return extractedPlayoff;
-                }
-            }
-            return buildTournamentConfig();
-        })();
+        const defaultLeagueData = buildDefaultLeagueData({
+            base,
+            activeEditingEvent,
+            defaultDivisionDetails,
+            sportsById,
+        });
+        const defaultTournamentData = buildDefaultTournamentData(activeEditingEvent);
+        const defaultPlayoffData = buildDefaultPlayoffData(activeEditingEvent);
 
         return {
             ...base,
