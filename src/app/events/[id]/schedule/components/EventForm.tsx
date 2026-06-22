@@ -169,6 +169,7 @@ import {
 } from './eventForm/constants';
 import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import { FacilityResourceSelector } from './eventForm/components/FacilityResourceSelector';
+import { SectionNavigation } from './eventForm/components/SectionNavigation';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
@@ -10133,58 +10134,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         <div className="w-full space-y-6">
             <div className="p-4">
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-                    <aside className="hidden xl:block">
-                        <div className="sticky top-20 rounded-xl border border-gray-200 bg-white/95 p-4 shadow-sm backdrop-blur">
-                            <Text fw={700} size="sm" c="gray.8" mb="xs">
-                                Sections
-                            </Text>
-                            <Text size="xs" c="dimmed" mb="md">
-                                Jump to any section. Changes are preserved as you move.
-                            </Text>
-                            <div className="space-y-1">
-                                {visibleSectionNavItems.map((section) => {
-                                    const isActive = activeSectionId === section.id;
-                                    return (
-                                        <button
-                                            key={section.id}
-                                            type="button"
-                                            onClick={() => scrollToSection(section.id)}
-                                            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                                                isActive
-                                                    ? 'bg-slate-900 text-white shadow-sm'
-                                                    : 'text-gray-700 hover:bg-gray-100'
-                                            }`}
-                                        >
-                                            {section.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </aside>
+                    <SectionNavigation
+                        items={visibleSectionNavItems}
+                        activeSectionId={activeSectionId}
+                        variant="desktop"
+                        onSelectSection={scrollToSection}
+                    />
 
                     <div className="min-w-0">
-                        <div className="mb-4 xl:hidden overflow-x-auto">
-                            <div className="flex min-w-max gap-2 pb-1">
-                                {visibleSectionNavItems.map((section) => {
-                                    const isActive = activeSectionId === section.id;
-                                    return (
-                                        <button
-                                            key={`mobile-${section.id}`}
-                                            type="button"
-                                            onClick={() => scrollToSection(section.id)}
-                                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                                isActive
-                                                    ? 'border-slate-900 bg-slate-900 text-white'
-                                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                                            }`}
-                                        >
-                                            {section.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                        <SectionNavigation
+                            items={visibleSectionNavItems}
+                            activeSectionId={activeSectionId}
+                            variant="mobile"
+                            onSelectSection={scrollToSection}
+                        />
                         <div className="w-full">
                             <form id={formId} className="space-y-8">
                         {mobileEditUnsupportedWarning && (
