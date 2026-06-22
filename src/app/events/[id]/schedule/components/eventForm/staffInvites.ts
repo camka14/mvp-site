@@ -1,4 +1,4 @@
-import type { Organization, StaffMemberType, UserData } from '@/types';
+import type { Invite, Organization, StaffMemberType, UserData } from '@/types';
 import { normalizeEntityId } from '@/lib/organizationEventAccess';
 
 export type StaffAssignmentRole = 'OFFICIAL' | 'ASSISTANT_HOST';
@@ -177,6 +177,124 @@ export const filterOrganizationStaffRosterEntries = (
         .map((value) => value.toLowerCase())
         .some((value) => value.includes(query));
 });
+
+type BuildAssignedOfficialCardsOptions = {
+    officialIds: string[];
+    assignedOfficials?: UserData[];
+    organizationOfficialsById: Map<string, UserData>;
+    nonOrgStaffResults: UserData[];
+    currentEventStaffInviteByUserId: Map<string, Invite>;
+    pendingStaffInvites: PendingStaffInvite[];
+};
+
+export const buildAssignedOfficialCards = ({
+    officialIds,
+    assignedOfficials,
+    organizationOfficialsById,
+    nonOrgStaffResults,
+    currentEventStaffInviteByUserId,
+    pendingStaffInvites,
+}: BuildAssignedOfficialCardsOptions): AssignedStaffCard[] => {
+    const cards: AssignedStaffCard[] = officialIds.map((officialId) => {
+        const official = (assignedOfficials || []).find((candidate) => candidate.$id === officialId)
+            ?? organizationOfficialsById.get(officialId)
+            ?? nonOrgStaffResults.find((candidate) => candidate.$id === officialId)
+            ?? null;
+        const invite = currentEventStaffInviteByUserId.get(officialId);
+        const inviteStatus = invite?.staffTypes?.includes('OFFICIAL') ? normalizeInviteStatusToken(invite.status) : null;
+        return {
+            key: `official:${officialId}`,
+            role: 'OFFICIAL',
+            userId: officialId,
+            user: official,
+            email: getUserEmail(official),
+            displayName: toUserLabel(official ?? undefined, officialId),
+            status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
+            source: 'assigned',
+        };
+    });
+    pendingStaffInvites.forEach((invite) => {
+        if (!invite.roles.includes('OFFICIAL')) {
+            return;
+        }
+        cards.push({
+            key: `draft-official:${invite.email}`,
+            role: 'OFFICIAL',
+            userId: null,
+            user: null,
+            email: invite.email,
+            displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
+            status: 'email_invite',
+            source: 'draft',
+        });
+    });
+    return cards;
+};
+
+type BuildAssignedHostCardsOptions = {
+    hostId?: string | null;
+    assistantHostIds: string[];
+    assistantHostUsersById: Map<string, UserData>;
+    organizationUsersById: Map<string, Partial<UserData>>;
+    currentEventStaffInviteByUserId: Map<string, Invite>;
+    pendingStaffInvites: PendingStaffInvite[];
+};
+
+export const buildAssignedHostCards = ({
+    hostId,
+    assistantHostIds,
+    assistantHostUsersById,
+    organizationUsersById,
+    currentEventStaffInviteByUserId,
+    pendingStaffInvites,
+}: BuildAssignedHostCardsOptions): AssignedStaffCard[] => {
+    const cards: AssignedStaffCard[] = [];
+    const primaryHostId = normalizeEntityId(hostId);
+    if (primaryHostId) {
+        const hostUser = assistantHostUsersById.get(primaryHostId) ?? organizationUsersById.get(primaryHostId) ?? null;
+        cards.push({
+            key: `host:${primaryHostId}`,
+            role: 'HOST',
+            userId: primaryHostId,
+            user: (hostUser as UserData | null) ?? null,
+            email: getUserEmail(hostUser),
+            displayName: toUserLabel(hostUser ?? undefined, primaryHostId),
+            status: null,
+            source: 'assigned',
+        });
+    }
+    assistantHostIds.forEach((assistantHostId) => {
+        const assistantHost = assistantHostUsersById.get(assistantHostId) ?? organizationUsersById.get(assistantHostId) ?? null;
+        const invite = currentEventStaffInviteByUserId.get(assistantHostId);
+        const inviteStatus = invite?.staffTypes?.includes('HOST') ? normalizeInviteStatusToken(invite.status) : null;
+        cards.push({
+            key: `assistant-host:${assistantHostId}`,
+            role: 'ASSISTANT_HOST',
+            userId: assistantHostId,
+            user: (assistantHost as UserData | null) ?? null,
+            email: getUserEmail(assistantHost),
+            displayName: toUserLabel(assistantHost ?? undefined, assistantHostId),
+            status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
+            source: 'assigned',
+        });
+    });
+    pendingStaffInvites.forEach((invite) => {
+        if (!invite.roles.includes('ASSISTANT_HOST')) {
+            return;
+        }
+        cards.push({
+            key: `draft-assistant:${invite.email}`,
+            role: 'ASSISTANT_HOST',
+            userId: null,
+            user: null,
+            email: invite.email,
+            displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
+            status: 'email_invite',
+            source: 'draft',
+        });
+    });
+    return cards;
+};
 
 export const normalizeInviteEmail = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 

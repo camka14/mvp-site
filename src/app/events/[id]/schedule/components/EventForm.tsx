@@ -167,6 +167,8 @@ import {
 } from './eventForm/slotConflictHelpers';
 import {
     type AssignedStaffCard,
+    buildAssignedHostCards,
+    buildAssignedOfficialCards,
     buildOrganizationStaffAssignmentIds,
     buildOrganizationStaffRosterEntries,
     createEmptyStaffInvite,
@@ -2700,90 +2702,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         existingAssignedStaffUserIds,
         currentEventStaffInviteByUserId,
     ]);
-    const assignedOfficialCards = useMemo<AssignedStaffCard[]>(() => {
-        const cards: AssignedStaffCard[] = getEventOfficialUserIds(eventData.eventOfficials).map((officialId) => {
-            const official = (eventData.officials || []).find((candidate) => candidate.$id === officialId)
-                ?? organizationOfficialsById.get(officialId)
-                ?? nonOrgStaffResults.find((candidate) => candidate.$id === officialId)
-                ?? null;
-            const invite = currentEventStaffInviteByUserId.get(officialId);
-            const inviteStatus = invite?.staffTypes?.includes('OFFICIAL') ? normalizeInviteStatusToken(invite.status) : null;
-            return {
-                key: `official:${officialId}`,
-                role: 'OFFICIAL',
-                userId: officialId,
-                user: official,
-                email: getUserEmail(official),
-                displayName: toUserLabel(official ?? undefined, officialId),
-                status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
-                source: 'assigned',
-            };
-        });
-        (eventData.pendingStaffInvites || []).forEach((invite) => {
-            if (!invite.roles.includes('OFFICIAL')) {
-                return;
-            }
-            cards.push({
-                key: `draft-official:${invite.email}`,
-                role: 'OFFICIAL',
-                userId: null,
-                user: null,
-                email: invite.email,
-                displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
-                status: 'email_invite',
-                source: 'draft',
-            });
-        });
-        return cards;
-    }, [currentEventStaffInviteByUserId, eventData.eventOfficials, eventData.pendingStaffInvites, eventData.officials, nonOrgStaffResults, organizationOfficialsById]);
-    const assignedHostCards = useMemo<AssignedStaffCard[]>(() => {
-        const cards: AssignedStaffCard[] = [];
-        const primaryHostId = normalizeEntityId(eventData.hostId);
-        if (primaryHostId) {
-            const hostUser = assistantHostUsersById.get(primaryHostId) ?? organizationUsersById.get(primaryHostId) ?? null;
-            cards.push({
-                key: `host:${primaryHostId}`,
-                role: 'HOST',
-                userId: primaryHostId,
-                user: (hostUser as UserData | null) ?? null,
-                email: getUserEmail(hostUser),
-                displayName: toUserLabel(hostUser ?? undefined, primaryHostId),
-                status: null,
-                source: 'assigned',
-            });
-        }
-        assistantHostValue.forEach((assistantHostId) => {
-            const assistantHost = assistantHostUsersById.get(assistantHostId) ?? organizationUsersById.get(assistantHostId) ?? null;
-            const invite = currentEventStaffInviteByUserId.get(assistantHostId);
-            const inviteStatus = invite?.staffTypes?.includes('HOST') ? normalizeInviteStatusToken(invite.status) : null;
-            cards.push({
-                key: `assistant-host:${assistantHostId}`,
-                role: 'ASSISTANT_HOST',
-                userId: assistantHostId,
-                user: (assistantHost as UserData | null) ?? null,
-                email: getUserEmail(assistantHost),
-                displayName: toUserLabel(assistantHost ?? undefined, assistantHostId),
-                status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
-                source: 'assigned',
-            });
-        });
-        (eventData.pendingStaffInvites || []).forEach((invite) => {
-            if (!invite.roles.includes('ASSISTANT_HOST')) {
-                return;
-            }
-            cards.push({
-                key: `draft-assistant:${invite.email}`,
-                role: 'ASSISTANT_HOST',
-                userId: null,
-                user: null,
-                email: invite.email,
-                displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
-                status: 'email_invite',
-                source: 'draft',
-            });
-        });
-        return cards;
-    }, [assistantHostUsersById, assistantHostValue, currentEventStaffInviteByUserId, eventData.hostId, eventData.pendingStaffInvites, organizationUsersById]);
+    const assignedOfficialCards = useMemo<AssignedStaffCard[]>(
+        () => buildAssignedOfficialCards({
+            officialIds: getEventOfficialUserIds(eventData.eventOfficials),
+            assignedOfficials: eventData.officials || [],
+            organizationOfficialsById,
+            nonOrgStaffResults,
+            currentEventStaffInviteByUserId,
+            pendingStaffInvites: eventData.pendingStaffInvites || [],
+        }),
+        [currentEventStaffInviteByUserId, eventData.eventOfficials, eventData.pendingStaffInvites, eventData.officials, nonOrgStaffResults, organizationOfficialsById],
+    );
+    const assignedHostCards = useMemo<AssignedStaffCard[]>(
+        () => buildAssignedHostCards({
+            hostId: eventData.hostId,
+            assistantHostIds: assistantHostValue,
+            assistantHostUsersById,
+            organizationUsersById,
+            currentEventStaffInviteByUserId,
+            pendingStaffInvites: eventData.pendingStaffInvites || [],
+        }),
+        [assistantHostUsersById, assistantHostValue, currentEventStaffInviteByUserId, eventData.hostId, eventData.pendingStaffInvites, organizationUsersById],
+    );
     useEffect(() => {
         setOrganizationStaffVisibleCount(5);
     }, [filteredOrganizationStaffEntries.length, organizationStaffSearch, organizationStaffStatusFilter, organizationStaffTypeFilter]);
