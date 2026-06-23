@@ -60,209 +60,70 @@ import {
   OpenStaffDeleteConfirmationModal,
   StaffAssignmentScopePromptModal,
 } from './fieldsTab/StaffAssignmentConfirmationModals';
+import {
+  ALL_FACILITIES_FILTER_VALUE,
+  DEFAULT_FACILITY_CLOSE_TIME,
+  DEFAULT_FACILITY_OPEN_TIME,
+  EMPTY_FACILITY_COORDINATES,
+  FACILITY_DAY_OPTIONS,
+  FACILITY_LOCATION_REQUIRED_ERROR,
+  FACILITY_LOCATION_SELECTION_ERROR,
+  STAFF_TIMESLOT_REPEAT_DAY_OPTIONS,
+  UNASSIGNED_FACILITY_FILTER_VALUE,
+  buildDefaultFacilityWeeklyHours,
+  buildOperatingHoursFromFormRows,
+  coerceDatePickerValue,
+  facilityCoordinatesFromInput,
+  facilityCoordinatesToInput,
+  facilityOperatingHoursToFormRows,
+  formatFacilityOperatingHours,
+  hasFacilityCoordinates,
+  normalizeDaysOfWeek,
+  normalizeFieldIds,
+  type FacilityWeeklyHoursFormRow,
+} from './fieldsTab/facilityFormUtils';
+import {
+  buildManagerResourceSelectionStorageKey,
+  readStoredManagerResourceFieldIds,
+  writeStoredManagerResourceFieldIds,
+} from './fieldsTab/managerResourceSelectionStorage';
+import type {
+  BuildStaffAssignmentCalendarRangeOptions,
+  CalendarEventData,
+  FacilityFeedCalendarEntry,
+  ManagerCalendarDraft,
+  ManagerCalendarDraftStaffOptions,
+  ManagerCalendarPendingChange,
+  ManagerCalendarSelectionMode,
+  ManagerDraftDragState,
+  ManagerRentalSlotPendingUpdate,
+  ManagerStaffAssignmentPendingOverride,
+  ManagerStaffAssignmentPendingOverrideBatch,
+  OpenStaffDeleteScope,
+  OpenStaffDeleteConfirmationState,
+  RentalDraftSelection,
+  RentalSelectionCheckoutPayload,
+  RentalSelectionCheckoutSelection,
+  RentalSelectionConflictState,
+  RentalSelectionValidation,
+  RentalSlotDragUpdate,
+  SelectionCalendarEntry,
+  SelectionState,
+  StaffAssignmentScopePromptState,
+  StaffScheduleAssignment,
+  StaffScheduleAssignmentKind,
+  StaffScheduleCreateResponse,
+  StaffScheduleResponse,
+  StaffScheduleStaffMember,
+  StaffScheduleTimeSlot,
+  StaffScheduleUpdateResponse,
+} from './fieldsTab/facilityCalendarTypes';
 
-type SelectionState = {
-  fieldIds: string[];
-  start: Date;
-  end: Date;
-};
-
-type StoredManagerResourceSelection = {
-  fieldIds?: unknown;
-  updatedAt?: unknown;
-};
-
-const MANAGER_RESOURCE_SELECTION_STORAGE_PREFIX = 'bracketiq.facilities.managerResourceSelection';
-
-const buildManagerResourceSelectionStorageKey = (organizationId?: string | null): string | null => {
-  const normalizedOrganizationId = typeof organizationId === 'string' ? organizationId.trim() : '';
-  return normalizedOrganizationId
-    ? `${MANAGER_RESOURCE_SELECTION_STORAGE_PREFIX}:${normalizedOrganizationId}`
-    : null;
-};
-
-const readStoredManagerResourceFieldIds = (storageKey: string, validFieldIds: string[]): string[] | null => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  try {
-    const rawValue = window.localStorage.getItem(storageKey);
-    if (!rawValue) {
-      return null;
-    }
-    const parsed = JSON.parse(rawValue) as StoredManagerResourceSelection | string[];
-    const rawFieldIds = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.fieldIds)
-        ? parsed.fieldIds
-        : [];
-    const validFieldIdSet = new Set(validFieldIds);
-    const storedFieldIds = normalizeFieldIds(
-      rawFieldIds.filter((fieldId): fieldId is string => typeof fieldId === 'string'),
-    ).filter((fieldId) => validFieldIdSet.has(fieldId));
-    return storedFieldIds.length ? storedFieldIds : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeStoredManagerResourceFieldIds = (storageKey: string, fieldIds: string[]): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify({
-      fieldIds: normalizeFieldIds(fieldIds),
-      updatedAt: new Date().toISOString(),
-    }));
-  } catch {
-    // Ignore local storage failures so calendar selection still works.
-  }
-};
+export type { RentalSelectionCheckoutPayload } from './fieldsTab/facilityCalendarTypes';
 
 const fieldIdArraysEqual = (first: string[], second: string[]): boolean => (
   first.length === second.length && first.every((fieldId, index) => fieldId === second[index])
 );
-
-type ManagerCalendarSelectionMode = 'rental' | 'staff_assignment' | 'official_assignment';
-
-type ManagerCalendarDraftRentalOptions = {
-  repeating?: boolean;
-  dayOfWeek?: NonNullable<TimeSlot['dayOfWeek']>;
-  daysOfWeek?: number[];
-  startDate?: string;
-  endDate?: string | null;
-  startTimeMinutes?: number | null;
-  endTimeMinutes?: number | null;
-  price?: number;
-  requiredTemplateIds?: string[];
-  hostRequiredTemplateIds?: string[];
-};
-
-type ManagerCalendarDraftStaffOptions = {
-  userId?: string | null;
-  userName?: string | null;
-  parentDraftId?: string | null;
-  rateOverrideCents?: number | null;
-  notes?: string;
-  repeating?: boolean;
-  daysOfWeek?: number[];
-  repeatEndDate?: string | null;
-};
-
-type ManagerCalendarDraft = {
-  id: string;
-  mode: ManagerCalendarSelectionMode;
-  fieldIds: string[];
-  start: Date;
-  end: Date;
-  rental?: ManagerCalendarDraftRentalOptions;
-  staff?: ManagerCalendarDraftStaffOptions;
-};
-
-type ManagerRentalSlotPendingUpdate = {
-  key: string;
-  fieldId: string;
-  slotId: string;
-} & (
-  | { action: 'update'; slot: RentalSlotDragUpdate }
-  | { action: 'delete' }
-);
-
-type ManagerStaffAssignmentPendingOverride =
-  | { action: 'create'; assignment: StaffScheduleAssignment }
-  | { action: 'update'; assignment: StaffScheduleAssignment }
-  | { action: 'unassign'; assignmentId: string }
-  | { action: 'delete'; assignmentId: string };
-
-type ManagerStaffAssignmentPendingOverrideBatch = Record<string, {
-  previous: ManagerStaffAssignmentPendingOverride | null;
-  next: ManagerStaffAssignmentPendingOverride;
-}>;
-
-type ManagerCalendarPendingChange =
-  | { id: string; type: 'create_draft'; label: string; draft: ManagerCalendarDraft }
-  | { id: string; type: 'draft_update'; label: string; draftId: string; previous: ManagerCalendarDraft; next: ManagerCalendarDraft }
-  | { id: string; type: 'draft_scope'; label: string; draftId: string; previous: ManagerCalendarDraft; parentNext: ManagerCalendarDraft; childDraft: ManagerCalendarDraft }
-  | { id: string; type: 'rental_update'; label: string; key: string; previous: ManagerRentalSlotPendingUpdate | null; next: ManagerRentalSlotPendingUpdate }
-  | { id: string; type: 'staff_override'; label: string; assignmentId: string; previous: ManagerStaffAssignmentPendingOverride | null; next: ManagerStaffAssignmentPendingOverride }
-  | { id: string; type: 'staff_override_batch'; label: string; changes: ManagerStaffAssignmentPendingOverrideBatch };
-
-type BuildStaffAssignmentCalendarRangeOptions = {
-  preserveRepeatingPattern?: boolean;
-};
-
-type OpenStaffDeleteScope = 'following' | 'all';
-
-type OpenStaffDeleteConfirmationState = {
-  assignmentId: string;
-  occurrenceStart: string;
-  occurrenceEnd: string;
-  scope: OpenStaffDeleteScope;
-};
-
-type StaffAssignmentScopePromptState =
-  | {
-      source: 'assignment';
-      parentAssignment: StaffScheduleAssignment;
-      parentOverride: ManagerStaffAssignmentPendingOverride;
-      childOverride: ManagerStaffAssignmentPendingOverride;
-      staffName: string;
-      occurrenceLabel: string;
-      kindLabel: 'staff' | 'official';
-    }
-  | {
-      source: 'draft';
-      draftId: string;
-      previousDraft: ManagerCalendarDraft;
-      allDraft: ManagerCalendarDraft;
-      parentDraft: ManagerCalendarDraft;
-      childDraft: ManagerCalendarDraft;
-      staffName: string;
-      occurrenceLabel: string;
-      kindLabel: 'staff' | 'official';
-    };
-
-type ManagerDraftDragState = {
-  draftId: string;
-  draft: ManagerCalendarDraft;
-  fieldIds: string[];
-  durationMs: number;
-  startPoint: { clientX: number; clientY: number };
-  lastPoint: { clientX: number; clientY: number };
-  hasMoved: boolean;
-};
-
-type SelectionCalendarEntry = {
-  id: string;
-  title: string;
-  start: Date;
-  end: Date;
-  resourceId: string;
-  resource: {
-    type: 'selection';
-    slotKey?: string;
-    mode?: ManagerCalendarSelectionMode;
-    userId?: string | null;
-  };
-  metaType: 'selection';
-  selectionMode?: ManagerCalendarSelectionMode;
-  fieldName: string;
-};
-
-type FacilityFeedCalendarEntry = {
-  id: string;
-  title: string;
-  start: Date;
-  end: Date;
-  resourceId: string;
-  resource: FacilityCalendarFeedItem;
-  metaType: 'facility-feed';
-  feedType: FacilityCalendarFeedItemType;
-  fieldName: string;
-};
-
-type CalendarEventData = FieldCalendarEntry | FacilityFeedCalendarEntry | SelectionCalendarEntry;
 
 const getCalendarEventVariant = (event: CalendarEventData | null | undefined): SharedCalendarEventVariant => {
   if (!event) {
@@ -307,129 +168,6 @@ const getCalendarEventVariant = (event: CalendarEventData | null | undefined): S
     return 'unavailable';
   }
   return sourceType === 'RENTAL_BOOKING' ? 'reservation' : 'booked';
-};
-
-type RentalDraftSelection = {
-  key: string;
-  scheduledFieldIds: string[];
-  dayOfWeek?: number;
-  daysOfWeek: number[];
-  startTimeMinutes?: number;
-  endTimeMinutes?: number;
-  startDate?: string;
-  endDate?: string;
-  repeating: boolean;
-};
-
-export type RentalSelectionCheckoutSelection = {
-  key: string;
-  scheduledFieldIds: string[];
-  dayOfWeek: number;
-  daysOfWeek: number[];
-  startTimeMinutes: number;
-  endTimeMinutes: number;
-  startDate: string;
-  endDate: string;
-  repeating: boolean;
-};
-
-export type RentalSelectionCheckoutPayload = {
-  eventId: string;
-  manageEventUrl: string;
-  organizationId: string | null;
-  organizationName: string;
-  renterOrganizationId: string | null;
-  facilityId: string | null;
-  facilityName: string | null;
-  facilityLocation: string | null;
-  facilityAddress: string | null;
-  totalRentalCents: number;
-  rentalStart: string;
-  rentalEnd: string;
-  rentalSelections: RentalSelectionCheckoutSelection[];
-  fieldIds: string[];
-  primaryFieldId: string | null;
-  primaryFieldName: string | null;
-  location: string;
-  coordinates?: [number, number];
-  requiredTemplateIds: string[];
-  hostRequiredTemplateIds: string[];
-};
-
-type RentalSelectionValidation = {
-  selection: RentalDraftSelection;
-  totalCents: number;
-  totalHours: number;
-  requiredTemplateIds: string[];
-  hostRequiredTemplateIds: string[];
-  conflictCount: number;
-  conflictCheckPending: boolean;
-  errors: string[];
-};
-
-type RentalSelectionConflictState = {
-  signature: string;
-  conflictCount: number;
-  loading: boolean;
-  error: string | null;
-};
-
-type StaffScheduleAssignmentKind = 'STAFF_SHIFT' | 'OFFICIAL_SHIFT';
-
-type StaffScheduleStaffMember = {
-  staffMemberId: string;
-  userId: string;
-  fullName: string;
-  userName?: string | null;
-  types?: string[];
-  roleName?: string | null;
-};
-
-type StaffScheduleTimeSlot = {
-  startDate: string;
-  endDate?: string | null;
-  repeating: boolean;
-  dayOfWeek?: number | null;
-  daysOfWeek?: number[] | null;
-  startTimeMinutes?: number | null;
-  endTimeMinutes?: number | null;
-  timeZone?: string | null;
-};
-
-type StaffScheduleAssignment = {
-  id: string;
-  parentAssignmentId?: string | null;
-  staffMemberId?: string | null;
-  userId?: string | null;
-  userName: string;
-  isOpen?: boolean;
-  isChildAssignment?: boolean;
-  assignmentKind: StaffScheduleAssignmentKind;
-  facilityId?: string | null;
-  facilityName?: string | null;
-  fieldId?: string | null;
-  fieldName?: string | null;
-  timeSlot?: StaffScheduleTimeSlot | null;
-  plannedStart?: string | null;
-  plannedEnd?: string | null;
-  plannedMinutes?: number | null;
-  rateOverrideType?: string | null;
-  rateOverrideCents?: number | null;
-  status?: string | null;
-  notes?: string | null;
-};
-
-type StaffScheduleResponse = {
-  assignments?: StaffScheduleAssignment[];
-  staffMembers?: StaffScheduleStaffMember[];
-};
-
-type StaffScheduleCreateResponse = {
-  assignment?: StaffScheduleAssignment;
-};
-
-type StaffScheduleUpdateResponse = {
-  assignment?: StaffScheduleAssignment;
 };
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
@@ -1083,17 +821,6 @@ const buildPublicRentalCalendarEvents = (events: FieldCalendarEntry[]): FieldCal
   ));
 };
 
-const normalizeFieldIds = (value: unknown): string[] => {
-  if (!Array.isArray(value)) return [];
-  return Array.from(
-    new Set(
-      value
-        .map((entry) => String(entry).trim())
-        .filter((entry) => entry.length > 0),
-    ),
-  );
-};
-
 const fieldMatchesFacilityFilter = (field: Field, filterValue: string): boolean => {
   if (filterValue === ALL_FACILITIES_FILTER_VALUE) {
     return true;
@@ -1103,309 +830,6 @@ const fieldMatchesFacilityFilter = (field: Field, filterValue: string): boolean 
     return !facilityId;
   }
   return facilityId === filterValue;
-};
-
-const normalizeDaysOfWeek = (value: unknown, dayOfWeek?: number): number[] => {
-  const source = Array.isArray(value) && value.length
-    ? value
-    : typeof dayOfWeek === 'number'
-      ? [dayOfWeek]
-      : [];
-  return Array.from(
-    new Set(
-      source
-        .map((entry) => Number(entry))
-        .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6),
-    ),
-  ).sort((a, b) => a - b);
-};
-
-const FACILITY_DAY_OPTIONS = [
-  { value: '0', label: 'Mon', longLabel: 'Monday', dayOfWeek: 0 },
-  { value: '1', label: 'Tue', longLabel: 'Tuesday', dayOfWeek: 1 },
-  { value: '2', label: 'Wed', longLabel: 'Wednesday', dayOfWeek: 2 },
-  { value: '3', label: 'Thu', longLabel: 'Thursday', dayOfWeek: 3 },
-  { value: '4', label: 'Fri', longLabel: 'Friday', dayOfWeek: 4 },
-  { value: '5', label: 'Sat', longLabel: 'Saturday', dayOfWeek: 5 },
-  { value: '6', label: 'Sun', longLabel: 'Sunday', dayOfWeek: 6 },
-];
-const FACILITY_DAY_LABELS = FACILITY_DAY_OPTIONS.map((option) => option.label);
-const STAFF_TIMESLOT_REPEAT_DAY_OPTIONS = FACILITY_DAY_OPTIONS.map((option) => ({
-  value: option.value,
-  label: option.longLabel,
-}));
-const DEFAULT_FACILITY_OPEN_TIME = '08:00';
-const DEFAULT_FACILITY_CLOSE_TIME = '22:00';
-const ALL_FACILITIES_FILTER_VALUE = '__all_facilities__';
-const UNASSIGNED_FACILITY_FILTER_VALUE = '__unassigned_resources__';
-const FACILITY_LOCATION_REQUIRED_ERROR = 'Facility location is required.';
-const FACILITY_LOCATION_SELECTION_ERROR = 'Select a facility address from suggestions or the map.';
-const EMPTY_FACILITY_COORDINATES = { lat: 0, lng: 0 };
-
-type FacilityWeeklyHoursFormRow = {
-  dayOfWeek: number;
-  closed: boolean;
-  openTime: string;
-  closeTime: string;
-};
-
-const normalizeTimeInput = (value: unknown): string => {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  const normalized = value.trim();
-  return /^\d{2}:\d{2}$/.test(normalized) ? normalized : '';
-};
-
-const coerceDatePickerValue = (value: unknown): Date | null => {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
-  }
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  return null;
-};
-
-const facilityCoordinatesToInput = (value: Facility['coordinates'] | unknown): { lat: number; lng: number } => {
-  if (Array.isArray(value) && value.length >= 2) {
-    const lng = Number(value[0]);
-    const lat = Number(value[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { lat, lng };
-    }
-  }
-
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const lat = Number(record.lat ?? record.latitude);
-    const lng = Number(record.lng ?? record.long ?? record.longitude);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { lat, lng };
-    }
-  }
-
-  return EMPTY_FACILITY_COORDINATES;
-};
-
-const facilityCoordinatesFromInput = (value: { lat: number; lng: number }): [number, number] | null => {
-  const lat = Number(value.lat);
-  const lng = Number(value.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
-    return null;
-  }
-  return [lng, lat];
-};
-
-const hasFacilityCoordinates = (value: { lat: number; lng: number }): boolean =>
-  facilityCoordinatesFromInput(value) !== null;
-
-const timeToMinutes = (value: string): number | null => {
-  const normalized = normalizeTimeInput(value);
-  if (!normalized) {
-    return null;
-  }
-  const [hours, minutes] = normalized.split(':').map((part) => Number(part));
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return null;
-  }
-  return hours * 60 + minutes;
-};
-
-const minutesToTimeInput = (minutes: unknown): string => {
-  if (typeof minutes !== 'number' || !Number.isFinite(minutes)) {
-    return '';
-  }
-  const normalized = Math.trunc(minutes);
-  if (normalized === 1440) {
-    return '00:00';
-  }
-  if (normalized < 0 || normalized > 1439) {
-    return '';
-  }
-  const hours = Math.floor(normalized / 60);
-  const remainingMinutes = normalized % 60;
-  return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
-};
-
-const buildDefaultFacilityWeeklyHours = (): FacilityWeeklyHoursFormRow[] => (
-  FACILITY_DAY_OPTIONS.map((day) => ({
-    dayOfWeek: day.dayOfWeek,
-    closed: true,
-    openTime: '',
-    closeTime: '',
-  }))
-);
-
-const resolveCloseMinutes = (openMinutes: number, closeTime: string): number | null => {
-  const closeMinutes = timeToMinutes(closeTime);
-  if (closeMinutes === null) {
-    return null;
-  }
-  if (closeMinutes === 0 && openMinutes > 0) {
-    return 1440;
-  }
-  return closeMinutes;
-};
-
-const normalizeFacilityOperatingHours = (value: Facility['operatingHours'] | unknown) => {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-  const record = value as {
-    version?: unknown;
-    weekly?: unknown;
-    daysOfWeek?: unknown;
-    openTime?: unknown;
-    closeTime?: unknown;
-  };
-
-  const rawWeekly = record.weekly;
-  if (record.version === 1 && Array.isArray(rawWeekly)) {
-    const weekly = FACILITY_DAY_OPTIONS.map((day) => {
-      const rawDay = rawWeekly.find((entry: unknown) => (
-        entry
-        && typeof entry === 'object'
-        && Number((entry as { dayOfWeek?: unknown }).dayOfWeek) === day.dayOfWeek
-      )) as { closed?: unknown; intervals?: unknown } | undefined;
-      const intervals = Array.isArray(rawDay?.intervals)
-        ? rawDay.intervals.flatMap((interval) => {
-            if (!interval || typeof interval !== 'object') {
-              return [];
-            }
-            const openMinutes = Number((interval as { openMinutes?: unknown }).openMinutes);
-            const closeMinutes = Number((interval as { closeMinutes?: unknown }).closeMinutes);
-            if (
-              !Number.isInteger(openMinutes)
-              || !Number.isInteger(closeMinutes)
-              || openMinutes < 0
-              || openMinutes > 1439
-              || closeMinutes <= openMinutes
-              || closeMinutes > 1440
-            ) {
-              return [];
-            }
-            return [{ openMinutes, closeMinutes }];
-          })
-        : [];
-      const closed = rawDay ? Boolean(rawDay.closed) || intervals.length === 0 : true;
-      return {
-        dayOfWeek: day.dayOfWeek,
-        closed,
-        intervals: closed ? [] : intervals,
-      };
-    });
-    return { version: 1 as const, weekly };
-  }
-
-  const legacyDaysOfWeek = normalizeDaysOfWeek(record.daysOfWeek);
-  const legacyOpenTime = normalizeTimeInput(record.openTime);
-  const legacyCloseTime = normalizeTimeInput(record.closeTime);
-  const legacyOpenMinutes = timeToMinutes(legacyOpenTime);
-  const legacyCloseMinutes = legacyOpenMinutes === null ? null : resolveCloseMinutes(legacyOpenMinutes, legacyCloseTime);
-  if (!legacyDaysOfWeek.length || legacyOpenMinutes === null || legacyCloseMinutes === null || legacyCloseMinutes <= legacyOpenMinutes) {
-    return null;
-  }
-  return {
-    version: 1 as const,
-    weekly: FACILITY_DAY_OPTIONS.map((day) => {
-      const isOpen = legacyDaysOfWeek.includes(day.dayOfWeek);
-      return {
-        dayOfWeek: day.dayOfWeek,
-        closed: !isOpen,
-        intervals: isOpen
-          ? [{ openMinutes: legacyOpenMinutes, closeMinutes: legacyCloseMinutes }]
-          : [],
-      };
-    }),
-  };
-};
-
-const facilityOperatingHoursToFormRows = (value: Facility['operatingHours'] | unknown): FacilityWeeklyHoursFormRow[] => {
-  const normalized = normalizeFacilityOperatingHours(value);
-  if (!normalized) {
-    return buildDefaultFacilityWeeklyHours();
-  }
-  return FACILITY_DAY_OPTIONS.map((day) => {
-    const schedule = normalized.weekly.find((entry) => entry.dayOfWeek === day.dayOfWeek);
-    const interval = schedule?.intervals[0] ?? null;
-    return {
-      dayOfWeek: day.dayOfWeek,
-      closed: !schedule || schedule.closed || !interval,
-      openTime: interval ? minutesToTimeInput(interval.openMinutes) : '',
-      closeTime: interval ? minutesToTimeInput(interval.closeMinutes) : '',
-    };
-  });
-};
-
-const buildOperatingHoursFromFormRows = (
-  rows: FacilityWeeklyHoursFormRow[],
-): { operatingHours: Facility['operatingHours'] | null; error: string | null } => {
-  const weekly = rows.map((row) => {
-    if (row.closed) {
-      return {
-        dayOfWeek: row.dayOfWeek,
-        closed: true,
-        intervals: [],
-      };
-    }
-
-    const openTime = normalizeTimeInput(row.openTime);
-    const closeTime = normalizeTimeInput(row.closeTime);
-    if (!openTime || !closeTime) {
-      return { error: `${FACILITY_DAY_LABELS[row.dayOfWeek] ?? 'Day'} needs open and close times.` };
-    }
-    const openMinutes = timeToMinutes(openTime);
-    const closeMinutes = openMinutes === null ? null : resolveCloseMinutes(openMinutes, closeTime);
-    if (openMinutes === null || closeMinutes === null || closeMinutes <= openMinutes) {
-      return { error: `${FACILITY_DAY_LABELS[row.dayOfWeek] ?? 'Day'} close time must be after open time.` };
-    }
-    return {
-      dayOfWeek: row.dayOfWeek,
-      closed: false,
-      intervals: [{ openMinutes, closeMinutes }],
-    };
-  });
-
-  const errorEntry = weekly.find((row): row is { error: string } => 'error' in row);
-  if (errorEntry) {
-    return { operatingHours: null, error: errorEntry.error };
-  }
-
-  const typedWeekly = weekly.filter((row): row is NonNullable<Facility['operatingHours']>['weekly'][number] => !('error' in row));
-  const hasOpenDay = typedWeekly.some((day) => !day.closed && day.intervals.length > 0);
-  return {
-    operatingHours: hasOpenDay ? { version: 1, weekly: typedWeekly } : null,
-    error: null,
-  };
-};
-
-const formatFacilityOperatingHours = (value: Facility['operatingHours'] | unknown): string | null => {
-  const hours = normalizeFacilityOperatingHours(value);
-  if (!hours) {
-    return null;
-  }
-  const openDays = hours.weekly.filter((day) => !day.closed && day.intervals.length > 0);
-  if (!openDays.length) {
-    return null;
-  }
-  const firstInterval = openDays[0]?.intervals[0];
-  const sameInterval = Boolean(firstInterval) && openDays.every((day) => (
-    day.intervals.length === 1
-    && day.intervals[0]?.openMinutes === firstInterval?.openMinutes
-    && day.intervals[0]?.closeMinutes === firstInterval?.closeMinutes
-  ));
-  if (!sameInterval || !firstInterval) {
-    return `${openDays.length} day${openDays.length === 1 ? '' : 's'} open; hours vary`;
-  }
-  const daysOfWeek = openDays.map((day) => day.dayOfWeek).sort((a, b) => a - b);
-  const dayLabel = daysOfWeek.length === 7
-    ? 'Daily'
-    : daysOfWeek.length === 5 && daysOfWeek.every((day, index) => day === index)
-      ? 'Weekdays'
-      : daysOfWeek.map((day) => FACILITY_DAY_LABELS[day]).filter(Boolean).join(', ');
-  return `${dayLabel} ${minutesToTimeInput(firstInterval.openMinutes)}-${minutesToTimeInput(firstInterval.closeMinutes)}`;
 };
 
 const mondayDayOf = (date: Date): number => ((date.getDay() + 6) % 7);
@@ -2017,11 +1441,6 @@ const updateSelectionWithCalendarRange = (
     endDate: formatLocalDateTime(endDate),
     repeating: false,
   };
-};
-
-type RentalSlotDragUpdate = Partial<TimeSlot> & {
-  $id: string;
-  dayOfWeek: NonNullable<TimeSlot['dayOfWeek']>;
 };
 
 const getRentalSlotPendingUpdateKey = (fieldId: string, slotId: string) => `${fieldId}:${slotId}`;
