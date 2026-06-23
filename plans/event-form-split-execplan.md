@@ -565,3 +565,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted the staff and official management body into `eventForm/sections/StaffManagementPanel.tsx`.
 - 2026-06-22 / Codex: Extracted the event details body into `eventForm/sections/EventDetailsPanel.tsx`.
 - 2026-06-22 / Codex: Extracted division-editor state, reset/edit/remove actions, and derived readiness into `eventForm/hooks/useDivisionEditorController.ts`.
+- 2026-06-22 / Codex: Extracted staff/official search, assignment, invite, and assigned-card controller logic into `eventForm/hooks/useStaffOfficialController.ts`.
