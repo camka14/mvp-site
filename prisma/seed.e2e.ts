@@ -14,6 +14,8 @@ import {
   SEED_EVENTS,
   SEED_FIELD,
   SEED_IMAGE,
+  SEED_OFFICIAL_USERS,
+  SEED_OFFICIALS_EVENT,
   SEED_ORG,
   SEED_RENTAL_SLOT,
   SEED_SPORT,
@@ -37,16 +39,19 @@ const seedUserEmails = [
   SEED_USERS.host.email,
   SEED_USERS.participant.email,
   ...SEED_DEV_USERS.map((user) => user.email),
+  ...SEED_OFFICIAL_USERS.map((user) => user.email),
 ].map((email) => email.toLowerCase());
 const seedUserIds = [
   SEED_USERS.host.id,
   SEED_USERS.participant.id,
   ...SEED_DEV_USERS.map((user) => user.id),
+  ...SEED_OFFICIAL_USERS.map((user) => user.id),
 ];
 const seedUserNames = [
   SEED_USERS.host.userName,
   SEED_USERS.participant.userName,
   ...SEED_DEV_USERS.map((user) => user.userName),
+  ...SEED_OFFICIAL_USERS.map((user) => user.userName),
 ];
 const prefixedE2eEventsWhere = E2E_EVENT_PREFIXES.map((prefix) => ({
   id: { startsWith: prefix },
@@ -62,6 +67,27 @@ const slugify = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+const buildEventOfficialRecordId = (eventId: string, userId: string): string =>
+  `event_official_${eventId}_${slugify(userId)}`;
+
+const buildOfficialAssignments = (
+  eventId: string,
+  firstUserId: string,
+  secondUserId: string,
+): Prisma.InputJsonValue =>
+  SEED_OFFICIALS_EVENT.positions.map((position, index) => {
+    const userId = index === 0 ? firstUserId : secondUserId;
+    return {
+      positionId: position.id,
+      slotIndex: 0,
+      holderType: "OFFICIAL",
+      userId,
+      eventOfficialId: buildEventOfficialRecordId(eventId, userId),
+      checkedIn: false,
+      hasConflict: false,
+    };
+  });
 
 const getMimeType = (filename: string): string | null =>
   IMAGE_MIME_TYPES.get(path.extname(filename).toLowerCase()) ?? null;
@@ -135,6 +161,7 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
     SEED_EVENTS.scheduler.tournamentDoubleElim.id,
     SEED_EVENTS.scheduler.leagueNoSlots.id,
     SEED_EVENTS.scheduler.leagueSameDay.id,
+    SEED_EVENTS.scheduler.officials.id,
     ...Object.values(E2E_EVENT_IDS),
   ];
   const targetedEvents = await prisma.events.findMany({
@@ -170,11 +197,13 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
     : [];
   const targetedFieldIds = unique([
     SEED_FIELD.id,
+    SEED_OFFICIALS_EVENT.fieldId,
     ...targetedEvents.flatMap((event) => event.fieldIds ?? []),
     ...extraFields.map((field) => field.id),
   ]);
   const targetedTimeSlotIds = unique([
     SEED_RENTAL_SLOT.id,
+    SEED_OFFICIALS_EVENT.slotId,
     ...targetedEvents.flatMap((event) => event.timeSlotIds ?? []),
     ...extraTimeSlots.map((slot) => slot.id),
   ]);
@@ -185,6 +214,10 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
   const targetedRegistrationIds = unique(
     targetedRegistrationRows.map((registration: { id: string }) => registration.id),
   );
+  await deleteManyIfAvailable((prisma as any).eventOfficials, {
+    eventId: { in: seedEventIds },
+  });
+  await prisma.matches.deleteMany({ where: { eventId: { in: seedEventIds } } });
   if (targetedEventIds.length > 0) {
     const eventFilters: Record<string, unknown>[] = [
       { eventId: { in: targetedEventIds } },
@@ -226,7 +259,7 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
       where: {
         OR: [
           { eventId: { in: targetedEventIds } },
-          { id: SEED_DIVISION.id },
+          { id: { in: [SEED_DIVISION.id, SEED_OFFICIALS_EVENT.divisionId] } },
         ],
       },
     });
@@ -240,7 +273,9 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
     });
     await prisma.events.deleteMany({ where: { id: { in: targetedEventIds } } });
   } else {
-    await prisma.divisions.deleteMany({ where: { id: SEED_DIVISION.id } });
+    await prisma.divisions.deleteMany({
+      where: { id: { in: [SEED_DIVISION.id, SEED_OFFICIALS_EVENT.divisionId] } },
+    });
     await prisma.teams.deleteMany({ where: { id: { in: [...SEED_TEAM_IDS] } } });
   }
   await prisma.timeSlots.deleteMany({ where: { id: { in: targetedTimeSlotIds } } });
@@ -318,6 +353,7 @@ const buildSeedUsers = () => [
   SEED_USERS.host,
   SEED_USERS.participant,
   ...SEED_DEV_USERS,
+  ...SEED_OFFICIAL_USERS,
 ];
 
 const createSensitiveUserRows = (now: Date) =>
@@ -550,6 +586,23 @@ const seed = async (): Promise<void> => {
           createdAt: now,
           updatedAt: now,
         })),
+        ...SEED_OFFICIAL_USERS.map((user, index) => ({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          userName: user.userName,
+          dateOfBirth: new Date(Date.UTC(1988, 0, index + 1)),
+          hasStripeAccount: false,
+          teamIds: [],
+          friendIds: [],
+          followingIds: [],
+          friendRequestIds: [],
+          friendRequestSentIds: [],
+          uploadedImages: [],
+          profileImageId: null,
+          createdAt: now,
+          updatedAt: now,
+        })),
       ],
     });
 
@@ -613,6 +666,20 @@ const seed = async (): Promise<void> => {
       },
     });
 
+    await prisma.fields.create({
+      data: {
+        id: SEED_OFFICIALS_EVENT.fieldId,
+        lat: SEED_FIELD.lat,
+        long: SEED_FIELD.long,
+        name: "Officials Test Court",
+        location: SEED_ORG.location,
+        organizationId: SEED_ORG.id,
+        rentalSlotIds: [SEED_OFFICIALS_EVENT.slotId],
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
     await prisma.timeSlots.create({
       data: {
         id: SEED_RENTAL_SLOT.id,
@@ -629,11 +696,41 @@ const seed = async (): Promise<void> => {
       },
     });
 
+    const upcomingEventWindow = buildUpcomingEventWindow();
+    const officialMatchStart = new Date(upcomingEventWindow.start);
+    const officialMatchEnd = new Date(
+      officialMatchStart.getTime() + 60 * 60 * 1000,
+    );
+    const secondOfficialMatchStart = new Date(officialMatchEnd);
+    const secondOfficialMatchEnd = new Date(
+      secondOfficialMatchStart.getTime() + 60 * 60 * 1000,
+    );
+
+    await prisma.timeSlots.create({
+      data: {
+        id: SEED_OFFICIALS_EVENT.slotId,
+        scheduledFieldId: SEED_OFFICIALS_EVENT.fieldId,
+        scheduledFieldIds: [SEED_OFFICIALS_EVENT.fieldId],
+        price: 0,
+        repeating: false,
+        dayOfWeek: officialMatchStart.getUTCDay(),
+        daysOfWeek: [officialMatchStart.getUTCDay()],
+        startDate: officialMatchStart,
+        endDate: secondOfficialMatchEnd,
+        startTimeMinutes:
+          officialMatchStart.getUTCHours() * 60 + officialMatchStart.getUTCMinutes(),
+        endTimeMinutes:
+          secondOfficialMatchEnd.getUTCHours() * 60 + secondOfficialMatchEnd.getUTCMinutes(),
+        divisions: [SEED_OFFICIALS_EVENT.divisionId],
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
     const baseEventData = {
       start: new Date(SEED_START),
       end: new Date(SEED_END),
       description: "Seeded event for E2E tests",
-      divisions: [SEED_DIVISION.id],
       location: SEED_ORG.location,
       rating: 5,
       teamSizeLimit: 6,
@@ -663,7 +760,6 @@ const seed = async (): Promise<void> => {
       updatedAt: now,
     };
 
-    const upcomingEventWindow = buildUpcomingEventWindow();
     const discoverEventData = {
       ...baseEventData,
       start: upcomingEventWindow.start,
@@ -710,84 +806,133 @@ const seed = async (): Promise<void> => {
       })),
     });
 
-      const schedulerEvents: Prisma.EventsCreateManyInput[] = [
-        {
-          ...baseEventData,
-          id: SEED_EVENTS.scheduler.tournament8.id,
-          name: SEED_EVENTS.scheduler.tournament8.name,
-          eventType: "TOURNAMENT",
-          price: 0,
-          state: "PUBLISHED",
-          winnerSetCount: 2,
-          loserSetCount: 1,
-          winnerBracketPointsToVictory: [21],
-          loserBracketPointsToVictory: [15],
-          doubleElimination: false,
-          fieldCount: 1,
-        },
-        {
-          ...baseEventData,
-          id: SEED_EVENTS.scheduler.tournament6.id,
-          name: SEED_EVENTS.scheduler.tournament6.name,
-          eventType: "TOURNAMENT",
-          price: 0,
-          state: "PUBLISHED",
-          winnerSetCount: 2,
-          loserSetCount: 1,
-          winnerBracketPointsToVictory: [21],
-          loserBracketPointsToVictory: [15],
-          doubleElimination: false,
-          fieldCount: 1,
-        },
-        {
-          ...baseEventData,
-          id: SEED_EVENTS.scheduler.tournamentDoubleElim.id,
-          name: SEED_EVENTS.scheduler.tournamentDoubleElim.name,
-          eventType: "TOURNAMENT",
-          price: 0,
-          state: "PUBLISHED",
-          winnerSetCount: 2,
-          loserSetCount: 1,
-          winnerBracketPointsToVictory: [21],
-          loserBracketPointsToVictory: [15],
-          doubleElimination: true,
-          fieldCount: 1,
-        },
-        {
-          ...baseEventData,
-          id: SEED_EVENTS.scheduler.leagueNoSlots.id,
-          name: SEED_EVENTS.scheduler.leagueNoSlots.name,
-          eventType: "LEAGUE",
-          timeSlotIds: [],
-          gamesPerOpponent: 1,
-          includePlayoffs: false,
-          price: 0,
-          state: "PUBLISHED",
-        },
-        {
-          ...baseEventData,
-          id: SEED_EVENTS.scheduler.leagueSameDay.id,
-          name: SEED_EVENTS.scheduler.leagueSameDay.name,
-          eventType: "LEAGUE",
-          start: new Date("2026-04-01T10:00:00Z"),
-          end: new Date("2026-04-01T10:00:00Z"),
-          timeSlotIds: [SEED_RENTAL_SLOT.id],
-          gamesPerOpponent: 1,
-          includePlayoffs: false,
-          price: 0,
-          state: "PUBLISHED",
-        },
-      ];
+    const officialEventId = SEED_EVENTS.scheduler.officials.id;
+
+    const schedulerEvents: Prisma.EventsCreateManyInput[] = [
+      {
+        ...baseEventData,
+        id: SEED_EVENTS.scheduler.tournament8.id,
+        name: SEED_EVENTS.scheduler.tournament8.name,
+        eventType: "TOURNAMENT",
+        price: 0,
+        state: "PUBLISHED",
+        winnerSetCount: 2,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [21],
+        loserBracketPointsToVictory: [15],
+        doubleElimination: false,
+        fieldCount: 1,
+      },
+      {
+        ...baseEventData,
+        id: SEED_EVENTS.scheduler.tournament6.id,
+        name: SEED_EVENTS.scheduler.tournament6.name,
+        eventType: "TOURNAMENT",
+        price: 0,
+        state: "PUBLISHED",
+        winnerSetCount: 2,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [21],
+        loserBracketPointsToVictory: [15],
+        doubleElimination: false,
+        fieldCount: 1,
+      },
+      {
+        ...baseEventData,
+        id: SEED_EVENTS.scheduler.tournamentDoubleElim.id,
+        name: SEED_EVENTS.scheduler.tournamentDoubleElim.name,
+        eventType: "TOURNAMENT",
+        price: 0,
+        state: "PUBLISHED",
+        winnerSetCount: 2,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [21],
+        loserBracketPointsToVictory: [15],
+        doubleElimination: true,
+        fieldCount: 1,
+      },
+      {
+        ...baseEventData,
+        id: SEED_EVENTS.scheduler.leagueNoSlots.id,
+        name: SEED_EVENTS.scheduler.leagueNoSlots.name,
+        eventType: "LEAGUE",
+        timeSlotIds: [],
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+        price: 0,
+        state: "PUBLISHED",
+      },
+      {
+        ...baseEventData,
+        id: SEED_EVENTS.scheduler.leagueSameDay.id,
+        name: SEED_EVENTS.scheduler.leagueSameDay.name,
+        eventType: "LEAGUE",
+        start: new Date("2026-04-01T10:00:00Z"),
+        end: new Date("2026-04-01T10:00:00Z"),
+        timeSlotIds: [SEED_RENTAL_SLOT.id],
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+        price: 0,
+        state: "PUBLISHED",
+      },
+      {
+        ...baseEventData,
+        id: officialEventId,
+        name: SEED_EVENTS.scheduler.officials.name,
+        eventType: "LEAGUE",
+        start: upcomingEventWindow.start,
+        end: secondOfficialMatchEnd,
+        fieldIds: [SEED_OFFICIALS_EVENT.fieldId],
+        timeSlotIds: [SEED_OFFICIALS_EVENT.slotId],
+        teamSignup: true,
+        maxParticipants: 4,
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+        usesSets: false,
+        matchDurationMinutes: 60,
+        restTimeMinutes: 0,
+        price: 0,
+        state: "PUBLISHED",
+        officialSchedulingMode: "SCHEDULE",
+        doTeamsOfficiate: false,
+        teamOfficialsMaySwap: false,
+        officialPositions: [...SEED_OFFICIALS_EVENT.positions],
+      },
+    ];
 
     await prisma.events.createMany({
       data: schedulerEvents,
     });
+
+    await prisma.divisions.create({
+      data: {
+        id: SEED_OFFICIALS_EVENT.divisionId,
+        name: SEED_DIVISION.name,
+        key: "open",
+        kind: "LEAGUE",
+        sortOrder: 0,
+        eventId: officialEventId,
+        organizationId: SEED_ORG.id,
+        sportId: SEED_SPORT.id,
+        maxParticipants: 4,
+        gamesPerOpponent: 1,
+        restTimeMinutes: 0,
+        usesSets: false,
+        matchDurationMinutes: 60,
+        fieldIds: [SEED_OFFICIALS_EVENT.fieldId],
+        teamIds: SEED_TEAM_IDS.slice(0, 4),
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
     const schedulerEventTeams: Array<{ eventId: string; teamIds: string[] }> = [
       { eventId: SEED_EVENTS.scheduler.tournament8.id, teamIds: SEED_TEAM_IDS.slice(0, 8) },
       { eventId: SEED_EVENTS.scheduler.tournament6.id, teamIds: SEED_TEAM_IDS.slice(0, 6) },
       { eventId: SEED_EVENTS.scheduler.tournamentDoubleElim.id, teamIds: SEED_TEAM_IDS.slice(0, 8) },
       { eventId: SEED_EVENTS.scheduler.leagueNoSlots.id, teamIds: SEED_TEAM_IDS.slice(0, 4) },
       { eventId: SEED_EVENTS.scheduler.leagueSameDay.id, teamIds: SEED_TEAM_IDS.slice(0, 4) },
+      { eventId: officialEventId, teamIds: SEED_TEAM_IDS.slice(0, 4) },
     ];
     await prisma.eventRegistrations.createMany({
       data: schedulerEventTeams.flatMap(({ eventId, teamIds }) => teamIds.map((teamId) => ({
@@ -803,6 +948,83 @@ const seed = async (): Promise<void> => {
         createdAt: now,
         updatedAt: now,
       }))),
+      skipDuplicates: true,
+    });
+
+    const [firstOfficial, secondOfficial] = SEED_OFFICIAL_USERS;
+    if (!firstOfficial || !secondOfficial) {
+      throw new Error("Official seed users are required for the mobile official event fixture.");
+    }
+
+    await (prisma as any).eventOfficials.createMany({
+      data: SEED_OFFICIAL_USERS.map((official, index) => ({
+        id: buildEventOfficialRecordId(officialEventId, official.id),
+        eventId: officialEventId,
+        userId: official.id,
+        positionIds: SEED_OFFICIALS_EVENT.positions[index]
+          ? [SEED_OFFICIALS_EVENT.positions[index].id]
+          : [],
+        fieldIds: [SEED_OFFICIALS_EVENT.fieldId],
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })),
+      skipDuplicates: true,
+    });
+
+    await prisma.matches.createMany({
+      data: [
+        {
+          id: SEED_OFFICIALS_EVENT.matchIds[0],
+          eventId: officialEventId,
+          fieldId: SEED_OFFICIALS_EVENT.fieldId,
+          matchId: 1,
+          start: officialMatchStart,
+          end: officialMatchEnd,
+          division: SEED_OFFICIALS_EVENT.divisionId,
+          team1Id: SEED_TEAM_IDS[0],
+          team2Id: SEED_TEAM_IDS[1],
+          team1Seed: 1,
+          team2Seed: 2,
+          team1Points: [],
+          team2Points: [],
+          setResults: [],
+          locked: false,
+          officialCheckedIn: false,
+          officialIds: buildOfficialAssignments(
+            officialEventId,
+            firstOfficial.id,
+            secondOfficial.id,
+          ),
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: SEED_OFFICIALS_EVENT.matchIds[1],
+          eventId: officialEventId,
+          fieldId: SEED_OFFICIALS_EVENT.fieldId,
+          matchId: 2,
+          start: secondOfficialMatchStart,
+          end: secondOfficialMatchEnd,
+          division: SEED_OFFICIALS_EVENT.divisionId,
+          team1Id: SEED_TEAM_IDS[2],
+          team2Id: SEED_TEAM_IDS[3],
+          team1Seed: 3,
+          team2Seed: 4,
+          team1Points: [],
+          team2Points: [],
+          setResults: [],
+          locked: false,
+          officialCheckedIn: false,
+          officialIds: buildOfficialAssignments(
+            officialEventId,
+            firstOfficial.id,
+            secondOfficial.id,
+          ),
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
       skipDuplicates: true,
     });
   } finally {
