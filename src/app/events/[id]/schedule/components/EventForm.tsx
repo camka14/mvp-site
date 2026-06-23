@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Title, Stack, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -301,11 +301,8 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
-import { SingleDivisionCapacityControls } from './eventForm/sections/SingleDivisionCapacityControls';
+import { SingleDivisionDefaultsPanel } from './eventForm/sections/SingleDivisionDefaultsPanel';
 import { SingleDivisionEditorNotice } from './eventForm/sections/SingleDivisionEditorNotice';
-import { SingleDivisionPaymentPlanControls } from './eventForm/sections/SingleDivisionPaymentPlanControls';
-import { SingleDivisionPricingControls } from './eventForm/sections/SingleDivisionPricingControls';
-import { SingleDivisionScheduleControls } from './eventForm/sections/SingleDivisionScheduleControls';
 import { StaffAssignedCardsGrid } from './eventForm/sections/StaffAssignedCardsGrid';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
@@ -6318,116 +6315,52 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     isImmutableField={isImmutableField}
                                 />
                                 {eventData.singleDivision ? (
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <Stack gap="md">
-                                        <div>
-                                            <Title order={6}>Single Division</Title>
-                                            <Text size="sm" c="dimmed">
-                                                Price, capacity, and payment plans apply to every selected division.
-                                            </Text>
-                                        </div>
-                                        <motion.div
-                                            id="division-defaults-content"
-                                            layout
-                                            className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
-                                            transition={DIVISION_LAYOUT_TRANSITION}
-                                        >
-                                            <SingleDivisionCapacityControls
-                                                control={control}
-                                                singleDivision={Boolean(eventData.singleDivision)}
-                                                teamSignup={Boolean(eventData.teamSignup)}
-                                                eventType={eventData.eventType}
-                                                includePlayoffs={Boolean(leagueData.includePlayoffs)}
-                                                playoffTeamCount={leagueData.playoffTeamCount}
-                                                maxStandardNumber={MAX_STANDARD_NUMBER}
-                                                numberInputStyles={alignedDetailsFieldStyles}
-                                                maxParticipantsDisabled={isImmutableField('maxParticipants')}
-                                                playoffTeamCountDisabled={isImmutableField('playoffTeamCount')}
-                                                playoffTeamCountError={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                                onPlayoffTeamCountChange={(playoffTeamCount) => {
-                                                    setLeagueData((prev) => ({
-                                                        ...prev,
-                                                        playoffTeamCount,
-                                                    }));
-                                                }}
-                                            />
-                                            <SingleDivisionScheduleControls
-                                                singleDivision={Boolean(eventData.singleDivision)}
-                                                eventType={eventData.eventType}
-                                                includePlayoffs={Boolean(leagueData.includePlayoffs)}
-                                                splitLeaguePlayoffDivisions={eventData.splitLeaguePlayoffDivisions}
-                                                leagueData={leagueData}
-                                                playoffData={playoffData}
-                                                tournamentData={tournamentData}
-                                                sport={eventData.sportConfig ?? undefined}
-                                                participantCount={eventData.maxParticipants ?? undefined}
-                                                poolDefaults={singleDivisionPoolPlayDefaults}
-                                                maxStandardNumber={MAX_STANDARD_NUMBER}
-                                                numberInputStyles={alignedDetailsFieldStyles}
-                                                disabled={isImmutableField('divisions')}
-                                                onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
-                                                onPlayoffDataChange={setPlayoffData}
-                                                onTournamentDataChange={setTournamentData}
-                                                onPoolDefaultsChange={updateSingleDivisionTournamentPoolDefaults}
-                                            />
-                                            <SingleDivisionPricingControls
-                                                visible={eventData.singleDivision && !eventData.allowPaymentPlans}
-                                                control={control}
-                                                priceCents={eventData.price}
-                                                eventType={eventData.eventType}
-                                                taxable={eventTaxableForPreview}
-                                                maxPriceCents={MAX_PRICE_CENTS}
-                                                numberInputStyles={alignedDetailsFieldStyles}
-                                                hasStripeAccount={hasStripeAccount}
-                                                priceImmutable={isImmutableField('price')}
-                                                organizerTaxCollectionAllowed={organizerTaxCollectionAllowed}
-                                                organizerResponsibilityMessage={eventTaxPolicyForPreview.organizerResponsibilityMessage}
-                                                showTaxHandlingControls={isOrganizationHostedEvent || organizerTaxCollectionAllowed}
-                                                organizerManualTaxSelected={organizerManualTaxSelected}
-                                                organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
-                                                connectingStripe={connectingStripe}
-                                                onConnectStripe={handleConnectStripe}
-                                            />
-                                            <SingleDivisionPaymentPlanControls
-                                                allowPaymentPlans={eventData.allowPaymentPlans}
-                                                installmentCount={eventData.installmentCount || 0}
-                                                installmentAmounts={eventData.installmentAmounts || []}
-                                                installmentDueDates={eventData.installmentDueDates || []}
-                                                installmentDueRelativeDays={eventData.installmentDueRelativeDays || []}
-                                                teamSignup={eventData.teamSignup}
-                                                allowTeamSplitDefault={eventData.allowTeamSplitDefault}
-                                                eventType={eventData.eventType}
-                                                parentEvent={eventData.parentEvent}
-                                                eventStart={eventData.start}
-                                                taxable={eventTaxableForPreview}
-                                                hasStripeAccount={hasStripeAccount}
-                                                maxStandardNumber={MAX_STANDARD_NUMBER}
-                                                maxPriceCents={MAX_PRICE_CENTS}
-                                                onAllowPaymentPlansChange={(next) => {
-                                                    setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
-                                                    if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
-                                                        syncInstallmentCount((eventData.installmentCount || 1));
-                                                    } else if (next) {
-                                                        setValue('price', sumInstallmentAmounts(eventData.installmentAmounts), {
-                                                            shouldDirty: true,
-                                                            shouldValidate: true,
-                                                        });
-                                                    }
-                                                }}
-                                                onInstallmentCountChange={(count) => syncInstallmentCount(count)}
-                                                onTeamSplitDefaultChange={(checked) => setValue('allowTeamSplitDefault', checked, {
+                                    <SingleDivisionDefaultsPanel
+                                        control={control}
+                                        eventData={eventData}
+                                        leagueData={leagueData}
+                                        playoffData={playoffData}
+                                        tournamentData={tournamentData}
+                                        poolDefaults={singleDivisionPoolPlayDefaults}
+                                        eventTaxableForPreview={eventTaxableForPreview}
+                                        maxStandardNumber={MAX_STANDARD_NUMBER}
+                                        maxPriceCents={MAX_PRICE_CENTS}
+                                        numberInputStyles={alignedDetailsFieldStyles}
+                                        hasStripeAccount={hasStripeAccount}
+                                        organizerTaxCollectionAllowed={organizerTaxCollectionAllowed}
+                                        organizerResponsibilityMessage={eventTaxPolicyForPreview.organizerResponsibilityMessage}
+                                        isOrganizationHostedEvent={isOrganizationHostedEvent}
+                                        organizerManualTaxSelected={organizerManualTaxSelected}
+                                        organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
+                                        connectingStripe={connectingStripe}
+                                        isImmutableField={isImmutableField}
+                                        playoffTeamCountError={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                        setLeagueData={setLeagueData}
+                                        setPlayoffData={setPlayoffData}
+                                        setTournamentData={setTournamentData}
+                                        onPoolDefaultsChange={updateSingleDivisionTournamentPoolDefaults}
+                                        onConnectStripe={handleConnectStripe}
+                                        syncInstallmentCount={syncInstallmentCount}
+                                        onAllowPaymentPlansChange={(next) => {
+                                            setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
+                                            if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
+                                                syncInstallmentCount(eventData.installmentCount || 1);
+                                            } else if (next) {
+                                                setValue('price', sumInstallmentAmounts(eventData.installmentAmounts), {
                                                     shouldDirty: true,
                                                     shouldValidate: true,
-                                                })}
-                                                onInstallmentDueRelativeDayChange={setInstallmentDueRelativeDay}
-                                                onInstallmentDueDateChange={setInstallmentDueDate}
-                                                onInstallmentAmountChange={setInstallmentAmount}
-                                                onRemoveInstallment={removeInstallment}
-                                                onAddInstallment={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}
-                                            />
-                                        </motion.div>
-                                    </Stack>
-                                </div>
+                                                });
+                                            }
+                                        }}
+                                        onInstallmentDueRelativeDayChange={setInstallmentDueRelativeDay}
+                                        onInstallmentDueDateChange={setInstallmentDueDate}
+                                        onInstallmentAmountChange={setInstallmentAmount}
+                                        onRemoveInstallment={removeInstallment}
+                                        onTeamSplitDefaultChange={(checked) => setValue('allowTeamSplitDefault', checked, {
+                                            shouldDirty: true,
+                                            shouldValidate: true,
+                                        })}
+                                    />
                                 ) : null}
                                 <DivisionEditorHeader
                                     editing={Boolean(divisionEditor.editingId)}
