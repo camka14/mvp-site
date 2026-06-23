@@ -563,3 +563,4 @@ React, `react-hook-form`, zod validation, Mantine, and the existing event schedu
 - 2026-06-22 / Codex: Extracted the full single-division defaults panel into `eventForm/sections/SingleDivisionDefaultsPanel.tsx`.
 - 2026-06-22 / Codex: Extracted the league-side division editor panel into `eventForm/sections/DivisionEditorLeaguePanel.tsx`.
 - 2026-06-22 / Codex: Extracted the staff and official management body into `eventForm/sections/StaffManagementPanel.tsx`.
+- 2026-06-22 / Codex: Extracted the event details body into `eventForm/sections/EventDetailsPanel.tsx`.

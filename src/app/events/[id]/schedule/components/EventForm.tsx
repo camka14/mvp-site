@@ -284,11 +284,7 @@ import { useOrganizationFieldHydration } from './eventForm/hooks/useOrganization
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useRentalBookingResources } from './eventForm/hooks/useRentalBookingResources';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
-import { EventDetailsLocationControls } from './eventForm/sections/EventDetailsLocationControls';
-import { EventDetailsResourceControls } from './eventForm/sections/EventDetailsResourceControls';
-import { EventDetailsSection } from './eventForm/sections/EventDetailsSection';
-import { EventDetailsTimingControls } from './eventForm/sections/EventDetailsTimingControls';
-import { EventDetailsTypeControls } from './eventForm/sections/EventDetailsTypeControls';
+import { EventDetailsPanel } from './eventForm/sections/EventDetailsPanel';
 import { LeagueScoringConfigSection } from './eventForm/sections/LeagueScoringConfigSection';
 import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSection';
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
@@ -5976,141 +5972,110 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onImageChange={handleImageChange}
                         />
 
-                        <EventDetailsSection
+                        <EventDetailsPanel
                             collapsed={collapsedSections['section-event-details']}
+                            control={control}
+                            eventData={eventData}
+                            leagueData={leagueData}
+                            eventTypeOptions={eventTypeOptions}
+                            supportsEditableTeamSignup={supportsEditableTeamSignup}
+                            showsFixedTeamEventToggle={showsFixedTeamEventToggle}
+                            supportsNoFixedEndDateTime={supportsNoFixedEndDateTime}
+                            automaticRefundsAvailable={automaticRefundsAvailable}
+                            todaysDate={todaysDate}
+                            maxStandardNumber={MAX_STANDARD_NUMBER}
+                            maxResourceNameLength={MAX_MEDIUM_TEXT_LENGTH}
+                            selectStyles={alignedDetailsFieldStyles}
+                            numberInputStyles={alignedDetailsFieldStyles}
+                            dateTimePickerStyles={alignedDetailsFieldStyles}
+                            multiSelectStyles={alignedDetailsFieldStyles}
+                            popoverProps={sharedPopoverProps}
+                            comboboxProps={sharedComboboxProps}
+                            isImmutableField={isImmutableField}
                             onToggle={() => toggleSectionCollapse('section-event-details')}
-                        >
-                            <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
-                                <EventDetailsTypeControls
-                                    control={control}
-                                    eventType={eventData.eventType}
-                                    eventTypeOptions={eventTypeOptions}
-                                    includePlayoffs={Boolean(leagueData.includePlayoffs)}
-                                    supportsEditableTeamSignup={supportsEditableTeamSignup}
-                                    showsFixedTeamEventToggle={showsFixedTeamEventToggle}
-                                    maxStandardNumber={MAX_STANDARD_NUMBER}
-                                    selectStyles={alignedDetailsFieldStyles}
-                                    numberInputStyles={alignedDetailsFieldStyles}
-                                    comboboxProps={sharedComboboxProps}
-                                    isImmutableField={isImmutableField}
-                                    onEventTypeChange={(nextType, applyValue) => {
-                                        clearErrors('leagueSlots');
-                                        const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
-                                        applyValue(nextType);
-                                        if (enforcingTeamSettings) {
-                                            setValue('teamSignup', true, { shouldDirty: true });
-                                            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                        } else {
-                                            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                            const parsedStart = parseLocalDateTime(getValues('start'));
-                                            const parsedEnd = parseLocalDateTime(getValues('end'));
-                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                            }
-                                        }
-                                    }}
-                                    onIncludePlayoffsChange={handleIncludePlayoffsToggle}
-                                    onIncludePoolPlayChange={(checked) => {
-                                        setLeagueData((prev) => ({
-                                            ...prev,
-                                            includePlayoffs: checked,
-                                            playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
-                                        }));
-                                        if (!checked) {
-                                            const currentDetails = Array.isArray(eventData.divisionDetails)
-                                                ? eventData.divisionDetails
-                                                : [];
-                                            setValue(
-                                                'divisionDetails',
-                                                currentDetails.map((detail) => ({
-                                                    ...detail,
-                                                    playoffTeamCount: undefined,
-                                                    poolCount: undefined,
-                                                    poolTeamCount: undefined,
-                                                })),
-                                                { shouldDirty: true, shouldValidate: true },
-                                            );
-                                        }
-                                    }}
-                                />
-                                <EventDetailsTimingControls
-                                    control={control}
-                                    eventType={eventData.eventType}
-                                    startValue={eventData.start}
-                                    noFixedEndDateTime={Boolean(eventData.noFixedEndDateTime)}
-                                    supportsNoFixedEndDateTime={supportsNoFixedEndDateTime}
-                                    automaticRefundsAvailable={automaticRefundsAvailable}
-                                    todaysDate={todaysDate}
-                                    maxStandardNumber={MAX_STANDARD_NUMBER}
-                                    dateTimePickerStyles={alignedDetailsFieldStyles}
-                                    numberInputStyles={alignedDetailsFieldStyles}
-                                    popoverProps={sharedPopoverProps}
-                                    isImmutableField={isImmutableField}
-                                    onStartChange={(parsed) => {
-                                        setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                                    }}
-                                    onEndChange={(parsed) => {
-                                        setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                                    }}
-                                    onNoFixedEndDateTimeChange={(checked) => {
-                                        setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                        if (checked) return;
-                                        const parsedStart = parseLocalDateTime(getValues('start'));
-                                        const parsedEnd = parseLocalDateTime(getValues('end'));
-                                        if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                            const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                            setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                        }
-                                    }}
-                                />
-                            </div>
-
-                            <EventDetailsLocationControls
-                                control={control}
-                                coordinates={eventData.coordinates}
-                                defaultCoordinates={defaultLocation?.coordinates}
-                                coordinatesSelected={coordinatesAreSet(eventData.coordinates)}
-                                onSelectedAddressChange={(nextCoordinates, nextAddress) => {
-                                    setValue('coordinates', nextCoordinates, { shouldDirty: true, shouldValidate: true });
-                                    setValue('address', nextAddress, { shouldDirty: true, shouldValidate: true });
-                                }}
-                                isLocationImmutable={isLocationImmutable}
-                                isImmutableField={isImmutableField}
-                                templatesLoading={templatesLoading}
-                                templatesError={templatesError}
-                                templateOrganizationId={templateOrganizationId}
-                                templateOptions={templateOptions}
-                                comboboxProps={sharedComboboxProps}
-                                multiSelectStyles={alignedDetailsFieldStyles}
-                                numberInputStyles={alignedDetailsFieldStyles}
-                                maxStandardNumber={MAX_STANDARD_NUMBER}
-                                normalizeNumberValue={normalizeNumber}
-                                minAge={eventData.minAge}
-                                maxAge={eventData.maxAge}
-                                localFieldCreationControl={localFieldCreationControl}
-                                registrationQuestionsEditor={registrationQuestionsEditor}
-                                hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
-                                teamSignup={Boolean(eventData.teamSignup)}
-                            />
-
-                            <EventDetailsResourceControls
-                                control={control}
-                                showOrganizationFields={showOrganizationFieldsInEventDetails}
-                                organizationResourcePool={organizationResourcePool}
-                                resourceSelectorLoading={resourceSelectorLoading}
-                                organizationHostedEventId={organizationHostedEventId}
-                                isImmutableField={isImmutableField}
-                                rentalResourcesError={rentalResourcesError}
-                                showLocalFieldCreationControls={showLocalFieldCreationControls}
-                                eventLocalFields={eventLocalFields}
-                                fieldNamesCollapsed={fieldNamesCollapsed}
-                                setFieldNamesCollapsed={setFieldNamesCollapsed}
-                                maxResourceNameLength={MAX_MEDIUM_TEXT_LENGTH}
-                                onLocalFieldNameChange={handleLocalFieldNameChange}
-                            />
-                        </EventDetailsSection>
+                            onEventTypeChange={(nextType, applyValue) => {
+                                clearErrors('leagueSlots');
+                                const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                applyValue(nextType);
+                                if (enforcingTeamSettings) {
+                                    setValue('teamSignup', true, { shouldDirty: true });
+                                    setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                } else {
+                                    setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+                                    const parsedStart = parseLocalDateTime(getValues('start'));
+                                    const parsedEnd = parseLocalDateTime(getValues('end'));
+                                    if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                        const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                        setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                    }
+                                }
+                            }}
+                            onIncludePlayoffsChange={handleIncludePlayoffsToggle}
+                            onIncludePoolPlayChange={(checked) => {
+                                setLeagueData((prev) => ({
+                                    ...prev,
+                                    includePlayoffs: checked,
+                                    playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
+                                }));
+                                if (!checked) {
+                                    const currentDetails = Array.isArray(eventData.divisionDetails)
+                                        ? eventData.divisionDetails
+                                        : [];
+                                    setValue(
+                                        'divisionDetails',
+                                        currentDetails.map((detail) => ({
+                                            ...detail,
+                                            playoffTeamCount: undefined,
+                                            poolCount: undefined,
+                                            poolTeamCount: undefined,
+                                        })),
+                                        { shouldDirty: true, shouldValidate: true },
+                                    );
+                                }
+                            }}
+                            onStartChange={(parsed) => {
+                                setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                            }}
+                            onEndChange={(parsed) => {
+                                setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                            }}
+                            onNoFixedEndDateTimeChange={(checked) => {
+                                setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
+                                if (checked) return;
+                                const parsedStart = parseLocalDateTime(getValues('start'));
+                                const parsedEnd = parseLocalDateTime(getValues('end'));
+                                if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                    const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                    setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                }
+                            }}
+                            coordinatesSelected={coordinatesAreSet(eventData.coordinates)}
+                            defaultCoordinates={defaultLocation?.coordinates}
+                            onSelectedAddressChange={(nextCoordinates, nextAddress) => {
+                                setValue('coordinates', nextCoordinates, { shouldDirty: true, shouldValidate: true });
+                                setValue('address', nextAddress, { shouldDirty: true, shouldValidate: true });
+                            }}
+                            isLocationImmutable={isLocationImmutable}
+                            templatesLoading={templatesLoading}
+                            templatesError={templatesError}
+                            templateOrganizationId={templateOrganizationId}
+                            templateOptions={templateOptions}
+                            normalizeNumberValue={normalizeNumber}
+                            localFieldCreationControl={localFieldCreationControl}
+                            registrationQuestionsEditor={registrationQuestionsEditor}
+                            hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
+                            showOrganizationFields={showOrganizationFieldsInEventDetails}
+                            organizationResourcePool={organizationResourcePool}
+                            resourceSelectorLoading={resourceSelectorLoading}
+                            organizationHostedEventId={organizationHostedEventId}
+                            rentalResourcesError={rentalResourcesError}
+                            showLocalFieldCreationControls={showLocalFieldCreationControls}
+                            eventLocalFields={eventLocalFields}
+                            fieldNamesCollapsed={fieldNamesCollapsed}
+                            setFieldNamesCollapsed={setFieldNamesCollapsed}
+                            onLocalFieldNameChange={handleLocalFieldNameChange}
+                        />
 
                         <MatchRulesConfigSection
                             visible={showMatchRulesSection}
