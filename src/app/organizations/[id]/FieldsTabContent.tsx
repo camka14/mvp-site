@@ -82,18 +82,16 @@ import {
   readStoredManagerResourceFieldIds,
   writeStoredManagerResourceFieldIds,
 } from './fieldsTab/managerResourceSelectionStorage';
+import { useManagerCalendarChangeQueue } from './fieldsTab/useManagerCalendarChangeQueue';
 import type {
   BuildStaffAssignmentCalendarRangeOptions,
   CalendarEventData,
   FacilityFeedCalendarEntry,
   ManagerCalendarDraft,
   ManagerCalendarDraftStaffOptions,
-  ManagerCalendarPendingChange,
   ManagerCalendarSelectionMode,
   ManagerDraftDragState,
-  ManagerRentalSlotPendingUpdate,
   ManagerStaffAssignmentPendingOverride,
-  ManagerStaffAssignmentPendingOverrideBatch,
   OpenStaffDeleteScope,
   OpenStaffDeleteConfirmationState,
   RentalDraftSelection,
@@ -193,18 +191,6 @@ const dollarsFromCents = (amountCents: number | null | undefined): string => {
   }
   return (Number(amountCents) / 100).toFixed(2);
 };
-
-const serializeManagerCalendarDraft = (draft: ManagerCalendarDraft) => JSON.stringify({
-  ...draft,
-  fieldIds: normalizeFieldIds(draft.fieldIds),
-  start: new Date(draft.start).toISOString(),
-  end: new Date(draft.end).toISOString(),
-});
-
-const managerCalendarDraftsAreEqual = (
-  first: ManagerCalendarDraft,
-  second: ManagerCalendarDraft,
-) => serializeManagerCalendarDraft(first) === serializeManagerCalendarDraft(second);
 
 const buildManagerCalendarDraftWithCalendarRange = (
   draft: ManagerCalendarDraft,
@@ -1636,18 +1622,37 @@ export default function FieldsTabContent({
   const [managerCreateDragPreviewPoint, setManagerCreateDragPreviewPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const managerCreateDropResolverRef = useRef<((clientX: number, clientY: number) => SelectionState | null) | null>(null);
   const managerCreateDraftAdderRef = useRef<((mode: ManagerCalendarSelectionMode, nextSelection: SelectionState) => void) | null>(null);
-  const [managerCalendarEditMode, setManagerCalendarEditMode] = useState(false);
-  const [managerCalendarDrafts, setManagerCalendarDrafts] = useState<ManagerCalendarDraft[]>([]);
-  const [managerCalendarPendingChanges, setManagerCalendarPendingChanges] = useState<ManagerCalendarPendingChange[]>([]);
-  const [managerRentalSlotUpdates, setManagerRentalSlotUpdates] = useState<Record<string, ManagerRentalSlotPendingUpdate>>({});
-  const [managerStaffAssignmentOverrides, setManagerStaffAssignmentOverrides] = useState<Record<string, ManagerStaffAssignmentPendingOverride>>({});
-  const [managerCalendarDraftsSaving, setManagerCalendarDraftsSaving] = useState(false);
+  const {
+    managerCalendarEditMode,
+    setManagerCalendarEditMode,
+    managerCalendarDrafts,
+    managerCalendarPendingChangeCount,
+    managerRentalSlotUpdates,
+    managerStaffAssignmentOverrides,
+    managerCalendarDraftsSaving,
+    setManagerCalendarDraftsSaving,
+    managerDraftDragId,
+    setManagerDraftDragId,
+    selectedManagerDraftId,
+    setSelectedManagerDraftId,
+    editingManagerDraftId,
+    setEditingManagerDraftId,
+    stageManagerCalendarDraftCreate,
+    stageManagerCalendarDraftUpdate,
+    stageManagerCalendarDraftScope,
+    stageRentalSlotUpdate,
+    stageStaffAssignmentOverride,
+    stageStaffAssignmentOverrideBatch,
+    restorePendingStaffUnassignment,
+    undoLastManagerCalendarChange,
+    clearManagerCalendarPendingState,
+  } = useManagerCalendarChangeQueue({
+    setSelection,
+    setCalendarDate,
+  });
   const managerDraftDragRef = useRef<ManagerDraftDragState | null>(null);
   const managerDraftSuppressNextClickRef = useRef(false);
   const openManagerCalendarDraftEditorRef = useRef<((draftId: string) => void) | null>(null);
-  const [managerDraftDragId, setManagerDraftDragId] = useState<string | null>(null);
-  const [selectedManagerDraftId, setSelectedManagerDraftId] = useState<string | null>(null);
-  const [editingManagerDraftId, setEditingManagerDraftId] = useState<string | null>(null);
   const [calendarLayerFilters, setCalendarLayerFilters] = useState<CalendarLayerType[]>(CALENDAR_LAYER_ORDER);
   const [facilityModalOpen, setFacilityModalOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
@@ -3459,350 +3464,6 @@ export default function FieldsTabContent({
 
   const handleRemoveRentalSelection = useCallback((selectionKey: string) => {
     setRentalSelections((prev) => prev.filter((selectionItem) => selectionItem.key !== selectionKey));
-  }, []);
-
-  const managerCalendarPendingChangeCount = managerCalendarPendingChanges.length;
-
-	  const stageManagerCalendarDraftUpdate = useCallback((
-	    draftId: string,
-	    updater: (draft: ManagerCalendarDraft) => ManagerCalendarDraft,
-	    label = 'Updated draft card',
-	  ): ManagerCalendarDraft | null => {
-    const previous = managerCalendarDrafts.find((draft) => draft.id === draftId) ?? null;
-    if (!previous) {
-      return null;
-    }
-    const next = updater({
-      ...previous,
-      fieldIds: normalizeFieldIds(previous.fieldIds),
-      start: new Date(previous.start),
-      end: new Date(previous.end),
-    });
-    const normalizedNext: ManagerCalendarDraft = {
-      ...next,
-      fieldIds: normalizeFieldIds(next.fieldIds),
-      start: new Date(next.start),
-      end: new Date(next.end),
-    };
-    if (managerCalendarDraftsAreEqual(previous, normalizedNext)) {
-      return normalizedNext;
-    }
-
-    setManagerCalendarEditMode(true);
-    setManagerCalendarDrafts((current) => current.map((draft) => (
-      draft.id === draftId ? normalizedNext : draft
-    )));
-    setSelectedManagerDraftId(draftId);
-    setSelection({
-      fieldIds: normalizeFieldIds(normalizedNext.fieldIds),
-      start: new Date(normalizedNext.start),
-      end: new Date(normalizedNext.end),
-    });
-    setCalendarDate(new Date(normalizedNext.start));
-    setManagerCalendarPendingChanges((current) => ([
-      ...current,
-      {
-        id: createId(),
-        type: 'draft_update',
-        label,
-        draftId,
-        previous,
-        next: normalizedNext,
-	      },
-	    ]));
-	    return normalizedNext;
-	  }, [managerCalendarDrafts]);
-
-	  const stageManagerCalendarDraftScope = useCallback((
-	    draftId: string,
-	    parentNext: ManagerCalendarDraft,
-	    childDraft: ManagerCalendarDraft,
-	    label = 'Assigned draft coverage occurrence',
-	    previousDraftFallback: ManagerCalendarDraft | null = null,
-	  ) => {
-	    const previous = managerCalendarDrafts.find((draft) => draft.id === draftId) ?? previousDraftFallback;
-	    if (!previous) {
-	      return false;
-	    }
-	    const normalizedParentNext: ManagerCalendarDraft = {
-	      ...parentNext,
-	      fieldIds: normalizeFieldIds(parentNext.fieldIds),
-	      start: new Date(parentNext.start),
-	      end: new Date(parentNext.end),
-	    };
-	    const normalizedChildDraft: ManagerCalendarDraft = {
-	      ...childDraft,
-	      fieldIds: normalizeFieldIds(childDraft.fieldIds),
-	      start: new Date(childDraft.start),
-	      end: new Date(childDraft.end),
-	    };
-	    setManagerCalendarEditMode(true);
-	    setManagerCalendarDrafts((current) => {
-	      const hasParentDraft = current.some((draft) => draft.id === draftId);
-	      const parentDrafts = hasParentDraft
-	        ? current.map((draft) => (draft.id === draftId ? normalizedParentNext : draft))
-	        : [...current, normalizedParentNext];
-	      return [...parentDrafts, normalizedChildDraft];
-	    });
-	    setSelectedManagerDraftId(normalizedChildDraft.id);
-	    setSelection({
-	      fieldIds: normalizeFieldIds(normalizedChildDraft.fieldIds),
-	      start: new Date(normalizedChildDraft.start),
-	      end: new Date(normalizedChildDraft.end),
-	    });
-	    setCalendarDate(new Date(normalizedChildDraft.start));
-	    setManagerCalendarPendingChanges((current) => ([
-	      ...current,
-	      {
-	        id: createId(),
-	        type: 'draft_scope',
-	        label,
-	        draftId,
-	        previous,
-	        parentNext: normalizedParentNext,
-	        childDraft: normalizedChildDraft,
-	      },
-	    ]));
-	    return true;
-	  }, [managerCalendarDrafts]);
-
-  const stageRentalSlotUpdate = useCallback((
-    update: ManagerRentalSlotPendingUpdate,
-    label = 'Moved rental slot',
-  ) => {
-    const previous = managerRentalSlotUpdates[update.key] ?? null;
-    setManagerCalendarEditMode(true);
-    setManagerRentalSlotUpdates((current) => ({
-      ...current,
-      [update.key]: update,
-    }));
-    setManagerCalendarPendingChanges((current) => ([
-      ...current,
-      {
-        id: createId(),
-        type: 'rental_update',
-        label,
-        key: update.key,
-        previous,
-        next: update,
-      },
-    ]));
-  }, [managerRentalSlotUpdates]);
-
-  const stageStaffAssignmentOverride = useCallback((
-    assignmentId: string,
-    override: ManagerStaffAssignmentPendingOverride,
-    label = 'Updated staff assignment',
-  ) => {
-    const previous = managerStaffAssignmentOverrides[assignmentId] ?? null;
-    setManagerCalendarEditMode(true);
-    setManagerStaffAssignmentOverrides((current) => ({
-      ...current,
-      [assignmentId]: override,
-    }));
-    setManagerCalendarPendingChanges((current) => ([
-      ...current,
-      {
-        id: createId(),
-        type: 'staff_override',
-        label,
-        assignmentId,
-        previous,
-        next: override,
-      },
-    ]));
-  }, [managerStaffAssignmentOverrides]);
-
-  const stageStaffAssignmentOverrideBatch = useCallback((
-    updates: Array<{ assignmentId: string; override: ManagerStaffAssignmentPendingOverride }>,
-    label = 'Updated staff assignments',
-  ) => {
-    const normalizedUpdates = new Map<string, ManagerStaffAssignmentPendingOverride>();
-    updates.forEach((update) => {
-      if (update.assignmentId) {
-        normalizedUpdates.set(update.assignmentId, update.override);
-      }
-    });
-    if (!normalizedUpdates.size) {
-      return;
-    }
-    const changes = Array.from(normalizedUpdates.entries()).reduce<ManagerStaffAssignmentPendingOverrideBatch>(
-      (acc, [assignmentId, override]) => {
-        acc[assignmentId] = {
-          previous: managerStaffAssignmentOverrides[assignmentId] ?? null,
-          next: override,
-        };
-        return acc;
-      },
-      {},
-    );
-    setManagerCalendarEditMode(true);
-    setManagerStaffAssignmentOverrides((current) => {
-      const next = { ...current };
-      Object.entries(changes).forEach(([assignmentId, change]) => {
-        next[assignmentId] = change.next;
-      });
-      return next;
-    });
-    setManagerCalendarPendingChanges((current) => ([
-      ...current,
-      {
-        id: createId(),
-        type: 'staff_override_batch',
-        label,
-        changes,
-      },
-    ]));
-  }, [managerStaffAssignmentOverrides]);
-
-  const restorePendingStaffUnassignment = useCallback((assignmentId: string) => {
-    const currentOverride = managerStaffAssignmentOverrides[assignmentId];
-    if (currentOverride?.action !== 'unassign') {
-      return false;
-    }
-
-    let replacementOverride: ManagerStaffAssignmentPendingOverride | null = null;
-    let changeIdToRemove: string | null = null;
-    for (let index = managerCalendarPendingChanges.length - 1; index >= 0; index -= 1) {
-      const change = managerCalendarPendingChanges[index];
-      if (change.type === 'staff_override' && change.assignmentId === assignmentId && change.next.action === 'unassign') {
-        replacementOverride = change.previous;
-        changeIdToRemove = change.id;
-        break;
-      }
-      if (change.type === 'staff_override_batch') {
-        const batchedChange = change.changes[assignmentId];
-        if (batchedChange?.next.action === 'unassign') {
-          replacementOverride = batchedChange.previous;
-          changeIdToRemove = change.id;
-          break;
-        }
-      }
-    }
-
-    setManagerStaffAssignmentOverrides((current) => {
-      const next = { ...current };
-      if (replacementOverride) {
-        next[assignmentId] = replacementOverride;
-      } else {
-        delete next[assignmentId];
-      }
-      return next;
-    });
-
-    if (changeIdToRemove) {
-      setManagerCalendarPendingChanges((current) => current.flatMap((change) => {
-        if (change.id !== changeIdToRemove) {
-          return [change];
-        }
-        if (change.type === 'staff_override') {
-          return [];
-        }
-        if (change.type === 'staff_override_batch') {
-          const nextChanges = { ...change.changes };
-          delete nextChanges[assignmentId];
-          return Object.keys(nextChanges).length ? [{ ...change, changes: nextChanges }] : [];
-        }
-        return [change];
-      }));
-    }
-
-    return true;
-  }, [managerCalendarPendingChanges, managerStaffAssignmentOverrides]);
-
-  const undoLastManagerCalendarChange = useCallback(() => {
-    const lastChange = managerCalendarPendingChanges[managerCalendarPendingChanges.length - 1];
-    if (!lastChange) {
-      return;
-    }
-
-    if (lastChange.type === 'create_draft') {
-      setManagerCalendarDrafts((current) => current.filter((draft) => draft.id !== lastChange.draft.id));
-      if (selectedManagerDraftId === lastChange.draft.id) {
-        setSelectedManagerDraftId(null);
-      }
-      if (editingManagerDraftId === lastChange.draft.id) {
-        setEditingManagerDraftId(null);
-      }
-	    } else if (lastChange.type === 'draft_update') {
-	      setSelectedManagerDraftId(lastChange.draftId);
-	      setManagerCalendarDrafts((current) => current.map((draft) => (
-	        draft.id === lastChange.draftId ? lastChange.previous : draft
-	      )));
-      setSelection((current) => {
-        if (current?.fieldIds?.some((fieldId) => lastChange.previous.fieldIds.includes(fieldId))) {
-          return {
-            fieldIds: normalizeFieldIds(lastChange.previous.fieldIds),
-            start: new Date(lastChange.previous.start),
-            end: new Date(lastChange.previous.end),
-          };
-        }
-	        return current;
-	      });
-	    } else if (lastChange.type === 'draft_scope') {
-	      setManagerCalendarDrafts((current) => current
-	        .filter((draft) => draft.id !== lastChange.childDraft.id)
-	        .map((draft) => (
-	          draft.id === lastChange.draftId ? lastChange.previous : draft
-	        )));
-	      setSelectedManagerDraftId(lastChange.draftId);
-	      if (editingManagerDraftId === lastChange.childDraft.id) {
-	        setEditingManagerDraftId(null);
-	      }
-	      setSelection((current) => {
-	        if (current?.fieldIds?.some((fieldId) => lastChange.previous.fieldIds.includes(fieldId))) {
-	          return {
-	            fieldIds: normalizeFieldIds(lastChange.previous.fieldIds),
-	            start: new Date(lastChange.previous.start),
-	            end: new Date(lastChange.previous.end),
-	          };
-	        }
-	        return current;
-	      });
-	    } else if (lastChange.type === 'rental_update') {
-	      setManagerRentalSlotUpdates((current) => {
-	        const next = { ...current };
-        if (lastChange.previous) {
-          next[lastChange.key] = lastChange.previous;
-        } else {
-          delete next[lastChange.key];
-        }
-        return next;
-      });
-    } else if (lastChange.type === 'staff_override') {
-      setManagerStaffAssignmentOverrides((current) => {
-        const next = { ...current };
-        if (lastChange.previous) {
-          next[lastChange.assignmentId] = lastChange.previous;
-        } else {
-          delete next[lastChange.assignmentId];
-        }
-        return next;
-      });
-    } else if (lastChange.type === 'staff_override_batch') {
-      setManagerStaffAssignmentOverrides((current) => {
-        const next = { ...current };
-        Object.entries(lastChange.changes).forEach(([assignmentId, change]) => {
-          if (change.previous) {
-            next[assignmentId] = change.previous;
-          } else {
-            delete next[assignmentId];
-          }
-        });
-        return next;
-      });
-    }
-
-    setManagerCalendarPendingChanges((current) => current.slice(0, -1));
-  }, [editingManagerDraftId, managerCalendarPendingChanges, selectedManagerDraftId]);
-
-  const clearManagerCalendarPendingState = useCallback(() => {
-    setManagerCalendarDrafts([]);
-    setManagerCalendarPendingChanges([]);
-    setManagerRentalSlotUpdates({});
-    setManagerStaffAssignmentOverrides({});
-    setSelectedManagerDraftId(null);
-    setEditingManagerDraftId(null);
   }, []);
 
   const applySelectionWindow = useCallback(
@@ -5633,20 +5294,8 @@ export default function FieldsTabContent({
       start,
       end,
     };
-    setSelection({ fieldIds, start, end });
-    setCalendarDate(start);
-    setSelectedManagerDraftId(draft.id);
-    setManagerCalendarDrafts((prev) => [...prev, draft]);
-    setManagerCalendarPendingChanges((prev) => ([
-      ...prev,
-      {
-        id: createId(),
-        type: 'create_draft',
-        label: `Added ${MANAGER_SELECTION_TITLES[mode].toLowerCase()}`,
-        draft,
-      },
-    ]));
-  }, [canManage]);
+    stageManagerCalendarDraftCreate(draft, `Added ${MANAGER_SELECTION_TITLES[mode].toLowerCase()}`);
+  }, [canManage, stageManagerCalendarDraftCreate]);
 
   useEffect(() => {
     managerCreateDropResolverRef.current = resolveManagerCreateDropSelection;
