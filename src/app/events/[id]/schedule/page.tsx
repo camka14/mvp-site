@@ -67,7 +67,6 @@ import {
   pickPreferredBracketRootMatch as pickPreferredRootMatch,
   toBracketDivisionKey as toDivisionKey,
 } from '@/lib/bracketViewCore';
-import { formatStandingsDelta, formatStandingsPoints } from '@/lib/standingsDisplay';
 import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
 import type {
@@ -111,6 +110,7 @@ import EventFinancePanel from './components/EventFinancePanel';
 import BracketTabPanel from './schedulePage/BracketTabPanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
+import StandingsTabPanel from './schedulePage/StandingsTabPanel';
 import {
   CLIENT_MATCH_PREFIX,
   DEFAULT_NOTIFICATION_AUDIENCE,
@@ -8542,17 +8542,6 @@ function EventScheduleContent() {
     });
   }, []);
 
-  const renderSortIndicator = (field: StandingsSortField) => {
-    if (standingsSort.field !== field) {
-      return <span className="ml-1 text-xs text-gray-400">{'\u2195'}</span>;
-    }
-    return (
-      <span className="ml-1 text-xs font-semibold text-gray-700">
-        {standingsSort.direction === 'asc' ? '\u2191' : '\u2193'}
-      </span>
-    );
-  };
-
   if (authLoading || !eventId) {
     return <Loading fullScreen text="Loading schedule..." />;
   }
@@ -9295,221 +9284,36 @@ function EventScheduleContent() {
               onMatchClick={handleMatchClick}
             />
 
-            {showStandingsTab && (
-              <Tabs.Panel value="standings" pt="md">
-                <Stack gap="sm">
-                  <Group justify="space-between" align="flex-end" wrap="wrap">
-                    <Group align="flex-end" wrap="wrap">
-                      <Select
-                        label="Division"
-                        data={effectiveStandingsDivisionOptions}
-                        value={selectedStandingsDivision}
-                        renderOption={renderViewerHighlightedDivisionOption}
-                        styles={getViewerHighlightedSelectStyles(selectedStandingsDivision)}
-                        onChange={(value) => {
-                          setSelectedStandingsDivision(value);
-                          setSelectedStandingsPool(null);
-                        }}
-                        allowDeselect={false}
-                        disabled={!effectiveStandingsDivisionOptions.length || standingsLoading}
-                        w={260}
-                      />
-                      {shouldShowStandingsPoolFilter ? (
-                        <Select
-                          label="Pool"
-                          data={standingsPoolOptions}
-                          value={selectedStandingsDataDivision}
-                          renderOption={renderViewerHighlightedDivisionOption}
-                          styles={getViewerHighlightedSelectStyles(selectedStandingsDataDivision)}
-                          onChange={(value) => setSelectedStandingsPool(value ?? standingsPoolOptions[0]?.value ?? null)}
-                          allowDeselect={false}
-                          disabled={standingsLoading}
-                          w={220}
-                        />
-                      ) : null}
-                    </Group>
-                    {canManageStandings && selectedStandingsDataDivision && (
-                      <Stack gap={6} align="flex-end">
-                        <Checkbox
-                          label="Apply automatic playoff reassignment"
-                          checked={applyStandingsReassignment}
-                          onChange={(event) => setApplyStandingsReassignment(event.currentTarget.checked)}
-                        />
-                        <Group gap="xs">
-                          <Button
-                            variant="light"
-                            onClick={() => void handleSaveStandingsAdjustments()}
-                            loading={savingStandings}
-                            disabled={standingsLoading || confirmingStandings}
-                          >
-                            Save Standings Adjustments
-                          </Button>
-                          <Button
-                            onClick={() => void handleConfirmStandings()}
-                            loading={confirmingStandings}
-                            disabled={standingsLoading || savingStandings}
-                          >
-                            Confirm Results
-                          </Button>
-                        </Group>
-                      </Stack>
-                    )}
-                  </Group>
-
-                  {standingsDivisionData?.standingsConfirmedAt && (
-                    <Text size="sm" c="dimmed">
-                      Confirmed {new Date(standingsDivisionData.standingsConfirmedAt).toLocaleString()}
-                      {standingsDivisionData.standingsConfirmedBy ? ` by ${standingsDivisionData.standingsConfirmedBy}` : ''}.
-                    </Text>
-                  )}
-
-                  {standingsActionError && (
-                    <Alert color="red" radius="md">
-                      {standingsActionError}
-                    </Alert>
-                  )}
-
-                  {standingsValidationMessages.length > 0 && (
-                    <Alert color="yellow" radius="md">
-                      <Stack gap={2}>
-                        {standingsValidationMessages.map((message, index) => (
-                          <Text key={`${message}-${index}`} size="sm">
-                            {message}
-                          </Text>
-                        ))}
-                      </Stack>
-                    </Alert>
-                  )}
-
-                  {standingsLoading ? (
-                    <Paper withBorder radius="md" p="xl">
-                      <Group justify="center" gap="sm">
-                        <Loader size="sm" />
-                        <Text size="sm" c="dimmed">Loading standings...</Text>
-                      </Group>
-                    </Paper>
-                  ) : standings.length === 0 ? (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>No teams available yet.</Text>
-                    </Paper>
-                  ) : (
-                    <Paper withBorder radius="md" p={0}>
-                      {!hasRecordedMatches && (
-                        <div className="px-4 pt-4">
-                          <Text size="sm" c="dimmed">
-                            Standings will update automatically as match results are recorded.
-                          </Text>
-                        </div>
-                      )}
-                      <div className="overflow-x-auto">
-                        <Table striped highlightOnHover>
-                          <Table.Thead>
-                            <Table.Tr>
-                              <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                #
-                              </Table.Th>
-                              <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex items-center gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('team')}
-                                >
-                                  Team
-                                  {renderSortIndicator('team')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('wins')}
-                                >
-                                  W
-                                  {renderSortIndicator('wins')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('losses')}
-                                >
-                                  L
-                                  {renderSortIndicator('losses')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('draws')}
-                                >
-                                  D
-                                  {renderSortIndicator('draws')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-48 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('points')}
-                                >
-                                  Final Pts
-                                  {renderSortIndicator('points')}
-                                </UnstyledButton>
-                              </Table.Th>
-                            </Table.Tr>
-                          </Table.Thead>
-                          <Table.Tbody>
-                            {standings.map((row) => {
-                              const points = getDraftStandingsPoints(row);
-                              const isViewerTeamRow = viewerTeamIds.has(row.teamId);
-                              const deltaColor = points.pointsDelta > 0
-                                ? 'teal'
-                                : points.pointsDelta < 0
-                                  ? 'red'
-                                  : 'dimmed';
-                              return (
-                                <Table.Tr
-                                  key={row.teamId}
-                                  style={isViewerTeamRow ? { backgroundColor: 'var(--mantine-color-green-0)' } : undefined}
-                                >
-                                  <Table.Td className={`text-sm font-semibold ${isViewerTeamRow ? 'text-green-800' : 'text-gray-600'}`}>{row.rank}</Table.Td>
-                                  <Table.Td className={`text-sm font-medium ${isViewerTeamRow ? 'text-green-900' : 'text-gray-700'}`}>{row.teamName}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
-                                  <Table.Td className="text-right text-sm font-semibold text-gray-900">
-                                    {canManageStandings ? (
-                                      <Group justify="flex-end" gap="xs" wrap="nowrap">
-                                        <NumberInput
-                                          value={points.finalPoints}
-                                          onChange={(value) => handleStandingsOverrideChange(row.teamId, value as string | number)}
-                                          min={-9999}
-                                          max={9999}
-                                          step={1}
-                                          w={96}
-                                          size="xs"
-                                        />
-                                        <Text size="xs" c={deltaColor}>
-                                          {formatStandingsDelta(points.pointsDelta)}
-                                        </Text>
-                                      </Group>
-                                    ) : (
-                                      <Group justify="flex-end" gap="xs" wrap="nowrap">
-                                        <Text size="sm" fw={600}>{formatStandingsPoints(points.finalPoints)}</Text>
-                                        <Text size="xs" c={deltaColor}>
-                                          {formatStandingsDelta(points.pointsDelta)}
-                                        </Text>
-                                      </Group>
-                                    )}
-                                  </Table.Td>
-                                </Table.Tr>
-                              );
-                            })}
-                          </Table.Tbody>
-                        </Table>
-                      </div>
-                    </Paper>
-                  )}
-                </Stack>
-              </Tabs.Panel>
-            )}
+            <StandingsTabPanel
+              show={showStandingsTab}
+              effectiveStandingsDivisionOptions={effectiveStandingsDivisionOptions}
+              selectedStandingsDivision={selectedStandingsDivision}
+              renderViewerHighlightedDivisionOption={renderViewerHighlightedDivisionOption}
+              getViewerHighlightedSelectStyles={getViewerHighlightedSelectStyles}
+              shouldShowStandingsPoolFilter={shouldShowStandingsPoolFilter}
+              standingsPoolOptions={standingsPoolOptions}
+              selectedStandingsDataDivision={selectedStandingsDataDivision}
+              standingsLoading={standingsLoading}
+              canManageStandings={canManageStandings}
+              applyStandingsReassignment={applyStandingsReassignment}
+              savingStandings={savingStandings}
+              confirmingStandings={confirmingStandings}
+              standingsDivisionData={standingsDivisionData}
+              standingsActionError={standingsActionError}
+              standingsValidationMessages={standingsValidationMessages}
+              standings={standings}
+              hasRecordedMatches={hasRecordedMatches}
+              standingsSort={standingsSort}
+              viewerTeamIds={viewerTeamIds}
+              getDraftStandingsPoints={getDraftStandingsPoints}
+              onStandingsDivisionChange={setSelectedStandingsDivision}
+              onStandingsPoolChange={setSelectedStandingsPool}
+              onApplyStandingsReassignmentChange={setApplyStandingsReassignment}
+              onSaveStandingsAdjustments={handleSaveStandingsAdjustments}
+              onConfirmStandings={handleConfirmStandings}
+              onStandingsSortChange={handleStandingsSortChange}
+              onStandingsOverrideChange={handleStandingsOverrideChange}
+            />
 
             {showFinanceTab && (
               <Tabs.Panel value="finance" pt="md">
