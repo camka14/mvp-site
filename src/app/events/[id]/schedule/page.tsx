@@ -97,9 +97,8 @@ import type {
 } from '@/lib/eventTeamCompliance';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import MatchEditModal from './components/MatchEditModal';
-import EventForm, { EventFormHandle } from './components/EventForm';
+import EventForm, { type EventFormHandle } from './components/EventForm';
 import { detectMatchConflictsById } from './lib/matchConflicts';
-import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import TeamCard from '@/components/ui/TeamCard';
@@ -107,6 +106,7 @@ import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 import BracketTabPanel from './schedulePage/BracketTabPanel';
+import DetailsTabPanel from './schedulePage/DetailsTabPanel';
 import FinanceTabPanel from './schedulePage/FinanceTabPanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
@@ -9140,34 +9140,24 @@ function EventScheduleContent() {
               {showFinanceTab && <Tabs.Tab value="finance">Finance</Tabs.Tab>}
             </Tabs.List>
 
-            <Tabs.Panel value="details" pt="md">
-              {shouldShowCreationSheet && user ? (
-                <EventForm
-                  key={eventFormRenderKey}
-                  ref={eventFormRef}
-                  isOpen={activeTab === 'details'}
-                  onClose={handleDetailsClose}
-                  onDirtyStateChange={handleEventFormDirtyStateChange}
-                  currentUser={user}
-                  event={activeEvent ?? undefined}
-                  organization={activeOrganization}
-                  defaultLocation={activeLocationDefaults}
-                  isCreateMode={isCreateMode}
-                  immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
-                  rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}
-                  templateOrganizationId={isCreateMode ? (resolvedRentalOrgId ?? activeOrganization?.$id ?? undefined) : undefined}
-                />
-              ) : (
-                <EventDetailSheet
-                  event={activeEvent}
-                  isOpen={activeTab === 'details'}
-                  renderInline
-                  selectedOccurrence={selectedOccurrence}
-                  onWeeklyOccurrenceChange={updateWeeklyOccurrenceSelection}
-                  onClose={handleDetailsClose}
-                />
-              )}
-            </Tabs.Panel>
+            <DetailsTabPanel
+              shouldShowCreationSheet={shouldShowCreationSheet}
+              user={user}
+              eventFormRenderKey={eventFormRenderKey}
+              eventFormRef={eventFormRef}
+              isActive={activeTab === 'details'}
+              onClose={handleDetailsClose}
+              onDirtyStateChange={handleEventFormDirtyStateChange}
+              event={activeEvent}
+              organization={activeOrganization}
+              defaultLocation={activeLocationDefaults}
+              isCreateMode={isCreateMode}
+              immutableDefaults={rentalImmutableDefaults}
+              rentalPurchase={rentalPurchaseContext}
+              templateOrganizationId={resolvedRentalOrgId ?? activeOrganization?.$id ?? undefined}
+              selectedOccurrence={selectedOccurrence}
+              onWeeklyOccurrenceChange={updateWeeklyOccurrenceSelection}
+            />
 
             {showParticipantsTab && (
               <Tabs.Panel value="participants" pt="md">
