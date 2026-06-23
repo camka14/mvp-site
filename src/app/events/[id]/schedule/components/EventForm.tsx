@@ -295,12 +295,8 @@ import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQ
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
 import { SingleDivisionDefaultsPanel } from './eventForm/sections/SingleDivisionDefaultsPanel';
-import { StaffAssignedCardsGrid } from './eventForm/sections/StaffAssignedCardsGrid';
-import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
+import { StaffManagementPanel } from './eventForm/sections/StaffManagementPanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
-import { StaffOrganizationRosterPicker } from './eventForm/sections/StaffOrganizationRosterPicker';
-import { StaffOfficialPositionEditor } from './eventForm/sections/StaffOfficialPositionEditor';
-import { TeamOfficiatingControls } from './eventForm/sections/TeamOfficiatingControls';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -6142,9 +6138,37 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             collapsed={collapsedSections['section-officials']}
                             onToggle={() => toggleSectionCollapse('section-officials')}
                         >
-                                    <TeamOfficiatingControls
+                                    <StaffManagementPanel
                                         control={control}
-                                        doTeamsOfficiate={Boolean(eventData.doTeamsOfficiate)}
+                                        eventData={eventData}
+                                        isOrganizationHostedEvent={isOrganizationHostedEvent}
+                                        officialStaffingCoverageError={officialStaffingCoverageError}
+                                        sportDefaultPositionCount={sportOfficialPositionTemplates.length}
+                                        maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                        maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
+                                        comboboxProps={sharedComboboxProps}
+                                        organizationStaffSearch={organizationStaffSearch}
+                                        organizationStaffTypeFilter={organizationStaffTypeFilter}
+                                        organizationStaffStatusFilter={organizationStaffStatusFilter}
+                                        filteredOrganizationStaffEntries={filteredOrganizationStaffEntries}
+                                        organizationStaffVisibleCount={organizationStaffVisibleCount}
+                                        nonOrgStaffSearch={nonOrgStaffSearch}
+                                        nonOrgStaffResults={nonOrgStaffResults}
+                                        nonOrgStaffSearchLoading={nonOrgStaffSearchLoading}
+                                        nonOrgStaffError={nonOrgStaffError}
+                                        newStaffInvite={newStaffInvite}
+                                        assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
+                                        assistantHostIds={assistantHostValue}
+                                        assignedOfficialCards={assignedOfficialCards}
+                                        assignedHostCards={assignedHostCards}
+                                        officialCardVisibleCount={officialCardVisibleCount}
+                                        hostCardVisibleCount={hostCardVisibleCount}
+                                        eventOfficialByUserId={eventOfficialByUserId}
+                                        availableOfficialFieldOptions={availableOfficialFieldOptions}
+                                        staffInviteError={staffInviteError}
+                                        eventOfficialsDisabled={isImmutableField('eventOfficials')}
+                                        assistantHostsDisabled={isImmutableField('assistantHostIds')}
+                                        hostDisabled={isImmutableField('hostId')}
                                         onTeamsOfficiateChange={(checked) => {
                                             if (!checked) {
                                                 setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
@@ -6153,14 +6177,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 }
                                             }
                                         }}
-                                    />
-                                    <StaffOfficialPositionEditor
-                                        officialSchedulingMode={eventData.officialSchedulingMode}
-                                        officialPositions={eventData.officialPositions || []}
-                                        sportDefaultPositionCount={sportOfficialPositionTemplates.length}
-                                        coverageError={officialStaffingCoverageError}
-                                        maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
-                                        comboboxProps={sharedComboboxProps}
                                         onSchedulingModeChange={(value) => {
                                             const nextMode = normalizeOfficialSchedulingMode(value);
                                             setValue('officialSchedulingMode', nextMode, { shouldDirty: true, shouldValidate: true });
@@ -6172,101 +6188,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         onAddPosition={handleAddOfficialPosition}
                                         onUpdatePosition={handleUpdateOfficialPosition}
                                         onRemovePosition={handleRemoveOfficialPosition}
+                                        onOrganizationStaffSearchChange={setOrganizationStaffSearch}
+                                        onOrganizationStaffTypeFilterChange={setOrganizationStaffTypeFilter}
+                                        onOrganizationStaffStatusFilterChange={setOrganizationStaffStatusFilter}
+                                        onOrganizationStaffScroll={(event) => maybeExtendVisibleCountOnScroll(event, filteredOrganizationStaffEntries.length, setOrganizationStaffVisibleCount)}
+                                        onAddOfficial={handleAddOfficial}
+                                        onAddAssistantHost={handleAddAssistantHost}
+                                        onSetHost={handleHostChange}
+                                        onNonOrgStaffSearchChange={setNonOrgStaffSearch}
+                                        onInviteFieldChange={(field, value) => setNewStaffInvite((prev) => ({ ...prev, [field]: value }))}
+                                        onInviteRoleToggle={(role) => setNewStaffInvite((prev) => ({
+                                            ...prev,
+                                            roles: prev.roles.includes(role)
+                                                ? prev.roles.filter((existingRole) => existingRole !== role)
+                                                : [...prev.roles, role],
+                                        }))}
+                                        onStageInvite={handleStagePendingStaffInvite}
+                                        onAssignedOfficialsScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
+                                        onAssignedHostsScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
+                                        onRemovePendingStaffInviteRole={(email, role) => setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, email, role))}
+                                        onRemoveOfficial={handleRemoveOfficial}
+                                        onRemoveAssistantHost={handleRemoveAssistantHost}
+                                        onUpdateEventOfficialEligibility={handleUpdateEventOfficialEligibility}
                                     />
-
-                                    {isOrganizationHostedEvent ? (
-                                        <StaffOrganizationRosterPicker
-                                            search={organizationStaffSearch}
-                                            typeFilter={organizationStaffTypeFilter}
-                                            statusFilter={organizationStaffStatusFilter}
-                                            entries={filteredOrganizationStaffEntries}
-                                            visibleCount={organizationStaffVisibleCount}
-                                            assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
-                                            assistantHostIds={assistantHostValue}
-                                            hostId={eventData.hostId}
-                                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                            eventOfficialsDisabled={isImmutableField('eventOfficials')}
-                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
-                                            hostDisabled={isImmutableField('hostId')}
-                                            comboboxProps={sharedComboboxProps}
-                                            onSearchChange={setOrganizationStaffSearch}
-                                            onTypeFilterChange={setOrganizationStaffTypeFilter}
-                                            onStatusFilterChange={setOrganizationStaffStatusFilter}
-                                            onScrollRoster={(event) => maybeExtendVisibleCountOnScroll(event, filteredOrganizationStaffEntries.length, setOrganizationStaffVisibleCount)}
-                                            onAddOfficial={handleAddOfficial}
-                                            onAddAssistantHost={handleAddAssistantHost}
-                                            onSetHost={handleHostChange}
-                                        />
-                                    ) : (
-                                        <StaffNonOrganizationInvitePanel
-                                            search={nonOrgStaffSearch}
-                                            searchResults={nonOrgStaffResults}
-                                            searchLoading={nonOrgStaffSearchLoading}
-                                            searchError={nonOrgStaffError}
-                                            inviteDraft={newStaffInvite}
-                                            assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
-                                            assistantHostIds={assistantHostValue}
-                                            hostId={eventData.hostId}
-                                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                            maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
-                                            eventOfficialsDisabled={isImmutableField('eventOfficials')}
-                                            assistantHostsDisabled={isImmutableField('assistantHostIds')}
-                                            onSearchChange={setNonOrgStaffSearch}
-                                            onAddOfficial={handleAddOfficial}
-                                            onAddAssistantHost={handleAddAssistantHost}
-                                            onInviteFieldChange={(field, value) => setNewStaffInvite((prev) => ({ ...prev, [field]: value }))}
-                                            onInviteRoleToggle={(role) => setNewStaffInvite((prev) => ({
-                                                ...prev,
-                                                roles: prev.roles.includes(role)
-                                                    ? prev.roles.filter((existingRole) => existingRole !== role)
-                                                    : [...prev.roles, role],
-                                            }))}
-                                            onStageInvite={handleStagePendingStaffInvite}
-                                        />
-                                    )}
-
-                                    <StaffAssignedCardsGrid
-                                        officialsListProps={{
-                                            cards: assignedOfficialCards,
-                                            visibleCount: officialCardVisibleCount,
-                                            officialPositions: eventData.officialPositions || [],
-                                            eventOfficialByUserId,
-                                            availableFieldOptions: availableOfficialFieldOptions,
-                                            assignedOfficialsDisabled: isImmutableField('eventOfficials'),
-                                            comboboxProps: sharedComboboxProps,
-                                            onScroll: (event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount),
-                                            onRemoveCard: (card) => {
-                                                if (card.source === 'draft' && card.email) {
-                                                    setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'OFFICIAL'));
-                                                    return;
-                                                }
-                                                if (card.userId) {
-                                                    handleRemoveOfficial(card.userId);
-                                                }
-                                            },
-                                            onUpdateEligibility: handleUpdateEventOfficialEligibility,
-                                        }}
-                                        hostsListProps={{
-                                            cards: assignedHostCards,
-                                            visibleCount: hostCardVisibleCount,
-                                            assistantHostsDisabled: isImmutableField('assistantHostIds'),
-                                            onScroll: (event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount),
-                                            onRemoveCard: (card) => {
-                                                if (card.source === 'draft' && card.email) {
-                                                    setPendingStaffInvites((prev) => removePendingStaffInviteRoleByEmail(prev, card.email, 'ASSISTANT_HOST'));
-                                                    return;
-                                                }
-                                                if (card.userId) {
-                                                    handleRemoveAssistantHost(card.userId);
-                                                }
-                                            },
-                                        }}
-                                    />
-                                    {staffInviteError && (
-                                        <Text size="xs" c="red">
-                                            {staffInviteError}
-                                        </Text>
-                                    )}
                         </StaffSection>
 
                         <DivisionSettingsSection
