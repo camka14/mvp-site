@@ -97,7 +97,6 @@ import type {
   TeamComplianceUserSummary,
 } from '@/lib/eventTeamCompliance';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
-import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
 import EventForm, { EventFormHandle } from './components/EventForm';
@@ -111,6 +110,7 @@ import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 import EventFinancePanel from './components/EventFinancePanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
+import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
 import {
   CLIENT_MATCH_PREFIX,
   DEFAULT_NOTIFICATION_AUDIENCE,
@@ -9227,144 +9227,49 @@ function EventScheduleContent() {
               </Tabs.Panel>
             )}
 
-            {showScheduleTab && (
-              <Tabs.Panel value="schedule" pt="md">
-                {isWeeklyParentEvent ? (
-                  <Stack gap="sm">
-                    <Group justify="space-between" align="center" wrap="wrap">
-                      <Text size="sm" c="dimmed">
-                        Select a weekly session to scope participants, billing, and compliance.
-                      </Text>
-                      {selectedWeeklyOccurrenceOption && (
-                        <Button variant="subtle" color="red" onClick={() => updateWeeklyOccurrenceSelection(null)}>
-                          Clear Selection
-                        </Button>
-                      )}
-                    </Group>
-                    {weeklyScheduleOccurrenceOptions.length === 0 && (
-                      <Paper withBorder radius="md" p="xl" ta="center">
-                        <Text>No weekly sessions are available for this calendar range.</Text>
-                      </Paper>
-                    )}
-                    <LeagueCalendarView
-                      matches={weeklyOccurrenceMatches}
-                      teams={[]}
-                      fields={Array.isArray(activeEvent?.fields) ? activeEvent.fields : []}
-                      officials={[]}
-                      eventStart={activeEvent?.start}
-                      eventEnd={activeEvent?.end ?? undefined}
-                      eventTimeZone={activeEvent?.timeZone}
-                      date={weeklyScheduleCalendarDate}
-                      view={weeklyScheduleCalendarView}
-                      onDateChange={setWeeklyScheduleCalendarDate}
-                      onViewChange={setWeeklyScheduleCalendarView}
-                      onMatchClick={(match) => {
-                        const occurrence = (match as Match & {
-                          weeklyOccurrenceMeta?: {
-                            slotId?: string;
-                            occurrenceDate?: string;
-                          };
-                        }).weeklyOccurrenceMeta;
-                        const slotId = normalizeIdToken(occurrence?.slotId);
-                        const occurrenceDate = normalizeIdToken(occurrence?.occurrenceDate);
-                        if (!slotId || !occurrenceDate) {
-                          return;
-                        }
-                        updateWeeklyOccurrenceSelection({
-                          slotId,
-                          occurrenceDate,
-                        });
-                      }}
-                      canManage={false}
-                      showEventOfficialNames={false}
-                      currentUser={user}
-                      childUserIds={childUserIds}
-                      viewerTeamIds={viewerTeamIds}
-                      highlightDivisionKeys={viewerDivisionHighlightKeys}
-                      conflictMatchIdsById={{}}
-                    />
-                  </Stack>
-                ) : (
-                <Stack gap="sm">
-                  <Group justify="space-between" align="flex-end" wrap="wrap">
-                    <Group align="flex-end" wrap="wrap">
-                      {shouldShowScheduleDivisionFilter ? (
-                        <Select
-                          label="Division"
-                          data={scheduleDivisionSelectData}
-                          value={selectedScheduleDivision}
-                          renderOption={renderViewerHighlightedDivisionOption}
-                          styles={getViewerHighlightedSelectStyles(selectedScheduleDivision)}
-                          onChange={(value) => {
-                            setSelectedScheduleDivision(value ?? 'all');
-                            setSelectedSchedulePool('all');
-                          }}
-                          allowDeselect={false}
-                          w={220}
-                        />
-                      ) : null}
-                      {shouldShowSchedulePoolFilter ? (
-                        <Select
-                          label="Pool"
-                          data={schedulePoolSelectData}
-                          value={selectedSchedulePool}
-                          renderOption={renderViewerHighlightedDivisionOption}
-                          styles={getViewerHighlightedSelectStyles(selectedSchedulePool)}
-                          onChange={(value) => setSelectedSchedulePool(value ?? 'all')}
-                          allowDeselect={false}
-                          w={220}
-                        />
-                      ) : null}
-                    </Group>
-                    {canEditMatches && (
-                      <Button onClick={handleAddScheduleMatch}>Add Match</Button>
-                    )}
-                  </Group>
-
-                  {activeMatches.length === 0 ? (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>No matches generated yet.</Text>
-                    </Paper>
-                  ) : scheduleMatches.length === 0 ? (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>No matches found for the selected division or pool.</Text>
-                    </Paper>
-                  ) : (
-                    <LeagueCalendarView
-                      matches={scheduleMatchesForDisplay}
-                      teams={
-                        participantTeams.length > 0
-                          ? participantTeams
-                          : (Array.isArray(activeEvent.teams) ? activeEvent.teams : [])
-                      }
-                      fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
-                      officials={Array.isArray(activeEvent.officials) ? activeEvent.officials : []}
-                      eventStart={activeEvent.start}
-                      eventEnd={activeEvent.end ?? undefined}
-                      eventTimeZone={activeEvent.timeZone}
-                      onMatchClick={(match) => {
-                        if (canEditMatches) {
-                          handleMatchEditRequest(match, 'schedule');
-                          return;
-                        }
-                        void handleMatchClick(match);
-                      }}
-                      onMatchTimeChange={handleMatchCalendarMove}
-                      canManage={canEditMatches}
-                      showEventOfficialNames={showEventOfficialNames}
-                      currentUser={user}
-                      childUserIds={childUserIds}
-                      viewerTeamIds={viewerTeamIds}
-                      highlightDivisionKeys={viewerDivisionHighlightKeys}
-                      onToggleLockAllMatches={handleToggleLockAllMatches}
-                      conflictMatchIdsById={matchConflictsById}
-                      matchSlotPlaceholderLabels={scheduleBracketPlaceholderAssignments}
-                    />
-                  )}
-                </Stack>
-                )}
-              </Tabs.Panel>
-            )}
+            <ScheduleTabPanel
+              show={showScheduleTab}
+              isWeeklyParentEvent={isWeeklyParentEvent}
+              activeEvent={activeEvent}
+              user={user}
+              childUserIds={childUserIds}
+              viewerTeamIds={viewerTeamIds}
+              viewerDivisionHighlightKeys={viewerDivisionHighlightKeys}
+              selectedWeeklyOccurrenceOption={selectedWeeklyOccurrenceOption}
+              weeklyScheduleOccurrenceOptions={weeklyScheduleOccurrenceOptions}
+              weeklyOccurrenceMatches={weeklyOccurrenceMatches}
+              weeklyScheduleCalendarDate={weeklyScheduleCalendarDate}
+              weeklyScheduleCalendarView={weeklyScheduleCalendarView}
+              onWeeklyScheduleCalendarDateChange={setWeeklyScheduleCalendarDate}
+              onWeeklyScheduleCalendarViewChange={setWeeklyScheduleCalendarView}
+              onWeeklyOccurrenceSelectionChange={updateWeeklyOccurrenceSelection}
+              shouldShowScheduleDivisionFilter={shouldShowScheduleDivisionFilter}
+              shouldShowSchedulePoolFilter={shouldShowSchedulePoolFilter}
+              scheduleDivisionSelectData={scheduleDivisionSelectData}
+              schedulePoolSelectData={schedulePoolSelectData}
+              selectedScheduleDivision={selectedScheduleDivision}
+              selectedSchedulePool={selectedSchedulePool}
+              onScheduleDivisionChange={(value) => {
+                setSelectedScheduleDivision(value);
+                setSelectedSchedulePool('all');
+              }}
+              onSchedulePoolChange={setSelectedSchedulePool}
+              renderViewerHighlightedDivisionOption={renderViewerHighlightedDivisionOption}
+              getViewerHighlightedSelectStyles={getViewerHighlightedSelectStyles}
+              canEditMatches={canEditMatches}
+              activeMatches={activeMatches}
+              scheduleMatches={scheduleMatches}
+              scheduleMatchesForDisplay={scheduleMatchesForDisplay}
+              participantTeams={participantTeams}
+              showEventOfficialNames={showEventOfficialNames}
+              matchConflictsById={matchConflictsById}
+              scheduleBracketPlaceholderAssignments={scheduleBracketPlaceholderAssignments}
+              onAddScheduleMatch={handleAddScheduleMatch}
+              onMatchEditRequest={handleMatchEditRequest}
+              onMatchClick={handleMatchClick}
+              onMatchCalendarMove={handleMatchCalendarMove}
+              onToggleLockAllMatches={handleToggleLockAllMatches}
+            />
 
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md" pb={0}>
