@@ -15,16 +15,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import {
-  Calendar as BigCalendar,
-  dateFnsLocalizer,
-  SlotGroupPropGetter,
-  View,
-} from 'react-big-calendar';
-import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
+import type { SlotGroupPropGetter, View } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
-import { addHours, endOfDay, endOfMonth, endOfWeek, format, getDay, parse, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
+import { addHours, endOfDay, endOfMonth, endOfWeek, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import Loading from '@/components/ui/Loading';
 import type { Facility, Field, Organization, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
@@ -52,6 +46,7 @@ import SharedCalendarEvent, { type SharedCalendarEventVariant } from '@/componen
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal, { type CreateRentalSlotModalSubmitPayload } from '@/components/ui/CreateRentalSlotModal';
 import FacilityManagementOverview from './fieldsTab/FacilityManagementOverview';
+import FacilityCalendarPanel from './fieldsTab/FacilityCalendarPanel';
 import ManagerFacilityCalendarSidebar from './fieldsTab/ManagerFacilityCalendarSidebar';
 import PublicRentalSelectionsPanel from './fieldsTab/PublicRentalSelectionsPanel';
 import FacilityEditorModal from './fieldsTab/FacilityEditorModal';
@@ -182,15 +177,6 @@ const hasMovedPastDragThreshold = (
   Math.hypot(nextPoint.clientX - startPoint.clientX, nextPoint.clientY - startPoint.clientY)
   >= MANAGER_CARD_DRAG_THRESHOLD_PX
 );
-const FIELD_CALENDAR_FORMATS = {
-  dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
-  dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
-  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
-    `${formatDisplayDate(start, { year: '2-digit' })} - ${formatDisplayDate(end, { year: '2-digit' })}`,
-  timeGutterFormat: (value: Date) => formatDisplayTime(value),
-  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
-    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
-};
 
 const isPastRentalRangeStart = (start: Date, reference: Date = new Date()): boolean => (
   start.getTime() < reference.getTime()
@@ -392,14 +378,6 @@ const getNextSelectableRentalStart = (reference: Date = new Date()): Date => {
   return next;
 };
 
-const CALENDAR_VIEW_LABELS: Record<string, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  agenda: 'Agenda',
-  work_week: 'Work week',
-};
-
 type CalendarLayerType =
   | FacilityCalendarFeedItemType
   | 'reservation';
@@ -483,20 +461,6 @@ const FACILITY_FEED_CALENDAR_TYPES = new Set<FacilityCalendarFeedItemType>([
   'official_assignment',
   'staff_assignment',
 ]);
-
-const formatFacilityFeedStatus = (item: FacilityCalendarFeedItem): string | null => {
-  if (item.unresolved) {
-    return 'Unresolved';
-  }
-  if (!item.status) {
-    return null;
-  }
-  return item.status
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
-    .join(' ');
-};
 
 const getBookedEventSourceType = (event: FieldCalendarEntry | null | undefined): string => (
   typeof (event?.resource as { sourceType?: unknown } | undefined)?.sourceType === 'string'
@@ -1645,15 +1609,6 @@ export default function FieldsTabContent({
   const [orgError, setOrgError] = useState<string | null>(null);
   const organizationHasStripeAccount = canOrganizationUsePaidBilling(org);
   const canManage = Boolean(canManageFields || (currentUser && org && currentUser.$id === org.ownerId));
-
-  const localizer = useMemo(() => dateFnsLocalizer({
-    format,
-    parse: parse as any,
-    startOfWeek,
-    getDay,
-    locales: {} as any,
-  }), []);
-  const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
 
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const managerResourceSelectionHydratedKeyRef = useRef<string | null>(null);
@@ -6107,259 +6062,70 @@ export default function FieldsTabContent({
     setCreateRentalOpen(true);
   }, [canManage, fields, isStaffAssignmentActivationSuppressed, openManagerCalendarDraftEditor, openStaffAssignmentEditModal, selectedField]);
 
-  const CalendarEvent: any = ({ event }: any) => {
-    const normalizedFieldName = typeof event?.fieldName === 'string' ? event.fieldName.trim() : '';
-    const resource = event?.resource as any;
-    const resourceName = typeof resource?.name === 'string' ? resource.name.trim() : '';
-    const matchLabel = typeof resource?.matchId === 'number' ? `Match #${resource.matchId}` : '';
-    const timeLabel = event?.start && event?.end
-      ? `${formatDisplayTime(event.start)} - ${formatDisplayTime(event.end)}`
-      : null;
-
-    const variant = getCalendarEventVariant(event as CalendarEventData);
-    let title = event.title;
-    let meta = timeLabel;
-    if (event?.metaType === 'facility-feed') {
-      const feedItem = event.resource as FacilityCalendarFeedItem;
-      const status = formatFacilityFeedStatus(feedItem);
-      title = feedItem.title || event.title;
-      meta = status ?? timeLabel;
-    } else if (event?.metaType === 'booked') {
-      const isRentalBooking = variant === 'reservation';
-      const isUnavailable = variant === 'unavailable';
-      title = isUnavailable ? 'Unavailable' : isRentalBooking ? 'Rental reservation' : resourceName || matchLabel || 'Booked slot';
-      meta = isUnavailable ? timeLabel : isRentalBooking ? 'Reserved' : 'Booked';
-    } else if (event?.metaType === 'rental') {
-      const isUnavailable = variant === 'unavailable';
-      title = isUnavailable ? 'Past rental slot' : 'Open rental slot';
-      meta = isUnavailable ? 'Unavailable' : timeLabel;
-    } else if (event?.metaType === 'selection' && canManage) {
-      const mode = event.selectionMode ?? resource?.mode;
-      const isAssignedStaffDraft = (
-        (mode === 'staff_assignment' || mode === 'official_assignment')
-        && Boolean(resource?.userId)
-      );
-      title = isAssignedStaffDraft
-        ? event.title
-        : MANAGER_SELECTION_TITLES[mode as ManagerCalendarSelectionMode] ?? event.title;
-      meta = 'Unsaved';
+  const handleManagerDraftCalendarEventClick = useCallback((
+    draftId: string,
+    fallbackDraft: ManagerCalendarDraft | null,
+  ) => {
+    if (managerDraftSuppressNextClickRef.current) {
+      managerDraftSuppressNextClickRef.current = false;
+      return;
     }
-    const isManagerDraft = Boolean(
-      canManage
-      && managerCalendarEditMode
-      && event?.metaType === 'selection'
-      && typeof resource?.slotKey === 'string'
-      && resource.slotKey.length > 0
-      && (event.selectionMode || resource?.mode),
-    );
-    const isStaffAssignmentFeedEvent = Boolean(
-      canManage
-      && event?.metaType === 'facility-feed'
-      && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment')
-      && event.start
-      && event.end
-      && event.resource,
-    );
-    const isEditableStaffAssignmentFeedEvent = Boolean(isStaffAssignmentFeedEvent && managerCalendarEditMode);
+    if (draftId) {
+      openManagerCalendarDraftEditor(draftId, fallbackDraft);
+    }
+  }, [openManagerCalendarDraftEditor]);
 
-    return (
-      <SharedCalendarEvent
-        title={title}
-        subtitle={normalizedFieldName || undefined}
-        meta={meta}
-        colorReferenceList={fieldColorReferenceList}
-        colorMatchKey={event?.resourceId}
-        resourceColorMatchKeys={event?.resourceId ? [event.resourceId] : undefined}
-        dataAttributes={{
-          ...(isStaffAssignmentFeedEvent ? {
-            'data-staff-assignment-calendar-event-id': String(event.id),
-          } : {}),
-          ...(isManagerDraft && typeof resource?.slotKey === 'string' ? {
-            'data-manager-draft-id': resource.slotKey,
-          } : {}),
-        }}
-        compact
-        draggable={
-          isManagerDraft
-          || isEditableStaffAssignmentFeedEvent
-          || (canManage && managerCalendarEditMode && event?.metaType === 'rental')
-        }
-        selected={isManagerDraft && managerDraftDragId === resource?.slotKey}
-        conflict={variant === 'conflict'}
-        variant={variant}
-        onClick={isManagerDraft
-          ? () => {
-              if (managerDraftSuppressNextClickRef.current) {
-                managerDraftSuppressNextClickRef.current = false;
-                return;
-              }
-              const draftId = typeof resource?.slotKey === 'string' ? resource.slotKey : '';
-              if (draftId) {
-                const mode = event.selectionMode ?? resource?.mode;
-                const fallbackDraft = mode
-                  ? {
-                      id: draftId,
-                      mode,
-                      fieldIds: event.resourceId ? [event.resourceId] : [],
-                      start: new Date(event.start),
-                      end: new Date(event.end),
-                      ...(mode === 'rental'
-                        ? { rental: {} }
-                        : {
-                            staff: {
-                              userId: resource?.userId ?? null,
-                              userName: typeof event.title === 'string' ? event.title : null,
-                            },
-                          }),
-                    } satisfies ManagerCalendarDraft
-                  : null;
-                openManagerCalendarDraftEditor(draftId, fallbackDraft);
-              }
-            }
-          : isStaffAssignmentFeedEvent
-            ? () => {
-              if (isStaffAssignmentActivationSuppressed()) {
-                return;
-              }
-              openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
-            }
-          : undefined}
-        onMouseDown={undefined}
-        onPointerDown={isManagerDraft ? (pointerEvent) => handleManagerDraftPointerDown(event as SelectionCalendarEntry, pointerEvent) : undefined}
-        onPointerMove={isManagerDraft ? handleManagerDraftPointerMove : undefined}
-        onPointerUp={isManagerDraft
-          ? handleManagerDraftPointerUp
-          : isStaffAssignmentFeedEvent && !managerCalendarEditMode
-            ? (pointerEvent) => {
-                if (isStaffAssignmentActivationSuppressed()) {
-                  pointerEvent.preventDefault();
-                  pointerEvent.stopPropagation();
-                  return;
-                }
-                pointerEvent.preventDefault();
-                pointerEvent.stopPropagation();
-                openStaffAssignmentEditModal(event.resource as FacilityCalendarFeedItem, event.start, event.end);
-              }
-            : undefined}
-        onPointerCancel={isManagerDraft ? handleManagerDraftPointerCancel : undefined}
-      />
-    );
-  };
-
-  const CalendarToolbar: any = useCallback((toolbar: any) => {
-    const views = Array.isArray(toolbar.views)
-      ? toolbar.views
-      : Object.keys(toolbar.views || {}).filter((viewKey) => Boolean(toolbar.views?.[viewKey]));
-
-    return (
-      <div className="rbc-toolbar">
-        <span className="rbc-btn-group flex items-center gap-1">
-          <button type="button" onClick={() => toolbar.onNavigate('PREV')}>Back</button>
-          <button type="button" onClick={() => toolbar.onNavigate('TODAY')}>Today</button>
-          <button type="button" onClick={() => toolbar.onNavigate('NEXT')}>Next</button>
-          {fieldEventsLoading ? (
-            <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-500">
-              <Loader size={14} />
-              <span>Loading resource…</span>
-            </span>
-          ) : null}
-        </span>
-        <span className="rbc-toolbar-label">{toolbar.label}</span>
-        <span className="rbc-btn-group">
-          {views.map((viewName: string) => (
-            <button
-              key={viewName}
-              type="button"
-              className={toolbar.view === viewName ? 'rbc-active' : ''}
-              onClick={() => toolbar.onView(viewName)}
-            >
-              {CALENDAR_VIEW_LABELS[viewName] ?? `${viewName.charAt(0).toUpperCase()}${viewName.slice(1)}`}
-            </button>
-          ))}
-        </span>
-      </div>
-    );
-  }, [fieldEventsLoading]);
   const canRenderCalendar = canManage
     ? Boolean(selectedFieldIds.length > 0)
     : readonlyCalendarFields.length > 0;
   const managerCreateDragTemplate = managerCalendarEditMode && managerCreateDragMode
     ? MANAGER_CREATE_TEMPLATES.find((template) => template.mode === managerCreateDragMode) ?? null
     : null;
-  const fieldCalendarNode = canRenderCalendar ? (
-    <div
-      className="shared-calendar-shell shared-calendar-shell--fields"
-      style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}
-      onPointerDownCapture={handleCalendarShellStaffPointerDown}
-      onPointerUpCapture={handleCalendarShellStaffEventActivation}
-      onClickCapture={handleCalendarShellStaffEventActivation}
-    >
-      <DnDCalendar
-        localizer={localizer}
-        events={calendarEvents}
-        view={calendarView}
-        date={calendarDate}
-        onView={(view: any) => setCalendarView(view)}
-        onNavigate={(date: any) => {
-          const nextDate = toValidDate(date);
-          if (nextDate) {
-            setCalendarDate(nextDate);
-          }
-        }}
-        onRangeChange={handleCalendarRangeChange}
-        views={['week', 'day']}
-        popup
-        selectable
-        resizable
-        startAccessor="start"
-        endAccessor="end"
-        style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
-        slotGroupPropGetter={slotGroupPropGetter}
-        min={minTime}
-        max={maxTime}
-        scrollToTime={scrollToTime}
-        formats={FIELD_CALENDAR_FORMATS}
-        eventPropGetter={eventPropGetter}
-        slotPropGetter={slotPropGetter}
-        draggableAccessor={(event: CalendarEventData) => {
-          const isEditableStaffEvent = event.metaType === 'facility-feed'
-            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
-          return (
-            canManage
-            && managerCalendarEditMode
-            && (event.metaType === 'selection' || event.metaType === 'rental' || isEditableStaffEvent)
-          );
-        }}
-        resizableAccessor={(event: CalendarEventData) => {
-          const isEditableStaffEvent = event.metaType === 'facility-feed'
-            && (event.feedType === 'staff_assignment' || event.feedType === 'official_assignment');
-          return (
-            canManage
-            && managerCalendarEditMode
-            && (event.metaType === 'selection' || event.metaType === 'rental' || isEditableStaffEvent)
-          );
-        }}
-        onEventDrop={handleEventDrop}
-        onEventResize={handleEventResize}
-        onSelecting={handleSelecting}
-        onSelectSlot={handleSlotSelect}
-        onSelectEvent={handleSelectCalendarEvent}
-        components={{ event: CalendarEvent, toolbar: CalendarToolbar }}
-      />
-    </div>
-  ) : (
-    <Paper
-      withBorder
-      radius="md"
-      style={{
-        minHeight: MIN_FIELD_CALENDAR_HEIGHT,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+  const fieldCalendarNode = (
+    <FacilityCalendarPanel
+      canRenderCalendar={canRenderCalendar}
+      emptyText={canManage ? 'Select at least one resource to view availability.' : 'No resources are available for rentals.'}
+      minHeight={MIN_FIELD_CALENDAR_HEIGHT}
+      events={calendarEvents}
+      calendarView={calendarView}
+      calendarDate={calendarDate}
+      onViewChange={setCalendarView}
+      onNavigateDate={(date) => {
+        const nextDate = toValidDate(date);
+        if (nextDate) {
+          setCalendarDate(nextDate);
+        }
       }}
-    >
-      <Text c="dimmed">{canManage ? 'Select at least one resource to view availability.' : 'No resources are available for rentals.'}</Text>
-    </Paper>
+      onRangeChange={handleCalendarRangeChange}
+      slotGroupPropGetter={slotGroupPropGetter}
+      minTime={minTime}
+      maxTime={maxTime}
+      scrollToTime={scrollToTime}
+      eventPropGetter={eventPropGetter}
+      slotPropGetter={slotPropGetter}
+      onEventDrop={handleEventDrop}
+      onEventResize={handleEventResize}
+      onSelecting={handleSelecting}
+      onSelectSlot={handleSlotSelect}
+      onSelectEvent={handleSelectCalendarEvent}
+      onShellPointerDownCapture={handleCalendarShellStaffPointerDown}
+      onShellPointerUpCapture={handleCalendarShellStaffEventActivation}
+      onShellClickCapture={handleCalendarShellStaffEventActivation}
+      canManage={canManage}
+      managerCalendarEditMode={managerCalendarEditMode}
+      fieldEventsLoading={fieldEventsLoading}
+      fieldColorReferenceList={fieldColorReferenceList}
+      managerDraftDragId={managerDraftDragId}
+      managerSelectionTitles={MANAGER_SELECTION_TITLES}
+      getCalendarEventVariant={getCalendarEventVariant}
+      onManagerDraftClick={handleManagerDraftCalendarEventClick}
+      onManagerDraftPointerDown={handleManagerDraftPointerDown}
+      onManagerDraftPointerMove={handleManagerDraftPointerMove}
+      onManagerDraftPointerUp={handleManagerDraftPointerUp}
+      onManagerDraftPointerCancel={handleManagerDraftPointerCancel}
+      isStaffAssignmentActivationSuppressed={isStaffAssignmentActivationSuppressed}
+      onOpenStaffAssignmentEdit={openStaffAssignmentEditModal}
+    />
   );
 
   if (orgLoading) {
