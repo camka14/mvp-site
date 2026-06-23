@@ -106,8 +106,8 @@ import TeamCard from '@/components/ui/TeamCard';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
-import EventFinancePanel from './components/EventFinancePanel';
 import BracketTabPanel from './schedulePage/BracketTabPanel';
+import FinanceTabPanel from './schedulePage/FinanceTabPanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
 import StandingsTabPanel from './schedulePage/StandingsTabPanel';
@@ -9315,16 +9315,13 @@ function EventScheduleContent() {
               onStandingsOverrideChange={handleStandingsOverrideChange}
             />
 
-            {showFinanceTab && (
-              <Tabs.Panel value="finance" pt="md">
-                <EventFinancePanel
-                  eventId={activeEvent?.$id ?? eventId}
-                  organizationId={financeOrganizationId}
-                  isActive={activeTab === 'finance'}
-                  canManage={canManageEvent}
-                />
-              </Tabs.Panel>
-            )}
+            <FinanceTabPanel
+              show={showFinanceTab}
+              eventId={activeEvent?.$id ?? eventId}
+              organizationId={financeOrganizationId}
+              isActive={activeTab === 'finance'}
+              canManage={canManageEvent}
+            />
           </Tabs>
         </Stack>
       </Container>
