@@ -97,7 +97,6 @@ import type {
   TeamComplianceUserSummary,
 } from '@/lib/eventTeamCompliance';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
-import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
 import EventForm, { EventFormHandle } from './components/EventForm';
 import { detectMatchConflictsById } from './lib/matchConflicts';
@@ -109,6 +108,7 @@ import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 import EventFinancePanel from './components/EventFinancePanel';
+import BracketTabPanel from './schedulePage/BracketTabPanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
 import {
@@ -9271,56 +9271,29 @@ function EventScheduleContent() {
               onToggleLockAllMatches={handleToggleLockAllMatches}
             />
 
-            {shouldShowBracketTab && (
-              <Tabs.Panel value="bracket" pt="md" pb={0}>
-                <Stack gap="sm">
-                  <Group justify="space-between" align="flex-end" wrap="wrap">
-                    {shouldShowBracketDivisionFilter ? (
-                      <Select
-                        label="Division"
-                        data={bracketDivisionOptions}
-                        value={selectedBracketDivision ?? bracketDivisionOptions[0]?.value ?? null}
-                        renderOption={renderViewerHighlightedDivisionOption}
-                        styles={getViewerHighlightedSelectStyles(selectedBracketDivision ?? bracketDivisionOptions[0]?.value ?? null)}
-                        onChange={(value) => setSelectedBracketDivision(value ?? bracketDivisionOptions[0]?.value ?? null)}
-                        allowDeselect={false}
-                        w={220}
-                      />
-                    ) : (
-                      <div />
-                    )}
-                    {canEditMatches && (
-                      <Button onClick={handleAddBracketMatch}>Add Match</Button>
-                    )}
-                  </Group>
-
-                  {bracketData ? (
-                    <TournamentBracketView
-                      bracket={bracketData}
-                      currentUser={user ?? undefined}
-                      childUserIds={childUserIds}
-                      viewerTeamIds={viewerTeamIds}
-                      highlightDivisionKeys={viewerDivisionHighlightKeys}
-                      isPreview={isPreview}
-                      onMatchClick={handleMatchClick}
-                      canEditMatches={canEditMatches}
-                      showEventOfficialNames={showEventOfficialNames}
-                      eventTimeZone={activeEvent.timeZone}
-                      showDateOnMatches={showDateOnMatches}
-                      conflictMatchIdsById={matchConflictsById}
-                    />
-                  ) : (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>
-                        {playoffMatches.length > 0
-                          ? 'No playoff bracket generated for the selected division.'
-                          : 'No playoff bracket generated yet.'}
-                      </Text>
-                    </Paper>
-                  )}
-                </Stack>
-              </Tabs.Panel>
-            )}
+            <BracketTabPanel
+              show={shouldShowBracketTab}
+              shouldShowBracketDivisionFilter={shouldShowBracketDivisionFilter}
+              bracketDivisionOptions={bracketDivisionOptions}
+              selectedBracketDivision={selectedBracketDivision}
+              renderViewerHighlightedDivisionOption={renderViewerHighlightedDivisionOption}
+              getViewerHighlightedSelectStyles={getViewerHighlightedSelectStyles}
+              canEditMatches={canEditMatches}
+              bracketData={bracketData}
+              user={user}
+              childUserIds={childUserIds}
+              viewerTeamIds={viewerTeamIds}
+              viewerDivisionHighlightKeys={viewerDivisionHighlightKeys}
+              isPreview={isPreview}
+              showEventOfficialNames={showEventOfficialNames}
+              eventTimeZone={activeEvent?.timeZone}
+              showDateOnMatches={showDateOnMatches}
+              matchConflictsById={matchConflictsById}
+              playoffMatchCount={playoffMatches.length}
+              onBracketDivisionChange={setSelectedBracketDivision}
+              onAddBracketMatch={handleAddBracketMatch}
+              onMatchClick={handleMatchClick}
+            />
 
             {showStandingsTab && (
               <Tabs.Panel value="standings" pt="md">
