@@ -45,25 +45,6 @@ export const SEED_DEV_USERS = Array.from({ length: 30 }, (_, index) => {
   userName: string;
 }>;
 
-export const SEED_OFFICIAL_USERS = [
-  {
-    id: "official_user_r1",
-    email: "official.r1@example.test",
-    password: "password",
-    firstName: "Riley",
-    lastName: "Referee",
-    userName: "rileyreferee",
-  },
-  {
-    id: "official_user_r2",
-    email: "official.r2@example.test",
-    password: "password",
-    firstName: "Jordan",
-    lastName: "Judge",
-    userName: "jordanjudge",
-  },
-] as const;
-
 export const SEED_DIVISION = {
   id: "division_open",
   name: "Open",
@@ -167,32 +148,7 @@ export const SEED_EVENTS = {
       id: "event_league_same_day",
       name: "League Same Day",
     },
-    officials: {
-      id: "mobile_api_officials_regression",
-      name: "Mobile API Officials Regression",
-    },
   },
-} as const;
-
-export const SEED_OFFICIALS_EVENT = {
-  divisionId: "mobile_api_officials_regression_open",
-  fieldId: "mobile_api_officials_field",
-  slotId: "mobile_api_officials_slot",
-  matchIds: ["mobile_api_officials_match_1", "mobile_api_officials_match_2"],
-  positions: [
-    {
-      id: "mobile_api_officials_r1",
-      name: "R1",
-      count: 1,
-      order: 0,
-    },
-    {
-      id: "mobile_api_officials_r2",
-      name: "R2",
-      count: 1,
-      order: 1,
-    },
-  ],
 } as const;
 
 export const SEED_TEAM_IDS = Array.from(
