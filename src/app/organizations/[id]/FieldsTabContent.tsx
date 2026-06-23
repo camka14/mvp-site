@@ -15,14 +15,12 @@ import {
   NumberInput,
   Paper,
   Select,
-  SimpleGrid,
   Stack,
   Text,
-  TextInput,
   Textarea,
   Title,
 } from '@mantine/core';
-import { DatePickerInput, DateTimePicker } from '@mantine/dates';
+import { DatePickerInput } from '@mantine/dates';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
@@ -57,10 +55,12 @@ import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/calendar/FieldCalendarFilter';
 import SharedCalendarEvent, { type SharedCalendarEventVariant } from '@/components/calendar/SharedCalendarEvent';
-import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal, { type CreateRentalSlotModalSubmitPayload } from '@/components/ui/CreateRentalSlotModal';
-import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
+import FacilityManagementOverview from './fieldsTab/FacilityManagementOverview';
+import ManagerFacilityCalendarSidebar from './fieldsTab/ManagerFacilityCalendarSidebar';
+import PublicRentalSelectionsPanel from './fieldsTab/PublicRentalSelectionsPanel';
+import FacilityEditorModal from './fieldsTab/FacilityEditorModal';
 
 type SelectionState = {
   fieldIds: string[];
@@ -664,12 +664,6 @@ const CALENDAR_VIEW_LABELS: Record<string, string> = {
   agenda: 'Agenda',
   work_week: 'Work week',
 };
-const FACILITY_METRIC_CARD_STYLE = {
-  border: '1px solid var(--mantine-color-gray-3)',
-  borderRadius: 8,
-  padding: '12px',
-  minHeight: 92,
-} as const;
 
 type CalendarLayerType =
   | FacilityCalendarFeedItemType
@@ -754,47 +748,6 @@ const FACILITY_FEED_CALENDAR_TYPES = new Set<FacilityCalendarFeedItemType>([
   'official_assignment',
   'staff_assignment',
 ]);
-
-const formatMetricMoney = (cents: number): string => `$${(Math.max(0, Math.round(cents)) / 100).toFixed(2)}`;
-
-const formatCourtHours = (hours: number): string => {
-  const normalized = Number.isFinite(hours) ? Math.max(0, hours) : 0;
-  const rounded = Math.round(normalized * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}h` : `${rounded.toFixed(1)}h`;
-};
-
-const formatCourtHourLabel = (hours: number): string => {
-  const normalized = Number.isFinite(hours) ? Math.max(0, hours) : 0;
-  const rounded = Math.round(normalized * 10) / 10;
-  const label = Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
-  return `${label} court-hour${rounded === 1 ? '' : 's'}`;
-};
-
-function FacilityMetric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div style={FACILITY_METRIC_CARD_STYLE}>
-      <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          {label}
-        </Text>
-        <Text size="xl" fw={800}>
-          {value}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {detail}
-        </Text>
-      </Stack>
-    </div>
-  );
-}
 
 const formatFacilityFeedStatus = (item: FacilityCalendarFeedItem): string | null => {
   if (item.unresolved) {
@@ -7125,408 +7078,84 @@ export default function FieldsTabContent({
         <Stack gap="md">
           {canManage ? (
             <Stack gap="md">
-              <Stack gap="sm">
-                {facilities.length > 0 || unassignedFields.length > 0 ? (
-                  <ResponsiveCardGrid maxCardWidth={360} className="facility-management-grid">
-                    {facilities.map((facility) => {
-                      const operatingHoursLabel = formatFacilityOperatingHours(facility.operatingHours);
-                      return (
-                        <div
-                          key={facility.$id}
-                          className="rounded-md border border-slate-200 bg-white px-3 py-2"
-                        >
-                          <Group justify="space-between" gap="sm" align="flex-start">
-                            <div className="min-w-0">
-                              <Group gap="xs">
-                                <Text fw={700} size="sm">{facility.name || 'Facility'}</Text>
-                                {facility.isDefault ? <Badge size="xs" variant="light">Default</Badge> : null}
-                              </Group>
-                              {facility.location || facility.address ? (
-                                <Text size="xs" c="dimmed" lineClamp={1}>
-                                  {facility.location || facility.address}
-                                </Text>
-                              ) : null}
-                              {operatingHoursLabel ? (
-                                <Text size="xs" c="dimmed" lineClamp={1}>
-                                  {operatingHoursLabel}
-                                </Text>
-                              ) : null}
-                              <Text size="xs" c="dimmed">
-                                {resourceCountByFacilityId.get(facility.$id) ?? 0} resource{resourceCountByFacilityId.get(facility.$id) === 1 ? '' : 's'}
-                              </Text>
-                            </div>
-                            <Button size="compact-xs" variant="subtle" onClick={() => openEditFacility(facility)}>
-                              Edit
-                            </Button>
-                          </Group>
-                        </div>
-                      );
-                    })}
-                    {unassignedFields.length > 0 ? (
-                      <div className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2">
-                        <Group justify="space-between" gap="sm" align="flex-start">
-                          <div className="min-w-0">
-                            <Group gap="xs">
-                              <Text fw={700} size="sm">Unassigned resources</Text>
-                              <Badge size="xs" variant="light" color="yellow">Needs facility</Badge>
-                            </Group>
-                            <Text size="xs" c="dimmed" lineClamp={1}>
-                              Resources without a facility grouping.
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              {unassignedFields.length} resource{unassignedFields.length === 1 ? '' : 's'}
-                            </Text>
-                          </div>
-                          <Button
-                            size="compact-xs"
-                            variant="subtle"
-                            onClick={() => handleFacilityFilterChange(UNASSIGNED_FACILITY_FILTER_VALUE)}
-                          >
-                            View
-                          </Button>
-                        </Group>
-                      </div>
-                    ) : null}
-                  </ResponsiveCardGrid>
-                ) : (
-                  <Text size="sm" c="dimmed">
-                    Create a facility before assigning resources.
-                  </Text>
-                )}
-              </Stack>
-
-              <div className="rounded-md border border-slate-200 bg-white p-3">
-                <Stack gap="sm">
-                  <Group justify="space-between" align="center">
-                    <div>
-                      <Text fw={700}>Facility operations summary</Text>
-                      <Text size="sm" c="dimmed">
-                        Hidden by default while the calendar and resource controls stay primary.
-                      </Text>
-                    </div>
-                    <Button
-                      size="xs"
-                      variant="default"
-                      onClick={() => setFacilitySummaryOpen((open) => !open)}
-                    >
-                      {facilitySummaryOpen ? 'Hide summary' : 'Show summary'}
-                    </Button>
-                  </Group>
-
-                  <Collapse in={facilitySummaryOpen}>
-                    <Stack gap="sm">
-                      <Group justify="space-between" align="flex-start">
-                        <Text size="sm" c="dimmed">
-                          {facilityCalendarRangeLabel} - {facilityCalendarSummary.fieldCount} selected resource{facilityCalendarSummary.fieldCount === 1 ? '' : 's'}
-                        </Text>
-                        <Badge
-                          color={facilityCalendarSummary.conflictCount > 0 ? 'red' : 'teal'}
-                          variant={facilityCalendarSummary.conflictCount > 0 ? 'filled' : 'light'}
-                        >
-                          {facilityCalendarSummary.conflictCount > 0
-                            ? `${facilityCalendarSummary.conflictCount} unresolved`
-                            : 'No conflicts'}
-                        </Badge>
-                      </Group>
-
-                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
-                        <FacilityMetric
-                          label="Utilization"
-                          value={`${facilityCalendarSummary.utilizationPercent}%`}
-                          detail={`${formatCourtHourLabel(facilityCalendarSummary.bookedInventoryHours)} booked of ${formatCourtHourLabel(facilityCalendarSummary.rentalInventoryHours)}`}
-                        />
-                        <FacilityMetric
-                          label="Revenue / court-hour"
-                          value={`${formatMetricMoney(facilityCalendarSummary.revenuePerCourtHourCents)}/hr`}
-                          detail={`${formatMetricMoney(facilityCalendarSummary.potentialRevenueCents)} listed rental inventory`}
-                        />
-                        <FacilityMetric
-                          label="Open inventory"
-                          value={formatCourtHours(facilityCalendarSummary.openInventoryHours)}
-                          detail={`${facilityCalendarSummary.rentalSlotCount} rental slot${facilityCalendarSummary.rentalSlotCount === 1 ? '' : 's'} in view`}
-                        />
-                        <FacilityMetric
-                          label="Unresolved conflicts"
-                          value={String(facilityCalendarSummary.conflictCount)}
-                          detail={`${formatCourtHourLabel(facilityCalendarSummary.conflictHours)} overlapping bookings`}
-                        />
-                      </SimpleGrid>
-
-                      {facilityCalendarSummary.facilities.length > 1 ? (
-                        <div className="space-y-2">
-                          {facilityCalendarSummary.facilities.map((facility) => (
-                            <div
-                              key={facility.facilityId ?? facility.facilityName}
-                              className="rounded-md border border-slate-200 px-3 py-2"
-                            >
-                              <Group justify="space-between" gap="xs" align="center">
-                                <Group gap="xs" align="center">
-                                  <Text fw={700} size="sm">{facility.facilityName}</Text>
-                                  <Badge size="sm" variant="light">
-                                    {facility.fieldCount} resource{facility.fieldCount === 1 ? '' : 's'}
-                                  </Badge>
-                                </Group>
-                                <Group gap="md">
-                                  <Text size="xs" c="dimmed">{facility.utilizationPercent}% used</Text>
-                                  <Text size="xs" c="dimmed">{formatCourtHours(facility.openInventoryHours)} open</Text>
-                                  <Text size="xs" c={facility.conflictCount > 0 ? 'red' : 'dimmed'}>
-                                    {facility.conflictCount} conflict{facility.conflictCount === 1 ? '' : 's'}
-                                  </Text>
-                                </Group>
-                              </Group>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </Stack>
-                  </Collapse>
-                </Stack>
-              </div>
+              <FacilityManagementOverview
+                facilities={facilities}
+                unassignedFields={unassignedFields}
+                resourceCountByFacilityId={resourceCountByFacilityId}
+                facilityCalendarRangeLabel={facilityCalendarRangeLabel}
+                facilityCalendarSummary={facilityCalendarSummary}
+                summaryOpen={facilitySummaryOpen}
+                onToggleSummary={() => setFacilitySummaryOpen((open) => !open)}
+                onEditFacility={openEditFacility}
+                onViewUnassignedResources={() => handleFacilityFilterChange(UNASSIGNED_FACILITY_FILTER_VALUE)}
+                getOperatingHoursLabel={(facility) => formatFacilityOperatingHours(facility.operatingHours)}
+              />
 
               <div className="shared-calendar-layout">
-                <Stack gap="sm">
-                  <Select
-                    label="Facility"
-                    data={facilityFilterOptions}
-                    value={selectedFacilityFilterValue}
-                    onChange={handleFacilityFilterChange}
-                    allowDeselect={false}
-                    size="sm"
-                  />
-                  <Stack gap={6}>
-                    <Group justify="space-between" align="center">
-                      <Text fw={700} size="sm">Calendar layers</Text>
-                      <Button
-                        size="compact-xs"
-                        variant={allCalendarLayersSelected ? 'light' : 'subtle'}
-                        color="gray"
-                        onClick={() => setCalendarLayerFilters(CALENDAR_LAYER_ORDER)}
-                      >
-                        All
-                      </Button>
-                    </Group>
-                    <Group gap={6}>
-                      {CALENDAR_LAYER_ORDER.map((type) => {
-                        const count = calendarLayerCounts.get(type) ?? 0;
-                        const selected = activeCalendarLayerSet.has(type);
-                        return (
-                          <Button
-                            key={type}
-                            size="compact-xs"
-                            variant={selected ? 'filled' : 'light'}
-                            color={CALENDAR_LAYER_COLORS[type]}
-                            onClick={() => toggleCalendarLayer(type)}
-                          >
-                            {CALENDAR_LAYER_LABELS[type]} {count}
-                          </Button>
-                        );
-                      })}
-                    </Group>
-                  </Stack>
-                  {managerCalendarEditMode ? (
-                    <Stack gap={6}>
-                      <Text fw={700} size="sm">Create</Text>
-                      <div className="facility-calendar-create-grid">
-                        {MANAGER_CREATE_TEMPLATES.map((template) => {
-                          const canDragTemplate = selectedFieldIds.length > 0;
-                          const isDragging = managerCreateDragMode === template.mode;
-                          return (
-                            <div
-                              key={template.mode}
-                              className={[
-                                'facility-calendar-create-card',
-                                isDragging ? 'facility-calendar-create-card--active' : '',
-                                !canDragTemplate ? 'facility-calendar-create-card--disabled' : '',
-                              ].filter(Boolean).join(' ')}
-                              draggable={false}
-                              aria-grabbed={isDragging}
-                              aria-disabled={!canDragTemplate}
-                              onPointerDown={(event) => handleManagerCreatePointerDown(template.mode, event)}
-                              onPointerMove={handleManagerCreatePointerMove}
-                              onPointerUp={handleManagerCreatePointerUp}
-                              onPointerCancel={handleManagerCreatePointerCancel}
-                            >
-                              <SharedCalendarEvent
-                                title={template.title}
-                                subtitle={template.subtitle}
-                                meta={template.meta}
-                                colorSeed={template.colorSeed}
-                                colorReferenceList={fieldColorReferenceList}
-                                colorMatchKey={selectedFieldIds[0] ?? undefined}
-                                resourceColorMatchKeys={selectedFieldIds}
-                                variant={template.variant}
-                                draggable={canDragTemplate}
-                                selected={isDragging}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </Stack>
-                  ) : null}
-                  <FieldCalendarFilter
-                    items={fieldFilterItems}
-                    selectedIds={selectedFieldIds.filter((fieldId) => facilityFilteredFieldIds.includes(fieldId))}
-                    onSelectedIdsChange={handleSelectedFieldIdsChange}
-                    colorReferenceList={fieldColorReferenceList}
-                    title="Resources"
-                    ariaLabel="Facility resources"
-                    searchPlaceholder="Search resources"
-                    searchAriaLabel="Search resources"
-                    emptyText="No resources match this facility."
-                  />
-                </Stack>
+                <ManagerFacilityCalendarSidebar
+                  facilityFilterOptions={facilityFilterOptions}
+                  selectedFacilityFilterValue={selectedFacilityFilterValue}
+                  onFacilityFilterChange={handleFacilityFilterChange}
+                  calendarLayerOrder={CALENDAR_LAYER_ORDER}
+                  calendarLayerLabels={CALENDAR_LAYER_LABELS}
+                  calendarLayerColors={CALENDAR_LAYER_COLORS}
+                  calendarLayerCounts={calendarLayerCounts}
+                  activeCalendarLayerSet={activeCalendarLayerSet}
+                  allCalendarLayersSelected={allCalendarLayersSelected}
+                  onSelectAllCalendarLayers={() => setCalendarLayerFilters(CALENDAR_LAYER_ORDER)}
+                  onToggleCalendarLayer={toggleCalendarLayer}
+                  editMode={managerCalendarEditMode}
+                  createTemplates={MANAGER_CREATE_TEMPLATES}
+                  selectedFieldIds={selectedFieldIds}
+                  facilityFilteredFieldIds={facilityFilteredFieldIds}
+                  fieldFilterItems={fieldFilterItems}
+                  fieldColorReferenceList={fieldColorReferenceList}
+                  createDragMode={managerCreateDragMode}
+                  onCreatePointerDown={handleManagerCreatePointerDown}
+                  onCreatePointerMove={handleManagerCreatePointerMove}
+                  onCreatePointerUp={handleManagerCreatePointerUp}
+                  onCreatePointerCancel={handleManagerCreatePointerCancel}
+                  onSelectedFieldIdsChange={handleSelectedFieldIdsChange}
+                />
                 <Stack gap="sm" className="min-w-0">
                   {fieldCalendarNode}
                 </Stack>
               </div>
             </Stack>
           ) : (
-            <Paper withBorder radius="md" p="sm">
-              <Stack gap="sm">
-                <Group justify="space-between" align="center">
-                  <Text fw={600} size="sm">Rental Selections</Text>
-                  <Button size="xs" variant="light" onClick={handleAddRentalSelection}>
-                    + Add Selection
-                  </Button>
-                </Group>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
-                  {rentalSelections.map((selectionItem, index) => {
-                    const validation = rentalSelectionValidationByKey.get(selectionItem.key);
-                    const selectionRange = resolveSelectionDateRange(selectionItem);
-                    const selectionFieldIds = normalizeFieldIds(selectionItem.scheduledFieldIds);
-                    const selectionFacilityValue = getSelectionFacilityFilterValue(selectionFieldIds);
-                    const selectionFacilityFields = selectionFacilityValue === ALL_FACILITIES_FILTER_VALUE
-                      ? fields
-                      : facilityFieldsByFilterValue.get(selectionFacilityValue) ?? [];
-                    const selectionFieldOptions = selectionFacilityFields.map((field) => ({
-                      value: field.$id,
-                      label: getFacilityScopedFieldDisplayName(field),
-                    }));
-                    const hasConflict = (validation?.conflictCount ?? 0) > 0;
-                    return (
-                      <Paper
-                        key={selectionItem.key}
-                        withBorder
-                        radius="md"
-                        p="sm"
-                        shadow="xs"
-                        style={{
-                          alignSelf: 'start',
-                          borderColor: hasConflict ? 'var(--mantine-color-red-5)' : undefined,
-                          backgroundColor: hasConflict ? 'var(--mantine-color-red-0)' : undefined,
-                        }}
-                      >
-                        <div className="space-y-2 overflow-y-auto pr-1">
-                          <Group justify="space-between" align="center">
-                            <Group gap="xs">
-                              <Badge color={validation?.errors.length ? 'red' : 'teal'} variant="light">
-                                Selection {index + 1}
-                              </Badge>
-                              <Badge variant="dot">
-                                {formatPrice(validation?.totalCents ?? 0)}
-                              </Badge>
-                              {hasConflict ? (
-                                <Badge color="red" variant="filled">Conflict</Badge>
-                              ) : null}
-                              {validation?.conflictCheckPending ? (
-                                <Badge color="yellow" variant="light">Checking</Badge>
-                              ) : null}
-                            </Group>
-                            <Button
-                              size="compact-xs"
-                              variant="subtle"
-                              color="red"
-                              onClick={() => handleRemoveRentalSelection(selectionItem.key)}
-                            >
-                              Remove
-                            </Button>
-                          </Group>
-                          <Select
-                            label="Facility"
-                            data={publicFacilityFilterOptions}
-                            value={selectionFacilityValue}
-                            onChange={(nextValue) => {
-                              const normalizedValue = nextValue ?? publicFacilityFilterOptions[0]?.value ?? ALL_FACILITIES_FILTER_VALUE;
-                              const nextFieldIds = getPreferredFieldIdsForFacilityFilter(normalizedValue);
-                              setSelectedFacilityFilterValue(normalizedValue);
-                              setReadonlyVisibleFieldIds(nextFieldIds);
-                              updateRentalSelection(selectionItem.key, (current) => ({
-                                ...current,
-                                scheduledFieldIds: nextFieldIds,
-                              }));
-                            }}
-                            allowDeselect={false}
-                            size="sm"
-                          />
-                          <MultiSelect
-                            label="Resources"
-                            data={selectionFieldOptions}
-                            value={selectionFieldIds.filter((fieldId) => selectionFacilityFields.some((field) => field.$id === fieldId))}
-                            onChange={(nextValues) => {
-                              updateRentalSelection(selectionItem.key, (current) => ({
-                                ...current,
-                                scheduledFieldIds: normalizeFieldIds(nextValues),
-                              }));
-                            }}
-                            searchable
-                            placeholder="Select one or more resources"
-                            size="sm"
-                          />
-                          <Group grow>
-                            <DateTimePicker
-                              label="Start"
-                              value={formatLocalDateTime(selectionRange?.start ?? null) ?? null}
-                              minDate={new Date()}
-                              size="sm"
-                              onChange={(value) => {
-                                const nextStart = parseLocalDateTime(value ?? null);
-                                if (!nextStart) return;
-                                updateRentalSelection(
-                                  selectionItem.key,
-                                  (current) => updateSelectionWithCalendarRange(
-                                    current,
-                                    nextStart,
-                                    selectionRange?.end && selectionRange.end.getTime() > nextStart.getTime()
-                                      ? selectionRange.end
-                                      : new Date(nextStart.getTime() + MIN_SELECTION_MS),
-                                  ),
-                                );
-                              }}
-                            />
-                            <DateTimePicker
-                              label="End"
-                              value={formatLocalDateTime(selectionRange?.end ?? null) ?? null}
-                              minDate={new Date()}
-                              size="sm"
-                              onChange={(value) => {
-                                const nextEnd = parseLocalDateTime(value ?? null);
-                                if (!nextEnd) return;
-                                updateRentalSelection(
-                                  selectionItem.key,
-                                  (current) => updateSelectionWithCalendarRange(
-                                    current,
-                                    selectionRange?.start && selectionRange.start.getTime() < nextEnd.getTime()
-                                      ? selectionRange.start
-                                      : new Date(nextEnd.getTime() - MIN_SELECTION_MS),
-                                    nextEnd,
-                                  ),
-                                );
-                              }}
-                            />
-                          </Group>
-                          {validation?.errors.map((errorMessage, errorIndex) => (
-                            <Text key={`${selectionItem.key}-${errorIndex}`} size="xs" c="red">
-                              {errorMessage}
-                            </Text>
-                          ))}
-                        </div>
-                      </Paper>
-                    );
-                  })}
-                </SimpleGrid>
-              </Stack>
-            </Paper>
+            <PublicRentalSelectionsPanel
+              selections={rentalSelections}
+              validationByKey={rentalSelectionValidationByKey}
+              fields={fields}
+              facilityFieldsByFilterValue={facilityFieldsByFilterValue}
+              publicFacilityFilterOptions={publicFacilityFilterOptions}
+              allFacilitiesFilterValue={ALL_FACILITIES_FILTER_VALUE}
+              resolveSelectionDateRange={resolveSelectionDateRange}
+              getSelectionFacilityFilterValue={getSelectionFacilityFilterValue}
+              onAddSelection={handleAddRentalSelection}
+              onRemoveSelection={handleRemoveRentalSelection}
+              onSelectionFacilityChange={(selectionKey, normalizedValue) => {
+                const nextFieldIds = getPreferredFieldIdsForFacilityFilter(normalizedValue);
+                setSelectedFacilityFilterValue(normalizedValue);
+                setReadonlyVisibleFieldIds(nextFieldIds);
+                updateRentalSelection(selectionKey, (current) => ({
+                  ...current,
+                  scheduledFieldIds: nextFieldIds,
+                }));
+              }}
+              onSelectionFieldIdsChange={(selectionKey, nextValues) => {
+                updateRentalSelection(selectionKey, (current) => ({
+                  ...current,
+                  scheduledFieldIds: normalizeFieldIds(nextValues),
+                }));
+              }}
+              onSelectionRangeChange={(selectionKey, start, end) => {
+                updateRentalSelection(
+                  selectionKey,
+                  (current) => updateSelectionWithCalendarRange(current, start, end),
+                );
+              }}
+            />
           )}
 
           {!canManage && (
@@ -7977,10 +7606,27 @@ export default function FieldsTabContent({
         </Stack>
       </Modal>
 
-      <Modal
+      <FacilityEditorModal
         opened={facilityModalOpen}
+        editingFacility={editingFacility}
+        submitting={facilitySubmitting}
+        formError={facilityFormError}
+        name={facilityFormName}
+        location={facilityFormLocation}
+        coordinates={facilityFormCoordinates}
+        locationSelected={facilityLocationSelected}
+        locationRequiredError={FACILITY_LOCATION_REQUIRED_ERROR}
+        locationSelectionError={FACILITY_LOCATION_SELECTION_ERROR}
+        resourceIds={facilityResourceIds}
+        resourceAssignmentItems={resourceAssignmentItems}
+        resourcesOpen={facilityResourcesOpen}
+        allResourcesDisabled={allFieldOptions.length === 0}
+        colorReferenceList={fieldColorReferenceList}
+        weeklyHours={facilityWeeklyHours}
+        dayOptions={FACILITY_DAY_OPTIONS}
+        defaultOpenTime={DEFAULT_FACILITY_OPEN_TIME}
+        defaultCloseTime={DEFAULT_FACILITY_CLOSE_TIME}
         onClose={() => {
-          if (facilitySubmitting) return;
           setFacilityModalOpen(false);
           setEditingFacility(null);
           setFacilityFormName('');
@@ -7993,188 +7639,25 @@ export default function FieldsTabContent({
           setFacilityResourcesOpen(false);
           setFacilityFormError(null);
         }}
-        title={editingFacility ? 'Edit Facility' : 'Create Facility'}
-        size="lg"
-        centered
-      >
-        <Stack gap="md">
-          {facilityFormError ? (
-            <Alert color="red">{facilityFormError}</Alert>
-          ) : null}
-          <TextInput
-            label="Name"
-            value={facilityFormName}
-            onChange={(event) => setFacilityFormName(event.currentTarget.value)}
-            placeholder="Downtown Sports Center"
-            required
-          />
-          <LocationSelector
-            label="Location"
-            value={facilityFormLocation}
-            coordinates={facilityFormCoordinates}
-            onChange={(location, lat, lng, address, meta?: LocationSelectionMeta) => {
-              const nextSelected = Boolean(meta?.selected);
-              setFacilityFormLocation(location);
-              setFacilityLocationSelected(nextSelected);
-              setFacilityFormCoordinates(nextSelected ? { lat, lng } : EMPTY_FACILITY_COORDINATES);
-              setFacilityFormAddress(nextSelected ? address ?? location : '');
-              if (
-                (facilityFormError === FACILITY_LOCATION_REQUIRED_ERROR || facilityFormError === FACILITY_LOCATION_SELECTION_ERROR)
-                && nextSelected
-              ) {
-                setFacilityFormError(null);
-              }
-            }}
-            isValid={facilityFormError !== FACILITY_LOCATION_REQUIRED_ERROR && facilityFormError !== FACILITY_LOCATION_SELECTION_ERROR}
-            errorMessage={
-              facilityFormError === FACILITY_LOCATION_REQUIRED_ERROR || facilityFormError === FACILITY_LOCATION_SELECTION_ERROR
-                ? facilityFormError
-                : undefined
-            }
-            required
-            requireSelection
-            selected={facilityLocationSelected}
-            selectionErrorMessage={FACILITY_LOCATION_SELECTION_ERROR}
-          />
-          <Stack gap={6}>
-            <Group justify="space-between" align="center" gap="sm">
-              <div>
-                <Text fw={700} size="sm">Resources in this facility</Text>
-                <Text c="dimmed" size="xs">
-                  {facilityResourceIds.length} of {resourceAssignmentItems.length} assigned
-                </Text>
-              </div>
-              <Button
-                size="compact-xs"
-                variant="light"
-                onClick={() => setFacilityResourcesOpen((open) => !open)}
-                aria-expanded={facilityResourcesOpen}
-              >
-                {facilityResourcesOpen ? 'Hide resources' : 'Show resources'}
-              </Button>
-            </Group>
-            <Collapse in={facilityResourcesOpen}>
-              <Stack gap={6} mt="sm">
-                <FieldCalendarFilter
-                  items={resourceAssignmentItems}
-                  selectedIds={facilityResourceIds}
-                  onSelectedIdsChange={(values) => setFacilityResourceIds(normalizeFieldIds(values))}
-                  ariaLabel="Facility resource assignment"
-                  searchPlaceholder="Search resources"
-                  searchAriaLabel="Search facility assignment resources"
-                  emptyText="No resources match your search."
-                  allowEmptySelection
-                  colorReferenceList={fieldColorReferenceList}
-                  disabled={allFieldOptions.length === 0}
-                  showHeader={false}
-                  inlineControls
-                  unframed
-                  maxVisibleItems={5}
-                />
-              </Stack>
-            </Collapse>
-          </Stack>
-          <Stack gap="xs">
-            <Text fw={600} size="sm">Operating hours</Text>
-            <Stack gap={6}>
-              {facilityWeeklyHours.map((row) => {
-                const day = FACILITY_DAY_OPTIONS.find((option) => option.dayOfWeek === row.dayOfWeek);
-                const label = day?.longLabel ?? `Day ${row.dayOfWeek + 1}`;
-                return (
-                  <div
-                    key={row.dayOfWeek}
-                    className="grid grid-cols-2 gap-2 rounded-md border border-slate-200 px-2 py-1.5 sm:grid-cols-[minmax(9.5rem,1fr)_minmax(7rem,8rem)_minmax(7rem,8rem)]"
-                  >
-                    <Checkbox
-                      className="col-span-2 self-center sm:col-span-1"
-                      label={label}
-                      checked={!row.closed}
-                      onChange={(event) => {
-                        const isOpen = event.currentTarget.checked;
-                        setFacilityWeeklyHours((current) => current.map((entry) => (
-                          entry.dayOfWeek === row.dayOfWeek
-                            ? {
-                                ...entry,
-                                closed: !isOpen,
-                                openTime: isOpen ? entry.openTime || DEFAULT_FACILITY_OPEN_TIME : entry.openTime,
-                                closeTime: isOpen ? entry.closeTime || DEFAULT_FACILITY_CLOSE_TIME : entry.closeTime,
-                              }
-                            : entry
-                        )));
-                      }}
-                    />
-                    <TextInput
-                      aria-label={`${label} opens`}
-                      type="time"
-                      value={row.openTime}
-                      disabled={row.closed}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setFacilityWeeklyHours((current) => current.map((entry) => (
-                          entry.dayOfWeek === row.dayOfWeek ? { ...entry, openTime: value } : entry
-                        )));
-                      }}
-                      size="xs"
-                      style={{ minWidth: 0 }}
-                    />
-                    <TextInput
-                      aria-label={`${label} closes`}
-                      type="time"
-                      value={row.closeTime}
-                      disabled={row.closed}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setFacilityWeeklyHours((current) => current.map((entry) => (
-                          entry.dayOfWeek === row.dayOfWeek ? { ...entry, closeTime: value } : entry
-                        )));
-                      }}
-                      size="xs"
-                      style={{ minWidth: 0 }}
-                    />
-                  </div>
-                );
-              })}
-            </Stack>
-          </Stack>
-          <Group
-            justify="flex-end"
-            style={{
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 1,
-              marginLeft: 'calc(var(--mantine-spacing-md) * -1)',
-              marginRight: 'calc(var(--mantine-spacing-md) * -1)',
-              marginBottom: 'calc(var(--mantine-spacing-md) * -1)',
-              padding: 'var(--mantine-spacing-sm) var(--mantine-spacing-md) var(--mantine-spacing-md)',
-              background: 'var(--mantine-color-body)',
-              borderTop: '1px solid var(--mantine-color-gray-3)',
-            }}
-          >
-            <Button
-              variant="default"
-              onClick={() => {
-                setFacilityModalOpen(false);
-                setEditingFacility(null);
-                setFacilityFormName('');
-                setFacilityFormLocation('');
-                setFacilityFormAddress('');
-                setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
-                setFacilityLocationSelected(false);
-                setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
-                setFacilityResourceIds([]);
-                setFacilityResourcesOpen(false);
-                setFacilityFormError(null);
-              }}
-              disabled={facilitySubmitting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSaveFacility} loading={facilitySubmitting}>
-              {editingFacility ? 'Save Facility' : 'Create Facility'}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onSave={handleSaveFacility}
+        onNameChange={setFacilityFormName}
+        onLocationChange={(location, lat, lng, address, meta) => {
+          const nextSelected = Boolean(meta?.selected);
+          setFacilityFormLocation(location);
+          setFacilityLocationSelected(nextSelected);
+          setFacilityFormCoordinates(nextSelected ? { lat, lng } : EMPTY_FACILITY_COORDINATES);
+          setFacilityFormAddress(nextSelected ? address ?? location : '');
+          if (
+            (facilityFormError === FACILITY_LOCATION_REQUIRED_ERROR || facilityFormError === FACILITY_LOCATION_SELECTION_ERROR)
+            && nextSelected
+          ) {
+            setFacilityFormError(null);
+          }
+        }}
+        onResourceIdsChange={(values) => setFacilityResourceIds(normalizeFieldIds(values))}
+        onResourcesOpenChange={setFacilityResourcesOpen}
+        onWeeklyHoursChange={setFacilityWeeklyHours}
+      />
 
       <CreateFieldModal
         isOpen={createFieldOpen}
