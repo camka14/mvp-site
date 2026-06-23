@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, StaffMemberType, EventOfficial, EventOfficialPosition, RegistrationQuestionDraft } from '@/types';
@@ -87,6 +86,7 @@ import {
     deriveSingleDivisionPoolPlayDefaults,
     DIVISION_GENDER_OPTIONS,
     type DivisionDetailForm,
+    type DivisionEditorState,
     type DivisionEditorKind,
     divisionFieldIdsEqual,
     getDefaultDivisionTypeSelectionsForSport,
@@ -242,7 +242,6 @@ import {
     tournamentConfigEqual,
 } from './eventForm/formEquality';
 import {
-    DIVISION_LAYOUT_TRANSITION,
     SECTION_ANIMATION_DURATION_MS,
 } from './eventForm/constants';
 import {
@@ -267,7 +266,6 @@ import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpe
 import {
     parseDateValue,
 } from './eventForm/dateHelpers';
-import { AnimatedLayoutSection, AnimatedSection } from './eventForm/components/AnimatedSection';
 import {
     buildEventFormSectionNavigationItems,
     getVisibleSectionNavigationItems,
@@ -275,14 +273,9 @@ import {
 import { EventFormShell } from './eventForm/components/EventFormShell';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
-import { DivisionEditorCoreControls } from './eventForm/sections/DivisionEditorCoreControls';
 import { DivisionEditorHeader } from './eventForm/sections/DivisionEditorHeader';
-import { DivisionEditorLeagueConfigControls } from './eventForm/sections/DivisionEditorLeagueConfigControls';
-import { DivisionEditorPaymentPlanControls } from './eventForm/sections/DivisionEditorPaymentPlanControls';
+import { DivisionEditorLeaguePanel } from './eventForm/sections/DivisionEditorLeaguePanel';
 import { DivisionEditorPlayoffDivisionControls } from './eventForm/sections/DivisionEditorPlayoffDivisionControls';
-import { DivisionEditorPlayoffPlacementControls } from './eventForm/sections/DivisionEditorPlayoffPlacementControls';
-import { DivisionEditorTournamentConfigControls } from './eventForm/sections/DivisionEditorTournamentConfigControls';
-import { DivisionEditorTournamentPoolControls } from './eventForm/sections/DivisionEditorTournamentPoolControls';
 import { DivisionModeControls } from './eventForm/sections/DivisionModeControls';
 import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSection';
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
@@ -302,7 +295,6 @@ import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQ
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
 import { SingleDivisionDefaultsPanel } from './eventForm/sections/SingleDivisionDefaultsPanel';
-import { SingleDivisionEditorNotice } from './eventForm/sections/SingleDivisionEditorNotice';
 import { StaffAssignedCardsGrid } from './eventForm/sections/StaffAssignedCardsGrid';
 import { StaffNonOrganizationInvitePanel } from './eventForm/sections/StaffNonOrganizationInvitePanel';
 import { StaffSection } from './eventForm/sections/StaffSection';
@@ -1720,28 +1712,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [eventData.sportConfig, eventData.sportId],
     );
 
-    const [divisionEditor, setDivisionEditor] = useState<{
-        editingId: string | null;
-        divisionKind: DivisionEditorKind;
-        gender: '' | 'M' | 'F' | 'C';
-        skillDivisionTypeId: string;
-        ageDivisionTypeId: string;
-        name: string;
-        price: number;
-        maxParticipants: number | null;
-        playoffTeamCount: number | null;
-        poolCount: number | null;
-        playoffPlacementDivisionIds: string[];
-        leagueConfig: LeagueConfig;
-        playoffConfig: TournamentConfig;
-        allowPaymentPlans: boolean;
-        installmentCount: number;
-        installmentDueDates: string[];
-        installmentDueRelativeDays: number[];
-        installmentAmounts: number[];
-        nameTouched: boolean;
-        error: string | null;
-    }>({
+    const [divisionEditor, setDivisionEditor] = useState<DivisionEditorState>({
         editingId: null,
         divisionKind: 'LEAGUE',
         gender: '',
@@ -6370,196 +6341,35 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     comboboxProps={sharedComboboxProps}
                                     onDivisionKindChange={handleDivisionEditorKindChange}
                                 />
-                                <AnimatedSection in={!splitDivisionEditorEnabled || divisionEditor.divisionKind === 'LEAGUE'}>
-                                    <motion.div
-                                        layout
-                                        className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
-                                        transition={DIVISION_LAYOUT_TRANSITION}
-                                    >
-                                    <DivisionEditorCoreControls
-                                        gender={divisionEditor.gender}
-                                        skillDivisionTypeId={divisionEditor.skillDivisionTypeId}
-                                        ageDivisionTypeId={divisionEditor.ageDivisionTypeId}
-                                        name={divisionEditor.name}
-                                        maxParticipants={divisionEditor.maxParticipants}
-                                        price={divisionEditor.price}
-                                        allowPaymentPlans={divisionEditor.allowPaymentPlans}
-                                        singleDivision={eventData.singleDivision}
-                                        teamSignup={eventData.teamSignup}
-                                        eventType={eventData.eventType}
-                                        taxable={eventTaxableForPreview}
-                                        divisionEditorReady={divisionEditorReady}
-                                        divisionsImmutable={isImmutableField('divisions')}
-                                        hasStripeAccount={hasStripeAccount}
-                                        maxStandardNumber={MAX_STANDARD_NUMBER}
-                                        maxPriceCents={MAX_PRICE_CENTS}
-                                        maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                        divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
-                                        genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-                                        skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
-                                        ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
-                                        comboboxProps={sharedComboboxProps}
-                                        onGenderChange={(gender) => updateDivisionEditorSelection({ gender })}
-                                        onSkillDivisionChange={(skillDivisionTypeId) => updateDivisionEditorSelection({ skillDivisionTypeId })}
-                                        onAgeDivisionChange={(ageDivisionTypeId) => updateDivisionEditorSelection({ ageDivisionTypeId })}
-                                        onNameChange={(nextName) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                name: nextName,
-                                                nameTouched: true,
-                                                error: null,
-                                            }));
-                                        }}
-                                        onMaxParticipantsChange={(value) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                maxParticipants: normalizePlayoffDivisionParticipantCount(value),
-                                                error: null,
-                                            }));
-                                        }}
-                                        onPriceChange={(nextValue) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                price: normalizePriceCents(nextValue),
-                                                error: null,
-                                            }));
-                                        }}
-                                    />
-                                    {!eventData.singleDivision ? (
-                                        <DivisionEditorPaymentPlanControls
-                                            allowPaymentPlans={divisionEditor.allowPaymentPlans}
-                                            installmentCount={divisionEditor.installmentCount || 0}
-                                            installmentAmounts={divisionEditor.installmentAmounts || []}
-                                            installmentDueDates={divisionEditor.installmentDueDates || []}
-                                            installmentDueRelativeDays={divisionEditor.installmentDueRelativeDays || []}
-                                            eventType={eventData.eventType}
-                                            parentEvent={eventData.parentEvent}
-                                            eventStart={eventData.start}
-                                            taxable={eventTaxableForPreview}
-                                            disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
-                                            maxStandardNumber={MAX_STANDARD_NUMBER}
-                                            maxPriceCents={MAX_PRICE_CENTS}
-                                            onAllowPaymentPlansChange={(checked) => {
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    allowPaymentPlans: checked,
-                                                    price: checked && prev.installmentAmounts.length
-                                                        ? sumInstallmentAmounts(prev.installmentAmounts)
-                                                        : prev.price,
-                                                    installmentCount: checked
-                                                        ? (prev.installmentCount || prev.installmentAmounts.length || 1)
-                                                        : 0,
-                                                    installmentDueDates: checked ? prev.installmentDueDates : [],
-                                                    installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
-                                                    installmentAmounts: checked ? prev.installmentAmounts : [],
-                                                    error: null,
-                                                }));
-                                                if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
-                                                    syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
-                                                }
-                                            }}
-                                            onInstallmentCountChange={(count) => syncDivisionInstallmentCount(count)}
-                                            onInstallmentDueRelativeDayChange={setDivisionInstallmentDueRelativeDay}
-                                            onInstallmentDueDateChange={setDivisionInstallmentDueDate}
-                                            onInstallmentAmountChange={setDivisionInstallmentAmount}
-                                            onRemoveInstallment={removeDivisionInstallment}
-                                            onAddInstallment={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
-                                        />
-                                    ) : null}
-                                    <DivisionEditorLeagueConfigControls
-                                        leagueConfigVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
-                                        playoffTeamCountVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
-                                        playoffConfigVisible={
-                                            eventData.eventType === 'LEAGUE'
-                                            && !eventData.singleDivision
-                                            && leagueData.includePlayoffs
-                                            && !eventData.splitLeaguePlayoffDivisions
-                                        }
-                                        leagueData={divisionEditor.leagueConfig}
-                                        sport={eventData.sportConfig ?? undefined}
-                                        participantCount={divisionEditor.maxParticipants ?? undefined}
-                                        playoffTeamCount={divisionEditor.playoffTeamCount}
-                                        playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                        maxStandardNumber={MAX_STANDARD_NUMBER}
-                                        numberInputStyles={alignedDetailsFieldStyles}
-                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                        onLeagueDataChange={setDivisionEditorLeagueConfig}
-                                        onPlayoffTeamCountChange={(playoffTeamCount) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                playoffTeamCount,
-                                                error: null,
-                                            }));
-                                        }}
-                                        onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
-                                    />
-                                    <DivisionEditorPlayoffPlacementControls
-                                        visible={splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
-                                        playoffTeamCount={divisionEditor.playoffTeamCount}
-                                        playoffDivisionOptions={playoffDivisionSelectOptions}
-                                        placementDivisionIds={normalizeDivisionKeys(divisionEditor.playoffPlacementDivisionIds || [])}
-                                        comboboxProps={sharedComboboxProps}
-                                        disabled={isImmutableField('divisions')}
-                                        onPlacementDivisionChange={(placementIndex, value) => {
-                                            const normalizedValue = normalizeDivisionKeys([value ?? ''])[0] ?? '';
-                                            setDivisionEditor((prev) => {
-                                                const nextMapping = [...prev.playoffPlacementDivisionIds];
-                                                while (nextMapping.length <= placementIndex) {
-                                                    nextMapping.push('');
-                                                }
-                                                nextMapping[placementIndex] = normalizedValue;
-                                                return {
-                                                    ...prev,
-                                                    playoffPlacementDivisionIds: nextMapping,
-                                                    error: null,
-                                                };
-                                            });
-                                        }}
-                                    />
-                                    <DivisionEditorTournamentPoolControls
-                                        visible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        playoffTeamCount={divisionEditor.playoffTeamCount}
-                                        poolCount={divisionEditor.poolCount}
-                                        poolTeamCount={derivePoolTeamCount(
-                                            eventData.singleDivision
-                                                ? eventData.maxParticipants
-                                                : divisionEditor.maxParticipants,
-                                            divisionEditor.poolCount,
-                                        )}
-                                        maxStandardNumber={MAX_STANDARD_NUMBER}
-                                        numberInputStyles={alignedDetailsFieldStyles}
-                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                        onPlayoffTeamCountChange={(playoffTeamCount) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                playoffTeamCount,
-                                                error: null,
-                                            }));
-                                        }}
-                                        onPoolCountChange={(poolCount) => {
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                poolCount,
-                                                error: null,
-                                            }));
-                                        }}
-                                    />
-                                    <DivisionEditorTournamentConfigControls
-                                        poolConfigVisible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                        tournamentConfigVisible={eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
-                                        leagueData={divisionEditor.leagueConfig}
-                                        tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                        sport={eventData.sportConfig ?? undefined}
-                                        participantCount={divisionEditor.maxParticipants ?? undefined}
-                                        onLeagueDataChange={setDivisionEditorLeagueConfig}
-                                        onTournamentDataChange={setDivisionEditorPlayoffConfig}
-                                    />
-                                </motion.div>
-                                <SingleDivisionEditorNotice
-                                    visible={eventData.singleDivision}
-                                    eventType={eventData.eventType}
+                                <DivisionEditorLeaguePanel
+                                    divisionEditor={divisionEditor}
+                                    eventData={eventData}
+                                    leagueData={leagueData}
+                                    eventTaxableForPreview={eventTaxableForPreview}
+                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
+                                    divisionEditorReady={divisionEditorReady}
+                                    divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
+                                    hasStripeAccount={hasStripeAccount}
+                                    maxStandardNumber={MAX_STANDARD_NUMBER}
+                                    maxPriceCents={MAX_PRICE_CENTS}
+                                    maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                    numberInputStyles={alignedDetailsFieldStyles}
+                                    genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                    skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
+                                    ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
+                                    playoffDivisionOptions={playoffDivisionSelectOptions}
+                                    comboboxProps={sharedComboboxProps}
+                                    isImmutableField={isImmutableField}
+                                    setDivisionEditor={setDivisionEditor}
+                                    updateDivisionEditorSelection={updateDivisionEditorSelection}
+                                    setDivisionEditorLeagueConfig={setDivisionEditorLeagueConfig}
+                                    setDivisionEditorPlayoffConfig={setDivisionEditorPlayoffConfig}
+                                    syncDivisionInstallmentCount={syncDivisionInstallmentCount}
+                                    onInstallmentDueRelativeDayChange={setDivisionInstallmentDueRelativeDay}
+                                    onInstallmentDueDateChange={setDivisionInstallmentDueDate}
+                                    onInstallmentAmountChange={setDivisionInstallmentAmount}
+                                    onRemoveInstallment={removeDivisionInstallment}
                                 />
-                                </AnimatedSection>
                                 <DivisionEditorPlayoffDivisionControls
                                     visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}
                                     name={divisionEditor.name}

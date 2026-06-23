@@ -36,6 +36,29 @@ export const DIVISION_GENDER_OPTIONS = [
     { value: 'C', label: 'CoEd' },
 ] as const;
 
+export type DivisionEditorState = {
+    editingId: string | null;
+    divisionKind: DivisionEditorKind;
+    gender: '' | 'M' | 'F' | 'C';
+    skillDivisionTypeId: string;
+    ageDivisionTypeId: string;
+    name: string;
+    price: number;
+    maxParticipants: number | null;
+    playoffTeamCount: number | null;
+    poolCount: number | null;
+    playoffPlacementDivisionIds: string[];
+    leagueConfig: LeagueConfig;
+    playoffConfig: TournamentConfig;
+    allowPaymentPlans: boolean;
+    installmentCount: number;
+    installmentDueDates: string[];
+    installmentDueRelativeDays: number[];
+    installmentAmounts: number[];
+    nameTouched: boolean;
+    error: string | null;
+};
+
 export const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
     .trim()
     .toLowerCase()
