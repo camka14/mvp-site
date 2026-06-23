@@ -6,21 +6,15 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
-  Collapse,
   Group,
   Loader,
   Modal,
-  MultiSelect,
-  NumberInput,
   Paper,
   Select,
   Stack,
   Text,
-  Textarea,
   Title,
 } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
@@ -61,6 +55,11 @@ import FacilityManagementOverview from './fieldsTab/FacilityManagementOverview';
 import ManagerFacilityCalendarSidebar from './fieldsTab/ManagerFacilityCalendarSidebar';
 import PublicRentalSelectionsPanel from './fieldsTab/PublicRentalSelectionsPanel';
 import FacilityEditorModal from './fieldsTab/FacilityEditorModal';
+import StaffTimeslotEditorModal from './fieldsTab/StaffTimeslotEditorModal';
+import {
+  OpenStaffDeleteConfirmationModal,
+  StaffAssignmentScopePromptModal,
+} from './fieldsTab/StaffAssignmentConfirmationModals';
 
 type SelectionState = {
   fieldIds: string[];
@@ -437,8 +436,6 @@ const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
 const SLOT_STEP_MINUTES = 30;
 const MANAGER_CARD_DRAG_THRESHOLD_PX = 6;
-const OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT = 3;
-const OPEN_STAFF_DELETE_CHILD_ROW_HEIGHT = 54;
 
 const hasMovedPastDragThreshold = (
   startPoint: { clientX: number; clientY: number },
@@ -7249,362 +7246,91 @@ export default function FieldsTabContent({
         </Stack>
       )}
 
-      <Modal
+      <StaffTimeslotEditorModal
         opened={staffTimeslotModalOpen}
-        onClose={() => {
-          if (staffTimeslotSubmitting || staffTimeslotDeleting) return;
-          resetStaffTimeslotModalState();
+        mode={staffTimeslotMode}
+        error={staffTimeslotError}
+        selectedResourceLabel={selectedFields.length > 1
+          ? `${selectedFields.length} selected resources`
+          : selectedField
+            ? getFacilityScopedFieldDisplayName(selectedField)
+            : 'Selected resource'}
+        selectedRangeLabel={selection ? `${formatDisplayDateTime(selection.start)} - ${formatDisplayTime(selection.end)}` : 'Select a time range first.'}
+        isEditingManagerDraft={isEditingManagerDraft}
+        isEditingStaffAssignment={isEditingStaffAssignment}
+        isEditingChildStaffAssignment={isEditingChildStaffAssignment}
+        isAssigningStaffOccurrence={isAssigningStaffOccurrence}
+        assignedUserName={editingStaffAssignment?.userName ?? null}
+        facilityOptions={facilityFilterOptions}
+        facilityValue={staffTimeslotResourceFacilityValue}
+        onFacilityChange={handleStaffTimeslotFacilityChange}
+        resourceOptions={staffTimeslotResourceOptions}
+        selectedResourceIds={selectedFieldIds.filter((fieldId) => staffTimeslotResourceFields.some((field) => field.$id === fieldId))}
+        onResourceIdsChange={handleStaffTimeslotResourceChange}
+        userOptions={staffTimeslotUserOptions}
+        userId={staffTimeslotUserId}
+        onUserIdChange={setStaffTimeslotUserId}
+        usersLoading={staffScheduleLoading}
+        overrideAmount={staffTimeslotOverrideAmount}
+        onOverrideAmountChange={setStaffTimeslotOverrideAmount}
+        showRepeatControls={!isAssigningStaffOccurrence && !isEditingStaffAssignment}
+        repeating={staffTimeslotRepeating}
+        onRepeatingChange={(checked) => {
+          setStaffTimeslotRepeating(checked);
+          if (checked && staffTimeslotRepeatDays.length === 0 && selection) {
+            setStaffTimeslotRepeatDays([mondayDayOf(selection.start)]);
+          }
         }}
-        title={isEditingStaffAssignment
-          ? (staffTimeslotMode === 'official_assignment' ? 'Edit Official Assignment' : 'Edit Staff Assignment')
-          : isEditingManagerDraft
-            ? (staffTimeslotMode === 'official_assignment' ? 'Edit Official Draft' : 'Edit Staff Draft')
-            : isAssigningStaffOccurrence
-            ? (staffTimeslotMode === 'official_assignment' ? 'Assign Official Coverage' : 'Assign Staff Coverage')
-            : (staffTimeslotMode === 'official_assignment' ? 'Apply Official Timeslot' : 'Apply Staff Timeslot')}
-        centered
-      >
-        <Stack gap="sm">
-          {staffTimeslotError ? (
-            <Alert color="red" radius="md">
-              {staffTimeslotError}
-            </Alert>
-          ) : null}
+        repeatDays={staffTimeslotRepeatDays}
+        onRepeatDaysChange={setStaffTimeslotRepeatDays}
+        repeatDayOptions={STAFF_TIMESLOT_REPEAT_DAY_OPTIONS}
+        repeatEndDate={staffTimeslotRepeatEndDate}
+        onRepeatEndDateChange={(value) => setStaffTimeslotRepeatEndDate(coerceDatePickerValue(value))}
+        repeatMinDate={selection ? startOfDay(selection.start) : undefined}
+        notes={staffTimeslotNotes}
+        onNotesChange={setStaffTimeslotNotes}
+        submitting={staffTimeslotSubmitting}
+        deleting={staffTimeslotDeleting}
+        submitDisabled={staffTimeslotSubmitting || staffTimeslotDeleting || !selection || !selectedFields.length}
+        onClose={resetStaffTimeslotModalState}
+        onSubmit={() => void submitStaffTimeslot()}
+        onDeleteOpenAssignment={() => void requestDeleteOpenStaffAssignment()}
+        onUnassignChildAssignment={() => void unassignChildStaffAssignment()}
+        onDeleteAssignment={() => void deleteStaffAssignment()}
+      />
 
-          <Stack gap={2}>
-            <Text size="sm" fw={700}>
-              {selectedFields.length > 1
-                ? `${selectedFields.length} selected resources`
-                : selectedField
-                  ? getFacilityScopedFieldDisplayName(selectedField)
-                  : 'Selected resource'}
-            </Text>
-            <Text size="sm" c="dimmed">
-              {selection ? `${formatDisplayDateTime(selection.start)} - ${formatDisplayTime(selection.end)}` : 'Select a time range first.'}
-            </Text>
-          </Stack>
+      <StaffAssignmentScopePromptModal
+        opened={Boolean(staffAssignmentScopePrompt)}
+        kindLabel={staffAssignmentScopePrompt?.kindLabel}
+        staffName={staffAssignmentScopePrompt?.staffName ?? null}
+        occurrenceLabel={staffAssignmentScopePrompt?.occurrenceLabel ?? null}
+        onClose={() => setStaffAssignmentScopePrompt(null)}
+        onApplyScope={applyStaffAssignmentScopePrompt}
+      />
 
-          {isEditingChildStaffAssignment ? (
-            <Alert color="blue" radius="md">
-              This staff member is assigned to a parent coverage block. You can override pay or unassign them from this occurrence.
-            </Alert>
-          ) : null}
-
-          <Select
-            label="Facility"
-            data={facilityFilterOptions}
-            value={staffTimeslotResourceFacilityValue}
-            onChange={handleStaffTimeslotFacilityChange}
-            allowDeselect={false}
-            disabled={isEditingChildStaffAssignment}
-            size="sm"
-          />
-
-          <MultiSelect
-            label="Resources"
-            description={isEditingStaffAssignment
-              ? 'Choose the resource this assignment belongs to.'
-              : 'Choose one or more resources to create matching coverage.'}
-            data={staffTimeslotResourceOptions}
-            value={selectedFieldIds.filter((fieldId) => staffTimeslotResourceFields.some((field) => field.$id === fieldId))}
-            onChange={handleStaffTimeslotResourceChange}
-            searchable
-            placeholder="Select resources"
-            disabled={isEditingChildStaffAssignment}
-            required={!isEditingChildStaffAssignment}
-            size="sm"
-          />
-
-          <Select
-            label={staffTimeslotMode === 'official_assignment' ? 'Official' : 'Staff member'}
-            description={isEditingChildStaffAssignment
-              ? 'Managed by the parent coverage assignment.'
-              : isAssigningStaffOccurrence
-                ? 'Required for assigned coverage.'
-                : staffTimeslotMode === 'official_assignment'
-                  ? 'Leave blank to create open official coverage.'
-                  : 'Leave blank to create open staff coverage.'}
-            data={staffTimeslotUserOptions}
-            value={staffTimeslotUserId}
-            onChange={setStaffTimeslotUserId}
-            placeholder={isEditingChildStaffAssignment
-              ? (editingStaffAssignment?.userName ?? 'Assigned staff member')
-              : isAssigningStaffOccurrence
-                ? (staffTimeslotMode === 'official_assignment' ? 'Select official' : 'Select staff member')
-                : (staffTimeslotMode === 'official_assignment' ? 'Open official timeslot' : 'Open staff timeslot')}
-            searchable={staffTimeslotUserOptions.length > 8}
-            disabled={staffScheduleLoading || isEditingChildStaffAssignment}
-            rightSection={staffScheduleLoading ? <Loader size="xs" /> : undefined}
-            clearable={!isEditingChildStaffAssignment}
-            required={isAssigningStaffOccurrence}
-          />
-
-          <NumberInput
-            label="Override rate"
-            description="Optional hourly override for this timeslot."
-            prefix="$"
-            decimalScale={2}
-            min={0}
-            value={staffTimeslotOverrideAmount}
-            onChange={setStaffTimeslotOverrideAmount}
-          />
-
-          {!isAssigningStaffOccurrence && !isEditingStaffAssignment ? (
-            <>
-              <Checkbox
-                label="Repeat weekly"
-                description="Use the selected time window on one or more days each week."
-                checked={staffTimeslotRepeating}
-                onChange={(event) => {
-                  const checked = event.currentTarget.checked;
-                  setStaffTimeslotRepeating(checked);
-                  if (checked && staffTimeslotRepeatDays.length === 0 && selection) {
-                    setStaffTimeslotRepeatDays([mondayDayOf(selection.start)]);
-                  }
-                }}
-              />
-
-              <Collapse in={staffTimeslotRepeating}>
-                <Stack gap="sm">
-                  <MultiSelect
-                    label="Repeat days"
-                    data={STAFF_TIMESLOT_REPEAT_DAY_OPTIONS}
-                    value={staffTimeslotRepeatDays.map((day) => String(day))}
-                    onChange={(values) => {
-                      setStaffTimeslotRepeatDays(Array.from(new Set(values
-                        .map((value) => Number(value))
-                        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)))
-                        .sort((a, b) => a - b));
-                    }}
-                    placeholder="Select days"
-                    required
-                  />
-                  <DatePickerInput
-                    label="Repeat until"
-                    description="Optional. Leave blank for an ongoing weekly schedule."
-                    placeholder="No end date"
-                    valueFormat="MM/DD/YYYY"
-                    value={staffTimeslotRepeatEndDate}
-                    onChange={(value) => setStaffTimeslotRepeatEndDate(coerceDatePickerValue(value))}
-                    minDate={selection ? startOfDay(selection.start) : undefined}
-                    clearable
-                    clearButtonProps={{ 'aria-label': 'Clear repeat end date' }}
-                    popoverProps={{ withinPortal: true }}
-                  />
-                </Stack>
-              </Collapse>
-            </>
-          ) : null}
-
-          {!isEditingChildStaffAssignment ? (
-            <Textarea
-              label="Notes"
-              minRows={2}
-              autosize
-              value={staffTimeslotNotes}
-              onChange={(event) => setStaffTimeslotNotes(event.currentTarget.value)}
-            />
-          ) : null}
-
-          <Group justify="space-between">
-            <Group gap="xs">
-              {isAssigningStaffOccurrence ? (
-                <Button
-                  color="red"
-                  variant="light"
-                  onClick={() => void requestDeleteOpenStaffAssignment()}
-                  loading={staffTimeslotDeleting}
-                  disabled={staffTimeslotSubmitting}
-                >
-                  {staffTimeslotMode === 'official_assignment' ? 'Delete open official shift' : 'Delete open staff shift'}
-                </Button>
-              ) : isEditingChildStaffAssignment ? (
-                <Button
-                  color="red"
-                  variant="light"
-                  onClick={() => void unassignChildStaffAssignment()}
-                  loading={staffTimeslotDeleting}
-                  disabled={staffTimeslotSubmitting}
-                >
-                  Unassign staff member
-                </Button>
-              ) : isEditingStaffAssignment ? (
-                <Button
-                  color="red"
-                  variant="light"
-                  onClick={() => void deleteStaffAssignment()}
-                  loading={staffTimeslotDeleting}
-                  disabled={staffTimeslotSubmitting}
-                >
-                  Delete assignment
-                </Button>
-              ) : null}
-            </Group>
-            <Group gap="xs">
-              <Button
-                variant="subtle"
-                onClick={resetStaffTimeslotModalState}
-                disabled={staffTimeslotSubmitting || staffTimeslotDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void submitStaffTimeslot()}
-                loading={staffTimeslotSubmitting}
-                disabled={staffTimeslotSubmitting || staffTimeslotDeleting || !selection || !selectedFields.length}
-              >
-                {isEditingStaffAssignment
-                  ? 'Save assignment'
-                  : isEditingManagerDraft
-                    ? 'Save draft'
-                  : isAssigningStaffOccurrence
-                    ? 'Assign coverage'
-                    : 'Apply timeslot'}
-              </Button>
-            </Group>
-          </Group>
-        </Stack>
-	      </Modal>
-
-	      <Modal
-	        opened={Boolean(staffAssignmentScopePrompt)}
-	        onClose={() => setStaffAssignmentScopePrompt(null)}
-	        title={staffAssignmentScopePrompt?.kindLabel === 'official'
-	          ? 'Assign official coverage'
-	          : 'Assign staff coverage'}
-	        centered
-	      >
-	        <Stack gap="md">
-	          <Stack gap={4}>
-	            <Text fw={700}>
-	              {staffAssignmentScopePrompt?.staffName ?? 'Selected staff member'}
-	            </Text>
-	            <Text size="sm" c="dimmed">
-	              {staffAssignmentScopePrompt?.occurrenceLabel ?? 'Selected occurrence'}
-	            </Text>
-	          </Stack>
-	          <Alert color="blue" radius="md">
-	            Assign this person to every instance of the parent coverage block, or only the clicked occurrence?
-	          </Alert>
-	          <Group justify="flex-end" gap="xs">
-	            <Button variant="subtle" onClick={() => setStaffAssignmentScopePrompt(null)}>
-	              Cancel
-	            </Button>
-	            <Button variant="default" onClick={() => applyStaffAssignmentScopePrompt('occurrence')}>
-	              This occurrence
-	            </Button>
-	            <Button onClick={() => applyStaffAssignmentScopePrompt('all')}>
-	              All instances
-	            </Button>
-	          </Group>
-	        </Stack>
-	      </Modal>
-
-	      <Modal
-	        opened={Boolean(openStaffDeleteConfirmation)}
-	        onClose={() => setOpenStaffDeleteConfirmation(null)}
+      <OpenStaffDeleteConfirmationModal
+        opened={Boolean(openStaffDeleteConfirmation)}
         title={openStaffDeletePlan?.parentAssignment.assignmentKind === 'OFFICIAL_SHIFT'
           ? 'Delete open official shift'
           : 'Delete open staff shift'}
-        centered
-      >
-        <Stack gap="md">
-          {openStaffDeletePlan ? (
-            <>
-              {staffAssignmentCanDeleteFollowing(openStaffDeletePlan.parentAssignment) ? (
-                <Stack gap="xs">
-                  <Text size="sm" fw={700}>Delete scope</Text>
-                  <Group gap="xs" grow>
-                    <Button
-                      variant={openStaffDeleteConfirmation?.scope === 'following' ? 'filled' : 'default'}
-                      onClick={() => setOpenStaffDeleteConfirmation((current) => (
-                        current ? { ...current, scope: 'following' } : current
-                      ))}
-                    >
-                      This and following
-                    </Button>
-                    <Button
-                      variant={openStaffDeleteConfirmation?.scope === 'all' ? 'filled' : 'default'}
-                      onClick={() => setOpenStaffDeleteConfirmation((current) => (
-                        current ? { ...current, scope: 'all' } : current
-                      ))}
-                    >
-                      All instances
-                    </Button>
-                  </Group>
-                </Stack>
-              ) : null}
-
-              <Stack gap={4}>
-                <Text size="sm" fw={700}>
-                  {openStaffDeleteConfirmation?.scope === 'all'
-                    ? 'All open instances will be removed.'
-                    : 'This occurrence and future open instances will be removed.'}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  {`${formatDisplayDateTime(openStaffDeletePlan.occurrenceStart)} - ${formatDisplayTime(openStaffDeletePlan.occurrenceEnd)}`}
-                </Text>
-              </Stack>
-
-              {openStaffDeletePlan.scope === 'following' && openStaffDeletePlan.shortenedAssignment ? (
-                <Alert color="blue" radius="md">
-                  The parent open range will be shortened to end after the previous occurrence. Earlier assignments remain unchanged.
-                </Alert>
-              ) : null}
-
-              {openStaffDeletePlan.scope === 'following' && openStaffDeletePlan.deletesParent ? (
-                <Alert color="yellow" radius="md">
-                  This is the first occurrence in the open range, so staging this change will delete the parent open shift.
-                </Alert>
-              ) : null}
-
-              {openStaffDeletePlan.childAssignments.length ? (
-                <Alert color="yellow" radius="md">
-                  <Stack gap={6}>
-                    <Text size="sm" fw={700}>
-                      Assigned coverage that will be removed
-                    </Text>
-                    <Stack
-                      gap={6}
-                      aria-label="Assigned coverage removal list"
-                      style={openStaffDeletePlan.childAssignments.length > OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT
-                        ? {
-                            maxHeight: OPEN_STAFF_DELETE_VISIBLE_CHILD_LIMIT * OPEN_STAFF_DELETE_CHILD_ROW_HEIGHT,
-                            overflowY: 'auto',
-                            paddingRight: 4,
-                          }
-                        : undefined}
-                    >
-                      {openStaffDeletePlan.childAssignments.map((assignment) => (
-                        <Text key={assignment.id} size="sm">
-                          {formatStaffAssignmentDeleteChildLabel(assignment)}
-                        </Text>
-                      ))}
-                    </Stack>
-                  </Stack>
-                </Alert>
-              ) : (
-                <Text size="sm" c="dimmed">
-                  No assigned staff coverage will be removed for this scope.
-                </Text>
-              )}
-
-              <Group justify="flex-end">
-                <Button variant="subtle" onClick={() => setOpenStaffDeleteConfirmation(null)}>
-                  Cancel
-                </Button>
-                <Button color="red" onClick={() => void confirmOpenStaffAssignmentDelete()}>
-                  Stage delete
-                </Button>
-              </Group>
-            </>
-          ) : (
-            <Alert color="red" radius="md">
-              Unable to resolve this open staff assignment.
-            </Alert>
-          )}
-        </Stack>
-      </Modal>
+        hasPlan={Boolean(openStaffDeletePlan)}
+        canDeleteFollowing={openStaffDeletePlan ? staffAssignmentCanDeleteFollowing(openStaffDeletePlan.parentAssignment) : false}
+        scope={openStaffDeleteConfirmation?.scope ?? 'following'}
+        occurrenceLabel={openStaffDeletePlan
+          ? `${formatDisplayDateTime(openStaffDeletePlan.occurrenceStart)} - ${formatDisplayTime(openStaffDeletePlan.occurrenceEnd)}`
+          : ''}
+        showShortenedAssignmentWarning={Boolean(openStaffDeletePlan?.scope === 'following' && openStaffDeletePlan.shortenedAssignment)}
+        showDeletesParentWarning={Boolean(openStaffDeletePlan?.scope === 'following' && openStaffDeletePlan.deletesParent)}
+        childAssignments={openStaffDeletePlan?.childAssignments.map((assignment) => ({
+          id: assignment.id,
+          label: formatStaffAssignmentDeleteChildLabel(assignment),
+        })) ?? []}
+        onScopeChange={(scope) => setOpenStaffDeleteConfirmation((current) => (
+          current ? { ...current, scope } : current
+        ))}
+        onCancel={() => setOpenStaffDeleteConfirmation(null)}
+        onConfirm={() => void confirmOpenStaffAssignmentDelete()}
+      />
 
       <FacilityEditorModal
         opened={facilityModalOpen}
