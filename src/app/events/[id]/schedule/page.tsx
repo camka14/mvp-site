@@ -64,7 +64,6 @@ import {
   getBracketMatchDivisionId as getMatchDivisionId,
   getBracketMatchDivisionLabel as getMatchDivisionLabel,
   getBracketRootMatches,
-  hasBracketConnections as isPlayoffBracketMatch,
   pickPreferredBracketRootMatch as pickPreferredRootMatch,
   toBracketDivisionKey as toDivisionKey,
 } from '@/lib/bracketViewCore';
@@ -102,7 +101,7 @@ import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
 import EventForm, { EventFormHandle } from './components/EventForm';
-import { detectMatchConflictsById, MATCH_CONFLICT_RESOLUTION_MESSAGE } from './lib/matchConflicts';
+import { detectMatchConflictsById } from './lib/matchConflicts';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
@@ -111,933 +110,84 @@ import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 import EventFinancePanel from './components/EventFinancePanel';
+import ParticipantsPanel from './schedulePage/ParticipantsPanel';
+import {
+  CLIENT_MATCH_PREFIX,
+  DEFAULT_NOTIFICATION_AUDIENCE,
+  DEFAULT_SPORT,
+  EMAIL_REGEX,
+  EVENT_LIFECYCLE_OPTIONS,
+  EVENT_SCHEDULE_TABS,
+  HIDDEN_EVENT_STATES,
+  LOCAL_PLACEHOLDER_PREFIX,
+  MIN_TEAM_SEARCH_QUERY_LENGTH,
+  VIEWER_WEEKLY_REGISTRATION_STATUSES,
+  asBulkMatchRef,
+  buildComplianceSnapshotKey,
+  buildMatchConflictAlertMessage,
+  buildParticipantSnapshotKey,
+  buildStableIdListKey,
+  buildWeeklyOccurrenceOptionsInRange,
+  buildWeeklyOccurrenceRegistrationKey,
+  clearMatchReferencesToTarget,
+  cloneValue,
+  collectRentalSelectionFieldIds,
+  collectMatchAssignmentUserIds,
+  collectTeamRosterUserIds,
+  divisionReferencesBracket,
+  formatActionErrorMessage,
+  formatLatLngLabel,
+  getClientIdFromMatchId,
+  getDivisionKind,
+  getDivisionPlacementDivisionIds,
+  getDivisionTeamIds,
+  getEventLifecycleStatus,
+  getLifecycleStatusLabel,
+  getRentalSelectionRange,
+  getTeamWarningLabel,
+  getWeeklyScheduleCalendarRange,
+  isClientMatchId,
+  isDivisionStandingsConfirmed,
+  isLocalPlaceholderId,
+  isTournamentPoolPlayViewEnabled,
+  listMatchConflictPairs,
+  nextMatchSequenceNumber,
+  normalizeDivisionToken,
+  normalizeIdToken,
+  parseIdListQueryParam,
+  parseDateValue,
+  parseRentalSelectionsQueryParam,
+  parseStableIdListKey,
+  resolveSelectedWeeklyOccurrenceOption,
+  shouldResetBracketMatchForRebuild,
+  startOfDay,
+  teamMatchesSearchQuery,
+  toClearedBracketMatchUpdate,
+  toLocalIsoDate,
+  toStoredEventLifecycleState,
+  type DivisionOption,
+  type EventLifecycleStatus,
+  type LocationDefaults,
+  type MatchCreateContext,
+  type NotificationAudienceKey,
+  type NotificationAudienceState,
+  type ParticipantInviteMode,
+  type ParticipantInviteRow,
+  type PendingRentalCheckoutContext,
+  type PendingSaveChangeItem,
+  type RankedStandingsRow,
+  type StandingsRow,
+  type StandingsSortField,
+  type StagedMatchCreateMeta,
+  type TeamBillingBillSnapshot,
+  type TeamBillingPaymentSnapshot,
+  type TeamBillingSnapshot,
+  type TeamBillingUserOption,
+  type ViewerWeeklyRegistrationRow,
+  type WeeklyOccurrenceOption,
+  type WeeklyOccurrenceSelection,
+} from './schedulePage/helpers';
 
-const cloneValue = <T,>(value: T): T => {
-  if (value === null || typeof value !== 'object') {
-    return value;
-  }
-
-  const structuredCloneFn = (globalThis as { structuredClone?: <U>(input: U) => U }).structuredClone;
-  if (structuredCloneFn) {
-    return structuredCloneFn(value);
-  }
-
-  // Fallback handles circular references by walking the graph manually
-  const seen = new WeakMap<object, any>();
-  const cloneRecursive = (input: any): any => {
-    if (input === null || typeof input !== 'object') {
-      return input;
-    }
-
-    if (seen.has(input)) {
-      return seen.get(input);
-    }
-
-    if (Array.isArray(input)) {
-      const arr: any[] = [];
-      seen.set(input, arr);
-      for (const item of input) {
-        arr.push(cloneRecursive(item));
-      }
-      return arr;
-    }
-
-    if (input instanceof Date) {
-      return new Date(input.getTime());
-    }
-
-    const cloned: Record<string, unknown> = {};
-    seen.set(input, cloned);
-    for (const key of Object.keys(input)) {
-      cloned[key] = cloneRecursive(input[key]);
-    }
-    return cloned;
-  };
-
-  return cloneRecursive(value);
-};
-
-const getActionErrorDetail = (error: unknown): string | null => {
-  if (isApiRequestError(error)) {
-    const apiError = error.data;
-    if (apiError && typeof apiError === 'object' && 'error' in apiError) {
-      const message = String((apiError as { error?: unknown }).error ?? '').trim();
-      if (message) {
-        const unknownKeys = Array.isArray((apiError as { unknownKeys?: unknown }).unknownKeys)
-          ? (apiError as { unknownKeys?: unknown[] }).unknownKeys
-            ?.map((key) => String(key).trim())
-            .filter((key) => key.length > 0)
-          : [];
-        if (unknownKeys?.length) {
-          return `${message} Unknown fields: ${unknownKeys.join(', ')}.`;
-        }
-        return message;
-      }
-    }
-  }
-  if (error instanceof Error) {
-    const message = error.message.trim();
-    return message || null;
-  }
-  if (typeof error === 'string') {
-    const message = error.trim();
-    return message || null;
-  }
-  return null;
-};
-
-const formatActionErrorMessage = (fallback: string, error: unknown): string => {
-  const detail = getActionErrorDetail(error);
-  if (!detail || detail === fallback || detail.startsWith(fallback)) {
-    return detail || fallback;
-  }
-  return `${fallback} ${detail}`;
-};
-
-const formatLatLngLabel = (lat?: number, lng?: number): string => {
-  if (typeof lat !== 'number' || typeof lng !== 'number') {
-    return '';
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return '';
-  }
-  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-};
-
-type DivisionOption = {
-  value: string;
-  label: string;
-};
-
-type ParticipantInviteMode = 'existing' | 'email' | 'team';
-
-type ParticipantInviteRow = {
-  firstName: string;
-  lastName: string;
-  email: string;
-};
-
-type MatchCreateContext = 'schedule' | 'bracket';
-
-const EVENT_SCHEDULE_TABS = new Set(['details', 'participants', 'schedule', 'standings', 'bracket', 'finance']);
-
-type StagedMatchCreateMeta = {
-  clientId: string;
-  creationContext: MatchCreateContext;
-  autoPlaceholderTeam: boolean;
-};
-
-const CLIENT_MATCH_PREFIX = 'client:';
-const LOCAL_PLACEHOLDER_PREFIX = 'placeholder-local:';
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_TEAM_SEARCH_QUERY_LENGTH = 2;
-
-const collectTeamRosterUserIds = (team: Team): string[] => {
-  const assistantCoachIds = Array.isArray(team.assistantCoachIds)
-    ? team.assistantCoachIds
-    : Array.isArray(team.coachIds)
-      ? team.coachIds
-      : [];
-
-  return Array.from(
-    new Set(
-      [
-        ...team.playerIds,
-        team.captainId,
-        team.managerId ?? '',
-        team.headCoachId ?? '',
-        ...assistantCoachIds,
-      ]
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter((value) => value.length > 0),
-    ),
-  );
-};
-
-const teamMatchesSearchQuery = (team: Team, normalizedQuery: string): boolean => {
-  const teamName = (team.name ?? '').toLowerCase();
-  const sportName = (team.sport ?? '').toLowerCase();
-  const divisionName = (
-    typeof team.division === 'string'
-      ? team.division
-      : team.division?.name ?? team.division?.id ?? ''
-  ).toLowerCase();
-
-  return (
-    teamName.includes(normalizedQuery) ||
-    sportName.includes(normalizedQuery) ||
-    divisionName.includes(normalizedQuery)
-  );
-};
-
-const isClientMatchId = (id: string | null | undefined): boolean =>
-  typeof id === 'string' && id.startsWith(CLIENT_MATCH_PREFIX);
-
-const getClientIdFromMatchId = (id: string): string =>
-  id.slice(CLIENT_MATCH_PREFIX.length);
-
-const isLocalPlaceholderId = (id: string | null | undefined): boolean =>
-  typeof id === 'string' && id.startsWith(LOCAL_PLACEHOLDER_PREFIX);
-
-const asBulkMatchRef = (value: string | null | undefined): string | undefined => {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
-};
-
-const nextMatchSequenceNumber = (matches: Match[]): number => {
-  const maxCurrent = matches.reduce((maxValue, match) => {
-    if (typeof match.matchId !== 'number' || !Number.isFinite(match.matchId)) {
-      return maxValue;
-    }
-    return Math.max(maxValue, Math.trunc(match.matchId));
-  }, 0);
-  return maxCurrent + 1;
-};
-
-const normalizeDivisionToken = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-};
-
-const normalizeIdToken = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-};
-
-type WeeklyOccurrenceOption = {
-  id: string;
-  slotId: string;
-  occurrenceDate: string;
-  label: string;
-  start: string;
-  end: string;
-  startMinutes: number;
-  endMinutes: number;
-  fieldIds: string[];
-  divisionIds: string[];
-};
-
-type WeeklyOccurrenceSelection = {
-  slotId: string;
-  occurrenceDate: string;
-};
-
-type ViewerWeeklyRegistrationRow = {
-  slotId?: string | null;
-  occurrenceDate?: string | null;
-  rosterRole?: string | null;
-  status?: string | null;
-};
-
-const VIEWER_WEEKLY_REGISTRATION_STATUSES = new Set(['STARTED', 'ACTIVE', 'BLOCKED']);
-
-const buildParticipantSnapshotKey = (
-  eventId: unknown,
-  occurrence?: { slotId?: string | null; occurrenceDate?: string | null } | null,
-): string | null => {
-  const normalizedEventId = normalizeIdToken(eventId);
-  if (!normalizedEventId) {
-    return null;
-  }
-
-  const slotId = normalizeIdToken(occurrence?.slotId);
-  const occurrenceDate = normalizeIdToken(occurrence?.occurrenceDate);
-  return slotId && occurrenceDate
-    ? `${normalizedEventId}:${slotId}:${occurrenceDate}`
-    : `${normalizedEventId}:all`;
-};
-
-const buildComplianceSnapshotKey = (
-  eventId: unknown,
-  participantIdsKey: string,
-  occurrence: { slotId?: string | null; occurrenceDate?: string | null } | null | undefined,
-  refreshKey: number,
-): string | null => {
-  const participantKey = participantIdsKey.trim();
-  const snapshotKey = buildParticipantSnapshotKey(eventId, occurrence);
-  if (!snapshotKey || !participantKey) {
-    return null;
-  }
-  return `${snapshotKey}:${participantKey}:${refreshKey}`;
-};
-
-const buildWeeklyOccurrenceRegistrationKey = (
-  slotIdInput: unknown,
-  occurrenceDateInput: unknown,
-): string | null => {
-  const slotId = normalizeIdToken(slotIdInput);
-  const occurrenceDate = normalizeIdToken(occurrenceDateInput);
-  return slotId && occurrenceDate ? `${slotId}:${occurrenceDate}` : null;
-};
-
-const ID_LIST_KEY_SEPARATOR = '|';
-
-const buildStableIdListKey = (ids: string[]): string => ids.join(ID_LIST_KEY_SEPARATOR);
-
-const parseStableIdListKey = (key: string): string[] => (
-  key
-    ? key
-        .split(ID_LIST_KEY_SEPARATOR)
-        .map((id) => id.trim())
-        .filter((id): id is string => id.length > 0)
-    : []
-);
-
-const parseDateValue = (value?: string | null): Date | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const [year, month, day] = trimmed.split('-').map(Number);
-    if (![year, month, day].some(Number.isNaN)) {
-      return new Date(year, (month ?? 1) - 1, day ?? 1);
-    }
-  }
-
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const toLocalIsoDate = (value: Date): string => {
-  const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, '0');
-  const day = `${value.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const toMondayIndex = (value: Date): number => (value.getDay() + 6) % 7;
-
-const startOfDay = (value: Date): Date => {
-  const copy = new Date(value.getTime());
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-};
-
-const startOfMonth = (value: Date): Date => new Date(value.getFullYear(), value.getMonth(), 1);
-
-const endOfMonth = (value: Date): Date => new Date(value.getFullYear(), value.getMonth() + 1, 0);
-
-const startOfCalendarWeek = (value: Date): Date => {
-  const copy = startOfDay(value);
-  copy.setDate(copy.getDate() - copy.getDay());
-  return copy;
-};
-
-const addDays = (value: Date, days: number): Date => {
-  const copy = new Date(value.getTime());
-  copy.setDate(copy.getDate() + days);
-  return copy;
-};
-
-const formatWeeklyOccurrenceLabel = (occurrence: Date, startMinutes: number, endMinutes: number): string => {
-  const start = new Date(occurrence.getTime());
-  start.setHours(0, startMinutes, 0, 0);
-  const end = new Date(occurrence.getTime());
-  end.setHours(0, endMinutes, 0, 0);
-  const dayLabel = start.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'numeric',
-    day: 'numeric',
-    year: '2-digit',
-  });
-  const timeLabel = `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}-${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-  return `${dayLabel} · ${timeLabel}`;
-};
-
-const getWeeklyScheduleCalendarRange = (value: Date, calendarView: View): { start: Date; end: Date } => {
-  const safeDate = Number.isNaN(value.getTime()) ? new Date() : value;
-  if (calendarView === 'day') {
-    const day = startOfDay(safeDate);
-    return { start: day, end: day };
-  }
-  if (calendarView === 'week') {
-    const start = startOfCalendarWeek(safeDate);
-    return { start, end: addDays(start, 6) };
-  }
-  return {
-    start: startOfMonth(safeDate),
-    end: endOfMonth(safeDate),
-  };
-};
-
-const buildWeeklyOccurrenceOptionsInRange = (
-  event: Event | null,
-  rangeStart: Date,
-  rangeEnd: Date,
-): WeeklyOccurrenceOption[] => {
-  if (
-    !event
-    || event.eventType !== 'WEEKLY_EVENT'
-    || event.parentEvent
-    || !Array.isArray(event.timeSlots)
-  ) {
-    return [];
-  }
-
-  const normalizedRangeStart = startOfDay(rangeStart);
-  const normalizedRangeEnd = startOfDay(rangeEnd);
-  if (normalizedRangeEnd.getTime() < normalizedRangeStart.getTime()) {
-    return [];
-  }
-
-  const options: WeeklyOccurrenceOption[] = [];
-
-  event.timeSlots.forEach((slot) => {
-    const slotId = normalizeIdToken(slot.$id ?? (slot as { id?: string }).id);
-    const slotStartDate = parseDateValue(slot.startDate ?? null);
-    if (!slotId || !slotStartDate) {
-      return;
-    }
-    slotStartDate.setHours(0, 0, 0, 0);
-    const slotEndDate = parseDateValue(slot.endDate ?? null);
-    if (slotEndDate) {
-      slotEndDate.setHours(0, 0, 0, 0);
-    }
-
-    const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
-    const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
-    const weekdays = Array.from(new Set(
-      (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-        ? slot.daysOfWeek
-        : typeof slot.dayOfWeek === 'number'
-          ? [slot.dayOfWeek]
-          : [])
-        .map((entry) => Number(entry))
-        .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6),
-    )).sort((left, right) => left - right);
-    if (!weekdays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
-      return;
-    }
-
-    const fieldIds = Array.from(new Set(
-      (Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : [])
-        .concat(typeof slot.scheduledFieldId === 'string' ? [slot.scheduledFieldId] : [])
-        .map((entry) => normalizeIdToken(entry))
-        .filter((entry): entry is string => Boolean(entry)),
-    ));
-    const divisionIds = Array.from(new Set(
-      (Array.isArray(slot.divisions) ? slot.divisions : [])
-        .map((entry) => normalizeIdToken(typeof entry === 'string' ? entry : null))
-        .filter((entry): entry is string => Boolean(entry)),
-    ));
-
-    const searchStart = startOfDay(new Date(Math.max(normalizedRangeStart.getTime(), slotStartDate.getTime())));
-    const searchEnd = startOfDay(new Date(
-      Math.min(normalizedRangeEnd.getTime(), slotEndDate?.getTime() ?? normalizedRangeEnd.getTime()),
-    ));
-
-    if (searchEnd.getTime() < searchStart.getTime()) {
-      return;
-    }
-
-    for (let occurrence = new Date(searchStart.getTime()); occurrence.getTime() <= searchEnd.getTime(); occurrence = addDays(occurrence, 1)) {
-      if (!weekdays.includes(toMondayIndex(occurrence))) {
-        continue;
-      }
-
-      const occurrenceStart = new Date(occurrence.getTime());
-      occurrenceStart.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
-      const occurrenceEnd = new Date(occurrence.getTime());
-      occurrenceEnd.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
-      options.push({
-        id: `${slotId}:${toLocalIsoDate(occurrence)}`,
-        slotId,
-        occurrenceDate: toLocalIsoDate(occurrence),
-        label: formatWeeklyOccurrenceLabel(occurrence, startMinutes, endMinutes),
-        start: formatLocalDateTime(occurrenceStart),
-        end: formatLocalDateTime(occurrenceEnd),
-        startMinutes,
-        endMinutes,
-        fieldIds,
-        divisionIds,
-      });
-    }
-  });
-
-  return options.sort((left, right) => (
-    left.occurrenceDate.localeCompare(right.occurrenceDate)
-    || left.startMinutes - right.startMinutes
-    || left.slotId.localeCompare(right.slotId)
-  ));
-};
-
-const resolveSelectedWeeklyOccurrenceOption = (
-  event: Event | null,
-  selection: WeeklyOccurrenceSelection | null,
-): WeeklyOccurrenceOption | null => {
-  if (!selection) {
-    return null;
-  }
-
-  const occurrenceDate = parseDateValue(selection.occurrenceDate);
-  if (!occurrenceDate) {
-    return null;
-  }
-
-  const resolvedDate = startOfDay(occurrenceDate);
-  return buildWeeklyOccurrenceOptionsInRange(event, resolvedDate, resolvedDate).find((option) => (
-    option.slotId === selection.slotId
-    && option.occurrenceDate === selection.occurrenceDate
-  )) ?? null;
-};
-
-const collectMatchAssignmentUserIds = (match: Match): string[] => {
-  const ids = new Set<string>();
-  const officialId = normalizeIdToken(match.officialId ?? match.official?.$id);
-  if (officialId) {
-    ids.add(officialId);
-  }
-  if (Array.isArray(match.officialIds)) {
-    match.officialIds.forEach((assignment) => {
-      const userId = normalizeIdToken(assignment?.userId);
-      if (userId) {
-        ids.add(userId);
-      }
-    });
-  }
-  return Array.from(ids);
-};
-
-const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Match => {
-  const targetId = normalizeIdToken(removedMatchId);
-  if (!targetId) {
-    return match;
-  }
-
-  let next = match;
-  const previousLeftId = normalizeIdToken(next.previousLeftId);
-  const previousRightId = normalizeIdToken(next.previousRightId);
-  const winnerNextMatchId = normalizeIdToken(next.winnerNextMatchId);
-  const loserNextMatchId = normalizeIdToken(next.loserNextMatchId);
-
-  if (previousLeftId === targetId) {
-    next = { ...next, previousLeftId: undefined, previousLeftMatch: undefined };
-  }
-  if (previousRightId === targetId) {
-    next = { ...next, previousRightId: undefined, previousRightMatch: undefined };
-  }
-  if (winnerNextMatchId === targetId) {
-    next = { ...next, winnerNextMatchId: undefined, winnerNextMatch: undefined };
-  }
-  if (loserNextMatchId === targetId) {
-    next = { ...next, loserNextMatchId: undefined, loserNextMatch: undefined };
-  }
-
-  return next;
-};
-
-const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
-  if (!division || typeof division !== 'object') {
-    return null;
-  }
-  const kind = (division as { kind?: unknown }).kind;
-  if (typeof kind !== 'string') {
-    return null;
-  }
-  const normalized = kind.trim().toUpperCase();
-  if (normalized === 'PLAYOFF') {
-    return 'PLAYOFF';
-  }
-  if (normalized === 'LEAGUE') {
-    return 'LEAGUE';
-  }
-  return null;
-};
-
-const getDivisionPlacementDivisionIds = (division: unknown): string[] => {
-  if (!division || typeof division !== 'object') {
-    return [];
-  }
-  const rawPlacementIds = (division as { playoffPlacementDivisionIds?: unknown }).playoffPlacementDivisionIds;
-  if (!Array.isArray(rawPlacementIds)) {
-    return [];
-  }
-  return rawPlacementIds
-    .map((entry) => normalizeIdToken(entry))
-    .filter((entry): entry is string => Boolean(entry));
-};
-
-const divisionReferencesBracket = (division: unknown, bracketDivisionId: string | null | undefined): boolean => {
-  const bracketKey = toDivisionKey(bracketDivisionId);
-  if (!bracketKey) {
-    return false;
-  }
-  return getDivisionPlacementDivisionIds(division).some((placementDivisionId) => (
-    toDivisionKey(placementDivisionId) === bracketKey
-  ));
-};
-
-const isTournamentPoolPlayViewEnabled = (event: Event | null | undefined): boolean => (
-  Boolean(
-    event
-      && event.eventType === 'TOURNAMENT'
-      && (event.includePlayoffsOrPools === true || event.includePlayoffs === true),
-  )
-);
-
-const isDivisionStandingsConfirmed = (division: unknown): boolean => {
-  if (!division || typeof division !== 'object') {
-    return false;
-  }
-  const confirmedAt = (division as { standingsConfirmedAt?: unknown }).standingsConfirmedAt;
-  if (confirmedAt instanceof Date) {
-    return !Number.isNaN(confirmedAt.getTime());
-  }
-  if (typeof confirmedAt === 'string') {
-    return confirmedAt.trim().length > 0;
-  }
-  return false;
-};
-
-const getDivisionTeamIds = (division: unknown): string[] => {
-  if (!division || typeof division !== 'object') {
-    return [];
-  }
-  const rawTeamIds = (division as { teamIds?: unknown }).teamIds;
-  if (!Array.isArray(rawTeamIds)) {
-    return [];
-  }
-  return Array.from(
-    new Set(
-      rawTeamIds
-        .map((teamId) => normalizeIdToken(teamId))
-        .filter((teamId): teamId is string => Boolean(teamId)),
-    ),
-  );
-};
-
-const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean => {
-  if (event.eventType === 'TOURNAMENT') {
-    return true;
-  }
-  if (event.eventType === 'LEAGUE' && event.includePlayoffs) {
-    return isPlayoffBracketMatch(match);
-  }
-  return false;
-};
-
-const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: string } => ({
-  $id: match.$id,
-  team1Points: [],
-  team2Points: [],
-  setResults: [],
-  officialCheckedIn: false,
-  locked: false,
-});
-
-type MatchConflictPair = {
-  firstId: string;
-  secondId: string;
-};
-
-const listMatchConflictPairs = (conflictsById: Record<string, string[]>): MatchConflictPair[] => {
-  const seenPairs = new Set<string>();
-  const pairs: MatchConflictPair[] = [];
-
-  Object.keys(conflictsById)
-    .sort()
-    .forEach((matchId) => {
-      const conflictIds = Array.isArray(conflictsById[matchId]) ? conflictsById[matchId] : [];
-      conflictIds.forEach((rawConflictId) => {
-        const conflictId = normalizeIdToken(rawConflictId);
-        if (!conflictId || conflictId === matchId) {
-          return;
-        }
-        const [firstId, secondId] = matchId < conflictId
-          ? [matchId, conflictId]
-          : [conflictId, matchId];
-        const pairKey = `${firstId}|${secondId}`;
-        if (seenPairs.has(pairKey)) {
-          return;
-        }
-        seenPairs.add(pairKey);
-        pairs.push({ firstId, secondId });
-      });
-    });
-
-  return pairs.sort((left, right) => {
-    if (left.firstId === right.firstId) {
-      return left.secondId.localeCompare(right.secondId);
-    }
-    return left.firstId.localeCompare(right.firstId);
-  });
-};
-
-const getConflictMatchLabel = (match: Match): string => {
-  if (typeof match.matchId === 'number' && Number.isFinite(match.matchId)) {
-    return `Match #${Math.trunc(match.matchId)}`;
-  }
-  return `Match ${match.$id}`;
-};
-
-const getConflictFieldLabel = (match: Match): string => {
-  return getFieldDisplayName(
-    {
-      $id: normalizeIdToken(match.field?.$id) ?? normalizeIdToken(match.fieldId) ?? undefined,
-      name: typeof match.field?.name === 'string' ? match.field.name : '',
-    },
-    'an unassigned field',
-  );
-};
-
-const buildMatchConflictAlertMessage = ({
-  matches,
-  pairs,
-}: {
-  matches: Match[];
-  pairs: MatchConflictPair[];
-}): string => {
-  if (pairs.length === 0) {
-    return MATCH_CONFLICT_RESOLUTION_MESSAGE;
-  }
-
-  const matchesById = new Map<string, Match>();
-  matches.forEach((match) => {
-    const matchId = normalizeIdToken(match.$id);
-    if (matchId) {
-      matchesById.set(matchId, match);
-    }
-  });
-
-  const firstPair = pairs[0];
-  const firstMatch = firstPair ? matchesById.get(firstPair.firstId) : null;
-  const secondMatch = firstPair ? matchesById.get(firstPair.secondId) : null;
-
-  if (!firstMatch || !secondMatch) {
-    return MATCH_CONFLICT_RESOLUTION_MESSAGE;
-  }
-
-  return `${getConflictMatchLabel(firstMatch)} overlaps ${getConflictMatchLabel(secondMatch)} on ${getConflictFieldLabel(firstMatch)} - ${MATCH_CONFLICT_RESOLUTION_MESSAGE}`;
-};
-
-const getTeamWarningLabel = (team: Team): string => {
-  const name = typeof team.name === 'string' ? team.name.trim() : '';
-  return name.length > 0 ? name : 'Unnamed Team';
-};
-
-
-type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
-
-type StandingsRow = {
-  teamId: string;
-  teamName: string;
-  wins: number;
-  losses: number;
-  draws: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  matchesPlayed: number;
-  points: number;
-  basePoints?: number;
-  finalPoints?: number;
-  pointsDelta?: number;
-};
-
-type RankedStandingsRow = StandingsRow & { rank: number };
-
-type LocationDefaults = {
-  location?: string;
-  address?: string;
-  coordinates?: [number, number];
-};
-
-type EventLifecycleStatus = 'DRAFT' | 'PRIVATE' | 'PUBLISHED';
-type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'officials' | 'hosts';
-type NotificationAudienceState = Record<NotificationAudienceKey, boolean>;
-
-type TeamBillingUserOption = {
-  id: string;
-  displayName: string;
-};
-
-type TeamBillingPaymentSnapshot = {
-  $id: string;
-  billId: string;
-  sequence: number;
-  status: string | null;
-  amountCents: number;
-  refundedAmountCents: number;
-  refundableAmountCents: number;
-  paidAt?: string | null;
-  paymentIntentId?: string | null;
-  isRefundable: boolean;
-};
-
-type TeamBillingBillSnapshot = {
-  $id: string;
-  ownerType: 'TEAM' | 'USER';
-  ownerId: string;
-  ownerName: string;
-  totalAmountCents: number;
-  paidAmountCents: number;
-  refundedAmountCents: number;
-  refundableAmountCents: number;
-  status: string | null;
-  allowSplit?: boolean | null;
-  lineItems?: Array<{
-    id?: string;
-    type?: string;
-    label?: string;
-    amountCents?: number;
-    quantity?: number;
-  }>;
-  payments: TeamBillingPaymentSnapshot[];
-};
-
-type TeamBillingSnapshot = {
-  team: {
-    id: string;
-    name?: string | null;
-    playerIds?: string[];
-  };
-  users: TeamBillingUserOption[];
-  bills: TeamBillingBillSnapshot[];
-  totals: {
-    paidAmountCents: number;
-    refundedAmountCents: number;
-    refundableAmountCents: number;
-  };
-};
-
-type PendingRentalCheckoutContext = {
-  eventDraft: Event;
-  draftToSave: Partial<Event>;
-  rentalSlot: TimeSlot;
-  requiresPayment: boolean;
-};
-
-type PendingSaveChangeItem = {
-  id: string;
-  category: 'event' | 'match';
-  label: string;
-  detail?: string;
-  sortOrder: number;
-};
-
-type RentalSelectionQuery = {
-  key: string;
-  scheduledFieldIds: string[];
-  startDate: string;
-  endDate: string;
-  repeating: boolean;
-  dayOfWeek?: number;
-  daysOfWeek?: number[];
-  startTimeMinutes?: number;
-  endTimeMinutes?: number;
-};
-
-const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
-  managers: false,
-  players: false,
-  parents: false,
-  officials: false,
-  hosts: false,
-};
-
-const DRAFT_LIKE_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
-const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
-
-const EVENT_LIFECYCLE_OPTIONS: Array<{ value: EventLifecycleStatus; label: string }> = [
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'PRIVATE', label: 'Private' },
-  { value: 'PUBLISHED', label: 'Published' },
-];
-
-const getEventLifecycleStatus = (eventInput: Pick<Event, 'state'> | null | undefined): EventLifecycleStatus => {
-  if (!eventInput) {
-    return 'DRAFT';
-  }
-
-  const normalizedState = typeof eventInput.state === 'string' ? eventInput.state.toUpperCase() : 'PUBLISHED';
-  if (normalizedState === 'PRIVATE') {
-    return 'PRIVATE';
-  }
-  if (DRAFT_LIKE_EVENT_STATES.has(normalizedState)) {
-    return 'DRAFT';
-  }
-
-  return 'PUBLISHED';
-};
-
-const toStoredEventLifecycleState = (
-  lifecycleStatus: EventLifecycleStatus,
-  currentState: Event['state'] | null | undefined,
-): EventState => {
-  if (lifecycleStatus === 'PUBLISHED') {
-    return 'PUBLISHED';
-  }
-  if (lifecycleStatus === 'PRIVATE') {
-    return 'PRIVATE';
-  }
-  return typeof currentState === 'string' && currentState.toUpperCase() === 'DRAFT'
-    ? 'DRAFT'
-    : 'UNPUBLISHED';
-};
-
-const getLifecycleStatusLabel = (status: EventLifecycleStatus): string => (
-  EVENT_LIFECYCLE_OPTIONS.find((option) => option.value === status)?.label ?? status
-);
-
-const DEFAULT_SPORT: Sport = {
-  $id: '',
-  name: '',
-  usePointsForWin: false,
-  usePointsForDraw: false,
-  usePointsForLoss: false,
-  usePointsForForfeitWin: false,
-  usePointsForForfeitLoss: false,
-  usePointsPerSetWin: false,
-  usePointsPerSetLoss: false,
-  usePointsPerGameWin: false,
-  usePointsPerGameLoss: false,
-  usePointsPerGoalScored: false,
-  usePointsPerGoalConceded: false,
-  useMaxGoalBonusPoints: false,
-  useMinGoalBonusThreshold: false,
-  usePointsForShutout: false,
-  usePointsForCleanSheet: false,
-  useApplyShutoutOnlyIfWin: false,
-  usePointsPerGoalDifference: false,
-  useMaxGoalDifferencePoints: false,
-  usePointsPenaltyPerGoalDifference: false,
-  usePointsForParticipation: false,
-  usePointsForNoShow: false,
-  usePointsForWinStreakBonus: false,
-  useWinStreakThreshold: false,
-  usePointsForOvertimeWin: false,
-  usePointsForOvertimeLoss: false,
-  useOvertimeEnabled: false,
-  usePointsPerRedCard: false,
-  usePointsPerYellowCard: false,
-  usePointsPerPenalty: false,
-  useMaxPenaltyDeductions: false,
-  useMaxPointsPerMatch: false,
-  useMinPointsPerMatch: false,
-  useGoalDifferenceTiebreaker: false,
-  useHeadToHeadTiebreaker: false,
-  useTotalGoalsTiebreaker: false,
-  useEnableBonusForComebackWin: false,
-  useBonusPointsForComebackWin: false,
-  useEnableBonusForHighScoringMatch: false,
-  useHighScoringThreshold: false,
-  useBonusPointsForHighScoringMatch: false,
-  useEnablePenaltyUnsporting: false,
-  usePenaltyPointsUnsporting: false,
-  usePointPrecision: false,
-  $createdAt: '',
-  $updatedAt: '',
-};
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
@@ -1074,182 +224,19 @@ function EventScheduleContent() {
   const rentalSelectionsParam = searchParams?.get('rentalSelections') || undefined;
   const rentalBookingIdParam = searchParams?.get('rentalBookingId')?.trim() || undefined;
   const rentalRequiredTemplateIds = useMemo(
-    () => (
-      rentalRequiredTemplateIdsParam
-        ? Array.from(
-          new Set(
-            rentalRequiredTemplateIdsParam
-              .split(',')
-              .map((id) => id.trim())
-              .filter((id) => id.length > 0),
-          ),
-        )
-        : []
-    ),
+    () => parseIdListQueryParam(rentalRequiredTemplateIdsParam),
     [rentalRequiredTemplateIdsParam],
   );
   const rentalHostRequiredTemplateIds = useMemo(
-    () => (
-      rentalHostRequiredTemplateIdsParam
-        ? Array.from(
-          new Set(
-            rentalHostRequiredTemplateIdsParam
-              .split(',')
-              .map((id) => id.trim())
-              .filter((id) => id.length > 0),
-          ),
-        )
-        : []
-    ),
+    () => parseIdListQueryParam(rentalHostRequiredTemplateIdsParam),
     [rentalHostRequiredTemplateIdsParam],
   );
-  const rentalSelections = useMemo<RentalSelectionQuery[]>(() => {
-    if (!rentalSelectionsParam) {
-      return [];
-    }
-
-    const normalizeSelectionDateRange = (selection: Record<string, unknown>): { start: string; end: string } | null => {
-      const explicitStart = formatLocalDateTime(
-        typeof selection.startDate === 'string' ? selection.startDate : null,
-      );
-      const explicitEnd = formatLocalDateTime(
-        typeof selection.endDate === 'string' ? selection.endDate : null,
-      );
-      if (explicitStart && explicitEnd) {
-        const startDate = parseLocalDateTime(explicitStart);
-        const endDate = parseLocalDateTime(explicitEnd);
-        if (startDate && endDate && endDate.getTime() > startDate.getTime()) {
-          return { start: explicitStart, end: explicitEnd };
-        }
-      }
-
-      const startBoundary = parseLocalDateTime(explicitStart ?? null);
-      const daysSource = Array.isArray(selection.daysOfWeek)
-        ? selection.daysOfWeek
-        : [selection.dayOfWeek];
-      const daysOfWeek = Array.from(
-        new Set(
-          daysSource
-            .map((day) => Number(day))
-            .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-        ),
-      ).sort((left, right) => left - right);
-      const startTimeMinutes = Number(selection.startTimeMinutes);
-      const endTimeMinutes = Number(selection.endTimeMinutes);
-      if (!startBoundary || !daysOfWeek.length || !Number.isFinite(startTimeMinutes) || !Number.isFinite(endTimeMinutes)) {
-        return null;
-      }
-
-      const startSeed = new Date(startBoundary.getTime());
-      startSeed.setHours(0, 0, 0, 0);
-      const seedDay = (startSeed.getDay() + 6) % 7;
-      const firstDay = daysOfWeek[0];
-      let diff = firstDay - seedDay;
-      if (diff < 0) diff += 7;
-      startSeed.setDate(startSeed.getDate() + diff);
-      startSeed.setMinutes(startTimeMinutes);
-
-      const endSeed = new Date(startSeed.getTime());
-      endSeed.setHours(0, 0, 0, 0);
-      endSeed.setMinutes(endTimeMinutes);
-      if (endSeed.getTime() <= startSeed.getTime()) {
-        endSeed.setTime(startSeed.getTime() + 60 * 60 * 1000);
-      }
-
-      const normalizedStart = formatLocalDateTime(startSeed);
-      const normalizedEnd = formatLocalDateTime(endSeed);
-      if (!normalizedStart || !normalizedEnd) {
-        return null;
-      }
-      return { start: normalizedStart, end: normalizedEnd };
-    };
-
-    try {
-      const parsed = JSON.parse(rentalSelectionsParam);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-      const normalizedSelections: RentalSelectionQuery[] = [];
-      parsed.forEach((rawSelection, index) => {
-        if (!rawSelection || typeof rawSelection !== 'object') {
-          return;
-        }
-        const selection = rawSelection as Record<string, unknown>;
-        const dateRange = normalizeSelectionDateRange(selection);
-        if (!dateRange) {
-          return;
-        }
-        const scheduledFieldIds = Array.from(
-          new Set(
-            (Array.isArray(selection.scheduledFieldIds) ? selection.scheduledFieldIds : [])
-              .map((fieldId) => (typeof fieldId === 'string' ? fieldId.trim() : ''))
-              .filter((fieldId) => fieldId.length > 0),
-          ),
-        );
-        if (!scheduledFieldIds.length) {
-          return;
-        }
-        const startDate = parseLocalDateTime(dateRange.start);
-        const endDate = parseLocalDateTime(dateRange.end);
-        if (!startDate || !endDate || endDate.getTime() <= startDate.getTime()) {
-          return;
-        }
-        const derivedDayOfWeek = ((startDate.getDay() + 6) % 7);
-        const startTimeMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-        const endTimeMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-        const normalizedDays = Array.from(
-          new Set(
-            (Array.isArray(selection.daysOfWeek) ? selection.daysOfWeek : [selection.dayOfWeek])
-              .map((day) => Number(day))
-              .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-          ),
-        ).sort((left, right) => left - right);
-        const daysOfWeek = normalizedDays.length ? normalizedDays : [derivedDayOfWeek];
-        normalizedSelections.push({
-          key: typeof selection.key === 'string' && selection.key.trim().length > 0
-            ? selection.key.trim()
-            : `rental-selection-${index + 1}`,
-          scheduledFieldIds,
-          dayOfWeek: daysOfWeek[0] ?? derivedDayOfWeek,
-          daysOfWeek,
-          startTimeMinutes,
-          endTimeMinutes,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-          repeating: false,
-        });
-      });
-      return normalizedSelections;
-    } catch (error) {
-      console.warn('Invalid rentalSelections query payload:', error);
-      return [];
-    }
-  }, [rentalSelectionsParam]);
+  const rentalSelections = useMemo(
+    () => parseRentalSelectionsQueryParam(rentalSelectionsParam),
+    [rentalSelectionsParam],
+  );
   const rentalRangeFromSelections = useMemo(() => {
-    if (!rentalSelections.length) {
-      return { start: undefined, end: undefined };
-    }
-
-    let earliest: Date | null = null;
-    let latest: Date | null = null;
-    rentalSelections.forEach((selection) => {
-      const selectionStart = parseLocalDateTime(selection.startDate);
-      const selectionEnd = parseLocalDateTime(selection.endDate);
-      if (!selectionStart || !selectionEnd || selectionEnd.getTime() <= selectionStart.getTime()) {
-        return;
-      }
-      if (!earliest || selectionStart < earliest) {
-        earliest = selectionStart;
-      }
-      if (!latest || selectionEnd > latest) {
-        latest = selectionEnd;
-      }
-    });
-
-    return {
-      start: earliest ? formatLocalDateTime(earliest) : undefined,
-      end: latest ? formatLocalDateTime(latest) : undefined,
-    };
+    return getRentalSelectionRange(rentalSelections);
   }, [rentalSelections]);
   const normalizedRentalStart = useMemo(
     () => formatLocalDateTime(rentalStartParam) || rentalRangeFromSelections.start,
@@ -1260,7 +247,7 @@ function EventScheduleContent() {
     [rentalEndParam, rentalRangeFromSelections.end],
   );
   const rentalFieldIdsFromSelections = useMemo(
-    () => Array.from(new Set(rentalSelections.flatMap((selection) => selection.scheduledFieldIds))),
+    () => collectRentalSelectionFieldIds(rentalSelections),
     [rentalSelections],
   );
   const isRentalFlow = Boolean((normalizedRentalStart && normalizedRentalEnd) || rentalSelections.length > 0);
@@ -10195,303 +9182,48 @@ function EventScheduleContent() {
 
             {showParticipantsTab && (
               <Tabs.Panel value="participants" pt="md">
-                <Stack gap="md">
-                  <Group justify="space-between" align="center">
-                    <Text size="sm" c="dimmed">
-                      {weeklyParticipantSelectionRequired
-                        ? 'Select a session from the Schedule tab to manage weekly participants.'
-                        : activeEvent?.teamSignup === false
-                        ? (
-                          participantUsers.length === 1
-                            ? '1 participant is currently registered.'
-                            : `${participantUsers.length} participants are currently registered.`
-                        )
-                        : (
-                          filledParticipantTeams.length === 1
-                            ? '1 team is currently participating.'
-                            : `${filledParticipantTeams.length} teams are currently participating.`
-                        )}
-                    </Text>
-                    {canManageEvent && !weeklyParticipantSelectionRequired && (
-                      activeEvent?.teamSignup === false ? (
-                        <Button
-                          variant="light"
-                          onClick={() => {
-                            setParticipantsError(null);
-                            setParticipantInviteError(null);
-                            setIsAddParticipantModalOpen(true);
-                          }}
-                        >
-                          Add Participants
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="light"
-                          onClick={() => {
-                            setParticipantsError(null);
-                            setTeamSearchQuery('');
-                            setSelectedAddTeamDivisionId(null);
-                            setIsAddTeamModalOpen(true);
-                          }}
-                        >
-                          Add Team
-                        </Button>
-                      )
-                    )}
-                  </Group>
-
-                  {participantsError && (
-                    <Alert color="red" radius="md">
-                      {participantsError}
-                    </Alert>
-                  )}
-
-                  {canUseTeamCompliance && teamComplianceError && (
-                    <Alert color="yellow" radius="md">
-                      {teamComplianceError}
-                    </Alert>
-                  )}
-
-                  {canUseUserCompliance && userComplianceError && (
-                    <Alert color="yellow" radius="md">
-                      {userComplianceError}
-                    </Alert>
-                  )}
-
-                  {weeklyParticipantSelectionRequired ? (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>Select a session in the Schedule tab before viewing or managing participants.</Text>
-                    </Paper>
-                  ) : participantsLoading ? (
-                    <Paper withBorder radius="md" p="xl">
-                      <Group justify="center" gap="sm">
-                        <Loader size="sm" />
-                        <Text size="sm" c="dimmed">Loading participants...</Text>
-                      </Group>
-                    </Paper>
-                  ) : activeEvent?.teamSignup === false ? (
-                    participantUsers.length === 0 ? (
-                      <Paper withBorder radius="md" p="xl" ta="center">
-                        <Text>No participants have been added yet.</Text>
-                      </Paper>
-                    ) : (
-                      <ResponsiveCardGrid maxCardWidth={360}>
-                        {participantUsers.map((participant) => {
-                          const pseudoTeam = toUserParticipantPseudoTeam(participant);
-                          return renderParticipantUserCard({
-                            cardKey: participant.$id,
-                            participant,
-                            fullWidth: true,
-                            actions: canManageEvent
-                              ? (
-                                participantsUpdatingTeamId === participant.$id
-                                  ? <Text size="xs" c="dimmed">Updating...</Text>
-                                  : (
-                                    <Stack gap={6} align="flex-start">
-                                      {renderEditBillingActions(pseudoTeam)}
-                                      <Button
-                                        size="xs"
-                                        variant="light"
-                                        color="red"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void handleRemoveUserFromParticipants(participant);
-                                        }}
-                                      >
-                                        Remove
-                                      </Button>
-                                    </Stack>
-                                  )
-                              )
-                              : undefined,
-                          });
-                        })}
-                      </ResponsiveCardGrid>
-                    )
-                  ) : participantTeams.length === 0 ? (
-                    <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>No teams have been added yet.</Text>
-                    </Paper>
-                  ) : isSplitDivisionEvent ? (
-                    <div className="overflow-x-auto">
-                      <Group align="flex-start" gap="md" wrap="nowrap">
-                        {participantDivisionColumns.map((column) => {
-                          const columnTeams = column.teamIds
-                            .map((teamId) => participantTeamsById.get(teamId))
-                            .filter((team): team is Team => Boolean(team));
-                          const filledColumnTeamsCount = columnTeams.filter((team) => !isPlaceholderParticipantTeam(team)).length;
-                          const columnWarnings = participantDivisionWarningsByDivisionId.get(column.id.toLowerCase()) ?? [];
-                          return (
-                            <Paper key={column.id} withBorder radius="md" p="md" miw={320}>
-                              <Stack gap="sm">
-                                <Group justify="space-between" align="center">
-                                  <Text fw={600}>{column.label}</Text>
-                                  <Text size="xs" c="dimmed">{filledColumnTeamsCount}</Text>
-                                </Group>
-                                {columnWarnings.map((warning) => (
-                                  <Alert key={`${column.id}:${warning.code}`} color="yellow" radius="md" py="xs">
-                                    <Text size="xs">{warning.message}</Text>
-                                  </Alert>
-                                ))}
-                                {columnTeams.length === 0 ? (
-                                  <Text size="sm" c="dimmed">No teams assigned.</Text>
-                                ) : (
-                                  <Stack gap="sm">
-                                    {columnTeams.map((team) => {
-                                      const canMoveTeamBetweenDivisions = isEditingEvent && canManageEvent;
-                                      const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                                      const teamActions = isEditingEvent && canManageEvent && !isPlaceholderTeam
-                                        ? (
-                                          participantsUpdatingTeamId === team.$id
-                                            ? <Text size="xs" c="dimmed">Updating...</Text>
-                                            : (
-                                              <Stack gap={6} align="flex-start">
-                                                {canMoveTeamBetweenDivisions ? (
-                                                  <Select
-                                                    size="xs"
-                                                    aria-label={`Move ${team.name || 'team'} to division`}
-                                                    data={participantDivisionSelectData}
-                                                    value={column.id}
-                                                    onChange={(value) => {
-                                                      void handleMoveTeamDivision(team, value);
-                                                    }}
-                                                    allowDeselect={false}
-                                                    w={200}
-                                                  />
-                                                ) : null}
-                                                {renderEditBillingActions(team)}
-                                                <Button
-                                                  size="xs"
-                                                  variant="light"
-                                                  color="red"
-                                                  onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    void handleRemoveTeamFromParticipants(team);
-                                                  }}
-                                                >
-                                                  Remove
-                                                </Button>
-                                              </Stack>
-                                            )
-                                        )
-                                        : undefined;
-
-                                      return renderParticipantTeamCard({
-                                        cardKey: `${column.id}:${team.$id}`,
-                                        team,
-                                        className: isPlaceholderTeam ? '!bg-gray-100' : '',
-                                        enableDetailsView: !isPlaceholderTeam,
-                                        actions: teamActions,
-                                      });
-                                    })}
-                                  </Stack>
-                                )}
-                              </Stack>
-                            </Paper>
-                          );
-                        })}
-                        {canManageEvent && (
-                          <Paper withBorder radius="md" p="md" miw={320}>
-                            <Stack gap="sm">
-                              <Group justify="space-between" align="center">
-                                <Text fw={600}>Unassigned</Text>
-                                <Text size="xs" c={unassignedFilledParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
-                                  {unassignedFilledParticipantTeams.length}
-                                </Text>
-                              </Group>
-                              {unassignedParticipantTeams.length === 0 ? (
-                                <Text size="sm" c="dimmed">All teams assigned.</Text>
-                              ) : (
-                                <Stack gap="sm">
-                                  {unassignedParticipantTeams.map((team) => {
-                                    const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                                    const teamActions = isEditingEvent && !isPlaceholderTeam
-                                      ? (
-                                        participantsUpdatingTeamId === team.$id
-                                          ? <Text size="xs" c="dimmed">Updating...</Text>
-                                          : (
-                                            <Stack gap={6} align="flex-start">
-                                              <Select
-                                                size="xs"
-                                                aria-label={`Move ${team.name || 'team'} to division`}
-                                                data={participantDivisionSelectData}
-                                                value={null}
-                                                placeholder="Move to division"
-                                                onChange={(value) => {
-                                                  void handleMoveTeamDivision(team, value);
-                                                }}
-                                                allowDeselect
-                                                w={200}
-                                              />
-                                              {renderEditBillingActions(team)}
-                                              <Button
-                                                size="xs"
-                                                variant="light"
-                                                color="red"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  void handleRemoveTeamFromParticipants(team);
-                                                }}
-                                              >
-                                                Remove
-                                              </Button>
-                                            </Stack>
-                                          )
-                                      )
-                                      : undefined;
-
-                                    return renderParticipantTeamCard({
-                                      cardKey: `unassigned:${team.$id}`,
-                                      team,
-                                      className: isPlaceholderTeam ? '!bg-gray-100' : '',
-                                      enableDetailsView: !isPlaceholderTeam,
-                                      actions: teamActions,
-                                    });
-                                  })}
-                                </Stack>
-                              )}
-                            </Stack>
-                          </Paper>
-                        )}
-                      </Group>
-                    </div>
-                  ) : (
-                    <ResponsiveCardGrid maxCardWidth={360}>
-                      {participantTeams.map((team) => {
-                        const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                        return renderParticipantTeamCard({
-                          cardKey: team.$id,
-                          team,
-                          className: isPlaceholderTeam ? '!bg-gray-100' : '',
-                          enableDetailsView: !isPlaceholderTeam,
-                          fullWidth: true,
-                          actions: isEditingEvent && canManageEvent && !isPlaceholderTeam
-                            ? (
-                              participantsUpdatingTeamId === team.$id
-                                ? <Text size="xs" c="dimmed">Updating...</Text>
-                                : (
-                                  <Stack gap={6} align="flex-start">
-                                    {renderEditBillingActions(team)}
-                                    <Button
-                                      size="xs"
-                                      variant="light"
-                                      color="red"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void handleRemoveTeamFromParticipants(team);
-                                      }}
-                                    >
-                                      Remove
-                                    </Button>
-                                  </Stack>
-                                )
-                            )
-                            : undefined,
-                        });
-                      })}
-                    </ResponsiveCardGrid>
-                  )}
-                </Stack>
+                <ParticipantsPanel
+                  teamSignup={activeEvent?.teamSignup}
+                  weeklyParticipantSelectionRequired={weeklyParticipantSelectionRequired}
+                  participantUsers={participantUsers}
+                  participantTeams={participantTeams}
+                  filledParticipantTeams={filledParticipantTeams}
+                  canManageEvent={canManageEvent}
+                  participantsError={participantsError}
+                  canUseTeamCompliance={canUseTeamCompliance}
+                  teamComplianceError={teamComplianceError}
+                  canUseUserCompliance={canUseUserCompliance}
+                  userComplianceError={userComplianceError}
+                  participantsLoading={participantsLoading}
+                  isSplitDivisionEvent={isSplitDivisionEvent}
+                  participantDivisionColumns={participantDivisionColumns}
+                  participantTeamsById={participantTeamsById}
+                  participantDivisionWarningsByDivisionId={participantDivisionWarningsByDivisionId}
+                  participantDivisionSelectData={participantDivisionSelectData}
+                  participantsUpdatingTeamId={participantsUpdatingTeamId}
+                  isEditingEvent={isEditingEvent}
+                  unassignedParticipantTeams={unassignedParticipantTeams}
+                  unassignedFilledParticipantTeams={unassignedFilledParticipantTeams}
+                  isPlaceholderParticipantTeam={isPlaceholderParticipantTeam}
+                  toUserParticipantPseudoTeam={toUserParticipantPseudoTeam}
+                  renderEditBillingActions={renderEditBillingActions}
+                  renderParticipantTeamCard={renderParticipantTeamCard}
+                  renderParticipantUserCard={renderParticipantUserCard}
+                  onOpenAddParticipants={() => {
+                    setParticipantsError(null);
+                    setParticipantInviteError(null);
+                    setIsAddParticipantModalOpen(true);
+                  }}
+                  onOpenAddTeam={() => {
+                    setParticipantsError(null);
+                    setTeamSearchQuery('');
+                    setSelectedAddTeamDivisionId(null);
+                    setIsAddTeamModalOpen(true);
+                  }}
+                  onMoveTeamDivision={handleMoveTeamDivision}
+                  onRemoveTeamFromParticipants={handleRemoveTeamFromParticipants}
+                  onRemoveUserFromParticipants={handleRemoveUserFromParticipants}
+                />
               </Tabs.Panel>
             )}
 
