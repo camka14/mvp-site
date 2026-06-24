@@ -649,6 +649,8 @@ describe('league scheduling (time slots)', () => {
     const runSchedule = () => scheduleEvent({ event: league }, context);
     expect(runSchedule).toThrow(/not enough time is allotted/i);
     expect(runSchedule).toThrow(/provided time slots/i);
+    expect(runSchedule).toThrow(/Approximate capacity from weekly repeating timeslots: 0 matches\/week because no weekly repeating timeslots are configured; only explicit one-time windows are available\./i);
+    expect(runSchedule).toThrow(/Approximate total capacity across the event schedule window:/i);
   });
 
   it('errors when weekly slots have a fixed end date and the schedule overruns that window', () => {

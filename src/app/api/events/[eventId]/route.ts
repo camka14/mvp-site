@@ -5,14 +5,17 @@ import { requireSession } from '@/lib/permissions';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
+  clearRemovedEventOfficialMatchAssignments,
   deleteMatchesByEvent,
   isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
+  reserveRentalBookingSlotsForEvent,
   saveEventSchedule,
   saveMatches,
   syncEventParticipantRegistrationsFromCompatibilityIds,
   syncEventDivisions,
+  isRentalBookingReservationError,
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
@@ -34,6 +37,7 @@ import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeS
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps } from '@/lib/taxPolicy';
 import {
   buildEventOfficialPositionsFromTemplates,
+  filterEventOfficialsByUserIds,
   normalizeEventOfficials,
   normalizeEventOfficialPositions,
   normalizeOfficialSchedulingMode,
@@ -44,6 +48,7 @@ import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistratio
 import {
   generatedPoolsForBracket,
   isTournamentPoolValidationError,
+  isTournamentPoolPlayEnabled,
 } from '@/server/events/tournamentPools';
 
 export const dynamic = 'force-dynamic';
@@ -136,7 +141,6 @@ const EVENT_PATCH_ALLOWED_FIELDS = new Set<string>([
   'userIds',
   'waitListIds',
   'freeAgentIds',
-  'officialIds',
   'fields',
   'timeSlots',
   'divisionFieldIds',
@@ -1503,6 +1507,18 @@ const normalizeEntityIdList = (value: unknown): string[] => (
     : []
 );
 
+const isRentalBackedTimeSlot = (slot: {
+  rentalLocked?: unknown;
+  rentalBookingId?: unknown;
+  rentalBookingItemId?: unknown;
+  sourceType?: unknown;
+}): boolean => (
+  slot.rentalLocked === true
+  || normalizeEntityId(slot.rentalBookingId) !== null
+  || normalizeEntityId(slot.rentalBookingItemId) !== null
+  || slot.sourceType === 'RENTAL_BOOKING'
+);
+
 const isPlaceholderTeamName = (value: unknown): boolean => (
   typeof value === 'string' && value.trim().toLowerCase().startsWith('place holder')
 );
@@ -1918,11 +1934,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const hasLegacyUserIdsInput = Object.prototype.hasOwnProperty.call(payload, 'userIds');
       const hasLegacyWaitListIdsInput = Object.prototype.hasOwnProperty.call(payload, 'waitListIds');
       const hasLegacyFreeAgentIdsInput = Object.prototype.hasOwnProperty.call(payload, 'freeAgentIds');
-      const hasCompatibilityOfficialIdsInput = Object.prototype.hasOwnProperty.call(payload, 'officialIds');
-      if (hasCompatibilityOfficialIdsInput) {
-        data.officialIds = normalizeEntityIdList(payload.officialIds);
-      }
-
       assertEventContentAllowed({
         name: Object.prototype.hasOwnProperty.call(data, 'name') ? data.name : existing.name,
         description: Object.prototype.hasOwnProperty.call(data, 'description') ? data.description : existing.description,
@@ -1967,6 +1978,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.teamOfficialsMaySwap = Boolean((existing as any).teamOfficialsMaySwap);
       }
       const nextOrganizationId = normalizeEntityId(data.organizationId ?? existing.organizationId ?? null);
+      const requestedEventOfficialIds = Array.isArray(payload.eventOfficials)
+        ? Array.from(new Set(
+            payload.eventOfficials
+              .map((entry: unknown) => (
+                entry && typeof entry === 'object'
+                  ? normalizeEntityId((entry as Record<string, unknown>).userId)
+                  : null
+              ))
+              .filter((userId: string | null): userId is string => Boolean(userId)),
+          ))
+        : [];
+      let allowedEventOfficialInputUserIds: string[] | null = null;
       if (nextOrganizationId) {
         const [organizationAccess, staffMembers, staffInvites] = await Promise.all([
           tx.organizations.findUnique({
@@ -2008,17 +2031,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
                 ? data.assistantHostIds
                 : existing.assistantHostIds
             ) as string[] | null | undefined,
-            officialIds: (
-              Object.prototype.hasOwnProperty.call(data, 'officialIds')
-                ? data.officialIds
-                : []
-            ) as string[] | null | undefined,
+            officialIds: [],
           },
           { ...organizationAccess, staffMembers, staffInvites },
         );
+        allowedEventOfficialInputUserIds = sanitizeOrganizationEventAssignments(
+          {
+            hostId: data.hostId ?? existing.hostId,
+            assistantHostIds: [],
+            officialIds: requestedEventOfficialIds,
+          },
+          { ...organizationAccess, staffMembers, staffInvites },
+        ).officialIds;
         data.hostId = sanitizedAssignments.hostId ?? normalizeEntityId(existing.hostId) ?? '';
         data.assistantHostIds = sanitizedAssignments.assistantHostIds;
-        data.officialIds = sanitizedAssignments.officialIds;
       }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
@@ -2131,10 +2157,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           .map((row) => normalizeEntityId(row.userId))
           .filter((userId: string | null): userId is string => Boolean(userId)),
       ));
-      const nextCompatibilityOfficialIds = Object.prototype.hasOwnProperty.call(data, 'officialIds')
-        ? normalizeEntityIdList(data.officialIds)
-        : existingEventOfficialIds;
-      if (!nextOfficialPositions.length && nextCompatibilityOfficialIds.length) {
+      if (!nextOfficialPositions.length && existingEventOfficialIds.length) {
         nextOfficialPositions = buildEventOfficialPositionsFromTemplates(eventId, [{ name: 'Official', count: 1 }]);
       }
       data.officialPositions = nextOfficialPositions;
@@ -2153,22 +2176,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }))
         .filter((row) => row.positionIds.length > 0);
       const hasEventOfficialsInput = Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
+      const allowedEventOfficialUserIds = hasEventOfficialsInput
+        ? (allowedEventOfficialInputUserIds ?? requestedEventOfficialIds)
+        : sanitizedExistingEventOfficials.map((row) => row.userId);
+      const eventOfficialsInput = hasEventOfficialsInput
+        ? filterEventOfficialsByUserIds(payload.eventOfficials, allowedEventOfficialUserIds)
+        : payload.eventOfficials;
       const nextEventOfficials = hasEventOfficialsInput
-        ? normalizeEventOfficials(payload.eventOfficials, {
+        ? normalizeEventOfficials(eventOfficialsInput, {
             eventId,
             positionIds: nextOfficialPositions.map((position) => position.id),
             fieldIds: nextFieldIds,
           })
         : sanitizedExistingEventOfficials.length
           ? sanitizedExistingEventOfficials
-          : nextCompatibilityOfficialIds.map((userId) => ({
-              id: `event_official_${eventId}_${userId.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'user'}`,
-              userId,
-              positionIds: nextOfficialPositions.map((position) => position.id),
-              fieldIds: [],
-              isActive: true,
-            }));
-      delete data.officialIds;
+          : [];
       const nextDivisionKeys = (() => {
         if (Array.isArray(data.divisions)) {
           const normalized = hasDivisionDetailsInput
@@ -2260,13 +2282,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       let canonicalTimeSlots: ReturnType<typeof canonicalizeTimeSlots> | null = null;
       if (incomingTimeSlots !== null) {
+        const shouldEnforceAllTimeSlotDivisions = nextSingleDivision && !isTournamentPoolPlayEnabled({
+          eventType: data.eventType ?? existing.eventType,
+          includePlayoffs: data.includePlayoffs ?? existing.includePlayoffs,
+          includePlayoffsOrPools: data.includePlayoffs ?? existing.includePlayoffs,
+        });
         canonicalTimeSlots = canonicalizeTimeSlots({
           eventId,
           slots: incomingTimeSlots,
           fallbackStartDate: existing.start,
           timeZone: data.timeZone ?? existing.timeZone,
           fallbackDivisionKeys: nextDivisionKeys,
-          enforceAllDivisions: nextSingleDivision,
+          enforceAllDivisions: shouldEnforceAllTimeSlotDivisions,
           normalizeDivisions: (value) => (
             hasDivisionDetailsInput
               ? normalizeDivisionIds(value, eventId)
@@ -2284,9 +2311,71 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const nextSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
         const nextSlotIdSet = new Set(nextSlotIds);
         const staleSlotIds = existingSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId));
+        const existingRentalLockedSlots = nextSlotIds.length
+          ? await tx.timeSlots.findMany({
+              where: {
+                id: { in: nextSlotIds },
+                OR: [
+                  { rentalLocked: true },
+                  { rentalBookingId: { not: null } },
+                  { rentalBookingItemId: { not: null } },
+                  { sourceType: 'RENTAL_BOOKING' },
+                ],
+              } as any,
+              select: {
+                id: true,
+                startDate: true,
+                endDate: true,
+                scheduledFieldId: true,
+                scheduledFieldIds: true,
+                sourceType: true,
+                rentalBookingId: true,
+                rentalBookingItemId: true,
+                rentalLocked: true,
+              } as any,
+            })
+          : [];
+        const existingRentalLockedSlotById = new Map(existingRentalLockedSlots.map((slot: any) => [String(slot.id), slot]));
+
+        await reserveRentalBookingSlotsForEvent(tx, eventId, canonicalTimeSlots, new Date());
 
         for (const slot of canonicalTimeSlots) {
           const now = new Date();
+          const existingRentalLockedSlot = existingRentalLockedSlotById.get(slot.id);
+          if (existingRentalLockedSlot) {
+            if (isRentalBackedTimeSlot(slot)) {
+              const existingFieldIds = normalizeFieldIds(
+                Array.isArray(existingRentalLockedSlot.scheduledFieldIds) && existingRentalLockedSlot.scheduledFieldIds.length
+                  ? existingRentalLockedSlot.scheduledFieldIds
+                  : [existingRentalLockedSlot.scheduledFieldId],
+              );
+              const nextFieldIds = normalizeFieldIds(slot.scheduledFieldIds);
+              const fieldsChanged = existingFieldIds.join('|') !== nextFieldIds.join('|');
+              const startChanged = new Date(existingRentalLockedSlot.startDate).getTime() !== slot.startDate.getTime();
+              const existingEndTime = existingRentalLockedSlot.endDate ? new Date(existingRentalLockedSlot.endDate).getTime() : null;
+              const nextEndTime = slot.endDate ? slot.endDate.getTime() : null;
+              const endChanged = existingEndTime !== nextEndTime;
+              const bookingChanged = normalizeFieldIds([existingRentalLockedSlot.rentalBookingId])[0] !== (slot.rentalBookingId ?? undefined);
+              if (fieldsChanged || startChanged || endChanged || bookingChanged) {
+                throw NextResponse.json(
+                  { error: 'Rental-backed time slots cannot be edited. Remove the rental from the event or ask the facility owner to change the reservation.' },
+                  { status: 409 },
+                );
+              }
+            } else if (typeof tx.rentalBookingItems?.updateMany === 'function') {
+              await tx.rentalBookingItems.updateMany({
+                where: {
+                  eventId,
+                  eventTimeSlotId: slot.id,
+                } as any,
+                data: {
+                  eventId: null,
+                  eventTimeSlotId: null,
+                  updatedAt: now,
+                } as any,
+              });
+            }
+          }
           const upsertData = {
             dayOfWeek: slot.dayOfWeek,
             daysOfWeek: slot.daysOfWeek,
@@ -2302,6 +2391,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             taxHandling: slot.taxHandling,
             requiredTemplateIds: slot.requiredTemplateIds,
             hostRequiredTemplateIds: slot.hostRequiredTemplateIds,
+            sourceType: slot.sourceType,
+            rentalBookingId: slot.rentalBookingId,
+            rentalBookingItemId: slot.rentalBookingItemId,
+            rentalLocked: slot.rentalLocked,
             updatedAt: now,
           };
 
@@ -2318,6 +2411,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
 
         if (staleSlotIds.length) {
+          if (typeof tx.rentalBookingItems?.updateMany === 'function') {
+            await tx.rentalBookingItems.updateMany({
+              where: {
+                eventId,
+                eventTimeSlotId: { in: staleSlotIds },
+              } as any,
+              data: {
+                eventId: null,
+                eventTimeSlotId: null,
+                updatedAt: new Date(),
+              } as any,
+            });
+          }
           await tx.timeSlots.deleteMany({
             where: { id: { in: staleSlotIds } },
           });
@@ -2459,16 +2565,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           );
         }
       }
-      if (
+      const shouldPersistEventOfficials = (
         typeof (tx as any).eventOfficials?.deleteMany === 'function'
         && (
           hasEventOfficialsInput
           || hasOfficialPositionsInput
           || Object.prototype.hasOwnProperty.call(payload, 'sportId')
-          || hasCompatibilityOfficialIdsInput
           || existingEventOfficialRows.length === 0
         )
-      ) {
+      );
+      if (shouldPersistEventOfficials) {
         await (tx as any).eventOfficials.deleteMany({ where: { eventId } });
         for (const official of nextEventOfficials) {
           await (tx as any).eventOfficials.create({
@@ -2484,6 +2590,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             },
           });
         }
+        await clearRemovedEventOfficialMatchAssignments(tx, eventId, nextEventOfficials);
       }
 
       await syncEventParticipantRegistrationsFromCompatibilityIds(tx, {
@@ -2647,6 +2754,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     );
   } catch (error) {
     if (error instanceof Response) return error;
+    if (isRentalBookingReservationError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

@@ -46,7 +46,7 @@ type BillPaymentSummary = {
 
 type BillSummary = {
   billId: string;
-  ownerType: 'USER' | 'TEAM';
+  ownerType: 'USER' | 'TEAM' | 'ORGANIZATION';
   ownerId: string;
   ownerName: string;
   eventId?: string | null;

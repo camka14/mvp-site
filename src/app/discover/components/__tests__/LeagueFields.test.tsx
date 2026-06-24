@@ -165,6 +165,487 @@ describe('LeagueFields', () => {
     expect(screen.getByText(/9:00 AM-5:00 PM overlaps this slot/i)).toBeInTheDocument();
   });
 
+  it('groups weekly slot resources by facility and lets managers select another resource', () => {
+    const onUpdateSlot = jest.fn();
+    const annexField: Field = {
+      $id: 'field_2',
+      name: 'Annex Court',
+      location: 'Annex Gym',
+      lat: 0,
+      long: 0,
+      facilityId: 'facility_annex',
+      facility: {
+        $id: 'facility_annex',
+        organizationId: 'org_1',
+        name: 'Annex Facility',
+        location: 'Annex Gym',
+      } as any,
+    };
+    const mainField: Field = {
+      ...field,
+      facilityId: 'facility_main',
+      facility: {
+        $id: 'facility_main',
+        organizationId: 'org_1',
+        name: 'Main Facility',
+        location: 'Main Gym',
+      } as any,
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{ ...baseSlot, scheduledFieldId: undefined, scheduledFieldIds: [] }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[mainField, annexField]}
+        fieldsLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('Main Facility')).toBeInTheDocument();
+    expect(screen.getByText('Annex Facility')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Annex Court/i }));
+
+    expect(onUpdateSlot).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        scheduledFieldId: 'field_2',
+        scheduledFieldIds: ['field_2'],
+      }),
+    );
+  });
+
+  it('shows an error when a selected rental does not match a non-empty timeslot window', () => {
+    const onUpdateSlot = jest.fn();
+    const rentalField: Field = {
+      ...field,
+      $id: 'rental_field_1',
+      name: 'Example Club Court 1',
+      facilityId: 'facility_rental',
+      facility: {
+        $id: 'facility_rental',
+        organizationId: 'rental_org',
+        name: 'Example Clubhouse',
+        location: '800 Waterfront Way',
+      } as any,
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          scheduledFieldId: field.$id,
+          scheduledFieldIds: [field.$id],
+          repeating: true,
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[field, rentalField]}
+        fieldsLoading={false}
+        fieldOptions={[{
+          value: 'rental:booking_item_1',
+          fieldId: 'rental_field_1',
+          label: 'Example Club Court 1 - Jun 24, 2026 5:30 AM-11:00 AM',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalStart: '2026-06-24T05:30:00',
+          rentalEnd: '2026-06-24T11:00:00',
+          rentalTimeZone: 'America/Los_Angeles',
+          rentalPriceCents: 27500,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Example Club Court 1 - Jun 24/i }));
+
+    expect(onUpdateSlot).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        error: expect.stringContaining('This rental resource is only available for 06/24/2026 5:30 AM - 11:00 AM'),
+      }),
+    );
+    expect(onUpdateSlot).not.toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        scheduledFieldId: 'rental_field_1',
+        sourceType: 'RENTAL_BOOKING',
+      }),
+    );
+  });
+
+  it('sets an empty timeslot to the rental window when selecting a rental resource', () => {
+    const onUpdateSlot = jest.fn();
+    const rentalField: Field = {
+      ...field,
+      $id: 'rental_field_1',
+      name: 'Example Club Court 1',
+      facilityId: 'facility_rental',
+      facility: {
+        $id: 'facility_rental',
+        organizationId: 'rental_org',
+        name: 'Example Clubhouse',
+        location: '800 Waterfront Way',
+      } as any,
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          scheduledFieldId: undefined,
+          scheduledFieldIds: [],
+          repeating: true,
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[rentalField]}
+        fieldsLoading={false}
+        fieldOptions={[{
+          value: 'rental:booking_item_1',
+          fieldId: 'rental_field_1',
+          label: 'Example Club Court 1 - Jun 24, 2026 5:30 AM-11:00 AM',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalStart: '2026-06-24T05:30:00',
+          rentalEnd: '2026-06-24T11:00:00',
+          rentalTimeZone: 'America/Los_Angeles',
+          rentalPriceCents: 27500,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Example Club Court 1 - Jun 24/i }));
+
+    expect(onUpdateSlot).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        scheduledFieldId: 'rental_field_1',
+        scheduledFieldIds: ['rental_field_1'],
+        sourceType: 'RENTAL_BOOKING',
+        rentalBookingId: 'rental_booking_1',
+        rentalBookingItemId: 'booking_item_1',
+        rentalLocked: true,
+        repeating: false,
+        dayOfWeek: 2,
+        daysOfWeek: [2],
+        startDate: '2026-06-24T05:30:00',
+        endDate: '2026-06-24T11:00:00',
+        startTimeMinutes: 330,
+        endTimeMinutes: 660,
+        price: 27500,
+      }),
+    );
+    expect(onUpdateSlot).not.toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        error: expect.stringContaining('This rental resource is only available'),
+      }),
+    );
+  });
+
+  it('shows rental window mismatch errors next to the resource picker', () => {
+    const rentalMismatchError = 'This rental resource is only available for 06/24/2026 5:30 AM - 11:00 AM. Update this timeslot to match the rental before selecting it.';
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          scheduledFieldId: undefined,
+          scheduledFieldIds: [],
+          error: rentalMismatchError,
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    expect(screen.getAllByText(rentalMismatchError)).toHaveLength(1);
+  });
+
+  it('locks a matching one-time slot to the selected rental booking item window', () => {
+    const onUpdateSlot = jest.fn();
+    const rentalField: Field = {
+      ...field,
+      $id: 'rental_field_1',
+      name: 'Example Club Court 1',
+      facilityId: 'facility_rental',
+      facility: {
+        $id: 'facility_rental',
+        organizationId: 'rental_org',
+        name: 'Example Clubhouse',
+        location: '800 Waterfront Way',
+      } as any,
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          scheduledFieldId: undefined,
+          scheduledFieldIds: [],
+          repeating: false,
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          startDate: '2026-06-24T05:30:00',
+          endDate: '2026-06-24T11:00:00',
+          startTimeMinutes: 330,
+          endTimeMinutes: 660,
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[rentalField]}
+        fieldsLoading={false}
+        fieldOptions={[{
+          value: 'rental:booking_item_1',
+          fieldId: 'rental_field_1',
+          label: 'Example Club Court 1 - Jun 24, 2026 5:30 AM-11:00 AM',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalStart: '2026-06-24T05:30:00',
+          rentalEnd: '2026-06-24T11:00:00',
+          rentalTimeZone: 'America/Los_Angeles',
+          rentalPriceCents: 27500,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Example Club Court 1 - Jun 24/i }));
+
+    expect(onUpdateSlot).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        scheduledFieldId: 'rental_field_1',
+        scheduledFieldIds: ['rental_field_1'],
+        sourceType: 'RENTAL_BOOKING',
+        rentalBookingId: 'rental_booking_1',
+        rentalBookingItemId: 'booking_item_1',
+        rentalLocked: true,
+        repeating: false,
+        dayOfWeek: 2,
+        daysOfWeek: [2],
+        startDate: '2026-06-24T05:30:00',
+        endDate: '2026-06-24T11:00:00',
+        startTimeMinutes: 330,
+        endTimeMinutes: 660,
+        price: 27500,
+      }),
+    );
+  });
+
+  it('allows adding resources to a rental-locked readonly slot when resource edits are explicitly allowed', () => {
+    const onUpdateSlot = jest.fn();
+    const rentalField: Field = {
+      ...field,
+      $id: 'rental_field_1',
+      name: 'Example Club Court 1',
+      facilityId: 'facility_rental',
+      facility: {
+        $id: 'facility_rental',
+        organizationId: 'rental_org',
+        name: 'Example Clubhouse',
+        location: '800 Waterfront Way',
+      } as any,
+    };
+    const extraField: Field = {
+      ...field,
+      $id: 'field_2',
+      name: 'Court B',
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          scheduledFieldId: 'rental_field_1',
+          scheduledFieldIds: ['rental_field_1'],
+          repeating: false,
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          startDate: '2026-06-24T05:30:00',
+          endDate: '2026-06-24T11:00:00',
+          startTimeMinutes: 330,
+          endTimeMinutes: 660,
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[rentalField, extraField]}
+        fieldsLoading={false}
+        readOnly
+        allowResourceEditsWhenReadOnly
+        fieldOptions={[
+          {
+            value: 'rental:booking_item_1',
+            fieldId: 'rental_field_1',
+            label: 'Example Club Court 1 - Jun 24, 2026 5:30 AM-11:00 AM',
+            rentalBookingId: 'rental_booking_1',
+            rentalBookingItemId: 'booking_item_1',
+            rentalStart: '2026-06-24T05:30:00',
+            rentalEnd: '2026-06-24T11:00:00',
+            rentalTimeZone: 'America/Los_Angeles',
+            rentalPriceCents: 27500,
+          },
+          {
+            value: 'field_2',
+            fieldId: 'field_2',
+            label: 'Court B',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText('Search resources...')).not.toBeDisabled();
+    expect(screen.getByLabelText(/Repeats weekly/i)).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Court B/i }));
+
+    expect(onUpdateSlot).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({
+        scheduledFieldId: 'rental_field_1',
+        scheduledFieldIds: ['rental_field_1', 'field_2'],
+      }),
+    );
+  });
+
+  it('does not offer a rental booking item on another timeslot once it is selected', () => {
+    const rentalField: Field = {
+      ...field,
+      $id: 'rental_field_1',
+      name: 'Example Club Court 1',
+      facilityId: 'facility_rental',
+      facility: {
+        $id: 'facility_rental',
+        organizationId: 'rental_org',
+        name: 'Example Clubhouse',
+        location: '800 Waterfront Way',
+      } as any,
+    };
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[
+          {
+            ...baseSlot,
+            key: 'slot-1',
+            scheduledFieldId: 'rental_field_1',
+            scheduledFieldIds: ['rental_field_1'],
+            repeating: false,
+            dayOfWeek: 2,
+            daysOfWeek: [2],
+            startDate: '2026-06-24T05:30:00',
+            endDate: '2026-06-24T11:00:00',
+            startTimeMinutes: 330,
+            endTimeMinutes: 660,
+            sourceType: 'RENTAL_BOOKING',
+            rentalBookingId: 'rental_booking_1',
+            rentalBookingItemId: 'booking_item_1',
+            rentalLocked: true,
+          },
+          {
+            ...baseSlot,
+            key: 'slot-2',
+            scheduledFieldId: undefined,
+            scheduledFieldIds: [],
+            repeating: false,
+            dayOfWeek: 2,
+            daysOfWeek: [2],
+            startDate: '2026-06-24T12:00:00',
+            endDate: '2026-06-24T13:00:00',
+            startTimeMinutes: 720,
+            endTimeMinutes: 780,
+          },
+        ]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[rentalField]}
+        fieldsLoading={false}
+        fieldOptions={[{
+          value: 'rental:booking_item_1',
+          fieldId: 'rental_field_1',
+          label: 'Example Club Court 1 - Jun 24, 2026 5:30 AM-11:00 AM',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalStart: '2026-06-24T05:30:00',
+          rentalEnd: '2026-06-24T11:00:00',
+          rentalTimeZone: 'America/Los_Angeles',
+          rentalPriceCents: 27500,
+        }]}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: /Example Club Court 1 - Jun 24/i })).toHaveLength(1);
+  });
+
   it('shows the first actual overlap date for recurring conflicts', () => {
     renderWithMantine(
       <LeagueFields

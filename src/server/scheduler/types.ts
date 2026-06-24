@@ -897,9 +897,11 @@ export class Tournament {
     this.rating = params.rating ?? null;
     this.minAge = params.minAge ?? null;
     this.maxAge = params.maxAge ?? null;
-    this.doTeamsOfficiate = typeof params.doTeamsOfficiate === 'boolean' ? params.doTeamsOfficiate : true;
-    this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
     this.officialSchedulingMode = params.officialSchedulingMode ?? 'SCHEDULE';
+    this.doTeamsOfficiate = this.officialSchedulingMode === 'TEAM_STAFFING'
+      ? true
+      : Boolean(params.doTeamsOfficiate);
+    this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
     this.officialPositions = params.officialPositions ?? [];
     this.eventOfficials = params.eventOfficials ?? [];
     this.matchRulesOverride = params.matchRulesOverride ?? null;

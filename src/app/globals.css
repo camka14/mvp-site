@@ -736,6 +736,88 @@ svg {
   align-items: stretch;
 }
 
+.facility-calendar-create-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
+}
+
+.facility-calendar-create-card {
+  height: 3.65rem;
+  min-width: 0;
+  border-radius: 0.68rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.facility-calendar-create-card .shared-calendar-event {
+  --shared-calendar-resource-stack-offset: 2.35rem;
+  height: 100%;
+  min-height: 0;
+  pointer-events: none;
+  border-radius: 0.68rem;
+}
+
+.facility-calendar-create-card .shared-calendar-event__resource-stack {
+  inset: -0.25rem 0;
+}
+
+.facility-calendar-create-card--active {
+  opacity: 0.78;
+}
+
+.facility-calendar-create-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.54;
+}
+
+.facility-calendar-create-card--disabled .shared-calendar-event {
+  cursor: not-allowed;
+}
+
+.facility-calendar-create-drag-preview {
+  position: fixed;
+  z-index: 1200;
+  width: min(18rem, calc(100vw - 2rem));
+  height: 3.65rem;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.02) rotate(-0.4deg);
+  transform-origin: center;
+  opacity: 0.92;
+  filter: drop-shadow(0 1rem 1.2rem rgba(15, 23, 42, 0.22));
+  will-change: left, top, transform;
+}
+
+.facility-calendar-create-drag-preview .shared-calendar-event {
+  height: 100%;
+  min-height: 0;
+  border-width: 2px;
+  background-color: color-mix(in srgb, var(--shared-calendar-event-bg) 92%, white);
+}
+
+.shared-calendar-shell--fields .field-calendar-rbc-event--availability,
+.shared-calendar-shell--fields .field-calendar-rbc-event--default,
+.shared-calendar-shell--fields .field-calendar-rbc-event--official-assigned,
+.shared-calendar-shell--fields .field-calendar-rbc-event--official-open,
+.shared-calendar-shell--fields .field-calendar-rbc-event--reservation,
+.shared-calendar-shell--fields .field-calendar-rbc-event--selection,
+.shared-calendar-shell--fields .field-calendar-rbc-event--staff-assigned,
+.shared-calendar-shell--fields .field-calendar-rbc-event--staff-open {
+  animation: facility-calendar-card-enter 140ms ease-out;
+}
+
+@keyframes facility-calendar-card-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (max-width: 900px) {
   .shared-calendar-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -748,6 +830,13 @@ svg {
   border-radius: 0.5rem;
   background: var(--mvp-surface);
   padding: 0.75rem;
+}
+
+.field-calendar-filter--unframed {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .field-calendar-filter__row {
@@ -916,6 +1005,59 @@ svg {
   box-shadow: none;
 }
 
+.shared-calendar-shell .rbc-addons-dnd-resizable {
+  position: relative;
+}
+
+.shared-calendar-shell .rbc-addons-dnd-resize-ns-anchor {
+  left: 0.35rem;
+  right: 0.35rem;
+  height: 0.55rem;
+  z-index: 8;
+}
+
+.shared-calendar-shell .rbc-addons-dnd-resize-ns-anchor:first-child {
+  top: 0.05rem;
+}
+
+.shared-calendar-shell .rbc-addons-dnd-resize-ns-anchor:last-child {
+  bottom: 0.05rem;
+}
+
+.shared-calendar-shell .rbc-addons-dnd-resize-ns-icon {
+  display: block;
+  width: 2.2rem;
+  height: 0.28rem;
+  margin: 0 auto;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.72;
+}
+
+.shared-calendar-shell--fields .field-calendar-rbc-event--open-staff-series .rbc-addons-dnd-resize-ns-anchor {
+  left: 50%;
+  right: auto;
+  width: 2.6rem;
+  height: 0.42rem;
+  transform: translateX(-50%);
+}
+
+.shared-calendar-shell--fields .field-calendar-rbc-event--open-staff-series .rbc-addons-dnd-resize-ns-anchor:first-child {
+  top: 0.1rem;
+}
+
+.shared-calendar-shell--fields .field-calendar-rbc-event--open-staff-series .rbc-addons-dnd-resize-ns-anchor:last-child {
+  bottom: 0.1rem;
+}
+
+.shared-calendar-shell--fields .field-calendar-rbc-event--open-staff-series .rbc-addons-dnd-resize-ns-icon {
+  width: 1.35rem;
+  height: 0.2rem;
+  border-top-width: 1.5px;
+  border-bottom-width: 1.5px;
+  opacity: 0.62;
+}
+
 .shared-calendar-shell .rbc-selected,
 .shared-calendar-shell .rbc-event:focus,
 .shared-calendar-shell .rbc-event:focus-visible {
@@ -991,10 +1133,18 @@ svg {
 }
 
 .shared-calendar-event {
+  --shared-calendar-resource-bg: var(--shared-calendar-event-border);
+  --shared-calendar-resource-text: var(--shared-calendar-event-text);
+  --shared-calendar-resource-rail-width: 0.26rem;
+  --shared-calendar-resource-stack-count: 0;
+  --shared-calendar-resource-stack-offset: 0.72rem;
+  --shared-calendar-event-pattern: linear-gradient(transparent, transparent);
+  --shared-calendar-event-pattern-size: auto;
   min-height: 100%;
   height: 100%;
   container-name: shared-calendar-event;
   container-type: size;
+  position: relative;
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
@@ -1002,16 +1152,80 @@ svg {
   gap: 0.12rem;
   overflow: hidden;
   border: 1px solid var(--shared-calendar-event-border);
-  border-radius: 0.5rem;
-  background: var(--shared-calendar-event-bg);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(
+      90deg,
+      var(--shared-calendar-resource-bg) 0 var(--shared-calendar-resource-rail-width),
+      transparent var(--shared-calendar-resource-rail-width) 100%
+    ),
+    var(--shared-calendar-event-pattern),
+    var(--shared-calendar-event-bg);
+  background-size: auto, var(--shared-calendar-event-pattern-size), auto;
   color: var(--shared-calendar-event-text);
-  padding: 0.45rem 0.55rem;
+  padding: 0.45rem 0.55rem 0.45rem 0.7rem;
   line-height: 1.18;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
+.shared-calendar-event--resource-stack {
+  margin-right: 0;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.shared-calendar-event__resource-stack {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: inherit;
+  border-radius: inherit;
+  background-size: inherit;
+  pointer-events: none;
+}
+
+.shared-calendar-event__resource-stack-card {
+  position: absolute;
+  inset: 0;
+  display: block;
+  box-sizing: border-box;
+  border: inherit;
+  border-radius: inherit;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background:
+    linear-gradient(
+      90deg,
+      var(--shared-calendar-resource-stack-bg) 0 var(--shared-calendar-resource-rail-width),
+      transparent var(--shared-calendar-resource-rail-width) 100%
+    ),
+    var(--shared-calendar-event-pattern),
+    var(--shared-calendar-event-bg);
+  background-size: auto, var(--shared-calendar-event-pattern-size), auto;
+  box-shadow: 0 0.18rem 0.32rem rgba(15, 23, 42, 0.12);
+  min-height: 100%;
+  overflow: hidden;
+  clip-path: inset(0 calc(100% - var(--shared-calendar-resource-stack-offset) - var(--shared-calendar-resource-rail-width)) 0 0);
+  transform:
+    translate(
+      calc(var(--shared-calendar-resource-stack-index) * var(--shared-calendar-resource-stack-offset)),
+      0
+    );
+}
+
+.shared-calendar-event__drag-handle,
 .shared-calendar-event__content {
   min-width: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.shared-calendar-event--resource-stack .shared-calendar-event__drag-handle,
+.shared-calendar-event--resource-stack .shared-calendar-event__content {
+  transform: translateX(calc(var(--shared-calendar-resource-stack-count) * var(--shared-calendar-resource-stack-offset)));
+}
+
+.shared-calendar-event__content {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -1022,7 +1236,110 @@ svg {
 .shared-calendar-event--compact {
   gap: 0.06rem;
   border-radius: 0.42rem;
-  padding: 0.28rem 0.4rem;
+  padding: 0.28rem 0.4rem 0.28rem 0.56rem;
+}
+
+.shared-calendar-event--availability {
+  --shared-calendar-event-bg: color-mix(in srgb, var(--mvp-success-soft) 76%, white);
+  --shared-calendar-event-border: color-mix(in srgb, var(--mvp-success) 54%, white);
+  --shared-calendar-event-text: color-mix(in srgb, var(--mvp-success) 72%, black);
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.shared-calendar-event--unavailable {
+  --shared-calendar-event-bg: #f1f5f9;
+  --shared-calendar-event-border: #94a3b8;
+  --shared-calendar-event-text: #475569;
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.shared-calendar-event--reservation {
+  --shared-calendar-event-bg: #fff7ed;
+  --shared-calendar-event-border: #f59e0b;
+  --shared-calendar-event-text: #7c2d12;
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 158, 11, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.shared-calendar-event--staff-open {
+  --shared-calendar-event-bg: #dcfdf8;
+  --shared-calendar-event-border: #14b8a6;
+  --shared-calendar-event-text: #064e3b;
+  --shared-calendar-event-pattern: repeating-linear-gradient(
+    135deg,
+    rgba(20, 184, 166, 0.14) 0 0.32rem,
+    transparent 0.32rem 0.64rem
+  );
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.shared-calendar-event--staff-assigned {
+  --shared-calendar-event-bg: #2fc0cb;
+  --shared-calendar-event-border: #0e7490;
+  --shared-calendar-event-text: #083344;
+  --shared-calendar-event-pattern:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 42%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.12) 0 0.22rem,
+      transparent 0.22rem 0.54rem
+    );
+  border-width: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(8, 51, 68, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.shared-calendar-event--official-open {
+  --shared-calendar-event-bg: #fff7ed;
+  --shared-calendar-event-border: #f97316;
+  --shared-calendar-event-text: #7c2d12;
+  --shared-calendar-event-pattern: radial-gradient(circle at 0.32rem 0.32rem, rgba(234, 88, 12, 0.24) 0 0.07rem, transparent 0.08rem);
+  --shared-calendar-event-pattern-size: 0.72rem 0.72rem;
+  border-style: dotted;
+  border-width: 2px;
+}
+
+.shared-calendar-event--official-assigned {
+  --shared-calendar-event-bg: #fef3c7;
+  --shared-calendar-event-border: #7e22ce;
+  --shared-calendar-event-text: #581c87;
+  --shared-calendar-event-pattern: repeating-linear-gradient(
+    45deg,
+    rgba(126, 34, 206, 0.16) 0 0.28rem,
+    rgba(249, 115, 22, 0.1) 0.28rem 0.56rem,
+    transparent 0.56rem 0.82rem
+  );
+  border-width: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(126, 34, 206, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.shared-calendar-event--booked {
+  --shared-calendar-event-bg: #cbd5e1;
+  --shared-calendar-event-border: #64748b;
+  --shared-calendar-event-text: #111827;
+}
+
+.shared-calendar-event--conflict {
+  --shared-calendar-event-bg: #fee2e2;
+  --shared-calendar-event-border: #dc2626;
+  --shared-calendar-event-text: #7f1d1d;
+  border-width: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(220, 38, 38, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.shared-calendar-event--selection {
+  --shared-calendar-event-bg: var(--mvp-primary-100);
+  --shared-calendar-event-border: var(--mvp-primary-300);
+  --shared-calendar-event-text: var(--mvp-primary-900);
 }
 
 .shared-calendar-event--clickable {
@@ -1063,10 +1380,6 @@ svg {
 
 .shared-calendar-event--selected {
   box-shadow: 0 0 0 2px var(--mvp-success), 0 0 0 5px color-mix(in srgb, var(--mvp-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.34);
-}
-
-.shared-calendar-event--conflict {
-  box-shadow: inset 0 0 0 2px var(--mvp-danger), inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .shared-calendar-event__title,
@@ -6371,12 +6684,46 @@ body:has(.landing-root) .site-footer-muted {
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
 }
 
+.staff-schedule-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.staff-schedule-calendar-shell {
+  min-width: 0;
+}
+
+.staff-schedule-calendar-shell .rbc-time-view .shared-calendar-event {
+  min-width: 0;
+  padding: 0.28rem 0.34rem 0.28rem 0.5rem;
+}
+
+@container shared-calendar-event (max-width: 3.25rem) {
+  .staff-schedule-calendar-shell .shared-calendar-event__subtitle,
+  .staff-schedule-calendar-shell .shared-calendar-event__meta {
+    display: none;
+  }
+
+  .staff-schedule-calendar-shell .shared-calendar-event__title {
+    font-size: 0.68rem;
+  }
+}
+
+@container shared-calendar-event (max-width: 2.35rem) {
+  .staff-schedule-calendar-shell .shared-calendar-event__title {
+    display: none;
+  }
+}
+
 .role-add-row {
   cursor: pointer;
 }
 
 @media (max-width: 768px) {
-  .staff-roster-layout {
+  .staff-roster-layout,
+  .staff-schedule-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }

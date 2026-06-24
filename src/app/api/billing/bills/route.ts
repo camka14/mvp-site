@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 import {
   isWeeklyParentEvent,
   resolveWeeklyOccurrence,
@@ -12,13 +13,15 @@ import {
 export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
-  ownerType: z.enum(['USER', 'TEAM']),
+  ownerType: z.enum(['USER', 'TEAM', 'ORGANIZATION']),
   ownerId: z.string(),
   totalAmountCents: z.number(),
   eventId: z.string().nullable().optional(),
   slotId: z.string().nullable().optional(),
   occurrenceDate: z.string().nullable().optional(),
   organizationId: z.string().nullable().optional(),
+  sourceType: z.string().trim().min(1).nullable().optional(),
+  sourceId: z.string().trim().min(1).nullable().optional(),
   installmentAmounts: z.array(z.number()).optional(),
   installmentDueDates: z.array(z.string()).optional(),
   installmentDueRelativeDays: z.array(z.number()).optional(),
@@ -52,7 +55,7 @@ const uniqueIds = (values: Array<string | null | undefined>): string[] => (
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
-  const ownerType = params.get('ownerType') as 'USER' | 'TEAM' | null;
+  const ownerType = params.get('ownerType') as 'USER' | 'TEAM' | 'ORGANIZATION' | null;
   const ownerId = normalizeId(params.get('ownerId'));
   const limit = Number(params.get('limit') || '100');
 
@@ -62,6 +65,15 @@ export async function GET(req: NextRequest) {
 
   if (ownerType === 'USER' && !session.isAdmin && ownerId !== session.userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (ownerType === 'ORGANIZATION' && !session.isAdmin) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: ownerId },
+      select: { id: true, ownerId: true },
+    });
+    if (!organization || !(await canManageOrganization(session, organization))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   let ownerIds = [ownerId];
@@ -148,6 +160,8 @@ export async function POST(req: NextRequest) {
   const slotId = parsed.data.slotId?.trim() || null;
   const occurrenceDate = parsed.data.occurrenceDate?.trim() || null;
   const organizationId = parsed.data.organizationId?.trim() || null;
+  const sourceType = parsed.data.sourceType?.trim() || null;
+  const sourceId = parsed.data.sourceId?.trim() || null;
   const paymentPlanEnabled = parsed.data.paymentPlanEnabled ?? false;
   const now = new Date();
 
@@ -293,6 +307,8 @@ export async function POST(req: NextRequest) {
         slotId: resolvedBillSlotId,
         occurrenceDate: resolvedBillOccurrenceDate,
         organizationId,
+        sourceType,
+        sourceId,
         allowSplit: parsed.data.allowSplit ?? false,
         status: 'OPEN',
         paymentPlanEnabled,

@@ -3,6 +3,7 @@
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import {
   WATCH_SETUP_TOKEN_TTL_SECONDS,
+  shouldUseSecureAuthCookie,
   signSessionToken,
   signWatchSetupToken,
   verifyWatchSetupToken,
@@ -10,9 +11,12 @@ import {
 
 describe('authServer token helpers', () => {
   const originalAuthSecret = process.env.AUTH_SECRET;
+  const originalAuthCookieSecure = process.env.AUTH_COOKIE_SECURE;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
     process.env.AUTH_SECRET = 'test-secret';
+    delete process.env.AUTH_COOKIE_SECURE;
   });
 
   afterAll(() => {
@@ -21,6 +25,12 @@ describe('authServer token helpers', () => {
     } else {
       process.env.AUTH_SECRET = originalAuthSecret;
     }
+    if (originalAuthCookieSecure == null) {
+      delete process.env.AUTH_COOKIE_SECURE;
+    } else {
+      process.env.AUTH_COOKIE_SECURE = originalAuthCookieSecure;
+    }
+    process.env.NODE_ENV = originalNodeEnv;
   });
 
   it('signs persistent session tokens without a fixed exp claim', () => {
@@ -62,5 +72,18 @@ describe('authServer token helpers', () => {
       issuedAtSeconds: decoded.iat,
     });
     expect(verifyWatchSetupToken(sessionToken)).toBeNull();
+  });
+
+  it('uses secure auth cookies in production by default', () => {
+    process.env.NODE_ENV = 'production';
+
+    expect(shouldUseSecureAuthCookie()).toBe(true);
+  });
+
+  it('allows local production smoke tests to disable secure auth cookies explicitly', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.AUTH_COOKIE_SECURE = 'false';
+
+    expect(shouldUseSecureAuthCookie()).toBe(false);
   });
 });

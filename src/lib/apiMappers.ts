@@ -1,6 +1,7 @@
 import type {
   Division,
   Event,
+  Facility,
   Field,
   LeagueScoringConfig,
   Match,
@@ -127,6 +128,7 @@ const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
 const normalizeApiField = (input: Field): Field => {
   const field = withLegacyId(input) as Field & {
     organization?: Organization | string;
+    facility?: Facility | string | null;
     matches?: Match[];
     rentalSlots?: TimeSlot[];
   };
@@ -134,6 +136,7 @@ const normalizeApiField = (input: Field): Field => {
   return {
     ...field,
     organization: withLegacyId(field.organization as Organization | null) ?? field.organization,
+    facility: withLegacyId(field.facility as Facility | null) ?? field.facility,
     matches: Array.isArray(field.matches) ? field.matches.map(normalizeApiMatch) : field.matches,
     rentalSlots: Array.isArray(field.rentalSlots)
       ? field.rentalSlots.map(normalizeApiTimeSlot)

@@ -7,10 +7,7 @@ import {
   EventFieldConflictError,
   assertNoEventFieldSchedulingConflicts,
 } from '@/server/repositories/events';
-import {
-  normalizePublicRentalOrderSports,
-  resolvePublicRentalOrderSportId,
-} from '@/server/publicRentalOrders';
+import { normalizePublicRentalOrderSports } from '@/server/publicRentalOrders';
 import {
   localDatePartsInTimeZone,
   mondayDayInTimeZone,
@@ -19,7 +16,8 @@ import {
   resolveTimeZone,
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
-import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
+import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,9 +39,17 @@ const orderSchema = z.object({
   selections: z.array(selectionSchema).min(1),
   sportId: z.string().trim().min(1).optional().nullable(),
   paymentIntentId: z.string().optional().nullable(),
+  renterOrganizationId: z.string().trim().min(1).optional().nullable(),
 }).strict();
 
 type RentalOrderSelection = z.infer<typeof selectionSchema>;
+
+type ValidatedRentalSelectionItem = {
+  fieldId: string;
+  facilityId: string | null;
+  availabilitySlotId: string;
+  priceCents: number;
+};
 
 type ValidatedRentalSelection = {
   selection: RentalOrderSelection;
@@ -51,13 +57,19 @@ type ValidatedRentalSelection = {
   end: Date;
   timeZone: string;
   fieldIds: string[];
+  items: ValidatedRentalSelectionItem[];
   totalCents: number;
   requiredTemplateIds: string[];
   hostRequiredTemplateIds: string[];
 };
 
 type PaymentVerificationResult =
-  | { ok: true }
+  | {
+      ok: true;
+      paymentIntentId?: string | null;
+      metadata?: Record<string, string>;
+      totalChargeCents?: number | null;
+    }
   | { ok: false; status: number; error: string };
 
 const normalizeSlug = (value: string): string => value.trim().toLowerCase();
@@ -142,25 +154,6 @@ const rentalSlotCoversSelection = (
   return true;
 };
 
-const resolveCoordinates = (
-  organization: Record<string, any>,
-  primaryField: Record<string, any> | null,
-): [number, number] => {
-  if (Array.isArray(organization.coordinates) && organization.coordinates.length >= 2) {
-    const first = Number(organization.coordinates[0]);
-    const second = Number(organization.coordinates[1]);
-    if (Number.isFinite(first) && Number.isFinite(second)) {
-      return [first, second];
-    }
-  }
-  const longitude = Number(primaryField?.long);
-  const latitude = Number(primaryField?.lat);
-  if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
-    return [longitude, latitude];
-  }
-  return [0, 0];
-};
-
 const verifyPaymentIntent = async ({
   paymentIntentId,
   expectedAmountCents,
@@ -175,7 +168,7 @@ const verifyPaymentIntent = async ({
   userId: string;
 }): Promise<PaymentVerificationResult> => {
   if (expectedAmountCents <= 0) {
-    return { ok: true };
+    return { ok: true, paymentIntentId: null, metadata: {}, totalChargeCents: 0 };
   }
   const normalizedIntentId = typeof paymentIntentId === 'string' ? paymentIntentId.trim() : '';
   if (!normalizedIntentId) {
@@ -185,7 +178,7 @@ const verifyPaymentIntent = async ({
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
     return normalizedIntentId.startsWith('pi_')
-      ? { ok: true }
+      ? { ok: true, paymentIntentId: normalizedIntentId, metadata: {}, totalChargeCents: expectedAmountCents }
       : { ok: false, status: 402, error: 'Payment confirmation is required before creating the rental order.' };
   }
 
@@ -210,7 +203,13 @@ const verifyPaymentIntent = async ({
   if (Number(metadata.amount_cents) !== expectedAmountCents) {
     return { ok: false, status: 400, error: 'Payment amount does not match this rental order.' };
   }
-  return { ok: true };
+  const totalChargeCents = Number(metadata.total_charge_cents ?? intent.amount_received ?? intent.amount ?? expectedAmountCents);
+  return {
+    ok: true,
+    paymentIntentId: normalizedIntentId,
+    metadata,
+    totalChargeCents: Number.isFinite(totalChargeCents) ? totalChargeCents : expectedAmountCents,
+  };
 };
 
 const validateRentalSelections = ({
@@ -218,11 +217,13 @@ const validateRentalSelections = ({
   fields,
   slots,
   organization,
+  now = new Date(),
 }: {
   selections: RentalOrderSelection[];
   fields: Array<Record<string, any>>;
   slots: Array<Record<string, any>>;
   organization: Record<string, any>;
+  now?: Date;
 }): { ok: true; selections: ValidatedRentalSelection[] } | { ok: false; error: string } => {
   const fieldById = new Map(fields.map((field) => [String(field.id), field]));
   const slotById = new Map(slots.map((slot) => [String(slot.id), slot]));
@@ -243,9 +244,13 @@ const validateRentalSelections = ({
     if (!start || !end || end.getTime() <= start.getTime()) {
       return { ok: false, error: 'Rental selections must include valid start and end times.' };
     }
+    if (start.getTime() < now.getTime()) {
+      return { ok: false, error: 'Rental selections must start in the future.' };
+    }
     const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / (60 * 1000)));
     const requiredTemplateIds = new Set<string>();
     const hostRequiredTemplateIds = new Set<string>();
+    const items: ValidatedRentalSelectionItem[] = [];
     let totalCents = 0;
 
     for (const fieldId of fieldIds) {
@@ -262,9 +267,17 @@ const validateRentalSelections = ({
       if (!matchedSlot) {
         return { ok: false, error: `${field.name || 'Selected field'} is not available for the selected time.` };
       }
+      let priceCents = 0;
       if (typeof matchedSlot.price === 'number' && matchedSlot.price > 0) {
-        totalCents += Math.round((matchedSlot.price * durationMinutes) / 60);
+        priceCents = Math.round((matchedSlot.price * durationMinutes) / 60);
+        totalCents += priceCents;
       }
+      items.push({
+        fieldId,
+        facilityId: typeof field.facilityId === 'string' && field.facilityId.trim() ? field.facilityId.trim() : null,
+        availabilitySlotId: String(matchedSlot.id),
+        priceCents,
+      });
       normalizeStringArray(matchedSlot.requiredTemplateIds).forEach((id) => requiredTemplateIds.add(id));
       normalizeStringArray(matchedSlot.hostRequiredTemplateIds).forEach((id) => hostRequiredTemplateIds.add(id));
     }
@@ -275,6 +288,7 @@ const validateRentalSelections = ({
       end,
       timeZone: selectionTimeZone,
       fieldIds,
+      items,
       totalCents,
       requiredTemplateIds: Array.from(requiredTemplateIds),
       hostRequiredTemplateIds: Array.from(hostRequiredTemplateIds),
@@ -282,6 +296,238 @@ const validateRentalSelections = ({
   }
 
   return { ok: true, selections: validatedSelections };
+};
+
+const RENTAL_BILL_SOURCE_TYPE = 'RENTAL_BOOKING';
+const ACTIVE_RENTAL_BOOKING_ITEM_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
+
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const assertNoRentalBookingItemConflicts = async ({
+  tx,
+  bookingId,
+  selections,
+}: {
+  tx: any;
+  bookingId: string;
+  selections: ValidatedRentalSelection[];
+}) => {
+  if (typeof tx.rentalBookingItems?.findMany !== 'function') {
+    return;
+  }
+  const conflictWindows = selections.flatMap((selection) => (
+    selection.items.map((item) => ({
+      fieldId: item.fieldId,
+      start: selection.start,
+      end: selection.end,
+    }))
+  ));
+  if (!conflictWindows.length) {
+    return;
+  }
+
+  const conflicts = await tx.rentalBookingItems.findMany({
+    where: {
+      bookingId: { not: bookingId },
+      status: { in: ACTIVE_RENTAL_BOOKING_ITEM_STATUSES },
+      OR: conflictWindows.map((window) => ({
+        fieldId: window.fieldId,
+        start: { lt: window.end },
+        end: { gt: window.start },
+      })),
+    } as any,
+    select: {
+      id: true,
+      bookingId: true,
+      fieldId: true,
+      start: true,
+      end: true,
+    },
+  });
+  if (!conflicts.length) {
+    return;
+  }
+
+  throw new EventFieldConflictError(conflicts.map((conflict: any) => ({
+    fieldId: String(conflict.fieldId),
+    blockId: `rental-booking:${conflict.bookingId}:${conflict.id}`,
+    parentId: normalizeOptionalString(conflict.bookingId),
+    start: conflict.start instanceof Date ? conflict.start : new Date(conflict.start),
+    end: conflict.end instanceof Date ? conflict.end : new Date(conflict.end),
+  })));
+};
+
+const buildRentalBillLineItems = ({
+  bookingId,
+  organizationId,
+  userId,
+  renterOrganizationId,
+  rentalAmountCents,
+  totalChargeCents,
+}: {
+  bookingId: string;
+  organizationId: string;
+  userId: string;
+  renterOrganizationId: string | null;
+  rentalAmountCents: number;
+  totalChargeCents: number;
+}) => {
+  const lineItems: Array<Record<string, unknown>> = [];
+  if (rentalAmountCents > 0) {
+    lineItems.push({
+      id: 'line_1',
+      type: 'RENTAL',
+      label: 'Field rental',
+      amountCents: rentalAmountCents,
+      purchaseType: 'rental',
+      rentalBookingId: bookingId,
+      organizationId,
+      userId,
+      ...(renterOrganizationId ? { renterOrganizationId } : {}),
+    });
+  }
+  const additionalCharges = totalChargeCents - rentalAmountCents;
+  if (additionalCharges > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'OTHER',
+      label: 'Additional charges',
+      amountCents: additionalCharges,
+      purchaseType: 'rental',
+      rentalBookingId: bookingId,
+      organizationId,
+      userId,
+      ...(renterOrganizationId ? { renterOrganizationId } : {}),
+    });
+  }
+  return lineItems.length
+    ? lineItems
+    : [{
+        id: 'line_1',
+        type: 'RENTAL',
+        label: 'Field rental',
+        amountCents: totalChargeCents,
+        purchaseType: 'rental',
+        rentalBookingId: bookingId,
+        organizationId,
+        userId,
+        ...(renterOrganizationId ? { renterOrganizationId } : {}),
+      }];
+};
+
+const findOrCreateRentalBill = async ({
+  tx,
+  bookingId,
+  organizationId,
+  userId,
+  renterOrganizationId,
+  payment,
+  rentalAmountCents,
+}: {
+  tx: any;
+  bookingId: string;
+  organizationId: string;
+  userId: string;
+  renterOrganizationId: string | null;
+  payment: Extract<PaymentVerificationResult, { ok: true }>;
+  rentalAmountCents: number;
+}): Promise<string | null> => {
+  const paymentIntentId = normalizeOptionalString(payment.paymentIntentId);
+  if (rentalAmountCents <= 0 && !paymentIntentId) {
+    return null;
+  }
+  const ownerType = renterOrganizationId ? 'ORGANIZATION' : 'USER';
+  const ownerId = renterOrganizationId ?? userId;
+  const now = new Date();
+  const totalChargeCents = Math.max(
+    rentalAmountCents,
+    Number.isFinite(payment.totalChargeCents) ? Math.round(Number(payment.totalChargeCents)) : rentalAmountCents,
+  );
+
+  if (paymentIntentId) {
+    const existingPayment = await tx.billPayments.findFirst({
+      where: { paymentIntentId },
+      select: { id: true, billId: true },
+    });
+    if (existingPayment?.billId) {
+      await tx.bills.update({
+        where: { id: existingPayment.billId },
+        data: {
+          ownerType,
+          ownerId,
+          organizationId,
+          sourceType: RENTAL_BILL_SOURCE_TYPE,
+          sourceId: bookingId,
+          updatedAt: now,
+        } as any,
+      });
+      return existingPayment.billId;
+    }
+  }
+
+  if (totalChargeCents <= 0) {
+    return null;
+  }
+
+  const bill = await tx.bills.create({
+    data: {
+      id: crypto.randomUUID(),
+      ownerType,
+      ownerId,
+      organizationId,
+      eventId: null,
+      slotId: null,
+      occurrenceDate: null,
+      sourceType: RENTAL_BILL_SOURCE_TYPE,
+      sourceId: bookingId,
+      totalAmountCents: totalChargeCents,
+      paidAmountCents: totalChargeCents,
+      nextPaymentDue: null,
+      nextPaymentAmountCents: null,
+      parentBillId: null,
+      allowSplit: false,
+      status: 'PAID',
+      paymentPlanEnabled: false,
+      createdBy: userId,
+      lineItems: buildRentalBillLineItems({
+        bookingId,
+        organizationId,
+        userId,
+        renterOrganizationId,
+        rentalAmountCents,
+        totalChargeCents,
+      }),
+      createdAt: now,
+      updatedAt: now,
+    } as any,
+    select: { id: true },
+  });
+
+  await tx.billPayments.create({
+    data: {
+      id: crypto.randomUUID(),
+      billId: bill.id,
+      sequence: 1,
+      dueDate: now,
+      amountCents: totalChargeCents,
+      status: 'PAID',
+      paidAt: now,
+      paymentIntentId,
+      payerUserId: userId,
+      taxCalculationId: normalizeOptionalString(payment.metadata?.tax_calculation_id),
+      taxAmountCents: Number(payment.metadata?.tax_cents ?? 0) || 0,
+      stripeProcessingFeeCents: Number(payment.metadata?.stripe_processing_fee_cents ?? 0) || 0,
+      stripeTaxServiceFeeCents: Number(payment.metadata?.stripe_tax_service_fee_cents ?? 0) || 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+
+  return bill.id;
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -313,24 +559,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 
   const availableSports = normalizePublicRentalOrderSports(organization.sports);
-  if (!availableSports.length) {
-    return NextResponse.json({
-      error: 'This organization must have at least one sport configured before rental-only orders can be created.',
-    }, { status: 400 });
-  }
   const requestedSportId = typeof parsed.data.sportId === 'string'
     ? parsed.data.sportId.trim()
     : '';
-  if (!requestedSportId) {
-    return NextResponse.json({ error: 'Select a sport before ordering this rental.' }, { status: 400 });
-  }
   if (requestedSportId && !availableSports.includes(requestedSportId)) {
     return NextResponse.json({ error: 'Selected sport is not available for this organization.' }, { status: 400 });
   }
 
-  const fields = await (prisma as any).fields.findMany({
+  const renterOrganizationId = normalizeOptionalString(parsed.data.renterOrganizationId);
+  if (renterOrganizationId) {
+    const renterOrganization = await (prisma as any).organizations.findUnique({
+      where: { id: renterOrganizationId },
+      select: { id: true, ownerId: true },
+    });
+    if (!renterOrganization || !(await canManageOrganization(session, renterOrganization))) {
+      return NextResponse.json({ error: 'You do not have access to book rentals for this organization.' }, { status: 403 });
+    }
+  }
+
+  const fieldRows = await (prisma as any).fields.findMany({
     where: { organizationId: organization.id },
   });
+  const fields = await attachFacilitiesToFieldRows(fieldRows);
   const rentalSlotIds = Array.from(new Set(fields.flatMap((field: Record<string, any>) => normalizeStringArray(field.rentalSlotIds))));
   const slots = rentalSlotIds.length
     ? await (prisma as any).timeSlots.findMany({
@@ -376,163 +626,169 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 
   const fieldIds = Array.from(new Set(validation.selections.flatMap((selection) => selection.fieldIds)));
-  const fieldById = new Map<string, Record<string, any>>(
-    fields.map((field: Record<string, any>) => [String(field.id), field]),
-  );
-  const primaryField = fieldById.get(fieldIds[0]) ?? null;
-  const rentalTimeZone = validation.selections[0]?.timeZone
-    ?? resolveTimeZoneFromFieldOrOrganization(primaryField, organization);
-  const timeSlotIds = validation.selections.map((selection, index) => `${parsed.data.eventId}-rental-${index + 1}`);
-  const now = new Date();
-  const sportId = resolvePublicRentalOrderSportId({
-    organizationName: organization.name,
-    organizationSports: organization.sports,
-    requestedSportId,
-  });
-  if (!sportId) {
-    return NextResponse.json({ error: 'Unable to determine a sport for this rental order.' }, { status: 400 });
-  }
+  const bookingId = parsed.data.eventId;
 
   try {
-    const createdEvent = await (prisma as any).$transaction(async (tx: any) => {
-      const existingEvent = await tx.events.findUnique({
-        where: { id: parsed.data.eventId },
-        select: { id: true, organizationId: true },
+    const booking = await (prisma as any).$transaction(async (tx: any) => {
+      const existingBooking = await tx.rentalBookings.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          billId: true,
+          eventId: true,
+          totalAmountCents: true,
+          paymentIntentId: true,
+        },
       });
-      if (existingEvent) {
-        if (existingEvent.organizationId === organization.id) {
-          return null;
-        }
-        throw new Error('A different event already exists for this rental order.');
+      if (existingBooking) {
+        const existingItems = await tx.rentalBookingItems.findMany({
+          where: { bookingId },
+          select: {
+            id: true,
+            fieldId: true,
+            start: true,
+            end: true,
+            eventId: true,
+            eventTimeSlotId: true,
+          },
+          orderBy: { start: 'asc' },
+        });
+        return {
+          ...existingBooking,
+          items: existingItems,
+        };
       }
 
       await assertNoEventFieldSchedulingConflicts({
         client: tx,
-        eventId: parsed.data.eventId,
+        eventId: bookingId,
         organizationId: null,
         fieldIds,
-        timeSlotIds,
+        timeSlotIds: [],
         start: earliestStart,
         end: latestEnd,
         noFixedEndDateTime: false,
         eventType: 'EVENT',
         parentEvent: null,
       });
+      await assertNoRentalBookingItemConflicts({
+        tx,
+        bookingId,
+        selections: validation.selections,
+      });
 
-      for (let index = 0; index < validation.selections.length; index += 1) {
-        const validated = validation.selections[index];
-        const dayOfWeek = mondayDayInTimeZone(validated.start, validated.timeZone);
-        await tx.timeSlots.create({
-          data: {
-            id: timeSlotIds[index],
-            createdAt: now,
-            updatedAt: now,
-            dayOfWeek,
-            daysOfWeek: [dayOfWeek],
-            startTimeMinutes: minutesInTimeZone(validated.start, validated.timeZone),
-            endTimeMinutes: endMinutesInTimeZone(validated.start, validated.end, validated.timeZone),
-            startDate: validated.start,
-            timeZone: validated.timeZone,
-            endDate: validated.end,
-            repeating: false,
-            scheduledFieldId: validated.fieldIds[0] ?? null,
-            scheduledFieldIds: validated.fieldIds,
-            price: 0,
-            divisions: [],
-            requiredTemplateIds: validated.requiredTemplateIds,
-            hostRequiredTemplateIds: validated.hostRequiredTemplateIds,
-          },
-        });
-      }
+      const now = new Date();
+      const billId = await findOrCreateRentalBill({
+        tx,
+        bookingId,
+        organizationId: organization.id,
+        userId: session.userId,
+        renterOrganizationId,
+        payment: paymentVerification,
+        rentalAmountCents: totalCents,
+      });
 
-      return tx.events.create({
+      const createdBooking = await tx.rentalBookings.create({
         data: {
-          id: parsed.data.eventId,
+          id: bookingId,
           createdAt: now,
           updatedAt: now,
-          name: organization.name,
-          start: earliestStart,
-          end: latestEnd,
-          timeZone: rentalTimeZone,
-          description: `Private rental order for ${organization.name}.`,
-          divisions: [],
-          winnerSetCount: null,
-          loserSetCount: null,
-          doubleElimination: false,
-          location: primaryField?.location ?? organization.location ?? 'Rental',
-          address: organization.address ?? null,
-          rating: null,
-          teamSizeLimit: 10,
-          maxParticipants: 10,
-          minAge: null,
-          maxAge: null,
-          hostId: organization.ownerId,
-          assistantHostIds: [],
-          noFixedEndDateTime: false,
-          price: 0,
-          singleDivision: true,
-          registrationByDivisionType: false,
-          waitListIds: [],
-          freeAgentIds: [],
-          cancellationRefundHours: 24,
-          teamSignup: false,
-          prize: null,
-          registrationCutoffHours: 0,
-          seedColor: 0,
-          imageId: typeof organization.logoId === 'string' ? organization.logoId.trim() : '',
-          fieldCount: fieldIds.length,
-          winnerBracketPointsToVictory: [],
-          loserBracketPointsToVictory: [],
-          coordinates: resolveCoordinates(organization, primaryField),
-          gamesPerOpponent: null,
-          includePlayoffs: false,
-          playoffTeamCount: null,
-          usesSets: false,
-          matchDurationMinutes: null,
-          setDurationMinutes: null,
-          setsPerMatch: null,
-          restTimeMinutes: null,
-          state: 'PRIVATE',
-          pointsToVictory: [],
-          sportId,
-          timeSlotIds,
-          fieldIds,
-          teamIds: [],
-          userIds: [session.userId],
-          leagueScoringConfigId: null,
           organizationId: organization.id,
-          parentEvent: null,
-          autoCancellation: null,
-          eventType: 'EVENT',
-          officialSchedulingMode: 'SCHEDULE',
-          doTeamsOfficiate: false,
-          teamOfficialsMaySwap: false,
-          officialIds: [],
-          officialPositions: [],
-          matchRulesOverride: null,
-          autoCreatePointMatchIncidents: false,
-          allowPaymentPlans: false,
-          installmentCount: 0,
-          installmentDueDates: [],
-          installmentAmounts: [],
-          allowTeamSplitDefault: false,
-          splitLeaguePlayoffDivisions: false,
-          requiredTemplateIds: [],
+          renterType: renterOrganizationId ? 'ORGANIZATION' : 'USER',
+          renterUserId: renterOrganizationId ? null : session.userId,
+          renterOrganizationId,
+          createdByUserId: session.userId,
+          billId,
+          eventId: null,
+          status: 'CONFIRMED',
+          totalAmountCents: totalCents,
+          currency: 'usd',
+          paymentIntentId: normalizeOptionalString(paymentVerification.paymentIntentId),
+          expiresAt: null,
+          confirmedAt: now,
+          cancelledAt: null,
+          metadata: {
+            publicSlug: normalizedSlug,
+            requestedSportId: requestedSportId || null,
+            earliestStart: earliestStart.toISOString(),
+            latestEnd: latestEnd.toISOString(),
+          },
+        },
+        select: {
+          id: true,
+          billId: true,
+          eventId: true,
+          totalAmountCents: true,
+          paymentIntentId: true,
         },
       });
+
+      const bookingItems: Array<Record<string, unknown>> = [];
+      let itemIndex = 0;
+      for (const validated of validation.selections) {
+        for (const item of validated.items) {
+          itemIndex += 1;
+          const itemId = `${bookingId}__item_${itemIndex}`;
+          bookingItems.push({
+            id: itemId,
+            bookingId,
+            fieldId: item.fieldId,
+            start: validated.start,
+            end: validated.end,
+          });
+          await tx.rentalBookingItems.create({
+            data: {
+              id: itemId,
+              createdAt: now,
+              updatedAt: now,
+              bookingId,
+              organizationId: organization.id,
+              facilityId: item.facilityId,
+              fieldId: item.fieldId,
+              availabilitySlotId: item.availabilitySlotId,
+              eventId: null,
+              eventTimeSlotId: null,
+              start: validated.start,
+              end: validated.end,
+              timeZone: validated.timeZone,
+              priceCents: item.priceCents,
+              status: 'CONFIRMED',
+              requiredTemplateIds: validated.requiredTemplateIds,
+              hostRequiredTemplateIds: validated.hostRequiredTemplateIds,
+              metadata: {
+                selectionKey: validated.selection.key ?? null,
+              },
+            } as any,
+          });
+        }
+      }
+
+      return {
+        ...createdBooking,
+        items: bookingItems,
+      };
     });
 
-    if (createdEvent) {
-      await sendAdminEventCreatedNotification({
-        event: createdEvent,
-        baseUrl: req.nextUrl.origin,
-      }).catch((notificationError) => {
-        console.warn('Failed to send admin event creation notification', {
-          eventId: parsed.data.eventId,
-          error: notificationError,
-        });
-      });
+    const createEventParams = new URLSearchParams({ create: '1' });
+    if (typeof booking.renterOrganizationId === 'string' && booking.renterOrganizationId.trim().length > 0) {
+      createEventParams.set('hostOrgId', booking.renterOrganizationId.trim());
     }
+
+    return NextResponse.json({
+      bookingId: booking.id,
+      billId: booking.billId,
+      eventId: booking.eventId,
+      totalCents,
+      items: booking.items.map((item: any) => ({
+        id: item.id,
+        fieldId: item.fieldId,
+        start: item.start instanceof Date ? item.start.toISOString() : item.start,
+        end: item.end instanceof Date ? item.end.toISOString() : item.end,
+        eventId: item.eventId ?? null,
+        eventTimeSlotId: item.eventTimeSlotId ?? null,
+      })),
+      createEventUrl: `/events/${encodeURIComponent(booking.id)}/schedule?${createEventParams.toString()}`,
+    }, { status: 201 });
   } catch (error) {
     if (error instanceof EventFieldConflictError) {
       return NextResponse.json({ error: error.message, conflicts: error.conflicts }, { status: 409 });
@@ -542,9 +798,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       error: error instanceof Error ? error.message : 'Failed to create rental order.',
     }, { status: 500 });
   }
-
-  return NextResponse.json({
-    eventId: parsed.data.eventId,
-    totalCents,
-  }, { status: 201 });
 }

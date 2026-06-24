@@ -59,6 +59,45 @@ describe('eventService', () => {
     expect(event?.$id).toBe('evt_1');
   });
 
+  it('preserves rental booking metadata for overlap-only field blockers', async () => {
+    apiRequestMock.mockResolvedValue({
+      events: [
+        {
+          $id: 'rental-booking-item-booking_item_1',
+          id: 'rental-booking-item-booking_item_1',
+          eventType: 'EVENT',
+          start: '2026-06-24T03:00:00.000Z',
+          end: '2026-06-24T04:30:00.000Z',
+          timeSlotIds: [],
+          timeSlots: [],
+          sourceType: 'RENTAL_BOOKING',
+          sourceId: 'rental_booking_1',
+          rentalBookingId: 'rental_booking_1',
+          rentalBookingItemId: 'booking_item_1',
+        },
+      ],
+      rentalSlots: [],
+    });
+
+    const events = await eventService.getEventsForFieldInRange(
+      'field_1',
+      '2026-06-24T00:00:00.000Z',
+      '2026-06-25T00:00:00.000Z',
+      { rentalOverlapOnly: true },
+    );
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/events/field/field_1?'),
+    );
+    expect(apiRequestMock.mock.calls[0]?.[0]).toContain('rentalOverlapOnly=1');
+    expect(events[0]).toEqual(expect.objectContaining({
+      sourceType: 'RENTAL_BOOKING',
+      sourceId: 'rental_booking_1',
+      rentalBookingId: 'rental_booking_1',
+      rentalBookingItemId: 'booking_item_1',
+    }));
+  });
+
   it('deduplicates concurrent paginated event searches', async () => {
     let resolveRequest: ((value: { events?: any[] }) => void) | undefined;
     apiRequestMock.mockImplementation(() => new Promise((resolve) => {
@@ -511,6 +550,52 @@ describe('eventService', () => {
     expect((options?.body as any)?.event?.resolvedMatchRules).toBeUndefined();
     expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
     expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
+  });
+
+  it('strips event-level rental metadata while preserving rental timeslot metadata in event updates', async () => {
+    apiRequestMock.mockResolvedValue({ ...baseEventRow });
+
+    const rentalSlot = {
+      $id: 'slot_rental_1',
+      dayOfWeek: 2,
+      daysOfWeek: [2],
+      startTimeMinutes: 15 * 60,
+      endTimeMinutes: 17 * 60,
+      startDate: '2026-06-24T15:00:00.000Z',
+      endDate: '2026-06-24T17:00:00.000Z',
+      repeating: false,
+      scheduledFieldId: 'field_regular_1',
+      scheduledFieldIds: ['field_regular_1'],
+      sourceType: 'RENTAL_BOOKING',
+      rentalBookingId: 'booking_1',
+      rentalBookingItemId: 'booking_item_1',
+      rentalLocked: true,
+    } as any;
+
+    await eventService.updateEvent('evt_1', {
+      ...baseEventRow,
+      sourceType: 'RENTAL_BOOKING',
+      sourceId: 'booking_1',
+      rentalBookingId: 'booking_1',
+      rentalBookingItemId: 'booking_item_1',
+      timeSlots: [rentalSlot],
+    } as any, {
+      timeSlots: [rentalSlot],
+    });
+
+    const [, options] = apiRequestMock.mock.calls[0];
+    const eventPayload = (options?.body as any)?.event;
+
+    expect(eventPayload.sourceType).toBeUndefined();
+    expect(eventPayload.sourceId).toBeUndefined();
+    expect(eventPayload.rentalBookingId).toBeUndefined();
+    expect(eventPayload.rentalBookingItemId).toBeUndefined();
+    expect(eventPayload.timeSlots?.[0]).toEqual(expect.objectContaining({
+      sourceType: 'RENTAL_BOOKING',
+      rentalBookingId: 'booking_1',
+      rentalBookingItemId: 'booking_item_1',
+      rentalLocked: true,
+    }));
   });
 
   it('maps template rows without sport data using a fallback sport object', async () => {

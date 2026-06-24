@@ -10,6 +10,7 @@ datasource db {
 enum BillsOwnerTypeEnum {
   USER
   TEAM
+  ORGANIZATION
 }
 
 enum BillsStatusEnum {
@@ -33,6 +34,28 @@ enum RefundRequestsStatusEnum {
   WAITING
   APPROVED
   REJECTED
+}
+
+enum DiscountsOwnerTypeEnum {
+  USER
+  ORGANIZATION
+}
+
+enum DiscountsTargetTypeEnum {
+  EVENT
+  PRODUCT
+  TEAM_REGISTRATION
+}
+
+enum DiscountsStatusEnum {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum DiscountCodesStatusEnum {
+  ACTIVE
+  INACTIVE
 }
 
 enum EventsStateEnum {
@@ -225,6 +248,11 @@ enum StaffLaborStatusEnum {
   CANCELLED
 }
 
+enum StaffScheduleAssignmentKindEnum {
+  STAFF_SHIFT
+  OFFICIAL_SHIFT
+}
+
 enum FinancialLineItemScopeEnum {
   ORGANIZATION
   EVENT
@@ -367,10 +395,32 @@ model Fields {
   rentalSlotIds  String[]
   location       String?
   organizationId String?
+  facilityId     String?
   createdBy      String?
 
   @@index([organizationId])
+  @@index([facilityId])
   @@index([createdBy])
+}
+
+model Facilities {
+  id             String    @id
+  createdAt      DateTime? @default(now())
+  updatedAt      DateTime? @updatedAt
+  organizationId String
+  name           String
+  location       String
+  address        String?
+  coordinates    Json?
+  operatingHours Json?
+  timeZone       String    @default("UTC")
+  status         String    @default("ACTIVE")
+  isDefault      Boolean   @default(false)
+  sortOrder      Int?
+
+  @@index([organizationId])
+  @@index([organizationId, isDefault])
+  @@index([status])
 }
 
 model Matches {
@@ -765,6 +815,45 @@ model EventStaffAssignments {
   @@index([status])
 }
 
+model StaffScheduleAssignments {
+  id                 String                          @id
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+  organizationId     String
+  parentAssignmentId String?
+  staffMemberId      String?
+  organizationRoleId String?
+  userId             String?
+  assignmentKind     StaffScheduleAssignmentKindEnum @default(STAFF_SHIFT)
+  facilityId         String?
+  fieldId            String?
+  timeSlotId         String                          @unique
+  plannedStart       DateTime?
+  plannedEnd         DateTime?
+  actualStart        DateTime?
+  actualEnd          DateTime?
+  plannedMinutes     Int?
+  actualMinutes      Int?
+  rateOverrideType   CompensationWageTypeEnum?
+  rateOverrideCents  Int?
+  status             StaffLaborStatusEnum            @default(PLANNED)
+  notes              String?
+  createdBy          String?
+  updatedBy          String?
+
+  @@index([organizationId])
+  @@index([parentAssignmentId])
+  @@index([staffMemberId])
+  @@index([organizationRoleId])
+  @@index([userId])
+  @@index([assignmentKind])
+  @@index([facilityId])
+  @@index([fieldId])
+  @@index([status])
+  @@index([plannedStart])
+  @@index([plannedEnd])
+}
+
 model TeamStaffLaborEntries {
   id                         String                    @id
   createdAt                  DateTime                  @default(now())
@@ -874,37 +963,39 @@ model StaffPayRun {
 }
 
 model StaffPayRunItem {
-  id                       String                    @id
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  payRunId                 String
-  organizationId           String
-  staffMemberId            String?
-  userId                   String
-  eventId                  String?
-  teamId                   String?
-  eventTeamId              String?
-  eventStaffAssignmentId   String?                   @unique
-  teamStaffLaborEntryId    String?                   @unique
-  label                    String
-  description              String?
-  wageType                 CompensationWageTypeEnum?
-  rateCents                Int?
-  paidMinutes              Int?
-  amountCents              Int
-  serviceStartAt           DateTime?
-  serviceEndAt             DateTime?
-  status                   StaffPayRunItemStatusEnum @default(DRAFT)
-  payoutStatus             StaffPayoutStatusEnum     @default(NOT_STARTED)
-  approvedAt               DateTime?
-  approvedByUserId         String?
-  paidAt                   DateTime?
-  paidByUserId             String?
-  payoutProvider           String?
-  payoutProviderTransferId String?
-  notes                    String?
-  createdBy                String?
-  updatedBy                String?
+  id                         String                    @id
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  payRunId                   String
+  organizationId             String
+  staffMemberId              String?
+  userId                     String
+  eventId                    String?
+  teamId                     String?
+  eventTeamId                String?
+  eventStaffAssignmentId     String?                   @unique
+  staffScheduleAssignmentId  String?
+  staffScheduleOccurrenceKey String?                   @unique
+  teamStaffLaborEntryId      String?                   @unique
+  label                      String
+  description                String?
+  wageType                   CompensationWageTypeEnum?
+  rateCents                  Int?
+  paidMinutes                Int?
+  amountCents                Int
+  serviceStartAt             DateTime?
+  serviceEndAt               DateTime?
+  status                     StaffPayRunItemStatusEnum @default(DRAFT)
+  payoutStatus               StaffPayoutStatusEnum     @default(NOT_STARTED)
+  approvedAt                 DateTime?
+  approvedByUserId           String?
+  paidAt                     DateTime?
+  paidByUserId               String?
+  payoutProvider             String?
+  payoutProviderTransferId   String?
+  notes                      String?
+  createdBy                  String?
+  updatedBy                  String?
 
   @@index([payRunId])
   @@index([organizationId])
@@ -1243,8 +1334,12 @@ model Bills {
   paymentPlanEnabled     Boolean?
   createdBy              String?
   lineItems              Json?
+  sourceType             String?
+  sourceId               String?
 
   @@index([eventId, slotId, occurrenceDate])
+  @@index([sourceType, sourceId])
+  @@index([organizationId, sourceType])
 }
 
 model BillPayments {
@@ -1267,6 +1362,61 @@ model BillPayments {
   stripeTaxServiceFeeCents Int                     @default(0)
 }
 
+model RentalBookings {
+  id                   String    @id
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  organizationId        String
+  renterType            String    @default("USER")
+  renterUserId          String?
+  renterOrganizationId  String?
+  createdByUserId       String?
+  billId                String?
+  eventId               String?
+  status                String    @default("PENDING_PAYMENT")
+  totalAmountCents      Int       @default(0)
+  currency              String    @default("usd")
+  paymentIntentId       String?   @unique
+  expiresAt             DateTime?
+  confirmedAt           DateTime?
+  cancelledAt           DateTime?
+  metadata              Json?
+
+  @@index([organizationId, status])
+  @@index([renterUserId, status])
+  @@index([renterOrganizationId, status])
+  @@index([billId])
+  @@index([eventId])
+}
+
+model RentalBookingItems {
+  id                       String    @id
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  bookingId                String
+  organizationId            String
+  facilityId               String?
+  fieldId                  String
+  availabilitySlotId       String?
+  eventId                  String?
+  eventTimeSlotId          String?
+  start                    DateTime
+  end                      DateTime
+  timeZone                 String    @default("UTC")
+  priceCents               Int       @default(0)
+  status                   String    @default("CONFIRMED")
+  requiredTemplateIds      String[]  @default([])
+  hostRequiredTemplateIds  String[]  @default([])
+  metadata                 Json?
+
+  @@index([bookingId])
+  @@index([organizationId, status])
+  @@index([facilityId])
+  @@index([fieldId, start, end])
+  @@index([eventId])
+  @@index([eventTimeSlotId])
+}
+
 model RefundRequests {
   id             String                    @id
   createdAt      DateTime?
@@ -1278,6 +1428,68 @@ model RefundRequests {
   reason         String
   organizationId String?
   status         RefundRequestsStatusEnum?
+}
+
+model Discounts {
+  id                         String                  @id
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  ownerType                  DiscountsOwnerTypeEnum
+  ownerId                    String
+  createdBy                  String
+  updatedBy                  String?
+  name                       String
+  description                String?
+  status                     DiscountsStatusEnum     @default(ACTIVE)
+  targetType                 DiscountsTargetTypeEnum
+  targetId                   String
+  originalPriceCentsSnapshot Int
+  discountedPriceCents       Int
+
+  @@index([ownerType, ownerId])
+  @@index([targetType, targetId])
+  @@index([status])
+  @@index([createdBy])
+}
+
+model DiscountCodes {
+  id         String                  @id
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  discountId String
+  code       String                  @unique
+  status     DiscountCodesStatusEnum @default(ACTIVE)
+  usageLimit Int?
+  usedCount  Int                     @default(0)
+  createdBy  String
+
+  @@index([discountId])
+  @@index([status])
+}
+
+model DiscountCodeRedemptions {
+  id                    String                   @id
+  createdAt             DateTime                 @default(now())
+  discountId            String
+  discountCodeId        String
+  code                  String
+  userId                String?
+  guestEmail            String?
+  purchaseType          DiscountsTargetTypeEnum
+  purchaseTargetId      String
+  paymentIntentId       String?
+  registrationId        String?
+  productId             String?
+  organizationId        String?
+  originalAmountCents   Int
+  discountedAmountCents Int
+
+  @@index([discountId])
+  @@index([discountCodeId])
+  @@index([userId])
+  @@index([purchaseType, purchaseTargetId])
+  @@unique([discountCodeId, paymentIntentId])
+  @@unique([discountCodeId, registrationId])
 }
 
 model OrganizationAccountingConnections {
@@ -1577,8 +1789,15 @@ model TimeSlots {
   divisions               String[]  @default([])
   requiredTemplateIds     String[]  @default([])
   hostRequiredTemplateIds String[]  @default([])
+  sourceType              String?
+  rentalBookingId         String?
+  rentalBookingItemId     String?
+  rentalLocked            Boolean   @default(false)
 
   @@index([scheduledFieldId])
+  @@index([sourceType])
+  @@index([rentalBookingId])
+  @@index([rentalBookingItemId])
 }
 
 model LeagueScoringConfigs {

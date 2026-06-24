@@ -173,6 +173,9 @@ function LoginPageContent() {
         return false;
       }
       const status = await authService.getTotpMfaStatus();
+      if (status.mfa.localBypassEnabled) {
+        return false;
+      }
       if (status.mfa.authenticatorEnabled) {
         return false;
       }

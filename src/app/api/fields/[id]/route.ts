@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { findPresentKeys, findUnknownKeys } from '@/server/http/strictPatch';
+import { getFacilityForOrganization } from '@/server/facilities';
+import { attachFacilitiesToFieldRows, withLegacyFieldPayload } from '@/server/fieldFacilityPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,7 @@ const fieldPatchSchema = z.object({
   heading: z.number().nullable().optional(),
   inUse: z.boolean().nullable().optional(),
   rentalSlotIds: z.array(z.string()).optional(),
+  facilityId: z.string().nullable().optional(),
   organizationId: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
 }).strict();
@@ -33,6 +35,7 @@ const FIELD_MUTABLE_FIELDS = new Set<string>([
   'heading',
   'inUse',
   'rentalSlotIds',
+  'facilityId',
   'organizationId',
   'createdBy',
 ]);
@@ -48,6 +51,7 @@ const FIELD_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'organizationId',
   'createdBy',
 ]);
+const SELECTED_FIELD_LOCATION_ERROR = 'Resource location must be selected from suggestions or the map';
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -55,6 +59,15 @@ const normalizeId = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const hasFieldLocation = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const fieldCoordinatesAreSet = (lat: unknown, lng: unknown): boolean => {
+  const normalizedLat = Number(lat);
+  const normalizedLng = Number(lng);
+  return Number.isFinite(normalizedLat) && Number.isFinite(normalizedLng) && !(normalizedLat === 0 && normalizedLng === 0);
 };
 
 const deriveLegacyOrglessFieldOwner = async (fieldId: string): Promise<string | null> => {
@@ -82,12 +95,15 @@ const findFieldOwnership = async (id: string): Promise<{
   id: string;
   organizationId: string | null;
   createdBy: string | null;
+  location?: string | null;
+  lat?: number | null;
+  long?: number | null;
 } | null> => {
   const fieldsDelegate = prisma.fields as any;
   try {
     return await fieldsDelegate.findUnique({
       where: { id },
-      select: { id: true, organizationId: true, createdBy: true },
+      select: { id: true, organizationId: true, createdBy: true, location: true, lat: true, long: true },
     });
   } catch (error) {
     if (!isUnknownPrismaCreatedByArgError(error)) {
@@ -95,7 +111,7 @@ const findFieldOwnership = async (id: string): Promise<{
     }
     const fallback = await fieldsDelegate.findUnique({
       where: { id },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, location: true, lat: true, long: true },
     });
     return fallback ? { ...fallback, createdBy: null } : null;
   }
@@ -107,7 +123,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!field) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  return NextResponse.json(withLegacyFields(field), { status: 200 });
+  const [fieldWithFacility] = await attachFacilitiesToFieldRows([field]);
+  return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? field), { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -197,6 +214,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const safePayload = parsedPayload.data as Record<string, unknown>;
+  const touchesLocation = Object.prototype.hasOwnProperty.call(safePayload, 'location')
+    || Object.prototype.hasOwnProperty.call(safePayload, 'lat')
+    || Object.prototype.hasOwnProperty.call(safePayload, 'long');
+  if (touchesLocation) {
+    const nextLocation = Object.prototype.hasOwnProperty.call(safePayload, 'location')
+      ? safePayload.location
+      : existing.location;
+    const nextLat = Object.prototype.hasOwnProperty.call(safePayload, 'lat')
+      ? safePayload.lat
+      : existing.lat;
+    const nextLong = Object.prototype.hasOwnProperty.call(safePayload, 'long')
+      ? safePayload.long
+      : existing.long;
+    if (hasFieldLocation(nextLocation) && !fieldCoordinatesAreSet(nextLat, nextLong)) {
+      return NextResponse.json({ error: SELECTED_FIELD_LOCATION_ERROR }, { status: 400 });
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePayload, 'facilityId')) {
+    const requestedFacilityId = normalizeId(safePayload.facilityId);
+    if (!existing.organizationId) {
+      if (requestedFacilityId) {
+        return NextResponse.json(
+          { error: 'A facility can only be assigned to an organization field' },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (!requestedFacilityId) {
+        return NextResponse.json(
+          { error: 'Organization fields require a facility' },
+          { status: 400 },
+        );
+      }
+      const facility = await getFacilityForOrganization(requestedFacilityId, existing.organizationId);
+      if (!facility) {
+        return NextResponse.json({ error: 'Facility not found for organization' }, { status: 400 });
+      }
+      safePayload.facilityId = facility.id;
+    }
+  }
   const updateData: Record<string, unknown> = {};
   for (const key of FIELD_MUTABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(safePayload, key)) {
@@ -208,7 +266,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { ...updateData, updatedAt: new Date() } as any,
   });
 
-  return NextResponse.json(withLegacyFields(updated), { status: 200 });
+  const [fieldWithFacility] = await attachFacilitiesToFieldRows([updated]);
+  return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? updated), { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

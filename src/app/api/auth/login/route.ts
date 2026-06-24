@@ -12,6 +12,7 @@ import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 import { buildAuthSessionPayload } from '@/server/authSessionPayload';
 import {
   createWebLoginMfaChallenge,
+  isLocalAuthMfaBypassEnabled,
   isTotpMfaError,
   isWebLoginClient,
   readTotpMfaRequestMetadata,
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (isWebLoginClient(clientType)) {
+  if (isWebLoginClient(clientType) && !isLocalAuthMfaBypassEnabled(req)) {
     try {
       const challenge = await createWebLoginMfaChallenge({
         userId: authUser.id,

@@ -80,6 +80,8 @@ describe('CreateRentalSlotModal multi-field creation', () => {
       </MantineProvider>,
     );
 
+    expect(await screen.findByText('Resources')).toBeInTheDocument();
+
     const submitButton = await screen.findByRole('button', { name: 'Create Rental Slots (2)' });
     await user.click(submitButton);
 

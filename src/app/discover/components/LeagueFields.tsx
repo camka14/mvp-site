@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import {
   NumberInput,
   Switch,
@@ -21,7 +22,7 @@ import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getFacilityScopedFieldDisplayName, getFieldDisplayName } from '@/lib/fieldUtils';
 
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 const MAX_STANDARD_NUMBER = 99_999;
@@ -99,6 +100,16 @@ const formatMinutesLabel = (minutes: number): string => {
 };
 
 const formatDateTimeLabel = (date: Date): string => `${formatDisplayDate(date)} ${formatClockTime(date)}`;
+
+const formatRentalWindowLabel = (start: Date, end: Date): string => {
+  const sameDay = start.getFullYear() === end.getFullYear()
+    && start.getMonth() === end.getMonth()
+    && start.getDate() === end.getDate();
+  if (sameDay) {
+    return `${formatDisplayDate(start)} ${formatClockTime(start)} - ${formatClockTime(end)}`;
+  }
+  return `${formatDateTimeLabel(start)} - ${formatDateTimeLabel(end)}`;
+};
 
 const addDays = (date: Date, days: number): Date => {
   const next = new Date(date.getTime());
@@ -290,6 +301,281 @@ const createFieldStub = (fieldId: string, label?: string): Field => ({
   long: 0,
 });
 
+type SlotResourceOption = {
+  value: string;
+  fieldId: string;
+  label: string;
+  field: Field | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalStart?: string | null;
+  rentalEnd?: string | null;
+  rentalTimeZone?: string | null;
+  rentalPriceCents?: number | null;
+  rentalRequiredTemplateIds?: string[];
+  rentalHostRequiredTemplateIds?: string[];
+};
+
+type SlotResourceGroup = {
+  key: string;
+  name: string;
+  location: string;
+  isRental: boolean;
+  options: SlotResourceOption[];
+};
+
+const normalizeResourceText = (value: unknown): string => (
+  typeof value === 'string' ? value.trim() : ''
+);
+
+const getFieldFacility = (field: Field | null): Record<string, unknown> | null => {
+  const facility = field?.facility;
+  return facility && typeof facility === 'object' ? facility as unknown as Record<string, unknown> : null;
+};
+
+const getFieldFacilityName = (field: Field | null): string => {
+  const facility = getFieldFacility(field);
+  return normalizeResourceText(facility?.name)
+    || normalizeResourceText(field?.facilityId)
+    || 'Unassigned resources';
+};
+
+const getFieldFacilityLocation = (field: Field | null): string => {
+  const facility = getFieldFacility(field);
+  return normalizeResourceText(facility?.address)
+    || normalizeResourceText(facility?.location)
+    || '';
+};
+
+const getFieldFacilityKey = (field: Field | null, fallback: string): string => {
+  const facility = getFieldFacility(field);
+  return normalizeResourceText(facility?.id)
+    || normalizeResourceText((facility as { $id?: unknown } | null)?.$id)
+    || normalizeResourceText(field?.facilityId)
+    || `unassigned:${fallback}`;
+};
+
+const isRentalResourceField = (field: Field | null): boolean => {
+  if (!field) return false;
+  const marker = field as Field & {
+    rentalResource?: boolean;
+    _rentalResource?: boolean;
+    rentalBookingId?: string | null;
+    _rentalBookingId?: string | null;
+    rentalBookingItemId?: string | null;
+    _rentalBookingItemId?: string | null;
+  };
+  return Boolean(
+    marker.rentalResource
+    || marker._rentalResource
+    || marker.rentalBookingId
+    || marker._rentalBookingId
+    || marker.rentalBookingItemId
+    || marker._rentalBookingItemId,
+  );
+};
+
+const getFieldRentalMetadata = (field: Field | null): Partial<SlotResourceOption> => {
+  if (!field) return {};
+  const marker = field as Field & {
+    rentalBookingId?: string | null;
+    _rentalBookingId?: string | null;
+    rentalBookingItemId?: string | null;
+    _rentalBookingItemId?: string | null;
+    rentalStart?: string | null;
+    _rentalStart?: string | null;
+    rentalEnd?: string | null;
+    _rentalEnd?: string | null;
+    rentalTimeZone?: string | null;
+    _rentalTimeZone?: string | null;
+    rentalPriceCents?: number | null;
+    _rentalPriceCents?: number | null;
+    rentalRequiredTemplateIds?: string[];
+    _rentalRequiredTemplateIds?: string[];
+    rentalHostRequiredTemplateIds?: string[];
+    _rentalHostRequiredTemplateIds?: string[];
+  };
+  return {
+    rentalBookingId: normalizeResourceText(marker.rentalBookingId) || normalizeResourceText(marker._rentalBookingId) || null,
+    rentalBookingItemId: normalizeResourceText(marker.rentalBookingItemId) || normalizeResourceText(marker._rentalBookingItemId) || null,
+    rentalStart: normalizeResourceText(marker.rentalStart) || normalizeResourceText(marker._rentalStart) || null,
+    rentalEnd: normalizeResourceText(marker.rentalEnd) || normalizeResourceText(marker._rentalEnd) || null,
+    rentalTimeZone: normalizeResourceText(marker.rentalTimeZone) || normalizeResourceText(marker._rentalTimeZone) || null,
+    rentalPriceCents: Number.isFinite(Number(marker.rentalPriceCents ?? marker._rentalPriceCents))
+      ? Number(marker.rentalPriceCents ?? marker._rentalPriceCents)
+      : null,
+    rentalRequiredTemplateIds: Array.isArray(marker.rentalRequiredTemplateIds)
+      ? marker.rentalRequiredTemplateIds
+      : (Array.isArray(marker._rentalRequiredTemplateIds) ? marker._rentalRequiredTemplateIds : []),
+    rentalHostRequiredTemplateIds: Array.isArray(marker.rentalHostRequiredTemplateIds)
+      ? marker.rentalHostRequiredTemplateIds
+      : (Array.isArray(marker._rentalHostRequiredTemplateIds) ? marker._rentalHostRequiredTemplateIds : []),
+  };
+};
+
+const getOptionRentalMetadata = (option: SlotResourceOption): Partial<SlotResourceOption> => {
+  const fieldMetadata = getFieldRentalMetadata(option.field);
+  return {
+    ...fieldMetadata,
+    rentalBookingId: normalizeResourceText(option.rentalBookingId) || fieldMetadata.rentalBookingId || null,
+    rentalBookingItemId: normalizeResourceText(option.rentalBookingItemId) || fieldMetadata.rentalBookingItemId || null,
+    rentalStart: normalizeResourceText(option.rentalStart) || fieldMetadata.rentalStart || null,
+    rentalEnd: normalizeResourceText(option.rentalEnd) || fieldMetadata.rentalEnd || null,
+    rentalTimeZone: normalizeResourceText(option.rentalTimeZone) || fieldMetadata.rentalTimeZone || null,
+    rentalPriceCents: Number.isFinite(Number(option.rentalPriceCents))
+      ? Number(option.rentalPriceCents)
+      : fieldMetadata.rentalPriceCents,
+    rentalRequiredTemplateIds: Array.isArray(option.rentalRequiredTemplateIds) && option.rentalRequiredTemplateIds.length
+      ? option.rentalRequiredTemplateIds
+      : fieldMetadata.rentalRequiredTemplateIds,
+    rentalHostRequiredTemplateIds: Array.isArray(option.rentalHostRequiredTemplateIds) && option.rentalHostRequiredTemplateIds.length
+      ? option.rentalHostRequiredTemplateIds
+      : fieldMetadata.rentalHostRequiredTemplateIds,
+  };
+};
+
+const optionHasRentalLock = (option: SlotResourceOption): boolean => {
+  const metadata = getOptionRentalMetadata(option);
+  return Boolean(metadata.rentalBookingId && metadata.rentalBookingItemId && metadata.rentalStart && metadata.rentalEnd);
+};
+
+const isSlotResourceOptionSelected = (slot: LeagueSlotForm, option: SlotResourceOption): boolean => {
+  const slotFieldIds = normalizeSlotFieldIds(slot);
+  const metadata = getOptionRentalMetadata(option);
+  if (metadata.rentalBookingItemId) {
+    return slot.rentalBookingItemId === metadata.rentalBookingItemId
+      && slotFieldIds.includes(option.fieldId);
+  }
+  return slotFieldIds.includes(option.fieldId);
+};
+
+const getRentalLockUpdates = (option: SlotResourceOption): Partial<LeagueSlotForm> => {
+  const metadata = getOptionRentalMetadata(option);
+  const start = parseLocalDateTime(metadata.rentalStart ?? null);
+  const end = parseLocalDateTime(metadata.rentalEnd ?? null);
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    return {};
+  }
+  const dayOfWeek = ((start.getDay() + 6) % 7) as LeagueSlotForm['dayOfWeek'];
+  return {
+    sourceType: 'RENTAL_BOOKING',
+    rentalBookingId: metadata.rentalBookingId ?? undefined,
+    rentalBookingItemId: metadata.rentalBookingItemId ?? undefined,
+    rentalLocked: true,
+    price: metadata.rentalPriceCents ?? undefined,
+    requiredTemplateIds: metadata.rentalRequiredTemplateIds ?? [],
+    hostRequiredTemplateIds: metadata.rentalHostRequiredTemplateIds ?? [],
+    repeating: false,
+    dayOfWeek,
+    daysOfWeek: [dayOfWeek] as LeagueSlotForm['daysOfWeek'],
+    startDate: formatLocalDateTime(start) || metadata.rentalStart || undefined,
+    endDate: formatLocalDateTime(end) || metadata.rentalEnd || undefined,
+    timeZone: metadata.rentalTimeZone ?? undefined,
+    startTimeMinutes: start.getHours() * 60 + start.getMinutes(),
+    endTimeMinutes: end.getHours() * 60 + end.getMinutes(),
+  };
+};
+
+const RENTAL_SLOT_MISMATCH_ERROR_PREFIX = 'This rental resource is only available for ';
+
+const isRentalSlotMismatchError = (error?: string): boolean =>
+  Boolean(error?.startsWith(RENTAL_SLOT_MISMATCH_ERROR_PREFIX));
+
+const slotHasUserTiming = (slot: LeagueSlotForm): boolean => (
+  slot.repeating !== undefined
+  || typeof slot.dayOfWeek === 'number'
+  || (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length > 0)
+  || typeof slot.startTimeMinutes === 'number'
+  || typeof slot.endTimeMinutes === 'number'
+  || Boolean(parseLocalDateTime(slot.startDate ?? null))
+  || Boolean(parseLocalDateTime(slot.endDate ?? null))
+);
+
+const buildRentalSlotMismatchError = (option: SlotResourceOption): string | null => {
+  const metadata = getOptionRentalMetadata(option);
+  const start = parseLocalDateTime(metadata.rentalStart ?? null);
+  const end = parseLocalDateTime(metadata.rentalEnd ?? null);
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    return null;
+  }
+  return `${RENTAL_SLOT_MISMATCH_ERROR_PREFIX}${formatRentalWindowLabel(start, end)}. Update this timeslot to match the rental before selecting it.`;
+};
+
+const slotMatchesRentalWindow = (slot: LeagueSlotForm, option: SlotResourceOption): boolean => {
+  const rentalUpdates = getRentalLockUpdates(option);
+  const slotStart = parseLocalDateTime(slot.startDate ?? null);
+  const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+  const rentalStart = parseLocalDateTime(rentalUpdates.startDate ?? null);
+  const rentalEnd = parseLocalDateTime(rentalUpdates.endDate ?? null);
+
+  return slot.repeating === false
+    && Boolean(slotStart && rentalStart && slotStart.getTime() === rentalStart.getTime())
+    && Boolean(slotEnd && rentalEnd && slotEnd.getTime() === rentalEnd.getTime())
+    && slot.startTimeMinutes === rentalUpdates.startTimeMinutes
+    && slot.endTimeMinutes === rentalUpdates.endTimeMinutes;
+};
+
+const getRentalSelectionError = (slot: LeagueSlotForm, option: SlotResourceOption): string | null => {
+  if (!slotHasUserTiming(slot) || slotMatchesRentalWindow(slot, option)) {
+    return null;
+  }
+  return buildRentalSlotMismatchError(option);
+};
+
+const clearRentalLockUpdates = (): Partial<LeagueSlotForm> => ({
+  sourceType: undefined,
+  rentalBookingId: undefined,
+  rentalBookingItemId: undefined,
+  rentalLocked: false,
+  price: undefined,
+  requiredTemplateIds: [],
+  hostRequiredTemplateIds: [],
+});
+
+const buildSlotResourceGroups = (
+  options: SlotResourceOption[],
+  search: string,
+): SlotResourceGroup[] => {
+  const query = search.trim().toLowerCase();
+  const byKey = new Map<string, SlotResourceGroup>();
+
+  options.forEach((option) => {
+    const resourceLabel = option.label || getFieldDisplayName(option.field ?? createFieldStub(option.value), option.value);
+    const facilityName = getFieldFacilityName(option.field);
+    const facilityLocation = getFieldFacilityLocation(option.field);
+    const searchable = [
+      resourceLabel,
+      facilityName,
+      facilityLocation,
+    ].join(' ').toLowerCase();
+    if (query && !searchable.includes(query)) {
+      return;
+    }
+    const groupKey = getFieldFacilityKey(option.field, facilityName);
+    if (!byKey.has(groupKey)) {
+      byKey.set(groupKey, {
+        key: groupKey,
+        name: facilityName,
+        location: facilityLocation,
+        isRental: isRentalResourceField(option.field),
+        options: [],
+      });
+    }
+    byKey.get(groupKey)?.options.push({
+      ...option,
+      label: resourceLabel,
+    });
+  });
+
+  return Array.from(byKey.values()).map((group) => ({
+    ...group,
+    options: group.options.sort((left, right) => left.label.localeCompare(right.label, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })),
+  }));
+};
+
 export interface LeagueSlotForm {
   key: string;
   $id?: string;
@@ -303,11 +589,32 @@ export interface LeagueSlotForm {
   timeZone?: string;
   startTimeMinutes?: number;
   endTimeMinutes?: number;
+  price?: number;
+  sourceType?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalLocked?: boolean;
+  requiredTemplateIds?: string[];
+  hostRequiredTemplateIds?: string[];
   repeating?: boolean;
   conflicts: WeeklySlotConflict[];
   checking: boolean;
   error?: string;
 }
+
+export type LeagueFieldOption = {
+  value: string;
+  label: string;
+  fieldId?: string;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalStart?: string | null;
+  rentalEnd?: string | null;
+  rentalTimeZone?: string | null;
+  rentalPriceCents?: number | null;
+  rentalRequiredTemplateIds?: string[];
+  rentalHostRequiredTemplateIds?: string[];
+};
 
 interface LeagueFieldsProps {
   leagueData: LeagueConfig;
@@ -320,13 +627,14 @@ interface LeagueFieldsProps {
   onRemoveSlot: (index: number) => void;
   fields: Field[];
   fieldsLoading: boolean;
-  fieldOptions?: { value: string; label: string }[];
+  fieldOptions?: LeagueFieldOption[];
   divisionOptions?: { value: string; label: string }[];
   eventStartDate?: string;
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
   allowDivisionEditsWhenReadOnly?: boolean;
+  allowResourceEditsWhenReadOnly?: boolean;
   onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
   configurationTitle?: string;
@@ -354,13 +662,14 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockedDivisionKeys = [],
   readOnly = false,
   allowDivisionEditsWhenReadOnly = false,
+  allowResourceEditsWhenReadOnly = false,
   onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
   configurationTitle = 'League Configuration',
   showPlayoffSettings = true,
   showTimeslots = true,
   unstyled = false,
-  emptyFieldsMessage = 'No fields found. Create a field first so you can attach weekly availability.',
+  emptyFieldsMessage = 'No resources found. Create a resource first so you can attach weekly availability.',
 }) => {
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
@@ -368,12 +677,48 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   );
   const requiresSets = Boolean(sport?.usePointsPerSetWin);
 
-  const availableFieldOptions = (fieldOptions && fieldOptions.length > 0)
-    ? fieldOptions
-    : fields.map((field) => ({
-        value: field.$id,
-        label: getFieldDisplayName(field, 'Unnamed field'),
-      }));
+  const availableFieldOptions: SlotResourceOption[] = useMemo(() => {
+    const sourceOptions: LeagueFieldOption[] = (fieldOptions && fieldOptions.length > 0)
+      ? fieldOptions
+      : fields.map((field) => ({
+          value: field.$id,
+          label: getFacilityScopedFieldDisplayName(field, 'Unnamed resource'),
+          fieldId: field.$id,
+        }));
+
+    return sourceOptions
+      .map((option) => {
+        const value = normalizeResourceText(option.value);
+        const fieldId = normalizeResourceText(option.fieldId) || value;
+        if (!value || !fieldId) {
+          return null;
+        }
+        const field = fieldLookup.get(fieldId) ?? null;
+        const rentalMetadata = getOptionRentalMetadata({
+          value,
+          fieldId,
+          label: option.label,
+          field,
+          rentalBookingId: option.rentalBookingId,
+          rentalBookingItemId: option.rentalBookingItemId,
+          rentalStart: option.rentalStart,
+          rentalEnd: option.rentalEnd,
+          rentalTimeZone: option.rentalTimeZone,
+          rentalPriceCents: option.rentalPriceCents,
+          rentalRequiredTemplateIds: option.rentalRequiredTemplateIds,
+          rentalHostRequiredTemplateIds: option.rentalHostRequiredTemplateIds,
+        });
+        return {
+          value,
+          fieldId,
+          label: normalizeResourceText(option.label)
+            || getFacilityScopedFieldDisplayName(field ?? createFieldStub(value), value),
+          field,
+          ...rentalMetadata,
+        };
+      })
+      .filter((option): option is SlotResourceOption => Boolean(option));
+  }, [fieldLookup, fieldOptions, fields]);
 
   const setsPerMatch = leagueData.setsPerMatch ?? 1;
   const pointsToVictory = leagueData.pointsToVictory ?? [];
@@ -391,6 +736,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   }, [eventStartDate]);
   const [fieldSearchBySlot, setFieldSearchBySlot] = useState<Record<string, string>>({});
   const [fieldAnchorBySlot, setFieldAnchorBySlot] = useState<Record<string, string>>({});
+  const [resourceGroupExpandedBySlot, setResourceGroupExpandedBySlot] = useState<Record<string, boolean>>({});
   const fieldItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const syncPoints = (targetLength: number) => {
@@ -440,42 +786,87 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     setFieldSearchBySlot((prev) => ({ ...prev, [slotKey]: value }));
   };
 
+  const toggleResourceGroup = (slotKey: string, groupKey: string) => {
+    const key = `${slotKey}::${groupKey}`;
+    setResourceGroupExpandedBySlot((prev) => ({
+      ...prev,
+      [key]: !(prev[key] ?? true),
+    }));
+  };
+
   const handleFieldToggle = (
     slotIndex: number,
     slot: LeagueSlotForm,
-    fieldOptionsForSlot: Array<{ value: string; label: string }>,
-    fieldId: string,
+    fieldOptionsForSlot: SlotResourceOption[],
+    optionValue: string,
     shiftKey: boolean,
   ) => {
     const current = normalizeSlotFieldIds(slot);
-    const optionIds = fieldOptionsForSlot.map((option) => option.value);
+    const option = fieldOptionsForSlot.find((candidate) => candidate.value === optionValue);
+    if (!option) {
+      return;
+    }
+    const fieldId = option.fieldId;
+    const optionIds = fieldOptionsForSlot.map((candidate) => candidate.value);
     const currentSet = new Set(current);
     let next = [...current];
+    let rentalUpdates: Partial<LeagueSlotForm> = {};
+    const optionSelected = isSlotResourceOptionSelected(slot, option);
+    const slotHasSelectedResources = current.length > 0;
+    const currentRentalFieldId = slot.rentalBookingItemId
+      ? fieldOptionsForSlot.find((candidate) => getOptionRentalMetadata(candidate).rentalBookingItemId === slot.rentalBookingItemId)?.fieldId
+      : null;
 
     if (shiftKey) {
       const anchorId = fieldAnchorBySlot[slot.key];
       const anchorIndex = anchorId ? optionIds.indexOf(anchorId) : -1;
-      const targetIndex = optionIds.indexOf(fieldId);
+      const targetIndex = optionIds.indexOf(optionValue);
       if (anchorIndex >= 0 && targetIndex >= 0) {
         const start = Math.min(anchorIndex, targetIndex);
         const end = Math.max(anchorIndex, targetIndex);
-        const range = optionIds.slice(start, end + 1);
+        const range = fieldOptionsForSlot
+          .slice(start, end + 1)
+          .filter((rangeOption) => !optionHasRentalLock(rangeOption))
+          .map((rangeOption) => rangeOption.fieldId);
         next = Array.from(new Set([...next, ...range]));
-      } else if (currentSet.has(fieldId)) {
+      } else if (optionSelected) {
         next = next.filter((id) => id !== fieldId);
       } else {
         next = [...next, fieldId];
       }
-    } else if (currentSet.has(fieldId)) {
+    } else if (optionSelected) {
       next = next.filter((id) => id !== fieldId);
     } else {
       next = [...next, fieldId];
     }
 
-    setFieldAnchorBySlot((prev) => ({ ...prev, [slot.key]: fieldId }));
+    const metadata = getOptionRentalMetadata(option);
+    if (metadata.rentalBookingItemId) {
+      if (optionSelected) {
+        rentalUpdates = clearRentalLockUpdates();
+      } else {
+        const rentalSelectionError = slotHasSelectedResources ? getRentalSelectionError(slot, option) : null;
+        if (rentalSelectionError) {
+          onUpdateSlot(slotIndex, { error: rentalSelectionError });
+          return;
+        }
+        const currentRentalFieldIds = fieldOptionsForSlot
+          .filter((candidate) => candidate.value !== option.value && getOptionRentalMetadata(candidate).rentalBookingItemId === slot.rentalBookingItemId)
+          .map((candidate) => candidate.fieldId);
+        const retainedFieldIds = next.filter((id) => !currentRentalFieldIds.includes(id));
+        next = Array.from(new Set([...retainedFieldIds, fieldId]));
+        rentalUpdates = getRentalLockUpdates(option);
+      }
+    } else if (slot.rentalLocked && currentRentalFieldId === fieldId && currentSet.has(fieldId) && !next.includes(fieldId)) {
+      rentalUpdates = clearRentalLockUpdates();
+    }
+
+    setFieldAnchorBySlot((prev) => ({ ...prev, [slot.key]: optionValue }));
     onUpdateSlot(slotIndex, {
       scheduledFieldIds: next,
       scheduledFieldId: next[0],
+      ...rentalUpdates,
+      ...(isRentalSlotMismatchError(slot.error) ? { error: undefined } : {}),
     });
   };
 
@@ -486,10 +877,21 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         return;
       }
       const slotFieldIds = normalizeSlotFieldIds(slot);
+      const representedFieldIds = new Set(availableFieldOptions.map((option) => option.fieldId));
       const options = slotFieldIds.length
         ? Array.from(
             new Map(
-              [...availableFieldOptions, ...slotFieldIds.map((value) => ({ value, label: value }))]
+              [
+                ...availableFieldOptions,
+                ...slotFieldIds
+                  .filter((value) => !representedFieldIds.has(value))
+                  .map((value) => ({
+                    value,
+                    fieldId: value,
+                    label: value,
+                    field: fieldLookup.get(value) ?? null,
+                  })),
+              ]
                 .map((option) => [option.value, option]),
             ).values(),
           )
@@ -504,7 +906,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     });
-  }, [availableFieldOptions, fieldSearchBySlot, slots]);
+  }, [availableFieldOptions, fieldLookup, fieldSearchBySlot, slots]);
 
   const content = (
       <Stack gap="lg">
@@ -678,7 +1080,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           {fieldsLoading && (
             <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
               <Loader size="sm" />
-              Loading fields...
+              Loading resources...
             </div>
           )}
 
@@ -698,22 +1100,47 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             {slots.map((slot, index) => {
               const conflictCount = slot.conflicts.length;
               const slotFieldIds = normalizeSlotFieldIds(slot);
+              const rentalFieldIds = new Set(
+                availableFieldOptions
+                  .filter(optionHasRentalLock)
+                  .map((option) => option.fieldId),
+              );
+              const slotRentalBookingItemId = normalizeResourceText(slot.rentalBookingItemId);
+              const rentalBookingItemIdsUsedByOtherSlots = new Set(
+                slots
+                  .filter((_, candidateIndex) => candidateIndex !== index)
+                  .map((candidate) => normalizeResourceText(candidate.rentalBookingItemId))
+                  .filter((bookingItemId): bookingItemId is string => Boolean(bookingItemId)),
+              );
+              const availableOptionsForSlot = availableFieldOptions.filter((option) => {
+                const metadata = getOptionRentalMetadata(option);
+                if (metadata.rentalBookingItemId) {
+                  return metadata.rentalBookingItemId === slotRentalBookingItemId
+                    || !rentalBookingItemIdsUsedByOtherSlots.has(metadata.rentalBookingItemId);
+                }
+                return !rentalFieldIds.has(option.fieldId);
+              });
+              const representedFieldIds = new Set(availableOptionsForSlot.map((option) => option.fieldId));
               const fieldOptionsForSlot = slotFieldIds.length
                 ? Array.from(
                     new Map(
                       [
-                        ...availableFieldOptions,
-                        ...slotFieldIds.map((fieldId) => {
-                          const field = fieldLookup.get(fieldId) ?? null;
-                          return {
-                            value: fieldId,
-                            label: getFieldDisplayName(field ?? { $id: fieldId, name: '' }, fieldId),
-                          };
-                        }),
+                        ...availableOptionsForSlot,
+                        ...slotFieldIds
+                          .filter((fieldId) => !representedFieldIds.has(fieldId) && !rentalFieldIds.has(fieldId))
+                          .map((fieldId) => {
+                            const field = fieldLookup.get(fieldId) ?? null;
+                            return {
+                              value: fieldId,
+                              fieldId,
+                              label: getFacilityScopedFieldDisplayName(field ?? createFieldStub(fieldId), fieldId),
+                              field,
+                            };
+                          }),
                       ].map((option) => [option.value, option]),
                     ).values(),
                   )
-                : availableFieldOptions;
+                : availableOptionsForSlot;
             const fieldSearch = fieldSearchBySlot[slot.key] ?? '';
             const selectedDays = normalizeSlotDays(slot);
             const slotDivisions = normalizeDivisionKeys(slot.divisions);
@@ -771,7 +1198,11 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               slotEndDate.getTime() <= slotStartDate.getTime(),
             );
             const divisionsReadOnly = readOnly && !allowDivisionEditsWhenReadOnly;
+            const resourcesReadOnly = readOnly && !allowResourceEditsWhenReadOnly;
+            const resourceError = isRentalSlotMismatchError(slot.error) ? slot.error : null;
             const hasConflicts = conflictCount > 0;
+            const slotTimingReadOnly = readOnly || slot.rentalLocked === true;
+            const resourceGroups = buildSlotResourceGroups(fieldOptionsForSlot, fieldSearch);
             return (
               <Card
                 key={slot.key}
@@ -783,7 +1214,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               >
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
-                    <Text fw={600}>Timeslot #{index + 1}</Text>
+                    <Group gap="xs">
+                      <Text fw={600}>Timeslot #{index + 1}</Text>
+                      {slot.rentalLocked ? <Badge size="xs" color="green" variant="light">Rental locked</Badge> : null}
+                    </Group>
                     <Group gap="xs">
                       {slot.checking && <Loader size="sm" />}
                       <Button
@@ -799,51 +1233,110 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                     <div className="md:col-span-6">
-                      <Text fw={500} size="sm" mb={6}>Fields</Text>
+                      <Text fw={500} size="sm" mb={6}>Resources</Text>
                       <TextInput
-                        placeholder="Search fields..."
+                        placeholder="Search resources..."
                         value={fieldSearch}
                         onChange={(event) => setSlotSearch(slot.key, event.currentTarget.value)}
-                        disabled={readOnly}
+                        disabled={resourcesReadOnly}
                         maw={360}
                         mb="xs"
                       />
                       <div
-                        className={`max-h-44 overflow-y-auto rounded-md border p-1 ${fieldMissing && !readOnly ? 'border-red-500' : 'border-gray-300'}`}
+                        className={`overflow-hidden rounded-xl border bg-white shadow-sm ${fieldMissing && !resourcesReadOnly ? 'border-red-500' : 'border-gray-300'}`}
                       >
-                        <Stack gap={4}>
-                          {fieldOptionsForSlot.map((option) => {
-                            const selected = slotFieldIds.includes(option.value);
-                            const refKey = `${slot.key}::${option.value}`;
-                            const highlighted = fieldSearch.trim().length > 0
-                              && option.label.toLowerCase().includes(fieldSearch.trim().toLowerCase());
-                            return (
-                              <button
-                                key={option.value}
-                                ref={(node) => {
-                                  fieldItemRefs.current[refKey] = node;
-                                }}
-                                type="button"
-                                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'} ${highlighted ? 'ring-1 ring-blue-300' : ''}`}
-                                onClick={(event) => {
-                                  handleFieldToggle(index, slot, fieldOptionsForSlot, option.value, event.shiftKey);
-                                }}
-                                disabled={readOnly}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{option.label}</span>
-                                  {selected ? <Badge size="xs" color="blue" variant="light">Selected</Badge> : null}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </Stack>
+                        <div className="max-h-44 overflow-y-auto [scrollbar-gutter:stable]">
+                          {resourceGroups.length > 0 ? (
+                            <Stack gap={0}>
+                              {resourceGroups.map((group) => {
+                                const selectedCount = group.options.filter((option) => isSlotResourceOptionSelected(slot, option)).length;
+                                const groupStateKey = `${slot.key}::${group.key}`;
+                                const expanded = fieldSearch.trim().length > 0
+                                  ? true
+                                  : (resourceGroupExpandedBySlot[groupStateKey] ?? true);
+                                return (
+                                  <div key={group.key} className="border-b border-gray-200 bg-white last:border-b-0">
+                                    <button
+                                      type="button"
+                                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                      onClick={() => toggleResourceGroup(slot.key, group.key)}
+                                      disabled={resourcesReadOnly && group.options.length === 0}
+                                    >
+                                      <span className="min-w-0">
+                                        <span className="flex items-center gap-2 font-semibold text-gray-900">
+                                          <span className="truncate">{group.name}</span>
+                                          {group.isRental ? <Badge size="xs" color="green" variant="light">Rented</Badge> : null}
+                                        </span>
+                                        <span className="block truncate text-xs text-gray-500">
+                                          {selectedCount} of {group.options.length} selected{group.location ? ` - ${group.location}` : ''}
+                                        </span>
+                                      </span>
+                                      <ChevronRight
+                                        aria-hidden="true"
+                                        className={`h-5 w-5 shrink-0 text-gray-500 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+                                      />
+                                    </button>
+                                    {expanded ? (
+                                      <Stack gap={0} className="border-t border-gray-100">
+                                        {group.options.map((option) => {
+                                          const selected = isSlotResourceOptionSelected(slot, option);
+                                          const refKey = `${slot.key}::${option.value}`;
+                                          const resourceName = option.label
+                                            || getFieldDisplayName(option.field ?? createFieldStub(option.fieldId, option.label), option.fieldId);
+                                          const highlighted = fieldSearch.trim().length > 0
+                                            && [
+                                              option.label,
+                                              group.name,
+                                              group.location,
+                                            ].join(' ').toLowerCase().includes(fieldSearch.trim().toLowerCase());
+                                          return (
+                                            <button
+                                              key={option.value}
+                                              ref={(node) => {
+                                                fieldItemRefs.current[refKey] = node;
+                                              }}
+                                              type="button"
+                                              className={`w-full px-3 py-2 pl-12 text-left text-sm transition-colors ${selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'} ${highlighted ? 'ring-1 ring-blue-300' : ''}`}
+                                              onClick={(event) => {
+                                                handleFieldToggle(index, slot, fieldOptionsForSlot, option.value, event.shiftKey);
+                                              }}
+                                              disabled={resourcesReadOnly}
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="min-w-0">
+                                                  <span className="block truncate font-medium">{resourceName}</span>
+                                                  {option.field?.location ? (
+                                                    <span className="block truncate text-xs text-gray-500">{option.field.location}</span>
+                                                  ) : null}
+                                                </span>
+                                                {selected ? <Badge size="xs" color="blue" variant="light">Selected</Badge> : null}
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                      </Stack>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </Stack>
+                          ) : (
+                            <Text size="sm" c="dimmed" p="sm">
+                              No resources match this search.
+                            </Text>
+                          )}
+                        </div>
                       </div>
-                      {fieldMissing && !readOnly ? (
-                        <Text size="xs" c="red" mt={4}>Select at least one field</Text>
+                      {fieldMissing && !resourcesReadOnly ? (
+                        <Text size="xs" c="red" mt={4}>Select at least one resource</Text>
+                      ) : null}
+                      {resourceError ? (
+                        <Alert color="red" radius="md" mt="xs">
+                          {resourceError}
+                        </Alert>
                       ) : null}
                       <Text size="xs" c="dimmed" mt={4}>
-                        Tip: Hold Shift and click another field to select a range.
+                        Tip: Hold Shift and click another resource to select a range.
                       </Text>
                     </div>
 
@@ -890,8 +1383,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                                 daysOfWeek: days,
                               });
                             }}
-                            disabled={readOnly}
-                            error={dayMissing && !readOnly ? 'Select at least one day' : undefined}
+                            disabled={slotTimingReadOnly}
+                            error={dayMissing && !slotTimingReadOnly ? 'Select at least one day' : undefined}
                             maw={320}
                           />
 
@@ -905,8 +1398,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                             })}
                             valueFormat="MM/DD/YYYY"
                             minDate={parsedEventStartDate ?? undefined}
-                            clearable
-                            disabled={readOnly}
+                            clearable={!slotTimingReadOnly}
+                            disabled={slotTimingReadOnly}
                             maw={320}
                           />
 
@@ -919,8 +1412,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                               onChange={(value) => onUpdateSlot(index, {
                                 startTimeMinutes: parseTimeValue(value.currentTarget.value),
                               })}
-                              disabled={readOnly}
-                              error={startMissing && !readOnly ? 'Select a start time' : undefined}
+                              disabled={slotTimingReadOnly}
+                              error={startMissing && !slotTimingReadOnly ? 'Select a start time' : undefined}
                               maw={220}
                             />
 
@@ -932,8 +1425,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                               onChange={(value) => onUpdateSlot(index, {
                                 endTimeMinutes: parseTimeValue(value.currentTarget.value),
                               })}
-                              disabled={readOnly}
-                              error={endMissing && !readOnly ? 'Select an end time' : undefined}
+                              disabled={slotTimingReadOnly}
+                              error={endMissing && !slotTimingReadOnly ? 'Select an end time' : undefined}
                               maw={220}
                             />
                           </div>
@@ -950,9 +1443,9 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                             })}
                             minDate={parsedEventStartDate ?? undefined}
                             valueFormat="MM/DD/YYYY hh:mm A"
-                            clearable
-                            disabled={readOnly}
-                            error={explicitStartMissing && !readOnly ? 'Select a start date/time' : undefined}
+                            clearable={!slotTimingReadOnly}
+                            disabled={slotTimingReadOnly}
+                            error={explicitStartMissing && !slotTimingReadOnly ? 'Select a start date/time' : undefined}
                             maw={260}
                           />
                           <DateTimePicker
@@ -965,12 +1458,12 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                             })}
                             minDate={slotStartDate ?? parsedEventStartDate ?? undefined}
                             valueFormat="MM/DD/YYYY hh:mm A"
-                            clearable
-                            disabled={readOnly}
+                            clearable={!slotTimingReadOnly}
+                            disabled={slotTimingReadOnly}
                             error={
-                              explicitEndMissing && !readOnly
+                              explicitEndMissing && !slotTimingReadOnly
                                 ? 'Select an end date/time'
-                                : (explicitRangeInvalid && !readOnly ? 'End date/time must be after start date/time' : undefined)
+                                : (explicitRangeInvalid && !slotTimingReadOnly ? 'End date/time must be after start date/time' : undefined)
                             }
                             maw={260}
                           />
@@ -983,7 +1476,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     label="Repeats weekly"
                     checked={slot.repeating !== false}
                     onChange={(event) => onUpdateSlot(index, { repeating: event.currentTarget.checked })}
-                    disabled={readOnly}
+                    disabled={slotTimingReadOnly}
                   />
 
                 {conflictCount > 0 && (
@@ -1018,7 +1511,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     </Alert>
                   )}
 
-                  {slot.error && (
+                  {slot.error && !resourceError && (
                     <Alert color="red" radius="md">
                       {slot.error}
                     </Alert>

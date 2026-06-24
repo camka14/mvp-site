@@ -25,7 +25,7 @@ const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
   eventTemplates: 'event-templates',
   teams: 'teams',
   users: 'customers',
-  fields: 'fields',
+  fields: 'facilities',
   staff: 'staff',
   finance: 'finance',
   refunds: 'refunds',
@@ -43,6 +43,8 @@ const ORGANIZATION_TAB_ALIASES: Record<string, OrganizationTab> = {
   users: 'users',
   customers: 'users',
   fields: 'fields',
+  facilities: 'fields',
+  resources: 'fields',
   staff: 'staff',
   finance: 'finance',
   refunds: 'refunds',
@@ -131,6 +133,7 @@ type BuildOrganizationTabsParams = {
   canManageProducts?: boolean;
   hasTeams?: boolean;
   hasRentals?: boolean;
+  hasResources?: boolean;
   hasProducts?: boolean;
 };
 
@@ -148,6 +151,7 @@ export const buildOrganizationTabs = ({
   canManageProducts = false,
   hasTeams = false,
   hasRentals = false,
+  hasResources = false,
   hasProducts = false,
 }: BuildOrganizationTabsParams): OrganizationTabOption[] => {
   const tabs: OrganizationTabOption[] = [
@@ -184,8 +188,8 @@ export const buildOrganizationTabs = ({
     tabs.push({ label: 'Public Page', value: 'publicPage' });
   }
 
-  if (isOrganizationRoleMember || canManageFields || hasRentals) {
-    tabs.push({ label: 'Fields', value: 'fields' });
+  if (isOrganizationRoleMember || canManageFields || hasRentals || hasResources) {
+    tabs.push({ label: 'Facilities', value: 'fields' });
   }
 
   if (isOrganizationRoleMember || canManageProducts || hasProducts) {

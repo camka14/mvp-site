@@ -18,10 +18,12 @@ type MockClient = {
   leagueScoringConfigs: { upsert: jest.Mock };
   eventOfficials: { findMany: jest.Mock; deleteMany: jest.Mock; create: jest.Mock };
   fields: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
-  matches: { findMany: jest.Mock; deleteMany: jest.Mock };
+  matches: { findMany: jest.Mock; deleteMany: jest.Mock; update: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
   teams: { upsert: jest.Mock };
   timeSlots: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+  rentalBookingItems: { findMany: jest.Mock; updateMany: jest.Mock };
+  rentalBookings: { updateMany: jest.Mock };
 };
 
 const createMockClient = (): MockClient => ({
@@ -65,6 +67,7 @@ const createMockClient = (): MockClient => ({
   matches: {
     findMany: jest.fn().mockResolvedValue([]),
     deleteMany: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
   },
   divisions: {
     findMany: jest.fn().mockResolvedValue([]),
@@ -78,6 +81,13 @@ const createMockClient = (): MockClient => ({
     findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
     deleteMany: jest.fn().mockResolvedValue(undefined),
+  },
+  rentalBookingItems: {
+    findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  },
+  rentalBookings: {
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
   },
 });
 
@@ -279,6 +289,120 @@ describe('upsertEventFromPayload', () => {
     expect(persistedSlot.timeZone).toBe('America/Los_Angeles');
     expect(persistedSlot.startDate).toEqual(new Date('2026-05-01T16:00:00.000Z'));
     expect(persistedSlot.endDate).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+  });
+
+  it('reserves the exact rental booking item for a rental-backed timeslot', async () => {
+    const client = createMockClient();
+    client.rentalBookingItems.findMany.mockResolvedValueOnce([
+      {
+        id: 'booking_item_1',
+        bookingId: 'booking_1',
+        fieldId: 'field_1',
+        start: new Date('2026-05-01T16:00:00.000Z'),
+        end: new Date('2026-05-01T18:00:00.000Z'),
+        status: 'CONFIRMED',
+        eventId: null,
+        eventTimeSlotId: null,
+      },
+    ]);
+    client.rentalBookingItems.updateMany.mockResolvedValueOnce({ count: 1 });
+    client.rentalBookings.updateMany.mockResolvedValueOnce({ count: 1 });
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T16:00:00.000Z',
+      end: '2026-05-01T18:00:00.000Z',
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          $id: 'slot_rental_1',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 16 * 60,
+          endTimeMinutes: 18 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          startDate: '2026-05-01T16:00:00.000Z',
+          endDate: '2026-05-01T18:00:00.000Z',
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.rentalBookingItems.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['booking_item_1'] } },
+    }));
+    expect(client.rentalBookingItems.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'booking_item_1',
+      }),
+      data: expect.objectContaining({
+        eventId: 'event_1',
+        eventTimeSlotId: 'slot_rental_1',
+      }),
+    }));
+    expect(client.rentalBookings.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'booking_1' }),
+      data: expect.objectContaining({ eventId: 'event_1' }),
+    }));
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a rental booking item already attached to another event', async () => {
+    const client = createMockClient();
+    client.rentalBookingItems.findMany.mockResolvedValueOnce([
+      {
+        id: 'booking_item_1',
+        bookingId: 'booking_1',
+        fieldId: 'field_1',
+        start: new Date('2026-05-01T16:00:00.000Z'),
+        end: new Date('2026-05-01T18:00:00.000Z'),
+        status: 'CONFIRMED',
+        eventId: 'other_event',
+        eventTimeSlotId: 'other_slot',
+      },
+    ]);
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T16:00:00.000Z',
+      end: '2026-05-01T18:00:00.000Z',
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          $id: 'slot_rental_1',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 16 * 60,
+          endTimeMinutes: 18 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          startDate: '2026-05-01T16:00:00.000Z',
+          endDate: '2026-05-01T18:00:00.000Z',
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'booking_item_1',
+          rentalLocked: true,
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'This rental reservation is already attached to another event.',
+    );
+    expect(client.rentalBookingItems.updateMany).not.toHaveBeenCalled();
+    expect(client.timeSlots.upsert).not.toHaveBeenCalled();
   });
 
   it('persists multi-day slot payloads as one canonical row', async () => {
@@ -1704,6 +1828,194 @@ describe('upsertEventFromPayload', () => {
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
       }),
+    });
+  });
+
+  it('persists event official rows when eventOfficials are supplied and legacy official ids are empty', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+      ],
+      officialIds: [],
+      eventOfficials: [
+        {
+          id: 'event_official_host_1',
+          userId: 'host_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event_1' },
+    });
+    expect(client.eventOfficials.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'event_official_host_1',
+        eventId: 'event_1',
+        userId: 'host_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('persists event official rows when eventOfficials are supplied and legacy official ids are omitted', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_host_1',
+          userId: 'host_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event_1' },
+    });
+    expect(client.eventOfficials.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'event_official_host_1',
+        eventId: 'event_1',
+        userId: 'host_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('clears removed event official assignments from persisted matches', async () => {
+    const client = createMockClient();
+    client.matches.findMany.mockImplementation((args: any) => {
+      if (args?.select?.officialIds) {
+        return Promise.resolve([
+          {
+            id: 'match_1',
+            officialId: 'removed_official',
+            officialCheckedIn: true,
+            officialIds: [
+              {
+                positionId: 'event_pos_r1',
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: 'removed_official',
+                eventOfficialId: 'event_official_removed',
+                checkedIn: true,
+              },
+              {
+                positionId: 'event_pos_r2',
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: 'kept_official',
+                eventOfficialId: 'event_official_kept',
+                checkedIn: false,
+              },
+              {
+                positionId: 'event_pos_line',
+                slotIndex: 0,
+                holderType: 'PLAYER',
+                teamId: 'team_1',
+                checkedIn: true,
+              },
+            ],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+        {
+          id: 'event_pos_r2',
+          name: 'R2',
+          count: 1,
+          order: 1,
+        },
+        {
+          id: 'event_pos_line',
+          name: 'Line Judge',
+          count: 1,
+          order: 2,
+        },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_kept',
+          userId: 'kept_official',
+          positionIds: ['event_pos_r2'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.matches.update).toHaveBeenCalledWith({
+      where: { id: 'match_1' },
+      data: {
+        officialIds: [
+          {
+            positionId: 'event_pos_r2',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'kept_official',
+            eventOfficialId: 'event_official_kept',
+            checkedIn: false,
+          },
+          {
+            positionId: 'event_pos_line',
+            slotIndex: 0,
+            holderType: 'PLAYER',
+            teamId: 'team_1',
+            checkedIn: true,
+          },
+        ],
+        officialId: 'kept_official',
+        officialCheckedIn: false,
+      },
     });
   });
 

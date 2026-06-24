@@ -40,12 +40,14 @@ describe('CreateFieldModal', () => {
       />,
     );
 
+    expect(await screen.findByRole('heading', { name: 'Create Resource' })).toBeInTheDocument();
+
     const nameInput = await screen.findByLabelText(/Name/i);
     await user.type(nameInput, 'Court B');
 
     expect((nameInput as HTMLInputElement).value).toBe('Court B');
 
-    const locationInput = await screen.findByLabelText(/Location \(optional\)/i);
+    const locationInput = await screen.findByLabelText(/Location \(optional, defaults to Facility location\)/i);
     await user.type(locationInput, 'Downtown');
 
     expect((locationInput as HTMLInputElement).value).toBe('Downtown');

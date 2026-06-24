@@ -561,6 +561,10 @@ export interface TimeSlot {
   taxHandling?: RentalTaxHandling;
   requiredTemplateIds?: string[];
   hostRequiredTemplateIds?: string[];
+  sourceType?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalLocked?: boolean;
   event?: Event;
   eventId?: string;
   field?: Field;
@@ -676,6 +680,40 @@ export interface SensitiveUserData {
   $updatedAt?: string;
 }
 
+export interface FacilityOperatingInterval {
+  openMinutes: number;
+  closeMinutes: number;
+}
+
+export interface FacilityOperatingDay {
+  dayOfWeek: number;
+  closed: boolean;
+  intervals: FacilityOperatingInterval[];
+}
+
+export interface FacilityOperatingHours {
+  version: 1;
+  weekly: FacilityOperatingDay[];
+}
+
+export interface Facility {
+  $id: string;
+  organizationId: string;
+  name: string;
+  location: string;
+  address?: string | null;
+  coordinates?: [number, number] | Record<string, unknown> | null;
+  operatingHours?: FacilityOperatingHours | null;
+  timeZone?: string;
+  status?: string;
+  isDefault?: boolean;
+  sortOrder?: number | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+  $createdAt?: string | null;
+  $updatedAt?: string | null;
+}
+
 // Updated Field interface
 export interface Field {
   $id: string;
@@ -689,6 +727,7 @@ export interface Field {
   $updatedAt?: string | null;
   heading?: number;
   inUse?: boolean;
+  facilityId?: string | null;
   rentalSlotIds?: string[];
 
   // Relationships
@@ -696,18 +735,20 @@ export interface Field {
   matches?: Match[];
   events?: Event[];
   organization?: Organization;
+  facility?: Facility | string | null;
   rentalSlots?: TimeSlot[];
 }
 
 export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
 
-type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
+type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'facility' | 'rentalSlots' | 'rentalSlotIds';
 
 export type FieldPayload = Omit<Field, FieldRelationKeys> & {
   divisions?: string[];
   matchIds?: string[];
   eventIds?: string[];
   organizationId?: string;
+  facilityId?: string | null;
   rentalSlotIds?: string[];
 };
 
@@ -808,6 +849,10 @@ export interface Event {
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
   parentEvent?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
   organization?: Organization | string;
   requiredTemplateIds?: string[];
   divisionFieldIds?: Record<string, string[]>;
@@ -935,6 +980,7 @@ export interface Organization {
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
+  facilities?: Facility[];
   officials?: UserData[];
   hosts?: UserData[];
   owner?: UserData;
@@ -2051,12 +2097,19 @@ export interface BillLineItem {
   quantity?: number;
 }
 
+export type BillOwnerType = 'USER' | 'TEAM' | 'ORGANIZATION';
+export type BillSourceType = 'EVENT' | 'RENTAL_BOOKING' | 'PRODUCT' | 'TEAM_REGISTRATION' | 'BILL' | string;
+
 export interface Bill {
   $id: string;
-  ownerType: 'USER' | 'TEAM';
+  ownerType: BillOwnerType;
   ownerId: string;
   organizationId?: string | null;
   eventId?: string | null;
+  slotId?: string | null;
+  occurrenceDate?: string | null;
+  sourceType?: BillSourceType | null;
+  sourceId?: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
   nextPaymentDue?: string | null;

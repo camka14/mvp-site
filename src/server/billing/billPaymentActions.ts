@@ -11,10 +11,12 @@ import {
 
 type BillActionRow = {
   id: string;
-  ownerType: 'USER' | 'TEAM';
+  ownerType: 'USER' | 'TEAM' | 'ORGANIZATION';
   ownerId: string;
   organizationId: string | null;
   eventId: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
   totalAmountCents: number;
   status: 'OPEN' | 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED' | null;
   paymentPlanEnabled: boolean | null;
@@ -87,6 +89,8 @@ export const loadBillForAction = async (billId: string) => (
       ownerId: true,
       organizationId: true,
       eventId: true,
+      sourceType: true,
+      sourceId: true,
       totalAmountCents: true,
       status: true,
       paymentPlanEnabled: true,
@@ -105,6 +109,8 @@ export const loadBillPaymentForAction = async (billId: string, billPaymentId: st
         ownerId: true,
         organizationId: true,
         eventId: true,
+        sourceType: true,
+        sourceId: true,
         totalAmountCents: true,
         status: true,
         paymentPlanEnabled: true,
@@ -160,6 +166,16 @@ export const canManageBillPayment = async (
     }
   }
 
+  if (bill.ownerType === 'ORGANIZATION') {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: bill.ownerId },
+      select: { id: true, ownerId: true },
+    });
+    if (organization && await canManageOrganization(session, organization)) {
+      return true;
+    }
+  }
+
   if (bill.eventId) {
     const event = await prisma.events.findUnique({
       where: { id: bill.eventId },
@@ -205,6 +221,16 @@ export const canAdministerBillPayment = async (
       },
     });
     if (event && await canManageEvent(session, event)) {
+      return true;
+    }
+  }
+
+  if (bill.ownerType === 'ORGANIZATION') {
+    const ownerOrganization = await prisma.organizations.findUnique({
+      where: { id: bill.ownerId },
+      select: { id: true, ownerId: true },
+    });
+    if (ownerOrganization && await canManageOrganization(session, ownerOrganization)) {
       return true;
     }
   }

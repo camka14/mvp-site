@@ -4,6 +4,7 @@ import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
+import { facilityService } from './facilityService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 
@@ -11,11 +12,12 @@ import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 export interface CreateFieldData {
   $id?: string;
   name: string;
-  location?: string;
+  location?: string | null;
   lat?: number;
   long?: number;
   heading?: number;
   inUse?: boolean;
+  facilityId?: string | null;
   organization?: Organization;
   eventId?: string;
 }
@@ -23,11 +25,12 @@ export interface CreateFieldData {
 export interface UpdateFieldData {
   $id: string;
   name?: string;
-  location?: string;
+  location?: string | null;
   lat?: number;
   long?: number;
   heading?: number;
   inUse?: boolean;
+  facilityId?: string | null;
 }
 
 export interface ManageRentalSlotResult {
@@ -51,6 +54,7 @@ class FieldService {
       long: data.long,
       heading: data.heading,
       inUse: data.inUse,
+      facilityId: data.facilityId,
       organizationId: data.organization?.$id
     };
 
@@ -61,6 +65,7 @@ class FieldService {
 
     const field = this.mapRowToField(response);
     await this.hydrateFieldRentalSlots([field]);
+    await this.hydrateFieldFacilities([field]);
     return field;
   }
 
@@ -76,6 +81,7 @@ class FieldService {
       ...(data.long !== undefined ? { long: data.long } : {}),
       ...(data.heading !== undefined ? { heading: data.heading } : {}),
       ...(data.inUse !== undefined ? { inUse: data.inUse } : {}),
+      ...(data.facilityId !== undefined ? { facilityId: data.facilityId } : {}),
     };
 
     const response = await apiRequest<any>(`/api/fields/${data.$id}`, {
@@ -85,6 +91,7 @@ class FieldService {
 
     const field = this.mapRowToField(response);
     await this.hydrateFieldRentalSlots([field]);
+    await this.hydrateFieldFacilities([field]);
     return field;
   }
 
@@ -118,6 +125,7 @@ class FieldService {
 
     const fields = rows.map((row: any) => this.mapRowToField(row));
     await this.hydrateFieldRentalSlots(fields);
+    await this.hydrateFieldFacilities(fields);
 
     if (range?.start) {
       return Promise.all(fields.map((field) => this.getFieldEventsMatches(field, range, options)));
@@ -176,6 +184,8 @@ class FieldService {
       inUse: inUse,
       divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
       organization: row.organization ?? row.organizationId ?? undefined,
+      facilityId: typeof row.facilityId === 'string' ? row.facilityId : null,
+      facility: row.facility ?? row.facilityId ?? null,
       rentalSlotIds,
       rentalSlots: [],
     } as Field;
@@ -319,6 +329,39 @@ class FieldService {
     });
   }
 
+  private async hydrateFieldFacilities(fields: Field[]): Promise<void> {
+    if (!fields.length) {
+      return;
+    }
+
+    const facilityIds = Array.from(
+      new Set(
+        fields
+          .map((field) => field.facilityId)
+          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+      ),
+    );
+    if (!facilityIds.length) {
+      return;
+    }
+
+    try {
+      const facilities = await facilityService.getFacilitiesByIds(facilityIds);
+      const facilityMap = new Map(facilities.map((facility) => [facility.$id, facility]));
+      fields.forEach((field) => {
+        if (!field.facilityId) {
+          return;
+        }
+        const facility = facilityMap.get(field.facilityId);
+        if (facility) {
+          field.facility = facility;
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to hydrate field facilities:', error);
+    }
+  }
+
   private async fetchTimeSlotsByIds(ids: string[]): Promise<TimeSlot[]> {
     const unique = Array.from(new Set(ids.filter(Boolean)));
     if (!unique.length) {
@@ -411,6 +454,7 @@ class FieldService {
 
     const updatedField = this.mapRowToField(fieldRow);
     await this.hydrateFieldRentalSlots([updatedField]);
+    await this.hydrateFieldFacilities([updatedField]);
 
     const createdSlot = this.mapRowToTimeSlot(slotResponse);
 
@@ -440,6 +484,7 @@ class FieldService {
 
     const updatedField = this.mapRowToField(fieldRow);
     await this.hydrateFieldRentalSlots([updatedField]);
+    await this.hydrateFieldFacilities([updatedField]);
 
     const updatedSlot = (updatedField.rentalSlots || []).find((slot) => slot?.$id === slotId);
     if (!updatedSlot) {
@@ -473,6 +518,7 @@ class FieldService {
     const fieldRow = await apiRequest<any>(`/api/fields/${field.$id}`);
     const updatedField = this.mapRowToField(fieldRow);
     await this.hydrateFieldRentalSlots([updatedField]);
+    await this.hydrateFieldFacilities([updatedField]);
 
     return updatedField;
   }

@@ -29,6 +29,7 @@ const authServerMock = {
 const sendAdminAccountCreatedNotificationMock = jest.fn();
 const authTotpMfaMock = {
   createWebLoginMfaChallenge: jest.fn(),
+  isLocalAuthMfaBypassEnabled: jest.fn(),
   isTotpMfaError: jest.fn(),
   readTotpMfaRequestMetadata: jest.fn(),
 };
@@ -40,6 +41,7 @@ jest.mock('@/server/adminNotifications', () => ({
 }));
 jest.mock('@/server/authTotpMfa', () => ({
   createWebLoginMfaChallenge: (...args: any[]) => authTotpMfaMock.createWebLoginMfaChallenge(...args),
+  isLocalAuthMfaBypassEnabled: (...args: any[]) => authTotpMfaMock.isLocalAuthMfaBypassEnabled(...args),
   isTotpMfaError: (...args: any[]) => authTotpMfaMock.isTotpMfaError(...args),
   readTotpMfaRequestMetadata: (...args: any[]) => authTotpMfaMock.readTotpMfaRequestMetadata(...args),
 }));
@@ -71,6 +73,7 @@ describe('google oauth routes', () => {
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
     sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
+    authTotpMfaMock.isLocalAuthMfaBypassEnabled.mockReturnValue(false);
     authTotpMfaMock.isTotpMfaError.mockReturnValue(false);
     authTotpMfaMock.readTotpMfaRequestMetadata.mockReturnValue({ ipHash: 'ip_hash', userAgent: 'jest' });
     authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValue(null);

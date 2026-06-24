@@ -13,6 +13,7 @@ import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
   isLeaguePlayoffTeamCountValidationError,
+  isRentalBookingReservationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -75,7 +76,6 @@ const EVENT_CREATE_FORBIDDEN_EVENT_KEYS = new Set<string>([
 
 const EVENT_CREATE_ID_LIST_FIELDS = [
   'assistantHostIds',
-  'officialIds',
   'fieldIds',
   'teamIds',
   'userIds',
@@ -1064,6 +1064,9 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 },
       );
+    }
+    if (isRentalBookingReservationError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

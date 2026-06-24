@@ -36,6 +36,20 @@ export const getAuthSecret = (): string => {
   return secret;
 };
 
+const readBooleanEnvFlag = (value: string | undefined): boolean | null => {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return null;
+};
+
+export const shouldUseSecureAuthCookie = (): boolean => {
+  const explicit = readBooleanEnvFlag(process.env.AUTH_COOKIE_SECURE);
+  if (explicit !== null) return explicit;
+  return process.env.NODE_ENV === 'production';
+};
+
 export const hashPassword = async (plain: string): Promise<string> => {
   const salt = randomBytes(16);
   const derived = (await scrypt(plain, salt, 64)) as Buffer;
@@ -104,7 +118,7 @@ export const setAuthCookie = (res: Response | import('next/server').NextResponse
     anyRes.cookies.set(AUTH_COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: shouldUseSecureAuthCookie(),
       path: '/',
       maxAge: token ? SESSION_COOKIE_MAX_AGE_SECONDS : 0,
     });

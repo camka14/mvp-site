@@ -7,15 +7,30 @@ import {
 } from '../organizationTabs';
 
 describe('buildOrganizationTabs', () => {
-  it('hides empty teams, rentals, and store tabs for non-members', () => {
+  it('hides empty teams, facilities, and store tabs for non-members', () => {
     expect(buildOrganizationTabs({
       isOrganizationRoleMember: false,
       hasTeams: false,
       hasRentals: false,
+      hasResources: false,
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
       { label: 'Events', value: 'events' },
+    ]);
+  });
+
+  it('shows facilities for public organizations with resources even when rentals are not configured', () => {
+    expect(buildOrganizationTabs({
+      isOrganizationRoleMember: false,
+      hasTeams: false,
+      hasRentals: false,
+      hasResources: true,
+      hasProducts: false,
+    })).toEqual([
+      { label: 'Overview', value: 'overview' },
+      { label: 'Events', value: 'events' },
+      { label: 'Facilities', value: 'fields' },
     ]);
   });
 
@@ -29,7 +44,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Overview', value: 'overview' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
-      { label: 'Fields', value: 'fields' },
+      { label: 'Facilities', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);
   });
@@ -53,7 +68,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Finance', value: 'finance' },
       { label: 'Refunds', value: 'refunds' },
       { label: 'Public Page', value: 'publicPage' },
-      { label: 'Fields', value: 'fields' },
+      { label: 'Facilities', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);
   });
@@ -72,7 +87,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Staff', value: 'staff' },
-      { label: 'Fields', value: 'fields' },
+      { label: 'Facilities', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);
   });
@@ -89,7 +104,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Finance', value: 'finance' },
-      { label: 'Fields', value: 'fields' },
+      { label: 'Facilities', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);
   });
@@ -98,9 +113,12 @@ describe('buildOrganizationTabs', () => {
     expect(buildOrganizationTabPath('org_1', 'overview')).toBe('/organizations/org_1');
     expect(buildOrganizationTabPath('org_1', 'finance')).toBe('/organizations/org_1/finance');
     expect(buildOrganizationTabPath('org_1', 'users')).toBe('/organizations/org_1/customers');
+    expect(buildOrganizationTabPath('org_1', 'fields')).toBe('/organizations/org_1/facilities');
     expect(buildOrganizationTabPath('org_1', 'publicPage')).toBe('/organizations/org_1/public-page');
     expect(organizationTabFromPathSegment('customers')).toBe('users');
     expect(organizationTabFromPathSegment('event-templates')).toBe('eventTemplates');
+    expect(organizationTabFromPathSegment('facilities')).toBe('fields');
+    expect(organizationTabFromPathSegment('fields')).toBe('fields');
     expect(organizationTabFromPathSegment('unknown')).toBeNull();
   });
 
@@ -118,6 +136,14 @@ describe('buildOrganizationTabs', () => {
       pathname: '/organizations/org_1/finance',
       organizationId: 'org_1',
     })).toBe('finance');
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1/facilities',
+      organizationId: 'org_1',
+    })).toBe('fields');
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1/fields',
+      organizationId: 'org_1',
+    })).toBe('fields');
     expect(resolveOrganizationRouteTab({
       pathname: '/organizations/org_1/customers/users/user_1',
       organizationId: 'org_1',

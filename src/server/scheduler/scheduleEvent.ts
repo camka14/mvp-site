@@ -775,14 +775,14 @@ const describeScheduleFailure = (event: League, placeholderCount?: number): stri
   }
 
   const weeklyCapacityLine = hasRecurringSlots
-    ? `Approximate weekly capacity: ${weeklyMatchesCapacity} matches (~${weeklyHoursAvailable.toFixed(1)} hours/week).`
-    : 'Approximate weekly capacity: 0 matches (explicit non-repeating windows only).';
+    ? `Approximate capacity from weekly repeating timeslots: ${weeklyMatchesCapacity} matches/week (~${weeklyHoursAvailable.toFixed(1)} hours/week).`
+    : 'Approximate capacity from weekly repeating timeslots: 0 matches/week because no weekly repeating timeslots are configured; only explicit one-time windows are available.';
 
   return [
     'Unable to schedule league with the provided time slots.',
     `Approximate matches needed: ${totalMatches}.`,
     weeklyCapacityLine,
-    `Approximate total capacity in schedule window: ${totalMatchesCapacity} matches (~${totalHoursAvailable.toFixed(1)} hours).`,
+    `Approximate total capacity across the event schedule window: ${totalMatchesCapacity} matches (~${totalHoursAvailable.toFixed(1)} hours).`,
     'Add more slot availability, extend slot windows, or reduce games per opponent/playoff teams to create a schedule.',
   ].join(' ');
 };

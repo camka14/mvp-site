@@ -2,6 +2,8 @@ import type { Field } from '@/types';
 
 type FieldIdentity = Partial<Pick<Field, '$id' | 'name' | '$createdAt' | 'createdAt'>> & {
   id?: string | null;
+  location?: string | null;
+  facility?: Pick<NonNullable<Exclude<Field['facility'], string>>, 'name' | 'location' | 'address'> | string | null;
 };
 
 const normalizeText = (value: unknown): string => (
@@ -45,6 +47,61 @@ export const getFieldDisplayName = (
   }
 
   return getFieldId(field) ?? fallback;
+};
+
+const getFieldFacilityDisplayName = (field?: FieldIdentity | null): string => {
+  const facility = field?.facility;
+  if (typeof facility === 'string') {
+    return normalizeText(facility);
+  }
+  return normalizeText(facility?.name);
+};
+
+export const getFieldResolvedLocation = (
+  field?: FieldIdentity | null,
+  fallback?: string | null,
+): string => {
+  const fieldLocation = normalizeText(field?.location);
+  if (fieldLocation) {
+    return fieldLocation;
+  }
+
+  const facility = field?.facility;
+  if (facility && typeof facility === 'object') {
+    const facilityLocation = normalizeText(facility.location);
+    if (facilityLocation) {
+      return facilityLocation;
+    }
+
+    const facilityAddress = normalizeText(facility.address);
+    if (facilityAddress) {
+      return facilityAddress;
+    }
+  }
+
+  return normalizeText(fallback);
+};
+
+export const getFacilityScopedFieldDisplayName = (
+  field?: FieldIdentity | null,
+  fallback = 'Field',
+): string => {
+  const fieldName = getFieldDisplayName(field, fallback);
+  const facilityName = getFieldFacilityDisplayName(field);
+  if (!facilityName) {
+    return fieldName;
+  }
+
+  const normalizedFieldName = fieldName.toLocaleLowerCase();
+  const normalizedFacilityName = facilityName.toLocaleLowerCase();
+  if (
+    normalizedFieldName === normalizedFacilityName
+    || normalizedFieldName.startsWith(`${normalizedFacilityName} - `)
+  ) {
+    return fieldName;
+  }
+
+  return `${facilityName} - ${fieldName}`;
 };
 
 export const compareFieldsByCreatedAt = <T extends FieldIdentity>(left: T, right: T): number => {

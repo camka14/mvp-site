@@ -209,6 +209,59 @@ describe('official staffing modes', () => {
     expect(overlappingAssignments(scheduled)).toHaveLength(0);
   });
 
+  it('SCHEDULE does not default omitted team officiating to on', () => {
+    const division = buildDivision();
+    const fields = {
+      field_1: buildField('field_1', 1, division),
+      field_2: buildField('field_2', 2, division),
+    };
+    const official = new UserData({
+      id: 'official_1',
+      divisions: [division],
+      matches: [],
+    });
+    const tournament = new Tournament({
+      id: 'tournament_schedule_omitted_team_officiating',
+      name: 'Tournament Schedule Omitted Team Officiating',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 13, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: buildTeams(4, division),
+      divisions: [division],
+      fields,
+      officials: [official],
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        { id: 'referee', name: 'Referee', count: 1, order: 0 },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: official.id,
+          positionIds: ['referee'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+    });
+
+    expect(tournament.doTeamsOfficiate).toBe(false);
+
+    const scheduled = scheduleEvent({ event: tournament }, context).event as Tournament;
+    const firstRoundMatches = Object.values(scheduled.matches).filter((match) => match.winnerNextMatch);
+    const distinctStartTimes = new Set(firstRoundMatches.map((match) => match.start.getTime()));
+
+    expect(firstRoundMatches).toHaveLength(2);
+    expect(distinctStartTimes.size).toBe(1);
+    expect(firstRoundMatches.every((match) => !match.teamOfficial)).toBe(true);
+  });
+
   it('OFF assigns overlapping officials and marks conflicts', () => {
     const tournament = buildTournament('OFF');
 

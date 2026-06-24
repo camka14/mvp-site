@@ -1,4 +1,4 @@
-import { applyPersistentAutoLock, shouldAutoLockMatch } from '../updateMatch';
+import { applyMatchUpdates, applyPersistentAutoLock, shouldAutoLockMatch } from '../updateMatch';
 
 type MatchShape = {
   locked: boolean;
@@ -59,5 +59,61 @@ describe('automatic persistent match locking', () => {
 
     expect(changed).toBe(false);
     expect(match.locked).toBe(false);
+  });
+});
+
+describe('match official check-in updates', () => {
+  it('keeps explicit team-official check-in when empty user-official assignments are synced', () => {
+    const match = {
+      id: 'match_1',
+      official: null,
+      officialAssignments: [],
+      officialCheckedIn: false,
+    };
+    const event = {
+      officials: [],
+      teams: {},
+      fields: {},
+      matches: { match_1: match },
+    };
+
+    applyMatchUpdates(event as any, match as any, {
+      officialCheckedIn: true,
+      officialAssignments: [],
+    });
+
+    expect(match.officialAssignments).toEqual([]);
+    expect(match.officialCheckedIn).toBe(true);
+  });
+
+  it('derives check-in from non-empty user-official assignments', () => {
+    const match = {
+      id: 'match_1',
+      official: null,
+      officialAssignments: [],
+      officialCheckedIn: true,
+    };
+    const official = { id: 'official_1', matches: [] };
+    const event = {
+      officials: [official],
+      teams: {},
+      fields: {},
+      matches: { match_1: match },
+    };
+
+    applyMatchUpdates(event as any, match as any, {
+      officialCheckedIn: true,
+      officialAssignments: [{
+        positionId: 'referee',
+        slotIndex: 0,
+        holderType: 'OFFICIAL',
+        userId: 'official_1',
+        checkedIn: false,
+        hasConflict: false,
+      }],
+    });
+
+    expect(match.official).toBe(official);
+    expect(match.officialCheckedIn).toBe(false);
   });
 });

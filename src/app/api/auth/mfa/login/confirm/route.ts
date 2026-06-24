@@ -5,7 +5,12 @@ import { setAuthCookie } from '@/lib/authServer';
 import { prisma } from '@/lib/prisma';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { buildAuthSessionPayload } from '@/server/authSessionPayload';
-import { confirmTotpMfaChallenge, isTotpMfaError } from '@/server/authTotpMfa';
+import {
+  confirmTotpMfaChallenge,
+  confirmTotpMfaChallengeForLocalBypass,
+  isLocalAuthMfaBypassEnabled,
+  isTotpMfaError,
+} from '@/server/authTotpMfa';
 import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 const schema = z.object({
@@ -33,11 +38,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const confirmed = await confirmTotpMfaChallenge({
-      challengeId: parsed.data.challengeId,
-      code: parsed.data.code,
-      purpose: AuthMfaChallengePurpose.LOGIN,
-    });
+    const confirmed = isLocalAuthMfaBypassEnabled(req)
+      ? await confirmTotpMfaChallengeForLocalBypass({
+        challengeId: parsed.data.challengeId,
+        purpose: AuthMfaChallengePurpose.LOGIN,
+      })
+      : await confirmTotpMfaChallenge({
+        challengeId: parsed.data.challengeId,
+        code: parsed.data.code,
+        purpose: AuthMfaChallengePurpose.LOGIN,
+      });
     const authUser = await prisma.authUser.findUnique({ where: { id: confirmed.userId } });
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

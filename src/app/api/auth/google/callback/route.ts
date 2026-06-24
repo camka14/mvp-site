@@ -13,6 +13,7 @@ import { reserveGeneratedUserName } from '@/server/userNames';
 import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
 import {
   createWebLoginMfaChallenge,
+  isLocalAuthMfaBypassEnabled,
   isTotpMfaError,
   readTotpMfaRequestMetadata,
 } from '@/server/authTotpMfa';
@@ -293,23 +294,25 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  let challenge: Awaited<ReturnType<typeof createWebLoginMfaChallenge>>;
-  try {
-    challenge = await createWebLoginMfaChallenge({
-      userId: authUser.id,
-      sessionVersion: authUser.sessionVersion ?? 0,
-      metadata: readTotpMfaRequestMetadata(req),
-    });
-  } catch (error) {
-    if (isTotpMfaError(error)) {
-      const res = NextResponse.redirect(
-        new URL(`/login?oauth=google&error=${encodeURIComponent(error.code)}`, origin),
-        { status: 302 },
-      );
-      clearOauthCookies(res);
-      return res;
+  let challenge: Awaited<ReturnType<typeof createWebLoginMfaChallenge>> = null;
+  if (!isLocalAuthMfaBypassEnabled(req)) {
+    try {
+      challenge = await createWebLoginMfaChallenge({
+        userId: authUser.id,
+        sessionVersion: authUser.sessionVersion ?? 0,
+        metadata: readTotpMfaRequestMetadata(req),
+      });
+    } catch (error) {
+      if (isTotpMfaError(error)) {
+        const res = NextResponse.redirect(
+          new URL(`/login?oauth=google&error=${encodeURIComponent(error.code)}`, origin),
+          { status: 302 },
+        );
+        clearOauthCookies(res);
+        return res;
+      }
+      throw error;
     }
-    throw error;
   }
 
   const destinationUrl = new URL('/login', origin);

@@ -13,6 +13,7 @@ interface MatchCardProps {
     canManage?: boolean;
     className?: string;
     highlightCurrentUser?: boolean;
+    matchHighlight?: 'participant' | 'official';
     showDate?: boolean;
     layout?: 'vertical' | 'horizontal';
     hideTimeBadge?: boolean;
@@ -78,6 +79,7 @@ function MatchCard({
     canManage = false,
     className = '',
     highlightCurrentUser = false,
+    matchHighlight,
     showDate = false,
     layout = 'vertical',
     hideTimeBadge = false,
@@ -258,9 +260,12 @@ function MatchCard({
     })();
 
     const clickable = typeof onClick === 'function';
+    const effectiveMatchHighlight = matchHighlight ?? (highlightCurrentUser ? 'participant' : undefined);
     const borderClass = hasConflict
         ? 'border-red-400 hover:border-red-500'
-        : highlightCurrentUser
+        : effectiveMatchHighlight === 'official'
+            ? 'border-black hover:border-gray-800 dark:border-white dark:hover:border-gray-200'
+            : effectiveMatchHighlight === 'participant'
             ? 'border-green-300 hover:border-green-400'
             : match.losersBracket
                 ? 'border-orange-200 hover:border-orange-300'

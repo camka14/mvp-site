@@ -2,20 +2,32 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { TextInput, Button, Paper } from '@mantine/core';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import { locationService, type PlacePredictionOptions } from '@/lib/locationService';
+import { locationService, type PlacePrediction, type PlacePredictionOptions } from '@/lib/locationService';
 import { GOOGLE_MAP_OPTIONS_WITH_MAP_ID, GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_MAP_ID, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 import { useDebounce } from '@/app/hooks/useDebounce';
+
+export type LocationSelectionSource = 'manual' | 'prediction' | 'map' | 'geocode' | 'reverse-geocode';
+
+export type LocationSelectionMeta = {
+    selected: boolean;
+    source: LocationSelectionSource;
+    placeId?: string;
+    formattedAddress?: string;
+};
 
 interface LocationSelectorProps {
     value: string;
     coordinates: { lat: number; lng: number };
-    onChange: (location: string, lat: number, lng: number, address?: string) => void;
+    onChange: (location: string, lat: number, lng: number, address?: string, meta?: LocationSelectionMeta) => void;
     isValid: boolean;
     disabled?: boolean;
     label?: string;
     required?: boolean;
     errorMessage?: string;
     showStreetViewControl?: boolean;
+    requireSelection?: boolean;
+    selected?: boolean;
+    selectionErrorMessage?: string;
 }
 
 const MAP_SEARCH_PREDICTION_OPTIONS: PlacePredictionOptions = {
@@ -32,6 +44,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     required = false,
     errorMessage = 'Location is required',
     showStreetViewControl = false,
+    requireSelection = false,
+    selected,
+    selectionErrorMessage = 'Select an address from suggestions or the map.',
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
@@ -40,13 +55,21 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const [predictionSessionToken, setPredictionSessionToken] = useState<google.maps.places.AutocompleteSessionToken | null>(null);
     const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
     const [predictionsLoading, setPredictionsLoading] = useState(false);
+    const [addressInputFocused, setAddressInputFocused] = useState(false);
+    const [addressPredictions, setAddressPredictions] = useState<PlacePrediction[]>([]);
+    const [addressPredictionsLoading, setAddressPredictionsLoading] = useState(false);
     const [mapSearchControlElement, setMapSearchControlElement] = useState<HTMLDivElement | null>(null);
     const geolocationRequestedRef = useRef(false);
     const advancedMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
     const legacyMarkerRef = useRef<google.maps.Marker | null>(null);
     const debouncedMapSearchQuery = useDebounce(mapSearchQuery, 250);
+    const debouncedAddressQuery = useDebounce(value, 250);
     const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
     const mapCenter = hasCoordinates ? coordinates : center;
+    const hasLocationText = value.trim().length > 0;
+    const isSelectionConfirmed = selected ?? !requireSelection;
+    const selectionInvalid = requireSelection && hasLocationText && !isSelectionConfirmed;
+    const inputError = !isValid ? errorMessage : selectionInvalid ? selectionErrorMessage : undefined;
 
     const { isLoaded } = useJsApiLoader({
         id: GOOGLE_MAPS_SCRIPT_ID,
@@ -85,6 +108,8 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         setPredictionSessionToken(null);
         setPredictions([]);
         setPredictionsLoading(false);
+        setAddressPredictions([]);
+        setAddressPredictionsLoading(false);
     }, []);
 
     useEffect(() => {
@@ -235,6 +260,45 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         };
     }, [debouncedMapSearchQuery, isLoaded, predictionSessionToken, showMap]);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchAddressPredictions = async () => {
+            if (disabled || !isLoaded || !addressInputFocused || debouncedAddressQuery.trim().length < 3) {
+                setAddressPredictions([]);
+                setAddressPredictionsLoading(false);
+                return;
+            }
+
+            try {
+                setAddressPredictionsLoading(true);
+                const nextPredictions = await locationService.getPlacePredictions(
+                    debouncedAddressQuery,
+                    predictionSessionToken ?? undefined,
+                    MAP_SEARCH_PREDICTION_OPTIONS,
+                );
+                if (!cancelled) {
+                    setAddressPredictions(nextPredictions);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('Failed to load location suggestions:', error);
+                    setAddressPredictions([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setAddressPredictionsLoading(false);
+                }
+            }
+        };
+
+        void fetchAddressPredictions();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [addressInputFocused, debouncedAddressQuery, disabled, isLoaded, predictionSessionToken]);
+
     const getPlaceDetails = useCallback(async (placeId: string): Promise<google.maps.places.PlaceResult | null> => {
         if (!google.maps?.places) return null;
         return new Promise((resolve) => {
@@ -269,7 +333,12 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                     const locationName = place.name?.trim() || place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
                     const formattedAddress = place.formatted_address || undefined;
                     setCenter({ lat, lng });
-                    onChange(locationName, lat, lng, formattedAddress);
+                    onChange(locationName, lat, lng, formattedAddress, {
+                        selected: true,
+                        source: 'map',
+                        placeId: iconEvent.placeId,
+                        formattedAddress,
+                    });
                     setMapSearchQuery(locationName);
                     return;
                 }
@@ -285,15 +354,26 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                 const result = await geocoder.geocode({ location: { lat, lng } });
                 if (result.results[0]) {
                     const formattedAddress = result.results[0].formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    onChange(formattedAddress, lat, lng, formattedAddress);
+                    onChange(formattedAddress, lat, lng, formattedAddress, {
+                        selected: true,
+                        source: 'reverse-geocode',
+                        formattedAddress,
+                    });
+                    setMapSearchQuery(formattedAddress);
                 }
             } catch (error) {
                 console.error('Geocoding failed:', error);
+                if (requireSelection) {
+                    return;
+                }
                 const fallback = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                onChange(fallback, lat, lng);
+                onChange(fallback, lat, lng, undefined, {
+                    selected: false,
+                    source: 'map',
+                });
             }
         }
-    }, [disabled, getPlaceDetails, onChange]);
+    }, [disabled, getPlaceDetails, onChange, requireSelection]);
 
     const searchLocation = useCallback(async (address: string) => {
         if (disabled) return;
@@ -302,12 +382,20 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         try {
             const result = await locationService.geocodeLocation(address);
             setCenter({ lat: result.lat, lng: result.lng });
-            onChange(address, result.lat, result.lng, result.formattedAddress);
-            setMapSearchQuery(address);
+            const locationName = result.formattedAddress || address;
+            onChange(locationName, result.lat, result.lng, result.formattedAddress, {
+                selected: true,
+                source: 'geocode',
+                formattedAddress: result.formattedAddress,
+            });
+            setMapSearchQuery(locationName);
+            setAddressInputFocused(false);
+            setAddressPredictions([]);
+            resetPredictionSession();
         } catch (error) {
             console.error('Location search failed:', error);
         }
-    }, [disabled, onChange]);
+    }, [disabled, onChange, resetPredictionSession]);
 
     const selectPrediction = useCallback(async (prediction: { description: string; placeId: string }) => {
         if (disabled) return;
@@ -326,29 +414,87 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         const formattedAddress = place?.formatted_address || undefined;
 
         setCenter({ lat, lng });
-        onChange(locationName, lat, lng, formattedAddress);
+        onChange(locationName, lat, lng, formattedAddress, {
+            selected: true,
+            source: 'prediction',
+            placeId: prediction.placeId,
+            formattedAddress,
+        });
         setMapSearchQuery(locationName);
         setPredictions([]);
-    }, [disabled, getPlaceDetails, onChange, searchLocation]);
+        setAddressPredictions([]);
+        setAddressInputFocused(false);
+        resetPredictionSession();
+    }, [disabled, getPlaceDetails, onChange, resetPredictionSession, searchLocation]);
+
+    const selectAddressPrediction = useCallback(async (prediction: PlacePrediction) => {
+        if (disabled) return;
+
+        try {
+            const details = await locationService.getPlaceDetails(prediction.placeId, predictionSessionToken ?? undefined);
+            const lat = Number(details.lat);
+            const lng = Number(details.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+                await searchLocation(prediction.description);
+                return;
+            }
+
+            const locationName = details.name?.trim() || details.formattedAddress || prediction.description;
+            const formattedAddress = details.formattedAddress || undefined;
+            setCenter({ lat, lng });
+            onChange(locationName, lat, lng, formattedAddress, {
+                selected: true,
+                source: 'prediction',
+                placeId: prediction.placeId,
+                formattedAddress,
+            });
+            setMapSearchQuery(locationName);
+            setAddressInputFocused(false);
+            setAddressPredictions([]);
+            resetPredictionSession();
+        } catch (error) {
+            console.error('Failed to select location suggestion:', error);
+        }
+    }, [disabled, onChange, predictionSessionToken, resetPredictionSession, searchLocation]);
 
     return (
         <div>
             <div className="space-y-2">
                 <div className="flex gap-2 items-end">
-                    <TextInput
-                        label={label}
-                        withAsterisk={required}
-                        disabled={disabled}
-                        value={value}
-                        onChange={(e) => {
-                            if (disabled) return;
-                            onChange(e.currentTarget.value, coordinates.lat, coordinates.lng);
-                        }}
-                        onKeyUp={(e) => (e.key === 'Enter') && searchLocation(value)}
-                        placeholder="Enter address or search location"
-                        error={!isValid ? errorMessage : undefined}
-                        style={{ flex: 1 }}
-                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <TextInput
+                            label={label}
+                            withAsterisk={required}
+                            disabled={disabled}
+                            value={value}
+                            onFocus={() => {
+                                setAddressInputFocused(true);
+                                startPredictionSession();
+                            }}
+                            onBlur={() => {
+                                window.setTimeout(() => {
+                                    setAddressInputFocused(false);
+                                }, 150);
+                            }}
+                            onChange={(e) => {
+                                if (disabled) return;
+                                setAddressInputFocused(true);
+                                startPredictionSession();
+                                onChange(e.currentTarget.value, coordinates.lat, coordinates.lng, undefined, {
+                                    selected: false,
+                                    source: 'manual',
+                                });
+                            }}
+                            onKeyUp={(e) => {
+                                if (e.key === 'Enter') {
+                                    void searchLocation(e.currentTarget.value);
+                                }
+                            }}
+                            placeholder={requireSelection ? 'Search for an address or place' : 'Enter address or search location'}
+                            error={inputError}
+                            autoComplete="off"
+                        />
+                    </div>
                     <div className="ml-auto">
                         <Button
                             type="button"
@@ -369,6 +515,44 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         </Button>
                     </div>
                 </div>
+                {(addressPredictionsLoading || addressPredictions.length > 0) && addressInputFocused ? (
+                    <div
+                        style={{
+                            maxHeight: '180px',
+                            overflowY: 'auto',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb',
+                        }}
+                    >
+                        {addressPredictionsLoading && (
+                            <div style={{ padding: '8px 12px', fontSize: '12px', color: '#6b7280' }}>
+                                Loading suggestions...
+                            </div>
+                        )}
+                        {addressPredictions.map((prediction) => (
+                            <button
+                                key={prediction.placeId}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => { void selectAddressPrediction(prediction); }}
+                                style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    textAlign: 'left',
+                                    border: 0,
+                                    borderBottom: '1px solid #f3f4f6',
+                                    background: 'white',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                }}
+                            >
+                                {prediction.description}
+                            </button>
+                        ))}
+                    </div>
+                ) : null}
             </div>
 
             {showMap && isLoaded && (

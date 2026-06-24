@@ -22,17 +22,19 @@ jest.mock('../MatchCard', () => ({
   default: ({
     match,
     highlightCurrentUser,
+    matchHighlight,
     team1Placeholder,
     team2Placeholder,
   }: {
     match: Match;
     highlightCurrentUser?: boolean;
+    matchHighlight?: 'participant' | 'official';
     team1Placeholder?: string;
     team2Placeholder?: string;
   }) => (
     <div>
       <span>{`match-${match.$id}`}</span>
-      <span>{highlightCurrentUser ? `highlight-${match.$id}` : `normal-${match.$id}`}</span>
+      <span>{matchHighlight || highlightCurrentUser ? `highlight-${matchHighlight ?? 'participant'}-${match.$id}` : `normal-${match.$id}`}</span>
       {team1Placeholder ? <span>{team1Placeholder}</span> : null}
       {team2Placeholder ? <span>{team2Placeholder}</span> : null}
     </div>
@@ -894,7 +896,7 @@ describe('TournamentBracketView', () => {
     expect(getMatchNodeTop('p2')).toBe(getMatchNodeTop('c3'));
   });
 
-  it('highlights matches involving the current user, including official assignments', () => {
+  it('highlights player matches green and official assignments with the official contrast variant', () => {
     const userId = 'user_1';
     const playerMatch = buildMatch('m1', {
       winnerNextMatchId: 'm3',
@@ -958,11 +960,11 @@ describe('TournamentBracketView', () => {
       />,
     );
 
-    expect(screen.getByText('highlight-m1')).toBeInTheDocument();
-    expect(screen.getByText('highlight-m2')).toBeInTheDocument();
-    expect(screen.getByText('highlight-m3')).toBeInTheDocument();
+    expect(screen.getByText('highlight-participant-m1')).toBeInTheDocument();
+    expect(screen.getByText('highlight-official-m2')).toBeInTheDocument();
+    expect(screen.getByText('highlight-official-m3')).toBeInTheDocument();
     expect(screen.getByText('normal-m4')).toBeInTheDocument();
-    expect(screen.getByText('highlight-m5')).toBeInTheDocument();
+    expect(screen.getByText('highlight-official-m5')).toBeInTheDocument();
   });
 
   it('renders disconnected matches in a collapsible unplaced dock', () => {

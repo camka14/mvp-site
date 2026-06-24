@@ -34,6 +34,46 @@ describe('SharedCalendarEvent', () => {
     expect(card).toHaveStyle('--shared-calendar-event-text: #eeeeee');
   });
 
+  it('keeps resource colors available for typed calendar variants', () => {
+    render(
+      <SharedCalendarEvent
+        title="Open rental slot"
+        colorReferenceList={['court-alpha', 'court-beta']}
+        colorMatchKey="court-beta"
+        variant="availability"
+      />,
+    );
+
+    const card = screen.getByText('Open rental slot').closest('.shared-calendar-event');
+    const expectedColors = getIndexedEntityColorPair(1);
+    expect(card).toHaveClass('shared-calendar-event--availability');
+    expect(card).toHaveStyle(`--shared-calendar-resource-bg: ${expectedColors.bg}`);
+    expect(card).not.toHaveStyle(`--shared-calendar-event-bg: ${expectedColors.bg}`);
+  });
+
+  it('renders stacked resource edges for multiple selected resources', () => {
+    render(
+      <SharedCalendarEvent
+        title="Staff shift"
+        colorReferenceList={['court-alpha', 'court-beta', 'court-gamma']}
+        colorMatchKey="court-alpha"
+        resourceColorMatchKeys={['court-alpha', 'court-beta', 'court-gamma']}
+        variant="staff-open"
+      />,
+    );
+
+    const card = screen.getByText('Staff shift').closest('.shared-calendar-event');
+    expect(card).toHaveClass('shared-calendar-event--staff-open');
+    expect(card).toHaveClass('shared-calendar-event--resource-stack');
+    const stackCards = card?.querySelectorAll<HTMLElement>('.shared-calendar-event__resource-stack-card');
+    expect(stackCards).toHaveLength(2);
+    expect(stackCards?.[0]).toHaveStyle('--shared-calendar-resource-stack-index: 1');
+    expect(stackCards?.[0]).toHaveStyle('z-index: 1');
+    expect(stackCards?.[1]).toHaveStyle('--shared-calendar-resource-stack-index: 2');
+    expect(stackCards?.[1]).toHaveStyle('z-index: 2');
+    expect(card).toHaveStyle(`--shared-calendar-resource-bg: ${getIndexedEntityColorPair(0).bg}`);
+  });
+
   it('renders a drag handle when draggable', () => {
     render(<SharedCalendarEvent title="Movable match" draggable />);
 

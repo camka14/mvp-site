@@ -71,6 +71,34 @@ describe('fieldService', () => {
     expect(fields[0].rentalSlots?.map((slot) => slot.$id)).toEqual(['slot_1']);
   });
 
+  it('hydrates field facilities by facilityId', async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({
+        fields: [{
+          $id: 'field_1',
+          name: 'Court A',
+          rentalSlotIds: [],
+          facilityId: 'facility_1',
+        }],
+      })
+      .mockResolvedValueOnce({
+        facilities: [{
+          id: 'facility_1',
+          organizationId: 'org_1',
+          name: 'River City Sports Complex',
+        }],
+      });
+
+    const fields = await fieldService.listFields({ fieldIds: ['field_1'] });
+
+    expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('/api/facilities?ids=facility_1'));
+    expect(fields[0].facilityId).toBe('facility_1');
+    expect(fields[0].facility).toEqual(expect.objectContaining({
+      $id: 'facility_1',
+      name: 'River City Sports Complex',
+    }));
+  });
+
   it('hydrates events and matches when range provided', async () => {
     apiRequestMock
       .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A' }] })

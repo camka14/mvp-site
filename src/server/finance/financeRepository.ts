@@ -59,6 +59,28 @@ const toDate = (value: unknown): Date | null => {
   return null;
 };
 
+const minutesFromDate = (date: Date): number => date.getHours() * 60 + date.getMinutes();
+
+const mondayDayOf = (date: Date): number => (date.getDay() + 6) % 7;
+
+const startOfDate = (date: Date): Date => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const endOfDate = (date: Date): Date => {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+};
+
+const dateWithMinutes = (date: Date, minutes: number): Date => {
+  const next = new Date(date);
+  next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return next;
+};
+
 const displayName = (user: Record<string, unknown> | null | undefined, fallback: string): string => {
   const firstName = typeof user?.firstName === 'string' ? user.firstName.trim() : '';
   const lastName = typeof user?.lastName === 'string' ? user.lastName.trim() : '';
@@ -92,6 +114,8 @@ const billSelect = {
   ownerId: true,
   eventId: true,
   slotId: true,
+  sourceType: true,
+  sourceId: true,
   totalAmountCents: true,
   paidAmountCents: true,
 } as const;
@@ -145,9 +169,12 @@ const attachPayments = async (
   const userOwnerIds = normalizeIds(rows
     .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'USER')
     .map((row) => row.ownerId));
+  const organizationOwnerIds = normalizeIds(rows
+    .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'ORGANIZATION')
+    .map((row) => row.ownerId));
   const payerUserIds = normalizeIds(payments.map((payment) => payment?.payerUserId));
 
-  const [eventRows, userRows, canonicalTeamRows, eventTeamRows, slotRows] = await Promise.all([
+  const [eventRows, userRows, canonicalTeamRows, eventTeamRows, organizationOwnerRows, slotRows] = await Promise.all([
     eventIds.length
       ? client.events.findMany({
         where: { id: { in: eventIds } },
@@ -177,6 +204,12 @@ const attachPayments = async (
         select: { id: true, name: true, parentTeamId: true },
       })
       : Promise.resolve([]),
+    organizationOwnerIds.length
+      ? client.organizations.findMany({
+        where: { id: { in: organizationOwnerIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
     slotIds.length
       ? client.timeSlots.findMany({
         where: { id: { in: slotIds } },
@@ -201,6 +234,9 @@ const attachPayments = async (
   const eventTeamsById = new Map<string, { name?: unknown; parentTeamId?: unknown }>(
     eventTeamRows.map((team: any) => [String(team.id), team]),
   );
+  const organizationsById = new Map<string, { name?: unknown }>(
+    organizationOwnerRows.map((organization: any) => [String(organization.id), organization]),
+  );
   const fieldIds = normalizeIds(slotRows.flatMap((slot: any) => [
     slot.scheduledFieldId,
     ...(Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : []),
@@ -224,66 +260,89 @@ const attachPayments = async (
     sourceNameBySlotId.set(String(slot.id), fieldName || 'Rental');
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    createdAt: row.createdAt,
-    organizationId: row.organizationId,
-    ownerType: row.ownerType,
-    ownerId: row.ownerId,
-    eventId: row.eventId,
-    slotId: row.slotId,
-    sourceName: row.eventId
-      ? eventNamesById.get(String(row.eventId)) || 'Event'
-      : row.slotId
-        ? sourceNameBySlotId.get(String(row.slotId)) || 'Rental'
-        : 'Organization',
-    sourceEntityType: row.eventId ? 'event' : row.slotId ? 'rental' : row.organizationId ? 'organization' : null,
-    sourceEntityId: row.eventId ?? row.slotId ?? row.organizationId ?? null,
-    customerType: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') return 'teams' as const;
-      if (ownerType === 'USER') return 'users' as const;
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return payerUserId ? 'users' as const : null;
-    })(),
-    customerId: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') {
-        const eventTeam = eventTeamsById.get(String(row.ownerId));
-        return normalizeId(eventTeam?.parentTeamId) ?? normalizeId(row.ownerId);
-      }
-      if (ownerType === 'USER') {
-        return normalizeId(row.ownerId);
-      }
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return normalizeId(payerUserId);
-    })(),
-    customerName: (() => {
-      const ownerType = String(row.ownerType ?? '').toUpperCase();
-      if (ownerType === 'TEAM') {
-        const canonicalTeam = canonicalTeamsById.get(String(row.ownerId));
-        const eventTeam = eventTeamsById.get(String(row.ownerId));
-        if (canonicalTeam?.name) {
-          return String(canonicalTeam.name);
+  return rows.map((row) => {
+    const explicitSourceType = normalizeId(row.sourceType)?.toUpperCase() ?? null;
+    const explicitSourceId = normalizeId(row.sourceId);
+    const isRentalBookingSource = explicitSourceType === 'RENTAL_BOOKING';
+    const sourceName = isRentalBookingSource
+      ? 'Rental'
+      : row.eventId
+        ? eventNamesById.get(String(row.eventId)) || 'Event'
+        : row.slotId
+          ? sourceNameBySlotId.get(String(row.slotId)) || 'Rental'
+          : 'Organization';
+    const sourceEntityType = isRentalBookingSource
+      ? 'rental'
+      : row.eventId
+        ? 'event'
+        : row.slotId
+          ? 'rental'
+          : row.organizationId
+            ? 'organization'
+            : null;
+
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      organizationId: row.organizationId,
+      ownerType: row.ownerType,
+      ownerId: row.ownerId,
+      eventId: row.eventId,
+      slotId: row.slotId,
+      sourceType: row.sourceType ?? null,
+      sourceId: row.sourceId ?? null,
+      sourceName,
+      sourceEntityType,
+      sourceEntityId: explicitSourceId ?? row.eventId ?? row.slotId ?? row.organizationId ?? null,
+      customerType: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') return 'teams' as const;
+        if (ownerType === 'USER') return 'users' as const;
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return payerUserId ? 'users' as const : null;
+      })(),
+      customerId: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') {
+          const eventTeam = eventTeamsById.get(String(row.ownerId));
+          return normalizeId(eventTeam?.parentTeamId) ?? normalizeId(row.ownerId);
         }
-        if (eventTeam?.parentTeamId) {
-          const parentTeam = canonicalTeamsById.get(String(eventTeam.parentTeamId));
-          if (parentTeam?.name) {
-            return String(parentTeam.name);
+        if (ownerType === 'USER') {
+          return normalizeId(row.ownerId);
+        }
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return normalizeId(payerUserId);
+      })(),
+      customerName: (() => {
+        const ownerType = String(row.ownerType ?? '').toUpperCase();
+        if (ownerType === 'TEAM') {
+          const canonicalTeam = canonicalTeamsById.get(String(row.ownerId));
+          const eventTeam = eventTeamsById.get(String(row.ownerId));
+          if (canonicalTeam?.name) {
+            return String(canonicalTeam.name);
           }
+          if (eventTeam?.parentTeamId) {
+            const parentTeam = canonicalTeamsById.get(String(eventTeam.parentTeamId));
+            if (parentTeam?.name) {
+              return String(parentTeam.name);
+            }
+          }
+          return eventTeam?.name ? String(eventTeam.name) : 'Team';
         }
-        return eventTeam?.name ? String(eventTeam.name) : 'Team';
-      }
-      if (ownerType === 'USER') {
-        return displayName(usersById.get(String(row.ownerId)), 'Customer');
-      }
-      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
-      return payerUserId ? displayName(usersById.get(String(payerUserId)), 'Customer') : null;
-    })(),
-    totalAmountCents: row.totalAmountCents,
-    paidAmountCents: row.paidAmountCents,
-    payments: paymentsByBillId.get(row.id) ?? [],
-  }));
+        if (ownerType === 'USER') {
+          return displayName(usersById.get(String(row.ownerId)), 'Customer');
+        }
+        if (ownerType === 'ORGANIZATION') {
+          return String(organizationsById.get(String(row.ownerId))?.name ?? '').trim() || 'Organization customer';
+        }
+        const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+        return payerUserId ? displayName(usersById.get(String(payerUserId)), 'Customer') : null;
+      })(),
+      totalAmountCents: row.totalAmountCents,
+      paidAmountCents: row.paidAmountCents,
+      payments: paymentsByBillId.get(row.id) ?? [],
+    };
+  });
 };
 
 const loadUsersById = async (
@@ -422,6 +481,118 @@ const resolveRate = (
   const staffMember = staffMemberId ? context.staffMembersById.get(staffMemberId) : null;
   const roleId = normalizeId(entry.organizationRoleId) ?? normalizeId(staffMember?.roleId);
   return roleId ? activeRateAt(context.roleRatesByRoleId.get(roleId) ?? [], referenceDate) : null;
+};
+
+const resolveScheduleRate = (
+  entry: any,
+  parentEntry: any | null,
+  context: StaffMemberRateContext,
+  referenceDate: Date,
+): FinanceLaborRate | null => {
+  const entryOverrideType = normalizeWageType(entry.rateOverrideType);
+  if (entryOverrideType && typeof entry.rateOverrideCents === 'number') {
+    return {
+      wageType: entryOverrideType,
+      amountCents: normalizeCents(entry.rateOverrideCents),
+    };
+  }
+  const parentOverrideType = normalizeWageType(parentEntry?.rateOverrideType);
+  if (parentOverrideType && typeof parentEntry?.rateOverrideCents === 'number') {
+    return {
+      wageType: parentOverrideType,
+      amountCents: normalizeCents(parentEntry.rateOverrideCents),
+    };
+  }
+  return resolveRate(entry, context, referenceDate);
+};
+
+type StaffScheduleLaborRange = {
+  periodStart?: Date | null;
+  periodEnd?: Date | null;
+};
+
+const buildScheduleOccurrences = (
+  assignment: any,
+  timeSlot: any,
+  range: StaffScheduleLaborRange,
+): Array<{ key: string; start: Date; end: Date; minutes: number }> => {
+  const plannedStart = toDate(assignment.plannedStart);
+  const plannedEnd = toDate(assignment.plannedEnd);
+  const slotStart = toDate(timeSlot?.startDate) ?? plannedStart;
+  if (!slotStart) {
+    return [];
+  }
+  const slotEnd = toDate(timeSlot?.endDate) ?? plannedEnd;
+  const repeating = Boolean(timeSlot?.repeating);
+  if (!repeating) {
+    const start = plannedStart ?? slotStart;
+    const end = plannedEnd ?? slotEnd;
+    if (!end || end.getTime() <= start.getTime()) {
+      return [];
+    }
+    if (range.periodStart && end.getTime() < range.periodStart.getTime()) {
+      return [];
+    }
+    if (range.periodEnd && start.getTime() > range.periodEnd.getTime()) {
+      return [];
+    }
+    return [{
+      key: `${assignment.id}:${start.toISOString()}`,
+      start,
+      end,
+      minutes: Math.round((end.getTime() - start.getTime()) / 60000),
+    }];
+  }
+
+  if (!range.periodStart || !range.periodEnd) {
+    const start = plannedStart ?? dateWithMinutes(slotStart, timeSlot.startTimeMinutes ?? minutesFromDate(slotStart));
+    const end = plannedEnd ?? dateWithMinutes(slotStart, timeSlot.endTimeMinutes ?? minutesFromDate(slotStart));
+    return end.getTime() > start.getTime()
+      ? [{
+        key: `${assignment.id}:${start.toISOString()}`,
+        start,
+        end,
+        minutes: Math.round((end.getTime() - start.getTime()) / 60000),
+      }]
+      : [];
+  }
+
+  const days = Array.isArray(timeSlot.daysOfWeek) && timeSlot.daysOfWeek.length
+    ? timeSlot.daysOfWeek.map(Number).filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6)
+    : [mondayDayOf(slotStart)];
+  const startMinutes = typeof timeSlot.startTimeMinutes === 'number'
+    ? timeSlot.startTimeMinutes
+    : minutesFromDate(slotStart);
+  const endMinutes = typeof timeSlot.endTimeMinutes === 'number'
+    ? timeSlot.endTimeMinutes
+    : startMinutes + Math.max(30, assignment.plannedMinutes ?? 60);
+  if (endMinutes <= startMinutes) {
+    return [];
+  }
+
+  const cursorStart = new Date(Math.max(startOfDate(slotStart).getTime(), startOfDate(range.periodStart).getTime()));
+  const cursorEnd = new Date(Math.min(
+    endOfDate(range.periodEnd).getTime(),
+    slotEnd ? endOfDate(slotEnd).getTime() : endOfDate(range.periodEnd).getTime(),
+  ));
+  const occurrences: Array<{ key: string; start: Date; end: Date; minutes: number }> = [];
+  let cursor = cursorStart;
+  while (cursor.getTime() <= cursorEnd.getTime()) {
+    if (days.includes(mondayDayOf(cursor))) {
+      const start = dateWithMinutes(cursor, startMinutes);
+      const end = dateWithMinutes(cursor, endMinutes);
+      if (end.getTime() >= range.periodStart.getTime() && start.getTime() <= range.periodEnd.getTime()) {
+        occurrences.push({
+          key: `${assignment.id}:${start.toISOString()}`,
+          start,
+          end,
+          minutes: Math.round((end.getTime() - start.getTime()) / 60000),
+        });
+      }
+    }
+    cursor = new Date(cursor.getTime() + 24 * 60 * 60000);
+  }
+  return occurrences;
 };
 
 const loadEventStaffLabor = async (
@@ -586,8 +757,9 @@ const toCustomLineItem = (row: any): CustomFinanceLineItem => ({
 export const loadOrganizationStaffLaborEntries = async (
   organizationId: string,
   client: PrismaLike = prisma,
+  range: StaffScheduleLaborRange = {},
 ): Promise<FinanceLaborEntry[]> => {
-  const [eventRows, teamRows] = await Promise.all([
+  const [eventRows, teamRows, scheduleRows] = await Promise.all([
     client.eventStaffAssignments.findMany({
       where: {
         organizationId,
@@ -600,6 +772,14 @@ export const loadOrganizationStaffLaborEntries = async (
         status: { not: 'CANCELLED' },
       },
     }),
+    client.staffScheduleAssignments?.findMany
+      ? client.staffScheduleAssignments.findMany({
+        where: {
+          organizationId,
+          status: { not: 'CANCELLED' },
+        },
+      })
+      : Promise.resolve([]),
   ]);
 
   const eventIds = normalizeIds([
@@ -619,19 +799,27 @@ export const loadOrganizationStaffLaborEntries = async (
   const staffMemberIds = normalizeIds([
     ...eventRows.map((row: any) => row.staffMemberId),
     ...teamRows.map((row: any) => row.staffMemberId),
+    ...scheduleRows.map((row: any) => row.staffMemberId),
   ]);
-  const roleIds = normalizeIds(eventRows.map((row: any) => row.organizationRoleId));
+  const roleIds = normalizeIds([
+    ...eventRows.map((row: any) => row.organizationRoleId),
+    ...scheduleRows.map((row: any) => row.organizationRoleId),
+  ]);
   const context = await loadStaffMemberRateContext(client, organizationId, staffMemberIds, roleIds);
   const userIds = normalizeIds([
     ...eventRows.map((row: any) => (
       row.userId ?? context.staffMembersById.get(row.staffMemberId)?.userId
     )),
     ...teamRows.map((row: any) => row.userId),
+    ...scheduleRows.map((row: any) => row.userId),
   ]);
   const usersById = await loadUsersById(client, userIds);
   const teamIds = normalizeIds(teamRows.map((row: any) => row.teamId));
   const eventTeamIds = normalizeIds(teamRows.map((row: any) => row.eventTeamId));
-  const [canonicalTeamRows, eventTeamRows] = await Promise.all([
+  const scheduleFacilityIds = normalizeIds(scheduleRows.map((row: any) => row.facilityId));
+  const scheduleFieldIds = normalizeIds(scheduleRows.map((row: any) => row.fieldId));
+  const scheduleTimeSlotIds = normalizeIds(scheduleRows.map((row: any) => row.timeSlotId));
+  const [canonicalTeamRows, eventTeamRows, scheduleFacilityRows, scheduleFieldRows, scheduleTimeSlotRows] = await Promise.all([
     teamIds.length
       ? client.canonicalTeams.findMany({
         where: { id: { in: teamIds } },
@@ -644,9 +832,30 @@ export const loadOrganizationStaffLaborEntries = async (
         select: { id: true, name: true },
       })
       : Promise.resolve([]),
+    scheduleFacilityIds.length
+      ? client.facilities.findMany({
+        where: { id: { in: scheduleFacilityIds }, organizationId },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    scheduleFieldIds.length
+      ? client.fields.findMany({
+        where: { id: { in: scheduleFieldIds }, organizationId },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    scheduleTimeSlotIds.length
+      ? client.timeSlots.findMany({
+        where: { id: { in: scheduleTimeSlotIds } },
+      })
+      : Promise.resolve([]),
   ]);
   const teamNamesById = new Map(canonicalTeamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
   const eventTeamNamesById = new Map(eventTeamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
+  const scheduleFacilityNamesById = new Map(scheduleFacilityRows.map((facility: any) => [String(facility.id), String(facility.name ?? '').trim() || null]));
+  const scheduleFieldNamesById = new Map(scheduleFieldRows.map((field: any) => [String(field.id), String(field.name ?? '').trim() || null]));
+  const scheduleTimeSlotsById = new Map(scheduleTimeSlotRows.map((timeSlot: any) => [String(timeSlot.id), timeSlot]));
+  const scheduleRowsById = new Map(scheduleRows.map((row: any) => [String(row.id), row]));
   const fallbackDate = new Date();
 
   const eventLabor: FinanceLaborEntry[] = eventRows.map((row: any) => {
@@ -707,7 +916,47 @@ export const loadOrganizationStaffLaborEntries = async (
     };
   });
 
-  return [...eventLabor, ...teamLabor];
+  const scheduleLabor: FinanceLaborEntry[] = scheduleRows.flatMap((row: any) => {
+    const staffMember = context.staffMembersById.get(row.staffMemberId);
+    const userId = normalizeId(row.userId) ?? normalizeId(staffMember?.userId);
+    if (!row.staffMemberId || !userId) {
+      return [];
+    }
+    const timeSlot = scheduleTimeSlotsById.get(String(row.timeSlotId));
+    const occurrences = buildScheduleOccurrences(row, timeSlot, range);
+    if (!occurrences.length) {
+      return [];
+    }
+    const parentEntry = row.parentAssignmentId ? scheduleRowsById.get(String(row.parentAssignmentId)) ?? null : null;
+    const userName = displayName(userId ? usersById.get(userId) : null, `Staff ${row.staffMemberId}`);
+    const facilityName = row.facilityId ? scheduleFacilityNamesById.get(row.facilityId) ?? null : null;
+    const fieldName = row.fieldId ? scheduleFieldNamesById.get(row.fieldId) ?? null : null;
+    return occurrences.map((occurrence) => ({
+      id: occurrence.key,
+      sourceType: 'STAFF_SCHEDULE_ASSIGNMENT',
+      staffMemberId: row.staffMemberId,
+      userId,
+      userName,
+      label: fieldName ? `${userName} - ${fieldName}` : userName,
+      assignmentKind: row.assignmentKind ?? null,
+      staffScheduleAssignmentId: row.id,
+      staffScheduleOccurrenceKey: occurrence.key,
+      facilityId: row.facilityId ?? null,
+      facilityName,
+      fieldId: row.fieldId ?? null,
+      fieldName,
+      plannedStart: occurrence.start,
+      plannedEnd: occurrence.end,
+      actualStart: row.actualStart,
+      actualEnd: row.actualEnd,
+      plannedMinutes: occurrence.minutes,
+      actualMinutes: row.actualMinutes,
+      status: row.status,
+      rate: resolveScheduleRate(row, parentEntry, context, occurrence.start ?? fallbackDate),
+    }));
+  });
+
+  return [...eventLabor, ...teamLabor, ...scheduleLabor];
 };
 
 export const loadEventFinanceSummary = async (

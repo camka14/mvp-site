@@ -21,9 +21,11 @@ interface CreateRentalSlotModalProps {
   /**
    * Optional calendar range to seed the form when creating a new slot.
    * Only used when `slot` is not provided.
-   */
+  */
   initialRange?: { start: Date; end: Date } | null;
   onSaved?: (fields: Field[]) => void;
+  onSubmitOverride?: (payload: CreateRentalSlotModalSubmitPayload) => Promise<void> | void;
+  onDeleteOverride?: (payload: CreateRentalSlotModalDeletePayload) => Promise<void> | void;
   organizationHasStripeAccount?: boolean;
   organizationId?: string | null;
   fieldColorReferenceList?: EntityColorReferenceValue[];
@@ -68,6 +70,19 @@ type RentalSlotUpsertInput = Partial<TimeSlot> & {
 
 type RentalSlotUpdateInput = RentalSlotUpsertInput & {
   $id: string;
+};
+
+export type CreateRentalSlotModalSubmitPayload = {
+  field: Field | null;
+  targetFields: Field[];
+  slot: TimeSlot | null;
+  payload: RentalSlotUpsertInput;
+  updatePayload?: RentalSlotUpdateInput;
+};
+
+export type CreateRentalSlotModalDeletePayload = {
+  field: Field | null;
+  slot: TimeSlot;
 };
 
 const toMondayBasedDay = (date: Date): NonNullable<TimeSlot['dayOfWeek']> => {
@@ -115,6 +130,8 @@ export default function CreateRentalSlotModal({
   slot,
   initialRange = null,
   onSaved,
+  onSubmitOverride,
+  onDeleteOverride,
   organizationHasStripeAccount = false,
   organizationId = null,
   fieldColorReferenceList,
@@ -320,7 +337,7 @@ export default function CreateRentalSlotModal({
 
   const handleDelete = async () => {
     if (!field || !slot?.$id) {
-      setError('A field and existing rental slot are required to delete.');
+      setError('A resource and existing rental slot are required to delete.');
       return;
     }
 
@@ -334,6 +351,11 @@ export default function CreateRentalSlotModal({
     setDeleting(true);
     setError(null);
     try {
+      if (onDeleteOverride) {
+        await onDeleteOverride({ field, slot });
+        onClose();
+        return;
+      }
       const updatedField = await fieldService.deleteRentalSlot(field, slot.$id);
       onSaved?.([updatedField]);
       onClose();
@@ -348,7 +370,7 @@ export default function CreateRentalSlotModal({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!hasTargetFields) {
-      setError('At least one field is required to create a rental slot.');
+      setError('At least one resource is required to create a rental slot.');
       return;
     }
     if (!startDate) {
@@ -433,10 +455,9 @@ export default function CreateRentalSlotModal({
         taxHandling: 'STRIPE_TAX',
       };
 
-      let results: ManageRentalSlotResult[];
       if (slot) {
         if (!field) {
-          throw new Error('A field is required to edit this rental slot.');
+          throw new Error('A resource is required to edit this rental slot.');
         }
         const updatePayload: RentalSlotUpdateInput = {
           $id: slot.$id,
@@ -451,15 +472,35 @@ export default function CreateRentalSlotModal({
           price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
           taxHandling: 'STRIPE_TAX',
         };
+        if (onSubmitOverride) {
+          await onSubmitOverride({
+            field,
+            targetFields,
+            slot,
+            payload,
+            updatePayload,
+          });
+          onClose();
+          return;
+        }
         const result = await fieldService.updateRentalSlot(field, updatePayload);
-        results = [result];
+        onSaved?.([result.field]);
       } else {
-        results = await Promise.all(targetFields.map((targetField) => (
+        if (onSubmitOverride) {
+          await onSubmitOverride({
+            field,
+            targetFields,
+            slot: null,
+            payload,
+          });
+          onClose();
+          return;
+        }
+        const results: ManageRentalSlotResult[] = await Promise.all(targetFields.map((targetField) => (
           fieldService.createRentalSlot(targetField, payload)
         )));
+        onSaved?.(results.map((result) => result.field));
       }
-
-      onSaved?.(results.map((result) => result.field));
       onClose();
     } catch (err) {
       console.error('Failed to save rental slot:', err);
@@ -480,7 +521,7 @@ export default function CreateRentalSlotModal({
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <div>
-            <Text fw={500}>{slot ? 'Field' : 'Fields'}</Text>
+            <Text fw={500}>{slot ? 'Resource' : 'Resources'}</Text>
             {targetFields.length > 0 ? (
               <Group gap={6} mt={6}>
                 {targetFields.map((targetField) => {
@@ -523,7 +564,7 @@ export default function CreateRentalSlotModal({
               </Group>
             ) : (
               <Text size="sm" c="dimmed">
-                Select a field to continue
+                Select a resource to continue
               </Text>
             )}
           </div>

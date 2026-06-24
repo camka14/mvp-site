@@ -59,6 +59,7 @@ interface LeagueCalendarViewProps {
 }
 
 type CalendarLayoutMode = 'calendar' | 'resource';
+type CurrentUserMatchHighlight = 'participant' | 'official';
 
 type CalendarResource = {
   resourceId: string;
@@ -159,6 +160,7 @@ type CalendarEvent = {
   resource: Match;
   relatedMatchIds: string[];
   hasTrackedUserMatch: boolean;
+  matchHighlight?: CurrentUserMatchHighlight;
   hasConflictMatch: boolean;
   agendaMatches?: Match[];
   isAgendaGroup?: boolean;
@@ -385,9 +387,9 @@ export function LeagueCalendarView({
     [hasTrackedUsers, trackedUserIds, userTeamIds],
   );
 
-  const matchInvolvesCurrentUser = useCallback(
-    (match: Match) => {
-      if (!hasTrackedUsers) return false;
+  const getCurrentUserMatchHighlight = useCallback(
+    (match: Match): CurrentUserMatchHighlight | undefined => {
+      if (!hasTrackedUsers) return undefined;
       const assignedOfficialUserIds = Array.isArray(match.officialIds)
         ? match.officialIds
             .map((assignment) => (typeof assignment?.userId === 'string' ? assignment.userId.trim() : ''))
@@ -399,12 +401,25 @@ export function LeagueCalendarView({
         || (typeof match.official?.$id === 'string' && trackedUserIds.has(match.official.$id))
         || assignedOfficialUserIds.some((officialUserId) => trackedUserIds.has(officialUserId))
       ) {
-        return true;
+        return 'official';
       }
 
-      return teamHasUser(match.team1, match.team1Id) || teamHasUser(match.team2, match.team2Id);
+      if (teamHasUser(match.teamOfficial, match.teamOfficialId)) {
+        return 'official';
+      }
+
+      if (teamHasUser(match.team1, match.team1Id) || teamHasUser(match.team2, match.team2Id)) {
+        return 'participant';
+      }
+
+      return undefined;
     },
     [hasTrackedUsers, teamHasUser, trackedUserIds],
+  );
+
+  const matchInvolvesCurrentUser = useCallback(
+    (match: Match) => Boolean(getCurrentUserMatchHighlight(match)),
+    [getCurrentUserMatchHighlight],
   );
 
   const matchHasHighlightedDivision = useCallback(
@@ -492,10 +507,11 @@ export function LeagueCalendarView({
         const fieldId = resolveMatchFieldId(hydratedMatch);
         const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
         const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(hydratedMatch);
+        const matchHighlight = getCurrentUserMatchHighlight(hydratedMatch);
         const matchId = typeof match.$id === 'string' && match.$id.trim().length > 0
           ? match.$id.trim()
           : `match-${match.matchId}-${start.getTime()}`;
-        const hasTrackedUserMatch = userInvolvedMatchIds.has(matchId);
+        const hasTrackedUserMatch = Boolean(matchHighlight);
         const hasConflictMatch = conflictMatchIdSet.has(matchId);
 
         return {
@@ -510,12 +526,13 @@ export function LeagueCalendarView({
           resource: hydratedMatch,
           relatedMatchIds: [matchId],
           hasTrackedUserMatch,
+          matchHighlight,
           hasConflictMatch,
         } as CalendarEvent;
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [conflictMatchIdSet, fieldLookup, matchesToDisplay, resolvedEventTimeZone, teamLookup, userInvolvedMatchIds]);
+  }, [conflictMatchIdSet, fieldLookup, getCurrentUserMatchHighlight, matchesToDisplay, resolvedEventTimeZone, teamLookup]);
 
   const agendaCalendarEvents = useMemo<CalendarEvent[]>(() => {
     const grouped = new Map<string, CalendarEvent>();
@@ -539,6 +556,7 @@ export function LeagueCalendarView({
         agendaMatches: [...(existing.agendaMatches ?? []), event.resource],
         relatedMatchIds: [...existing.relatedMatchIds, ...event.relatedMatchIds],
         hasTrackedUserMatch: existing.hasTrackedUserMatch || event.hasTrackedUserMatch,
+        matchHighlight: existing.matchHighlight ?? event.matchHighlight,
         hasConflictMatch: existing.hasConflictMatch || event.hasConflictMatch,
       });
     });
@@ -775,6 +793,7 @@ export function LeagueCalendarView({
     ({ event }: EventProps<CalendarEvent>) => {
       const hasConflict = event.hasConflictMatch;
       const shouldHighlightUser = event.hasTrackedUserMatch && !hasConflict;
+      const matchHighlight = shouldHighlightUser ? event.matchHighlight : undefined;
       const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
       if (weeklyOccurrenceMeta) {
         return (
@@ -792,7 +811,8 @@ export function LeagueCalendarView({
           timeZone={resolvedEventTimeZone}
           canManage={canManage}
           onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-          className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+          className="h-full"
+          matchHighlight={matchHighlight}
           layout="horizontal"
           hideTimeBadge
           showOfficialInHeader
@@ -821,7 +841,7 @@ export function LeagueCalendarView({
               {agendaMatches.map((match, index) => {
                 const matchId = typeof match.$id === 'string' ? match.$id.trim() : '';
                 const hasConflict = matchId.length > 0 && conflictMatchIdSet.has(matchId);
-                const shouldHighlightUser = matchId.length > 0 && userInvolvedMatchIds.has(matchId) && !hasConflict;
+                const matchHighlight = hasConflict ? undefined : getCurrentUserMatchHighlight(match);
                 const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(match);
                 const fieldLabel = resolveMatchFieldLabel(match, fieldLookup);
                 const fieldColorMatchKey = resolveMatchFieldId(match) ?? UNASSIGNED_FIELD_RESOURCE_ID;
@@ -851,7 +871,8 @@ export function LeagueCalendarView({
                         timeZone={resolvedEventTimeZone}
                         canManage={canManage}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
-                        className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+                        className="h-full"
+                        matchHighlight={matchHighlight}
                         layout="horizontal"
                         hideTimeBadge
                         showOfficialInHeader
@@ -873,7 +894,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, getMatchSlotPlaceholder, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, getCurrentUserMatchHighlight, getMatchSlotPlaceholder, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const components = useMemo(

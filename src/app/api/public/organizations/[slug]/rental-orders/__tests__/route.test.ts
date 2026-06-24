@@ -4,14 +4,19 @@ import { NextRequest } from 'next/server';
 
 const organizationsFindUniqueMock = jest.fn();
 const fieldsFindManyMock = jest.fn();
+const facilitiesFindManyMock = jest.fn();
 const timeSlotsFindManyMock = jest.fn();
 const prismaTransactionMock = jest.fn();
 const requireSessionMock = jest.fn();
 const assertNoEventFieldSchedulingConflictsMock = jest.fn();
-const txEventsFindUniqueMock = jest.fn();
-const txEventsCreateMock = jest.fn();
-const txTimeSlotsCreateMock = jest.fn();
-const sendAdminEventCreatedNotificationMock = jest.fn();
+const txRentalBookingsFindUniqueMock = jest.fn();
+const txRentalBookingsCreateMock = jest.fn();
+const txRentalBookingItemsFindManyMock = jest.fn();
+const txRentalBookingItemsCreateMock = jest.fn();
+const txBillsCreateMock = jest.fn();
+const txBillsUpdateMock = jest.fn();
+const txBillPaymentsFindFirstMock = jest.fn();
+const txBillPaymentsCreateMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -20,6 +25,9 @@ jest.mock('@/lib/prisma', () => ({
     },
     fields: {
       findMany: (...args: any[]) => fieldsFindManyMock(...args),
+    },
+    facilities: {
+      findMany: (...args: any[]) => facilitiesFindManyMock(...args),
     },
     timeSlots: {
       findMany: (...args: any[]) => timeSlotsFindManyMock(...args),
@@ -47,9 +55,6 @@ jest.mock('@/server/repositories/events', () => ({
     assertNoEventFieldSchedulingConflictsMock(...args)
   ),
 }));
-jest.mock('@/server/adminNotifications', () => ({
-  sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
-}));
 
 import { POST } from '@/app/api/public/organizations/[slug]/rental-orders/route';
 
@@ -63,82 +68,60 @@ const params = Promise.resolve({ slug: 'summit' });
 
 const baseSelection = {
   scheduledFieldIds: ['field_1'],
-  startDate: '2026-04-21T17:00:00.000Z',
-  endDate: '2026-04-21T18:00:00.000Z',
+  startDate: '2099-04-21T17:00:00.000Z',
+  endDate: '2099-04-21T18:00:00.000Z',
 };
 
 describe('/api/public/organizations/[slug]/rental-orders POST', () => {
+  const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.STRIPE_SECRET_KEY;
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    facilitiesFindManyMock.mockResolvedValue([]);
     timeSlotsFindManyMock.mockResolvedValue([]);
     assertNoEventFieldSchedulingConflictsMock.mockResolvedValue(undefined);
-    txEventsFindUniqueMock.mockResolvedValue(null);
-    txEventsCreateMock.mockResolvedValue({
-      id: 'event_1',
-      name: 'Summit',
-      hostId: 'owner_1',
-      organizationId: 'org_1',
-    });
-    txTimeSlotsCreateMock.mockResolvedValue({});
-    sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
+    txRentalBookingsFindUniqueMock.mockResolvedValue(null);
+    txRentalBookingsCreateMock.mockImplementation(async ({ data }) => ({
+      id: data.id,
+      billId: data.billId,
+      eventId: data.eventId,
+      totalAmountCents: data.totalAmountCents,
+      paymentIntentId: data.paymentIntentId,
+    }));
+    txRentalBookingItemsFindManyMock.mockResolvedValue([]);
+    txRentalBookingItemsCreateMock.mockResolvedValue({});
+    txBillsCreateMock.mockResolvedValue({ id: 'bill_1' });
+    txBillsUpdateMock.mockResolvedValue({});
+    txBillPaymentsFindFirstMock.mockResolvedValue(null);
+    txBillPaymentsCreateMock.mockResolvedValue({ id: 'bill_payment_1' });
     prismaTransactionMock.mockImplementation(async (callback: any) => callback({
-      events: {
-        findUnique: txEventsFindUniqueMock,
-        create: txEventsCreateMock,
+      rentalBookings: {
+        findUnique: txRentalBookingsFindUniqueMock,
+        create: txRentalBookingsCreateMock,
       },
-      timeSlots: {
-        create: txTimeSlotsCreateMock,
+      rentalBookingItems: {
+        findMany: txRentalBookingItemsFindManyMock,
+        create: txRentalBookingItemsCreateMock,
+      },
+      bills: {
+        create: txBillsCreateMock,
+        update: txBillsUpdateMock,
+      },
+      billPayments: {
+        findFirst: txBillPaymentsFindFirstMock,
+        create: txBillPaymentsCreateMock,
       },
     }));
   });
 
-  it('returns 400 when the organization has no configured sports', async () => {
-    organizationsFindUniqueMock.mockResolvedValue({
-      id: 'org_1',
-      name: 'Summit',
-      sports: [],
-      location: null,
-      address: null,
-      coordinates: null,
-      ownerId: 'owner_1',
-      publicPageEnabled: true,
-    });
-
-    const response = await POST(createRequest({
-      eventId: 'event_1',
-      selections: [baseSelection],
-      sportId: null,
-    }), { params });
-    const json = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(json.error).toMatch(/at least one sport configured/i);
-    expect(fieldsFindManyMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when sport is omitted for a rental-only order', async () => {
-    organizationsFindUniqueMock.mockResolvedValue({
-      id: 'org_1',
-      name: 'Summit',
-      sports: ['Indoor Volleyball'],
-      location: null,
-      address: null,
-      coordinates: null,
-      ownerId: 'owner_1',
-      publicPageEnabled: true,
-    });
-
-    const response = await POST(createRequest({
-      eventId: 'event_1',
-      selections: [baseSelection],
-      sportId: null,
-    }), { params });
-    const json = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(json.error).toMatch(/select a sport/i);
-    expect(fieldsFindManyMock).not.toHaveBeenCalled();
+  afterAll(() => {
+    if (originalStripeSecretKey) {
+      process.env.STRIPE_SECRET_KEY = originalStripeSecretKey;
+    } else {
+      delete process.env.STRIPE_SECRET_KEY;
+    }
   });
 
   it('returns 400 when the requested sport is not configured for the organization', async () => {
@@ -165,7 +148,55 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     expect(fieldsFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('creates the private rental event with the organization logo as the event image', async () => {
+  it('rejects rental selections that start in the past', async () => {
+    organizationsFindUniqueMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'Summit',
+      sports: ['Indoor Volleyball'],
+      location: 'Main Gym',
+      address: '123 Main St',
+      coordinates: [-122.4, 37.8],
+      ownerId: 'owner_1',
+      publicPageEnabled: true,
+    });
+    fieldsFindManyMock.mockResolvedValue([
+      {
+        id: 'field_1',
+        name: 'Court 1',
+        rentalSlotIds: ['slot_1'],
+        location: '',
+        facilityId: 'facility_1',
+      },
+    ]);
+    timeSlotsFindManyMock.mockResolvedValue([
+      {
+        id: 'slot_1',
+        startDate: '2001-04-21T16:00:00.000Z',
+        endDate: '2001-04-21T19:00:00.000Z',
+        repeating: false,
+        price: 0,
+        requiredTemplateIds: [],
+        hostRequiredTemplateIds: [],
+      },
+    ]);
+
+    const response = await POST(createRequest({
+      eventId: 'event_1',
+      selections: [{
+        scheduledFieldIds: ['field_1'],
+        startDate: '2001-04-21T17:00:00.000Z',
+        endDate: '2001-04-21T18:00:00.000Z',
+      }],
+      sportId: null,
+    }), { params });
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe('Rental selections must start in the future.');
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a confirmed rental booking without creating a private event', async () => {
     organizationsFindUniqueMock.mockResolvedValue({
       id: 'org_1',
       name: 'Summit',
@@ -182,16 +213,24 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         id: 'field_1',
         name: 'Court 1',
         rentalSlotIds: ['slot_1'],
-        location: 'Main Gym',
+        location: '',
+        facilityId: 'facility_1',
         long: -122.4,
         lat: 37.8,
+      },
+    ]);
+    facilitiesFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_1',
+        name: 'Main Gym',
+        location: 'Main Gym',
       },
     ]);
     timeSlotsFindManyMock.mockResolvedValue([
       {
         id: 'slot_1',
-        startDate: '2026-04-21T16:00:00.000Z',
-        endDate: '2026-04-21T19:00:00.000Z',
+        startDate: '2099-04-21T16:00:00.000Z',
+        endDate: '2099-04-21T19:00:00.000Z',
         repeating: false,
         price: 0,
         requiredTemplateIds: [],
@@ -202,37 +241,147 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     const response = await POST(createRequest({
       eventId: 'event_1',
       selections: [baseSelection],
-      sportId: 'Indoor Volleyball',
+      sportId: null,
     }), { params });
     const json = await response.json();
 
     expect(response.status).toBe(201);
-    expect(json).toEqual({
-      eventId: 'event_1',
+    expect(json).toMatchObject({
+      bookingId: 'event_1',
+      billId: null,
+      eventId: null,
       totalCents: 0,
+      items: [
+        expect.objectContaining({
+          id: 'event_1__item_1',
+          fieldId: 'field_1',
+          start: '2099-04-21T17:00:00.000Z',
+          end: '2099-04-21T18:00:00.000Z',
+        }),
+      ],
     });
-    expect(txEventsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(json.createEventUrl).toBe('/events/event_1/schedule?create=1');
+    expect(txRentalBookingsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         id: 'event_1',
-        imageId: 'file_logo_1',
         organizationId: 'org_1',
-        timeZone: 'America/Los_Angeles',
+        renterType: 'USER',
+        renterUserId: 'user_1',
+        status: 'CONFIRMED',
+        totalAmountCents: 0,
       }),
     }));
-    expect(txTimeSlotsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(txRentalBookingItemsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
+        id: 'event_1__item_1',
+        bookingId: 'event_1',
+        organizationId: 'org_1',
+        facilityId: 'facility_1',
+        fieldId: 'field_1',
+        availabilitySlotId: 'slot_1',
+        status: 'CONFIRMED',
         timeZone: 'America/Los_Angeles',
-        startDate: new Date('2026-04-21T17:00:00.000Z'),
-        endDate: new Date('2026-04-21T18:00:00.000Z'),
+        start: new Date('2099-04-21T17:00:00.000Z'),
+        end: new Date('2099-04-21T18:00:00.000Z'),
       }),
     }));
-    expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
-      event: expect.objectContaining({
-        id: 'event_1',
-        name: 'Summit',
-        organizationId: 'org_1',
-      }),
-      baseUrl: 'http://localhost',
+    expect(txBillsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a paid rental bill linked to the booking source', async () => {
+    organizationsFindUniqueMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'Summit',
+      logoId: 'file_logo_1',
+      sports: ['Indoor Volleyball'],
+      location: 'Main Gym',
+      address: '123 Main St',
+      coordinates: [-122.4, 37.8],
+      ownerId: 'owner_1',
+      publicPageEnabled: true,
     });
+    fieldsFindManyMock.mockResolvedValue([
+      {
+        id: 'field_1',
+        name: 'Court 1',
+        rentalSlotIds: ['slot_1'],
+        location: '',
+        facilityId: 'facility_1',
+        long: -122.4,
+        lat: 37.8,
+      },
+    ]);
+    facilitiesFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_1',
+        name: 'Main Gym',
+        location: 'Main Gym',
+      },
+    ]);
+    timeSlotsFindManyMock.mockResolvedValue([
+      {
+        id: 'slot_1',
+        startDate: '2099-04-21T16:00:00.000Z',
+        endDate: '2099-04-21T19:00:00.000Z',
+        repeating: false,
+        price: 2400,
+        requiredTemplateIds: [],
+        hostRequiredTemplateIds: [],
+      },
+    ]);
+
+    const response = await POST(createRequest({
+      eventId: 'booking_1',
+      selections: [baseSelection],
+      sportId: null,
+      paymentIntentId: 'pi_rental_1',
+    }), { params });
+    const json = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(json).toMatchObject({
+      bookingId: 'booking_1',
+      billId: 'bill_1',
+      eventId: null,
+      totalCents: 2400,
+    });
+    expect(txBillsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        organizationId: 'org_1',
+        ownerType: 'USER',
+        ownerId: 'user_1',
+        sourceType: 'RENTAL_BOOKING',
+        sourceId: 'booking_1',
+        status: 'PAID',
+        totalAmountCents: 2400,
+        paidAmountCents: 2400,
+        lineItems: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'RENTAL',
+            amountCents: 2400,
+            rentalBookingId: 'booking_1',
+            organizationId: 'org_1',
+            userId: 'user_1',
+          }),
+        ]),
+      }),
+    }));
+    expect(txBillPaymentsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        billId: 'bill_1',
+        amountCents: 2400,
+        paymentIntentId: 'pi_rental_1',
+        status: 'PAID',
+      }),
+    }));
+    expect(txRentalBookingsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'booking_1',
+        billId: 'bill_1',
+        status: 'CONFIRMED',
+        totalAmountCents: 2400,
+        paymentIntentId: 'pi_rental_1',
+      }),
+    }));
   });
 });

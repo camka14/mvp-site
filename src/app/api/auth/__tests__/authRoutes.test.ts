@@ -51,6 +51,7 @@ const authEmailVerificationMock = {
 };
 const authTotpMfaMock = {
   createWebLoginMfaChallenge: jest.fn(),
+  isLocalAuthMfaBypassEnabled: jest.fn(),
   isTotpMfaError: jest.fn(),
   isWebLoginClient: jest.fn(),
   readTotpMfaRequestMetadata: jest.fn(),
@@ -70,6 +71,7 @@ jest.mock('@/server/authEmailVerification', () => ({
 }));
 jest.mock('@/server/authTotpMfa', () => ({
   createWebLoginMfaChallenge: (...args: any[]) => authTotpMfaMock.createWebLoginMfaChallenge(...args),
+  isLocalAuthMfaBypassEnabled: (...args: any[]) => authTotpMfaMock.isLocalAuthMfaBypassEnabled(...args),
   isTotpMfaError: (...args: any[]) => authTotpMfaMock.isTotpMfaError(...args),
   isWebLoginClient: (...args: any[]) => authTotpMfaMock.isWebLoginClient(...args),
   readTotpMfaRequestMetadata: (...args: any[]) => authTotpMfaMock.readTotpMfaRequestMetadata(...args),
@@ -121,6 +123,7 @@ describe('auth routes', () => {
     authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
     authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
     authTotpMfaMock.isWebLoginClient.mockImplementation((value: unknown) => value === 'web');
+    authTotpMfaMock.isLocalAuthMfaBypassEnabled.mockReturnValue(false);
     authTotpMfaMock.isTotpMfaError.mockReturnValue(false);
     authTotpMfaMock.readTotpMfaRequestMetadata.mockReturnValue({ ipHash: 'ip_hash', userAgent: 'jest' });
     authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValue(null);
@@ -619,6 +622,44 @@ describe('auth routes', () => {
       expect(prismaMock.authUser.update).not.toHaveBeenCalled();
       expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    });
+
+    it('skips MFA for website login when local MFA bypass is enabled', async () => {
+      authTotpMfaMock.isLocalAuthMfaBypassEnabled.mockReturnValueOnce(true);
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        passwordHash: 'hashed',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 3,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.authUser.update.mockResolvedValueOnce({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 3,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/login', {
+        email: 'test@example.com',
+        password: 'password123',
+        clientType: 'web',
+      });
+
+      const res = await LOGIN_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.user.id).toBe('user_1');
+      expect(authTotpMfaMock.createWebLoginMfaChallenge).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     });
 
     it('rejects invalid credentials', async () => {

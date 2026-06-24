@@ -32,15 +32,16 @@ import {
 } from '@/server/scheduler/types';
 import {
   canonicalizeTimeSlots,
+  type CanonicalTimeSlotInput,
   normalizeTimeSlotDays,
   normalizeTimeSlotFieldIds,
 } from '@/server/timeSlotCanonical';
 import {
   buildEventOfficialPositionsFromTemplates,
   buildLegacyOfficialAssignment,
-  deriveEventOfficialsFromLegacyOfficialIds,
   deriveLegacyOfficialCheckedInFromAssignments,
   deriveLegacyOfficialIdFromAssignments,
+  filterEventOfficialsByUserIds,
   normalizeEventOfficials,
   normalizeEventOfficialPositions,
   normalizeMatchOfficialAssignments,
@@ -112,6 +113,18 @@ export class LeaguePlayoffTeamCountValidationError extends Error {
 export const isLeaguePlayoffTeamCountValidationError = (
   error: unknown,
 ): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
+
+export class RentalBookingReservationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RentalBookingReservationError';
+  }
+}
+
+export const isRentalBookingReservationError = (
+  error: unknown,
+): error is RentalBookingReservationError => error instanceof RentalBookingReservationError;
+
 const EVENT_FIELDS_REQUIRED_MESSAGE =
   'Select or create at least one field for this event.';
 
@@ -377,6 +390,97 @@ const persistEventOfficialRows = async (
       },
     });
   }
+};
+
+const shouldKeepMatchOfficialAssignment = (
+  assignment: unknown,
+  allowedEventOfficialIds: Set<string>,
+  allowedOfficialUserIds: Set<string>,
+): boolean => {
+  if (!assignment || typeof assignment !== 'object') {
+    return false;
+  }
+  const row = assignment as Record<string, unknown>;
+  const holderType = typeof row.holderType === 'string' ? row.holderType.trim().toUpperCase() : '';
+  if (holderType !== 'OFFICIAL') {
+    return true;
+  }
+  const userId = normalizeEntityId(row.userId);
+  if (!userId || !allowedOfficialUserIds.has(userId)) {
+    return false;
+  }
+  const eventOfficialId = normalizeEntityId(row.eventOfficialId);
+  return !eventOfficialId || allowedEventOfficialIds.has(eventOfficialId);
+};
+
+export const clearRemovedEventOfficialMatchAssignments = async (
+  client: PrismaLike,
+  eventId: string,
+  eventOfficials: EventOfficialRecord[],
+): Promise<number> => {
+  if (
+    typeof (client as any).matches?.findMany !== 'function'
+    || typeof (client as any).matches?.update !== 'function'
+  ) {
+    return 0;
+  }
+  const allowedEventOfficialIds = new Set(
+    eventOfficials
+      .map((official) => normalizeEntityId(official.id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const allowedOfficialUserIds = new Set(
+    eventOfficials
+      .filter((official) => official.isActive !== false)
+      .map((official) => normalizeEntityId(official.userId))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const matches = await (client as any).matches.findMany({
+    where: { eventId },
+    select: {
+      id: true,
+      officialId: true,
+      officialIds: true,
+      officialCheckedIn: true,
+    },
+  });
+  let updatedCount = 0;
+  for (const match of matches as Array<Record<string, unknown>>) {
+    const rawAssignments = Array.isArray(match.officialIds) ? match.officialIds : [];
+    const nextAssignments = rawAssignments.filter((assignment) => (
+      shouldKeepMatchOfficialAssignment(assignment, allowedEventOfficialIds, allowedOfficialUserIds)
+    ));
+    const nextPrimaryOfficialId = nextAssignments.length
+      ? deriveLegacyOfficialIdFromAssignments(nextAssignments as MatchOfficialAssignment[])
+      : null;
+    const nextPrimaryOfficialCheckedIn = nextAssignments.length
+      ? deriveLegacyOfficialCheckedInFromAssignments(nextAssignments as MatchOfficialAssignment[])
+      : false;
+    const existingPrimaryOfficialId = normalizeEntityId(match.officialId);
+    const shouldClearLegacyOfficial = Boolean(
+      existingPrimaryOfficialId && !allowedOfficialUserIds.has(existingPrimaryOfficialId),
+    );
+    const assignmentsChanged = nextAssignments.length !== rawAssignments.length;
+    if (!assignmentsChanged && !shouldClearLegacyOfficial) {
+      continue;
+    }
+    const matchId = normalizeEntityId(match.id);
+    if (!matchId) {
+      continue;
+    }
+    await (client as any).matches.update({
+      where: { id: matchId },
+      data: {
+        officialIds: nextAssignments.length
+          ? (nextAssignments as unknown as Record<string, unknown>[])
+          : null,
+        officialId: nextPrimaryOfficialId,
+        officialCheckedIn: nextPrimaryOfficialCheckedIn,
+      },
+    });
+    updatedCount += 1;
+  }
+  return updatedCount;
 };
 
 const resolveBillingOwnerHasStripeAccount = async (
@@ -1124,6 +1228,174 @@ const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+type RentalBookingSlotInput = Pick<
+  CanonicalTimeSlotInput,
+  | 'id'
+  | 'scheduledFieldIds'
+  | 'startDate'
+  | 'endDate'
+  | 'repeating'
+  | 'rentalBookingId'
+  | 'rentalBookingItemId'
+  | 'rentalLocked'
+  | 'sourceType'
+>;
+
+const RENTAL_BOOKING_ITEM_ACTIVE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
+
+const isRentalBookingSlot = (slot: RentalBookingSlotInput): boolean => (
+  slot.rentalLocked
+  || Boolean(slot.rentalBookingId)
+  || Boolean(slot.rentalBookingItemId)
+  || slot.sourceType === 'RENTAL_BOOKING'
+);
+
+export const reserveRentalBookingSlotsForEvent = async (
+  client: PrismaLike,
+  eventId: string,
+  slots: RentalBookingSlotInput[],
+  now: Date = new Date(),
+): Promise<void> => {
+  if (
+    !client.rentalBookingItems?.findMany
+    || !client.rentalBookingItems?.updateMany
+    || !client.rentalBookings?.updateMany
+  ) {
+    return;
+  }
+
+  const rentalSlots = slots.filter(isRentalBookingSlot);
+  if (!rentalSlots.length) {
+    return;
+  }
+
+  const slotsByBookingItemId = new Map<string, RentalBookingSlotInput>();
+  const duplicateItemIds = new Set<string>();
+  for (const slot of rentalSlots) {
+    const bookingItemId = normalizeEntityId(slot.rentalBookingItemId);
+    if (!bookingItemId) {
+      throw new RentalBookingReservationError('Rental-backed time slots must include a rental booking item.');
+    }
+    if (slotsByBookingItemId.has(bookingItemId)) {
+      duplicateItemIds.add(bookingItemId);
+    }
+    slotsByBookingItemId.set(bookingItemId, slot);
+  }
+  if (duplicateItemIds.size > 0) {
+    throw new RentalBookingReservationError('A rental reservation can only be used in one event timeslot.');
+  }
+
+  const bookingItemIds = Array.from(slotsByBookingItemId.keys());
+  const bookingItems = await client.rentalBookingItems.findMany({
+    where: { id: { in: bookingItemIds } },
+    select: {
+      id: true,
+      bookingId: true,
+      fieldId: true,
+      start: true,
+      end: true,
+      status: true,
+      eventId: true,
+      eventTimeSlotId: true,
+    } as any,
+  });
+  const bookingItemById = new Map<string, any>(
+    (bookingItems as any[]).map((item) => [String(item.id), item]),
+  );
+
+  for (const bookingItemId of bookingItemIds) {
+    const slot = slotsByBookingItemId.get(bookingItemId);
+    const item = bookingItemById.get(bookingItemId);
+    if (!slot || !item) {
+      throw new RentalBookingReservationError('Rental reservation could not be found.');
+    }
+
+    const expectedBookingId = normalizeEntityId(slot.rentalBookingId);
+    const actualBookingId = normalizeEntityId(item.bookingId);
+    if (expectedBookingId && actualBookingId !== expectedBookingId) {
+      throw new RentalBookingReservationError('Rental reservation does not match the selected booking.');
+    }
+
+    const itemEventId = normalizeEntityId(item.eventId);
+    const itemEventTimeSlotId = normalizeEntityId(item.eventTimeSlotId);
+    if (itemEventId && itemEventId !== eventId) {
+      throw new RentalBookingReservationError('This rental reservation is already attached to another event.');
+    }
+    if (itemEventTimeSlotId && itemEventTimeSlotId !== slot.id) {
+      throw new RentalBookingReservationError('This rental reservation is already attached to another event timeslot.');
+    }
+
+    const status = typeof item.status === 'string' ? item.status : '';
+    if (!RENTAL_BOOKING_ITEM_ACTIVE_STATUSES.includes(status)) {
+      throw new RentalBookingReservationError('This rental reservation is not available for event scheduling.');
+    }
+
+    const itemFieldId = normalizeEntityId(item.fieldId);
+    if (!itemFieldId || !slot.scheduledFieldIds.includes(itemFieldId)) {
+      throw new RentalBookingReservationError('Rental-backed time slots must include the rented resource.');
+    }
+
+    const itemStart = item.start instanceof Date ? item.start : new Date(item.start);
+    const itemEnd = item.end instanceof Date ? item.end : new Date(item.end);
+    if (
+      slot.repeating
+      || !slot.endDate
+      || !Number.isFinite(itemStart.getTime())
+      || !Number.isFinite(itemEnd.getTime())
+      || itemStart.getTime() !== slot.startDate.getTime()
+      || itemEnd.getTime() !== slot.endDate.getTime()
+    ) {
+      throw new RentalBookingReservationError('Rental-backed time slots must match the reserved date and time.');
+    }
+  }
+
+  for (const [bookingItemId, slot] of slotsByBookingItemId.entries()) {
+    const item = bookingItemById.get(bookingItemId);
+    const bookingId = normalizeEntityId(item?.bookingId);
+    const updateResult = await client.rentalBookingItems.updateMany({
+      where: {
+        id: bookingItemId,
+        status: { in: RENTAL_BOOKING_ITEM_ACTIVE_STATUSES },
+        OR: [
+          { eventId: null },
+          { eventId },
+        ],
+        AND: [
+          {
+            OR: [
+              { eventTimeSlotId: null },
+              { eventTimeSlotId: slot.id },
+            ],
+          },
+        ],
+      } as any,
+      data: {
+        eventId,
+        eventTimeSlotId: slot.id,
+        updatedAt: now,
+      } as any,
+    });
+    if (typeof updateResult?.count === 'number' && updateResult.count !== 1) {
+      throw new RentalBookingReservationError('This rental reservation was already attached to another event.');
+    }
+    if (bookingId) {
+      await client.rentalBookings.updateMany({
+        where: {
+          id: bookingId,
+          OR: [
+            { eventId: null },
+            { eventId },
+          ],
+        } as any,
+        data: {
+          eventId,
+          updatedAt: now,
+        } as any,
+      });
+    }
+  }
 };
 
 const buildDivisionFieldMap = (
@@ -1966,6 +2238,52 @@ const attachFieldSchedulingConflicts = async (params: {
       }
     }
   }
+
+  if (typeof params.client.rentalBookingItems?.findMany === 'function') {
+    const rentalBookingRows = await params.client.rentalBookingItems.findMany({
+      where: {
+        fieldId: { in: fieldIds },
+        status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] },
+        start: { lt: params.windowEnd },
+        end: { gt: params.windowStart },
+        ...(params.eventId
+          ? {
+              OR: [
+                { eventId: null },
+                { eventId: { not: params.eventId } },
+              ],
+            }
+          : {}),
+      } as any,
+      select: {
+        id: true,
+        bookingId: true,
+        fieldId: true,
+        start: true,
+        end: true,
+      },
+    });
+
+    for (const row of rentalBookingRows) {
+      const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
+      const field = fieldId ? params.fields[fieldId] : undefined;
+      if (!field) {
+        continue;
+      }
+      const start = toOptionalDate(row.start);
+      const end = toOptionalDate(row.end);
+      if (!start || !end || end.getTime() <= start.getTime()) {
+        continue;
+      }
+      appendBlockingEvent({
+        field,
+        id: `rental-booking:${row.bookingId}:${row.id}`,
+        start,
+        end,
+        parentId: row.bookingId ?? null,
+      });
+    }
+  }
 };
 
 const toOptionalDate = (value: unknown): Date | null => {
@@ -2580,7 +2898,7 @@ export const loadEventWithRelations = async (
     ? true
     : typeof event.doTeamsOfficiate === 'boolean'
       ? event.doTeamsOfficiate
-      : true;
+      : false;
 
   const baseParams = {
     id: event.id,
@@ -3276,6 +3594,7 @@ export const syncEventDivisions = async (
     eventType: normalizedEventType,
     includePlayoffs: params.includePlayoffs,
   });
+  const clearSingleDivisionTeamAssignments = Boolean(params.singleDivision) && !tournamentPoolPlayEnabled;
   let effectiveDivisionIds = divisionIds;
   if (tournamentPoolPlayEnabled && normalizedPlayoffDetails.length > 0) {
     const existingPoolRows = existingRows
@@ -3677,7 +3996,7 @@ export const syncEventDivisions = async (
     };
   });
 
-  if (!params.singleDivision) {
+  if (!params.singleDivision || tournamentPoolPlayEnabled) {
     const teamDivisionMap = new Map<string, string>();
     for (const entry of finalEntries) {
       if (entry.kind === 'PLAYOFF') {
@@ -3778,7 +4097,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
+        teamIds: clearSingleDivisionTeamAssignments ? [] : (entry.teamIds ?? []),
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -3830,7 +4149,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
+        teamIds: clearSingleDivisionTeamAssignments ? [] : (entry.teamIds ?? []),
         updatedAt: now,
       } as any,
     });
@@ -3901,12 +4220,23 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     })
     : [];
   const requestedPayloadHostId = normalizeEntityId(payload.hostId);
+  const requestedEventOfficialIds: string[] = Array.isArray(payload.eventOfficials)
+    ? Array.from(new Set(
+        payload.eventOfficials
+          .map((entry: unknown) => (
+            entry && typeof entry === 'object'
+              ? normalizeEntityId((entry as Record<string, unknown>).userId)
+              : null
+          ))
+          .filter((userId: string | null): userId is string => Boolean(userId)),
+      ))
+    : [];
   const organizationAssignments = resolvedOrganizationId
     ? sanitizeOrganizationEventAssignments(
       {
         hostId: payload.hostId ?? resolvedHostId ?? null,
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
-        officialIds: ensureStringArray(payload.officialIds),
+        officialIds: requestedEventOfficialIds,
       },
       organizationAccess
         ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites }
@@ -3919,7 +4249,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : ensureStringArray(payload.assistantHostIds);
   const normalizedOfficialIds = organizationAssignments
     ? organizationAssignments.officialIds
-    : ensureStringArray(payload.officialIds);
+    : requestedEventOfficialIds;
   const [existingEventOfficialRows, sportRow] = await Promise.all([
     existingEvent ? loadEventOfficialRows(client, id) : Promise.resolve([]),
     (normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId))
@@ -4016,6 +4346,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
+  const payloadEventType = typeof payload.eventType === 'string'
+    ? payload.eventType.toUpperCase()
+    : null;
+  const includePlayoffsOrPools = coerceBoolean(
+    Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
+      ? payload.includePlayoffsOrPools
+      : payload.includePlayoffs,
+    false,
+  );
+  const isTournamentPoolPlay = isTournamentPoolPlayEnabled({
+    eventType: payloadEventType,
+    includePlayoffs: includePlayoffsOrPools,
+  });
   const start = coerceDate(payload.start, eventTimeZone) ?? new Date();
   const canonicalTimeSlots = canonicalizeTimeSlots({
     eventId: id,
@@ -4023,9 +4366,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     fallbackStartDate: start,
     timeZone: eventTimeZone,
     fallbackDivisionKeys: normalizedEventDivisionIds,
-    enforceAllDivisions: singleDivisionEnabled,
+    enforceAllDivisions: singleDivisionEnabled && !isTournamentPoolPlay,
     normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
   });
+  await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
 
   const slotFieldIds = normalizeFieldIds(
     canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
@@ -4068,19 +4412,21 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       isActive: row.isActive !== false,
     }))
     .filter((row: any) => row.positionIds.length > 0);
+  const allowedEventOfficialUserIds = hasExplicitEventOfficials
+    ? normalizedOfficialIds
+    : existingEventOfficials.map((row: any) => row.userId);
+  const eventOfficialsInput = hasExplicitEventOfficials
+    ? filterEventOfficialsByUserIds(payload.eventOfficials, allowedEventOfficialUserIds)
+    : payload.eventOfficials;
   const resolvedEventOfficials = hasExplicitEventOfficials
-    ? normalizeEventOfficials(payload.eventOfficials, {
+    ? normalizeEventOfficials(eventOfficialsInput, {
         eventId: id,
         positionIds: resolvedOfficialPositions.map((position) => position.id),
         fieldIds,
       })
     : existingEventOfficials.length
       ? existingEventOfficials
-      : deriveEventOfficialsFromLegacyOfficialIds({
-          eventId: id,
-          officialIds: normalizedOfficialIds,
-          positionIds: resolvedOfficialPositions.map((position) => position.id),
-        });
+      : [];
   const allowedFieldIdSet = new Set(fieldIds);
   const fieldsToPersist = allowedFieldIdSet.size
     ? fields.filter((field: any) => {
@@ -4123,19 +4469,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     incomingDivisionFieldMap,
   );
 
-  const payloadEventType = typeof payload.eventType === 'string'
-    ? payload.eventType.toUpperCase()
-    : null;
   const existingEventType = typeof existingEvent?.eventType === 'string'
     ? existingEvent.eventType.toUpperCase()
     : null;
   const nextEventType = payloadEventType ?? existingEventType;
-  const includePlayoffsOrPools = coerceBoolean(
-    Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
-      ? payload.includePlayoffsOrPools
-      : payload.includePlayoffs,
-    false,
-  );
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
@@ -4428,6 +4765,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   });
   if (hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
     await persistEventOfficialRows(client, id, resolvedEventOfficials);
+    await clearRemovedEventOfficialMatchAssignments(client, id, resolvedEventOfficials);
   }
 
   const syncedDivisionIds = await syncEventDivisions({
@@ -4618,6 +4956,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
+        sourceType: slot.sourceType,
+        rentalBookingId: slot.rentalBookingId,
+        rentalBookingItemId: slot.rentalBookingItemId,
+        rentalLocked: slot.rentalLocked,
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -4634,6 +4976,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
+        sourceType: slot.sourceType,
+        rentalBookingId: slot.rentalBookingId,
+        rentalBookingItemId: slot.rentalBookingItemId,
+        rentalLocked: slot.rentalLocked,
         updatedAt: now,
       } as any,
     });
@@ -4643,6 +4989,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const nextTimeSlotIdSet = new Set(timeSlotIds);
   const staleTimeSlotIds = existingTimeSlotIds.filter((slotId) => !nextTimeSlotIdSet.has(slotId));
   if (staleTimeSlotIds.length) {
+    if (client.rentalBookingItems?.updateMany) {
+      await client.rentalBookingItems.updateMany({
+        where: {
+          eventId: id,
+          eventTimeSlotId: { in: staleTimeSlotIds },
+        } as any,
+        data: {
+          eventId: null,
+          eventTimeSlotId: null,
+          updatedAt: new Date(),
+        } as any,
+      });
+    }
     await client.timeSlots.deleteMany({
       where: { id: { in: staleTimeSlotIds } },
     });
