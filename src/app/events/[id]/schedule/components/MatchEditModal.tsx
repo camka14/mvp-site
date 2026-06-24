@@ -1328,7 +1328,13 @@ export default function MatchEditModal({
       const statusSegmentsForSave = (
         matchStartedValue ? statusSegments : statusSegments.map(resetSegmentConfirmation)
       ).map((segment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }));
-      const legacyStatus = statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id);
+      const legacyStatus = matchStartedValue
+        ? statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id)
+        : {
+            team1Points: Array.isArray(match.team1Points) ? [...match.team1Points] : [],
+            team2Points: Array.isArray(match.team2Points) ? [...match.team2Points] : [],
+            setResults: Array.isArray(match.setResults) ? [...match.setResults] : [],
+          };
       const isMatchComplete = matchStartedValue
         && statusMatchComplete(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id);
       updated.status = matchStartedValue

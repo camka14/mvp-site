@@ -92,6 +92,64 @@ describe('MatchEditModal', () => {
     expect(screen.queryByText(/handled from Match Details/i)).not.toBeInTheDocument();
   });
 
+  it('preserves legacy score arrays when saving an unstarted match', () => {
+    const onSave = jest.fn();
+    const setRules = {
+      scoringModel: 'SETS',
+      segmentCount: 3,
+      segmentLabel: 'Set',
+      setPointTargets: [25, 25, 15],
+      supportedIncidentTypes: ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'POINT',
+      pointIncidentRequiresParticipant: false,
+    };
+    const unstartedMatch = {
+      ...match,
+      status: 'SCHEDULED',
+      matchRulesSnapshot: setRules,
+      resolvedMatchRules: setRules,
+      team1Points: [0],
+      team2Points: [0],
+      setResults: [0],
+      segments: [{
+        id: 'match_1_segment_1',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        sequence: 1,
+        status: 'NOT_STARTED',
+        scores: { team_a: 3, team_b: 0 },
+        winnerEventTeamId: null,
+      }],
+    } as Match;
+
+    renderWithMantine(
+      <MatchEditModal
+        opened
+        match={unstartedMatch}
+        tournament={{
+          ...event,
+          usesSets: true,
+          resolvedMatchRules: setRules,
+        } as Event}
+        teams={[unstartedMatch.team1, unstartedMatch.team2] as NonNullable<Event['teams']>}
+        canManageOperations
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toEqual(expect.objectContaining({
+      status: 'SCHEDULED',
+      team1Points: [0],
+      team2Points: [0],
+      setResults: [0],
+      winnerEventTeamId: null,
+    }));
+  });
+
   it('manages started and segment status from the bracket column in order', async () => {
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
     const onSetComplete = jest.fn().mockResolvedValue(undefined);

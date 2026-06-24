@@ -155,6 +155,30 @@ describe('ScoreUpdateModal', () => {
     expect(screen.queryByRole('button', { name: /Confirm Set/i })).not.toBeInTheDocument();
   });
 
+  it('summarizes varied match-level set targets', () => {
+    const rules = buildRules({
+      scoringModel: 'SETS',
+      segmentCount: 3,
+      segmentLabel: 'Set',
+      setPointTargets: [25, 25, 15],
+    });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          matchRulesSnapshot: rules as Match['matchRulesSnapshot'],
+          resolvedMatchRules: rules as Match['resolvedMatchRules'],
+        })}
+        tournament={buildEvent({ usesSets: true })}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByText(/Best of 3 sets \| Rally to 25\/15 \| Win by 2/i)).toBeInTheDocument();
+  });
+
   it('truncates long team names in score card headers', () => {
     const longTeamName = 'Test Soccer League Team 5 With An Extra Long Club Name';
 

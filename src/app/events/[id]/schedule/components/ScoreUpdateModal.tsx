@@ -2368,12 +2368,22 @@ export default function ScoreUpdateModal({
     typeof match.matchId === "number"
       ? `Match #${match.matchId}`
       : `Match ${match.$id}`;
-  const firstTarget = targetForSegment(0);
+  const setTargetSummary = (() => {
+    if (rules.scoringModel !== "SETS") return null;
+    const targets = Array.from(
+      new Set(
+        Array.from({ length: rules.segmentCount }, (_, index) => targetForSegment(index))
+          .filter((target): target is number => typeof target === "number" && Number.isFinite(target) && target > 0),
+      ),
+    );
+    if (!targets.length) return null;
+    return targets.join("/");
+  })();
   const summaryParts =
     rules.scoringModel === "SETS"
       ? [
           `Best of ${rules.segmentCount} ${rules.segmentLabel.toLowerCase()}${rules.segmentCount === 1 ? "" : "s"}`,
-          firstTarget ? `Rally to ${firstTarget}` : null,
+          setTargetSummary ? `Rally to ${setTargetSummary}` : null,
           "Win by 2",
         ].filter((part): part is string => Boolean(part))
       : [rulesSummary(rules)];
