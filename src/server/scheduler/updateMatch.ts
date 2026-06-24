@@ -192,7 +192,9 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
     match.official = primaryOfficialId
       ? event.officials.find((official) => official.id === primaryOfficialId) ?? null
       : null;
-    match.officialCheckedIn = deriveLegacyOfficialCheckedInFromAssignments(match.officialAssignments);
+    match.officialCheckedIn = match.officialAssignments.length > 0
+      ? deriveLegacyOfficialCheckedInFromAssignments(match.officialAssignments)
+      : update.officialCheckedIn ?? match.officialCheckedIn;
     if (match.official) ensureMatchesArray(match.official).push(match);
   }
   if (update.fieldId !== undefined) {

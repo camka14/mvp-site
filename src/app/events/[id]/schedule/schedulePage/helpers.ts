@@ -8,6 +8,7 @@ import {
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import type { Event, EventState, Field, Match, Sport, Team, TimeSlot } from '@/types';
+import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 import { MATCH_CONFLICT_RESOLUTION_MESSAGE } from '../lib/matchConflicts';
 
@@ -194,6 +195,63 @@ export const nextMatchSequenceNumber = (matches: Match[]): number => {
     return Math.max(maxValue, Math.trunc(match.matchId));
   }, 0);
   return maxCurrent + 1;
+};
+
+export const buildBracketNodes = (draftMatches: Match[]): BracketNode[] => (
+  draftMatches.reduce<BracketNode[]>((nodes, match) => {
+    const id = normalizeIdToken(match.$id);
+    if (!id) {
+      return nodes;
+    }
+    nodes.push({
+      id,
+      matchId: typeof match.matchId === 'number' ? match.matchId : null,
+      previousLeftId: asBulkMatchRef(match.previousLeftId),
+      previousRightId: asBulkMatchRef(match.previousRightId),
+      winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+      loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+    });
+    return nodes;
+  }, [])
+);
+
+export const normalizeDraftBracketGraph = (draftMatches: Match[]): Match[] => {
+  const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
+  if (!graphValidation.ok) {
+    return draftMatches;
+  }
+
+  return draftMatches.map((match) => {
+    const matchId = normalizeIdToken(match.$id);
+    if (!matchId) {
+      return match;
+    }
+
+    const normalizedNode = graphValidation.normalizedById[matchId];
+    if (!normalizedNode) {
+      return match;
+    }
+
+    const normalizedPreviousLeftId = asBulkMatchRef(normalizedNode.previousLeftId);
+    const normalizedPreviousRightId = asBulkMatchRef(normalizedNode.previousRightId);
+    const currentPreviousLeftId = asBulkMatchRef(match.previousLeftId);
+    const currentPreviousRightId = asBulkMatchRef(match.previousRightId);
+
+    if (
+      currentPreviousLeftId === normalizedPreviousLeftId
+      && currentPreviousRightId === normalizedPreviousRightId
+    ) {
+      return match;
+    }
+
+    return {
+      ...match,
+      previousLeftId: normalizedPreviousLeftId,
+      previousRightId: normalizedPreviousRightId,
+      previousLeftMatch: undefined,
+      previousRightMatch: undefined,
+    };
+  });
 };
 
 export const normalizeDivisionToken = (value: unknown): string | null => {

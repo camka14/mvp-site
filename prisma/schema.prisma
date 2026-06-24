@@ -36,6 +36,28 @@ enum RefundRequestsStatusEnum {
   REJECTED
 }
 
+enum DiscountsOwnerTypeEnum {
+  USER
+  ORGANIZATION
+}
+
+enum DiscountsTargetTypeEnum {
+  EVENT
+  PRODUCT
+  TEAM_REGISTRATION
+}
+
+enum DiscountsStatusEnum {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum DiscountCodesStatusEnum {
+  ACTIVE
+  INACTIVE
+}
+
 enum EventsStateEnum {
   PUBLISHED
   UNPUBLISHED
@@ -1406,6 +1428,68 @@ model RefundRequests {
   reason         String
   organizationId String?
   status         RefundRequestsStatusEnum?
+}
+
+model Discounts {
+  id                         String                  @id
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  ownerType                  DiscountsOwnerTypeEnum
+  ownerId                    String
+  createdBy                  String
+  updatedBy                  String?
+  name                       String
+  description                String?
+  status                     DiscountsStatusEnum     @default(ACTIVE)
+  targetType                 DiscountsTargetTypeEnum
+  targetId                   String
+  originalPriceCentsSnapshot Int
+  discountedPriceCents       Int
+
+  @@index([ownerType, ownerId])
+  @@index([targetType, targetId])
+  @@index([status])
+  @@index([createdBy])
+}
+
+model DiscountCodes {
+  id         String                  @id
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  discountId String
+  code       String                  @unique
+  status     DiscountCodesStatusEnum @default(ACTIVE)
+  usageLimit Int?
+  usedCount  Int                     @default(0)
+  createdBy  String
+
+  @@index([discountId])
+  @@index([status])
+}
+
+model DiscountCodeRedemptions {
+  id                    String                   @id
+  createdAt             DateTime                 @default(now())
+  discountId            String
+  discountCodeId        String
+  code                  String
+  userId                String?
+  guestEmail            String?
+  purchaseType          DiscountsTargetTypeEnum
+  purchaseTargetId      String
+  paymentIntentId       String?
+  registrationId        String?
+  productId             String?
+  organizationId        String?
+  originalAmountCents   Int
+  discountedAmountCents Int
+
+  @@index([discountId])
+  @@index([discountCodeId])
+  @@index([userId])
+  @@index([purchaseType, purchaseTargetId])
+  @@unique([discountCodeId, paymentIntentId])
+  @@unique([discountCodeId, registrationId])
 }
 
 model OrganizationAccountingConnections {

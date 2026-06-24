@@ -123,6 +123,7 @@ class PaymentService {
     billingAddress?: BillingAddress,
     occurrence?: WeeklyOccurrenceSelection,
     answers?: RegistrationQuestionAnswerInput[],
+    discountCode?: string | null,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -140,6 +141,7 @@ class PaymentService {
         ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
         ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
         ...(answers ? { answers } : {}),
+        ...(discountCode ? { discountCode } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -170,6 +172,7 @@ class PaymentService {
     product: Product,
     organization?: PaymentOrganizationContext,
     billingAddress?: BillingAddress,
+    discountCode?: string | null,
   ): Promise<PaymentIntent> {
     try {
       const payload = {
@@ -177,6 +180,7 @@ class PaymentService {
         productId: product.$id,
         organization,
         billingAddress,
+        ...(discountCode ? { discountCode } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -203,6 +207,7 @@ class PaymentService {
     team: Team,
     organization?: PaymentOrganizationContext,
     billingAddress?: BillingAddress,
+    discountCode?: string | null,
   ): Promise<PaymentIntent>;
 
   async createTeamRegistrationPaymentIntent(
@@ -211,6 +216,7 @@ class PaymentService {
     teamRegistration?: TeamRegistrationCheckoutTarget,
     organization?: PaymentOrganizationContext,
     billingAddress?: BillingAddress,
+    discountCode?: string | null,
   ): Promise<PaymentIntent>;
 
   async createTeamRegistrationPaymentIntent(
@@ -218,7 +224,8 @@ class PaymentService {
     team: Team,
     teamRegistrationOrOrganization?: TeamRegistrationCheckoutTarget | PaymentOrganizationContext,
     organizationOrBillingAddress?: PaymentOrganizationContext | BillingAddress,
-    billingAddress?: BillingAddress,
+    billingAddress?: BillingAddress | string | null,
+    discountCodeOrUndefined?: string | null,
   ): Promise<PaymentIntent> {
     try {
       if (!team?.$id) {
@@ -231,8 +238,13 @@ class PaymentService {
         ? organizationOrBillingAddress as PaymentOrganizationContext | undefined
         : teamRegistrationOrOrganization as PaymentOrganizationContext | undefined;
       const resolvedBillingAddress = isTeamRegistrationCheckoutTarget(teamRegistrationOrOrganization)
-        ? billingAddress
+        ? billingAddress as BillingAddress | undefined
         : organizationOrBillingAddress as BillingAddress | undefined;
+      const resolvedDiscountCode = isTeamRegistrationCheckoutTarget(teamRegistrationOrOrganization)
+        ? discountCodeOrUndefined
+        : typeof billingAddress === 'string'
+          ? billingAddress
+          : null;
       const payload = {
         purchaseType: 'team_registration',
         user,
@@ -243,6 +255,7 @@ class PaymentService {
         },
         organization,
         billingAddress: resolvedBillingAddress,
+        ...(resolvedDiscountCode ? { discountCode: resolvedDiscountCode } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {

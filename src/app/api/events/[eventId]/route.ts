@@ -48,6 +48,7 @@ import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistratio
 import {
   generatedPoolsForBracket,
   isTournamentPoolValidationError,
+  isTournamentPoolPlayEnabled,
 } from '@/server/events/tournamentPools';
 
 export const dynamic = 'force-dynamic';
@@ -2281,13 +2282,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       let canonicalTimeSlots: ReturnType<typeof canonicalizeTimeSlots> | null = null;
       if (incomingTimeSlots !== null) {
+        const shouldEnforceAllTimeSlotDivisions = nextSingleDivision && !isTournamentPoolPlayEnabled({
+          eventType: data.eventType ?? existing.eventType,
+          includePlayoffs: data.includePlayoffs ?? existing.includePlayoffs,
+          includePlayoffsOrPools: data.includePlayoffs ?? existing.includePlayoffs,
+        });
         canonicalTimeSlots = canonicalizeTimeSlots({
           eventId,
           slots: incomingTimeSlots,
           fallbackStartDate: existing.start,
           timeZone: data.timeZone ?? existing.timeZone,
           fallbackDivisionKeys: nextDivisionKeys,
-          enforceAllDivisions: nextSingleDivision,
+          enforceAllDivisions: shouldEnforceAllTimeSlotDivisions,
           normalizeDivisions: (value) => (
             hasDivisionDetailsInput
               ? normalizeDivisionIds(value, eventId)

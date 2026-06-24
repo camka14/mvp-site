@@ -2898,7 +2898,7 @@ export const loadEventWithRelations = async (
     ? true
     : typeof event.doTeamsOfficiate === 'boolean'
       ? event.doTeamsOfficiate
-      : true;
+      : false;
 
   const baseParams = {
     id: event.id,
@@ -3594,6 +3594,7 @@ export const syncEventDivisions = async (
     eventType: normalizedEventType,
     includePlayoffs: params.includePlayoffs,
   });
+  const clearSingleDivisionTeamAssignments = Boolean(params.singleDivision) && !tournamentPoolPlayEnabled;
   let effectiveDivisionIds = divisionIds;
   if (tournamentPoolPlayEnabled && normalizedPlayoffDetails.length > 0) {
     const existingPoolRows = existingRows
@@ -3995,7 +3996,7 @@ export const syncEventDivisions = async (
     };
   });
 
-  if (!params.singleDivision) {
+  if (!params.singleDivision || tournamentPoolPlayEnabled) {
     const teamDivisionMap = new Map<string, string>();
     for (const entry of finalEntries) {
       if (entry.kind === 'PLAYOFF') {
@@ -4096,7 +4097,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
+        teamIds: clearSingleDivisionTeamAssignments ? [] : (entry.teamIds ?? []),
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -4148,7 +4149,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
+        teamIds: clearSingleDivisionTeamAssignments ? [] : (entry.teamIds ?? []),
         updatedAt: now,
       } as any,
     });
@@ -4345,6 +4346,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
+  const payloadEventType = typeof payload.eventType === 'string'
+    ? payload.eventType.toUpperCase()
+    : null;
+  const includePlayoffsOrPools = coerceBoolean(
+    Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
+      ? payload.includePlayoffsOrPools
+      : payload.includePlayoffs,
+    false,
+  );
+  const isTournamentPoolPlay = isTournamentPoolPlayEnabled({
+    eventType: payloadEventType,
+    includePlayoffs: includePlayoffsOrPools,
+  });
   const start = coerceDate(payload.start, eventTimeZone) ?? new Date();
   const canonicalTimeSlots = canonicalizeTimeSlots({
     eventId: id,
@@ -4352,7 +4366,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     fallbackStartDate: start,
     timeZone: eventTimeZone,
     fallbackDivisionKeys: normalizedEventDivisionIds,
-    enforceAllDivisions: singleDivisionEnabled,
+    enforceAllDivisions: singleDivisionEnabled && !isTournamentPoolPlay,
     normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
   });
   await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
@@ -4455,19 +4469,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     incomingDivisionFieldMap,
   );
 
-  const payloadEventType = typeof payload.eventType === 'string'
-    ? payload.eventType.toUpperCase()
-    : null;
   const existingEventType = typeof existingEvent?.eventType === 'string'
     ? existingEvent.eventType.toUpperCase()
     : null;
   const nextEventType = payloadEventType ?? existingEventType;
-  const includePlayoffsOrPools = coerceBoolean(
-    Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
-      ? payload.includePlayoffsOrPools
-      : payload.includePlayoffs,
-    false,
-  );
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;

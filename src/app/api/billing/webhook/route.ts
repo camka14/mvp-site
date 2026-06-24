@@ -8,6 +8,11 @@ import {
 } from '@/lib/stripeConnectAccounts';
 import { syncManagedOrganizationStripeAccount } from '@/server/organizationStripeVerification';
 import { sendPaymentFailureEmail, sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
+import {
+  recordDiscountCodeRedemption,
+  type DiscountPurchaseType,
+  type ResolvedDiscountApplication,
+} from '@/server/discounts/discountCodeResolver';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
@@ -79,6 +84,39 @@ const toExpandableId = (value: unknown): string | null => {
     return toStringOrNull((value as { id?: unknown }).id);
   }
   return null;
+};
+
+const normalizeDiscountPurchaseType = (purchaseType: string | null): DiscountPurchaseType | null => {
+  if (purchaseType === 'event' || purchaseType === 'product' || purchaseType === 'team_registration') {
+    return purchaseType;
+  }
+  return null;
+};
+
+const buildDiscountApplicationFromMetadata = (
+  metadata: Record<string, unknown>,
+): ResolvedDiscountApplication | null => {
+  const code = toStringOrNull(metadata.discount_code ?? metadata.discountCode);
+  const discountId = toStringOrNull(metadata.discount_id ?? metadata.discountId);
+  const discountCodeId = toStringOrNull(metadata.discount_code_id ?? metadata.discountCodeId);
+  const originalAmountCents = toIntOrNull(metadata.original_amount_cents ?? metadata.originalAmountCents);
+  const discountedAmountCents = toIntOrNull(metadata.discounted_amount_cents ?? metadata.discountedAmountCents);
+  if (
+    !code
+    || !discountId
+    || !discountCodeId
+    || originalAmountCents === null
+    || discountedAmountCents === null
+  ) {
+    return null;
+  }
+  return {
+    code,
+    discountId,
+    discountCodeId,
+    originalAmountCents,
+    discountedAmountCents,
+  };
 };
 
 const SUPPORTED_EVENT_TYPES = new Set([
@@ -1653,6 +1691,7 @@ export async function POST(req: NextRequest) {
   const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
   const organizationId = toStringOrNull(metadata.organization_id ?? metadata.organizationId ?? null);
   const paymentIntentId = toStringOrNull(dataObject.id);
+  const discountApplication = buildDiscountApplicationFromMetadata(metadata);
   const receiptEmail = toStringOrNull(
     dataObject.receipt_email ?? metadata.receipt_email ?? metadata.receiptEmail ?? null,
   );
@@ -2053,6 +2092,37 @@ export async function POST(req: NextRequest) {
         ...receiptLogContext,
         reason: teamRegistrationResult.reason,
       });
+    }
+
+    const discountPurchaseType = normalizeDiscountPurchaseType(purchaseType);
+    const discountTargetId = discountPurchaseType === 'event'
+      ? eventId
+      : discountPurchaseType === 'product'
+        ? productId
+        : discountPurchaseType === 'team_registration'
+          ? teamId
+          : null;
+    if (discountApplication && discountPurchaseType && discountTargetId) {
+      try {
+        await recordDiscountCodeRedemption({
+          discount: discountApplication,
+          purchaseType: discountPurchaseType,
+          targetId: discountTargetId,
+          userId,
+          guestEmail: receiptEmail,
+          paymentIntentId,
+          registrationId,
+          productId,
+          organizationId,
+        });
+      } catch (error) {
+        console.error('Stripe webhook failed to record discount redemption.', {
+          paymentIntentId,
+          purchaseType,
+          discountCodeId: discountApplication.discountCodeId,
+          error,
+        });
+      }
     }
 
     if (shouldSendReceipt) {

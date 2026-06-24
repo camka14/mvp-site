@@ -10,11 +10,17 @@ import {
   normalizeGuestText,
   verifyGuestRegistrationToken,
 } from '@/server/publicGuestRegistration';
+import {
+  DiscountCodeError,
+  resolveDiscountApplication,
+  type ResolvedDiscountApplication,
+} from '@/server/discounts/discountCodeResolver';
 
 export const dynamic = 'force-dynamic';
 
 const payloadSchema = z.object({
   registrationToken: z.string().min(1),
+  discountCode: z.string().optional(),
 }).strict();
 
 type RouteContext = {
@@ -104,6 +110,31 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (priceCents <= 0) {
     return NextResponse.json({ error: 'This registration does not require payment.' }, { status: 409 });
   }
+  let checkoutAmountCents = priceCents;
+  let discountApplication: ResolvedDiscountApplication | null = null;
+  const requestedDiscountCode = normalizeGuestText(parsed.data.discountCode);
+  if (requestedDiscountCode) {
+    try {
+      const discountResult = await resolveDiscountApplication({
+        code: requestedDiscountCode,
+        purchaseType: 'event',
+        targetId: event.id,
+        originalAmountCents: priceCents,
+        buyerUserId: token.parentUserId,
+      });
+      checkoutAmountCents = discountResult.amountCents;
+      discountApplication = discountResult.discount;
+    } catch (error) {
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : 'Unable to apply discount code.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+  if (checkoutAmountCents <= 0) {
+    return NextResponse.json({ error: 'Discounted guest checkout without payment is not enabled yet.' }, { status: 409 });
+  }
 
   const [parentSensitive, parentAuth] = await Promise.all([
     (prisma as any).sensitiveUserData.findFirst({
@@ -125,7 +156,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   const stripe = new Stripe(secretKey);
   const taxQuote = buildZeroTaxQuote({
-    subtotalCents: priceCents,
+    subtotalCents: checkoutAmountCents,
     purchaseType: 'event',
     taxCategory: 'EVENT_PARTICIPANT',
     eventType: event.eventType,
@@ -152,6 +183,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
   appendMetadata(metadata, 'event_location', event.location);
   appendMetadata(metadata, 'event_start', event.start instanceof Date ? event.start.toISOString() : event.start);
   appendMetadata(metadata, 'amount_cents', taxQuote.subtotalCents);
+  appendMetadata(metadata, 'original_amount_cents', discountApplication?.originalAmountCents);
+  appendMetadata(metadata, 'discounted_amount_cents', discountApplication?.discountedAmountCents);
+  appendMetadata(metadata, 'discount_code', discountApplication?.code);
+  appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
+  appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
   appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
   appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
   appendMetadata(metadata, 'mvp_fee_cents', taxQuote.processingFeeCents);

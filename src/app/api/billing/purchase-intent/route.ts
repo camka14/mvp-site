@@ -67,6 +67,11 @@ import {
   upsertRegistrationQuestionResponse,
 } from '@/server/registrationQuestions';
 import { requireVerifiedEmailForPaidRegistration } from '@/server/emailVerificationGate';
+import {
+  DiscountCodeError,
+  resolveDiscountApplication,
+  type ResolvedDiscountApplication,
+} from '@/server/discounts/discountCodeResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +88,7 @@ const schema = z.object({
   productId: z.string().optional(),
   billId: z.string().optional(),
   billPaymentId: z.string().optional(),
+  discountCode: z.string().optional(),
   taxCategory: z.enum(INTERNAL_TAX_CATEGORIES).optional(),
   billingAddress: z.unknown().optional(),
 }).passthrough();
@@ -787,6 +793,29 @@ const normalizeStringList = (value: unknown): string[] => {
   return Array.from(new Set(normalized));
 };
 
+const resolveDiscountTargetId = ({
+  purchaseType,
+  eventId,
+  productId,
+  teamId,
+}: {
+  purchaseType: string;
+  eventId: string | null;
+  productId: string | null;
+  teamId: string | null;
+}): string | null => {
+  if (purchaseType === 'event') {
+    return eventId;
+  }
+  if (purchaseType === 'product') {
+    return productId;
+  }
+  if (purchaseType === 'team_registration') {
+    return teamId;
+  }
+  return null;
+};
+
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -891,6 +920,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  let checkoutAmountCents = resolvedPurchase.amountCents;
+  let discountApplication: ResolvedDiscountApplication | null = null;
+  const requestedDiscountCode = normalizeString(payload.discountCode);
+  if (requestedDiscountCode) {
+    if (
+      resolvedPurchase.purchaseType !== 'event'
+      && resolvedPurchase.purchaseType !== 'product'
+      && resolvedPurchase.purchaseType !== 'team_registration'
+    ) {
+      return NextResponse.json({ error: 'Discount codes are not supported for this purchase type.' }, { status: 400 });
+    }
+    const discountTargetId = resolveDiscountTargetId({
+      purchaseType: resolvedPurchase.purchaseType,
+      eventId,
+      productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+      teamId: teamId ?? resolvedPurchase.team?.id ?? null,
+    });
+    try {
+      const discountResult = await resolveDiscountApplication({
+        code: requestedDiscountCode,
+        purchaseType: resolvedPurchase.purchaseType,
+        targetId: discountTargetId ?? '',
+        originalAmountCents: resolvedPurchase.amountCents,
+        buyerUserId: session.userId,
+      });
+      checkoutAmountCents = discountResult.amountCents;
+      discountApplication = discountResult.discount;
+    } catch (error) {
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : 'Unable to apply discount code.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   const taxContext = await loadBillingTaxPolicyContext({
     event: payload.event ?? null,
     timeSlot: payload.timeSlot ?? null,
@@ -963,7 +1028,7 @@ export async function POST(req: NextRequest) {
     teamCheckoutTarget.consentStatus = signatureState.consentStatus ?? 'completed';
   }
 
-  if (resolvedPurchase.amountCents <= 0) {
+  if (checkoutAmountCents <= 0) {
     return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
   }
   if (
@@ -992,7 +1057,7 @@ export async function POST(req: NextRequest) {
   if (!secretKey) {
     if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
       const manualTaxQuote = buildOrganizerManualTaxQuote({
-        subtotalCents: resolvedPurchase.amountCents,
+        subtotalCents: checkoutAmountCents,
         organizerManualTaxRateBps,
         purchaseType: resolvedPurchase.purchaseType,
         taxCategory: resolvedPurchase.taxCategory,
@@ -1008,7 +1073,7 @@ export async function POST(req: NextRequest) {
       }, { status: 200 });
     }
     const fallbackFees = calculateMvpAndStripeFeesWithTax({
-      eventAmountCents: resolvedPurchase.amountCents,
+      eventAmountCents: checkoutAmountCents,
       eventType: resolvedPurchase.eventType,
       taxAmountCents: 0,
       stripeTaxServiceFeeCents: 0,
@@ -1021,7 +1086,7 @@ export async function POST(req: NextRequest) {
       taxCategory: resolvedPurchase.taxCategory,
       ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown: {
-        eventPrice: resolvedPurchase.amountCents,
+        eventPrice: checkoutAmountCents,
         stripeFee: fallbackFees.stripeFeeCents,
         stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
         stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
@@ -1029,7 +1094,7 @@ export async function POST(req: NextRequest) {
         mvpFee: fallbackFees.mvpFeeCents,
         taxAmount: 0,
         totalCharge: fallbackFees.totalChargeCents,
-        hostReceives: resolvedPurchase.amountCents,
+        hostReceives: checkoutAmountCents,
         feePercentage: fallbackFees.mvpFeePercentage * 100,
         paymentMethodType: fallbackFees.paymentMethodType,
         paymentMethodLabel: getPaymentMethodFeeLabel(fallbackFees.paymentMethodType),
@@ -1088,14 +1153,14 @@ export async function POST(req: NextRequest) {
   let taxQuote: TaxQuote;
   if (taxPolicy.mode === 'ZERO_TAX') {
     taxQuote = buildZeroTaxQuote({
-      subtotalCents: resolvedPurchase.amountCents,
+      subtotalCents: checkoutAmountCents,
       purchaseType: resolvedPurchase.purchaseType,
       taxCategory: resolvedPurchase.taxCategory,
       eventType: resolvedPurchase.eventType,
     });
   } else if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
     taxQuote = buildOrganizerManualTaxQuote({
-      subtotalCents: resolvedPurchase.amountCents,
+      subtotalCents: checkoutAmountCents,
       organizerManualTaxRateBps,
       purchaseType: resolvedPurchase.purchaseType,
       taxCategory: resolvedPurchase.taxCategory,
@@ -1109,7 +1174,7 @@ export async function POST(req: NextRequest) {
         organizationId,
         email: billingEmail,
         billingAddress: validatedBillingAddress as BillingAddress,
-        subtotalCents: resolvedPurchase.amountCents,
+        subtotalCents: checkoutAmountCents,
         purchaseType: resolvedPurchase.purchaseType,
         taxCategory: resolvedPurchase.taxCategory,
         eventType: resolvedPurchase.eventType,
@@ -1145,7 +1210,7 @@ export async function POST(req: NextRequest) {
   });
   const billingAddressFingerprint = buildBillingAddressFingerprint(validatedBillingAddress);
 
-  if (resolvedPurchase.purchaseType === 'product') {
+  if (resolvedPurchase.purchaseType === 'product' && !discountApplication) {
     const productId = payload.productId ?? resolvedPurchase.product?.id ?? '';
     const reusableIntent = await findReusableIncompleteProductPaymentIntent({
       stripe,
@@ -1258,6 +1323,7 @@ export async function POST(req: NextRequest) {
     resolvedPurchase.purchaseType === 'team_registration'
     && reservedRegistrationId
     && checkoutUserId
+    && !discountApplication
   ) {
     const reusableIntent = await findReusableIncompleteTeamRegistrationPaymentIntent({
       stripe,
@@ -1301,6 +1367,11 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'organization_name', payload.organization?.name);
     appendMetadata(metadata, 'team_name', payload.team?.name ?? resolvedPurchase.team?.name);
     appendMetadata(metadata, 'amount_cents', taxQuote.subtotalCents);
+    appendMetadata(metadata, 'original_amount_cents', discountApplication?.originalAmountCents);
+    appendMetadata(metadata, 'discounted_amount_cents', discountApplication?.discountedAmountCents);
+    appendMetadata(metadata, 'discount_code', discountApplication?.code);
+    appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
+    appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
     appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
     appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
     appendMetadata(metadata, 'mvp_fee_cents', taxQuote.processingFeeCents);

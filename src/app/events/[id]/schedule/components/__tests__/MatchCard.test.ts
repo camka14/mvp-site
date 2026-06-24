@@ -81,6 +81,17 @@ describe('MatchCard conflict rendering', () => {
     expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-red-400');
   });
 
+  it('uses a contrast border when the viewer is assigned as an official', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch(),
+        matchHighlight: 'official',
+      }),
+    );
+
+    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-black', 'dark:border-white');
+  });
+
   it('labels winner and loser separately when the same prior match feeds both slots', () => {
     const sourceMatch = buildMatch({
       $id: 'match_63',

@@ -13,6 +13,8 @@ import { buildBracketCanvasLayout } from '@/lib/bracketCanvasLayout';
 import { getBracketMatchDivisionId, toBracketDivisionKey } from '@/lib/bracketViewCore';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 
+type CurrentUserMatchHighlight = 'participant' | 'official';
+
 const extractEntityId = (value: unknown): string => {
     if (typeof value === 'string') {
         return value.trim();
@@ -345,9 +347,9 @@ export default function TournamentBracketView({
         [hasTrackedUsers, trackedUserIds, userTeamIds],
     );
 
-    const matchInvolvesCurrentUser = useCallback((match: Match): boolean => {
+    const getCurrentUserMatchHighlight = useCallback((match: Match): CurrentUserMatchHighlight | undefined => {
         if (!hasTrackedUsers && userTeamIds.size === 0) {
-            return false;
+            return undefined;
         }
 
         const matchOfficialId = extractEntityId(match.official)
@@ -358,13 +360,24 @@ export default function TournamentBracketView({
                 return userId.length > 0 && trackedUserIds.has(userId);
             });
         if ((matchOfficialId && trackedUserIds.has(matchOfficialId)) || hasAssignedOfficialSlot) {
-            return true;
+            return 'official';
         }
 
-        return teamHasCurrentUser(match.team1, match.team1Id)
-            || teamHasCurrentUser(match.team2, match.team2Id)
-            || teamHasCurrentUser(match.teamOfficial, match.teamOfficialId);
+        if (teamHasCurrentUser(match.teamOfficial, match.teamOfficialId)) {
+            return 'official';
+        }
+
+        if (teamHasCurrentUser(match.team1, match.team1Id)
+            || teamHasCurrentUser(match.team2, match.team2Id)) {
+            return 'participant';
+        }
+
+        return undefined;
     }, [hasTrackedUsers, teamHasCurrentUser, trackedUserIds, userTeamIds]);
+
+    const matchInvolvesCurrentUser = useCallback((match: Match): boolean => (
+        Boolean(getCurrentUserMatchHighlight(match))
+    ), [getCurrentUserMatchHighlight]);
 
     const matchHasHighlightedDivision = useCallback((match: Match): boolean => {
         const divisionKey = toBracketDivisionKey(getBracketMatchDivisionId(match));
@@ -452,7 +465,7 @@ export default function TournamentBracketView({
             previousRightMatch: resolveLinkFromAll(match.previousRightId, match.previousRightMatch),
         };
         const canInternalManage = canManageMatch(resolvedMatch);
-        const highlightCurrentUser = matchInvolvesCurrentUser(resolvedMatch);
+        const matchHighlight = getCurrentUserMatchHighlight(resolvedMatch);
         const clickable = hasExternalMatchClick || canInternalManage;
         const hasConflict = conflictMatchIdSet.has(resolvedMatch.$id);
         const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
@@ -464,7 +477,7 @@ export default function TournamentBracketView({
                 onClick={clickable ? () => handleMatchClick(resolvedMatch) : undefined}
                 canManage={false}
                 className={className}
-                highlightCurrentUser={highlightCurrentUser}
+                matchHighlight={matchHighlight}
                 showDate={showDateOnMatches}
                 team1Placeholder={team1Placeholder}
                 team2Placeholder={team2Placeholder}
@@ -483,7 +496,7 @@ export default function TournamentBracketView({
         hasExternalMatchClick,
         leaguePlayoffPlaceholderAssignments,
         matchHasHighlightedDivision,
-        matchInvolvesCurrentUser,
+        getCurrentUserMatchHighlight,
         officialLookupById,
         officialsById,
         resolveLinkFromAll,

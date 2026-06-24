@@ -1,15 +1,12 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl, Menu, type SelectProps } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
+import { Container, Text, Group, Button, Paper, Alert, Tabs, Stack, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, Checkbox, Badge, Textarea, Popover, type SelectProps } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { ListChecks, Megaphone, QrCode } from 'lucide-react';
 import type { View } from 'react-big-calendar';
 
 import Navigation from '@/components/layout/Navigation';
-import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
@@ -22,7 +19,6 @@ import {
   eventService,
   type EventDetailBootstrapResponse,
   type EventParticipantDivisionWarning,
-  type EventParticipantsResponse,
 } from '@/lib/eventService';
 import { getHomePathForUser } from '@/lib/homePage';
 import { leagueService } from '@/lib/leagueService';
@@ -31,21 +27,16 @@ import { organizationService } from '@/lib/organizationService';
 import { sportsService } from '@/lib/sportsService';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
-import { paymentService } from '@/lib/paymentService';
-import { boldsignService, type SignStep } from '@/lib/boldsignService';
-import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService } from '@/lib/familyService';
-import { apiRequest, isApiRequestError } from '@/lib/apiClient';
-import { connectEventMatchSocket } from '@/lib/matchRealtimeClient';
+import { apiRequest } from '@/lib/apiClient';
 import { hasStaffMemberType } from '@/lib/staff';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
-import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
-import { getFieldDisplayName, getFieldResolvedLocation } from '@/lib/fieldUtils';
+import { cloneEventAsTemplate } from '@/lib/eventTemplates';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import {
   collectViewerDivisionHighlightKeys,
   collectViewerTeamIds,
@@ -68,10 +59,8 @@ import {
   toBracketDivisionKey as toDivisionKey,
 } from '@/lib/bracketViewCore';
 import { toEventPayload } from '@/types';
-import { formatBillAmount } from '@/types';
 import type {
   Event,
-  EventState,
   Field,
   LeagueConfig,
   Match,
@@ -84,7 +73,6 @@ import type {
   TournamentBracket,
   Organization,
   Sport,
-  PaymentIntent,
   TimeSlot,
   UserData,
 } from '@/types';
@@ -95,48 +83,53 @@ import type {
   TeamComplianceSummary,
   TeamComplianceUserSummary,
 } from '@/lib/eventTeamCompliance';
-import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
-import MatchEditModal from './components/MatchEditModal';
-import EventForm, { type EventFormHandle } from './components/EventForm';
-import { detectMatchConflictsById } from './lib/matchConflicts';
-import ScoreUpdateModal from './components/ScoreUpdateModal';
-import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
+import { validateAndNormalizeBracketGraph } from '@/server/matches/bracketGraph';
+import type { EventFormHandle } from './components/EventForm';
 import TeamCard from '@/components/ui/TeamCard';
-import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 import BracketTabPanel from './schedulePage/BracketTabPanel';
+import CreateEventScheduleView from './schedulePage/CreateEventScheduleView';
 import DetailsTabPanel from './schedulePage/DetailsTabPanel';
+import {
+  CreateBillModal,
+  RefundTeamModal,
+} from './schedulePage/EventBillingModals';
+import EventComplianceModal from './schedulePage/EventComplianceModal';
+import {
+  AddParticipantModal,
+  AddTeamModal,
+  ParticipantTeamDetailModal,
+} from './schedulePage/EventParticipantModals';
+import EventMatchModals from './schedulePage/EventMatchModals';
+import EventScheduleHeader from './schedulePage/EventScheduleHeader';
 import FinanceTabPanel from './schedulePage/FinanceTabPanel';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
+import RentalCheckoutModals from './schedulePage/RentalCheckoutModals';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
 import StandingsTabPanel from './schedulePage/StandingsTabPanel';
+import {
+  buildScheduleLocationDefaults,
+  getUserLocationCoordinates,
+  getUserLocationLabel,
+} from './schedulePage/locationDefaults';
 import {
   CLIENT_MATCH_PREFIX,
   DEFAULT_NOTIFICATION_AUDIENCE,
   DEFAULT_SPORT,
-  EMAIL_REGEX,
-  EVENT_LIFECYCLE_OPTIONS,
   EVENT_SCHEDULE_TABS,
   HIDDEN_EVENT_STATES,
-  LOCAL_PLACEHOLDER_PREFIX,
-  MIN_TEAM_SEARCH_QUERY_LENGTH,
   VIEWER_WEEKLY_REGISTRATION_STATUSES,
   asBulkMatchRef,
   buildComplianceSnapshotKey,
-  buildMatchConflictAlertMessage,
-  buildParticipantSnapshotKey,
-  buildStableIdListKey,
+  buildBracketNodes,
   buildWeeklyOccurrenceOptionsInRange,
   buildWeeklyOccurrenceRegistrationKey,
-  clearMatchReferencesToTarget,
   cloneValue,
   collectRentalSelectionFieldIds,
   collectMatchAssignmentUserIds,
-  collectTeamRosterUserIds,
   divisionReferencesBracket,
   formatActionErrorMessage,
-  formatLatLngLabel,
   getClientIdFromMatchId,
   getDivisionKind,
   getDivisionPlacementDivisionIds,
@@ -150,8 +143,7 @@ import {
   isDivisionStandingsConfirmed,
   isLocalPlaceholderId,
   isTournamentPoolPlayViewEnabled,
-  listMatchConflictPairs,
-  nextMatchSequenceNumber,
+  normalizeDraftBracketGraph,
   normalizeDivisionToken,
   normalizeIdToken,
   parseIdListQueryParam,
@@ -161,32 +153,30 @@ import {
   resolveSelectedWeeklyOccurrenceOption,
   shouldResetBracketMatchForRebuild,
   startOfDay,
-  teamMatchesSearchQuery,
   toClearedBracketMatchUpdate,
   toLocalIsoDate,
   toStoredEventLifecycleState,
   type DivisionOption,
   type EventLifecycleStatus,
-  type LocationDefaults,
-  type MatchCreateContext,
   type NotificationAudienceKey,
   type NotificationAudienceState,
-  type ParticipantInviteMode,
-  type ParticipantInviteRow,
-  type PendingRentalCheckoutContext,
   type PendingSaveChangeItem,
   type RankedStandingsRow,
   type StandingsRow,
   type StandingsSortField,
-  type StagedMatchCreateMeta,
-  type TeamBillingBillSnapshot,
-  type TeamBillingPaymentSnapshot,
-  type TeamBillingSnapshot,
-  type TeamBillingUserOption,
   type ViewerWeeklyRegistrationRow,
   type WeeklyOccurrenceOption,
   type WeeklyOccurrenceSelection,
 } from './schedulePage/helpers';
+import useEventBilling from './schedulePage/useEventBilling';
+import {
+  useCreateEventFlow,
+  useRentalCheckoutFlow,
+} from './schedulePage/useCreateEventFlow';
+import useEventParticipants from './schedulePage/useEventParticipants';
+import useEventMatchOperations from './schedulePage/useEventMatchOperations';
+import useEventMatchRealtime from './schedulePage/useEventMatchRealtime';
+import useMatchConflictAlerts from './schedulePage/useMatchConflictAlerts';
 
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
@@ -253,6 +243,7 @@ function EventScheduleContent() {
   const isRentalFlow = Boolean((normalizedRentalStart && normalizedRentalEnd) || rentalSelections.length > 0);
   const resolvedHostOrgId = hostOrgIdParam ?? (!isRentalFlow ? orgIdParam : undefined);
   const resolvedRentalOrgId = rentalOrgIdParam ?? (isRentalFlow ? orgIdParam : undefined);
+  const defaultSport = DEFAULT_SPORT;
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -264,8 +255,6 @@ function EventScheduleContent() {
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
-  const [dismissedMatchConflictSignature, setDismissedMatchConflictSignature] = useState<string | null>(null);
-  const [matchConflictOverrideMessage, setMatchConflictOverrideMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [contentTermsState, setContentTermsState] = useState<ChatTermsConsentState | null>(null);
@@ -288,19 +277,8 @@ function EventScheduleContent() {
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [selectedStandingsPool, setSelectedStandingsPool] = useState<string | null>(null);
-  const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
-  const [participantUsers, setParticipantUsers] = useState<UserData[]>([]);
-  const [participantOfficials, setParticipantOfficials] = useState<UserData[]>([]);
-  const loadedParticipantSnapshotKeyRef = useRef<string | null>(null);
-  const loadedParticipantTeamsKeyRef = useRef<string | null>(null);
-  const loadedParticipantUsersKeyRef = useRef<string | null>(null);
-  const loadedParticipantOfficialsKeyRef = useRef<string | null>(null);
   const loadedTeamComplianceKeyRef = useRef<string | null>(null);
   const loadedUserComplianceKeyRef = useRef<string | null>(null);
-  const [participantsLoading, setParticipantsLoading] = useState(false);
-  const [participantsError, setParticipantsError] = useState<string | null>(null);
-  const [participantDivisionWarnings, setParticipantDivisionWarnings] = useState<EventParticipantDivisionWarning[]>([]);
-  const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
   const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
@@ -310,47 +288,6 @@ function EventScheduleContent() {
   const [teamComplianceRefreshKey, setTeamComplianceRefreshKey] = useState(0);
   const teamComplianceRefreshKeyRef = useRef(teamComplianceRefreshKey);
   const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
-  const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
-  const [selectedRefundTeam, setSelectedRefundTeam] = useState<Team | null>(null);
-  const [refundSnapshot, setRefundSnapshot] = useState<TeamBillingSnapshot | null>(null);
-  const [refundLoading, setRefundLoading] = useState(false);
-  const [refundError, setRefundError] = useState<string | null>(null);
-  const [refundAmountDraftByPaymentId, setRefundAmountDraftByPaymentId] = useState<Record<string, number>>({});
-  const [refundingPaymentId, setRefundingPaymentId] = useState<string | null>(null);
-  const [cancellingPendingBillPaymentId, setCancellingPendingBillPaymentId] = useState<string | null>(null);
-  const [createBillTeam, setCreateBillTeam] = useState<Team | null>(null);
-  const [createBillError, setCreateBillError] = useState<string | null>(null);
-  const [creatingBill, setCreatingBill] = useState(false);
-  const [createBillOwnerType, setCreateBillOwnerType] = useState<'TEAM' | 'USER'>('TEAM');
-  const [createBillOwnerId, setCreateBillOwnerId] = useState<string | null>(null);
-  const [createBillAmountDollars, setCreateBillAmountDollars] = useState<number>(0);
-  const [createBillTaxDollars, setCreateBillTaxDollars] = useState<number>(0);
-  const [createBillAllowSplit, setCreateBillAllowSplit] = useState(false);
-  const [createBillLabel, setCreateBillLabel] = useState('Event registration');
-  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
-  const [isAddParticipantModalOpen, setIsAddParticipantModalOpen] = useState(false);
-  const [participantInviteMode, setParticipantInviteMode] = useState<ParticipantInviteMode>('existing');
-  const [participantSearchValue, setParticipantSearchValue] = useState('');
-  const [participantSearchResults, setParticipantSearchResults] = useState<UserData[]>([]);
-  const [participantSearchLoading, setParticipantSearchLoading] = useState(false);
-  const [participantSearchError, setParticipantSearchError] = useState<string | null>(null);
-  const [participantInviteRows, setParticipantInviteRows] = useState<ParticipantInviteRow[]>([
-    { firstName: '', lastName: '', email: '' },
-  ]);
-  const [participantInviteError, setParticipantInviteError] = useState<string | null>(null);
-  const [invitingParticipants, setInvitingParticipants] = useState(false);
-  const [selectedParticipantTeam, setSelectedParticipantTeam] = useState<Team | null>(null);
-  const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
-  const [teamSearchQuery, setTeamSearchQuery] = useState('');
-  const [organizationTeamsForPicker, setOrganizationTeamsForPicker] = useState<Team[]>([]);
-  const [organizationTeamsLoading, setOrganizationTeamsLoading] = useState(false);
-  const [searchTeamPool, setSearchTeamPool] = useState<Team[]>([]);
-  const [searchTeamsLoading, setSearchTeamsLoading] = useState(false);
-  const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
-  const [matchEditorContext, setMatchEditorContext] = useState<MatchCreateContext>('bracket');
-  const [pendingCreateMatchId, setPendingCreateMatchId] = useState<string | null>(null);
-  const [stagedMatchCreates, setStagedMatchCreates] = useState<Record<string, StagedMatchCreateMeta>>({});
-  const [stagedMatchDeletes, setStagedMatchDeletes] = useState<string[]>([]);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
     direction: 'desc',
@@ -362,30 +299,7 @@ function EventScheduleContent() {
   const [confirmingStandings, setConfirmingStandings] = useState(false);
   const [applyStandingsReassignment, setApplyStandingsReassignment] = useState(true);
   const [standingsActionError, setStandingsActionError] = useState<string | null>(null);
-  const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
-  const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
-  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
-  const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
-  const [rentalOrganization, setRentalOrganization] = useState<Organization | null>(null);
-  const [formSeedEvent, setFormSeedEvent] = useState<Event | null>(null);
-  const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
-  const [showRentalPayment, setShowRentalPayment] = useState(false);
-  const [showRentalSignModal, setShowRentalSignModal] = useState(false);
-  const [rentalSignLinks, setRentalSignLinks] = useState<SignStep[]>([]);
-  const [rentalSignIndex, setRentalSignIndex] = useState(0);
-  const [rentalTextAccepted, setRentalTextAccepted] = useState(false);
-  const [rentalSignError, setRentalSignError] = useState<string | null>(null);
-  const [recordingRentalSignature, setRecordingRentalSignature] = useState(false);
-  const [pendingRentalSignedDocumentId, setPendingRentalSignedDocumentId] = useState<string | null>(null);
-  const [pendingRentalSignatureOperationId, setPendingRentalSignatureOperationId] = useState<string | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
-  const [templateSummaries, setTemplateSummaries] = useState<Array<{ id: string; name: string }>>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [templatePromptOpen, setTemplatePromptOpen] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [selectedTemplateStartDate, setSelectedTemplateStartDate] = useState<Date | null>(null);
-  const [templateSeedKey, setTemplateSeedKey] = useState(0);
   const [eventFormResetVersion, setEventFormResetVersion] = useState(0);
   const [childUserIds, setChildUserIds] = useState<string[]>([]);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
@@ -395,11 +309,6 @@ function EventScheduleContent() {
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [sendingNotification, setSendingNotification] = useState(false);
   const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
-  const templatePromptResolvedRef = useRef(false);
-  const templateIdSeedResolvedRef = useRef<string | null>(null);
-  const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
-  const [applyingTemplate, setApplyingTemplate] = useState(false);
-  const pendingRentalCheckoutRef = useRef<PendingRentalCheckoutContext | null>(null);
   const isMobile = useMediaQuery('(max-width: 36em)');
   const eventFormRef = useRef<EventFormHandle>(null);
   const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
@@ -412,331 +321,15 @@ function EventScheduleContent() {
     return undefined;
   }, [rentalLatParam, rentalLngParam]);
 
-  const getRentalFieldCoordinates = useCallback((field?: Field | null): [number, number] | undefined => {
-    const lng = Number(field?.long);
-    const lat = Number(field?.lat);
-    if (Number.isFinite(lng) && Number.isFinite(lat) && !(lng === 0 && lat === 0)) {
-      return [lng, lat];
-    }
-    const facility = field?.facility;
-    if (facility && typeof facility === 'object') {
-      const coordinates = facility.coordinates;
-      if (Array.isArray(coordinates) && coordinates.length >= 2) {
-        const facilityLng = Number(coordinates[0]);
-        const facilityLat = Number(coordinates[1]);
-        if (Number.isFinite(facilityLng) && Number.isFinite(facilityLat) && !(facilityLng === 0 && facilityLat === 0)) {
-          return [facilityLng, facilityLat];
-        }
-      }
-    }
-    return undefined;
-  }, []);
-
-  const userLocationLabel = useMemo(() => {
-    if (userLocationInfo) {
-      const parts = [userLocationInfo.city, userLocationInfo.state]
-        .filter((part): part is string => Boolean(part && part.trim().length > 0));
-      if (parts.length) {
-        return parts.join(', ');
-      }
-      if (userLocationInfo.zipCode && userLocationInfo.zipCode.trim().length > 0) {
-        return userLocationInfo.zipCode;
-      }
-      if (userLocationInfo.country && userLocationInfo.country.trim().length > 0) {
-        return userLocationInfo.country;
-      }
-      if (typeof userLocationInfo.lat === 'number' && typeof userLocationInfo.lng === 'number') {
-        return formatLatLngLabel(userLocationInfo.lat, userLocationInfo.lng);
-      }
-    }
-    if (userLocation) {
-      return formatLatLngLabel(userLocation.lat, userLocation.lng);
-    }
-    return '';
-  }, [userLocationInfo, userLocation]);
-
-  const userCoordinates = useMemo<[number, number] | null>(() => {
-    if (!userLocation) {
-      return null;
-    }
-    if (
-      typeof userLocation.lat !== 'number' ||
-      typeof userLocation.lng !== 'number' ||
-      !Number.isFinite(userLocation.lat) ||
-      !Number.isFinite(userLocation.lng)
-    ) {
-      return null;
-    }
-    return [userLocation.lng, userLocation.lat];
-  }, [userLocation]);
-
-  const buildLocationDefaults = useCallback(
-    (organizationInput?: Organization | null): LocationDefaults | undefined => {
-      const orgLabel = organizationInput?.location?.trim() ?? '';
-      const orgAddress = organizationInput?.address?.trim() ?? '';
-      const orgCoordinates =
-        Array.isArray(organizationInput?.coordinates) &&
-          typeof organizationInput.coordinates[0] === 'number' &&
-          typeof organizationInput.coordinates[1] === 'number'
-          ? (organizationInput.coordinates as [number, number])
-          : undefined;
-
-      if (organizationInput && (orgLabel || orgCoordinates)) {
-        return {
-          location: orgLabel || userLocationLabel,
-          address: orgAddress || undefined,
-          coordinates: orgCoordinates ?? userCoordinates ?? undefined,
-        };
-      }
-
-      if (userLocationLabel || userCoordinates) {
-        return {
-          location: userLocationLabel,
-          address: undefined,
-          coordinates: userCoordinates ?? undefined,
-        };
-      }
-
-      return undefined;
-    },
-    [userCoordinates, userLocationLabel],
+  const userLocationLabel = useMemo(
+    () => getUserLocationLabel(userLocation, userLocationInfo),
+    [userLocation, userLocationInfo],
   );
 
-  const createLocationDefaults = useMemo(
-    () => buildLocationDefaults(organizationForCreate),
-    [buildLocationDefaults, organizationForCreate],
+  const userCoordinates = useMemo(
+    () => getUserLocationCoordinates(userLocation),
+    [userLocation],
   );
-
-  const rentalImmutableDefaults = useMemo<Partial<Event> | undefined>(() => {
-    if (!isCreateMode || (!normalizedRentalStart && !normalizedRentalEnd && rentalSelections.length === 0)) {
-      return undefined;
-    }
-
-    const normalizedStart = normalizedRentalStart;
-    const normalizedEnd = normalizedRentalEnd;
-    if (!normalizedStart || !normalizedEnd) {
-      return undefined;
-    }
-
-    const rentalFieldsById = new Map(
-      (rentalOrganization?.fields || [])
-        .filter((field): field is Field => Boolean(field?.$id))
-        .map((field) => [field.$id, field as Field]),
-    );
-    const allRentalFieldIds = Array.from(
-      new Set([
-        ...(rentalFieldIdParam ? [rentalFieldIdParam] : []),
-        ...rentalFieldIdsFromSelections,
-      ]),
-    );
-    const primaryRentalFieldId = allRentalFieldIds[0];
-    const rentalFieldFromOrg = primaryRentalFieldId
-      ? rentalFieldsById.get(primaryRentalFieldId)
-      : undefined;
-
-    const rentalField: Field | undefined = (() => {
-      if (rentalFieldFromOrg) {
-        return rentalFieldFromOrg as Field;
-      }
-      if (!primaryRentalFieldId) {
-        return undefined;
-      }
-      return {
-        $id: primaryRentalFieldId,
-        name: rentalFieldNameParam?.trim() || primaryRentalFieldId,
-        location: rentalLocationParam ?? '',
-        lat: rentalCoordinates?.[1] ?? 0,
-        long: rentalCoordinates?.[0] ?? 0,
-        facilityId: rentalFacilityIdParam ?? null,
-        facility: rentalFacilityIdParam || rentalFacilityNameParam || rentalFacilityLocationParam || rentalFacilityAddressParam
-          ? {
-            $id: rentalFacilityIdParam ?? `${primaryRentalFieldId}-facility`,
-            organizationId: resolvedRentalOrgId ?? '',
-            name: rentalFacilityNameParam ?? 'Facility',
-            location: rentalFacilityLocationParam ?? '',
-            address: rentalFacilityAddressParam ?? null,
-          }
-          : null,
-      };
-    })();
-
-    const resolvedField = rentalFieldFromOrg ?? rentalField;
-    const derivedLocation = rentalLocationParam
-      ?? getFieldResolvedLocation(resolvedField, rentalFacilityLocationParam ?? rentalOrganization?.location ?? '');
-    const derivedCoordinates =
-      rentalCoordinates ??
-      getRentalFieldCoordinates(resolvedField) ??
-      (rentalOrganization?.coordinates as [number, number] | undefined);
-
-    const defaults: Partial<Event> = {
-      start: normalizedStart,
-      end: normalizedEnd,
-      location: derivedLocation,
-      address: rentalFacilityAddressParam ?? rentalOrganization?.address ?? undefined,
-    };
-
-    if (derivedCoordinates) {
-      defaults.coordinates = derivedCoordinates;
-    }
-    const resolvedFields = allRentalFieldIds
-      .map((fieldId) => {
-        const fromOrganization = rentalFieldsById.get(fieldId);
-        if (fromOrganization) {
-          return fromOrganization;
-        }
-        if (resolvedField && resolvedField.$id === fieldId) {
-          return resolvedField;
-        }
-        return {
-          $id: fieldId,
-          name: fieldId,
-          location: rentalLocationParam ?? rentalOrganization?.location ?? '',
-          lat: rentalCoordinates?.[1] ?? 0,
-          long: rentalCoordinates?.[0] ?? 0,
-          facilityId: rentalFacilityIdParam ?? null,
-          facility: rentalFacilityIdParam || rentalFacilityNameParam || rentalFacilityLocationParam || rentalFacilityAddressParam
-            ? {
-              $id: rentalFacilityIdParam ?? `${fieldId}-facility`,
-              organizationId: resolvedRentalOrgId ?? '',
-              name: rentalFacilityNameParam ?? 'Facility',
-              location: rentalFacilityLocationParam ?? '',
-              address: rentalFacilityAddressParam ?? null,
-            }
-            : null,
-        } as Field;
-      })
-      .filter((field): field is Field => Boolean(field?.$id));
-    if (resolvedFields.length > 0) {
-      defaults.fields = resolvedFields;
-      defaults.fieldIds = resolvedFields.map((field) => field.$id);
-    } else if (resolvedField) {
-      defaults.fields = [resolvedField];
-      defaults.fieldIds = [resolvedField.$id];
-    }
-    if (rentalSelections.length > 0) {
-      const rentalTimeSlots: TimeSlot[] = [];
-      rentalSelections.forEach((selectionItem, index) => {
-          const selectionStart = parseLocalDateTime(selectionItem.startDate);
-          const selectionEnd = parseLocalDateTime(selectionItem.endDate);
-          if (!selectionStart || !selectionEnd || selectionEnd.getTime() <= selectionStart.getTime()) {
-            return;
-          }
-          const dayOfWeek = ((selectionStart.getDay() + 6) % 7) as TimeSlot['dayOfWeek'];
-          rentalTimeSlots.push({
-            $id: selectionItem.key || `rental-selection-${index + 1}`,
-            dayOfWeek,
-            daysOfWeek: [dayOfWeek] as TimeSlot['daysOfWeek'],
-            startTimeMinutes: selectionStart.getHours() * 60 + selectionStart.getMinutes(),
-            endTimeMinutes: selectionEnd.getHours() * 60 + selectionEnd.getMinutes(),
-            startDate: formatLocalDateTime(selectionStart) ?? selectionItem.startDate,
-            endDate: formatLocalDateTime(selectionEnd) ?? selectionItem.endDate,
-            repeating: false,
-            scheduledFieldId: selectionItem.scheduledFieldIds[0],
-            scheduledFieldIds: selectionItem.scheduledFieldIds,
-            sourceType: rentalBookingIdParam ? 'RENTAL_BOOKING' : null,
-            rentalBookingId: rentalBookingIdParam ?? null,
-            rentalLocked: Boolean(rentalBookingIdParam),
-          });
-        });
-      defaults.timeSlots = rentalTimeSlots;
-    }
-    if (rentalRequiredTemplateIds.length > 0) {
-      defaults.requiredTemplateIds = rentalRequiredTemplateIds;
-    }
-
-    return defaults;
-  }, [
-    isCreateMode,
-    rentalBookingIdParam,
-    rentalRequiredTemplateIds,
-    rentalOrganization,
-    rentalSelections,
-    rentalFieldIdsFromSelections,
-    rentalCoordinates,
-    rentalFacilityAddressParam,
-    rentalFacilityIdParam,
-    rentalFacilityLocationParam,
-    rentalFacilityNameParam,
-    normalizedRentalEnd,
-    rentalFieldIdParam,
-    rentalFieldNameParam,
-    rentalLocationParam,
-    normalizedRentalStart,
-    getRentalFieldCoordinates,
-    resolvedRentalOrgId,
-  ]);
-
-  const rentalPurchaseContext = useMemo(() => {
-    if (!isCreateMode) {
-      return undefined;
-    }
-    const normalizedStart = normalizedRentalStart;
-    const normalizedEnd = normalizedRentalEnd;
-    if (!normalizedStart || !normalizedEnd) {
-      return undefined;
-    }
-    const priceCents = rentalPriceParam ? Number(rentalPriceParam) : undefined;
-    const normalizedPrice = Number.isFinite(priceCents) ? Number(priceCents) : undefined;
-    return {
-      start: normalizedStart,
-      end: normalizedEnd,
-      fieldId: rentalFieldIdParam ?? rentalFieldIdsFromSelections[0] ?? undefined,
-      priceCents: normalizedPrice,
-      requiredTemplateIds: rentalHostRequiredTemplateIds,
-    };
-  }, [
-    isCreateMode,
-    normalizedRentalEnd,
-    normalizedRentalStart,
-    rentalFieldIdParam,
-    rentalFieldIdsFromSelections,
-    rentalHostRequiredTemplateIds,
-    rentalPriceParam,
-  ]);
-
-  const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
-    if (!rentalPurchaseContext) {
-      return null;
-    }
-    const startDate = parseLocalDateTime(rentalPurchaseContext.start);
-    const endDate = parseLocalDateTime(rentalPurchaseContext.end);
-    if (!startDate || !endDate) {
-      return null;
-    }
-
-    const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-    const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-    const draftFields = Array.isArray(changesEvent?.fields)
-      ? changesEvent?.fields
-      : rentalImmutableDefaults?.fields;
-    const fallbackFieldId = Array.isArray(draftFields) && draftFields.length > 0
-      ? (draftFields[0] as Field).$id
-      : undefined;
-    const scheduledFieldId = rentalPurchaseContext.fieldId ?? fallbackFieldId;
-    if (!scheduledFieldId) {
-      return null;
-    }
-
-    const dayOfWeek = ((startDate.getDay() + 7) % 7) as TimeSlot['dayOfWeek'];
-    const price = Number.isFinite(rentalPurchaseContext.priceCents) ? Number(rentalPurchaseContext.priceCents) : undefined;
-
-    return {
-      $id: createClientId(),
-      dayOfWeek,
-      startTimeMinutes: startMinutes,
-      endTimeMinutes: endMinutes,
-      startDate: formatLocalDateTime(startDate),
-      endDate: formatLocalDateTime(endDate),
-      repeating: false,
-      scheduledFieldId,
-      price,
-      requiredTemplateIds: rentalRequiredTemplateIds,
-      hostRequiredTemplateIds: rentalPurchaseContext.requiredTemplateIds ?? [],
-      sourceType: rentalBookingIdParam ? 'RENTAL_BOOKING' : null,
-      rentalBookingId: rentalBookingIdParam ?? null,
-      rentalLocked: Boolean(rentalBookingIdParam),
-    };
-  }, [changesEvent?.fields, rentalBookingIdParam, rentalImmutableDefaults?.fields, rentalPurchaseContext, rentalRequiredTemplateIds]);
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
@@ -836,6 +429,67 @@ function EventScheduleContent() {
   );
   const weeklyParticipantSelectionRequired = isWeeklyParentEvent && !selectedOccurrence;
   const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
+  const activeMatches = usingChangeCopies ? changesMatches : matches;
+  const {
+    organizationForCreate,
+    rentalOrganization,
+    formSeedEvent,
+    createLocationDefaults,
+    rentalImmutableDefaults,
+    rentalPurchaseContext,
+    rentalPurchaseTimeSlot,
+    templateSelectData,
+    templatePromptOpen,
+    closeTemplatePrompt,
+    applyingTemplate,
+    templatesError,
+    templatesLoading,
+    selectedTemplateId,
+    setSelectedTemplateId,
+    selectedTemplateStartDate,
+    setSelectedTemplateStartDate,
+    templateSeedKey,
+    handleApplyTemplate,
+    buildTemplateSourceFromDraft,
+  } = useCreateEventFlow({
+    isCreateMode,
+    eventId,
+    user,
+    isGuest,
+    changesEvent,
+    activeEvent,
+    activeMatches,
+    hasPendingUnsavedChanges,
+    eventFormRef,
+    templateIdParam,
+    skipTemplatePromptParam,
+    resolvedHostOrgId,
+    resolvedRentalOrgId,
+    isRentalFlow,
+    normalizedRentalStart,
+    normalizedRentalEnd,
+    rentalSelections,
+    rentalFieldIdsFromSelections,
+    rentalRequiredTemplateIds,
+    rentalHostRequiredTemplateIds,
+    rentalBookingIdParam,
+    rentalFieldIdParam,
+    rentalFieldNameParam,
+    rentalFacilityIdParam,
+    rentalFacilityNameParam,
+    rentalFacilityLocationParam,
+    rentalFacilityAddressParam,
+    rentalLocationParam,
+    rentalCoordinates,
+    rentalPriceParam,
+    defaultSport,
+    userLocationLabel,
+    userCoordinates,
+    setChangesEvent,
+    setHasUnsavedChanges,
+    setFormHasUnsavedChanges,
+    setActionError,
+  });
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isHiddenEvent = HIDDEN_EVENT_STATES.has(String(activeEvent?.state ?? 'PUBLISHED').toUpperCase());
   const activeOrganization = useMemo(() => {
@@ -891,7 +545,57 @@ function EventScheduleContent() {
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager || isRazumlyAdmin);
   const isEditingEvent = isTemplateEvent || ((isPreview || isEditParam) && canManageEvent);
-  const activeMatches = usingChangeCopies ? changesMatches : matches;
+  const canEditMatches = Boolean(canManageEvent && isEditingEvent);
+  const {
+    clearMatchConflictDraftAlerts,
+    dismissMatchConflictMessage,
+    matchConflictPairs,
+    matchConflictsById,
+    showCurrentMatchConflictOverride,
+    visibleMatchConflictMessage,
+  } = useMatchConflictAlerts({ matches: activeMatches });
+  const {
+    applyMatchUpdate,
+    closeScoreModal,
+    handleAddBracketMatch,
+    handleAddScheduleMatch,
+    handleMatchCalendarMove,
+    handleMatchDelete,
+    handleMatchEditClose,
+    handleMatchEditRequest,
+    handleMatchEditSave,
+    handleScoreChange,
+    handleScoreSubmit,
+    handleSetComplete,
+    handleToggleLockAllMatches,
+    isMatchEditorOpen,
+    isScoreModalOpen,
+    matchBeingEdited,
+    matchEditorContext,
+    openScoreModalForMatch,
+    resetMatchEditorState,
+    resetStagedMatchDrafts,
+    scoreUpdateMatch,
+    setMatchBeingEdited,
+    setScoreUpdateMatch,
+    stagedMatchCreates,
+    stagedMatchDeletes,
+  } = useEventMatchOperations({
+    activeEvent,
+    activeMatches,
+    canEditMatches,
+    changesMatches,
+    eventId,
+    matches,
+    onDraftMatchChanged: clearMatchConflictDraftAlerts,
+    setChangesEvent,
+    setChangesMatches,
+    setError,
+    setEvent,
+    setHasUnsavedChanges,
+    setInfoMessage,
+    setMatches,
+  });
   const activeMatchesById = useMemo<Record<string, Match>>(() => {
     const map: Record<string, Match> = {};
     activeMatches.forEach((match) => {
@@ -902,59 +606,6 @@ function EventScheduleContent() {
     });
     return map;
   }, [activeMatches]);
-  const matchConflictsById = useMemo<Record<string, string[]>>(
-    () => detectMatchConflictsById(activeMatches),
-    [activeMatches],
-  );
-  const matchConflictPairs = useMemo(
-    () => listMatchConflictPairs(matchConflictsById),
-    [matchConflictsById],
-  );
-  const matchConflictSignature = useMemo(
-    () => matchConflictPairs.map((pair) => `${pair.firstId}|${pair.secondId}`).join(','),
-    [matchConflictPairs],
-  );
-  const hasMatchConflicts = matchConflictPairs.length > 0;
-  const baseMatchConflictMessage = useMemo(
-    () => (
-      hasMatchConflicts
-        ? buildMatchConflictAlertMessage({
-          matches: activeMatches,
-          pairs: matchConflictPairs,
-        })
-        : null
-    ),
-    [activeMatches, hasMatchConflicts, matchConflictPairs],
-  );
-  const visibleMatchConflictMessage = useMemo(() => {
-    if (!hasMatchConflicts) {
-      return null;
-    }
-    if (matchConflictOverrideMessage) {
-      return matchConflictOverrideMessage;
-    }
-    if (dismissedMatchConflictSignature === matchConflictSignature) {
-      return null;
-    }
-    return baseMatchConflictMessage;
-  }, [
-    baseMatchConflictMessage,
-    dismissedMatchConflictSignature,
-    hasMatchConflicts,
-    matchConflictOverrideMessage,
-    matchConflictSignature,
-  ]);
-
-  useEffect(() => {
-    if (!hasMatchConflicts) {
-      setDismissedMatchConflictSignature(null);
-      setMatchConflictOverrideMessage(null);
-      return;
-    }
-    setMatchConflictOverrideMessage(null);
-    setDismissedMatchConflictSignature((current) => (current === matchConflictSignature ? current : null));
-  }, [hasMatchConflicts, matchConflictSignature]);
-
   const divisionLabelsByKey = useMemo(() => {
     const labels = new Map<string, string>();
     if (Array.isArray(activeEvent?.divisionDetails)) {
@@ -1349,6 +1000,97 @@ function EventScheduleContent() {
     [participantDivisionColumns],
   );
 
+  const isSplitDivisionEvent = Boolean(
+    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
+      || (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'TOURNAMENT',
+  ) && !activeEvent?.singleDivision && participantDivisionColumns.length > 0;
+
+  const eventParticipants = useEventParticipants({
+    activeEvent,
+    eventId,
+    activeMatches,
+    isCreateMode,
+    weeklyParticipantSelectionRequired,
+    selectedOccurrence,
+    participantDivisionColumns,
+    participantDivisionSelectData,
+    isSplitDivisionEvent,
+    isLeague,
+    isTournament,
+    canManageEvent,
+    user,
+    setEvent,
+    setChangesEvent,
+    setInfoMessage,
+    setWarningMessage,
+    setActionError,
+  });
+  const {
+    participantTeams,
+    participantUsers,
+    participantOfficials,
+    participantsLoading,
+    participantsError,
+    setParticipantsError,
+    participantDivisionWarnings,
+    participantsUpdatingTeamId,
+    participantTeamIds,
+    participantTeamIdsKey,
+    participantUserIds,
+    participantUserIdsKey,
+    participantTeamIdSet,
+    participantUserIdSet,
+    participantOfficialIds,
+    participantOfficialIdsKey,
+    participantTeamsById,
+    filledParticipantTeams,
+    unassignedParticipantTeams,
+    unassignedFilledParticipantTeams,
+    hasSplitDivisionUnassignedTeams,
+    isPlaceholderParticipantTeam,
+    organizationIdForParticipants,
+    availableOrganizationParticipantTeams,
+    displayedOrganizationTeams,
+    hasTeamSearchInput,
+    teamSearchMeetsMinimum,
+    searchTeamsLoading,
+    searchResultTeams,
+    isAddTeamModalOpen,
+    setIsAddTeamModalOpen,
+    isAddParticipantModalOpen,
+    participantInviteMode,
+    setParticipantInviteMode,
+    participantSearchValue,
+    participantSearchResults,
+    participantSearchLoading,
+    participantSearchError,
+    participantInviteRows,
+    setParticipantInviteRows,
+    participantInviteError,
+    setParticipantInviteError,
+    invitingParticipants,
+    selectedParticipantTeam,
+    setSelectedParticipantTeam,
+    selectedAddTeamDivisionId,
+    setSelectedAddTeamDivisionId,
+    teamSearchQuery,
+    setTeamSearchQuery,
+    organizationTeamsLoading,
+    applyParticipantSnapshot,
+    refreshParticipantTeamsFromServer,
+    openAddParticipantsModal,
+    openAddTeamModal,
+    closeAddParticipantModal,
+    handleSearchParticipants,
+    handleAddExistingParticipant,
+    handleInviteParticipantsByEmail,
+    handleAddTeamRosterParticipants,
+    handleAddTeamToParticipants,
+    handleMoveTeamDivision,
+    handleRemoveTeamFromParticipants,
+    handleRemoveUserFromParticipants,
+  } = eventParticipants;
+
   const participantDivisionWarningsByDivisionId = useMemo(() => {
     const warningsByDivisionId = new Map<string, EventParticipantDivisionWarning[]>();
     participantDivisionWarnings.forEach((warning) => {
@@ -1363,11 +1105,6 @@ function EventScheduleContent() {
     });
     return warningsByDivisionId;
   }, [participantDivisionWarnings]);
-
-  const isSplitDivisionEvent = Boolean(
-    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
-      || (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'TOURNAMENT',
-  ) && !activeEvent?.singleDivision && participantDivisionColumns.length > 0;
 
   useEffect(() => {
     if (selectedScheduleDivision === 'all') {
@@ -1785,58 +1522,12 @@ function EventScheduleContent() {
     stagedMatchDeletes,
   ]);
   const pendingSaveChangeCount = pendingSaveChanges.length;
-  const renderPendingChangesPopover = () => (
-    <Popover
-      opened={isPendingChangesPopoverOpen}
-      onChange={setIsPendingChangesPopoverOpen}
-      width={420}
-      position="bottom-end"
-      withArrow
-      shadow="md"
-    >
-      <Popover.Target>
-        <Button
-          variant="default"
-          leftSection={<ListChecks size={16} />}
-          onClick={() => setIsPendingChangesPopoverOpen((current) => !current)}
-          disabled={pendingSaveChangeCount === 0}
-        >
-          Changes ({pendingSaveChangeCount})
-        </Button>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <Stack gap={6}>
-          <Text size="xs" c="dimmed">
-            These updates will be applied when you save.
-          </Text>
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            <Stack gap={8}>
-              {pendingSaveChanges.map((change) => (
-                <Paper key={change.id} withBorder radius="sm" p="xs">
-                  <Text size="sm" fw={600}>{change.label}</Text>
-                  {change.detail ? (
-                    <Text size="xs" c="dimmed">{change.detail}</Text>
-                  ) : null}
-                </Paper>
-              ))}
-            </Stack>
-          </div>
-        </Stack>
-      </Popover.Dropdown>
-    </Popover>
-  );
-  const canEditMatches = Boolean(canManageEvent && isEditingEvent);
   const showEventOfficialNames = Boolean(canEditMatches || isEventOfficial);
   const shouldShowCreationSheet = Boolean(
     isCreateMode
     || (isEditingEvent && canManageEvent && user),
   );
   const createFormId = 'create-event-form';
-  const templateSelectData = useMemo(
-    () => templateSummaries.map((template) => ({ value: template.id, label: template.name })),
-    [templateSummaries],
-  );
-  const defaultSport = DEFAULT_SPORT;
   const hasSelectedNotificationAudience = useMemo(
     () => Object.values(notificationAudience).some(Boolean),
     [notificationAudience],
@@ -2037,172 +1728,6 @@ function EventScheduleContent() {
     };
   }, [user?.$id]);
 
-  const closeTemplatePrompt = useCallback(() => {
-    templatePromptResolvedRef.current = true;
-    setTemplatePromptOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!isCreateMode) {
-      return;
-    }
-    // Every new create flow should re-offer template selection.
-    templatePromptResolvedRef.current = false;
-    templateIdSeedResolvedRef.current = null;
-    setTemplatePromptOpen(false);
-    setTemplateSummaries([]);
-    setSelectedTemplateId(null);
-    setSelectedTemplateStartDate(null);
-    setTemplatesError(null);
-    setFailedTemplateSeedId(null);
-  }, [eventId, isCreateMode, resolvedHostOrgId, templateIdParam]);
-
-  useEffect(() => {
-    if (!isCreateMode || !eventId || !user?.$id || !templateIdParam) {
-      return;
-    }
-    if (templateIdSeedResolvedRef.current === templateIdParam) {
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      setApplyingTemplate(true);
-      setTemplatesError(null);
-      setActionError(null);
-      setFailedTemplateSeedId(null);
-      let applied = false;
-      try {
-        const template = await eventService.getEventWithRelations(templateIdParam);
-        if (!template) {
-          throw new Error('Template not found.');
-        }
-
-        const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
-        const seed = base ?? new Date();
-        const startDate = new Date(seed);
-        startDate.setHours(0, 0, 0, 0);
-
-        const seeded = seedEventFromTemplate(template, {
-          newEventId: eventId,
-          newStartDate: startDate,
-          hostId: user.$id,
-          idFactory: createId,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        templatePromptResolvedRef.current = true;
-        setTemplatePromptOpen(false);
-        setSelectedTemplateId(templateIdParam);
-        setSelectedTemplateStartDate(startDate);
-        setChangesEvent(seeded);
-        setHasUnsavedChanges(false);
-        setFormHasUnsavedChanges(false);
-        setTemplateSeedKey((prev) => prev + 1);
-        applied = true;
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : 'Failed to apply template.';
-        templatePromptResolvedRef.current = false;
-        setTemplatePromptOpen(false);
-        setFailedTemplateSeedId(templateIdParam);
-        setTemplatesError(message);
-        setActionError(`Unable to apply template: ${message}`);
-      } finally {
-        if (!cancelled) {
-          if (applied) {
-            templateIdSeedResolvedRef.current = templateIdParam;
-          }
-          setApplyingTemplate(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [changesEvent?.start, eventId, isCreateMode, templateIdParam, user?.$id]);
-
-  const handleApplyTemplate = useCallback(async () => {
-    if (!isCreateMode || !user?.$id) {
-      closeTemplatePrompt();
-      return;
-    }
-
-    if (!selectedTemplateId) {
-      setTemplatesError('Select a template to continue.');
-      return;
-    }
-    if (!selectedTemplateStartDate) {
-      setTemplatesError('Select a start date to continue.');
-      return;
-    }
-    if (!eventId) {
-      setTemplatesError('Missing event id for creation.');
-      return;
-    }
-
-    setApplyingTemplate(true);
-    setTemplatesError(null);
-    setActionError(null);
-
-    try {
-      const template = await eventService.getEventWithRelations(selectedTemplateId);
-      if (!template) {
-        throw new Error('Template not found.');
-      }
-
-      const seeded = seedEventFromTemplate(template, {
-        newEventId: eventId,
-        newStartDate: selectedTemplateStartDate,
-        hostId: user.$id,
-        idFactory: createId,
-      });
-
-      setChangesEvent(seeded);
-      setHasUnsavedChanges(false);
-      setFormHasUnsavedChanges(false);
-      setTemplateSeedKey((prev) => prev + 1);
-      closeTemplatePrompt();
-    } catch (error) {
-      console.error('Failed to apply template:', error);
-      setActionError(error instanceof Error ? error.message : 'Failed to apply template.');
-    } finally {
-      setApplyingTemplate(false);
-    }
-  }, [closeTemplatePrompt, eventId, isCreateMode, selectedTemplateId, selectedTemplateStartDate, user?.$id]);
-
-  const buildTemplateSourceFromDraft = useCallback((): Event | null => {
-    if (!activeEvent) {
-      return null;
-    }
-
-    const formDraft = eventFormRef.current?.getDraft();
-    const merged = {
-      ...(cloneValue(activeEvent) as Event),
-      ...((formDraft ?? {}) as Partial<Event>),
-    } as Event;
-
-    if (!Array.isArray(merged.matches) || merged.matches.length === 0) {
-      merged.matches = Array.isArray(activeMatches)
-        ? (cloneValue(activeMatches) as Match[])
-        : [];
-    }
-    if (!Array.isArray(merged.timeSlots)) {
-      merged.timeSlots = [];
-    }
-    if (typeof merged.$id !== 'string' || merged.$id.trim().length === 0) {
-      merged.$id = activeEvent.$id;
-    }
-
-    return merged;
-  }, [activeEvent, activeMatches]);
-
   const handleCreateTemplateFromEvent = useCallback(async () => {
     if (!activeEvent || !user?.$id) {
       return;
@@ -2268,105 +1793,6 @@ function EventScheduleContent() {
     }
     return map;
   }, [activeEvent?.teams]);
-
-  const participantTeamIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    if (Array.isArray(activeEvent?.teamIds)) {
-      activeEvent.teamIds
-        .map((teamId) => normalizeIdToken(teamId))
-        .filter((teamId): teamId is string => Boolean(teamId))
-        .forEach((teamId) => ids.add(teamId));
-    }
-
-    if (Array.isArray(activeEvent?.teams)) {
-      activeEvent.teams.forEach((teamEntry) => {
-        const teamId = normalizeIdToken(teamEntry?.$id);
-        if (teamId) {
-          ids.add(teamId);
-        }
-      });
-    }
-
-    return Array.from(ids);
-  }, [activeEvent?.teamIds, activeEvent?.teams]);
-  const participantTeamIdsKey = useMemo(() => buildStableIdListKey(participantTeamIds), [participantTeamIds]);
-
-  const participantUserIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    if (Array.isArray(activeEvent?.userIds)) {
-      activeEvent.userIds
-        .map((userId) => normalizeIdToken(userId))
-        .filter((userId): userId is string => Boolean(userId))
-        .forEach((userId) => ids.add(userId));
-    }
-
-    if (Array.isArray(activeEvent?.players)) {
-      activeEvent.players.forEach((player) => {
-        const userId = normalizeIdToken(player?.$id);
-        if (userId) {
-          ids.add(userId);
-        }
-      });
-    }
-
-    return Array.from(ids);
-  }, [activeEvent?.players, activeEvent?.userIds]);
-  const participantUserIdsKey = useMemo(() => buildStableIdListKey(participantUserIds), [participantUserIds]);
-
-  const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
-  const participantUserIdSet = useMemo(() => new Set(participantUserIds), [participantUserIds]);
-  const participantOfficialIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    if (Array.isArray(activeEvent?.officialIds)) {
-      activeEvent.officialIds
-        .map((officialId) => normalizeIdToken(officialId))
-        .filter((officialId): officialId is string => Boolean(officialId))
-        .forEach((officialId) => ids.add(officialId));
-    }
-
-    if (Array.isArray(activeEvent?.eventOfficials)) {
-      activeEvent.eventOfficials
-        .map((officialEntry) => normalizeIdToken(officialEntry?.userId))
-        .filter((officialId): officialId is string => Boolean(officialId))
-        .forEach((officialId) => ids.add(officialId));
-    }
-
-    if (Array.isArray(activeEvent?.officials)) {
-      activeEvent.officials.forEach((officialEntry) => {
-        const officialId = normalizeIdToken(officialEntry?.$id);
-        if (officialId) {
-          ids.add(officialId);
-        }
-      });
-    }
-
-    activeMatches.forEach((match) => {
-      collectMatchAssignmentUserIds(match).forEach((officialId) => ids.add(officialId));
-    });
-
-    return Array.from(ids);
-  }, [activeEvent?.eventOfficials, activeEvent?.officialIds, activeEvent?.officials, activeMatches]);
-  const participantOfficialIdsKey = useMemo(() => buildStableIdListKey(participantOfficialIds), [participantOfficialIds]);
-
-  const participantTeamsById = useMemo(() => {
-    const teams = new Map<string, Team>();
-    participantTeams.forEach((team) => {
-      if (team?.$id) {
-        teams.set(team.$id, team);
-      }
-    });
-    if (Array.isArray(activeEvent?.teams)) {
-      activeEvent.teams.forEach((team) => {
-        if (team?.$id && !teams.has(team.$id)) {
-          teams.set(team.$id, team);
-        }
-      });
-    }
-    return teams;
-  }, [activeEvent?.teams, participantTeams]);
 
   const viewerHighlightTeams = useMemo(
     () => Array.from(participantTeamsById.values()),
@@ -2443,267 +1869,6 @@ function EventScheduleContent() {
     [viewerDivisionHighlightKeys],
   );
 
-  const isPlaceholderParticipantTeam = useCallback(
-    (team: Team | null | undefined): boolean => {
-      if (!team) return true;
-      if (!isLeague && !isTournament) return false;
-      if (typeof (team as any).kind === 'string' && (team as any).kind.trim().toUpperCase() === 'PLACEHOLDER') {
-        return true;
-      }
-      return typeof team.parentTeamId !== 'string' || team.parentTeamId.trim().length === 0;
-    },
-    [isLeague, isTournament],
-  );
-
-  const filledParticipantTeams = useMemo(
-    () => participantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
-    [isPlaceholderParticipantTeam, participantTeams],
-  );
-
-  const assignedParticipantTeamIds = useMemo(() => {
-    const assigned = new Set<string>();
-    participantDivisionColumns.forEach((column) => {
-      column.teamIds.forEach((teamId) => {
-        if (participantTeamIdSet.has(teamId)) {
-          assigned.add(teamId);
-        }
-      });
-    });
-    return assigned;
-  }, [participantDivisionColumns, participantTeamIdSet]);
-
-  const unassignedParticipantTeamIds = useMemo(
-    () => participantTeamIds.filter((teamId) => !assignedParticipantTeamIds.has(teamId)),
-    [assignedParticipantTeamIds, participantTeamIds],
-  );
-
-  const unassignedParticipantTeams = useMemo(
-    () => unassignedParticipantTeamIds
-      .map((teamId) => participantTeamsById.get(teamId))
-      .filter((team): team is Team => Boolean(team)),
-    [participantTeamsById, unassignedParticipantTeamIds],
-  );
-
-  const unassignedFilledParticipantTeams = useMemo(
-    () => unassignedParticipantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
-    [isPlaceholderParticipantTeam, unassignedParticipantTeams],
-  );
-
-  const hasSplitDivisionUnassignedTeams = isSplitDivisionEvent && unassignedFilledParticipantTeams.length > 0;
-
-  const organizationIdForParticipants = useMemo(() => {
-    const organizationId = normalizeIdToken(activeEvent?.organizationId);
-    if (organizationId) {
-      return organizationId;
-    }
-
-    if (typeof activeEvent?.organization === 'string') {
-      return normalizeIdToken(activeEvent.organization);
-    }
-
-    if (activeEvent?.organization && typeof activeEvent.organization === 'object') {
-      const objectId = normalizeIdToken((activeEvent.organization as Partial<Organization>).$id);
-      if (objectId) {
-        return objectId;
-      }
-    }
-
-    return null;
-  }, [activeEvent?.organization, activeEvent?.organizationId]);
-
-  const normalizedTeamSearchQuery = teamSearchQuery.trim().toLowerCase();
-  const hasTeamSearchInput = normalizedTeamSearchQuery.length > 0;
-  const teamSearchMeetsMinimum = normalizedTeamSearchQuery.length >= MIN_TEAM_SEARCH_QUERY_LENGTH;
-  const currentUserId = normalizeIdToken(user?.$id);
-
-  const availableOrganizationTeams = useMemo(
-    () => organizationTeamsForPicker.filter((team) => Boolean(team?.$id) && !participantTeamIdSet.has(team.$id)),
-    [organizationTeamsForPicker, participantTeamIdSet],
-  );
-
-  const availableOrganizationParticipantTeams = useMemo(
-    () => organizationTeamsForPicker.filter((team) => Boolean(team?.$id)),
-    [organizationTeamsForPicker],
-  );
-
-  const displayedOrganizationTeams = useMemo(() => {
-    if (!hasTeamSearchInput) {
-      return availableOrganizationTeams;
-    }
-    if (!teamSearchMeetsMinimum) {
-      return [];
-    }
-    return availableOrganizationTeams
-      .filter((team) => teamMatchesSearchQuery(team, normalizedTeamSearchQuery))
-      .slice(0, 24);
-  }, [
-    availableOrganizationTeams,
-    hasTeamSearchInput,
-    normalizedTeamSearchQuery,
-    teamSearchMeetsMinimum,
-  ]);
-
-  const searchResultTeams = useMemo(() => {
-    if (organizationIdForParticipants || !teamSearchMeetsMinimum) {
-      return [];
-    }
-
-    const source = searchTeamPool.filter((team) => {
-      if (!team?.$id || participantTeamIdSet.has(team.$id)) {
-        return false;
-      }
-
-      if (normalizeIdToken(team.organizationId)) {
-        return false;
-      }
-
-      return true;
-    });
-
-    const filtered = source.filter((team) => teamMatchesSearchQuery(team, normalizedTeamSearchQuery));
-
-    return filtered.slice(0, 24);
-  }, [
-    normalizedTeamSearchQuery,
-    organizationIdForParticipants,
-    participantTeamIdSet,
-    searchTeamPool,
-    teamSearchMeetsMinimum,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadParticipantTeams = async () => {
-      if (!activeEvent?.teamSignup) {
-        loadedParticipantTeamsKeyRef.current = null;
-        setParticipantTeams([]);
-        setParticipantsLoading(false);
-        return;
-      }
-
-      const teamIds = parseStableIdListKey(participantTeamIdsKey);
-      if (teamIds.length === 0) {
-        loadedParticipantTeamsKeyRef.current = null;
-        setParticipantTeams([]);
-        setParticipantUsers([]);
-        setParticipantsError(null);
-        setParticipantsLoading(false);
-        return;
-      }
-
-      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-      const hydrationKey = `${targetEventId ?? ''}:${participantTeamIdsKey}`;
-      if (loadedParticipantTeamsKeyRef.current === hydrationKey) {
-        return;
-      }
-      loadedParticipantTeamsKeyRef.current = hydrationKey;
-
-      setParticipantsLoading(true);
-      setParticipantsError(null);
-      try {
-        const hydratedTeams = await teamService.getTeamsByIds(
-          teamIds,
-          true,
-          { eventId: targetEventId ?? undefined },
-        );
-        if (cancelled) {
-          return;
-        }
-        const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
-        const orderedTeams = teamIds
-          .map((teamId) => hydratedById.get(teamId))
-          .filter((team): team is Team => Boolean(team));
-        setParticipantTeams(orderedTeams);
-        setParticipantUsers([]);
-      } catch (participantError) {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to load participant teams:', participantError);
-        if (loadedParticipantTeamsKeyRef.current === hydrationKey) {
-          loadedParticipantTeamsKeyRef.current = null;
-        }
-        setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load teams.');
-      } finally {
-        if (!cancelled) {
-          setParticipantsLoading(false);
-        }
-      }
-    };
-
-    void loadParticipantTeams();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantTeamIdsKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadParticipantUsers = async () => {
-      if (activeEvent?.teamSignup !== false) {
-        loadedParticipantUsersKeyRef.current = null;
-        setParticipantUsers([]);
-        return;
-      }
-
-      const userIds = parseStableIdListKey(participantUserIdsKey);
-      if (userIds.length === 0) {
-        loadedParticipantUsersKeyRef.current = null;
-        setParticipantUsers([]);
-        setParticipantsError(null);
-        setParticipantsLoading(false);
-        return;
-      }
-
-      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-      const hydrationKey = `${targetEventId ?? ''}:${participantUserIdsKey}`;
-      if (loadedParticipantUsersKeyRef.current === hydrationKey) {
-        return;
-      }
-      loadedParticipantUsersKeyRef.current = hydrationKey;
-
-      setParticipantsLoading(true);
-      setParticipantsError(null);
-      try {
-        const hydratedUsers = await userService.getUsersByIds(
-          userIds,
-          { eventId: targetEventId ?? undefined },
-        );
-        if (cancelled) {
-          return;
-        }
-        const hydratedById = new Map(hydratedUsers.map((participant) => [participant.$id, participant]));
-        const orderedUsers = userIds
-          .map((userId) => hydratedById.get(userId))
-          .filter((participant): participant is UserData => Boolean(participant));
-        setParticipantUsers(orderedUsers);
-        setParticipantTeams([]);
-      } catch (participantError) {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to load participant users:', participantError);
-        if (loadedParticipantUsersKeyRef.current === hydrationKey) {
-          loadedParticipantUsersKeyRef.current = null;
-        }
-        setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load participants.');
-      } finally {
-        if (!cancelled) {
-          setParticipantsLoading(false);
-        }
-      }
-    };
-
-    void loadParticipantUsers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantUserIdsKey]);
-
   useEffect(() => {
     if (!canUseTeamCompliance) {
       setTeamComplianceError(null);
@@ -2712,7 +1877,6 @@ function EventScheduleContent() {
         loadedTeamComplianceKeyRef.current = null;
         setTeamComplianceById({});
         setSelectedComplianceTeamId(null);
-        setExpandedComplianceUserIds([]);
       }
       return;
     }
@@ -2885,813 +2049,8 @@ function EventScheduleContent() {
     const stillVisible = participantTeamIdSet.has(selectedComplianceTeamId);
     if (!stillVisible) {
       setSelectedComplianceTeamId(null);
-      setExpandedComplianceUserIds([]);
     }
   }, [participantTeamIdSet, selectedComplianceTeamId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadParticipantOfficials = async () => {
-      const officialIds = parseStableIdListKey(participantOfficialIdsKey);
-      if (officialIds.length === 0) {
-        loadedParticipantOfficialsKeyRef.current = null;
-        setParticipantOfficials([]);
-        return;
-      }
-
-      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-      const hydrationKey = `${targetEventId ?? ''}:${participantOfficialIdsKey}`;
-      if (loadedParticipantOfficialsKeyRef.current === hydrationKey) {
-        return;
-      }
-      loadedParticipantOfficialsKeyRef.current = hydrationKey;
-
-      try {
-        const hydratedOfficials = await userService.getUsersByIds(
-          officialIds,
-          { eventId: targetEventId ?? undefined },
-        );
-        if (cancelled) {
-          return;
-        }
-        const hydratedById = new Map(hydratedOfficials.map((official) => [official.$id, official]));
-        const orderedOfficials = officialIds
-          .map((officialId) => hydratedById.get(officialId))
-          .filter((official): official is UserData => Boolean(official));
-        setParticipantOfficials(orderedOfficials);
-      } catch (officialsError) {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to load officials for event:', officialsError);
-        if (loadedParticipantOfficialsKeyRef.current === hydrationKey) {
-          loadedParticipantOfficialsKeyRef.current = null;
-        }
-      }
-    };
-
-    void loadParticipantOfficials();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeEvent?.$id, eventId, participantOfficialIdsKey]);
-
-  useEffect(() => {
-    if (!isAddTeamModalOpen) {
-      return;
-    }
-    if (!isSplitDivisionEvent) {
-      if (selectedAddTeamDivisionId !== null) {
-        setSelectedAddTeamDivisionId(null);
-      }
-      return;
-    }
-    if (
-      selectedAddTeamDivisionId
-      && participantDivisionSelectData.some((option) => option.value === selectedAddTeamDivisionId)
-    ) {
-      return;
-    }
-    setSelectedAddTeamDivisionId(participantDivisionSelectData[0]?.value ?? null);
-  }, [isAddTeamModalOpen, isSplitDivisionEvent, participantDivisionSelectData, selectedAddTeamDivisionId]);
-
-  useEffect(() => {
-    const shouldLoadOrganizationTeams =
-      isAddTeamModalOpen
-      || (isAddParticipantModalOpen && participantInviteMode === 'team');
-    const shouldLoadSearchPool =
-      isAddTeamModalOpen
-      && !organizationIdForParticipants
-      && teamSearchMeetsMinimum
-      && Boolean(currentUserId);
-
-    if (!shouldLoadSearchPool) {
-      setSearchTeamPool([]);
-      setSearchTeamsLoading(false);
-    }
-
-    if (!shouldLoadOrganizationTeams && !shouldLoadSearchPool) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadOrganizationTeams = async () => {
-      if (!organizationIdForParticipants) {
-        setOrganizationTeamsForPicker([]);
-        setOrganizationTeamsLoading(false);
-        return;
-      }
-
-      setOrganizationTeamsLoading(true);
-      try {
-        const eventVisibilityContext = normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined;
-        const eventOrganization = activeEvent?.organization;
-        if (eventOrganization && typeof eventOrganization === 'object') {
-          const org = eventOrganization as Organization;
-          if (org.$id === organizationIdForParticipants && Array.isArray(org.teams) && org.teams.length > 0) {
-            if (!cancelled) {
-              setOrganizationTeamsForPicker(org.teams);
-            }
-            return;
-          }
-        }
-
-        const organizationTeams = await teamService.getTeamsByOrganizationId(
-          organizationIdForParticipants,
-          true,
-          { eventId: eventVisibilityContext },
-          200,
-        );
-        if (cancelled) {
-          return;
-        }
-        setOrganizationTeamsForPicker(organizationTeams);
-      } catch (organizationError) {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to load organization teams:', organizationError);
-        setParticipantsError(organizationError instanceof Error ? organizationError.message : 'Failed to load organization teams.');
-      } finally {
-        if (!cancelled) {
-          setOrganizationTeamsLoading(false);
-        }
-      }
-    };
-
-    const loadSearchPool = async () => {
-      if (!currentUserId) {
-        setSearchTeamPool([]);
-        setSearchTeamsLoading(false);
-        return;
-      }
-
-      setSearchTeamsLoading(true);
-      try {
-        const allTeamIds = Array.from(
-          new Set(
-            (await teamService.getTeamsByUserId(currentUserId))
-              .map((team) => normalizeIdToken(team.$id))
-              .filter((teamId): teamId is string => Boolean(teamId)),
-          ),
-        );
-        const hydrated = allTeamIds.length > 0
-          ? await teamService.getTeamsByIds(
-            allTeamIds,
-            true,
-            { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
-          )
-          : [];
-        if (!cancelled) {
-          setSearchTeamPool(hydrated.filter((team) => !normalizeIdToken(team.organizationId)));
-        }
-      } catch (searchError) {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to load team search results:', searchError);
-        setParticipantsError(searchError instanceof Error ? searchError.message : 'Failed to load teams for search.');
-      } finally {
-        if (!cancelled) {
-          setSearchTeamsLoading(false);
-        }
-      }
-    };
-
-    const pendingLoads: Array<Promise<void>> = [];
-    if (shouldLoadOrganizationTeams) {
-      pendingLoads.push(loadOrganizationTeams());
-    }
-    if (shouldLoadSearchPool) {
-      pendingLoads.push(loadSearchPool());
-    }
-
-    void Promise.all(pendingLoads);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeEvent?.$id,
-    activeEvent?.organization,
-    currentUserId,
-    eventId,
-    isAddParticipantModalOpen,
-    isAddTeamModalOpen,
-    organizationIdForParticipants,
-    participantInviteMode,
-    teamSearchMeetsMinimum,
-  ]);
-
-  const applyParticipantSnapshot = useCallback((
-    targetEventId: string,
-    snapshot: EventParticipantsResponse,
-    occurrence?: { slotId?: string | null; occurrenceDate?: string | null } | null,
-    refreshedEvent?: Event | null,
-  ) => {
-    const snapshotKey = buildParticipantSnapshotKey(targetEventId, occurrence);
-    const refreshedTeamIds = Array.from(new Set(
-      (snapshot.participants.teamIds ?? [])
-        .map((teamId) => normalizeIdToken(teamId))
-        .filter((teamId): teamId is string => Boolean(teamId)),
-    ));
-    const participantUserIds = Array.from(new Set(
-      (snapshot.participants.userIds ?? [])
-        .map((userId) => normalizeIdToken(userId))
-        .filter((userId): userId is string => Boolean(userId)),
-    ));
-    const waitListIds = Array.from(new Set(
-      (snapshot.participants.waitListIds ?? [])
-        .map((userId) => normalizeIdToken(userId))
-        .filter((userId): userId is string => Boolean(userId)),
-    ));
-    const freeAgentIds = Array.from(new Set(
-      (snapshot.participants.freeAgentIds ?? [])
-        .map((userId) => normalizeIdToken(userId))
-        .filter((userId): userId is string => Boolean(userId)),
-    ));
-
-    const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
-    const orderedTeams = refreshedTeamIds
-      .map((teamId) => teamsById.get(teamId))
-      .filter((team): team is Team => Boolean(team));
-    const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
-    const orderedUsers = participantUserIds
-      .map((userId) => usersById.get(userId))
-      .filter((participant): participant is UserData => Boolean(participant));
-
-    setParticipantTeams(orderedTeams);
-    setParticipantUsers(orderedUsers);
-    setParticipantDivisionWarnings(snapshot.divisionWarnings ?? []);
-    setParticipantsError(null);
-    setParticipantsLoading(false);
-
-    if (snapshotKey) {
-      loadedParticipantSnapshotKeyRef.current = snapshotKey;
-    }
-
-    const participantTeamKey = refreshedTeamIds.join('|');
-    const participantUserKey = participantUserIds.join('|');
-    const targetKeyPrefix = `${targetEventId}:`;
-    loadedParticipantTeamsKeyRef.current =
-      refreshedTeamIds.length === orderedTeams.length
-        ? `${targetKeyPrefix}${participantTeamKey}`
-        : null;
-    loadedParticipantUsersKeyRef.current =
-      participantUserIds.length === orderedUsers.length
-        ? `${targetKeyPrefix}${participantUserKey}`
-        : null;
-
-    setEvent((prev) => (prev
-      ? {
-          ...prev,
-          teamIds: refreshedTeamIds,
-          teams: orderedTeams,
-          userIds: participantUserIds,
-          players: orderedUsers,
-          waitListIds,
-          freeAgentIds,
-          participantCount: snapshot.participantCount,
-          participantCapacity: snapshot.participantCapacity,
-          ...(Array.isArray(refreshedEvent?.divisions) ? { divisions: refreshedEvent.divisions } : {}),
-          ...(Array.isArray(refreshedEvent?.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
-          ...(Array.isArray(refreshedEvent?.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
-        }
-      : prev));
-    setChangesEvent((prev) => (prev
-      ? {
-          ...prev,
-          teamIds: refreshedTeamIds,
-          teams: orderedTeams,
-          userIds: participantUserIds,
-          players: orderedUsers,
-          waitListIds,
-          freeAgentIds,
-          participantCount: snapshot.participantCount,
-          participantCapacity: snapshot.participantCapacity,
-          ...(Array.isArray(refreshedEvent?.divisions) ? { divisions: refreshedEvent.divisions } : {}),
-          ...(Array.isArray(refreshedEvent?.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
-          ...(Array.isArray(refreshedEvent?.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
-        }
-      : prev));
-  }, []);
-
-  const refreshParticipantTeamsFromServer = useCallback(
-    async (
-      targetEventId: string,
-      occurrence?: { slotId?: string | null; occurrenceDate?: string | null },
-      hydratedEvent?: Event | null,
-    ) => {
-      const snapshotKey = buildParticipantSnapshotKey(targetEventId, occurrence);
-      const snapshot = await eventService.getEventParticipants(targetEventId, occurrence);
-      const refreshedEvent = hydratedEvent ?? snapshot.event ?? await eventService.getEventById(targetEventId);
-      if (!refreshedEvent) {
-        throw new Error('Failed to refresh event participants.');
-      }
-
-      const refreshedTeamIds = Array.from(new Set(
-        (snapshot.participants.teamIds ?? [])
-          .map((teamId) => normalizeIdToken(teamId))
-          .filter((teamId): teamId is string => Boolean(teamId)),
-      ));
-
-      const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
-      const snapshotOrderedTeams = refreshedTeamIds
-        .map((teamId) => teamsById.get(teamId))
-        .filter((team): team is Team => Boolean(team));
-      let orderedTeams = snapshotOrderedTeams;
-      const needsRosterHydration = snapshotOrderedTeams.some((team) => (
-        Array.isArray(team.playerIds)
-        && team.playerIds.length > 0
-        && (!Array.isArray(team.players) || team.players.length === 0)
-      ));
-      if (needsRosterHydration) {
-        try {
-          const hydratedTeams = await teamService.getTeamsByIds(
-            refreshedTeamIds,
-            true,
-            { eventId: targetEventId ?? undefined },
-          );
-          const hydratedTeamsById = new Map(hydratedTeams.map((team) => [team.$id, team]));
-          orderedTeams = refreshedTeamIds
-            .map((teamId) => hydratedTeamsById.get(teamId) ?? teamsById.get(teamId))
-            .filter((team): team is Team => Boolean(team));
-        } catch (hydrationError) {
-          console.error('Failed to hydrate participant rosters:', hydrationError);
-        }
-      }
-      if (orderedTeams !== snapshotOrderedTeams) {
-        snapshot.teams = orderedTeams;
-      }
-      applyParticipantSnapshot(targetEventId, snapshot, occurrence, refreshedEvent);
-    },
-    [applyParticipantSnapshot],
-  );
-
-  useEffect(() => {
-    if (isCreateMode) {
-      setParticipantTeams([]);
-      setParticipantUsers([]);
-      setParticipantDivisionWarnings([]);
-      setParticipantsError(null);
-      setParticipantsLoading(false);
-      loadedParticipantSnapshotKeyRef.current = null;
-      setEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: [],
-            teams: [],
-            userIds: [],
-            players: [],
-            waitListIds: [],
-            freeAgentIds: [],
-            participantCount: 0,
-          }
-        : prev));
-      setChangesEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: [],
-            teams: [],
-            userIds: [],
-            players: [],
-            waitListIds: [],
-            freeAgentIds: [],
-            participantCount: 0,
-          }
-        : prev));
-      return;
-    }
-
-    if (!activeEvent?.$id) {
-      return;
-    }
-
-    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-    if (!targetEventId) {
-      return;
-    }
-
-    if (weeklyParticipantSelectionRequired) {
-      setParticipantTeams([]);
-      setParticipantUsers([]);
-      setParticipantsError(null);
-      setParticipantsLoading(false);
-      loadedParticipantSnapshotKeyRef.current = null;
-      setEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: [],
-            teams: [],
-            userIds: [],
-            players: [],
-            waitListIds: [],
-            freeAgentIds: [],
-          }
-        : prev));
-      setChangesEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: [],
-            teams: [],
-            userIds: [],
-            players: [],
-            waitListIds: [],
-            freeAgentIds: [],
-          }
-        : prev));
-      return;
-    }
-
-    const snapshotKey = buildParticipantSnapshotKey(targetEventId, selectedOccurrence);
-    if (!snapshotKey || loadedParticipantSnapshotKeyRef.current === snapshotKey) {
-      return;
-    }
-    loadedParticipantSnapshotKeyRef.current = snapshotKey;
-
-    void refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined).catch((refreshError) => {
-      if (loadedParticipantSnapshotKeyRef.current === snapshotKey) {
-        loadedParticipantSnapshotKeyRef.current = null;
-      }
-      console.error('Failed to refresh event participants:', refreshError);
-      setParticipantsError(refreshError instanceof Error ? refreshError.message : 'Failed to load participants.');
-    });
-  }, [
-    activeEvent?.$id,
-    eventId,
-    isCreateMode,
-    refreshParticipantTeamsFromServer,
-    selectedOccurrence,
-    weeklyParticipantSelectionRequired,
-  ]);
-
-  const mutateTeamParticipantMembership = useCallback(
-    async (params: {
-      team: Team;
-      mode: 'add' | 'remove' | 'move';
-      divisionId?: string | null;
-    }) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        return;
-      }
-      if (!params.team?.$id) {
-        return;
-      }
-
-      setParticipantsError(null);
-      setActionError(null);
-      try {
-        if (params.mode === 'remove') {
-          const hydratedEvent = await eventService.removeTeamParticipant(targetEventId, params.team.$id, selectedOccurrence ?? undefined);
-          await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined, hydratedEvent);
-          setInfoMessage(`${params.team.name || 'Team'} removed from participants. A refund has been queued.`);
-          return;
-        }
-
-        const hydratedEvent = await eventService.addTeamParticipant(targetEventId, {
-          teamId: params.team.$id,
-          divisionId: params.divisionId ?? undefined,
-          slotId: selectedOccurrence?.slotId,
-          occurrenceDate: selectedOccurrence?.occurrenceDate,
-        });
-        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined, hydratedEvent);
-        if (params.mode === 'move') {
-          setInfoMessage(`${params.team.name || 'Team'} moved to a new division.`);
-        } else {
-          setInfoMessage(`${params.team.name || 'Team'} added to participants.`);
-        }
-      } catch (updateError) {
-        console.error('Failed to update event participants:', updateError);
-        setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
-      }
-    },
-    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer, selectedOccurrence],
-  );
-
-  const mutateUserParticipantMembership = useCallback(
-    async (params: {
-      user: UserData;
-      mode: 'add' | 'remove';
-    }) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        return;
-      }
-      if (!params.user?.$id) {
-        return;
-      }
-
-      setParticipantsError(null);
-      setActionError(null);
-      try {
-        const response = await apiRequest<{ requiresParentApproval?: boolean; warnings?: string[] }>(`/api/events/${targetEventId}/participants`, {
-          method: params.mode === 'add' ? 'POST' : 'DELETE',
-          body: {
-            userId: params.user.$id,
-            ...(selectedOccurrence?.slotId ? { slotId: selectedOccurrence.slotId } : {}),
-            ...(selectedOccurrence?.occurrenceDate ? { occurrenceDate: selectedOccurrence.occurrenceDate } : {}),
-          },
-        });
-        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
-        if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
-          setWarningMessage(response.warnings[0] ?? null);
-        }
-        if (params.mode === 'remove') {
-          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} removed from participants.`);
-        } else if (response?.requiresParentApproval) {
-          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} requires parent/guardian approval before registration can continue.`);
-        } else {
-          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} added to participants.`);
-        }
-      } catch (updateError) {
-        console.error('Failed to update user participants:', updateError);
-        setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
-      }
-    },
-    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer, selectedOccurrence],
-  );
-
-  const closeAddParticipantModal = useCallback(() => {
-    setIsAddParticipantModalOpen(false);
-    setParticipantInviteMode('existing');
-    setParticipantSearchValue('');
-    setParticipantSearchResults([]);
-    setParticipantSearchError(null);
-    setParticipantInviteRows([{ firstName: '', lastName: '', email: '' }]);
-    setParticipantInviteError(null);
-  }, []);
-
-  const handleSearchParticipants = useCallback(
-    async (query: string) => {
-      setParticipantSearchValue(query);
-      setParticipantSearchError(null);
-      if (query.trim().length < 2) {
-        setParticipantSearchResults([]);
-        return;
-      }
-      try {
-        setParticipantSearchLoading(true);
-        const results = await userService.searchUsers(query.trim());
-        const filtered = results.filter((candidate) => !participantUserIdSet.has(candidate.$id));
-        setParticipantSearchResults(filtered);
-      } catch (searchError) {
-        console.error('Failed to search participants:', searchError);
-        setParticipantSearchError('Failed to search participants. Try again.');
-      } finally {
-        setParticipantSearchLoading(false);
-      }
-    },
-    [participantUserIdSet],
-  );
-
-  const handleAddExistingParticipant = useCallback(
-    async (candidate: UserData) => {
-      if (participantsUpdatingTeamId || !candidate?.$id || participantUserIdSet.has(candidate.$id)) {
-        return;
-      }
-
-      setParticipantsUpdatingTeamId(candidate.$id);
-      await mutateUserParticipantMembership({
-        user: candidate,
-        mode: 'add',
-      });
-      setParticipantSearchResults((prev) => prev.filter((entry) => entry.$id !== candidate.$id));
-      setParticipantsUpdatingTeamId(null);
-    },
-    [mutateUserParticipantMembership, participantUserIdSet, participantsUpdatingTeamId],
-  );
-
-  const handleInviteParticipantsByEmail = useCallback(async () => {
-    const targetEventId = activeEvent?.$id ?? eventId;
-    if (!targetEventId || !user?.$id) {
-      setParticipantInviteError('You must be signed in to invite participants.');
-      return;
-    }
-
-    const sanitized = participantInviteRows.map((invite) => ({
-      firstName: invite.firstName.trim(),
-      lastName: invite.lastName.trim(),
-      email: invite.email.trim().toLowerCase(),
-    }));
-
-    for (const invite of sanitized) {
-      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
-        setParticipantInviteError('Enter first name, last name, and a valid email for every participant invite.');
-        return;
-      }
-    }
-
-    setParticipantInviteError(null);
-    setInvitingParticipants(true);
-    try {
-      const result = await userService.inviteUsersByEmail(
-        user.$id,
-        sanitized.map((invite) => ({
-          ...invite,
-          type: 'EVENT',
-          eventId: targetEventId,
-          organizationId: activeEvent?.organizationId ?? undefined,
-        })),
-      );
-      if ((result.failed ?? []).length > 0) {
-        throw new Error('Failed to create one or more participant invites.');
-      }
-      setInfoMessage('Participant invites sent.');
-      setParticipantInviteRows([{ firstName: '', lastName: '', email: '' }]);
-    } catch (inviteError) {
-      console.error('Failed to invite participants:', inviteError);
-      setParticipantInviteError(inviteError instanceof Error ? inviteError.message : 'Failed to invite participants.');
-    } finally {
-      setInvitingParticipants(false);
-    }
-  }, [activeEvent?.$id, activeEvent?.organizationId, eventId, participantInviteRows, user?.$id]);
-
-  const handleAddTeamRosterParticipants = useCallback(
-    async (team: Team) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId || participantsUpdatingTeamId || !team?.$id) {
-        return;
-      }
-
-      const rosterUserIds = collectTeamRosterUserIds(team);
-      if (rosterUserIds.length === 0) {
-        setParticipantInviteError('This team has no players or staff to add.');
-        return;
-      }
-
-      const userIdsToAdd = rosterUserIds.filter((userId) => !participantUserIdSet.has(userId));
-      if (userIdsToAdd.length === 0) {
-        setParticipantInviteError('All roster members on this team are already participants.');
-        return;
-      }
-
-      setParticipantInviteError(null);
-      setParticipantsError(null);
-      setActionError(null);
-      setParticipantsUpdatingTeamId(team.$id);
-
-      let addedCount = 0;
-      let approvalCount = 0;
-      let failureCount = 0;
-      const warningMessages: string[] = [];
-
-      try {
-        for (const userId of userIdsToAdd) {
-          try {
-            const response = await apiRequest<{ requiresParentApproval?: boolean; warnings?: string[] }>(`/api/events/${targetEventId}/participants`, {
-              method: 'POST',
-              body: {
-                userId,
-                ...(selectedOccurrence?.slotId ? { slotId: selectedOccurrence.slotId } : {}),
-                ...(selectedOccurrence?.occurrenceDate ? { occurrenceDate: selectedOccurrence.occurrenceDate } : {}),
-              },
-            });
-
-            if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
-              warningMessages.push(...response.warnings);
-            }
-
-            if (response?.requiresParentApproval) {
-              approvalCount += 1;
-            } else {
-              addedCount += 1;
-            }
-          } catch (error) {
-            console.error('Failed to add team roster participant:', error);
-            failureCount += 1;
-          }
-        }
-
-        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
-
-        if (warningMessages.length > 0) {
-          const [firstWarning, ...restWarnings] = warningMessages;
-          setWarningMessage(restWarnings.length > 0 ? `${firstWarning} (+${restWarnings.length} more)` : firstWarning);
-        }
-
-        const summaryParts: string[] = [];
-        if (addedCount > 0) {
-          summaryParts.push(`Added ${addedCount} roster member${addedCount === 1 ? '' : 's'}`);
-        }
-        if (approvalCount > 0) {
-          summaryParts.push(`${approvalCount} require parent/guardian approval`);
-        }
-        if (failureCount > 0) {
-          summaryParts.push(`${failureCount} could not be added`);
-        }
-
-        if (summaryParts.length > 0) {
-          setInfoMessage(`${summaryParts.join('. ')} from ${team.name || 'team'}.`);
-        }
-        if (failureCount > 0) {
-          setParticipantInviteError(`${failureCount} roster member${failureCount === 1 ? '' : 's'} could not be added. Check the event requirements and try again.`);
-        }
-      } finally {
-        setParticipantsUpdatingTeamId(null);
-      }
-    },
-    [activeEvent?.$id, eventId, participantUserIdSet, participantsUpdatingTeamId, refreshParticipantTeamsFromServer, selectedOccurrence],
-  );
-
-  const handleAddTeamToParticipants = useCallback(
-    async (team: Team) => {
-      if (participantsUpdatingTeamId || !team?.$id || participantTeamIdSet.has(team.$id)) {
-        return;
-      }
-
-      if (isSplitDivisionEvent && !selectedAddTeamDivisionId) {
-        setParticipantsError('Select a division before adding a team.');
-        return;
-      }
-
-      setParticipantsUpdatingTeamId(team.$id);
-      await mutateTeamParticipantMembership({
-        team,
-        mode: 'add',
-        divisionId: isSplitDivisionEvent ? selectedAddTeamDivisionId : undefined,
-      });
-      setParticipantsUpdatingTeamId(null);
-    },
-    [
-      isSplitDivisionEvent,
-      mutateTeamParticipantMembership,
-      participantTeamIdSet,
-      participantsUpdatingTeamId,
-      selectedAddTeamDivisionId,
-    ],
-  );
-
-  const handleMoveTeamDivision = useCallback(
-    async (team: Team, nextDivisionId: string | null) => {
-      if (!nextDivisionId || !team?.$id || participantsUpdatingTeamId || !canManageEvent) {
-        return;
-      }
-      const currentDivisionId = participantDivisionColumns.find((column) => column.teamIds.includes(team.$id))?.id ?? null;
-      if (currentDivisionId === nextDivisionId) {
-        return;
-      }
-
-      setParticipantsUpdatingTeamId(team.$id);
-      await mutateTeamParticipantMembership({
-        team,
-        mode: 'move',
-        divisionId: nextDivisionId,
-      });
-      setParticipantsUpdatingTeamId(null);
-    },
-    [canManageEvent, mutateTeamParticipantMembership, participantDivisionColumns, participantsUpdatingTeamId],
-  );
-
-  const handleRemoveTeamFromParticipants = useCallback(
-    async (team: Team) => {
-      if (participantsUpdatingTeamId || !team?.$id || !participantTeamIdSet.has(team.$id)) {
-        return;
-      }
-
-      const shouldRemove = typeof window === 'undefined'
-        ? true
-        : window.confirm(`Remove ${team.name || 'this team'} from participants? They will be unregistered and refunded.`);
-      if (!shouldRemove) {
-        return;
-      }
-
-      setParticipantsUpdatingTeamId(team.$id);
-      await mutateTeamParticipantMembership({
-        team,
-        mode: 'remove',
-      });
-      setParticipantsUpdatingTeamId(null);
-    },
-    [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
-  );
-
-  const handleRemoveUserFromParticipants = useCallback(
-    async (participant: UserData) => {
-      if (participantsUpdatingTeamId || !participant?.$id || !participantUserIdSet.has(participant.$id)) {
-        return;
-      }
-
-      const displayName = participant.fullName || participant.userName || 'this participant';
-      const shouldRemove = typeof window === 'undefined'
-        ? true
-        : window.confirm(`Remove ${displayName} from participants? They will be unregistered and refunded.`);
-      if (!shouldRemove) {
-        return;
-      }
-
-      setParticipantsUpdatingTeamId(participant.$id);
-      await mutateUserParticipantMembership({
-        user: participant,
-        mode: 'remove',
-      });
-      setParticipantsUpdatingTeamId(null);
-    },
-    [mutateUserParticipantMembership, participantUserIdSet, participantsUpdatingTeamId],
-  );
 
   const refreshTeamCompliance = useCallback(() => {
     setTeamComplianceRefreshKey((current) => current + 1);
@@ -3709,363 +2068,51 @@ function EventScheduleContent() {
     return query ? `${path}?${query}` : path;
   }, [selectedOccurrence?.occurrenceDate, selectedOccurrence?.slotId]);
 
-  const loadTeamBillingSnapshot = useCallback(
-    async (teamId: string): Promise<TeamBillingSnapshot> => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        throw new Error('Event context is unavailable.');
-      }
-      return apiRequest<TeamBillingSnapshot>(
-        appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${teamId}/billing`),
-      );
-    },
-    [activeEvent?.$id, appendSelectedOccurrenceQuery, eventId],
-  );
-
-  const closeRefundModal = useCallback(() => {
-    setSelectedRefundTeam(null);
-    setRefundSnapshot(null);
-    setRefundError(null);
-    setRefundLoading(false);
-    setRefundAmountDraftByPaymentId({});
-    setRefundingPaymentId(null);
-    setCancellingPendingBillPaymentId(null);
-  }, []);
-
-  const openRefundModal = useCallback(
-    async (team: Team) => {
-      if (!team?.$id) {
-        return;
-      }
-      setSelectedRefundTeam(team);
-      setRefundLoading(true);
-      setRefundError(null);
-      setRefundSnapshot(null);
-      try {
-        const snapshot = await loadTeamBillingSnapshot(team.$id);
-        setRefundSnapshot(snapshot);
-        const defaults: Record<string, number> = {};
-        snapshot.bills.forEach((bill) => {
-          bill.payments.forEach((payment) => {
-            defaults[payment.$id] = payment.refundableAmountCents / 100;
-          });
-        });
-        setRefundAmountDraftByPaymentId(defaults);
-      } catch (error) {
-        console.error('Failed to load team billing snapshot:', error);
-        setRefundError(error instanceof Error ? error.message : 'Failed to load billing details.');
-      } finally {
-        setRefundLoading(false);
-      }
-    },
-    [loadTeamBillingSnapshot],
-  );
-
-  const submitRefund = useCallback(
-    async (paymentId: string) => {
-      const team = selectedRefundTeam;
-      if (!team?.$id) {
-        return;
-      }
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        return;
-      }
-      const payment = refundSnapshot?.bills
-        .flatMap((bill) => bill.payments)
-        .find((entry) => entry.$id === paymentId);
-      if (!payment) {
-        return;
-      }
-      const amountDollars = refundAmountDraftByPaymentId[paymentId] ?? (payment.refundableAmountCents / 100);
-      const amountCents = Math.round((Number(amountDollars) || 0) * 100);
-      if (!Number.isFinite(amountCents) || amountCents <= 0) {
-        setRefundError('Enter a refund amount greater than $0.00.');
-        return;
-      }
-
-      setRefundingPaymentId(paymentId);
-      setRefundError(null);
-      try {
-        await apiRequest(
-          appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${team.$id}/billing/refunds`),
-          {
-            method: 'POST',
-            body: {
-              billPaymentId: paymentId,
-              amountCents,
-            },
-          },
-        );
-        const snapshot = await loadTeamBillingSnapshot(team.$id);
-        setRefundSnapshot(snapshot);
-        const nextDefaults: Record<string, number> = {};
-        snapshot.bills.forEach((bill) => {
-          bill.payments.forEach((entry) => {
-            nextDefaults[entry.$id] = entry.refundableAmountCents / 100;
-          });
-        });
-        setRefundAmountDraftByPaymentId(nextDefaults);
-        setInfoMessage('Refund processed successfully.');
-        refreshTeamCompliance();
-      } catch (error) {
-        console.error('Failed to process refund:', error);
-        setRefundError(error instanceof Error ? error.message : 'Failed to process refund.');
-      } finally {
-        setRefundingPaymentId(null);
-      }
-    },
-    [
-      activeEvent?.$id,
-      appendSelectedOccurrenceQuery,
-      eventId,
-      loadTeamBillingSnapshot,
-      refreshTeamCompliance,
-      refundAmountDraftByPaymentId,
-      refundSnapshot?.bills,
-      selectedRefundTeam,
-    ],
-  );
-
-  const cancelPendingBillPayment = useCallback(
-    async (billId: string, paymentId: string) => {
-      const team = selectedRefundTeam;
-      if (!team?.$id) {
-        return;
-      }
-      setCancellingPendingBillPaymentId(paymentId);
-      setRefundError(null);
-      try {
-        await apiRequest(`/api/billing/bills/${billId}/payments/${paymentId}/cancel`, {
-          method: 'POST',
-        });
-        const snapshot = await loadTeamBillingSnapshot(team.$id);
-        setRefundSnapshot(snapshot);
-        setInfoMessage('Pending payment cancelled.');
-        refreshTeamCompliance();
-      } catch (error) {
-        console.error('Failed to cancel pending bill payment:', error);
-        setRefundError(error instanceof Error ? error.message : 'Failed to cancel pending payment.');
-      } finally {
-        setCancellingPendingBillPaymentId(null);
-      }
-    },
-    [loadTeamBillingSnapshot, refreshTeamCompliance, selectedRefundTeam],
-  );
-
-  const closeCreateBillModal = useCallback(() => {
-    setCreateBillTeam(null);
-    setCreateBillError(null);
-    setCreatingBill(false);
-    setCreateBillOwnerType('TEAM');
-    setCreateBillOwnerId(null);
-    setCreateBillAmountDollars(0);
-    setCreateBillTaxDollars(0);
-    setCreateBillAllowSplit(false);
-    setCreateBillLabel('Event registration');
-  }, []);
-
-  const openCreateBillModal = useCallback((team: Team) => {
-    if (!team?.$id) {
-      return;
-    }
-    const userOnlyBilling = activeEvent?.teamSignup === false;
-    const defaultOwnerType: 'TEAM' | 'USER' = userOnlyBilling ? 'USER' : 'TEAM';
-    const defaultOwnerId = defaultOwnerType === 'TEAM'
-      ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
-      : (Array.isArray(team.playerIds) && team.playerIds.length > 0 ? team.playerIds[0] : team.$id);
-
-    setCreateBillTeam(team);
-    setCreateBillError(null);
-    setCreatingBill(false);
-    setCreateBillOwnerType(defaultOwnerType);
-    setCreateBillOwnerId(defaultOwnerId);
-    setCreateBillAmountDollars(0);
-    setCreateBillTaxDollars(0);
-    setCreateBillAllowSplit(false);
-    setCreateBillLabel('Event registration');
-  }, [activeEvent?.teamSignup]);
-
-  const createBillUserOptions = useMemo(() => {
-    if (!createBillTeam) {
-      return [] as Array<{ value: string; label: string }>;
-    }
-    const fromPlayers = Array.isArray(createBillTeam.players)
-      ? createBillTeam.players
-          .map((player) => {
-            const playerId = normalizeIdToken(player?.$id);
-            if (!playerId) {
-              return null;
-            }
-            const fullName = typeof player.fullName === 'string' && player.fullName.trim().length > 0
-              ? player.fullName.trim()
-              : `${player.firstName ?? ''} ${player.lastName ?? ''}`.trim();
-            return {
-              value: playerId,
-              label: fullName || player.userName || playerId,
-            };
-          })
-          .filter((option): option is { value: string; label: string } => Boolean(option))
-      : [];
-    if (fromPlayers.length > 0) {
-      return fromPlayers;
-    }
-    const fallbackPlayerIds = Array.isArray(createBillTeam.playerIds)
-      ? createBillTeam.playerIds
-        .map((playerId) => normalizeIdToken(playerId))
-        .filter((playerId): playerId is string => Boolean(playerId))
-      : [];
-    return fallbackPlayerIds.map((playerId) => ({
-      value: playerId,
-      label: playerId,
-    }));
-  }, [createBillTeam]);
-
-  const createBillIsUserOnly = Boolean(createBillTeam && activeEvent?.teamSignup === false);
-
-  useEffect(() => {
-    if (createBillIsUserOnly) {
-      if (createBillOwnerType !== 'USER') {
-        setCreateBillOwnerType('USER');
-      }
-      const firstUserId = createBillUserOptions[0]?.value ?? createBillTeam?.$id ?? null;
-      if (firstUserId && createBillOwnerId !== firstUserId) {
-        setCreateBillOwnerId(firstUserId);
-      }
-      return;
-    }
-
-    if (!createBillTeam) {
-      return;
-    }
-    if (createBillOwnerType === 'TEAM') {
-      const teamBillOwnerId = normalizeIdToken(createBillTeam.parentTeamId) ?? createBillTeam.$id;
-      if (createBillOwnerId !== teamBillOwnerId) {
-        setCreateBillOwnerId(teamBillOwnerId);
-      }
-      return;
-    }
-    const firstUserId = createBillUserOptions[0]?.value ?? null;
-    if (firstUserId && createBillOwnerId !== firstUserId) {
-      setCreateBillOwnerId(firstUserId);
-    }
-  }, [createBillIsUserOnly, createBillOwnerId, createBillOwnerType, createBillTeam, createBillUserOptions]);
-
-  const createBillEventAmountCents = Math.max(0, Math.round((Number(createBillAmountDollars) || 0) * 100));
-  const createBillFeeBreakdown = useMemo(
-    () => calculateMvpAndStripeFees({
-      eventAmountCents: createBillEventAmountCents,
-      eventType: activeEvent?.eventType,
-    }),
-    [activeEvent?.eventType, createBillEventAmountCents],
-  );
-  const createBillMvpFeeAmountCents = createBillFeeBreakdown.mvpFeeCents;
-  const createBillStripeFeeAmountCents = createBillFeeBreakdown.stripeFeeCents;
-  const createBillTaxAmountCents = Math.max(0, Math.round((Number(createBillTaxDollars) || 0) * 100));
-  const createBillTotalCents = (
-    createBillEventAmountCents
-    + createBillMvpFeeAmountCents
-    + createBillStripeFeeAmountCents
-    + createBillTaxAmountCents
-  );
-  const createBillPreviewLineItems = useMemo(() => {
-    const lineItems: Array<{ id: string; label: string; amountCents: number }> = [
-      {
-        id: 'line_1',
-        label: createBillLabel.trim().length > 0 ? createBillLabel.trim() : 'Event registration',
-        amountCents: createBillEventAmountCents,
-      },
-    ];
-    if (createBillMvpFeeAmountCents > 0) {
-      lineItems.push({
-        id: `line_${lineItems.length + 1}`,
-        label: 'BracketIQ fee',
-        amountCents: createBillMvpFeeAmountCents,
-      });
-    }
-    if (createBillStripeFeeAmountCents > 0) {
-      lineItems.push({
-        id: `line_${lineItems.length + 1}`,
-        label: 'Stripe fee',
-        amountCents: createBillStripeFeeAmountCents,
-      });
-    }
-    if (createBillTaxAmountCents > 0) {
-      lineItems.push({
-        id: `line_${lineItems.length + 1}`,
-        label: 'Tax',
-        amountCents: createBillTaxAmountCents,
-      });
-    }
-    return lineItems;
-  }, [
-    createBillEventAmountCents,
-    createBillLabel,
-    createBillMvpFeeAmountCents,
-    createBillStripeFeeAmountCents,
-    createBillTaxAmountCents,
-  ]);
-
-  const submitCreateBill = useCallback(async () => {
-    const team = createBillTeam;
-    if (!team?.$id) {
-      return;
-    }
-    const targetEventId = activeEvent?.$id ?? eventId;
-    if (!targetEventId) {
-      return;
-    }
-    if (createBillEventAmountCents <= 0) {
-      setCreateBillError('Enter an amount greater than $0.00.');
-      return;
-    }
-    if (createBillOwnerType === 'USER' && !createBillOwnerId) {
-      setCreateBillError('Select a user to bill.');
-      return;
-    }
-
-    setCreatingBill(true);
-    setCreateBillError(null);
-    try {
-      await apiRequest(
-        appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${team.$id}/billing/bills`),
-        {
-          method: 'POST',
-          body: {
-            ownerType: createBillOwnerType,
-            ownerId: createBillOwnerType === 'TEAM'
-              ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
-              : createBillOwnerId,
-            eventAmountCents: createBillEventAmountCents,
-            taxAmountCents: createBillTaxAmountCents,
-            allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
-            label: createBillLabel,
-          },
-        },
-      );
-      setInfoMessage('Bill created successfully.');
-      closeCreateBillModal();
-      refreshTeamCompliance();
-    } catch (error) {
-      console.error('Failed to create bill:', error);
-      setCreateBillError(error instanceof Error ? error.message : 'Failed to create bill.');
-    } finally {
-      setCreatingBill(false);
-    }
-  }, [
-    activeEvent?.$id,
+  const eventBilling = useEventBilling({
+    activeEventId: activeEvent?.$id,
+    fallbackEventId: eventId,
+    eventType: activeEvent?.eventType,
+    teamSignup: activeEvent?.teamSignup,
     appendSelectedOccurrenceQuery,
-    closeCreateBillModal,
-    createBillAllowSplit,
-    createBillEventAmountCents,
-    createBillLabel,
-    createBillOwnerId,
-    createBillOwnerType,
-    createBillTaxAmountCents,
-    createBillTeam,
-    eventId,
     refreshTeamCompliance,
-  ]);
+    setInfoMessage,
+  });
+  const {
+    selectedRefundTeam,
+    refundSnapshot,
+    refundLoading,
+    refundError,
+    refundAmountDraftByPaymentId,
+    refundingPaymentId,
+    cancellingPendingBillPaymentId,
+    closeRefundModal,
+    openRefundModal,
+    handleRefundAmountDraftChange,
+    submitRefund,
+    cancelPendingBillPayment,
+    createBillTeam,
+    createBillError,
+    creatingBill,
+    createBillOwnerType,
+    createBillOwnerId,
+    createBillAmountDollars,
+    createBillTaxDollars,
+    createBillAllowSplit,
+    createBillLabel,
+    createBillUserOptions,
+    createBillIsUserOnly,
+    createBillPreviewLineItems,
+    createBillTotalCents,
+    closeCreateBillModal,
+    openCreateBillModal,
+    setCreateBillOwnerType,
+    setCreateBillOwnerId,
+    setCreateBillAmountDollars,
+    setCreateBillTaxDollars,
+    setCreateBillAllowSplit,
+    setCreateBillLabel,
+    submitCreateBill,
+  } = eventBilling;
 
   const renderEditBillingActions = useCallback((team: Team) => {
     if (!isEditingEvent || !canManageEvent) {
@@ -4098,14 +2145,6 @@ function EventScheduleContent() {
       </Group>
     );
   }, [canManageEvent, isEditingEvent, openCreateBillModal, openRefundModal]);
-
-  const toggleComplianceUserExpanded = useCallback((userId: string) => {
-    setExpandedComplianceUserIds((current) => (
-      current.includes(userId)
-        ? current.filter((value) => value !== userId)
-        : [...current, userId]
-    ));
-  }, []);
 
   const resolveTeam = useCallback(
     (value: Match['team1'] | string | null | undefined): Team | null => {
@@ -4179,204 +2218,26 @@ function EventScheduleContent() {
   }, [participantTeamsById, user?.$id, userOnTeam]);
 
   const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
-  const realtimeWasBlockedForLocalEditsRef = useRef(false);
-  const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
-  const pendingRentalLockRef = useRef<{ eventDraft: Event; rentalSlot: TimeSlot } | null>(null);
   useEffect(() => {
     hasUnsavedChangesRef.current = hasPendingUnsavedChanges;
   }, [hasPendingUnsavedChanges]);
 
-  const normalizeRealtimeMatches = useCallback((incomingMatches: Match[] | undefined): Match[] => (
-    (Array.isArray(incomingMatches) ? incomingMatches : [])
-      .map((match) => cloneValue(normalizeApiMatch(match)) as Match)
-      .filter((match) => Boolean(normalizeIdToken(match.$id)))
-  ), []);
-
-  const applyRealtimeMatchSnapshot = useCallback((incomingMatches: Match[]) => {
-    const normalizedMatches = normalizeRealtimeMatches(incomingMatches);
-    const matchesForState = () => cloneValue(normalizedMatches) as Match[];
-    const byId = new Map(normalizedMatches.map((match) => [match.$id, match]));
-
-    setMatches(matchesForState());
-    setEvent((prev) => (prev ? { ...prev, matches: matchesForState() } : prev));
-    if (!hasUnsavedChangesRef.current) {
-      setChangesMatches(matchesForState());
-      setChangesEvent((prev) => (prev ? { ...prev, matches: matchesForState() } : prev));
-    }
-    setScoreUpdateMatch((current) => {
-      if (!current?.$id) return current;
-      const replacement = byId.get(current.$id);
-      return replacement ? (cloneValue(replacement) as Match) : current;
-    });
-    setMatchBeingEdited((current) => {
-      if (!current?.$id) return current;
-      const replacement = byId.get(current.$id);
-      return replacement ? (cloneValue(replacement) as Match) : current;
-    });
-  }, [normalizeRealtimeMatches]);
-
-  const applyRealtimeMatchChanges = useCallback((incomingMatches: Match[] | undefined, deletedIds: string[] | undefined) => {
-    const normalizedMatches = normalizeRealtimeMatches(incomingMatches);
-    const deletedSet = new Set(
-      (deletedIds ?? [])
-        .map((id) => normalizeIdToken(id))
-        .filter((id): id is string => Boolean(id)),
-    );
-    const upsertsById = new Map(normalizedMatches.map((match) => [match.$id, match]));
-    if (deletedSet.size === 0 && upsertsById.size === 0) {
-      return;
-    }
-
-    const mergeList = (list: Match[] | undefined): Match[] => {
-      const base = Array.isArray(list) ? list : [];
-      const remaining = new Map(upsertsById);
-      const next: Match[] = [];
-      base.forEach((match) => {
-        const matchId = normalizeIdToken(match.$id);
-        if (matchId && deletedSet.has(matchId)) {
-          return;
-        }
-        const replacement = matchId ? remaining.get(matchId) : undefined;
-        if (replacement) {
-          next.push(cloneValue(replacement) as Match);
-          remaining.delete(matchId as string);
-          return;
-        }
-        next.push(match);
-      });
-      remaining.forEach((match) => next.push(cloneValue(match) as Match));
-      return next;
-    };
-
-    const updateFocusedMatch = (current: Match | null): Match | null => {
-      if (!current?.$id) return current;
-      if (deletedSet.has(current.$id)) return null;
-      const replacement = upsertsById.get(current.$id);
-      return replacement ? (cloneValue(replacement) as Match) : current;
-    };
-
-    setMatches((prev) => mergeList(prev));
-    setEvent((prev) => (prev ? { ...prev, matches: mergeList(prev.matches as Match[] | undefined) } : prev));
-    if (!hasUnsavedChangesRef.current) {
-      setChangesMatches((prev) => mergeList(prev));
-      setChangesEvent((prev) => (prev ? { ...prev, matches: mergeList(prev.matches as Match[] | undefined) } : prev));
-    }
-    setScoreUpdateMatch(updateFocusedMatch);
-    setMatchBeingEdited(updateFocusedMatch);
-  }, [normalizeRealtimeMatches]);
-
-  useEffect(() => {
-    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-    const realtimeBlockedForLocalEdits = Boolean(
+  useEventMatchRealtime({
+    hasUnsavedChangesRef,
+    isBlockedForLocalEdits: Boolean(
       (canManageEvent && isEditingEvent) ||
         (isScoreModalOpen && scoreUpdateMatch) ||
         (isMatchEditorOpen && matchBeingEdited),
-    );
-    const shouldRefreshOnConnect = realtimeWasBlockedForLocalEditsRef.current;
-    realtimeWasBlockedForLocalEditsRef.current = realtimeBlockedForLocalEdits;
-    if (!targetEventId || isCreateMode || realtimeBlockedForLocalEdits) {
-      return undefined;
-    }
-
-    const realtimeEventId = targetEventId;
-    let cancelled = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    const realtimeAbortController = new AbortController();
-
-    const clearReconnectTimer = () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-    };
-
-    const refreshAfterDisconnect = async () => {
-      try {
-        const response = await apiRequest<{ matches?: Match[] }>(
-          `/api/events/${realtimeEventId}/matches`,
-          { timeoutMs: 15_000 },
-        );
-        if (!cancelled) {
-          applyRealtimeMatchSnapshot(response.matches ?? []);
-        }
-      } catch (refreshError) {
-        if (!cancelled) {
-          console.warn('Failed to refresh matches after realtime disconnect:', refreshError);
-        }
-      }
-    };
-
-    const scheduleReconnect = () => {
-      clearReconnectTimer();
-      reconnectTimer = setTimeout(() => {
-        void connect();
-      }, 2500);
-    };
-
-    async function connect() {
-      try {
-        const nextSocket = await connectEventMatchSocket({
-          eventId: realtimeEventId,
-          signal: realtimeAbortController.signal,
-          onMessage: (message) => {
-            if (message.type !== 'match.changed' || message.eventId !== realtimeEventId) {
-              return;
-            }
-            applyRealtimeMatchChanges(message.matches, message.deleted);
-          },
-          onClose: () => {
-            if (cancelled) {
-              return;
-            }
-            void refreshAfterDisconnect().finally(scheduleReconnect);
-          },
-          onError: (event) => {
-            console.warn('Match realtime socket error:', event);
-          },
-        });
-        if (cancelled) {
-          nextSocket.close(1000, 'Event changed');
-          return;
-        }
-        socket = nextSocket;
-      } catch (socketError) {
-        if (cancelled) {
-          return;
-        }
-        if (isApiRequestError(socketError) && [401, 403, 404].includes(socketError.status)) {
-          return;
-        }
-        console.warn('Failed to connect match realtime socket:', socketError);
-        scheduleReconnect();
-      }
-    }
-
-    if (shouldRefreshOnConnect) {
-      void refreshAfterDisconnect().finally(connect);
-    } else {
-      void connect();
-    }
-
-    return () => {
-      cancelled = true;
-      realtimeAbortController.abort();
-      clearReconnectTimer();
-      socket?.close(1000, 'Event changed');
-    };
-  }, [
-    activeEvent?.$id,
-    applyRealtimeMatchChanges,
-    applyRealtimeMatchSnapshot,
-    canManageEvent,
-    eventId,
+    ),
     isCreateMode,
-    isEditingEvent,
-    isMatchEditorOpen,
-    isScoreModalOpen,
-    matchBeingEdited,
-    scoreUpdateMatch,
-  ]);
+    setChangesEvent,
+    setChangesMatches,
+    setEvent,
+    setMatchBeingEdited,
+    setMatches,
+    setScoreUpdateMatch,
+    targetEventId: activeEvent?.$id ?? eventId,
+  });
 
   useEffect(() => {
     if (pendingSaveChangeCount === 0) {
@@ -4422,290 +2283,10 @@ function EventScheduleContent() {
     };
   }, [isCreateMode, isGuest, user?.$id]);
 
-  useEffect(() => {
-    if (!isCreateMode || !user) return;
-    if (templateIdParam && failedTemplateSeedId !== templateIdParam) {
-      return;
-    }
-    setChangesEvent((prev) => {
-      if (prev) return prev;
-      const defaultStartDate = new Date(Date.now() + 60 * 60 * 1000);
-      if (
-        defaultStartDate.getMinutes() !== 0
-        || defaultStartDate.getSeconds() !== 0
-        || defaultStartDate.getMilliseconds() !== 0
-      ) {
-        defaultStartDate.setHours(defaultStartDate.getHours() + 1, 0, 0, 0);
-      } else {
-        defaultStartDate.setMinutes(0, 0, 0);
-      }
-      const defaultEndDate = new Date(defaultStartDate.getTime() + 60 * 60 * 1000);
-      const start = rentalImmutableDefaults?.start ?? formatLocalDateTime(defaultStartDate);
-      const end = rentalImmutableDefaults?.end ?? formatLocalDateTime(defaultEndDate);
-      const locationDefaults = createLocationDefaults;
-      const rentalLocation = (rentalImmutableDefaults?.location ?? '').trim();
-      const rentalAddress = (rentalImmutableDefaults?.address ?? '').trim();
-      const rentalCoordinates = rentalImmutableDefaults?.coordinates;
-      return {
-        $id: eventId || 'temp-id',
-        name: '',
-        description: '',
-        location: rentalLocation || locationDefaults?.location || '',
-        address: rentalAddress || locationDefaults?.address || '',
-        coordinates: rentalCoordinates ?? locationDefaults?.coordinates ?? [0, 0],
-        start,
-        end,
-        eventType: 'EVENT',
-        sportId: '',
-        sport: defaultSport,
-        price: 0,
-        maxParticipants: 10,
-        teamSizeLimit: 2,
-        teamSignup: false,
-        singleDivision: true,
-        divisions: [],
-        cancellationRefundHours: null,
-        registrationCutoffHours: 2,
-        hostId: user.$id,
-        state: 'DRAFT' as EventState,
-        requiredTemplateIds: [],
-        $createdAt: '',
-        $updatedAt: '',
-        attendees: 0,
-        imageId: '',
-        seedColor: 0,
-        waitListIds: [],
-        freeAgentIds: [],
-        players: [],
-        teams: [],
-        officials: [],
-        officialIds: [],
-        officialSchedulingMode: 'SCHEDULE',
-        officialPositions: [],
-        eventOfficials: [],
-        assistantHostIds: [],
-      } as Event;
-    });
-  }, [
-    createLocationDefaults,
-    defaultSport,
-    eventId,
-    failedTemplateSeedId,
-    isCreateMode,
-    rentalImmutableDefaults,
-    templateIdParam,
-    user,
-  ]);
-
-  // Create mode: if the host has event templates, prompt to start from one.
-  useEffect(() => {
-    if (
-      !isCreateMode ||
-      !eventId ||
-      !user?.$id ||
-      isGuest ||
-      isRentalFlow ||
-      (Boolean(templateIdParam) && failedTemplateSeedId !== templateIdParam) ||
-      skipTemplatePromptParam
-    ) {
-      setTemplateSummaries([]);
-      setTemplatePromptOpen(false);
-      setTemplatesError(null);
-      return;
-    }
-    if (templatePromptResolvedRef.current) {
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        setTemplatesLoading(true);
-        setTemplatesError(null);
-        const qs = new URLSearchParams();
-        qs.set('state', 'TEMPLATE');
-        if (resolvedHostOrgId) {
-          qs.set('organizationId', resolvedHostOrgId);
-        } else {
-          qs.set('hostId', user.$id);
-        }
-        qs.set('limit', '50');
-        const response = await apiRequest<{ events?: any[] }>(`/api/events?${qs.toString()}`);
-        const rows = Array.isArray(response?.events) ? response.events : [];
-        const summaries = rows
-          .map((row) => ({
-            id: String(row?.$id ?? row?.id ?? ''),
-            name: String(row?.name ?? 'Untitled Template'),
-          }))
-          .filter((entry) => entry.id.length > 0);
-
-        if (cancelled) return;
-        setTemplateSummaries(summaries);
-
-        if (summaries.length > 0 && !templatePromptResolvedRef.current) {
-          setTemplatePromptOpen(true);
-          setSelectedTemplateId((prev) => prev ?? null);
-          setSelectedTemplateStartDate((prev) => {
-            if (prev) return prev;
-            const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
-            const seed = base ?? new Date();
-            const day = new Date(seed);
-            day.setHours(0, 0, 0, 0);
-            return day;
-          });
-        } else {
-          setTemplatePromptOpen(false);
-        }
-      } catch (error) {
-        if (cancelled) return;
-        setTemplateSummaries([]);
-        setTemplatePromptOpen(false);
-        setTemplatesError(error instanceof Error ? error.message : 'Failed to load templates.');
-      } finally {
-        if (!cancelled) {
-          setTemplatesLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    changesEvent?.start,
-    eventId,
-    isCreateMode,
-    isGuest,
-    isRentalFlow,
-    resolvedHostOrgId,
-    failedTemplateSeedId,
-    skipTemplatePromptParam,
-    templateIdParam,
-    user?.$id,
-  ]);
-
-  useEffect(() => {
-    if (!isCreateMode) {
-      setFormSeedEvent(null);
-      return;
-    }
-    if (!changesEvent) {
-      return;
-    }
-    if (!hasPendingUnsavedChanges) {
-      setFormSeedEvent(changesEvent);
-    }
-  }, [changesEvent, hasPendingUnsavedChanges, isCreateMode]);
-
-  useEffect(() => {
-    if (!isCreateMode) {
-      setOrganizationForCreate(null);
-      setRentalOrganization(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadOrganizationsForCreate = async () => {
-      const hostOrgId = resolvedHostOrgId;
-      const rentalOrgId = resolvedRentalOrgId;
-
-      if (!hostOrgId && !rentalOrgId) {
-        setOrganizationForCreate(null);
-        setRentalOrganization(null);
-        return;
-      }
-
-      try {
-        const hostPromise = hostOrgId
-          ? (
-            organizationService.getOrganizationByIdForEventForm
-              ? organizationService.getOrganizationByIdForEventForm(hostOrgId)
-              : organizationService.getOrganizationById(hostOrgId, true)
-          )
-          : Promise.resolve(null);
-        const rentalPromise =
-          rentalOrgId && rentalOrgId !== hostOrgId
-            ? (
-              organizationService.getOrganizationByIdForEventForm
-                ? organizationService.getOrganizationByIdForEventForm(rentalOrgId)
-                : organizationService.getOrganizationById(rentalOrgId, true)
-            )
-            : Promise.resolve(null);
-        const [hostOrg, rentalOrg] = await Promise.all([hostPromise, rentalPromise]);
-
-        if (cancelled) return;
-
-        const resolvedHostOrg = hostOrg ? (hostOrg as Organization) : null;
-        const resolvedRentalOrg = rentalOrgId === hostOrgId
-          ? resolvedHostOrg
-          : rentalOrg
-            ? (rentalOrg as Organization)
-            : null;
-
-        setOrganizationForCreate(resolvedHostOrg);
-        setRentalOrganization(resolvedRentalOrg);
-
-        if (resolvedHostOrg) {
-          setChangesEvent((prev) => {
-            const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
-            const orgLocation = (resolvedHostOrg.location ?? '').trim();
-            const orgAddress = (resolvedHostOrg.address ?? '').trim();
-            const resolvedOrgOfficialIds = Array.isArray(resolvedHostOrg.officials)
-              ? resolvedHostOrg.officials
-                .map((official) => official?.$id)
-                .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-              : [];
-            const orgCoordinates =
-              Array.isArray(resolvedHostOrg.coordinates) &&
-                typeof resolvedHostOrg.coordinates[0] === 'number' &&
-                typeof resolvedHostOrg.coordinates[1] === 'number'
-                ? (resolvedHostOrg.coordinates as [number, number])
-                : undefined;
-            const baseLocation = (base.location ?? '').trim();
-            const baseAddress = (base.address ?? '').trim();
-            const hasBaseCoordinates =
-              Array.isArray(base.coordinates) &&
-                typeof base.coordinates[0] === 'number' &&
-                typeof base.coordinates[1] === 'number' &&
-                (base.coordinates[0] !== 0 || base.coordinates[1] !== 0);
-            return {
-              ...base,
-              organization: resolvedHostOrg,
-              organizationId: resolvedHostOrg.$id,
-              hostId: base.hostId ?? resolvedHostOrg.ownerId ?? base.hostId,
-              fields: Array.isArray(base.fields) && base.fields.length > 0
-                ? base.fields
-                : Array.isArray(resolvedHostOrg.fields)
-                  ? resolvedHostOrg.fields
-                  : base.fields,
-              officialIds: resolvedOrgOfficialIds.length > 0 ? resolvedOrgOfficialIds : base.officialIds,
-              officials: Array.isArray(resolvedHostOrg.officials) ? resolvedHostOrg.officials : base.officials,
-              location: baseLocation || orgLocation || '',
-              address: baseAddress || orgAddress || '',
-              coordinates: hasBaseCoordinates ? base.coordinates : orgCoordinates ?? base.coordinates ?? [0, 0],
-            } as Event;
-          });
-        }
-      } catch (error) {
-        console.warn('Failed to load organizations for create:', error);
-      }
-    };
-
-    loadOrganizationsForCreate();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, isCreateMode, resolvedHostOrgId, resolvedRentalOrgId]);
-
   const hydrateEvent = useCallback((loadedEvent: Event) => {
     const eventClone = cloneValue(loadedEvent) as Event;
     setEvent(eventClone);
-    setStagedMatchCreates({});
-    setStagedMatchDeletes([]);
-    setPendingCreateMatchId(null);
-    setMatchEditorContext('bracket');
+    resetStagedMatchDrafts();
 
     const normalizedMatches = Array.isArray(eventClone.matches)
       ? (cloneValue(eventClone.matches) as Match[])
@@ -4863,18 +2444,6 @@ function EventScheduleContent() {
     setInfoMessage(null);
     setWarningMessage(null);
   }, [activeEvent]);
-
-  const rentalPaymentEventSummary: PaymentEventSummary = useMemo(() => {
-    const source = changesEvent ?? activeEvent ?? event;
-    return {
-      name: source?.name || 'Rental Event',
-      location: source?.location || '',
-      eventType: source?.eventType ?? 'EVENT',
-      price: rentalPurchaseContext?.priceCents ?? 0,
-      imageId: source?.imageId,
-    };
-  }, [activeEvent, changesEvent, event, rentalPurchaseContext?.priceCents]);
-  const currentRentalSignLink = rentalSignLinks[rentalSignIndex] ?? null;
 
   const hydrateEventFormDependencies = useCallback(async (inputEvent: Event): Promise<Event> => {
     const hydratedEvent = cloneValue(inputEvent) as Event;
@@ -5210,7 +2779,7 @@ function EventScheduleContent() {
     }
 
     return hydratedEvent;
-  }, [eventId]);
+  }, [eventId, resetStagedMatchDrafts]);
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   // Hydrate event + match data from the API and sync local component state.
@@ -5996,7 +3565,6 @@ function EventScheduleContent() {
           fullWidth={fullWidth}
           onClick={showComplianceDetails ? () => {
             setSelectedComplianceTeamId(team.$id);
-            setExpandedComplianceUserIds([]);
           } : undefined}
           actions={actions}
         />
@@ -6103,31 +3671,6 @@ function EventScheduleContent() {
       />
     );
   };
-
-  const formatCompliancePaymentLabel = useCallback((payment: TeamComplianceSummary['payment']) => {
-    if (!payment.hasBill) {
-      return 'No bill';
-    }
-    const status = String(payment.status ?? '').toUpperCase();
-    if (status === 'DISPUTED') {
-      return 'Payment disputed';
-    }
-    if (status === 'FAILED') {
-      return 'Payment failed';
-    }
-    if (status === 'PENDING') {
-      const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
-      return `${prefix} pending (${formatBillAmount(payment.totalAmountCents)})`;
-    }
-    if (status === 'PROCESSING') {
-      return `Payment processing (${formatBillAmount(payment.totalAmountCents)})`;
-    }
-    if (payment.isPaidInFull) {
-      return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
-    }
-    const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
-    return `${prefix}: ${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
-  }, []);
 
   const defaultTab = isLeague ? 'schedule' : 'details';
   const eventIncludesPlayoffBracket = isTournament
@@ -6351,24 +3894,6 @@ function EventScheduleContent() {
     [eventId, isRentalFlow, resolvedHostOrgId],
   );
 
-  const buildBracketNodes = useCallback((draftMatches: Match[]): BracketNode[] => (
-    draftMatches.reduce<BracketNode[]>((nodes, match) => {
-      const id = normalizeIdToken(match.$id);
-      if (!id) {
-        return nodes;
-      }
-      nodes.push({
-        id,
-        matchId: typeof match.matchId === 'number' ? match.matchId : null,
-        previousLeftId: asBulkMatchRef(match.previousLeftId),
-        previousRightId: asBulkMatchRef(match.previousRightId),
-        winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
-        loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
-      });
-      return nodes;
-    }, [])
-  ), []);
-
   const validateDraftMatchGraph = useCallback((draftMatches: Match[]): { ok: true } | { ok: false; message: string } => {
     const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
     if (!graphValidation.ok) {
@@ -6426,46 +3951,7 @@ function EventScheduleContent() {
     }
 
     return { ok: true };
-  }, [activeEvent?.eventType, buildBracketNodes, stagedMatchCreates]);
-
-  const normalizeDraftBracketGraph = useCallback((draftMatches: Match[]): Match[] => {
-    const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
-    if (!graphValidation.ok) {
-      return draftMatches;
-    }
-
-    return draftMatches.map((match) => {
-      const matchId = normalizeIdToken(match.$id);
-      if (!matchId) {
-        return match;
-      }
-
-      const normalizedNode = graphValidation.normalizedById[matchId];
-      if (!normalizedNode) {
-        return match;
-      }
-
-      const normalizedPreviousLeftId = asBulkMatchRef(normalizedNode.previousLeftId);
-      const normalizedPreviousRightId = asBulkMatchRef(normalizedNode.previousRightId);
-      const currentPreviousLeftId = asBulkMatchRef(match.previousLeftId);
-      const currentPreviousRightId = asBulkMatchRef(match.previousRightId);
-
-      if (
-        currentPreviousLeftId === normalizedPreviousLeftId
-        && currentPreviousRightId === normalizedPreviousRightId
-      ) {
-        return match;
-      }
-
-      return {
-        ...match,
-        previousLeftId: normalizedPreviousLeftId,
-        previousRightId: normalizedPreviousRightId,
-        previousLeftMatch: undefined,
-        previousRightMatch: undefined,
-      };
-    });
-  }, [buildBracketNodes]);
+  }, [activeEvent?.eventType, stagedMatchCreates]);
 
   const toBulkMatchUpdatePayload = useCallback((match: Match): Record<string, unknown> => {
     const normalizeRelationId = (value: unknown): string | null => {
@@ -6609,436 +4095,26 @@ function EventScheduleContent() {
     [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, saveEventRegistrationQuestions, searchParams],
   );
 
-  const resetRentalSignFlowState = useCallback(() => {
-    setRentalSignLinks([]);
-    setRentalSignIndex(0);
-    setRentalTextAccepted(false);
-    setRentalSignError(null);
-    setRecordingRentalSignature(false);
-    setPendingRentalSignedDocumentId(null);
-    setPendingRentalSignatureOperationId(null);
-  }, []);
-
-  const releasePendingRentalCheckoutLock = useCallback(async () => {
-    const pendingLock = pendingRentalLockRef.current;
-    pendingRentalLockRef.current = null;
-    if (!pendingLock) {
-      return;
-    }
-    try {
-      await paymentService.releaseRentalCheckoutLock(pendingLock.eventDraft, pendingLock.rentalSlot);
-    } catch (error) {
-      console.warn('Failed to release rental checkout lock.', error);
-    }
-  }, []);
-
-  const reserveRentalCheckoutLock = useCallback(async (context: PendingRentalCheckoutContext) => {
-    await paymentService.reserveRentalCheckoutLock(context.eventDraft, context.rentalSlot);
-    pendingRentalLockRef.current = {
-      eventDraft: context.eventDraft,
-      rentalSlot: context.rentalSlot,
-    };
-  }, []);
-
-  const startRentalPaymentIntent = useCallback(async (context: PendingRentalCheckoutContext) => {
-    if (!context.requiresPayment) {
-      const scheduledEvent = await scheduleRegularEvent(context.draftToSave);
-      if (scheduledEvent?.$id) {
-        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
-        eventFormRef.current?.commitDirtyBaseline();
-        if (syncedEvent !== scheduledEvent) {
-          handlePreviewEventUpdate(syncedEvent);
-        }
-      }
-      return;
-    }
-    if (!user) {
-      await releasePendingRentalCheckoutLock();
-      setSubmitError('You must be signed in to continue checkout.');
-      return;
-    }
-
-    pendingRegularEventRef.current = context.draftToSave;
-    setPublishing(true);
-    try {
-      const paymentIntent = await paymentService.createPaymentIntent(
-        user,
-        context.eventDraft,
-        undefined,
-        context.rentalSlot,
-        rentalOrganization ?? undefined,
-      );
-      setRentalPaymentData(paymentIntent);
-      setShowRentalPayment(true);
-    } catch (error) {
-      pendingRegularEventRef.current = null;
-      await releasePendingRentalCheckoutLock();
-      setSubmitError(error instanceof Error ? error.message : 'Failed to start rental payment.');
-    } finally {
-      setPublishing(false);
-    }
-  }, [handlePreviewEventUpdate, releasePendingRentalCheckoutLock, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
-
-  const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
-    try {
-      await reserveRentalCheckoutLock(context);
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Failed to reserve rental checkout slot.');
-      return;
-    }
-
-    if (!rentalHostRequiredTemplateIds.length) {
-      await startRentalPaymentIntent(context);
-      return;
-    }
-    if (!user) {
-      await releasePendingRentalCheckoutLock();
-      setSubmitError('You must be signed in to sign rental documents.');
-      return;
-    }
-
-    try {
-      const signLinks = await boldsignService.createRentalSignLinks({
-        user,
-        userEmail: authUser?.email ?? undefined,
-        templateIds: rentalHostRequiredTemplateIds,
-        eventId: context.eventDraft.$id ?? eventId,
-        organizationId: rentalOrganization?.$id ?? context.eventDraft.organizationId ?? undefined,
-        timeoutMs: 45_000,
-      });
-
-      if (!signLinks.length) {
-        await startRentalPaymentIntent(context);
-        return;
-      }
-
-      pendingRentalCheckoutRef.current = context;
-      setRentalSignLinks(signLinks);
-      setRentalSignIndex(0);
-      setRentalTextAccepted(false);
-      setRentalSignError(null);
-      setPendingRentalSignedDocumentId(null);
-      setPendingRentalSignatureOperationId(null);
-      setShowRentalSignModal(true);
-    } catch (error) {
-      await releasePendingRentalCheckoutLock();
-      setSubmitError(error instanceof Error ? error.message : 'Failed to start rental document signing.');
-    }
-  }, [
-    authUser?.email,
+  const {
+    rentalCheckout,
+    startRentalCheckoutFlow,
+  } = useRentalCheckoutFlow({
     eventId,
-    releasePendingRentalCheckoutLock,
-    rentalHostRequiredTemplateIds,
-    rentalOrganization?.$id,
-    reserveRentalCheckoutLock,
-    startRentalPaymentIntent,
     user,
-  ]);
-
-  const advanceRentalSignFlow = useCallback(async () => {
-    const nextIndex = rentalSignIndex + 1;
-    if (nextIndex < rentalSignLinks.length) {
-      setRentalSignIndex(nextIndex);
-      setRentalTextAccepted(false);
-      setPendingRentalSignedDocumentId(null);
-      setPendingRentalSignatureOperationId(null);
-      setShowRentalSignModal(true);
-      return;
-    }
-
-    const checkoutContext = pendingRentalCheckoutRef.current;
-    pendingRentalCheckoutRef.current = null;
-    setShowRentalSignModal(false);
-    resetRentalSignFlowState();
-    if (checkoutContext) {
-      await startRentalPaymentIntent(checkoutContext);
-    }
-  }, [rentalSignIndex, rentalSignLinks.length, resetRentalSignFlowState, startRentalPaymentIntent]);
-
-  const recordRentalSignature = useCallback(async (params: {
-    templateId: string;
-    documentId: string;
-    type: SignStep['type'];
-  }): Promise<{ operationId?: string; syncStatus?: string }> => {
-    if (!user) {
-      throw new Error('You must be signed in to sign rental documents.');
-    }
-
-    const pendingContext = pendingRentalCheckoutRef.current;
-    const result = await apiRequest<{
-      ok?: boolean;
-      error?: string;
-      operationId?: string;
-      syncStatus?: string;
-    }>('/api/documents/record-signature', {
-      method: 'POST',
-      body: {
-        templateId: params.templateId,
-        documentId: params.documentId,
-        eventId: pendingContext?.eventDraft?.$id ?? eventId,
-        type: params.type,
-        userId: user.$id,
-        signerContext: 'participant',
-        user,
-      },
-    });
-
-    if (result?.error) {
-      throw new Error(result.error);
-    }
-
-    return {
-      operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
-      syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
-    };
-  }, [eventId, user]);
-
-  const handleRentalSignedDocument = useCallback(async (messageDocumentId?: string) => {
-    const currentLink = rentalSignLinks[rentalSignIndex];
-    if (!currentLink || currentLink.type === 'TEXT') {
-      return;
-    }
-    if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
-      return;
-    }
-    if (pendingRentalSignedDocumentId || pendingRentalSignatureOperationId || recordingRentalSignature) {
-      return;
-    }
-    if (!currentLink.documentId) {
-      setRentalSignError('Missing document identifier for signature.');
-      return;
-    }
-
-    setRecordingRentalSignature(true);
-    setRentalSignError(null);
-    try {
-      const signatureResult = await recordRentalSignature({
-        templateId: currentLink.templateId,
-        documentId: currentLink.documentId,
-        type: currentLink.type,
-      });
-      setShowRentalSignModal(false);
-      setPendingRentalSignedDocumentId(currentLink.documentId);
-      setPendingRentalSignatureOperationId(signatureResult.operationId || currentLink.operationId || null);
-    } catch (error) {
-      setRentalSignError(error instanceof Error ? error.message : 'Failed to record rental signature.');
-      setPendingRentalSignedDocumentId(null);
-      setPendingRentalSignatureOperationId(null);
-    } finally {
-      setRecordingRentalSignature(false);
-    }
-  }, [
-    pendingRentalSignatureOperationId,
-    pendingRentalSignedDocumentId,
-    recordRentalSignature,
-    recordingRentalSignature,
-    rentalSignIndex,
-    rentalSignLinks,
-  ]);
-
-  const handleRentalTextAcceptance = useCallback(async () => {
-    const currentLink = rentalSignLinks[rentalSignIndex];
-    if (!currentLink || currentLink.type !== 'TEXT') {
-      return;
-    }
-    if (!rentalTextAccepted || pendingRentalSignedDocumentId || pendingRentalSignatureOperationId || recordingRentalSignature) {
-      return;
-    }
-
-    const documentId = currentLink.documentId || createId();
-    setRecordingRentalSignature(true);
-    setRentalSignError(null);
-    try {
-      const signatureResult = await recordRentalSignature({
-        templateId: currentLink.templateId,
-        documentId,
-        type: currentLink.type,
-      });
-      setShowRentalSignModal(false);
-      setPendingRentalSignedDocumentId(documentId);
-      setPendingRentalSignatureOperationId(signatureResult.operationId || currentLink.operationId || null);
-    } catch (error) {
-      setRentalSignError(error instanceof Error ? error.message : 'Failed to record rental signature.');
-      setPendingRentalSignedDocumentId(null);
-      setPendingRentalSignatureOperationId(null);
-    } finally {
-      setRecordingRentalSignature(false);
-    }
-  }, [
-    pendingRentalSignatureOperationId,
-    pendingRentalSignedDocumentId,
-    recordRentalSignature,
-    recordingRentalSignature,
-    rentalSignIndex,
-    rentalSignLinks,
-    rentalTextAccepted,
-  ]);
-
-  useEffect(() => {
-    setRentalTextAccepted(false);
-  }, [rentalSignIndex, rentalSignLinks]);
-
-  useEffect(() => {
-    if (!showRentalSignModal) {
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
-        return;
-      }
-      const payload = event.data;
-      let eventName = '';
-      if (typeof payload === 'string') {
-        eventName = payload;
-      } else if (payload && typeof payload === 'object') {
-        eventName = payload.event || payload.eventName || payload.type || payload.name || '';
-      }
-      const eventLabel = eventName.toString();
-      if (!eventLabel || (!eventLabel.includes('onDocumentSigned') && !eventLabel.includes('documentSigned'))) {
-        return;
-      }
-
-      const documentId =
-        (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
-      void handleRentalSignedDocument(
-        typeof documentId === 'string' ? documentId : undefined,
-      );
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [handleRentalSignedDocument, showRentalSignModal]);
-
-  useEffect(() => {
-    if (!pendingRentalSignatureOperationId || !user) {
-      return;
-    }
-
-    let cancelled = false;
-    const startedAt = Date.now();
-    const intervalMs = 1500;
-    const timeoutMs = 90_000;
-
-    const poll = async () => {
-      try {
-        const operation = await boldsignService.getOperationStatus(pendingRentalSignatureOperationId);
-        if (cancelled) {
-          return;
-        }
-
-        const status = String(operation.status ?? '').toUpperCase();
-        if (status === 'CONFIRMED') {
-          setPendingRentalSignedDocumentId(null);
-          setPendingRentalSignatureOperationId(null);
-          await advanceRentalSignFlow();
-          return;
-        }
-
-        if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
-          throw new Error(operation.error || 'Failed to synchronize rental signature status.');
-        }
-
-        if (Date.now() - startedAt > timeoutMs) {
-          throw new Error('Rental document sync is delayed. Please try again.');
-        }
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setRentalSignError(error instanceof Error ? error.message : 'Failed to confirm rental signature.');
-        setPendingRentalSignedDocumentId(null);
-        setPendingRentalSignatureOperationId(null);
-        setShowRentalSignModal(true);
-      }
-    };
-
-    const interval = window.setInterval(() => {
-      void poll();
-    }, intervalMs);
-    void poll();
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [advanceRentalSignFlow, pendingRentalSignatureOperationId, user]);
-
-  useEffect(() => {
-    if (!pendingRentalSignedDocumentId || !user || pendingRentalSignatureOperationId) {
-      return;
-    }
-
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const signed = await signedDocumentService.isDocumentSigned(
-          pendingRentalSignedDocumentId,
-          user.$id,
-        );
-        if (!signed || cancelled) {
-          return;
-        }
-
-        setPendingRentalSignedDocumentId(null);
-        await advanceRentalSignFlow();
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setRentalSignError(error instanceof Error ? error.message : 'Failed to confirm rental signature.');
-        setPendingRentalSignedDocumentId(null);
-        setShowRentalSignModal(true);
-      }
-    };
-
-    const interval = window.setInterval(() => {
-      void poll();
-    }, 1000);
-    void poll();
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [advanceRentalSignFlow, pendingRentalSignatureOperationId, pendingRentalSignedDocumentId, user]);
-
-  const closeRentalSignModal = useCallback(() => {
-    setShowRentalSignModal(false);
-    resetRentalSignFlowState();
-    pendingRentalCheckoutRef.current = null;
-    void releasePendingRentalCheckoutLock();
-  }, [releasePendingRentalCheckoutLock, resetRentalSignFlowState]);
-
-  const closeRentalPaymentModal = useCallback((options?: { releaseLock?: boolean }) => {
-    setShowRentalPayment(false);
-    setRentalPaymentData(null);
-    pendingRegularEventRef.current = null;
-    if (options?.releaseLock !== false) {
-      void releasePendingRentalCheckoutLock();
-    }
-  }, [releasePendingRentalCheckoutLock]);
-
-  const handleRentalPaymentSuccess = useCallback(async () => {
-    const pendingDraft = pendingRegularEventRef.current;
-    if (pendingDraft) {
-      const scheduledEvent = await scheduleRegularEvent(pendingDraft);
-      if (scheduledEvent?.$id) {
-        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
-        eventFormRef.current?.commitDirtyBaseline();
-        if (syncedEvent !== scheduledEvent) {
-          handlePreviewEventUpdate(syncedEvent);
-        }
-      }
-    }
-    closeRentalPaymentModal({ releaseLock: false });
-  }, [closeRentalPaymentModal, handlePreviewEventUpdate, scheduleRegularEvent, syncPendingEventFormInvites]);
-
-  useEffect(() => {
-    return () => {
-      void releasePendingRentalCheckoutLock();
-    };
-  }, [releasePendingRentalCheckoutLock]);
+    authEmail: authUser?.email ?? null,
+    activeEvent,
+    changesEvent,
+    event,
+    rentalOrganization,
+    rentalHostRequiredTemplateIds,
+    rentalPurchaseContext,
+    eventFormRef,
+    setPublishing,
+    setSubmitError,
+    scheduleRegularEvent,
+    syncPendingEventFormInvites,
+    handlePreviewEventUpdate,
+  });
 
   const saveExistingEvent = useCallback(
     async ({
@@ -7065,16 +4141,8 @@ function EventScheduleContent() {
       }
 
       const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
-      const draftConflictsById = detectMatchConflictsById(activeMatches);
-      const draftConflictPairs = listMatchConflictPairs(draftConflictsById);
-      if (draftConflictPairs.length > 0 && !isRescheduleAction) {
-        setDismissedMatchConflictSignature(null);
-        setMatchConflictOverrideMessage(
-          buildMatchConflictAlertMessage({
-            matches: activeMatches,
-            pairs: draftConflictPairs,
-          }),
-        );
+      if (matchConflictPairs.length > 0 && !isRescheduleAction) {
+        showCurrentMatchConflictOverride();
       }
 
       setError(null);
@@ -7214,9 +4282,7 @@ function EventScheduleContent() {
               mergedMatchesById.delete(matchId);
             });
             updatedEvent.matches = Array.from(mergedMatchesById.values());
-            setStagedMatchCreates({});
-            setStagedMatchDeletes([]);
-            setPendingCreateMatchId(null);
+            resetStagedMatchDrafts();
           }
         }
 
@@ -7341,11 +4407,14 @@ function EventScheduleContent() {
       event,
       getDraftFromForm,
       loadSchedule,
+      matchConflictPairs,
       pathname,
       router,
       saveEventRegistrationQuestions,
       selectedLifecycleStatus,
       searchParams,
+      showCurrentMatchConflictOverride,
+      resetStagedMatchDrafts,
       stagedMatchCreates,
       toBulkMatchUpdatePayload,
       stagedMatchDeletes,
@@ -7551,19 +4620,14 @@ function EventScheduleContent() {
 
     setChangesEvent(baselineEventClone);
     setChangesMatches(baselineMatches);
-    setStagedMatchCreates({});
-    setStagedMatchDeletes([]);
-    setPendingCreateMatchId(null);
-    setMatchEditorContext('bracket');
-    setIsMatchEditorOpen(false);
-    setMatchBeingEdited(null);
+    resetStagedMatchDrafts();
+    resetMatchEditorState();
     setSelectedLifecycleStatus(null);
     setHasUnsavedChanges(false);
     setFormHasUnsavedChanges(false);
     setSubmitError(null);
     setActionError(null);
-    setMatchConflictOverrideMessage(null);
-    setDismissedMatchConflictSignature(null);
+    clearMatchConflictDraftAlerts();
     setWarningMessage(null);
     setIsPendingChangesPopoverOpen(false);
     hasUnsavedChangesRef.current = false;
@@ -7576,6 +4640,9 @@ function EventScheduleContent() {
     formSeedEvent,
     hasPendingUnsavedChanges,
     matches,
+    clearMatchConflictDraftAlerts,
+    resetMatchEditorState,
+    resetStagedMatchDrafts,
   ]);
 
   const handleCancel = async () => {
@@ -7631,13 +4698,6 @@ function EventScheduleContent() {
     }
   };
 
-  useEffect(() => {
-    if (!canEditMatches && isMatchEditorOpen) {
-      setIsMatchEditorOpen(false);
-      setMatchBeingEdited(null);
-    }
-  }, [canEditMatches, isMatchEditorOpen]);
-
   const matchEditorTeams = resolvedMatchTeams;
 
   const matchEditorOfficials = useMemo(() => {
@@ -7665,272 +4725,6 @@ function EventScheduleContent() {
 
     return Array.from(officialsById.values());
   }, [participantOfficials, activeEvent?.officials, activeMatches]);
-
-  const stageMatchCreate = useCallback((params: {
-    creationContext: MatchCreateContext;
-    seed?: Partial<Match>;
-    openEditor?: boolean;
-  }) => {
-    if (!canEditMatches || !activeEvent?.$id) {
-      return null;
-    }
-
-    const clientId = createClientId();
-    const matchId = `${CLIENT_MATCH_PREFIX}${clientId}`;
-    const now = new Date();
-    const defaultStart = formatLocalDateTime(now);
-    const defaultEnd = formatLocalDateTime(new Date(now.getTime() + 60 * 60 * 1000));
-    const nextMatchId = nextMatchSequenceNumber(activeMatches);
-    const isTournamentEvent = String(activeEvent.eventType ?? '').toUpperCase() === 'TOURNAMENT';
-    const existingPlaceholderCount = activeMatches.reduce((count, match) => {
-      const team1Name = (match.team1 as { name?: string } | null)?.name ?? '';
-      const team2Name = (match.team2 as { name?: string } | null)?.name ?? '';
-      const nameBucket = [team1Name, team2Name].join(' ').toLowerCase();
-      return nameBucket.includes('place holder') ? count + 1 : count;
-    }, 0);
-    const placeholderTeam = isTournamentEvent
-      ? ({
-          $id: `${LOCAL_PLACEHOLDER_PREFIX}${clientId}`,
-          name: `Place Holder ${existingPlaceholderCount + 1}`,
-          division: normalizeIdToken(params.seed?.division as string | undefined) ?? undefined,
-        } as unknown as Team)
-      : undefined;
-
-    const draft: Match = {
-      $id: matchId,
-      matchId: typeof params.seed?.matchId === 'number' ? params.seed.matchId : nextMatchId,
-      eventId: activeEvent.$id,
-      team1Id: null,
-      team2Id: null,
-      officialId: null,
-      officialIds: [],
-      teamOfficialId: null,
-      fieldId: params.creationContext === 'schedule'
-        ? normalizeIdToken(params.seed?.fieldId as string | undefined)
-        : null,
-      locked: false,
-      team1Points: [],
-      team2Points: [],
-      setResults: [],
-      losersBracket: Boolean(params.seed?.losersBracket),
-      winnerNextMatchId: asBulkMatchRef(params.seed?.winnerNextMatchId as string | undefined),
-      loserNextMatchId: asBulkMatchRef(params.seed?.loserNextMatchId as string | undefined),
-      previousLeftId: asBulkMatchRef(params.seed?.previousLeftId as string | undefined),
-      previousRightId: asBulkMatchRef(params.seed?.previousRightId as string | undefined),
-      side: params.seed?.side ?? null,
-      officialCheckedIn: false,
-      start: params.creationContext === 'schedule' ? defaultStart : null,
-      end: params.creationContext === 'schedule' ? defaultEnd : null,
-      division: (params.seed?.division as string | undefined) ?? null,
-      team1: placeholderTeam,
-    };
-
-    setChangesMatches((prev) => {
-      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
-      base.push(cloneValue(draft) as Match);
-      return base;
-    });
-    setStagedMatchCreates((prev) => ({
-      ...prev,
-      [matchId]: {
-        clientId,
-        creationContext: params.creationContext,
-        autoPlaceholderTeam: isTournamentEvent,
-      },
-    }));
-    setHasUnsavedChanges(true);
-
-    if (params.openEditor) {
-      setMatchEditorContext(params.creationContext);
-      setPendingCreateMatchId(matchId);
-      setMatchBeingEdited(cloneValue(draft) as Match);
-      setIsMatchEditorOpen(true);
-    }
-
-    return draft;
-  }, [activeEvent?.$id, activeEvent?.eventType, activeMatches, canEditMatches, matches]);
-
-  const removeDraftMatch = useCallback((matchId: string, options?: {
-    stageDelete?: boolean;
-    markUnsaved?: boolean;
-  }) => {
-    const normalizedId = normalizeIdToken(matchId);
-    if (!normalizedId) {
-      return;
-    }
-    setChangesMatches((prev) => {
-      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
-      return base
-        .filter((candidate) => candidate.$id !== normalizedId)
-        .map((candidate) => clearMatchReferencesToTarget(candidate, normalizedId));
-    });
-    setStagedMatchCreates((prev) => {
-      const next = { ...prev };
-      delete next[normalizedId];
-      return next;
-    });
-    setStagedMatchDeletes((prev) => {
-      const withoutTarget = prev.filter((candidate) => candidate !== normalizedId);
-      if (options?.stageDelete && !isClientMatchId(normalizedId)) {
-        return [...withoutTarget, normalizedId];
-      }
-      return withoutTarget;
-    });
-    if (options?.markUnsaved !== false) {
-      setHasUnsavedChanges(true);
-    }
-  }, [matches]);
-
-  const removeStagedClientMatch = useCallback((matchId: string) => {
-    removeDraftMatch(matchId, { stageDelete: false, markUnsaved: false });
-  }, [removeDraftMatch]);
-
-  const handleMatchDelete = useCallback((target: Match) => {
-    const targetId = normalizeIdToken(target.$id);
-    if (!targetId) {
-      return;
-    }
-    removeDraftMatch(targetId, {
-      stageDelete: !isClientMatchId(targetId),
-      markUnsaved: true,
-    });
-    if (pendingCreateMatchId === targetId) {
-      setPendingCreateMatchId(null);
-    }
-    setMatchEditorContext('bracket');
-    setIsMatchEditorOpen(false);
-    setMatchBeingEdited(null);
-  }, [pendingCreateMatchId, removeDraftMatch]);
-
-  const handleAddScheduleMatch = useCallback(() => {
-    stageMatchCreate({ creationContext: 'schedule', openEditor: true });
-  }, [stageMatchCreate]);
-
-  const handleAddBracketMatch = useCallback(() => {
-    stageMatchCreate({ creationContext: 'bracket', openEditor: true });
-  }, [stageMatchCreate]);
-
-  const handleMatchEditRequest = useCallback((match: Match, context: MatchCreateContext = 'bracket') => {
-    if (!canEditMatches) return;
-    const sourceMatch = activeMatches.find((candidate) => candidate.$id === match.$id);
-    if (!sourceMatch) return;
-    setMatchEditorContext(context);
-    setPendingCreateMatchId(null);
-    setMatchBeingEdited(cloneValue(sourceMatch) as Match);
-    setIsMatchEditorOpen(true);
-  }, [activeMatches, canEditMatches]);
-
-  const handleMatchEditClose = useCallback(() => {
-    if (pendingCreateMatchId) {
-      removeStagedClientMatch(pendingCreateMatchId);
-      setPendingCreateMatchId(null);
-    }
-    setMatchEditorContext('bracket');
-    setIsMatchEditorOpen(false);
-    setMatchBeingEdited(null);
-  }, [pendingCreateMatchId, removeStagedClientMatch]);
-
-  const handleMatchEditSave = useCallback((updated: Match) => {
-    const base = (changesMatches.length ? changesMatches : (cloneValue(matches) as Match[]))
-      .map((item) => cloneValue(item) as Match);
-    let replaced = false;
-    const nextMatches = base.map((item) => {
-      if (item.$id === updated.$id) {
-        replaced = true;
-        return cloneValue(updated) as Match;
-      }
-      return item;
-    });
-    if (!replaced) {
-      nextMatches.push(cloneValue(updated) as Match);
-    }
-
-    const normalizedMatches = normalizeDraftBracketGraph(nextMatches);
-
-    setChangesMatches(normalizedMatches);
-    setDismissedMatchConflictSignature(null);
-    setMatchConflictOverrideMessage(null);
-    if (isClientMatchId(updated.$id)) {
-      setStagedMatchCreates((prev) => {
-        if (prev[updated.$id]) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [updated.$id]: {
-            clientId: getClientIdFromMatchId(updated.$id),
-            creationContext: matchEditorContext,
-            autoPlaceholderTeam: String(activeEvent?.eventType ?? '').toUpperCase() === 'TOURNAMENT',
-          },
-        };
-      });
-    }
-    setHasUnsavedChanges(true);
-    setPendingCreateMatchId(null);
-    setMatchEditorContext('bracket');
-    setIsMatchEditorOpen(false);
-    setMatchBeingEdited(null);
-  }, [activeEvent?.eventType, changesMatches, matchEditorContext, matches, normalizeDraftBracketGraph]);
-
-  const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
-    if (!canEditMatches || matchIds.length === 0) return;
-    const matchIdSet = new Set(matchIds);
-    const lockLabel = locked ? 'Locked' : 'Unlocked';
-
-    setChangesMatches((prev) => {
-      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
-      return base.map((match) => (
-        matchIdSet.has(match.$id)
-          ? ({ ...match, locked } as Match)
-          : match
-      ));
-    });
-    setHasUnsavedChanges(true);
-
-    setInfoMessage(`${lockLabel} ${matchIdSet.size} match${matchIdSet.size === 1 ? '' : 'es'}.`);
-  }, [canEditMatches, matches]);
-
-  const handleMatchCalendarMove = useCallback((
-    target: Match,
-    range: { start: Date; end: Date; fieldId?: string | null },
-  ) => {
-    if (!canEditMatches) return;
-    const targetId = normalizeIdToken(target.$id);
-    if (!targetId || !(range.start instanceof Date) || Number.isNaN(range.start.getTime())) {
-      return;
-    }
-
-    const nextStart = new Date(range.start.getTime());
-    const nextEnd = range.end instanceof Date && !Number.isNaN(range.end.getTime()) && range.end.getTime() > nextStart.getTime()
-      ? new Date(range.end.getTime())
-      : new Date(nextStart.getTime() + 60 * 60 * 1000);
-    const nextFieldId = normalizeIdToken(range.fieldId ?? target.fieldId ?? null);
-    const nextField = nextFieldId && Array.isArray(activeEvent?.fields)
-      ? activeEvent.fields.find((field) => field.$id === nextFieldId)
-      : undefined;
-
-    setChangesMatches((prev) => {
-      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
-      let changed = false;
-      const nextMatches = base.map((match) => {
-        if (match.$id !== targetId) {
-          return match;
-        }
-        changed = true;
-        return {
-          ...match,
-          start: nextStart.toISOString(),
-          end: nextEnd.toISOString(),
-          fieldId: nextFieldId ?? null,
-          ...(nextField ? { field: nextField } : { field: undefined }),
-        } as Match;
-      });
-      return changed ? normalizeDraftBracketGraph(nextMatches) : base;
-    });
-    setDismissedMatchConflictSignature(null);
-    setMatchConflictOverrideMessage(null);
-    setHasUnsavedChanges(true);
-  }, [activeEvent?.fields, canEditMatches, matches, normalizeDraftBracketGraph]);
 
   const applyAgentClientActions = useCallback((actions: AgentClientAction[]): AgentClientActionResult => {
     const errors: string[] = [];
@@ -8075,8 +4869,7 @@ function EventScheduleContent() {
     }
 
     if (applied > 0) {
-      setDismissedMatchConflictSignature(null);
-      setMatchConflictOverrideMessage(null);
+      clearMatchConflictDraftAlerts();
       setHasUnsavedChanges(true);
       setInfoMessage(`Applied ${applied} assistant draft change${applied === 1 ? '' : 's'}. Review, then save or discard changes.`);
     }
@@ -8093,6 +4886,7 @@ function EventScheduleContent() {
     activeEvent?.fields,
     activeEventId,
     canEditMatches,
+    clearMatchConflictDraftAlerts,
     changesMatches,
     eventId,
     matches,
@@ -8106,39 +4900,6 @@ function EventScheduleContent() {
       registerClientActionHandler(null);
     };
   }, [applyAgentClientActions, registerClientActionHandler]);
-
-  const applyMatchUpdate = useCallback((updated: Match) => {
-    const cloned = cloneValue(updated) as Match;
-    const replaceInList = (list?: Match[]) => {
-      if (!Array.isArray(list)) return list;
-      let found = false;
-      const next = list.map((item) => {
-        if (item.$id === cloned.$id) {
-          found = true;
-          return cloneValue(cloned) as Match;
-        }
-        return item;
-      });
-      if (!found) {
-        next.push(cloneValue(cloned) as Match);
-      }
-      return next;
-    };
-
-    setMatches((prev) => replaceInList(prev) as Match[]);
-    setChangesMatches((prev) => replaceInList(prev) as Match[]);
-    setEvent((prev) => {
-      if (!prev) return prev;
-      return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
-    });
-    setChangesEvent((prev) => {
-      if (!prev) return prev;
-      return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
-    });
-    setScoreUpdateMatch((current) => (
-      current?.$id === cloned.$id ? (cloneValue(cloned) as Match) : current
-    ));
-  }, []);
 
   const isOfficialCheckedIn = useCallback(
     (match: Match) => Boolean(match.officialCheckedIn || match.officialCheckedIn),
@@ -8155,130 +4916,6 @@ function EventScheduleContent() {
       return userOnTeam(teamOfficial);
     },
     [isOfficialCheckedIn, resolveTeam, user?.$id, userOnTeam],
-  );
-
-  type MatchOperationPayload = {
-    matchId: string;
-    segments?: MatchSegment[];
-    finalize?: boolean;
-    scoreSet?: {
-      segmentId?: string | null;
-      sequence: number;
-      eventTeamId: string;
-      points: number;
-    };
-    segmentOperations?: MatchSegmentOperation[];
-    incidentOperations?: MatchIncidentOperation[];
-    lifecycle?: MatchLifecycleOperation;
-    officialCheckIn?: MatchOfficialCheckInOperation;
-    team1Points: number[];
-    team2Points: number[];
-    setResults: number[];
-    time?: string;
-  };
-
-  const handleScoreChange = useCallback(
-    async ({
-      matchId,
-      team1Points,
-      team2Points,
-      setResults,
-      scoreSet,
-      finalize,
-      segmentOperations,
-      incidentOperations,
-      lifecycle,
-      officialCheckIn,
-      time,
-    }: MatchOperationPayload) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) return;
-      try {
-        const hasOperations =
-          Boolean(scoreSet)
-          || Boolean(segmentOperations?.length)
-          || Boolean(incidentOperations?.length)
-          || Boolean(lifecycle)
-          || Boolean(officialCheckIn);
-        let updated: Match;
-        if (scoreSet) {
-          updated = await tournamentService.setMatchScore(targetEventId, matchId, scoreSet);
-        } else if (
-          incidentOperations?.length === 1
-          && incidentOperations[0]?.action === 'CREATE'
-          && !segmentOperations?.length
-          && !officialCheckIn
-        ) {
-          updated = await tournamentService.addMatchIncident(targetEventId, matchId, incidentOperations[0]);
-        } else if (hasOperations) {
-          updated = await tournamentService.updateMatchOperations(targetEventId, matchId, {
-            finalize,
-            segmentOperations,
-            incidentOperations,
-            lifecycle,
-            officialCheckIn,
-            time,
-          });
-        } else {
-          updated = await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
-        }
-        applyMatchUpdate(updated as Match);
-      } catch (err) {
-        console.warn('Non-blocking match operation sync failed:', err);
-        throw err;
-      }
-    },
-    [activeEvent?.$id, applyMatchUpdate, eventId],
-  );
-
-  const handleSetComplete = useCallback(
-    async ({
-      matchId,
-      team1Points,
-      team2Points,
-      setResults,
-      finalize,
-      segmentOperations,
-      incidentOperations,
-      time,
-    }: MatchOperationPayload) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) return;
-      const hasOperations = Boolean(segmentOperations?.length) || Boolean(incidentOperations?.length);
-      const updated = hasOperations
-        ? await tournamentService.updateMatchOperations(targetEventId, matchId, {
-            finalize,
-            segmentOperations,
-            incidentOperations,
-            time,
-          })
-        : await tournamentService.updateMatchScores(targetEventId, matchId, {
-            team1Points,
-            team2Points,
-            setResults,
-            finalize,
-            time,
-          });
-      applyMatchUpdate(updated as Match);
-    },
-    [applyMatchUpdate, activeEvent?.$id, eventId],
-  );
-
-  const handleScoreSubmit = useCallback(
-    async (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) return;
-      try {
-        const updated = await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
-        applyMatchUpdate(updated as Match);
-        setScoreUpdateMatch(null);
-        setIsScoreModalOpen(false);
-      } catch (err) {
-        console.error('Failed to update score:', err);
-        setError('Failed to update score. Please try again.');
-      }
-    },
-    [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
   const updateMatchOfficialState = useCallback(
@@ -8365,8 +5002,7 @@ function EventScheduleContent() {
         }
       }
 
-      setScoreUpdateMatch(modalMatch);
-      setIsScoreModalOpen(true);
+      openScoreModalForMatch(modalMatch);
     },
     [
       activeEvent?.doTeamsOfficiate,
@@ -8376,6 +5012,7 @@ function EventScheduleContent() {
       findUserEventTeam,
       handleMatchEditRequest,
       isOfficialCheckedIn,
+      openScoreModalForMatch,
       resolveTeam,
       updateMatchOfficialState,
       user,
@@ -8385,8 +5022,12 @@ function EventScheduleContent() {
   );
 
   const activeLocationDefaults = useMemo(
-    () => buildLocationDefaults(activeOrganization),
-    [activeOrganization, buildLocationDefaults],
+    () => buildScheduleLocationDefaults({
+      organization: activeOrganization,
+      userLocationLabel,
+      userCoordinates,
+    }),
+    [activeOrganization, userCoordinates, userLocationLabel],
   );
 
   const handleStandingsOverrideChange = useCallback((teamId: string, value: string | number) => {
@@ -8558,251 +5199,55 @@ function EventScheduleContent() {
 
   if (isCreateMode && !activeEvent) {
     return (
-      <>
-        <Navigation />
-        {contentTermsModal}
-        <Container fluid py="xl">
-          <Stack gap="md">
-            <Group justify="space-between" align="center">
-              <Title order={2}>Create Event</Title>
-              <Group gap="sm">
-                {renderPendingChangesPopover()}
-                {hasPendingUnsavedChanges && (
-                  <Button
-                    variant="default"
-                    onClick={handleDiscardChanges}
-                    disabled={publishing || reschedulingMatches || cancelling}
-                  >
-                    Discard Changes
-                  </Button>
-                )}
-                <Button
-                  color="green"
-                  onClick={handlePublish}
-                  loading={publishing}
-                  disabled={reschedulingMatches || cancelling}
-                >
-                  {createButtonLabel}
-                </Button>
-                <Button
-                  variant="default"
-                  onClick={handleCancel}
-                  loading={cancelling}
-                  disabled={publishing || reschedulingMatches}
-                >
-                  {cancelButtonLabel}
-                </Button>
-              </Group>
-            </Group>
-            {submitError && (
-              <Alert color="red" radius="md" onClose={() => setSubmitError(null)} withCloseButton>
-                {submitError}
-              </Alert>
-            )}
-            {error && (
-              <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
-                {error}
-              </Alert>
-            )}
-            {warningMessage && (
-              <Alert color="yellow" radius="md" onClose={() => setWarningMessage(null)} withCloseButton>
-                {warningMessage}
-              </Alert>
-            )}
-            {infoMessage && (
-              <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
-                {infoMessage}
-              </Alert>
-            )}
-            <Modal
-              opened={templatePromptOpen}
-              onClose={closeTemplatePrompt}
-              title="Start from a template?"
-              centered
-              size="lg"
-              fullScreen={Boolean(isMobile)}
-              closeOnClickOutside={!applyingTemplate}
-              closeOnEscape={!applyingTemplate}
-              withCloseButton={!applyingTemplate}
-            >
-              <Stack gap="sm">
-                <Text size="sm" c="dimmed">
-                  Pick a template to prefill this event. Matches are not copied; event settings and time slots are.
-                </Text>
-                {templatesError && (
-                  <Alert color="red" radius="md">
-                    {templatesError}
-                  </Alert>
-                )}
-                {actionError && (
-                  <Alert color="red" radius="md">
-                    {actionError}
-                  </Alert>
-                )}
-                <Select
-                  label="Template"
-                  placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
-                  data={templateSelectData}
-                  value={selectedTemplateId}
-                  onChange={(value) => setSelectedTemplateId(value)}
-                  searchable
-                  clearable
-                  disabled={templatesLoading || applyingTemplate}
-                  nothingFoundMessage="No templates found"
-                />
-                <DatePickerInput
-                  label="New event start date"
-                  valueFormat="MM/DD/YYYY"
-                  value={selectedTemplateStartDate}
-                  onChange={(value) => setSelectedTemplateStartDate(parseLocalDateTime(value))}
-                  minDate={new Date()}
-                  disabled={applyingTemplate}
-                />
-                <Group justify="space-between" mt="md">
-                  <Button
-                    variant="default"
-                    onClick={closeTemplatePrompt}
-                    disabled={applyingTemplate}
-                  >
-                    Start Blank
-                  </Button>
-                  <Button
-                    onClick={handleApplyTemplate}
-                    loading={applyingTemplate}
-                    disabled={!selectedTemplateId || !selectedTemplateStartDate}
-                  >
-                    Use Template
-                  </Button>
-                </Group>
-              </Stack>
-            </Modal>
-            {user && changesEvent ? (
-                <EventForm
-                  key={`create-event-form-${templateSeedKey}`}
-                  ref={eventFormRef}
-                  isOpen
-                  onClose={() => router.push('/events')}
-                  onDirtyStateChange={handleEventFormDirtyStateChange}
-                  currentUser={user}
-                  organization={organizationForCreate}
-                defaultLocation={createLocationDefaults}
-                immutableDefaults={rentalImmutableDefaults}
-                rentalPurchase={rentalPurchaseContext}
-                templateOrganizationId={resolvedRentalOrgId ?? organizationForCreate?.$id ?? undefined}
-                event={changesEvent}
-                formId={createFormId}
-                isCreateMode
-              />
-            ) : (
-              <Loading text="Loading user..." />
-            )}
-          </Stack>
-        </Container>
-        <PaymentModal
-          isOpen={showRentalPayment && Boolean(rentalPaymentData)}
-          onClose={closeRentalPaymentModal}
-          event={rentalPaymentEventSummary}
-          paymentData={rentalPaymentData}
-          onPaymentSuccess={handleRentalPaymentSuccess}
-        />
-        <Modal
-          opened={showRentalSignModal && Boolean(currentRentalSignLink)}
-          onClose={closeRentalSignModal}
-          title="Sign Rental Document"
-          size="xl"
-          centered
-        >
-          <Stack gap="sm">
-            {currentRentalSignLink ? (
-              <>
-                <Text size="sm" c="dimmed">
-                  Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                  {currentRentalSignLink.title ? ` \u2022 ${currentRentalSignLink.title}` : ''}
-                </Text>
-                {currentRentalSignLink.requiredSignerLabel ? (
-                  <Text size="sm" c="dimmed">
-                    Required signer: {currentRentalSignLink.requiredSignerLabel}
-                  </Text>
-                ) : null}
-                {rentalSignError ? (
-                  <Alert color="red">
-                    {rentalSignError}
-                  </Alert>
-                ) : null}
-                {pendingRentalSignedDocumentId || pendingRentalSignatureOperationId ? (
-                  <Group gap="xs">
-                    <Loader size="sm" />
-                    <Text size="sm" c="dimmed">
-                      Confirming signature...
-                    </Text>
-                  </Group>
-                ) : null}
-                {currentRentalSignLink.type === 'TEXT' ? (
-                  <>
-                    <Paper withBorder p="sm" radius="md" style={{ maxHeight: 320, overflowY: 'auto' }}>
-                      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                        {currentRentalSignLink.content || 'No document content provided.'}
-                      </Text>
-                    </Paper>
-                    <Checkbox
-                      checked={rentalTextAccepted}
-                      onChange={(event) => setRentalTextAccepted(event.currentTarget.checked)}
-                      label="I have read and agree to this document."
-                    />
-                    <Group justify="flex-end">
-                      <Button
-                        onClick={handleRentalTextAcceptance}
-                        disabled={!rentalTextAccepted || recordingRentalSignature}
-                        loading={recordingRentalSignature}
-                      >
-                        Accept And Continue
-                      </Button>
-                    </Group>
-                  </>
-                ) : (
-                  <>
-                    {currentRentalSignLink.url ? (
-                      <iframe
-                        title={`Rental document ${currentRentalSignLink.title ?? currentRentalSignLink.templateId}`}
-                        src={currentRentalSignLink.url}
-                        className="h-[480px] w-full rounded border"
-                      />
-                    ) : (
-                      <Alert color="red">
-                        This document is missing a signing link. Close checkout and try again.
-                      </Alert>
-                    )}
-                    <Group justify="space-between">
-                      {currentRentalSignLink.url ? (
-                        <Button
-                          component="a"
-                          href={currentRentalSignLink.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          variant="default"
-                        >
-                          Open In New Tab
-                        </Button>
-                      ) : (
-                        <div />
-                      )}
-                      <Button
-                        onClick={() => void handleRentalSignedDocument()}
-                        disabled={!currentRentalSignLink.documentId || recordingRentalSignature}
-                        loading={recordingRentalSignature}
-                      >
-                        I Finished Signing
-                      </Button>
-                    </Group>
-                  </>
-                )}
-              </>
-            ) : (
-              <Text size="sm" c="dimmed">Preparing rental document...</Text>
-            )}
-          </Stack>
-        </Modal>
-      </>
+      <CreateEventScheduleView
+        termsModal={contentTermsModal}
+        pendingChangesOpen={isPendingChangesPopoverOpen}
+        pendingSaveChanges={pendingSaveChanges}
+        onPendingChangesOpenChange={setIsPendingChangesPopoverOpen}
+        hasPendingUnsavedChanges={hasPendingUnsavedChanges}
+        onDiscardChanges={handleDiscardChanges}
+        publishing={publishing}
+        reschedulingMatches={reschedulingMatches}
+        cancelling={cancelling}
+        createButtonLabel={createButtonLabel}
+        cancelButtonLabel={cancelButtonLabel}
+        onPublish={handlePublish}
+        onCancel={handleCancel}
+        submitError={submitError}
+        error={error}
+        warningMessage={warningMessage}
+        infoMessage={infoMessage}
+        onSubmitErrorClose={() => setSubmitError(null)}
+        onErrorClose={() => setError(null)}
+        onWarningMessageClose={() => setWarningMessage(null)}
+        onInfoMessageClose={() => setInfoMessage(null)}
+        templatePromptOpen={templatePromptOpen}
+        onCloseTemplatePrompt={closeTemplatePrompt}
+        isMobile={Boolean(isMobile)}
+        applyingTemplate={applyingTemplate}
+        templatesError={templatesError}
+        actionError={actionError}
+        templatesLoading={templatesLoading}
+        templateSelectData={templateSelectData}
+        selectedTemplateId={selectedTemplateId}
+        selectedTemplateStartDate={selectedTemplateStartDate}
+        onSelectedTemplateIdChange={setSelectedTemplateId}
+        onSelectedTemplateStartDateChange={setSelectedTemplateStartDate}
+        onApplyTemplate={handleApplyTemplate}
+        user={user}
+        event={changesEvent}
+        templateSeedKey={templateSeedKey}
+        eventFormRef={eventFormRef}
+        onEventFormClose={() => router.push('/events')}
+        onDirtyStateChange={handleEventFormDirtyStateChange}
+        organization={organizationForCreate}
+        defaultLocation={createLocationDefaults}
+        immutableDefaults={rentalImmutableDefaults}
+        rentalPurchase={rentalPurchaseContext}
+        templateOrganizationId={resolvedRentalOrgId ?? organizationForCreate?.$id ?? undefined}
+        formId={createFormId}
+        rentalCheckout={rentalCheckout}
+      />
     );
   }
 
@@ -8861,7 +5306,6 @@ function EventScheduleContent() {
     && activeEventStart.getTime() > Date.now(),
   );
   const showQrCodeActionButton = Boolean(canManageEvent && !isCreateMode && !isTemplateEvent && !isEditingEvent && activeEvent?.$id);
-  const activeEventPublicUrl = activeEvent?.$id ? buildEventPublicUrl(activeEvent.$id) : '';
   const showMoreActionsMenu = showRescheduleActionButton
     || showBuildBracketsActionButton
     || showRebuildWithoutPlaceholdersActionButton
@@ -8884,251 +5328,77 @@ function EventScheduleContent() {
       {contentTermsModal}
       <Container fluid pt="xl" pb={0}>
         <Stack gap="lg">
-          <Group justify="space-between" align="flex-start">
-            <Group gap="xs" align="center">
-              <Title order={2} mb="xs">{activeEvent.name}</Title>
-              {selectedWeeklyOccurrenceOption && (
-                <Badge
-                  variant="light"
-                  color="red"
-                  rightSection={(
-                    <ActionIcon
-                      variant="transparent"
-                      color="red"
-                      size="xs"
-                      aria-label="Clear selected session"
-                      onClick={() => updateWeeklyOccurrenceSelection(null)}
-                    >
-                      ×
-                    </ActionIcon>
-                  )}
-                >
-                  {selectedWeeklyOccurrenceOption.label}
-                </Badge>
-              )}
-              {canManageEvent && !isCreateMode && (
-                <ActionIcon
-                  variant="subtle"
-                  size="lg"
-                  onClick={handleOpenNotificationModal}
-                  aria-label="Send notification"
-                  title="Send notification"
-                >
-                  <Megaphone size={18} />
-                </ActionIcon>
-              )}
-            </Group>
-
-            {(canManageEvent || (!isCreateMode && Boolean(user))) && (
-              <Group gap="sm" wrap="wrap">
-                {!canManageEvent && !isCreateMode && user && (
-                  <Button
-                    variant="light"
-                    color="red"
-                    onClick={handleReportEvent}
-                    loading={reportingEvent}
-                  >
-                    Report Event
-                  </Button>
-                )}
-                {showEditActionButton && (
-                  <Button onClick={handleEnterEditMode} disabled={hasNetworkActionInFlight}>
-                    Manage
-                  </Button>
-                )}
-                {showQrCodeActionButton && activeEvent && (
-                  <Button
-                    variant="default"
-                    leftSection={<QrCode size={16} />}
-                    onClick={() => setIsQrCodeModalOpen(true)}
-                  >
-                    QR Code
-                  </Button>
-                )}
-                {(isEditingEvent || isCreateMode) && (
-                  <>
-                    {renderPendingChangesPopover()}
-                    {showDiscardChangesButton && (
-                      <Button
-                        variant="default"
-                        onClick={handleDiscardChanges}
-                        disabled={hasNetworkActionInFlight}
-                      >
-                        Discard Changes
-                      </Button>
-                    )}
-                    {showLifecycleStatusSelect && (
-                      <Select
-                        data={EVENT_LIFECYCLE_OPTIONS}
-                        value={selectedLifecycleStatus ?? activeLifecycleStatus}
-                        onChange={handleLifecycleStatusChange}
-                        allowDeselect={false}
-                        w={160}
-                        disabled={hasNetworkActionInFlight}
-                      />
-                    )}
-                    {showSaveActionButton && (
-                      <Button
-                        color="green"
-                        onClick={isCreateMode ? handlePublish : handleSaveEvent}
-                        loading={publishing}
-                        disabled={
-                          (hasNetworkActionInFlight && !publishing)
-                          || (!isCreateMode && !hasPendingUnsavedChanges)
-                          || hasSplitDivisionUnassignedTeams
-                        }
-                      >
-                        {isCreateMode ? createButtonLabel : 'Save'}
-                      </Button>
-                    )}
-                  </>
-                )}
-                {showMoreActionsMenu && (
-                  <Menu shadow="md" width={280} position="bottom-end">
-                    <Menu.Target>
-                      <Button variant="default">More</Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      {showRescheduleActionButton && (
-                        <Menu.Item
-                          onClick={handleRescheduleMatches}
-                          disabled={
-                            (hasNetworkActionInFlight && !isRescheduleActionInFlight)
-                            || hasSplitDivisionUnassignedTeams
-                          }
-                        >
-                          {isRescheduleActionInFlight ? 'Rescheduling...' : 'Reschedule'}
-                        </Menu.Item>
-                      )}
-                      {showBuildBracketsActionButton && (
-                        <Menu.Item
-                          color="orange"
-                          onClick={handleBuildBrackets}
-                          disabled={
-                            (hasNetworkActionInFlight && !isRebuildActionInFlight)
-                            || hasSplitDivisionUnassignedTeams
-                          }
-                        >
-                          {isRebuildActionInFlight ? 'Rebuilding...' : 'Rebuild'}
-                        </Menu.Item>
-                      )}
-                      {showRebuildWithoutPlaceholdersActionButton && (
-                        <Menu.Item
-                          color="orange"
-                          onClick={handleRebuildWithoutPlaceholders}
-                          disabled={
-                            (hasNetworkActionInFlight && !isRebuildWithoutPlaceholdersActionInFlight)
-                            || hasSplitDivisionUnassignedTeams
-                          }
-                        >
-                          {isRebuildWithoutPlaceholdersActionInFlight
-                            ? 'Rebuilding without placeholders...'
-                            : 'Rebuild Without Placeholders'}
-                        </Menu.Item>
-                      )}
-                      {showCancelActionButton && (
-                        <Menu.Item
-                          color="red"
-                          onClick={handleCancel}
-                          disabled={hasNetworkActionInFlight && !cancelling}
-                        >
-                          {cancelling ? 'Cancelling...' : cancelButtonLabel}
-                        </Menu.Item>
-                      )}
-                      {showDeleteTemplateActionButton && (
-                        <Menu.Item
-                          color="red"
-                          onClick={handleDeleteTemplate}
-                          disabled={hasNetworkActionInFlight && !cancelling}
-                        >
-                          {cancelling ? 'Deleting...' : 'Delete'}
-                        </Menu.Item>
-                      )}
-                      {showDeleteEventActionButton && (
-                        <Menu.Item
-                          color="red"
-                          onClick={handleDeleteEvent}
-                          disabled={hasNetworkActionInFlight && !cancelling}
-                        >
-                          {cancelling ? 'Deleting...' : 'Delete Event'}
-                        </Menu.Item>
-                      )}
-                      {showCreateTemplateButton && (
-                        <Menu.Item
-                          onClick={handleCreateTemplateFromEvent}
-                          disabled={hasNetworkActionInFlight && !creatingTemplate}
-                        >
-                          {creatingTemplate ? 'Creating Template...' : 'Create Template'}
-                        </Menu.Item>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
-                )}
-              </Group>
-            )}
-          </Group>
-
-          {activeEvent && showQrCodeActionButton && (
-            <EventQrCodeModal
-              eventId={activeEvent.$id}
-              eventName={activeEvent.name || 'Event'}
-              eventUrl={activeEventPublicUrl}
-              organizationLogoId={activeOrganization?.logoId ?? null}
-              opened={isQrCodeModalOpen}
-              onClose={() => setIsQrCodeModalOpen(false)}
-            />
-          )}
-
-          {infoMessage && (
-            <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
-              {infoMessage}
-            </Alert>
-          )}
-
-          {submitError && (
-            <Alert color="red" radius="md" onClose={() => setSubmitError(null)} withCloseButton>
-              {submitError}
-            </Alert>
-          )}
-
-          {error && (
-            <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
-              {error}
-            </Alert>
-          )}
-
-          {visibleMatchConflictMessage && (
-            <Alert
-              color="yellow"
-              radius="md"
-              withCloseButton
-              onClose={() => {
-                setDismissedMatchConflictSignature(matchConflictSignature);
-                setMatchConflictOverrideMessage(null);
-              }}
-            >
-              {visibleMatchConflictMessage}
-            </Alert>
-          )}
-
-          {warningMessage && (
-            <Alert color="yellow" radius="md" onClose={() => setWarningMessage(null)} withCloseButton>
-              {warningMessage}
-            </Alert>
-          )}
-
-          {canManageEvent && hasSplitDivisionUnassignedTeams && (
-            <Alert color="yellow" radius="md">
-              Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
-              Unassigned teams: {unassignedFilledParticipantTeams.map(getTeamWarningLabel).join(', ')}.
-            </Alert>
-          )}
-
-          {actionError && (
-            <Alert color="red" radius="md" onClose={() => setActionError(null)} withCloseButton>
-              {actionError}
-            </Alert>
-          )}
+          <EventScheduleHeader
+            eventId={activeEvent.$id}
+            eventName={activeEvent.name}
+            organizationLogoId={activeOrganization?.logoId ?? null}
+            selectedOccurrenceLabel={selectedWeeklyOccurrenceOption?.label ?? null}
+            onClearSelectedOccurrence={() => updateWeeklyOccurrenceSelection(null)}
+            showNotificationAction={canManageEvent && !isCreateMode}
+            onOpenNotification={handleOpenNotificationModal}
+            showReportAction={!canManageEvent && !isCreateMode && Boolean(user)}
+            reportingEvent={reportingEvent}
+            onReportEvent={handleReportEvent}
+            showEditAction={showEditActionButton}
+            onEnterEditMode={handleEnterEditMode}
+            showQrCodeAction={showQrCodeActionButton}
+            qrCodeOpen={isQrCodeModalOpen}
+            onOpenQrCode={() => setIsQrCodeModalOpen(true)}
+            onCloseQrCode={() => setIsQrCodeModalOpen(false)}
+            showEditingActions={isEditingEvent || isCreateMode}
+            pendingChangesOpen={isPendingChangesPopoverOpen}
+            pendingSaveChanges={pendingSaveChanges}
+            onPendingChangesOpenChange={setIsPendingChangesPopoverOpen}
+            showDiscardChanges={showDiscardChangesButton}
+            onDiscardChanges={handleDiscardChanges}
+            showLifecycleStatusSelect={showLifecycleStatusSelect}
+            selectedLifecycleStatus={selectedLifecycleStatus}
+            activeLifecycleStatus={activeLifecycleStatus}
+            onLifecycleStatusChange={handleLifecycleStatusChange}
+            showSaveAction={showSaveActionButton}
+            createButtonLabel={createButtonLabel}
+            isCreateMode={isCreateMode}
+            onSave={isCreateMode ? handlePublish : handleSaveEvent}
+            publishing={publishing}
+            hasNetworkActionInFlight={hasNetworkActionInFlight}
+            hasPendingUnsavedChanges={hasPendingUnsavedChanges}
+            hasSplitDivisionUnassignedTeams={hasSplitDivisionUnassignedTeams}
+            showMoreActions={showMoreActionsMenu}
+            showRescheduleAction={showRescheduleActionButton}
+            isRescheduleActionInFlight={isRescheduleActionInFlight}
+            onRescheduleMatches={handleRescheduleMatches}
+            showBuildBracketsAction={showBuildBracketsActionButton}
+            isRebuildActionInFlight={isRebuildActionInFlight}
+            onBuildBrackets={handleBuildBrackets}
+            showRebuildWithoutPlaceholdersAction={showRebuildWithoutPlaceholdersActionButton}
+            isRebuildWithoutPlaceholdersActionInFlight={isRebuildWithoutPlaceholdersActionInFlight}
+            onRebuildWithoutPlaceholders={handleRebuildWithoutPlaceholders}
+            showCancelAction={showCancelActionButton}
+            cancelling={cancelling}
+            cancelButtonLabel={cancelButtonLabel}
+            onCancel={handleCancel}
+            showDeleteTemplateAction={showDeleteTemplateActionButton}
+            onDeleteTemplate={handleDeleteTemplate}
+            showDeleteEventAction={showDeleteEventActionButton}
+            onDeleteEvent={handleDeleteEvent}
+            showCreateTemplateAction={showCreateTemplateButton}
+            creatingTemplate={creatingTemplate}
+            onCreateTemplate={handleCreateTemplateFromEvent}
+            infoMessage={infoMessage}
+            onInfoMessageClose={() => setInfoMessage(null)}
+            submitError={submitError}
+            onSubmitErrorClose={() => setSubmitError(null)}
+            error={error}
+            onErrorClose={() => setError(null)}
+            visibleMatchConflictMessage={visibleMatchConflictMessage}
+            onMatchConflictMessageClose={dismissMatchConflictMessage}
+            warningMessage={warningMessage}
+            onWarningMessageClose={() => setWarningMessage(null)}
+            showSplitDivisionWarning={canManageEvent && hasSplitDivisionUnassignedTeams}
+            unassignedTeamLabels={unassignedFilledParticipantTeams.map(getTeamWarningLabel)}
+            actionError={actionError}
+            onActionErrorClose={() => setActionError(null)}
+          />
 
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
@@ -9188,17 +5458,8 @@ function EventScheduleContent() {
                   renderEditBillingActions={renderEditBillingActions}
                   renderParticipantTeamCard={renderParticipantTeamCard}
                   renderParticipantUserCard={renderParticipantUserCard}
-                  onOpenAddParticipants={() => {
-                    setParticipantsError(null);
-                    setParticipantInviteError(null);
-                    setIsAddParticipantModalOpen(true);
-                  }}
-                  onOpenAddTeam={() => {
-                    setParticipantsError(null);
-                    setTeamSearchQuery('');
-                    setSelectedAddTeamDivisionId(null);
-                    setIsAddTeamModalOpen(true);
-                  }}
+                  onOpenAddParticipants={openAddParticipantsModal}
+                  onOpenAddTeam={openAddTeamModal}
                   onMoveTeamDivision={handleMoveTeamDivision}
                   onRemoveTeamFromParticipants={handleRemoveTeamFromParticipants}
                   onRemoveUserFromParticipants={handleRemoveUserFromParticipants}
@@ -9409,934 +5670,131 @@ function EventScheduleContent() {
           </Group>
         </Stack>
       </Modal>
-      <Modal
+      <AddParticipantModal
         opened={isAddParticipantModalOpen}
+        fullScreen={Boolean(isMobile)}
+        inviteMode={participantInviteMode}
+        participantSearchValue={participantSearchValue}
+        participantSearchError={participantSearchError}
+        participantSearchLoading={participantSearchLoading}
+        participantSearchResults={participantSearchResults}
+        participantsUpdatingTeamId={participantsUpdatingTeamId}
+        inviteRows={participantInviteRows}
+        inviteError={participantInviteError}
+        invitingParticipants={invitingParticipants}
+        organizationIdForParticipants={organizationIdForParticipants}
+        organizationTeamsLoading={organizationTeamsLoading}
+        availableOrganizationParticipantTeams={availableOrganizationParticipantTeams}
+        participantUserIdSet={participantUserIdSet}
         onClose={closeAddParticipantModal}
-        title="Add Participant"
-        size="xl"
-        centered
-        fullScreen={Boolean(isMobile)}
-      >
-        <Stack gap="md">
-          <SegmentedControl
-            value={participantInviteMode}
-            onChange={(value) => {
-              setParticipantInviteMode(value as ParticipantInviteMode);
-              setParticipantInviteError(null);
-            }}
-            data={[
-              { label: 'Add existing', value: 'existing' },
-              { label: 'Email invite', value: 'email' },
-              ...(organizationIdForParticipants ? [{ label: 'Add from team', value: 'team' }] : []),
-            ]}
-          />
-
-          {participantInviteMode === 'existing' ? (
-            <Stack gap="sm">
-              <TextInput
-                label="Search participants"
-                placeholder="Search by name or username"
-                value={participantSearchValue}
-                onChange={(event) => { void handleSearchParticipants(event.currentTarget.value); }}
-              />
-              {participantSearchError ? (
-                <Text size="xs" c="red">{participantSearchError}</Text>
-              ) : null}
-              {participantSearchLoading ? (
-                <Paper withBorder radius="md" p="md">
-                  <Group justify="center" gap="sm">
-                    <Loader size="sm" />
-                    <Text size="sm" c="dimmed">Searching participants...</Text>
-                  </Group>
-                </Paper>
-              ) : participantSearchValue.trim().length < 2 ? (
-                <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
-              ) : participantSearchResults.length > 0 ? (
-                <Stack gap="xs">
-                  {participantSearchResults.map((result) => (
-                    <Paper key={result.$id} withBorder p="sm" radius="md">
-                      <Group justify="space-between" align="center" gap="sm">
-                        <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                        <Button
-                          size="xs"
-                          onClick={() => { void handleAddExistingParticipant(result); }}
-                          loading={participantsUpdatingTeamId === result.$id}
-                        >
-                          Add
-                        </Button>
-                      </Group>
-                    </Paper>
-                  ))}
-                </Stack>
-              ) : (
-                <Text size="sm" c="dimmed">No users found.</Text>
-              )}
-            </Stack>
-          ) : participantInviteMode === 'email' ? (
-            <Stack gap="sm">
-              {participantInviteRows.map((invite, index) => (
-                <Paper key={index} withBorder radius="md" p="sm">
-                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                    <TextInput
-                      label="First name"
-                      placeholder="First name"
-                      value={invite.firstName}
-                      onChange={(event) => {
-                        const next = [...participantInviteRows];
-                        next[index] = { ...invite, firstName: event.currentTarget.value };
-                        setParticipantInviteRows(next);
-                      }}
-                    />
-                    <TextInput
-                      label="Last name"
-                      placeholder="Last name"
-                      value={invite.lastName}
-                      onChange={(event) => {
-                        const next = [...participantInviteRows];
-                        next[index] = { ...invite, lastName: event.currentTarget.value };
-                        setParticipantInviteRows(next);
-                      }}
-                    />
-                  </SimpleGrid>
-                  <TextInput
-                    mt="sm"
-                    label="Email"
-                    placeholder="name@example.com"
-                    value={invite.email}
-                    onChange={(event) => {
-                      const next = [...participantInviteRows];
-                      next[index] = { ...invite, email: event.currentTarget.value };
-                      setParticipantInviteRows(next);
-                    }}
-                  />
-                  {participantInviteRows.length > 1 ? (
-                    <Group justify="flex-end" mt="xs">
-                      <Button
-                        variant="subtle"
-                        color="red"
-                        size="xs"
-                        onClick={() => setParticipantInviteRows(participantInviteRows.filter((_, rowIndex) => rowIndex !== index))}
-                      >
-                        Remove
-                      </Button>
-                    </Group>
-                  ) : null}
-                </Paper>
-              ))}
-              <Group justify="space-between" align="center">
-                <Button
-                  type="button"
-                  variant="default"
-                  size="xs"
-                  onClick={() => setParticipantInviteRows([...participantInviteRows, { firstName: '', lastName: '', email: '' }])}
-                >
-                  Add row
-                </Button>
-                <Button onClick={() => { void handleInviteParticipantsByEmail(); }} loading={invitingParticipants} disabled={invitingParticipants}>
-                  Send invites
-                </Button>
-              </Group>
-              {participantInviteError ? <Text size="xs" c="red">{participantInviteError}</Text> : null}
-            </Stack>
-          ) : (
-            <Stack gap="sm">
-              <Text size="sm" c="dimmed">
-                Add every player and staff member from an organization team, including managers and coaches.
-              </Text>
-              {participantInviteError ? <Text size="xs" c="red">{participantInviteError}</Text> : null}
-              {organizationTeamsLoading ? (
-                <Paper withBorder radius="md" p="md">
-                  <Group justify="center" gap="sm">
-                    <Loader size="sm" />
-                    <Text size="sm" c="dimmed">Loading organization teams...</Text>
-                  </Group>
-                </Paper>
-              ) : availableOrganizationParticipantTeams.length === 0 ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed" ta="center">
-                    No organization teams are available.
-                  </Text>
-                </Paper>
-              ) : (
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                  {availableOrganizationParticipantTeams.map((team) => {
-                    const rosterUserIds = collectTeamRosterUserIds(team);
-                    const availableRosterCount = rosterUserIds.filter((userId) => !participantUserIdSet.has(userId)).length;
-                    return renderParticipantTeamCard({
-                      cardKey: `participant-roster-${team.$id}`,
-                      team,
-                      showComplianceDetails: false,
-                      showTeamMetadata: true,
-                      enableDetailsView: false,
-                      actions: participantsUpdatingTeamId === team.$id
-                        ? <Text size="xs" c="dimmed">Adding roster...</Text>
-                        : (
-                          <Stack gap={6}>
-                            <Text size="xs" c="dimmed">
-                              {availableRosterCount > 0
-                                ? `${availableRosterCount} roster member${availableRosterCount === 1 ? '' : 's'} available to add`
-                                : 'All roster members already added'}
-                            </Text>
-                            <Button
-                              size="xs"
-                              disabled={availableRosterCount === 0}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleAddTeamRosterParticipants(team);
-                              }}
-                            >
-                              Add Roster
-                            </Button>
-                          </Stack>
-                        ),
-                    });
-                  })}
-                </SimpleGrid>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </Modal>
-      <Modal
-        opened={isAddTeamModalOpen}
-        onClose={() => {
-          setIsAddTeamModalOpen(false);
-          setTeamSearchQuery('');
-          setSelectedAddTeamDivisionId(null);
+        onInviteModeChange={(mode) => {
+          setParticipantInviteMode(mode);
+          setParticipantInviteError(null);
         }}
-        title="Add Team"
-        size="xl"
-        centered
+        onSearchParticipants={(query) => { void handleSearchParticipants(query); }}
+        onAddExistingParticipant={(participant) => { void handleAddExistingParticipant(participant); }}
+        onInviteRowsChange={setParticipantInviteRows}
+        onInviteParticipantsByEmail={() => { void handleInviteParticipantsByEmail(); }}
+        onAddTeamRosterParticipants={(team) => { void handleAddTeamRosterParticipants(team); }}
+        renderParticipantTeamCard={renderParticipantTeamCard}
+      />
+      <AddTeamModal
+        opened={isAddTeamModalOpen}
         fullScreen={Boolean(isMobile)}
-      >
-        <Stack gap="md">
-          <TextInput
-            label="Search teams"
-            placeholder="Type at least 2 characters"
-            value={teamSearchQuery}
-            onChange={(event) => setTeamSearchQuery(event.currentTarget.value)}
-          />
-
-          {isSplitDivisionEvent && (
-            <Select
-              label="Assign to division"
-              data={participantDivisionSelectData}
-              value={selectedAddTeamDivisionId}
-              onChange={(value) => setSelectedAddTeamDivisionId(value)}
-              allowDeselect={false}
-            />
-          )}
-
-          {organizationIdForParticipants && (
-            <Stack gap="sm">
-              <Text fw={600} size="sm">Organization Teams</Text>
-              {organizationTeamsLoading ? (
-                <Paper withBorder radius="md" p="md">
-                  <Group justify="center" gap="sm">
-                    <Loader size="sm" />
-                    <Text size="sm" c="dimmed">Loading organization teams...</Text>
-                  </Group>
-                </Paper>
-              ) : displayedOrganizationTeams.length === 0 ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed" ta="center">
-                    {hasTeamSearchInput && !teamSearchMeetsMinimum
-                      ? 'Enter at least 2 characters to search organization teams.'
-                      : hasTeamSearchInput
-                      ? 'No organization teams match your search.'
-                      : 'No organization teams available to add.'}
-                  </Text>
-                </Paper>
-              ) : (
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                  {displayedOrganizationTeams.map((team) => renderParticipantTeamCard({
-                    cardKey: `org-team-${team.$id}`,
-                    team,
-                    showComplianceDetails: false,
-                    showTeamMetadata: true,
-                    enableDetailsView: false,
-                    actions: participantsUpdatingTeamId === team.$id
-                      ? <Text size="xs" c="dimmed">Adding...</Text>
-                      : (
-                        <Button
-                          size="xs"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleAddTeamToParticipants(team);
-                          }}
-                        >
-                          Add
-                        </Button>
-                      ),
-                  }))}
-                </SimpleGrid>
-              )}
-            </Stack>
-          )}
-
-          {!organizationIdForParticipants && (
-            <Stack gap="sm">
-              <Text fw={600} size="sm">Search Results</Text>
-              {!teamSearchMeetsMinimum ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed" ta="center">
-                    Enter at least 2 characters to search your teams.
-                  </Text>
-                </Paper>
-              ) : searchTeamsLoading ? (
-                <Paper withBorder radius="md" p="md">
-                  <Group justify="center" gap="sm">
-                    <Loader size="sm" />
-                    <Text size="sm" c="dimmed">Loading your teams...</Text>
-                  </Group>
-                </Paper>
-              ) : searchResultTeams.length === 0 ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed" ta="center">
-                    No personal teams match your search.
-                  </Text>
-                </Paper>
-              ) : (
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                  {searchResultTeams.map((team) => renderParticipantTeamCard({
-                    cardKey: `search-team-${team.$id}`,
-                    team,
-                    showComplianceDetails: false,
-                    showTeamMetadata: true,
-                    enableDetailsView: false,
-                    actions: participantsUpdatingTeamId === team.$id
-                      ? <Text size="xs" c="dimmed">Adding...</Text>
-                      : (
-                        <Button
-                          size="xs"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleAddTeamToParticipants(team);
-                          }}
-                        >
-                          Add
-                        </Button>
-                      ),
-                  }))}
-                </SimpleGrid>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </Modal>
-      {selectedParticipantTeam && (
-        <TeamDetailModal
-          currentTeam={selectedParticipantTeam}
-          isOpen={Boolean(selectedParticipantTeam)}
-          onClose={() => {
-            setSelectedParticipantTeam(null);
-          }}
-          canManage={false}
-        />
-      )}
-      <Modal
-        opened={Boolean(selectedRefundTeam)}
+        teamSearchQuery={teamSearchQuery}
+        isSplitDivisionEvent={isSplitDivisionEvent}
+        participantDivisionSelectData={participantDivisionSelectData}
+        selectedAddTeamDivisionId={selectedAddTeamDivisionId}
+        organizationIdForParticipants={organizationIdForParticipants}
+        organizationTeamsLoading={organizationTeamsLoading}
+        displayedOrganizationTeams={displayedOrganizationTeams}
+        hasTeamSearchInput={hasTeamSearchInput}
+        teamSearchMeetsMinimum={teamSearchMeetsMinimum}
+        searchTeamsLoading={searchTeamsLoading}
+        searchResultTeams={searchResultTeams}
+        participantsUpdatingTeamId={participantsUpdatingTeamId}
+        onOpenedChange={setIsAddTeamModalOpen}
+        onTeamSearchQueryChange={setTeamSearchQuery}
+        onSelectedAddTeamDivisionIdChange={setSelectedAddTeamDivisionId}
+        onAddTeamToParticipants={(team) => { void handleAddTeamToParticipants(team); }}
+        renderParticipantTeamCard={renderParticipantTeamCard}
+      />
+      <ParticipantTeamDetailModal
+        team={selectedParticipantTeam}
+        onClose={() => {
+          setSelectedParticipantTeam(null);
+        }}
+      />
+      <RefundTeamModal
+        team={selectedRefundTeam}
+        fullScreen={Boolean(isMobile)}
+        error={refundError}
+        loading={refundLoading}
+        snapshot={refundSnapshot}
+        refundAmountDraftByPaymentId={refundAmountDraftByPaymentId}
+        refundingPaymentId={refundingPaymentId}
+        cancellingPendingBillPaymentId={cancellingPendingBillPaymentId}
         onClose={closeRefundModal}
-        title={selectedRefundTeam ? `Refunds \u2022 ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
-        size="xl"
-        centered
-        fullScreen={Boolean(isMobile)}
-      >
-        <Stack gap="md">
-          {refundError ? (
-            <Alert color="red" radius="md">
-              {refundError}
-            </Alert>
-          ) : null}
-
-          {refundLoading ? (
-            <Paper withBorder radius="md" p="md">
-              <Group justify="center" gap="sm">
-                <Loader size="sm" />
-                <Text size="sm" c="dimmed">Loading bill payments...</Text>
-              </Group>
-            </Paper>
-          ) : refundSnapshot ? (
-            <>
-              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                <Paper withBorder radius="md" p="sm">
-                  <Text size="xs" c="dimmed">Paid</Text>
-                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.paidAmountCents)}</Text>
-                </Paper>
-                <Paper withBorder radius="md" p="sm">
-                  <Text size="xs" c="dimmed">Refunded</Text>
-                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.refundedAmountCents)}</Text>
-                </Paper>
-                <Paper withBorder radius="md" p="sm">
-                  <Text size="xs" c="dimmed">Refundable</Text>
-                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.refundableAmountCents)}</Text>
-                </Paper>
-              </SimpleGrid>
-
-              {refundSnapshot.bills.length === 0 ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed">No bills were found for this team on this event.</Text>
-                </Paper>
-              ) : (
-                <Stack gap="sm">
-                  {refundSnapshot.bills.map((bill) => (
-                    <Paper key={bill.$id} withBorder radius="md" p="md">
-                      <Stack gap="xs">
-                        <Group justify="space-between" align="flex-start" wrap="wrap">
-                          <Stack gap={2}>
-                            <Text fw={600}>
-                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} {'\u2022'} {bill.ownerName}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              {bill.status ?? 'OPEN'} {'\u2022'} Total {formatBillAmount(bill.totalAmountCents)}
-                            </Text>
-                          </Stack>
-                          <Text size="xs" c="dimmed">
-                            Refunded {formatBillAmount(bill.refundedAmountCents)} / Refundable {formatBillAmount(bill.refundableAmountCents)}
-                          </Text>
-                        </Group>
-
-                        {Array.isArray(bill.lineItems) && bill.lineItems.length > 0 ? (
-                          <Stack gap={2}>
-                            {bill.lineItems.map((item, index) => (
-                              <Text key={`${bill.$id}:line:${item.id ?? index}`} size="xs" c="dimmed">
-                                {(item.label ?? 'Line item')} {'\u2022'} {formatBillAmount(Number(item.amountCents ?? 0))}
-                              </Text>
-                            ))}
-                          </Stack>
-                        ) : null}
-
-                        <Stack gap="xs" mt={4}>
-                          {bill.payments.length === 0 ? (
-                            <Text size="sm" c="dimmed">No bill payments found.</Text>
-                          ) : bill.payments.map((payment) => {
-                            const draftAmount = refundAmountDraftByPaymentId[payment.$id] ?? (payment.refundableAmountCents / 100);
-                            const maxDollars = payment.refundableAmountCents / 100;
-                            const canRefundPayment = payment.isRefundable && Boolean(payment.paymentIntentId);
-                            const canCancelPendingPayment = payment.status === 'PROCESSING';
-                            return (
-                              <Paper key={payment.$id} withBorder radius="sm" p="sm">
-                                <Stack gap="xs">
-                                  <Group justify="space-between" align="center" wrap="wrap">
-                                    <Group gap="xs">
-                                      <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
-                                      {canCancelPendingPayment ? (
-                                        <Badge size="xs" color="yellow" variant="light">Pending</Badge>
-                                      ) : null}
-                                    </Group>
-                                    <Text size="xs" c="dimmed">
-                                      Amount {formatBillAmount(payment.amountCents)} {'\u2022'} Refunded {formatBillAmount(payment.refundedAmountCents)}
-                                    </Text>
-                                  </Group>
-                                  <Text size="xs" c="dimmed">
-                                    Refundable: {formatBillAmount(payment.refundableAmountCents)}
-                                  </Text>
-                                  {canRefundPayment ? (
-                                    <Group align="flex-end" wrap="wrap">
-                                      <NumberInput
-                                        label="Refund amount"
-                                        min={0}
-                                        max={maxDollars}
-                                        decimalScale={2}
-                                        fixedDecimalScale
-                                        prefix="$"
-                                        value={draftAmount}
-                                        onChange={(value) => {
-                                          const numeric = typeof value === 'number' ? value : Number(value);
-                                          setRefundAmountDraftByPaymentId((current) => ({
-                                            ...current,
-                                            [payment.$id]: Number.isFinite(numeric) ? Math.max(0, numeric) : 0,
-                                          }));
-                                        }}
-                                        w={180}
-                                      />
-                                      <Button
-                                        loading={refundingPaymentId === payment.$id}
-                                        disabled={refundingPaymentId !== null && refundingPaymentId !== payment.$id}
-                                        onClick={() => {
-                                          void submitRefund(payment.$id);
-                                        }}
-                                      >
-                                        Refund
-                                      </Button>
-                                    </Group>
-                                  ) : (
-                                    <Text size="xs" c="dimmed">
-                                      {payment.paymentIntentId
-                                        ? canCancelPendingPayment
-                                          ? 'This bank payment is pending with Stripe.'
-                                          : 'This payment has no refundable balance.'
-                                        : 'This payment cannot be refunded because it is not linked to Stripe.'}
-                                    </Text>
-                                  )}
-                                  {canCancelPendingPayment ? (
-                                    <Group>
-                                      <Button
-                                        size="xs"
-                                        variant="light"
-                                        color="red"
-                                        loading={cancellingPendingBillPaymentId === payment.$id}
-                                        onClick={() => {
-                                          void cancelPendingBillPayment(bill.$id, payment.$id);
-                                        }}
-                                      >
-                                        Cancel pending payment
-                                      </Button>
-                                    </Group>
-                                  ) : null}
-                                </Stack>
-                              </Paper>
-                            );
-                          })}
-                        </Stack>
-                      </Stack>
-                    </Paper>
-                  ))}
-                </Stack>
-              )}
-            </>
-          ) : (
-            <Paper withBorder radius="md" p="md">
-              <Text size="sm" c="dimmed">No billing details loaded yet.</Text>
-            </Paper>
-          )}
-        </Stack>
-      </Modal>
-      <Modal
-        opened={Boolean(createBillTeam)}
+        onRefundAmountDraftChange={handleRefundAmountDraftChange}
+        onSubmitRefund={(paymentId) => { void submitRefund(paymentId); }}
+        onCancelPendingPayment={(billId, paymentId) => { void cancelPendingBillPayment(billId, paymentId); }}
+      />
+      <CreateBillModal
+        team={createBillTeam}
+        error={createBillError}
+        ownerType={createBillOwnerType}
+        ownerId={createBillOwnerId}
+        amountDollars={createBillAmountDollars}
+        taxDollars={createBillTaxDollars}
+        label={createBillLabel}
+        allowSplit={createBillAllowSplit}
+        isUserOnly={createBillIsUserOnly}
+        userOptions={createBillUserOptions}
+        previewLineItems={createBillPreviewLineItems}
+        totalCents={createBillTotalCents}
+        creating={creatingBill}
         onClose={closeCreateBillModal}
-        title={createBillTeam ? `Send Bill \u2022 ${createBillTeam.name || 'Team'}` : 'Send Bill'}
-        size="lg"
-        centered
-      >
-        <Stack gap="md">
-          {createBillError ? (
-            <Alert color="red" radius="md">
-              {createBillError}
-            </Alert>
-          ) : null}
-
-          <Group align="flex-end" wrap="wrap">
-            <Select
-              label="Bill owner"
-              data={createBillIsUserOnly
-                ? [{ value: 'USER', label: 'User' }]
-                : [
-                    { value: 'TEAM', label: 'Team' },
-                    { value: 'USER', label: 'User' },
-                  ]}
-              value={createBillOwnerType}
-              onChange={(value) => {
-                setCreateBillOwnerType(value === 'USER' ? 'USER' : 'TEAM');
-              }}
-              allowDeselect={false}
-              disabled={createBillIsUserOnly}
-              w={180}
-            />
-            {createBillOwnerType === 'USER' && !createBillIsUserOnly ? (
-              <Select
-                label="User"
-                data={createBillUserOptions}
-                value={createBillOwnerId}
-                onChange={(value) => setCreateBillOwnerId(value ?? null)}
-                placeholder="Select user"
-                searchable
-                allowDeselect={false}
-                w={260}
-              />
-            ) : null}
-          </Group>
-
-          <Group align="flex-end" wrap="wrap">
-            <NumberInput
-              label="Amount"
-              min={0}
-              decimalScale={2}
-              fixedDecimalScale
-              prefix="$"
-              value={createBillAmountDollars}
-              onChange={(value) => {
-                const numeric = typeof value === 'number' ? value : Number(value);
-                setCreateBillAmountDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
-              }}
-              w={180}
-            />
-            <NumberInput
-              label="Tax"
-              min={0}
-              decimalScale={2}
-              fixedDecimalScale
-              prefix="$"
-              value={createBillTaxDollars}
-              onChange={(value) => {
-                const numeric = typeof value === 'number' ? value : Number(value);
-                setCreateBillTaxDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
-              }}
-              w={180}
-            />
-            <TextInput
-              label="Primary line item label"
-              value={createBillLabel}
-              onChange={(event) => setCreateBillLabel(event.currentTarget.value)}
-              placeholder="Event registration"
-              w={280}
-            />
-          </Group>
-
-          {createBillOwnerType === 'TEAM' && !createBillIsUserOnly ? (
-            <Checkbox
-              label="Allow team members to split this bill"
-              checked={createBillAllowSplit}
-              onChange={(event) => setCreateBillAllowSplit(event.currentTarget.checked)}
-            />
-          ) : null}
-
-          <Paper withBorder radius="md" p="md">
-            <Stack gap={6}>
-              <Text size="sm" fw={600}>Bill preview</Text>
-              {createBillPreviewLineItems.map((item) => (
-                <Group key={item.id} justify="space-between" align="center">
-                  <Text size="sm">{item.label}</Text>
-                  <Text size="sm">{formatBillAmount(item.amountCents)}</Text>
-                </Group>
-              ))}
-              <Group justify="space-between" align="center" pt={6} style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-                <Text fw={600}>Total bill</Text>
-                <Text fw={600}>{formatBillAmount(createBillTotalCents)}</Text>
-              </Group>
-            </Stack>
-          </Paper>
-
-          <Group justify="flex-end">
-            <Button variant="default" onClick={closeCreateBillModal}>Cancel</Button>
-            <Button loading={creatingBill} onClick={() => { void submitCreateBill(); }}>
-              Create Bill
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-      <Modal
+        onOwnerTypeChange={setCreateBillOwnerType}
+        onOwnerIdChange={setCreateBillOwnerId}
+        onAmountDollarsChange={setCreateBillAmountDollars}
+        onTaxDollarsChange={setCreateBillTaxDollars}
+        onLabelChange={setCreateBillLabel}
+        onAllowSplitChange={setCreateBillAllowSplit}
+        onSubmit={() => { void submitCreateBill(); }}
+      />
+      <EventComplianceModal
         opened={Boolean(selectedComplianceTeamId)}
+        fullScreen={Boolean(isMobile)}
+        teamName={selectedComplianceTeam?.name}
+        summary={selectedComplianceSummary}
+        loading={teamComplianceLoading}
         onClose={() => {
           setSelectedComplianceTeamId(null);
-          setExpandedComplianceUserIds([]);
         }}
-        title={selectedComplianceTeam ? `${selectedComplianceTeam.name || 'Team'} users` : 'Team users'}
-        size="xl"
-        centered
-        fullScreen={Boolean(isMobile)}
-      >
-        <Stack gap="md">
-          {selectedComplianceSummary ? (
-            <>
-              <Group justify="space-between" align="flex-start" wrap="wrap">
-                <Stack gap={2}>
-                  <Text size="sm" c="dimmed">Payment</Text>
-                  <Text size="sm">{formatCompliancePaymentLabel(selectedComplianceSummary.payment)}</Text>
-                </Stack>
-                <Stack gap={2}>
-                  <Text size="sm" c="dimmed">Required signatures</Text>
-                  <Text size="sm">
-                    {selectedComplianceSummary.documents.signedCount}/{selectedComplianceSummary.documents.requiredCount} complete
-                  </Text>
-                </Stack>
-              </Group>
-              {(selectedComplianceSummary.registrationAnswers ?? []).length > 0 ? (
-                <Paper withBorder radius="md" p="sm">
-                  <Stack gap={6}>
-                    <Text size="sm" fw={600}>Registration answers</Text>
-                    {(selectedComplianceSummary.registrationAnswers ?? []).map((answer) => (
-                      <div key={answer.questionId}>
-                        <Text size="xs" c="dimmed">{answer.prompt}</Text>
-                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                          {answer.answer || 'No answer'}
-                        </Text>
-                      </div>
-                    ))}
-                  </Stack>
-                </Paper>
-              ) : null}
-
-              {selectedComplianceSummary.users.length === 0 ? (
-                <Paper withBorder radius="md" p="md">
-                  <Text size="sm" c="dimmed">No users were found on this team.</Text>
-                </Paper>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>User</Table.Th>
-                        <Table.Th>Payment</Table.Th>
-                        <Table.Th>Documents</Table.Th>
-                        <Table.Th style={{ width: 120 }}>Details</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {selectedComplianceSummary.users.map((userSummary) => {
-                        const expanded = expandedComplianceUserIds.includes(userSummary.userId);
-                        return (
-                          <Fragment key={userSummary.userId}>
-                            <Table.Tr>
-                              <Table.Td>
-                                <Text fw={600}>{userSummary.fullName}</Text>
-                                {userSummary.userName ? (
-                                  <Text size="xs" c="dimmed">@{userSummary.userName}</Text>
-                                ) : null}
-                                <Text size="xs" c="dimmed">
-                                  {userSummary.registrationType === 'CHILD'
-                                    ? 'Child registration'
-                                    : 'Adult registration'}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm">{formatCompliancePaymentLabel(userSummary.payment)}</Text>
-                              </Table.Td>
-                              <Table.Td>
-                                {userSummary.documents.requiredCount === 0 ? (
-                                  <Text size="xs" c="dimmed">No required documents</Text>
-                                ) : (
-                                  <Text size="sm">
-                                    {userSummary.documents.signedCount}/{userSummary.documents.requiredCount} signed
-                                  </Text>
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                <Button
-                                  size="xs"
-                                  variant="light"
-                                  onClick={() => toggleComplianceUserExpanded(userSummary.userId)}
-                                >
-                                  {expanded ? 'Collapse' : 'Expand'}
-                                </Button>
-                              </Table.Td>
-                            </Table.Tr>
-                            {expanded && (
-                              <Table.Tr>
-                                <Table.Td colSpan={4}>
-                                  <Stack gap="sm">
-                                    {userSummary.requiredDocuments.length === 0 ? (
-                                      <Text size="xs" c="dimmed">No required documents for this user.</Text>
-                                    ) : (
-                                      <Stack gap={6}>
-                                      {userSummary.requiredDocuments.map((document) => (
-                                        <Group key={document.key} justify="space-between" align="center" wrap="wrap">
-                                          <Stack gap={0}>
-                                            <Text size="sm">{document.title}</Text>
-                                            <Text size="xs" c="dimmed">
-                                              {document.signerLabel}
-                                              {document.signOnce ? ' \u2022 Sign once' : ' \u2022 Event-specific'}
-                                            </Text>
-                                          </Stack>
-                                          <Group gap={6}>
-                                            {document.signedAt ? (
-                                              <Text size="xs" c="dimmed">
-                                                {new Date(document.signedAt).toLocaleString()}
-                                              </Text>
-                                            ) : null}
-                                            <Badge
-                                              size="sm"
-                                              color={document.status === 'SIGNED' ? 'green' : 'yellow'}
-                                              variant="light"
-                                            >
-                                              {document.status === 'SIGNED' ? 'Signed' : 'Needs signature'}
-                                            </Badge>
-                                          </Group>
-                                        </Group>
-                                      ))}
-                                      </Stack>
-                                    )}
-                                    {(userSummary.registrationAnswers ?? []).length > 0 ? (
-                                      <Stack gap={6}>
-                                        <Text size="sm" fw={600}>Registration answers</Text>
-                                        {(userSummary.registrationAnswers ?? []).map((answer) => (
-                                          <div key={answer.questionId} className="rounded-md border border-gray-200 p-2">
-                                            <Text size="xs" c="dimmed">{answer.prompt}</Text>
-                                            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                                              {answer.answer || 'No answer'}
-                                            </Text>
-                                          </div>
-                                        ))}
-                                      </Stack>
-                                    ) : (
-                                      <Text size="xs" c="dimmed">No registration answers submitted.</Text>
-                                    )}
-                                  </Stack>
-                                </Table.Td>
-                              </Table.Tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </Table.Tbody>
-                  </Table>
-                </div>
-              )}
-            </>
-          ) : teamComplianceLoading ? (
-            <Paper withBorder radius="md" p="md">
-              <Group justify="center" gap="sm">
-                <Loader size="sm" />
-                <Text size="sm" c="dimmed">Loading team users...</Text>
-              </Group>
-            </Paper>
-          ) : (
-            <Paper withBorder radius="md" p="md">
-              <Text size="sm" c="dimmed">
-                Team compliance details are not available yet.
-              </Text>
-            </Paper>
-          )}
-        </Stack>
-      </Modal>
-      {scoreUpdateMatch && activeEvent && (
-        <ScoreUpdateModal
-          match={scoreUpdateMatch}
-          tournament={activeEvent}
-          participantTeams={participantTeams}
-          canManage={canUserManageScore(scoreUpdateMatch)}
-          onScoreChange={handleScoreChange}
-          onSetComplete={handleSetComplete}
-          onSubmit={handleScoreSubmit}
-          onClose={() => {
-            setIsScoreModalOpen(false);
-            setScoreUpdateMatch(null);
-          }}
-          isOpen={isScoreModalOpen}
-          team1Placeholder={scheduleBracketPlaceholderAssignments[`${scoreUpdateMatch.$id}:team1`]}
-          team2Placeholder={scheduleBracketPlaceholderAssignments[`${scoreUpdateMatch.$id}:team2`]}
-        />
-      )}
-      <MatchEditModal
-        opened={isMatchEditorOpen}
-        match={matchBeingEdited}
-        tournament={activeEvent}
-        allMatches={activeMatches}
-        fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
-        teams={matchEditorTeams}
+      />
+      <EventMatchModals
+        activeEvent={activeEvent}
+        activeMatches={activeMatches}
         participantTeams={participantTeams}
-        officials={matchEditorOfficials}
-        officialPositions={Array.isArray(activeEvent.officialPositions) ? activeEvent.officialPositions : []}
-        eventOfficials={Array.isArray(activeEvent.eventOfficials) ? activeEvent.eventOfficials : []}
-        doTeamsOfficiate={Boolean(activeEvent.doTeamsOfficiate)}
-        canManageOperations={canEditMatches}
-        isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
-        creationContext={matchEditorContext}
-        eventType={activeEvent.eventType}
-        enforceScheduleFields={matchEditorContext === 'schedule'}
+        scoreUpdateMatch={scoreUpdateMatch}
+        isScoreModalOpen={isScoreModalOpen}
+        canManageScore={canUserManageScore}
         onScoreChange={handleScoreChange}
         onSetComplete={handleSetComplete}
         onScoreSubmit={handleScoreSubmit}
-        team1Placeholder={matchBeingEdited ? scheduleBracketPlaceholderAssignments[`${matchBeingEdited.$id}:team1`] : undefined}
-        team2Placeholder={matchBeingEdited ? scheduleBracketPlaceholderAssignments[`${matchBeingEdited.$id}:team2`] : undefined}
-        onClose={handleMatchEditClose}
-        onSave={handleMatchEditSave}
-        onDelete={handleMatchDelete}
+        onScoreModalClose={closeScoreModal}
+        isMatchEditorOpen={isMatchEditorOpen}
+        matchBeingEdited={matchBeingEdited}
+        matchEditorTeams={matchEditorTeams}
+        matchEditorOfficials={matchEditorOfficials}
+        canEditMatches={canEditMatches}
+        matchEditorContext={matchEditorContext}
+        scheduleBracketPlaceholderAssignments={scheduleBracketPlaceholderAssignments}
+        onMatchEditClose={handleMatchEditClose}
+        onMatchEditSave={handleMatchEditSave}
+        onMatchDelete={handleMatchDelete}
       />
-      <PaymentModal
-        isOpen={showRentalPayment && Boolean(rentalPaymentData)}
-        onClose={closeRentalPaymentModal}
-        event={rentalPaymentEventSummary}
-        paymentData={rentalPaymentData}
-        onPaymentSuccess={handleRentalPaymentSuccess}
-      />
-      <Modal
-        opened={showRentalSignModal && Boolean(currentRentalSignLink)}
-        onClose={closeRentalSignModal}
-        title="Sign Rental Document"
-        size="xl"
-        centered
-      >
-        <Stack gap="sm">
-          {currentRentalSignLink ? (
-            <>
-              <Text size="sm" c="dimmed">
-                Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                {currentRentalSignLink.title ? ` \u2022 ${currentRentalSignLink.title}` : ''}
-              </Text>
-              {currentRentalSignLink.requiredSignerLabel ? (
-                <Text size="sm" c="dimmed">
-                  Required signer: {currentRentalSignLink.requiredSignerLabel}
-                </Text>
-              ) : null}
-              {rentalSignError ? (
-                <Alert color="red">
-                  {rentalSignError}
-                </Alert>
-              ) : null}
-              {pendingRentalSignedDocumentId || pendingRentalSignatureOperationId ? (
-                <Group gap="xs">
-                  <Loader size="sm" />
-                  <Text size="sm" c="dimmed">
-                    Confirming signature...
-                  </Text>
-                </Group>
-              ) : null}
-              {currentRentalSignLink.type === 'TEXT' ? (
-                <>
-                  <Paper withBorder p="sm" radius="md" style={{ maxHeight: 320, overflowY: 'auto' }}>
-                    <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                      {currentRentalSignLink.content || 'No document content provided.'}
-                    </Text>
-                  </Paper>
-                  <Checkbox
-                    checked={rentalTextAccepted}
-                    onChange={(event) => setRentalTextAccepted(event.currentTarget.checked)}
-                    label="I have read and agree to this document."
-                  />
-                  <Group justify="flex-end">
-                    <Button
-                      onClick={handleRentalTextAcceptance}
-                      disabled={!rentalTextAccepted || recordingRentalSignature}
-                      loading={recordingRentalSignature}
-                    >
-                      Accept And Continue
-                    </Button>
-                  </Group>
-                </>
-              ) : (
-                <>
-                  {currentRentalSignLink.url ? (
-                    <iframe
-                      title={`Rental document ${currentRentalSignLink.title ?? currentRentalSignLink.templateId}`}
-                      src={currentRentalSignLink.url}
-                      className="h-[480px] w-full rounded border"
-                    />
-                  ) : (
-                    <Alert color="red">
-                      This document is missing a signing link. Close checkout and try again.
-                    </Alert>
-                  )}
-                  <Group justify="space-between">
-                    {currentRentalSignLink.url ? (
-                      <Button
-                        component="a"
-                        href={currentRentalSignLink.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        variant="default"
-                      >
-                        Open In New Tab
-                      </Button>
-                    ) : (
-                      <div />
-                    )}
-                    <Button
-                      onClick={() => void handleRentalSignedDocument()}
-                      disabled={!currentRentalSignLink.documentId || recordingRentalSignature}
-                      loading={recordingRentalSignature}
-                    >
-                      I Finished Signing
-                    </Button>
-                  </Group>
-                </>
-              )}
-            </>
-          ) : (
-            <Text size="sm" c="dimmed">Preparing rental document...</Text>
-          )}
-        </Stack>
-      </Modal>
+      <RentalCheckoutModals {...rentalCheckout} />
     </div>
   );
 }
