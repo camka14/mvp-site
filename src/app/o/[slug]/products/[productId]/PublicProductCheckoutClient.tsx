@@ -11,6 +11,7 @@ import {
   Paper,
   Stack,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -53,6 +54,7 @@ export default function PublicProductCheckoutClient({
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [discountCode, setDiscountCode] = useState('');
 
   const startProductCheckout = useCallback(async (billingAddress?: BillingAddress) => {
     if (!user) {
@@ -67,10 +69,12 @@ export default function PublicProductCheckoutClient({
             product,
             { $id: organization.id, name: organization.name },
             billingAddress,
+            discountCode.trim() || null,
           )
         : await productService.createSubscriptionCheckout({
             productId: product.$id,
             billingAddress,
+            discountCode: discountCode.trim() || null,
           });
       setPaymentData(intent);
       setShowBillingAddressModal(false);
@@ -92,7 +96,7 @@ export default function PublicProductCheckoutClient({
     } finally {
       setStartingCheckout(false);
     }
-  }, [organization.id, organization.name, product, user]);
+  }, [discountCode, organization.id, organization.name, product, user]);
 
   useEffect(() => {
     if (authLoading || !user || checkoutStartedRef.current) {
@@ -133,6 +137,14 @@ export default function PublicProductCheckoutClient({
             <Text fw={600}>Total</Text>
             <Text fw={700}>{formatProductPriceLabel(product)}</Text>
           </Group>
+
+          <TextInput
+            label="Discount code"
+            placeholder="Enter code"
+            value={discountCode}
+            onChange={(event) => setDiscountCode(event.currentTarget.value)}
+            disabled={startingCheckout || showPaymentModal}
+          />
 
           {authLoading ? (
             <Group gap="sm">

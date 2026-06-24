@@ -19,9 +19,9 @@ The visible behavior is that a manager can create a discount for a specific item
 - [x] (2026-06-24T15:28:43Z) Wired guest event PaymentIntent checkout through the same resolver for paid discounted checkouts.
 - [ ] Record redemptions and increment code usage after successful paid and zero-dollar checkouts. Completed: paid Stripe PaymentIntent webhook metadata parsing and idempotent redemption recording. Remaining: zero-dollar no-Stripe completion path.
 - [ ] Add API routes and client service helpers for listing discounts, creating discounts, generating codes, and disabling codes. Completed: `GET/POST /api/discounts`, `POST /api/discounts/[discountId]/codes`, and `src/lib/discountService.ts`. Remaining: code deactivation endpoint and focused route tests.
-- [ ] Add organization and profile management surfaces for discounts.
-- [ ] Add checkout code-entry UI for event registration, guest registration, products, memberships, and team registrations.
-- [ ] Run focused Jest tests after each server milestone, then `npx tsc --noEmit` and browser smoke tests after UI wiring.
+- [x] (2026-06-24T16:38:00Z) Added organization and profile discount management surfaces backed by searchable target lookup.
+- [ ] Add checkout code-entry UI for event registration, guest registration, products, memberships, and team registrations. Completed: one-time product checkout on public product pages, public product grids, organization store product cards, guest event registration, authenticated event registration, team registration, and membership subscription checkout. Remaining: zero-dollar completion.
+- [x] (2026-06-24T18:35:00Z) Ran focused Jest tests, `npx tsc --noEmit --pretty false`, diff whitespace checks, and a browser smoke test for public product code entry.
 
 ## Surprises & Discoveries
 
@@ -94,6 +94,42 @@ At 2026-06-24T15:34:25Z, `src/lib/discountService.ts` was added as the client wr
 
     npm test -- --runInBand src/server/discounts/__tests__/discountCodeResolver.test.ts
     Result: PASS, 9 tests passed.
+
+The next UI milestone added `GET /api/discounts/targets`, a reusable `DiscountManager`, an organization Discounts tab, and a Profile Billing discount panel. The form lets managers select an item type, search paid targets, switch between percent and flat discount entry, edit either discount amount or final price, and submits only the final `discountedPriceCents`. One-time product checkout and guest event registration now accept buyer-entered discount codes and pass them to the already-wired checkout routes. Validation passed:
+
+    npx tsc --noEmit --pretty false
+    Result: PASS, no output.
+
+    npm test -- --runInBand --runTestsByPath src/app/o/[slug]/__tests__/PublicProductGrid.test.tsx
+    Result: PASS, 2 tests passed.
+
+    npm test -- --runInBand src/server/discounts/__tests__/discountCodeResolver.test.ts
+    Result: PASS, 9 tests passed.
+
+At 2026-06-24T18:35:00Z, authenticated event registration and team registration checkout flows were updated to collect an optional discount code before starting paid checkout. A browser smoke test on `http://localhost:3000/o/example-athletic-club` verified that a public product discount-code input accepts buyer text without console errors and still opens the guest authentication modal from the product card. A temporary smoke-test product was removed afterward. Validation passed:
+
+    npx tsc --noEmit --pretty false
+    Result: PASS, no output.
+
+    npm test -- --runInBand --runTestsByPath src/app/o/[slug]/__tests__/PublicProductGrid.test.tsx
+    Result: PASS, 2 tests passed.
+
+    npm test -- --runInBand src/server/discounts/__tests__/discountCodeResolver.test.ts
+    Result: PASS, 9 tests passed.
+
+    git diff --check -- <coupon-related files>
+    Result: PASS, no output.
+
+Membership subscription checkout now accepts discount codes through the same product target resolver. Discounted subscription checkouts create the recurring Stripe product line at the discounted subtotal, include discount metadata for webhook redemption tracking, and skip incomplete subscription reuse when a code is applied. Validation passed:
+
+    npm test -- --runInBand --runTestsByPath src/app/o/[slug]/__tests__/PublicProductGrid.test.tsx src/app/api/products/[id]/subscriptions/__tests__/route.test.ts
+    Result: PASS, 7 tests passed.
+
+    npm test -- --runInBand src/server/discounts/__tests__/discountCodeResolver.test.ts
+    Result: PASS, 9 tests passed.
+
+    npx tsc --noEmit --pretty false
+    Result: PASS, no output.
 
 ## Context and Orientation
 

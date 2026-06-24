@@ -116,6 +116,7 @@ type PendingEventCheckoutState = {
     team?: Team;
     selection?: DivisionRegistrationSelection;
     answers?: RegistrationQuestionAnswerInput[];
+    discountCode?: string | null;
 };
 
 type LoadEventDetailsOptions = {
@@ -1189,6 +1190,8 @@ export default function EventDetailSheet({
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
     const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
+    const [showDiscountCodeModal, setShowDiscountCodeModal] = useState(false);
+    const [discountCode, setDiscountCode] = useState('');
     const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
     const [showSignModal, setShowSignModal] = useState(false);
@@ -2549,6 +2552,7 @@ export default function EventDetailSheet({
         team,
         selection,
         answers,
+        discountCode: checkoutDiscountCode,
         billingAddress,
     }: PendingEventCheckoutState & {
         billingAddress?: BillingAddress;
@@ -2568,6 +2572,7 @@ export default function EventDetailSheet({
                 billingAddress,
                 selectedWeeklyOccurrence,
                 answers,
+                (checkoutDiscountCode ?? discountCode).trim() || null,
             );
             const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
             setRegistrationHoldExpiresAt(holdExpiresAt);
@@ -2587,6 +2592,7 @@ export default function EventDetailSheet({
             setShowPaymentModal(true);
             setPendingEventCheckout(null);
             setShowBillingAddressModal(false);
+            setShowDiscountCodeModal(false);
         } catch (error) {
             if (
                 isApiRequestError(error)
@@ -2600,6 +2606,7 @@ export default function EventDetailSheet({
                 team,
                 selection,
                 answers,
+                discountCode: checkoutDiscountCode ?? discountCode,
             });
                 setShowBillingAddressModal(true);
                 return;
@@ -2613,6 +2620,7 @@ export default function EventDetailSheet({
         selectedDivisionTypeKey,
         selectedTeamId,
         selectedWeeklyOccurrence,
+        discountCode,
         user,
     ]);
 
@@ -2826,12 +2834,13 @@ export default function EventDetailSheet({
                 navigateToPublicEventCompletion();
             }
         } else {
-            await startEventCheckout({
+            setPendingEventCheckout({
                 event: checkoutEvent ?? currentEvent,
                 team: resolvedTeam,
                 selection,
                 answers: intent.answers,
             });
+            setShowDiscountCodeModal(true);
         }
     }, [
         checkoutEvent,
@@ -6096,6 +6105,61 @@ export default function EventDetailSheet({
                 ) : (
                     <Text size="sm" c="dimmed">Preparing documents...</Text>
                 )}
+            </Modal>
+
+            <Modal
+                opened={showDiscountCodeModal && Boolean(pendingEventCheckout)}
+                onClose={() => {
+                    setShowDiscountCodeModal(false);
+                    setPendingEventCheckout(null);
+                }}
+                centered
+                title="Apply discount code"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <Stack gap="sm">
+                    <Text size="sm" c="dimmed">
+                        Registration is {formatPrice(normalizePriceCents(selectedDivisionBilling.priceCents))} before any discount.
+                    </Text>
+                    <TextInput
+                        label="Discount code"
+                        placeholder="Enter code"
+                        value={discountCode}
+                        onChange={(event) => setDiscountCode(event.currentTarget.value)}
+                    />
+                    {joinError ? (
+                        <Alert color="red" variant="light">
+                            {joinError}
+                        </Alert>
+                    ) : null}
+                    <Group justify="flex-end">
+                        <Button variant="default" onClick={() => setDiscountCode('')}>
+                            Clear
+                        </Button>
+                        <Button
+                            loading={joining}
+                            onClick={async () => {
+                                if (!pendingEventCheckout) {
+                                    return;
+                                }
+                                setJoining(true);
+                                setJoinError(null);
+                                try {
+                                    await startEventCheckout({
+                                        ...pendingEventCheckout,
+                                        discountCode,
+                                    });
+                                } catch (error) {
+                                    setJoinError(error instanceof Error ? error.message : 'Unable to start checkout.');
+                                } finally {
+                                    setJoining(false);
+                                }
+                            }}
+                        >
+                            Continue to payment
+                        </Button>
+                    </Group>
+                </Stack>
             </Modal>
 
             <BillingAddressModal

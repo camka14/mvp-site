@@ -6,6 +6,7 @@ export type OrganizationTab =
   | 'users'
   | 'fields'
   | 'staff'
+  | 'discounts'
   | 'finance'
   | 'refunds'
   | 'publicPage'
@@ -27,6 +28,7 @@ const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
   users: 'customers',
   fields: 'facilities',
   staff: 'staff',
+  discounts: 'discounts',
   finance: 'finance',
   refunds: 'refunds',
   publicPage: 'public-page',
@@ -46,6 +48,7 @@ const ORGANIZATION_TAB_ALIASES: Record<string, OrganizationTab> = {
   facilities: 'fields',
   resources: 'fields',
   staff: 'staff',
+  discounts: 'discounts',
   finance: 'finance',
   refunds: 'refunds',
   publicPage: 'publicPage',
@@ -131,6 +134,7 @@ type BuildOrganizationTabsParams = {
   canManageTeams?: boolean;
   canManageFields?: boolean;
   canManageProducts?: boolean;
+  canManageDiscounts?: boolean;
   hasTeams?: boolean;
   hasRentals?: boolean;
   hasResources?: boolean;
@@ -149,6 +153,7 @@ export const buildOrganizationTabs = ({
   canManageTeams = false,
   canManageFields = false,
   canManageProducts = false,
+  canManageDiscounts = false,
   hasTeams = false,
   hasRentals = false,
   hasResources = false,
@@ -174,6 +179,10 @@ export const buildOrganizationTabs = ({
 
   if (isOwner || canManageStaff) {
     tabs.push({ label: 'Staff', value: 'staff' });
+  }
+
+  if (isOwner || canManageDiscounts) {
+    tabs.push({ label: 'Discounts', value: 'discounts' });
   }
 
   if (isOwner || canManageFinance) {

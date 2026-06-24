@@ -105,6 +105,7 @@ import { formatDisplayDate, formatDisplayDateTime } from "@/lib/dateUtils";
 import { selectBillOwnerTeams } from "@/lib/profileBilling";
 import { resolveClientPublicOrigin } from "@/lib/clientPublicOrigin";
 import { withSelectedProfileImage } from "./profileImageSelection";
+import DiscountManager from "@/components/discounts/DiscountManager";
 import {
   Activity,
   Bell,
@@ -4480,6 +4481,8 @@ function ProfilePageContent() {
             )}
           </Paper>
         </SimpleGrid>
+
+        <DiscountManager ownerType="USER" title="Your discounts" />
 
         <Paper withBorder radius="lg" p="md" shadow="xs">
           <Group justify="space-between" align="flex-start" gap="md" mb="md">

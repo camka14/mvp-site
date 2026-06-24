@@ -354,6 +354,7 @@ export default function GuestEventRegistrationWidget({
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntentResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discountCode, setDiscountCode] = useState('');
 
   const selectedDivision = divisions.find((division) => division.id === divisionId) ?? divisions[0] ?? null;
   const requiresGuardian = selectedDivision?.requiresGuardian === true;
@@ -566,7 +567,10 @@ export default function GuestEventRegistrationWidget({
     try {
       const intent = await postJson<PaymentIntentResponse>(
         `/api/public/organizations/${encodeURIComponent(organization.slug)}/events/${encodeURIComponent(event.id)}/guest-payment-intent`,
-        { registrationToken: currentRegistration.registrationToken },
+        {
+          registrationToken: currentRegistration.registrationToken,
+          ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
+        },
       );
       setPaymentIntent(intent);
       setStep('payment');
@@ -865,6 +869,16 @@ export default function GuestEventRegistrationWidget({
           ) : null}
 
           {error ? <p className="message error">{error}</p> : null}
+          {displayedPrice > 0 ? (
+            <label>
+              Discount code
+              <input
+                value={discountCode}
+                onChange={(event) => setDiscountCode(event.target.value)}
+                placeholder="Enter code"
+              />
+            </label>
+          ) : null}
           <button className="primary-button" type="submit" disabled={submitting}>
             {submitting ? 'Submitting...' : 'Continue'}
           </button>
@@ -884,9 +898,21 @@ export default function GuestEventRegistrationWidget({
                   {target.label}
                 </button>
               )) : (
-                <button className="primary-button" type="button" disabled={submitting} onClick={() => (registration.requiresPayment ? startPayment(registration) : setStep('complete'))}>
-                  Continue
-                </button>
+                <>
+                  {displayedPrice > 0 ? (
+                    <label>
+                      Discount code
+                      <input
+                        value={discountCode}
+                        onChange={(event) => setDiscountCode(event.target.value)}
+                        placeholder="Enter code"
+                      />
+                    </label>
+                  ) : null}
+                  <button className="primary-button" type="button" disabled={submitting} onClick={() => (registration.requiresPayment ? startPayment(registration) : setStep('complete'))}>
+                    Continue
+                  </button>
+                </>
               )}
             </div>
           ) : (

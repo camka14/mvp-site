@@ -175,7 +175,11 @@ describe('PublicProductGrid', () => {
     await user.click(screen.getByRole('button', { name: 'Buy now' }));
 
     await waitFor(() => {
-      expect(createSubscriptionCheckoutMock).toHaveBeenCalledWith({ productId: 'prod_membership', billingAddress: undefined });
+      expect(createSubscriptionCheckoutMock).toHaveBeenCalledWith({
+        productId: 'prod_membership',
+        billingAddress: undefined,
+        discountCode: null,
+      });
     });
     expect(screen.getByText('Payment modal')).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();

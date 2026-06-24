@@ -14,6 +14,7 @@ import {
   Select as MantineSelect,
   Stack,
   Text,
+  TextInput,
   Textarea,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -168,6 +169,8 @@ export default function TeamRegistrationFlow({
   const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
+  const [showDiscountCodeModal, setShowDiscountCodeModal] = useState(false);
+  const [discountCode, setDiscountCode] = useState('');
   const [pendingBillingIntent, setPendingBillingIntent] = useState<TeamRegistrationIntent | null>(null);
   const [pendingCheckoutTarget, setPendingCheckoutTarget] = useState<TeamRegistrationCheckoutTarget | null>(null);
   const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
@@ -570,6 +573,7 @@ export default function TeamRegistrationFlow({
   const startCheckout = useCallback(async (
     checkoutTarget: TeamRegistrationCheckoutTarget,
     billingAddress?: BillingAddress,
+    checkoutDiscountCode?: string | null,
   ) => {
     if (!user) {
       throw new Error('You must be signed in to continue.');
@@ -582,6 +586,7 @@ export default function TeamRegistrationFlow({
         checkoutTarget,
         organization ?? undefined,
         billingAddress,
+        (checkoutDiscountCode ?? discountCode).trim() || null,
       );
       const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
       setRegistrationHoldExpiresAt(holdExpiresAt);
@@ -594,6 +599,7 @@ export default function TeamRegistrationFlow({
       setPaymentData(paymentIntent);
       setShowPaymentModal(true);
       setShowBillingAddressModal(false);
+      setShowDiscountCodeModal(false);
       setPendingBillingIntent(null);
       setPendingCheckoutTarget(null);
     } catch (error) {
@@ -610,7 +616,7 @@ export default function TeamRegistrationFlow({
       }
       throw error;
     }
-  }, [organization, paymentRegistrationTeam, questionAnswers, saveTeamRegistrationProgress, user]);
+  }, [discountCode, organization, paymentRegistrationTeam, questionAnswers, saveTeamRegistrationProgress, user]);
 
   const handleSuccessfulJoin = useCallback(async (successTeam?: Team | null) => {
     clearTeamRegistrationProgress();
@@ -721,7 +727,12 @@ export default function TeamRegistrationFlow({
         currentUserRegistration ?? undefined,
       );
       setPendingBillingIntent(intent);
-      await startCheckout(checkoutTarget, billingAddress);
+      setPendingCheckoutTarget(checkoutTarget);
+      if (billingAddress) {
+        await startCheckout(checkoutTarget, billingAddress);
+      } else {
+        setShowDiscountCodeModal(true);
+      }
       return;
     }
 
@@ -1553,6 +1564,64 @@ export default function TeamRegistrationFlow({
         ) : (
           <Text size="sm" c="dimmed">Preparing documents...</Text>
         )}
+      </Modal>
+
+      <Modal
+        opened={showDiscountCodeModal && Boolean(pendingCheckoutTarget)}
+        onClose={() => {
+          setShowDiscountCodeModal(false);
+          setPendingBillingIntent(null);
+          setPendingCheckoutTarget(null);
+        }}
+        centered
+        title="Apply discount code"
+        zIndex={TEAM_SIGN_MODAL_Z_INDEX}
+      >
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            Registration is {formatPrice(registrationPriceCents)} before any discount.
+          </Text>
+          <TextInput
+            label="Discount code"
+            placeholder="Enter code"
+            value={discountCode}
+            onChange={(event) => setDiscountCode(event.currentTarget.value)}
+          />
+          {registrationError ? (
+            <Alert color="red" variant="light">
+              {registrationError}
+            </Alert>
+          ) : null}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setDiscountCode('');
+              }}
+            >
+              Clear
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!pendingCheckoutTarget) {
+                  return;
+                }
+                setActionLoading(true);
+                setRegistrationError(null);
+                try {
+                  await startCheckout(pendingCheckoutTarget);
+                } catch (error) {
+                  setRegistrationError(error instanceof Error ? error.message : 'Unable to start checkout.');
+                } finally {
+                  setActionLoading(false);
+                }
+              }}
+              loading={actionLoading}
+            >
+              Continue to payment
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       <BillingAddressModal

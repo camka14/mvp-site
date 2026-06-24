@@ -137,6 +137,7 @@ export default function PublicProductGrid({
   const [authVerificationMessage, setAuthVerificationMessage] = useState('');
   const [authVerificationMessageType, setAuthVerificationMessageType] = useState<'info' | 'success'>('info');
   const [authResendingVerification, setAuthResendingVerification] = useState(false);
+  const [discountCodesByProductId, setDiscountCodesByProductId] = useState<Record<string, string>>({});
 
   const today = useMemo(() => new Date(), []);
   const maxAuthDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -167,6 +168,7 @@ export default function PublicProductGrid({
     product: PublicOrganizationProductCard,
     purchaser?: UserData | null,
     billingAddress?: BillingAddress,
+    discountCode?: string | null,
   ) => {
     const resolvedUser = purchaser ?? user;
     if (!resolvedUser) {
@@ -183,10 +185,12 @@ export default function PublicProductGrid({
             buildCheckoutProduct(product, organization.id),
             { $id: organization.id, name: organization.name },
             billingAddress,
+            (discountCode ?? discountCodesByProductId[product.id] ?? '').trim() || null,
           )
         : await productService.createSubscriptionCheckout({
             productId: product.id,
             billingAddress,
+            discountCode: (discountCode ?? discountCodesByProductId[product.id] ?? '').trim() || null,
           });
       clearPendingCheckoutProductId();
       setPaymentData(intent);
@@ -211,7 +215,7 @@ export default function PublicProductGrid({
     } finally {
       setStartingProductId(null);
     }
-  }, [openAuthModal, organization.id, organization.name, user]);
+  }, [discountCodesByProductId, openAuthModal, organization.id, organization.name, user]);
 
   const handleAuthModalInputChange = useCallback((field: keyof AuthModalForm, value: string) => {
     setAuthModalForm((current) => ({ ...current, [field]: value }));
@@ -269,7 +273,7 @@ export default function PublicProductGrid({
       setAuthUser(authResult.user);
       setUser(authResult.profile);
       setShowAuthModal(false);
-      await startProductCheckout(activeProduct, authResult.profile);
+      await startProductCheckout(activeProduct, authResult.profile, undefined, discountCodesByProductId[activeProduct.id]);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'EMAIL_NOT_VERIFIED') {
         const pendingEmail = error.email || authModalForm.email.trim().toLowerCase();
@@ -283,7 +287,7 @@ export default function PublicProductGrid({
     } finally {
       setAuthModalLoading(false);
     }
-  }, [activeProduct, authModalForm, authModalMode, resetAuthModalFeedback, setAuthUser, setUser, startProductCheckout]);
+  }, [activeProduct, authModalForm, authModalMode, discountCodesByProductId, resetAuthModalFeedback, setAuthUser, setUser, startProductCheckout]);
 
   useEffect(() => {
     if (authLoading || !user) {
@@ -318,6 +322,20 @@ export default function PublicProductGrid({
                 <h3 className={styles.itemTitle}>{product.name}</h3>
                 {product.description ? <p className={styles.itemMeta}>{product.description}</p> : null}
                 <p className={styles.itemMeta}>{getProductPriceLabel(product)}</p>
+                <TextInput
+                  label="Discount code"
+                  placeholder="Enter code"
+                  size="xs"
+                  value={discountCodesByProductId[product.id] ?? ''}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDiscountCodesByProductId((current) => ({
+                      ...current,
+                      [product.id]: value,
+                    }));
+                  }}
+                  disabled={authLoading || isStarting}
+                />
                 <button
                   type="button"
                   className={styles.itemButton}
@@ -449,7 +467,12 @@ export default function PublicProductGrid({
         onClose={() => setShowBillingAddressModal(false)}
         onSaved={async (billingAddress) => {
           if (activeProduct) {
-            await startProductCheckout(activeProduct, user, billingAddress);
+            await startProductCheckout(
+              activeProduct,
+              user,
+              billingAddress,
+              discountCodesByProductId[activeProduct.id],
+            );
           }
         }}
         title="Billing address required"

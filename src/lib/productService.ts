@@ -45,6 +45,7 @@ type CreateSubscriptionInput = {
 type CreateSubscriptionCheckoutInput = {
   productId: string;
   billingAddress?: BillingAddress;
+  discountCode?: string | null;
 };
 
 type UpdateProductInput = {
@@ -183,9 +184,13 @@ class ProductService {
 
   async createSubscriptionCheckout(input: CreateSubscriptionCheckoutInput): Promise<PaymentIntent> {
     try {
+      const discountCode = typeof input.discountCode === 'string' ? input.discountCode.trim() : '';
       const result = await apiRequest<PaymentIntent & { error?: string }>(`/api/products/${input.productId}/subscriptions`, {
         method: 'POST',
-        body: input.billingAddress ? { billingAddress: input.billingAddress } : {},
+        body: {
+          ...(input.billingAddress ? { billingAddress: input.billingAddress } : {}),
+          ...(discountCode ? { discountCode } : {}),
+        },
       });
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);

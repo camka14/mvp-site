@@ -90,6 +90,9 @@ const normalizeDiscountPurchaseType = (purchaseType: string | null): DiscountPur
   if (purchaseType === 'event' || purchaseType === 'product' || purchaseType === 'team_registration') {
     return purchaseType;
   }
+  if (purchaseType === 'product_subscription') {
+    return 'product';
+  }
   return null;
 };
 

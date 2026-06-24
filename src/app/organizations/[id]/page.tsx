@@ -70,6 +70,7 @@ import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
 import OrganizationPublicSettingsPanel from './OrganizationPublicSettingsPanel';
 import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
 import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
+import DiscountManager from '@/components/discounts/DiscountManager';
 
 export default function OrganizationDetailPage() {
   return (
@@ -797,6 +798,7 @@ function OrganizationDetailContent() {
   const canManageStaffCompensation = canManageStaff && viewerHasPermission(ORG_PERMISSIONS.BILLING_MANAGE);
   const canManageFinance = viewerHasPermission(ORG_PERMISSIONS.BILLING_MANAGE)
     || viewerHasPermission(ORG_PERMISSIONS.PAYMENTS_MANAGE);
+  const canManageDiscounts = canManageEvents || canManageProducts || canManageTeams || canManageFinance;
   const canManageTemplates = viewerHasPermission(ORG_PERMISSIONS.TEMPLATES_MANAGE);
   const canManageRefunds = viewerHasPermission(ORG_PERMISSIONS.REFUNDS_MANAGE);
   const canManagePublicPage = viewerHasPermission(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
@@ -870,6 +872,7 @@ function OrganizationDetailContent() {
       canManageTeams,
       canManageFields,
       canManageProducts,
+      canManageDiscounts,
       hasTeams: hasVisibleTeams,
       hasRentals: hasVisibleRentals,
       hasResources: organizationFieldCount > 0,
@@ -882,6 +885,7 @@ function OrganizationDetailContent() {
       organizationFieldCount,
       canManageFields,
       canManageProducts,
+      canManageDiscounts,
       canManagePublicPage,
       canManageRefunds,
       canManageFinance,
@@ -1079,6 +1083,8 @@ function OrganizationDetailContent() {
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [purchaseProduct, setPurchaseProduct] = useState<Product | null>(null);
   const [purchasePaymentData, setPurchasePaymentData] = useState<PaymentIntent | null>(null);
+  const [purchaseDiscountCode, setPurchaseDiscountCode] = useState('');
+  const [productDiscountCodes, setProductDiscountCodes] = useState<Record<string, string>>({});
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [startingProductCheckoutId, setStartingProductCheckoutId] = useState<string | null>(null);
@@ -2445,18 +2451,21 @@ function OrganizationDetailContent() {
   }, [canManageProducts, closeProductModal, org, refreshOrganizationProducts, selectedProduct]);
 
   const startProductCheckout = useCallback(
-    async (product: Product, billingAddress?: BillingAddress) => {
+    async (product: Product, billingAddress?: BillingAddress, discountCode?: string | null) => {
       if (!org || !user) {
         throw new Error('You must be signed in to purchase.');
       }
       try {
         setPurchaseProduct(product);
         setPurchasePaymentData(null);
+        const resolvedDiscountCode = (discountCode ?? productDiscountCodes[product.$id] ?? '').trim();
+        setPurchaseDiscountCode(resolvedDiscountCode);
         const intent = isSinglePurchasePeriod(product.period)
-          ? await paymentService.createProductPaymentIntent(user, product, org, billingAddress)
+          ? await paymentService.createProductPaymentIntent(user, product, org, billingAddress, resolvedDiscountCode || null)
           : await productService.createSubscriptionCheckout({
               productId: product.$id,
               billingAddress,
+              discountCode: resolvedDiscountCode || null,
             });
         setPurchasePaymentData(intent);
         setShowPurchaseModal(true);
@@ -2475,7 +2484,7 @@ function OrganizationDetailContent() {
         throw error;
       }
     },
-    [org, user],
+    [org, productDiscountCodes, user],
   );
 
   const handlePurchaseProduct = useCallback(
@@ -4079,6 +4088,14 @@ function OrganizationDetailContent() {
               />
             )}
 
+            {(isOwner || canManageDiscounts) && activeTab === 'discounts' && org && (
+              <DiscountManager
+                ownerType="ORGANIZATION"
+                ownerId={org.$id}
+                title={`${org.name} discounts`}
+              />
+            )}
+
             {(isOwner || canManageFinance) && activeTab === 'finance' && org && (
               <OrganizationFinancePanel
                 organizationId={org.$id}
@@ -4204,6 +4221,24 @@ function OrganizationDetailContent() {
                           </div>
                         </Group>
                         <Text fw={700} mb="xs">{formatProductPriceLabel(product)}</Text>
+                        {isSinglePurchasePeriod(product.period) ? (
+                          <TextInput
+                            label="Discount code"
+                            placeholder="Enter code"
+                            size="xs"
+                            mb="xs"
+                            value={productDiscountCodes[product.$id] ?? ''}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              setProductDiscountCodes((current) => ({
+                                ...current,
+                                [product.$id]: value,
+                              }));
+                            }}
+                            disabled={startingProductCheckoutId === product.$id}
+                            onClick={(event) => event.stopPropagation()}
+                          />
+                        ) : null}
                         {product.isActive === false && (
                           <Text size="xs" c="red" mb="xs">Inactive</Text>
                         )}
@@ -4665,7 +4700,7 @@ function OrganizationDetailContent() {
             setShowBillingAddressModal(false);
             return;
           }
-          await startProductCheckout(purchaseProduct, billingAddress);
+          await startProductCheckout(purchaseProduct, billingAddress, purchaseDiscountCode);
         }}
         title="Billing address required"
         description="Enter your billing address so tax can be calculated before checkout."

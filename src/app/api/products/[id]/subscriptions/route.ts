@@ -27,11 +27,17 @@ import {
   getCheckoutTaxCalculationIdFromMetadata,
   getCheckoutTaxCategoryFromMetadata,
 } from '@/lib/stripeCheckoutReuse';
+import {
+  DiscountCodeError,
+  resolveDiscountApplication,
+  type ResolvedDiscountApplication,
+} from '@/server/discounts/discountCodeResolver';
 
 export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
   billingAddress: z.unknown().optional(),
+  discountCode: z.string().optional(),
 }).strict();
 
 const normalizeRecurringInterval = (period: string): 'week' | 'month' | 'year' => {
@@ -51,6 +57,20 @@ const toFeeBreakdown = (taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>)
   feePercentage: taxQuote.feePercentage,
   purchaseType: taxQuote.purchaseType,
 });
+
+const appendMetadata = (
+  metadata: Stripe.MetadataParam,
+  key: string,
+  value: string | number | null | undefined,
+): void => {
+  if (value === null || value === undefined) {
+    return;
+  }
+  const serialized = String(value).trim();
+  if (serialized.length > 0) {
+    metadata[key] = serialized;
+  }
+};
 
 const getInvoicePaymentIntentId = (
   invoice: Pick<Stripe.Invoice, 'payments'> | null | undefined,
@@ -126,13 +146,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     productTaxCategory: normalizedProductTaxCategory,
   });
   const validatedBillingAddress = validateUsBillingAddress(billingAddress);
+  let subtotalCents = product.priceCents;
+  let discountApplication: ResolvedDiscountApplication | null = null;
+  const requestedDiscountCode = typeof parsed.data.discountCode === 'string'
+    ? parsed.data.discountCode.trim()
+    : '';
+  if (requestedDiscountCode) {
+    try {
+      const discountResult = await resolveDiscountApplication({
+        code: requestedDiscountCode,
+        purchaseType: 'product',
+        targetId: product.id,
+        originalAmountCents: product.priceCents,
+        buyerUserId: session.userId,
+      });
+      subtotalCents = discountResult.amountCents;
+      discountApplication = discountResult.discount;
+    } catch (error) {
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+  if (subtotalCents <= 0) {
+    return NextResponse.json({ error: 'Discounted subscription checkout without payment is not enabled yet.' }, { status: 409 });
+  }
+
   const taxQuote = await calculateTaxQuote({
     stripe,
     userId: session.userId,
     organizationId: product.organizationId,
     email: billingEmail,
     billingAddress: validatedBillingAddress,
-    subtotalCents: product.priceCents,
+    subtotalCents,
     purchaseType: 'product',
     taxCategory,
     lineItemReference: `subscription:${product.id}`,
@@ -187,17 +234,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? await ensurePlatformFeeProduct({ stripe })
     : null;
 
-  const reusableSubscription = await findReusableIncompleteProductSubscriptionCheckout({
-    stripe,
-    customerId: taxQuote.customerId,
-    productId: product.id,
-    userId: session.userId,
-    organizationId: product.organizationId,
-    totalChargeCents: taxQuote.totalChargeCents,
-    stripePriceId: stripeCatalog.stripePriceId,
-    billingAddressFingerprint,
-    connectedAccountId,
-  });
+  const reusableSubscription = discountApplication
+    ? null
+    : await findReusableIncompleteProductSubscriptionCheckout({
+        stripe,
+        customerId: taxQuote.customerId,
+        productId: product.id,
+        userId: session.userId,
+        organizationId: product.organizationId,
+        totalChargeCents: taxQuote.totalChargeCents,
+        stripePriceId: stripeCatalog.stripePriceId,
+        billingAddressFingerprint,
+        connectedAccountId,
+      });
   if (
     reusableSubscription?.latest_invoice
     && typeof reusableSubscription.latest_invoice !== 'string'
@@ -223,6 +272,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }, { status: 200 });
   }
 
+  const metadata: Stripe.MetadataParam = {
+    product_id: product.id,
+    user_id: session.userId,
+    organization_id: product.organizationId ?? '',
+    amount_cents: String(taxQuote.subtotalCents),
+    total_charge_cents: String(taxQuote.totalChargeCents),
+    processing_fee_cents: String(taxQuote.processingFeeCents),
+    stripe_fee_cents: String(taxQuote.stripeFeeCents),
+    stripe_processing_fee_cents: String(taxQuote.stripeProcessingFeeCents),
+    stripe_tax_service_fee_cents: String(taxQuote.stripeTaxServiceFeeCents),
+    tax_cents: String(taxQuote.taxAmountCents),
+    fee_percentage: taxQuote.feePercentage.toFixed(4),
+    tax_calculation_id: taxQuote.calculationId,
+    tax_category: taxCategory,
+    billing_address_fingerprint: billingAddressFingerprint ?? '',
+    transfer_destination_account_id: connectedAccountId ?? '',
+    transfer_amount_cents: String(taxQuote.subtotalCents),
+    purchase_type: 'product_subscription',
+  };
+  appendMetadata(metadata, 'discount_code', discountApplication?.code);
+  appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
+  appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
+  appendMetadata(metadata, 'original_amount_cents', discountApplication?.originalAmountCents);
+  appendMetadata(metadata, 'discounted_amount_cents', discountApplication?.discountedAmountCents);
+
   const subscription = await stripe.subscriptions.create({
     customer: taxQuote.customerId,
     automatic_tax: { enabled: true },
@@ -233,12 +307,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
     items: [
       {
-        price: stripeCatalog.stripePriceId,
         quantity: 1,
         metadata: {
           line_type: 'product_base',
           local_product_id: product.id,
         },
+        ...(discountApplication
+          ? {
+              price_data: {
+                currency: 'usd',
+                unit_amount: taxQuote.subtotalCents,
+                product: stripeCatalog.stripeProductId,
+                recurring: { interval: recurringInterval },
+                tax_behavior: 'exclusive' as const,
+              },
+            }
+          : { price: stripeCatalog.stripePriceId }),
       },
       ...(recurringFeeAmountCents > 0
         ? [
@@ -259,25 +343,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ]
         : []),
     ],
-    metadata: {
-      product_id: product.id,
-      user_id: session.userId,
-      organization_id: product.organizationId ?? '',
-      amount_cents: String(taxQuote.subtotalCents),
-      total_charge_cents: String(taxQuote.totalChargeCents),
-      processing_fee_cents: String(taxQuote.processingFeeCents),
-      stripe_fee_cents: String(taxQuote.stripeFeeCents),
-      stripe_processing_fee_cents: String(taxQuote.stripeProcessingFeeCents),
-      stripe_tax_service_fee_cents: String(taxQuote.stripeTaxServiceFeeCents),
-      tax_cents: String(taxQuote.taxAmountCents),
-      fee_percentage: taxQuote.feePercentage.toFixed(4),
-      tax_calculation_id: taxQuote.calculationId,
-      tax_category: taxCategory,
-      billing_address_fingerprint: billingAddressFingerprint ?? '',
-      transfer_destination_account_id: connectedAccountId ?? '',
-      transfer_amount_cents: String(taxQuote.subtotalCents),
-      purchase_type: 'product_subscription',
-    },
+    metadata,
     ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
     expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payments.data.payment.payment_intent', 'items.data.price'],
   });
