@@ -263,13 +263,14 @@ function MatchCard({
     const effectiveMatchHighlight = matchHighlight ?? (highlightCurrentUser ? 'participant' : undefined);
     const borderClass = hasConflict
         ? 'border-red-400 hover:border-red-500'
-        : effectiveMatchHighlight === 'official'
-            ? 'border-black hover:border-gray-800 dark:border-white dark:hover:border-gray-200'
-            : effectiveMatchHighlight === 'participant'
+        : effectiveMatchHighlight === 'participant'
             ? 'border-green-300 hover:border-green-400'
             : match.losersBracket
                 ? 'border-orange-200 hover:border-orange-300'
                 : 'border-blue-200 hover:border-blue-300';
+    const highlightClass = effectiveMatchHighlight
+        ? `match-card--highlight-${effectiveMatchHighlight}`
+        : '';
     const showFooter = showDivisionBadge || canManage;
     const divisionBadgeClass = highlightDivisionBadge
         ? 'bg-green-50 text-green-700 border border-green-200'
@@ -426,7 +427,7 @@ function MatchCard({
 
     return (
         <div
-            className={`match-card ${isCompactHorizontal ? 'match-card--adaptive' : ''} relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${isCompleted ? 'opacity-75' : ''} ${className} ${borderClass}`}
+            className={`match-card ${isCompactHorizontal ? 'match-card--adaptive' : ''} relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${isCompleted ? 'opacity-75' : ''} ${className} ${borderClass} ${highlightClass}`}
             onClick={clickable ? onClick : undefined}
         >
             {!hideTimeBadge && (

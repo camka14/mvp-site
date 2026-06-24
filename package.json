@@ -11,6 +11,7 @@
     "build": "next build",
     "migrate:deploy": "prisma migrate deploy",
     "start": "node server.mjs",
+    "start:tunnel": "node scripts/dev-with-ngrok.mjs --start",
     "lint": "eslint",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "test": "jest",

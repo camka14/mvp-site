@@ -101,6 +101,7 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 - `npm run dev:plain` — start plain Next.js dev server without ngrok wrapper
 - `npm run build` — production build
 - `npm start` — run built app
+- `npm run start:tunnel` — run built app with ngrok and Stripe webhook forwarding
 - `npm run test` — Jest suite
 - `npm run lint` — Next.js lint
 
@@ -108,9 +109,11 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 - `npm run gmail:oauth:token -- --code "<code>"` - exchange a Google OAuth callback code for `GMAIL_OAUTH_REFRESH_TOKEN`
 
 ## Local Stripe Webhooks
-- Preferred local run: `npm run dev`
+- Preferred local dev run: `npm run dev`
   - This wrapper starts `stripe listen` automatically and forwards billing and Connect events to `http://localhost:3000/api/billing/webhook`, including `account.updated` for local Stripe Connect onboarding sync.
   - It also injects the session webhook secret into `STRIPE_WEBHOOK_SECRET` for that dev process.
+- Production-style local run: `npm run build && npm run start:tunnel`
+  - This uses the same ngrok and Stripe listener wrapper, then starts the built app like `npm start`.
 - Manual listener (if using `npm run dev:plain`):
 ```bash
 stripe listen \

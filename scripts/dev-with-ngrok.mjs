@@ -578,7 +578,11 @@ const startNgrok = async (port) => {
 const run = async () => {
   const args = process.argv.slice(2);
   const port = parsePort(args);
-  const nextDevArgs = args.filter((arg) => arg !== '--webpack' && arg !== '--turbo' && arg !== '--turbopack');
+  const startMode = args.includes('--start');
+  const passthroughArgs = args.filter((arg) => arg !== '--start');
+  const serverArgs = startMode
+    ? passthroughArgs
+    : passthroughArgs.filter((arg) => arg !== '--webpack' && arg !== '--turbo' && arg !== '--turbopack');
   const enableNgrok = isFlagEnabled(process.env.MVP_DEV_ENABLE_NGROK, true);
   const enableStripeListen = isFlagEnabled(process.env.MVP_DEV_ENABLE_STRIPE_LISTEN, true);
   const requireNgrok = isFlagEnabled(process.env.MVP_DEV_REQUIRE_NGROK, false);
@@ -657,7 +661,8 @@ const run = async () => {
     }
   }
 
-  const nextProc = spawn(process.execPath, ['server.mjs', '--dev', ...nextDevArgs], {
+  const serverCommand = startMode ? ['server.mjs', ...serverArgs] : ['server.mjs', '--dev', ...serverArgs];
+  const nextProc = spawn(process.execPath, serverCommand, {
     stdio: 'inherit',
     env: nextEnv,
   });
@@ -706,6 +711,6 @@ const run = async () => {
 };
 
 run().catch((error) => {
-  console.error('[dev] failed to start development server:', error);
+  console.error('[dev] failed to start server:', error);
   process.exit(1);
 });
