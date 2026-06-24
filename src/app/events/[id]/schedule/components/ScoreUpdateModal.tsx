@@ -609,7 +609,9 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
   const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
   const fallbackSegmentCount = Math.max(configuredSegmentCount, existingSegmentCount(match), 1);
   const segmentCount = scoringModel === 'SETS'
-    ? Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1)
+    ? match.matchRulesSnapshot && sourceSegmentCount
+      ? Math.max(sourceSegmentCount, existingSegmentCount(match), 1)
+      : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1)
     : scoringModel === 'POINTS_ONLY'
       ? 1
       : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1);
@@ -623,6 +625,7 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
     scoringModel,
     segmentCount,
     segmentLabel: source.segmentLabel || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
+    setPointTargets: pointsList(source.setPointTargets) ?? [],
     supportsDraw: source.supportsDraw === true && !supportsShootout,
     supportsOvertime: source.supportsOvertime === true,
     supportsShootout,
@@ -1078,12 +1081,15 @@ export default function ScoreUpdateModal({
     () => resolveMatchDivision(tournament, match, playoff),
     [match, playoff, tournament],
   );
-  const pointTargets = playoff
-    ? divisionPlayoffPointsToVictory(matchDivision, Boolean(match.losersBracket))
+  const matchPointTargets = pointsList((match.matchRulesSnapshot as any)?.setPointTargets)
+    ?? pointsList((match.resolvedMatchRules as any)?.setPointTargets);
+  const pointTargets = matchPointTargets
+    ?? (playoff
+      ? divisionPlayoffPointsToVictory(matchDivision, Boolean(match.losersBracket))
       ?? (match.losersBracket ? tournament.loserBracketPointsToVictory : tournament.winnerBracketPointsToVictory)
-    : divisionLeaguePointsToVictory(matchDivision)
+      : divisionLeaguePointsToVictory(matchDivision)
       ?? tournament.pointsToVictory
-      ?? tournament.leagueConfig?.pointsToVictory;
+      ?? tournament.leagueConfig?.pointsToVictory);
   const fallbackSegmentCount = useMemo(() => {
     if (isTimedMatch) return 1;
     const fromTargets = Array.isArray(pointTargets) && pointTargets.length ? pointTargets.length : 1;

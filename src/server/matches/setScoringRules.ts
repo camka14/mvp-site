@@ -87,6 +87,10 @@ const resolveMatchDivision = (event: any, match: any, playoff: boolean): any | n
 };
 
 const resolvePointTargets = (event: any, match: any): number[] | null => {
+  const matchTargets = pointsList(match?.matchRulesSnapshot?.setPointTargets)
+    ?? pointsList(match?.resolvedMatchRules?.setPointTargets);
+  if (matchTargets) return matchTargets;
+
   const playoff = isPlayoffMatch(event, match);
   const division = resolveMatchDivision(event, match, playoff);
   if (playoff) {

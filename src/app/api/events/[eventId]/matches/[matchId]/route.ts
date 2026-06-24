@@ -32,6 +32,11 @@ import {
   shouldFreezeMatchRulesSnapshot,
 } from '@/server/matches/matchOperations';
 import {
+  buildMatchRulesSnapshot,
+  resolveMatchSetPointTargets,
+  type MatchPolicyOverrideInput,
+} from '@/server/matches/matchPolicy';
+import {
   assertLegacySetScoreUpdateAllowed,
   assertSetSegmentOperationsAllowed,
 } from '@/server/matches/setScoringRules';
@@ -98,6 +103,15 @@ const officialCheckInSchema = z.object({
   userId: z.string().optional(),
   checkedIn: z.boolean(),
 }).optional();
+const matchPolicySchema = z.object({
+  scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).nullable().optional(),
+  segmentCount: z.number().int().positive().nullable().optional(),
+  setPointTargets: z.array(z.number().int().positive()).nullable().optional(),
+  matchDurationMinutes: z.number().int().positive().nullable().optional(),
+  setDurationMinutes: z.number().int().positive().nullable().optional(),
+  timekeeping: z.record(z.string(), z.unknown()).nullable().optional(),
+}).optional();
+const matchRulesSnapshotSchema = z.record(z.string(), z.unknown()).nullable().optional();
 
 const updateSchema = z.object({
   locked: z.boolean().optional(),
@@ -123,8 +137,12 @@ const updateSchema = z.object({
   matchId: z.number().int().nullable().optional(),
   finalize: z.boolean().optional(),
   time: z.string().optional(),
+  matchPolicy: matchPolicySchema,
+  matchRulesSnapshot: matchRulesSnapshotSchema,
   ...clientOperationFields,
 });
+
+const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
 
 const buildContext = (): SchedulerContext => {
   const debug = process.env.SCHEDULER_DEBUG === 'true';
@@ -1213,6 +1231,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Unsupported event type', { status: 400 });
       }
 
+      const hasMatchPolicyUpdate = hasOwn(parsed.data, 'matchPolicy') || hasOwn(parsed.data, 'matchRulesSnapshot');
+      if (hasMatchPolicyUpdate && !isHostOrAdmin) {
+        throw new Response('Only hosts can update match policy.', { status: 403 });
+      }
+
       let updates: MatchUpdate & { finalize?: boolean; time?: string };
       if (isHostOrAdmin) {
         updates = { ...parsed.data };
@@ -1274,6 +1297,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           positionCountsById,
           eventOfficialsById,
         });
+      }
+
+      if (hasMatchPolicyUpdate && isHostOrAdmin) {
+        if (parsed.data.matchRulesSnapshot === null && !parsed.data.matchPolicy) {
+          targetMatch.matchRulesSnapshot = null;
+          targetMatch.resolvedMatchRules = (event as any).resolvedMatchRules ?? targetMatch.resolvedMatchRules ?? null;
+        } else {
+          const snapshot = buildMatchRulesSnapshot({
+            baseRules: (event as any).resolvedMatchRules ?? targetMatch.resolvedMatchRules ?? null,
+            existingSnapshot: targetMatch.matchRulesSnapshot,
+            incomingSnapshot: parsed.data.matchRulesSnapshot ?? null,
+            policy: parsed.data.matchPolicy as MatchPolicyOverrideInput | null,
+            fallbackSetPointTargets: resolveMatchSetPointTargets(event, targetMatch),
+            existingSegmentCount: Math.max(
+              Array.isArray(targetMatch.segments) ? targetMatch.segments.length : 0,
+              Array.isArray(targetMatch.team1Points) ? targetMatch.team1Points.length : 0,
+              Array.isArray(targetMatch.team2Points) ? targetMatch.team2Points.length : 0,
+              Array.isArray(targetMatch.setResults) ? targetMatch.setResults.length : 0,
+            ),
+          });
+          targetMatch.matchRulesSnapshot = snapshot;
+          targetMatch.resolvedMatchRules = snapshot;
+        }
       }
 
       const sanitizedIncidentOperations = sanitizeIncidentOperationsOrThrow({

@@ -161,6 +161,10 @@ export const buildTournamentConfig = (source?: Partial<TournamentConfig>): Tourn
         while (next.length < len) next.push(21);
         return next;
     };
+    const normalizePositiveCount = (value: unknown): number => {
+        const parsed = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+    };
     const normalizeOptionalDuration = (value: unknown): number | undefined => {
         if (value === null || value === undefined || value === '') {
             return undefined;
@@ -173,8 +177,8 @@ export const buildTournamentConfig = (source?: Partial<TournamentConfig>): Tourn
     };
 
     const doubleElimination = Boolean(source?.doubleElimination);
-    const winnerSetCount = source?.winnerSetCount ?? 1;
-    const loserSetCount = doubleElimination ? source?.loserSetCount ?? 1 : source?.loserSetCount ?? 1;
+    const winnerSetCount = normalizePositiveCount(source?.winnerSetCount);
+    const loserSetCount = normalizePositiveCount(source?.loserSetCount);
 
     return {
         doubleElimination,

@@ -22,6 +22,11 @@ import {
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
+import {
+  buildMatchRulesSnapshot,
+  resolveMatchSetPointTargets,
+  type MatchPolicyOverrideInput,
+} from '@/server/matches/matchPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +49,15 @@ const bulkMatchSegmentSchema = z.object({
   statusReason: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 }).passthrough();
+const matchPolicySchema = z.object({
+  scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).nullable().optional(),
+  segmentCount: z.number().int().positive().nullable().optional(),
+  setPointTargets: z.array(z.number().int().positive()).nullable().optional(),
+  matchDurationMinutes: z.number().int().positive().nullable().optional(),
+  setDurationMinutes: z.number().int().positive().nullable().optional(),
+  timekeeping: z.record(z.string(), z.unknown()).nullable().optional(),
+}).optional();
+const matchRulesSnapshotSchema = z.record(z.string(), z.unknown()).nullable().optional();
 
 const bulkMatchUpdateSchema = z.object({
   id: z.string().optional(),
@@ -77,6 +91,8 @@ const bulkMatchUpdateSchema = z.object({
   end: z.string().nullable().optional(),
   division: z.string().nullable().optional(),
   losersBracket: z.boolean().optional(),
+  matchPolicy: matchPolicySchema,
+  matchRulesSnapshot: matchRulesSnapshotSchema,
 }).passthrough();
 
 const bulkMatchCreateSchema = z.object({
@@ -112,6 +128,8 @@ const bulkMatchCreateSchema = z.object({
   start: z.string().nullable().optional(),
   end: z.string().nullable().optional(),
   division: z.string().nullable().optional(),
+  matchPolicy: matchPolicySchema,
+  matchRulesSnapshot: matchRulesSnapshotSchema,
 }).passthrough();
 
 const bulkUpdateSchema = z.object({
@@ -188,6 +206,40 @@ const applyBulkStatusSnapshot = (
   if (hasOwn(entry, 'segments')) {
     target.segments = normalizeBulkMatchSegments(entry.segments, eventId, matchId) ?? [];
   }
+};
+
+const applyBulkMatchPolicySnapshot = (
+  event: any,
+  target: SchedulerMatch,
+  entry: BulkMatchUpdateInput | BulkMatchCreateInput,
+) => {
+  const hasPolicy = hasOwn(entry, 'matchPolicy');
+  const hasSnapshot = hasOwn(entry, 'matchRulesSnapshot');
+  if (!hasPolicy && !hasSnapshot) {
+    return;
+  }
+
+  if (entry.matchRulesSnapshot === null && !entry.matchPolicy) {
+    target.matchRulesSnapshot = null;
+    target.resolvedMatchRules = event?.resolvedMatchRules ?? target.resolvedMatchRules ?? null;
+    return;
+  }
+
+  const snapshot = buildMatchRulesSnapshot({
+    baseRules: event?.resolvedMatchRules ?? target.resolvedMatchRules ?? null,
+    existingSnapshot: target.matchRulesSnapshot,
+    incomingSnapshot: entry.matchRulesSnapshot ?? null,
+    policy: entry.matchPolicy as MatchPolicyOverrideInput | null,
+    fallbackSetPointTargets: resolveMatchSetPointTargets(event, target),
+    existingSegmentCount: Math.max(
+      Array.isArray(target.segments) ? target.segments.length : 0,
+      Array.isArray(target.team1Points) ? target.team1Points.length : 0,
+      Array.isArray(target.team2Points) ? target.team2Points.length : 0,
+      Array.isArray(target.setResults) ? target.setResults.length : 0,
+    ),
+  });
+  target.matchRulesSnapshot = snapshot;
+  target.resolvedMatchRules = snapshot;
 };
 
 const matchStartTime = (match: SchedulerMatch): number => {
@@ -665,6 +717,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           (createdMatch as unknown as { end: Date | null }).end = null;
         }
         applyBulkStatusSnapshot(createdMatch, entry, eventId, persistedMatchId, `create ${entry.clientId}`);
+        applyBulkMatchPolicySnapshot(event, createdMatch, entry);
 
         event.matches[persistedMatchId] = createdMatch;
         matchByCanonicalId.set(canonicalNodeId, createdMatch);
@@ -742,6 +795,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
 
         applyBulkStatusSnapshot(target, entry, eventId, matchId, `match ${matchId}`);
+        applyBulkMatchPolicySnapshot(event, target, entry);
 
         applyPersistentAutoLock(target, {
           now: lockEvaluationTime,

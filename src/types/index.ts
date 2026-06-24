@@ -187,6 +187,7 @@ export interface MatchRulesConfig {
   scoringModel?: MatchScoringModel;
   segmentCount?: number;
   segmentLabel?: string;
+  setPointTargets?: number[];
   supportsDraw?: boolean;
   supportsOvertime?: boolean;
   supportsShootout?: boolean;
@@ -204,6 +205,7 @@ export interface ResolvedMatchRules {
   scoringModel: MatchScoringModel;
   segmentCount: number;
   segmentLabel: string;
+  setPointTargets?: number[];
   supportsDraw: boolean;
   supportsOvertime: boolean;
   supportsShootout: boolean;

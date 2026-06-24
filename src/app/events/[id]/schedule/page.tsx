@@ -3976,7 +3976,7 @@ function EventScheduleContent() {
       return candidate;
     };
 
-    return {
+    const payload: Record<string, unknown> = {
       id: match.$id,
       matchId: match.matchId ?? null,
       locked: Boolean(match.locked),
@@ -4008,6 +4008,10 @@ function EventScheduleContent() {
       division: normalizeIdToken(getDivisionId(match.division) ?? null),
       losersBracket: Boolean(match.losersBracket),
     };
+    if (match.matchRulesSnapshot) {
+      payload.matchRulesSnapshot = match.matchRulesSnapshot;
+    }
+    return payload;
   }, []);
 
   const schedulePreview = useCallback(

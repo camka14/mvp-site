@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
-import { ActionIcon, Alert, Badge, Button, Checkbox, Group, Modal, Paper, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
+import { ActionIcon, Alert, Badge, Button, Checkbox, Group, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { Trash2, X } from 'lucide-react';
 
@@ -84,6 +84,36 @@ const pointsList = (value: unknown): number[] | null => {
   return normalized.length ? normalized : null;
 };
 
+const targetsToInput = (targets: number[] | null | undefined): string => (
+  Array.isArray(targets) && targets.length > 0 ? targets.join(', ') : ''
+);
+
+const parseTargetsInput = (value: string): number[] => (
+  value
+    .split(',')
+    .map((entry) => positiveIntOrNull(entry.trim()))
+    .filter((entry): entry is number => entry !== null)
+);
+
+const resizeTargets = (targets: number[], segmentCount: number, fallbackTarget = 21): number[] => {
+  const count = Math.max(1, segmentCount);
+  const next = targets.slice(0, count);
+  const fill = next[next.length - 1] ?? fallbackTarget;
+  while (next.length < count) {
+    next.push(fill);
+  }
+  return next;
+};
+
+const resolveEditablePolicySource = (
+  match: Match,
+  event: Event | null | undefined,
+): Partial<ResolvedMatchRules> => ({
+  ...((event?.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>),
+  ...((match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>),
+  ...((match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>),
+});
+
 const statusExistingSegmentCount = (match: Match): number => Math.max(
   Array.isArray(match.segments) ? match.segments.length : 0,
   Array.isArray(match.team1Points) ? match.team1Points.length : 0,
@@ -108,7 +138,9 @@ const resolveStatusRules = (match: Match, event: Event | null | undefined): Matc
     : 1;
   const segmentCount = scoringModel === 'POINTS_ONLY'
     ? 1
-    : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
+    : match.matchRulesSnapshot && sourceSegmentCount
+      ? Math.max(sourceSegmentCount, statusExistingSegmentCount(match), 1)
+      : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
   const segmentLabel = source.segmentLabel
     || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Match' : 'Half');
   return { scoringModel, segmentCount, segmentLabel };
@@ -255,6 +287,10 @@ const resolveCompletedMatchWinner = (
 };
 
 const resolveStatusPointTargets = (match: Match, event: Event | null | undefined): number[] | null => {
+  const matchTargets = pointsList((match.matchRulesSnapshot as any)?.setPointTargets)
+    ?? pointsList((match.resolvedMatchRules as any)?.setPointTargets);
+  if (matchTargets) return matchTargets;
+
   const matchDivisionId = typeof match.division === 'string'
     ? normalizeOptionalId(match.division)
     : normalizeOptionalId((match.division as any)?.id) ?? normalizeOptionalId((match.division as any)?.$id);
@@ -483,6 +519,11 @@ export default function MatchEditModal({
   const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [losersBracket, setLosersBracket] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [policySetCount, setPolicySetCount] = useState<number | null>(null);
+  const [policyPointTargets, setPolicyPointTargets] = useState('');
+  const [policyMatchMinutes, setPolicyMatchMinutes] = useState<number | null>(null);
+  const [policySetMinutes, setPolicySetMinutes] = useState<number | null>(null);
+  const [policyTouched, setPolicyTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchStartedValue, setMatchStartedValue] = useState(false);
   const [statusSegmentsValue, setStatusSegmentsValue] = useState<MatchSegment[]>([]);
@@ -506,6 +547,11 @@ export default function MatchEditModal({
       setLoserNextMatchId(null);
       setLosersBracket(false);
       setLocked(false);
+      setPolicySetCount(null);
+      setPolicyPointTargets('');
+      setPolicyMatchMinutes(null);
+      setPolicySetMinutes(null);
+      setPolicyTouched(false);
       setError(null);
       setMatchStartedValue(false);
       setStatusSegmentsValue([]);
@@ -564,6 +610,23 @@ export default function MatchEditModal({
       ['IN_PROGRESS', 'COMPLETE'].includes(String(match.status ?? '').toUpperCase())
       || initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
     ));
+    const policySource = resolveEditablePolicySource(match, tournament);
+    const initialSetCount = positiveIntOrNull(policySource.segmentCount)
+      ?? initialStatusRules.segmentCount
+      ?? statusExistingSegmentCount(match)
+      ?? 1;
+    const initialTargets = pointsList((policySource as any).setPointTargets)
+      ?? resolveStatusPointTargets(match, tournament)
+      ?? [];
+    const initialSetMinutes = positiveIntOrNull(policySource.timekeeping?.segmentDurationMinutes)
+      ?? positiveIntOrNull((tournament as any)?.setDurationMinutes);
+    const initialMatchMinutes = positiveIntOrNull((tournament as any)?.matchDurationMinutes)
+      ?? (initialSetMinutes ? initialSetMinutes * Math.max(1, initialSetCount) : null);
+    setPolicySetCount(initialSetCount);
+    setPolicyPointTargets(targetsToInput(initialTargets));
+    setPolicySetMinutes(initialSetMinutes);
+    setPolicyMatchMinutes(initialMatchMinutes);
+    setPolicyTouched(false);
   }, [editableMatchId, eventOfficials, officialPositions, opened, tournament]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -1201,6 +1264,52 @@ export default function MatchEditModal({
       }
     }
 
+    const shouldSaveMatchPolicy = Boolean(match.matchRulesSnapshot) || policyTouched;
+    const policySource = resolveEditablePolicySource(match, tournament);
+    const policyScoringModel = policySource.scoringModel
+      ?? statusRules?.scoringModel
+      ?? ((tournament?.usesSets || tournament?.leagueConfig?.usesSets) ? 'SETS' : 'POINTS_ONLY');
+    const parsedPolicySetCount = Math.max(1, policySetCount ?? statusRules?.segmentCount ?? 1);
+    const parsedPolicyTargets = parseTargetsInput(policyPointTargets);
+    const fallbackTarget = parsedPolicyTargets[0]
+      ?? resolveStatusPointTargets(match, tournament)?.[0]
+      ?? 21;
+    const policySnapshot = shouldSaveMatchPolicy
+      ? ({
+          ...policySource,
+          scoringModel: policyScoringModel,
+          segmentCount: policyScoringModel === 'POINTS_ONLY' ? 1 : parsedPolicySetCount,
+          segmentLabel: policySource.segmentLabel
+            ?? (policyScoringModel === 'SETS' ? 'Set' : policyScoringModel === 'INNINGS' ? 'Inning' : policyScoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
+          setPointTargets: policyScoringModel === 'SETS'
+            ? resizeTargets(parsedPolicyTargets, parsedPolicySetCount, fallbackTarget)
+            : [],
+          supportsDraw: policySource.supportsDraw === true,
+          supportsOvertime: policySource.supportsOvertime === true,
+          supportsShootout: policySource.supportsShootout === true,
+          canUseOvertime: policySource.canUseOvertime === true || policySource.supportsOvertime === true,
+          canUseShootout: policySource.canUseShootout === true || policySource.supportsShootout === true,
+          officialRoles: Array.isArray(policySource.officialRoles) ? policySource.officialRoles : [],
+          supportedIncidentTypes: Array.isArray(policySource.supportedIncidentTypes) && policySource.supportedIncidentTypes.length
+            ? policySource.supportedIncidentTypes
+            : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+          incidentTypeDefinitions: Array.isArray(policySource.incidentTypeDefinitions) ? policySource.incidentTypeDefinitions : [],
+          autoCreatePointIncidentType: policySource.autoCreatePointIncidentType ?? 'POINT',
+          pointIncidentRequiresParticipant: policySource.pointIncidentRequiresParticipant === true,
+          timekeeping: {
+            timerMode: policySource.timekeeping?.timerMode ?? (policyScoringModel === 'PERIODS' ? 'COUNT_UP' : 'NONE'),
+            segmentDurationMinutes: policySetMinutes
+              ?? (policyMatchMinutes && parsedPolicySetCount > 0 ? Math.max(1, Math.round(policyMatchMinutes / parsedPolicySetCount)) : null)
+              ?? policySource.timekeeping?.segmentDurationMinutes
+              ?? null,
+            segmentDurationMinutesBySequence: policySource.timekeeping?.segmentDurationMinutesBySequence ?? [],
+            canUseAddedTime: policySource.timekeeping?.canUseAddedTime === true,
+            addedTimeEnabled: policySource.timekeeping?.addedTimeEnabled === true,
+            stopAtRegulationEnd: policySource.timekeeping?.stopAtRegulationEnd ?? true,
+          },
+        } satisfies ResolvedMatchRules)
+      : null;
+
     const updated: Match = {
       ...match,
       start: startValue ? formatLocalDateTime(startValue) : null,
@@ -1211,6 +1320,10 @@ export default function MatchEditModal({
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
       loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
+    if (policySnapshot) {
+      updated.matchRulesSnapshot = policySnapshot;
+      updated.resolvedMatchRules = policySnapshot;
+    }
     if (statusRules) {
       const statusSegmentsForSave = (
         matchStartedValue ? statusSegments : statusSegments.map(resetSegmentConfirmation)
@@ -1481,6 +1594,67 @@ export default function MatchEditModal({
                         size="sm"
                       />
                     </FieldRow>
+                  </Stack>
+                </SectionPanel>
+
+                <SectionPanel title="Match Rules">
+                  <Stack gap="sm">
+                    <FieldRow label="Set count">
+                      <NumberInput
+                        aria-label="Set count"
+                        value={policySetCount ?? ''}
+                        min={1}
+                        step={1}
+                        allowDecimal={false}
+                        onChange={(value) => {
+                          setPolicySetCount(typeof value === 'number' ? value : positiveIntOrNull(value));
+                          setPolicyTouched(true);
+                        }}
+                        size="sm"
+                      />
+                    </FieldRow>
+                    <FieldRow label="Score limits">
+                      <TextInput
+                        aria-label="Score limits"
+                        value={policyPointTargets}
+                        onChange={(event) => {
+                          setPolicyPointTargets(event.currentTarget.value);
+                          setPolicyTouched(true);
+                        }}
+                        placeholder="25, 25, 15"
+                        size="sm"
+                      />
+                    </FieldRow>
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                      <FieldRow label="Match minutes">
+                        <NumberInput
+                          aria-label="Match minutes"
+                          value={policyMatchMinutes ?? ''}
+                          min={1}
+                          step={1}
+                          allowDecimal={false}
+                          onChange={(value) => {
+                            setPolicyMatchMinutes(typeof value === 'number' ? value : positiveIntOrNull(value));
+                            setPolicyTouched(true);
+                          }}
+                          size="sm"
+                        />
+                      </FieldRow>
+                      <FieldRow label="Set minutes">
+                        <NumberInput
+                          aria-label="Set minutes"
+                          value={policySetMinutes ?? ''}
+                          min={1}
+                          step={1}
+                          allowDecimal={false}
+                          onChange={(value) => {
+                            setPolicySetMinutes(typeof value === 'number' ? value : positiveIntOrNull(value));
+                            setPolicyTouched(true);
+                          }}
+                          size="sm"
+                        />
+                      </FieldRow>
+                    </SimpleGrid>
                   </Stack>
                 </SectionPanel>
 
