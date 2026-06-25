@@ -25,6 +25,8 @@ uploads/
 tmp/
 .tmp/
 .codex-artifacts/
+output/
+.playwright-cli/
 
 # debug
 npm-debug.log*
@@ -32,6 +34,8 @@ yarn-debug.log*
 yarn-error.log*
 .mvp-site-dev.log
 .mvp-site-dev.pid
+.mvp-site-start-tunnel.log
+.mvp-site-start-tunnel.pid
 
 # local env files
 .env*.local
