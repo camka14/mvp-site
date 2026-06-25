@@ -27,10 +27,14 @@ export const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePla
     eventType === 'TOURNAMENT' && includePlayoffs
 );
 
-export const buildEventTypeOptions = (isRentalCreateFlow: boolean): EventTypeOption[] => [
+export const buildEventTypeOptions = (
+    isRentalCreateFlow: boolean,
+    isOrganizationHostedEvent: boolean = false,
+): EventTypeOption[] => [
     { value: 'EVENT', label: 'Event' },
     { value: 'TOURNAMENT', label: 'Tournament' },
     { value: 'LEAGUE', label: 'League' },
+    ...(isOrganizationHostedEvent ? [{ value: 'AFFILIATE' as const, label: 'Affiliate' }] : []),
     ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT' as const, label: 'Weekly Event' }]),
 ];
 

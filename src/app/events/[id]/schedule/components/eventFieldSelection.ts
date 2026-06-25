@@ -1,4 +1,4 @@
-type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
+import type { EventType } from '@/types';
 
 const normalizeFieldIds = (values: unknown): string[] => {
   if (!Array.isArray(values)) {

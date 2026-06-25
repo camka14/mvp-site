@@ -27,7 +27,7 @@ import { ArrowUpDown, CalendarDays, X } from 'lucide-react';
 import EventCard from '@/components/ui/EventCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import Loading from '@/components/ui/Loading';
-import { Event, getEventDivisionPriceRange } from '@/types';
+import { Event, EventTag, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import DiscoverSearchControls from './DiscoverSearchControls';
 
@@ -66,6 +66,11 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   eventTypeOptions: readonly TEventType[];
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
+  selectedTags?: string[];
+  setSelectedTags?: Dispatch<SetStateAction<string[]>>;
+  eventTags?: EventTag[];
+  eventTagsLoading?: boolean;
+  eventTagsError?: string | null;
   maxDistance: number | null;
   setMaxDistance: (value: number | null) => void;
   selectedStartDate: Date | null;
@@ -106,6 +111,11 @@ export default function EventsTabContent<TEventType extends string = Event['even
     eventTypeOptions,
     selectedSports,
     setSelectedSports,
+    selectedTags = [],
+    setSelectedTags = () => {},
+    eventTags = [],
+    eventTagsLoading = false,
+    eventTagsError = null,
     maxDistance,
     setMaxDistance,
     selectedStartDate,
@@ -134,9 +144,12 @@ export default function EventsTabContent<TEventType extends string = Event['even
 
   const [eventSort, setEventSort] = useState<(typeof EVENT_SORT_OPTIONS)[number]['value']>('soonest');
   const [sportSearchTerm, setSportSearchTerm] = useState('');
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
   const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;
   const allSportsSelected = selectedSports.length === 0;
+  const allTagsSelected = selectedTags.length === 0;
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
+  const tagsQuery = tagSearchTerm.trim().toLowerCase();
   const activeQuery = searchTerm.trim();
 
   const visibleSports = useMemo(() => {
@@ -146,9 +159,17 @@ export default function EventsTabContent<TEventType extends string = Event['even
     return sports.filter((sport) => sport.toLowerCase().includes(sportsQuery));
   }, [sports, sportsQuery]);
 
+  const visibleEventTags = useMemo(() => {
+    if (!tagsQuery) {
+      return eventTags;
+    }
+    return eventTags.filter((tag) => tag.name.toLowerCase().includes(tagsQuery));
+  }, [eventTags, tagsQuery]);
+
   const resetFilters = useCallback(() => {
     setSelectedEventTypes([...eventTypeOptions]);
     setSelectedSports([]);
+    setSelectedTags([]);
     setMaxDistance(null);
     setSelectedStartDate(null);
     setSelectedEndDate(null);
@@ -161,6 +182,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
     setSelectedEndDate,
     setSelectedEventTypes,
     setSelectedSports,
+    setSelectedTags,
   ]);
 
   const parsePickerDate = useCallback((value: unknown): Date | null => {
@@ -264,6 +286,14 @@ export default function EventsTabContent<TEventType extends string = Event['even
     });
   });
 
+  selectedTags.forEach((tag) => {
+    activeFilters.push({
+      key: `tag-${tag}`,
+      label: tag,
+      onRemove: () => setSelectedTags((current) => current.filter((value) => value !== tag)),
+    });
+  });
+
   if (selectedStartDate) {
     activeFilters.push({
       key: 'date-from',
@@ -302,35 +332,60 @@ export default function EventsTabContent<TEventType extends string = Event['even
     <div className="space-y-6">
       <div>
         <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
-          Event Type
+          Tags
         </Text>
+        <TextInput
+          value={tagSearchTerm}
+          onChange={(event) => setTagSearchTerm(event.currentTarget.value)}
+          placeholder="Search tag..."
+          mb="sm"
+        />
         <Group gap="xs">
           <Chip
             radius="xl"
-            checked={allEventTypesSelected}
-            onChange={(checked) => setSelectedEventTypes(checked ? [...eventTypeOptions] : [])}
+            checked={allTagsSelected}
+            disabled={eventTagsLoading || !eventTags.length}
+            onChange={(checked) => {
+              if (checked) {
+                setSelectedTags([]);
+              }
+            }}
           >
             All
           </Chip>
-          {eventTypeOptions.map((type) => (
-            <Chip
-              key={type}
-              radius="xl"
-              checked={selectedEventTypes.includes(type)}
-              onChange={(checked) => {
-                if (checked) {
-                  const next = new Set(selectedEventTypes);
-                  next.add(type);
-                  setSelectedEventTypes(eventTypeOptions.filter((option) => next.has(option)));
-                } else {
-                  setSelectedEventTypes(selectedEventTypes.filter((value) => value !== type));
-                }
-              }}
-            >
-              {formatEnumDisplayLabel(type, 'Event')}
-            </Chip>
-          ))}
+          {eventTagsLoading ? (
+            <Loader size="sm" aria-label="Loading tags" />
+          ) : visibleEventTags.length ? (
+            visibleEventTags.map((tag) => (
+              <Chip
+                key={tag.slug || tag.name}
+                radius="xl"
+                checked={selectedTags.includes(tag.name)}
+                onChange={(checked) => {
+                  setSelectedTags((current) => {
+                    if (checked) {
+                      const next = new Set(current);
+                      next.add(tag.name);
+                      return Array.from(next);
+                    }
+                    return current.filter((value) => value !== tag.name);
+                  });
+                }}
+              >
+                {tag.name}
+              </Chip>
+            ))
+          ) : (
+            <Text size="sm" c="dimmed">
+              {tagsQuery ? 'No tags match this search.' : 'No tags available.'}
+            </Text>
+          )}
         </Group>
+        {eventTagsError && (
+          <Alert color="red" radius="md" mt="sm">
+            {eventTagsError}
+          </Alert>
+        )}
       </div>
 
       <div>

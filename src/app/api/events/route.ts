@@ -43,6 +43,7 @@ import {
 } from '@/server/officials/config';
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
+import { getEventTagsForEventIds } from '@/server/eventTags';
 
 export const dynamic = 'force-dynamic';
 
@@ -601,7 +602,7 @@ const buildEventResponsePayload = async (event: any) => {
       }))
         .sort(compareDivisionRowsByStoredOrder)
         .map((row) => row.id);
-  const [divisionFieldIds, divisionDetails] = await Promise.all([
+  const [divisionFieldIds, divisionDetails, tagsByEventId] = await Promise.all([
     getDivisionFieldMapForEvent(event.id, divisionKeys),
     getDivisionDetailsForEvent(event.id, divisionKeys, event.start, {
       price: event.price,
@@ -613,6 +614,7 @@ const buildEventResponsePayload = async (event: any) => {
       installmentDueRelativeDays: (event as any).installmentDueRelativeDays,
       installmentAmounts: event.installmentAmounts,
     }),
+    getEventTagsForEventIds([event.id]),
   ]);
 
   return withLegacyEvent({
@@ -623,6 +625,7 @@ const buildEventResponsePayload = async (event: any) => {
     officialIds: eventOfficials.map((official: { userId: string }) => official.userId),
     divisionFieldIds,
     divisionDetails,
+    tags: tagsByEventId.get(event.id) ?? [],
   });
 };
 
@@ -879,6 +882,12 @@ export async function GET(req: NextRequest) {
     console.error('Failed to enrich official ids for events list', error);
     return new Map<string, string[]>();
   });
+  const tagsByEventId = await getEventTagsForEventIds(
+    eventsWithParticipantIds.map((event) => event.id),
+  ).catch((error) => {
+    console.error('Failed to enrich tags for events list', error);
+    return new Map<string, Array<Record<string, unknown>>>();
+  });
 
   const normalized = eventsWithParticipantIds.map((row) => {
     const divisionDetails = divisionDetailsByEventId.get(row.id) ?? [];
@@ -887,6 +896,7 @@ export async function GET(req: NextRequest) {
       officialIds: officialIdsByEventId.get(row.id) ?? [],
       divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
       divisionDetails,
+      tags: tagsByEventId.get(row.id) ?? [],
     });
   });
 

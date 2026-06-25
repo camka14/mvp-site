@@ -15,11 +15,13 @@ import { ImageUploader } from '@/components/ui/ImageUploader';
 
 import type { EventFormValues } from '../formTypes';
 import { SECTION_ANIMATION_DURATION_MS } from '../constants';
+import { EventTagsInput } from '../EventTagsInput';
 
 type BasicInformationSectionProps = {
     collapsed: boolean;
     control: Control<EventFormValues>;
     errors: FieldErrors<EventFormValues>;
+    eventType: Event['eventType'];
     selectedImageUrl: string;
     allowImageEdit: boolean;
     sportsLoading: boolean;
@@ -39,6 +41,7 @@ export const BasicInformationSection = ({
     collapsed,
     control,
     errors,
+    eventType,
     selectedImageUrl,
     allowImageEdit,
     sportsLoading,
@@ -102,7 +105,7 @@ export const BasicInformationSection = ({
                             error={fieldState.error?.message as string | undefined}
                             maw={520}
                             maxLength={maxEventNameLength}
-                            className="md:col-span-6"
+                            className="md:col-span-4"
                             value={field.value ?? ''}
                             name={field.name}
                             onBlur={field.onBlur}
@@ -115,7 +118,24 @@ export const BasicInformationSection = ({
                     )}
                 />
 
-                <div className="md:col-span-6">
+                <Controller
+                    name="tags"
+                    control={control}
+                    render={({ field, fieldState }) => (
+                        <div className="md:col-span-4">
+                            <EventTagsInput
+                                value={Array.isArray(field.value) ? field.value : []}
+                                disabled={isImmutableField('name')}
+                                error={fieldState.error?.message as string | undefined}
+                                onChange={(nextTags) => {
+                                    setValue('tags', nextTags, { shouldDirty: true, shouldValidate: true });
+                                }}
+                            />
+                        </div>
+                    )}
+                />
+
+                <div className="md:col-span-4">
                     <Controller
                         name="sportId"
                         control={control}
@@ -183,6 +203,30 @@ export const BasicInformationSection = ({
                     />
                 )}
             />
+            {eventType === 'AFFILIATE' ? (
+                <Controller
+                    name="affiliateUrl"
+                    control={control}
+                    render={({ field, fieldState }) => (
+                        <TextInput
+                            label="Affiliate Link"
+                            withAsterisk
+                            disabled={isImmutableField('affiliateUrl')}
+                            placeholder="https://example.com/event"
+                            className="mt-4"
+                            value={field.value ?? ''}
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            ref={field.ref}
+                            error={fieldState.error?.message as string | undefined}
+                            onChange={(event) => {
+                                if (isImmutableField('affiliateUrl')) return;
+                                setValue('affiliateUrl', event.currentTarget.value, { shouldDirty: true, shouldValidate: true });
+                            }}
+                        />
+                    )}
+                />
+            ) : null}
         </Collapse>
     </Paper>
 );

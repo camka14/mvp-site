@@ -50,6 +50,7 @@ import {
   isTournamentPoolValidationError,
   isTournamentPoolPlayEnabled,
 } from '@/server/events/tournamentPools';
+import { getEventTagsForEventIds, syncEventTags } from '@/server/eventTags';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -63,6 +64,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'end',
   'timeZone',
   'description',
+  'affiliateUrl',
   'divisions',
   'winnerSetCount',
   'loserSetCount',
@@ -123,6 +125,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'allowTeamSplitDefault',
   'splitLeaguePlayoffDivisions',
   'requiredTemplateIds',
+  'tags',
 ]);
 
 const LEAGUE_SCORING_BOOLEAN_FIELDS: readonly string[] = [];
@@ -1715,7 +1718,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     getVisibleDivisionKeysForEventResponse(eventId, event),
     getDivisionKeysForEventKind(eventId, 'PLAYOFF'),
   ]);
-  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds] = await Promise.all([
+  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds, tagsByEventId] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
       price: event.price,
@@ -1742,6 +1745,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       orderBy: { createdAt: 'desc' },
     }),
     getEventParticipantIdsForEvent(eventId),
+    getEventTagsForEventIds([eventId]),
   ]);
   const officialResponse = await buildEventOfficialResponse(event);
   return NextResponse.json(
@@ -1753,6 +1757,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       divisionFieldIds,
       divisionDetails,
       playoffDivisionDetails,
+      tags: tagsByEventId.get(eventId) ?? [],
       staffInvites: staffInvites.map((invite) => withLegacyFields(invite)),
     }),
     { status: 200 },
@@ -1868,6 +1873,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       // Drop relationship objects that Prisma doesn't accept on `events.update`.
+      const incomingTags = Object.prototype.hasOwnProperty.call(payload, 'tags') ? payload.tags : undefined;
       delete payload.players;
       delete payload.officials;
       delete payload.assistantHosts;
@@ -1879,6 +1885,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       delete payload.divisionDetails;
       delete payload.playoffDivisionDetails;
       delete payload.leagueConfig;
+      delete payload.tags;
       const incomingLeagueScoringConfig = payload.leagueScoringConfig;
       delete payload.leagueScoringConfig;
 
@@ -2547,6 +2554,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           updatedAt: new Date(),
         },
       );
+      if (incomingTags !== undefined) {
+        await syncEventTags(eventId, incomingTags, tx);
+      }
       const shouldFallbackAddressWrite = removedArguments.has('address')
         && Object.prototype.hasOwnProperty.call(data, 'address');
       const fallbackAddressValue = shouldFallbackAddressWrite

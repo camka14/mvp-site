@@ -238,6 +238,41 @@ export type RentalBookings = Prisma.RentalBookingsModel
  */
 export type RentalBookingItems = Prisma.RentalBookingItemsModel
 /**
+ * Model AffiliateScrapeSources
+ *
+ */
+export type AffiliateScrapeSources = Prisma.AffiliateScrapeSourcesModel
+/**
+ * Model AffiliateScrapeMappings
+ *
+ */
+export type AffiliateScrapeMappings = Prisma.AffiliateScrapeMappingsModel
+/**
+ * Model AffiliateScrapeRuns
+ *
+ */
+export type AffiliateScrapeRuns = Prisma.AffiliateScrapeRunsModel
+/**
+ * Model AffiliateImportCandidates
+ *
+ */
+export type AffiliateImportCandidates = Prisma.AffiliateImportCandidatesModel
+/**
+ * Model AffiliateListings
+ *
+ */
+export type AffiliateListings = Prisma.AffiliateListingsModel
+/**
+ * Model EventTags
+ *
+ */
+export type EventTags = Prisma.EventTagsModel
+/**
+ * Model EventTagAssignments
+ *
+ */
+export type EventTagAssignments = Prisma.EventTagAssignmentsModel
+/**
  * Model RefundRequests
  *
  */

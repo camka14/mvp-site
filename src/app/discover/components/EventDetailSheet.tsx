@@ -3899,6 +3899,8 @@ export default function EventDetailSheet({
     if (!isActive) return null;
 
     const { date, time } = getEventDateTime(currentEvent);
+    const affiliateActionUrl = typeof currentEvent.affiliateUrl === 'string' ? currentEvent.affiliateUrl.trim() : '';
+    const isAffiliateEvent = currentEvent.eventType === 'AFFILIATE';
     const isTeamSignup = currentEvent.teamSignup;
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const startDateValue = parseDateValue(currentEvent.start ?? null);
@@ -5000,7 +5002,24 @@ export default function EventDetailSheet({
                             <Paper withBorder p="md" radius="md">
                                 {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
                                 {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
-                                {isWeeklyParentEvent && (
+                                {isAffiliateEvent && (
+                                    <Stack gap="xs">
+                                        <Button
+                                            component="a"
+                                            href={affiliateActionUrl || undefined}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            fullWidth
+                                            disabled={!affiliateActionUrl}
+                                        >
+                                            View Event
+                                        </Button>
+                                        <Text size="xs" c="dimmed" ta="center">
+                                            Registration or booking continues on the organizer&apos;s website.
+                                        </Text>
+                                    </Stack>
+                                )}
+                                {!isAffiliateEvent && isWeeklyParentEvent && (
                                     <div className="space-y-3 mb-4">
                                         <Group justify="space-between" align="center" gap="xs">
                                             <div>
@@ -5075,7 +5094,7 @@ export default function EventDetailSheet({
                                         )}
                                     </div>
                                 )}
-                                {!isWeeklyParentEvent || !weeklySelectionRequired ? (
+                                {!isAffiliateEvent ? ((!isWeeklyParentEvent || !weeklySelectionRequired) ? (
                                     <>
                                 {hasAgeLimits && (
                                     <Alert color="yellow" variant="light" mb="sm">
@@ -5509,7 +5528,7 @@ export default function EventDetailSheet({
                                     <Alert color="blue" variant="light">
                                                             Select a weekly session to see registration options.
                                     </Alert>
-                                )}
+                                )) : null}
                             </Paper>
 
                             {/* Refund Options */}
