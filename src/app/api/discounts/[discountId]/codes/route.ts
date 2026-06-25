@@ -19,6 +19,19 @@ const createCodeSchema = z.object({
   usageLimit: z.number().int().positive().nullable().optional(),
 }).strict();
 
+const requireDiscountSession = async (req: NextRequest) => {
+  try {
+    return { ok: true as const, session: await requireSession(req) };
+  } catch (error) {
+    if (error instanceof Response) {
+      const status = error.status || 401;
+      const message = status === 403 ? 'Forbidden' : 'Unauthorized';
+      return { ok: false as const, response: NextResponse.json({ error: message }, { status }) };
+    }
+    throw error;
+  }
+};
+
 const canManageDiscountsForOrganization = async (
   session: Awaited<ReturnType<typeof requireSession>>,
   organizationId: string,
@@ -77,7 +90,11 @@ const createUniqueGeneratedCode = async (): Promise<string> => {
 };
 
 export async function POST(req: NextRequest, context: RouteContext) {
-  const session = await requireSession(req);
+  const sessionResult = await requireDiscountSession(req);
+  if (!sessionResult.ok) {
+    return sessionResult.response;
+  }
+  const { session } = sessionResult;
   const params = await context.params;
   const body = await req.json().catch(() => null);
   const parsed = createCodeSchema.safeParse(body ?? {});

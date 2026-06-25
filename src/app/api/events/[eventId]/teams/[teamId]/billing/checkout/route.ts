@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
-import { calculateMvpAndStripeFees } from '@/lib/billingFees';
+import { calculateIncludedFeesFromTotalPrice } from '@/lib/billingFees';
 import { requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
@@ -156,15 +156,13 @@ export async function POST(
     payerUserId = normalizedParticipantId;
   }
 
-  const {
-    mvpFeeCents,
-    stripeFeeCents,
-    mvpFeePercentage,
-  } = calculateMvpAndStripeFees({
-    eventAmountCents,
+  const includedFees = calculateIncludedFeesFromTotalPrice({
+    totalPriceCents: eventAmountCents,
     eventType: event.eventType,
   });
-  const totalChargeCents = eventAmountCents + mvpFeeCents + stripeFeeCents + taxAmountCents;
+  const mvpFeeCents = includedFees.platformFeeCents;
+  const stripeFeeCents = includedFees.processingFeeCents;
+  const totalChargeCents = eventAmountCents + taxAmountCents;
   const normalizedLabel = parsed.data.label?.trim() || 'Event registration';
   const eventName = event.name?.trim() || normalizedLabel;
   const origin = getRequestOrigin(req);
@@ -182,13 +180,14 @@ export async function POST(
     mvpFee: mvpFeeCents,
     taxAmount: taxAmountCents,
     totalCharge: totalChargeCents,
-    hostReceives: eventAmountCents,
-    feePercentage: mvpFeePercentage * 100,
+    hostReceives: includedFees.hostReceivesCents,
+    feePercentage: includedFees.platformFeePercentage * 100,
     purchaseType: 'event_payment',
   };
 
   const metadata: Record<string, string> = {
     purchase_type: 'event_payment',
+    fees_included_in_price: 'true',
     bill_owner_type: billOwnerType,
     bill_owner_id: billOwnerId,
     event_id: event.id,
@@ -199,7 +198,7 @@ export async function POST(
     mvp_fee_cents: String(mvpFeeCents),
     stripe_fee_cents: String(stripeFeeCents),
     tax_cents: String(taxAmountCents),
-    fee_percentage: (mvpFeePercentage * 100).toFixed(4),
+    fee_percentage: (includedFees.platformFeePercentage * 100).toFixed(4),
   };
   appendMetadata(metadata, 'user_id', payerUserId);
   appendMetadata(metadata, 'team_id', billOwnerType === 'TEAM' ? billOwnerId : null);
@@ -227,11 +226,11 @@ export async function POST(
   }
 
   const stripe = new Stripe(secretKey);
-  const transferData = await buildDestinationTransferData({
-    organizationId: event.organizationId,
-    hostUserId: event.hostId,
-    transferAmountCents: eventAmountCents,
-  });
+	  const transferData = await buildDestinationTransferData({
+	    organizationId: event.organizationId,
+	    hostUserId: event.hostId,
+	    transferAmountCents: includedFees.hostReceivesCents,
+	  });
 
   try {
     const checkoutSession = await stripe.checkout.sessions.create({

@@ -9,11 +9,12 @@ import {
 import { syncManagedOrganizationStripeAccount } from '@/server/organizationStripeVerification';
 import { sendPaymentFailureEmail, sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import {
+  releaseDiscountCodeReservation,
   recordDiscountCodeRedemption,
   type DiscountPurchaseType,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
-import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
+import { upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
   activateFailedTeamRegistration,
@@ -102,6 +103,7 @@ const buildDiscountApplicationFromMetadata = (
   const code = toStringOrNull(metadata.discount_code ?? metadata.discountCode);
   const discountId = toStringOrNull(metadata.discount_id ?? metadata.discountId);
   const discountCodeId = toStringOrNull(metadata.discount_code_id ?? metadata.discountCodeId);
+  const reservationId = toStringOrNull(metadata.discount_reservation_id ?? metadata.discountReservationId);
   const originalAmountCents = toIntOrNull(metadata.original_amount_cents ?? metadata.originalAmountCents);
   const discountedAmountCents = toIntOrNull(metadata.discounted_amount_cents ?? metadata.discountedAmountCents);
   if (
@@ -117,6 +119,7 @@ const buildDiscountApplicationFromMetadata = (
     code,
     discountId,
     discountCodeId,
+    reservationId,
     originalAmountCents,
     discountedAmountCents,
   };
@@ -130,6 +133,7 @@ const SUPPORTED_EVENT_TYPES = new Set([
   'payment_intent.payment_failed',
   'invoice.created',
   'invoice.paid',
+  'invoice.payment_failed',
   'customer.subscription.created',
   'customer.subscription.updated',
   'customer.subscription.deleted',
@@ -157,6 +161,25 @@ const extractStripeSubscriptionIdFromInvoice = (
     return invoiceSubscription;
   }
   return invoiceSubscription?.id ?? null;
+};
+
+const getInvoicePaymentIntentId = (
+  invoice: Pick<Stripe.Invoice, 'payments'> | null | undefined,
+): string | null => {
+  const payments = invoice?.payments?.data ?? [];
+  for (const invoicePayment of payments) {
+    if (invoicePayment.payment.type !== 'payment_intent') {
+      continue;
+    }
+    const paymentIntent = invoicePayment.payment.payment_intent;
+    if (typeof paymentIntent === 'string') {
+      return paymentIntent;
+    }
+    if (paymentIntent?.id) {
+      return paymentIntent.id;
+    }
+  }
+  return null;
 };
 
 const applySubscriptionInvoiceConnectConfiguration = async ({
@@ -896,6 +919,10 @@ const buildInstantLineItems = ({
   const productName = toStringOrNull(metadata.product_name ?? metadata.productName);
   const eventName = toStringOrNull(metadata.event_name ?? metadata.eventName);
   const teamName = toStringOrNull(metadata.team_name ?? metadata.teamName);
+  const feesIncludedInPrice = toStringOrNull(
+    metadata.fees_included_in_price
+    ?? metadata.feesIncludedInPrice,
+  ) === 'true';
 
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   const primaryType: 'EVENT' | 'PRODUCT' | 'RENTAL' | 'OTHER' =
@@ -912,7 +939,10 @@ const buildInstantLineItems = ({
 
   const initialBaseAmount = purchaseAmountCents && purchaseAmountCents > 0
     ? purchaseAmountCents
-    : Math.max(fallbackAmountCents - mvpFeeCents - stripeFeeCents - taxCents, 0);
+    : Math.max(
+      fallbackAmountCents - (feesIncludedInPrice ? 0 : mvpFeeCents + stripeFeeCents) - taxCents,
+      0,
+    );
 
   const lineItems: Array<{
     id: string;
@@ -929,7 +959,7 @@ const buildInstantLineItems = ({
       amountCents: initialBaseAmount,
     });
   }
-  if (mvpFeeCents > 0) {
+  if (!feesIncludedInPrice && mvpFeeCents > 0) {
     lineItems.push({
       id: `line_${lineItems.length + 1}`,
       type: 'FEE',
@@ -937,7 +967,7 @@ const buildInstantLineItems = ({
       amountCents: mvpFeeCents,
     });
   }
-  if (stripeFeeCents > 0) {
+  if (!feesIncludedInPrice && stripeFeeCents > 0) {
     lineItems.push({
       id: `line_${lineItems.length + 1}`,
       type: 'FEE',
@@ -1617,22 +1647,66 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
-  if (eventType === 'invoice.paid') {
+  if (eventType === 'invoice.paid' || eventType === 'invoice.payment_failed') {
     const invoice = (event.data?.object ?? null) as (Stripe.Invoice & {
       parent?: {
         subscription_details?: {
           subscription?: string | Stripe.Subscription | null;
+          metadata?: Stripe.Metadata | null;
         } | null;
       } | null;
       subscription?: string | Stripe.Subscription | null;
     }) | null;
     const stripeSubscriptionId = extractStripeSubscriptionIdFromInvoice(invoice);
+    let subscription: Stripe.Subscription | null = null;
 
     if (stripeSubscriptionId && stripeForPaymentIntentSync) {
-      await syncStripeSubscriptionMirrorById({
-        stripe: stripeForPaymentIntentSync,
-        stripeSubscriptionId,
+      subscription = await stripeForPaymentIntentSync.subscriptions.retrieve(stripeSubscriptionId, {
+        expand: ['items.data.price'],
       });
+      await upsertStripeSubscriptionMirror({ subscription });
+    }
+
+    const metadata = {
+      ...((invoice?.metadata ?? {}) as Record<string, unknown>),
+      ...(((invoice?.parent?.subscription_details as { metadata?: Stripe.Metadata | null } | null)?.metadata ?? {}) as Record<string, unknown>),
+      ...((subscription?.metadata ?? {}) as Record<string, unknown>),
+    };
+    const discountApplication = buildDiscountApplicationFromMetadata(metadata);
+    const paymentIntentId = getInvoicePaymentIntentId(invoice)
+      ?? (invoice?.id ? `invoice:${invoice.id}` : null);
+
+    if (discountApplication) {
+      if (eventType === 'invoice.payment_failed') {
+        await releaseDiscountCodeReservation({
+          reservationId: discountApplication.reservationId,
+          paymentIntentId,
+        });
+      } else {
+        const discountPurchaseType = normalizeDiscountPurchaseType(toStringOrNull(metadata.purchase_type ?? null));
+        const productId = toStringOrNull(metadata.product_id ?? null);
+        if (discountPurchaseType && productId) {
+          try {
+            await recordDiscountCodeRedemption({
+              discount: discountApplication,
+              purchaseType: discountPurchaseType,
+              targetId: productId,
+              userId: toStringOrNull(metadata.user_id ?? null),
+              guestEmail: toStringOrNull(metadata.receipt_email ?? metadata.receiptEmail ?? null),
+              paymentIntentId,
+              productId,
+              organizationId: toStringOrNull(metadata.organization_id ?? null),
+            });
+          } catch (error) {
+            console.error('Stripe invoice webhook failed to record discount redemption.', {
+              invoiceId: invoice?.id,
+              stripeSubscriptionId,
+              discountCodeId: discountApplication.discountCodeId,
+              error,
+            });
+          }
+        }
+      }
     }
     return NextResponse.json({ received: true }, { status: 200 });
   }
@@ -1799,6 +1873,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (eventType === 'payment_intent.payment_failed') {
+      if (discountApplication) {
+        await releaseDiscountCodeReservation({
+          reservationId: discountApplication.reservationId,
+          paymentIntentId,
+        });
+      }
+
       const releasedBill = await releaseBillPaymentProcessing({
         billId,
         billPaymentId,

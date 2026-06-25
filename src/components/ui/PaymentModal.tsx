@@ -32,6 +32,21 @@ const getStripePromise = (publishableKey: string): ReturnType<typeof loadStripe>
     return next;
 };
 
+const normalizeCents = (value: unknown): number => (
+    typeof value === 'number' && Number.isFinite(value)
+        ? Math.max(0, Math.round(value))
+        : 0
+);
+
+const getVisibleTaxAmount = (feeBreakdown: PaymentIntent['feeBreakdown'] | null): number | null => {
+    const taxAmount = normalizeCents(feeBreakdown?.taxAmount);
+    return taxAmount > 0 ? taxAmount : null;
+};
+
+const getVisibleTotalCharge = (feeBreakdown: PaymentIntent['feeBreakdown'] | null): number => (
+    normalizeCents(feeBreakdown?.eventPrice) + (getVisibleTaxAmount(feeBreakdown) ?? 0)
+);
+
 export type PaymentEventSummary = Partial<Event> & {
     name: string;
     location: string;
@@ -163,10 +178,8 @@ export default function PaymentModal({
     const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
     const publishableKey = activePaymentData?.publishableKey || envPublishableKey;
     const feeBreakdown = activePaymentData?.feeBreakdown ?? null;
-    const totalBeforeStripeFees = feeBreakdown
-        ? feeBreakdown.eventPrice + feeBreakdown.processingFee + (feeBreakdown.taxAmount ?? 0)
-        : 0;
-    const totalWithVariableStripeFees = `${formatPrice(totalBeforeStripeFees)} + Stripe fees`;
+    const visibleTaxAmount = getVisibleTaxAmount(feeBreakdown);
+    const totalCharge = getVisibleTotalCharge(feeBreakdown);
 
     const stripePromise = useMemo(() => (
         publishableKey
@@ -252,27 +265,16 @@ export default function PaymentModal({
                                     <span className="text-gray-600">Price:</span>
                                     <span className="font-medium">{formatPrice(feeBreakdown.eventPrice)}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">BracketIQ Fee:</span>
-                                    <span className="font-medium">{formatPrice(feeBreakdown.processingFee)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Stripe Fees:</span>
-                                    <span className="font-medium">Vary by payment method</span>
-                                </div>
-                                {typeof feeBreakdown.taxAmount === 'number' ? (
+                                {visibleTaxAmount !== null ? (
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Tax:</span>
-                                        <span className="font-medium">{formatPrice(feeBreakdown.taxAmount)}</span>
+                                        <span className="font-medium">{formatPrice(visibleTaxAmount)}</span>
                                     </div>
                                 ) : null}
                                 <div className="border-t pt-2 flex justify-between font-semibold text-base">
                                     <span>Total:</span>
-                                    <span>{totalWithVariableStripeFees}</span>
+                                    <span>{formatPrice(totalCharge)}</span>
                                 </div>
-                                <p className="pt-2 text-xs text-gray-500">
-                                    The exact Stripe fees and total update after you choose a payment method.
-                                </p>
                             </div>
                         </div>
                     ) : (

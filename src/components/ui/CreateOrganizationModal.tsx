@@ -443,7 +443,7 @@ export default function CreateOrganizationModal({
             required
           />
           <Text size="xs" c="dimmed">
-            Facility rentals use Stripe Tax. Stripe Tax calculation costs are included in the Stripe fees shown to customers.
+            Facility rentals use Stripe Tax. Processing costs are included in the prices customers see.
           </Text>
           <Checkbox
             label="I confirm this organization is responsible for determining taxability for its events and rentals."

@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
-import type { StripePaymentElementChangeEvent } from '@stripe/stripe-js';
 import type { BillingAddress, FeeBreakdown } from '@/types';
-import {
-    getPaymentMethodFeeLabel,
-    normalizePaymentMethodFeeType,
-    type PaymentMethodFeeType,
-} from '@/lib/billingFees';
-import { paymentService } from '@/lib/paymentService';
 import { formatPrice } from '@/types';
 
 interface PaymentFormProps {
@@ -23,6 +16,21 @@ interface PaymentFormProps {
     onFeeBreakdownChange?: (feeBreakdown: FeeBreakdown) => void;
 }
 
+const normalizeCents = (value: unknown): number => (
+    typeof value === 'number' && Number.isFinite(value)
+        ? Math.max(0, Math.round(value))
+        : 0
+);
+
+const getVisibleTaxAmount = (feeBreakdown: FeeBreakdown): number => {
+    const taxAmount = normalizeCents(feeBreakdown.taxAmount);
+    return taxAmount > 0 ? taxAmount : 0;
+};
+
+const getVisibleTotalCharge = (feeBreakdown: FeeBreakdown): number => (
+    normalizeCents(feeBreakdown.eventPrice) + getVisibleTaxAmount(feeBreakdown)
+);
+
 export default function PaymentForm({
     onSuccess,
     onPending,
@@ -33,90 +41,21 @@ export default function PaymentForm({
     billingAddress,
     billingEmail,
     billingName,
-    onFeeBreakdownChange,
 }: PaymentFormProps) {
     const stripe = useStripe();
     const elements = useElements();
     const [loading, setLoading] = useState(false);
     const [feeBreakdown, setFeeBreakdown] = useState(initialFeeBreakdown);
-    const [selectedPaymentMethodType, setSelectedPaymentMethodType] = useState<PaymentMethodFeeType>(
-        normalizePaymentMethodFeeType(initialFeeBreakdown.paymentMethodType),
-    );
-    const [updatingFees, setUpdatingFees] = useState(false);
-    const [feeUpdateError, setFeeUpdateError] = useState<string | null>(null);
-    const appliedPaymentMethodType = normalizePaymentMethodFeeType(feeBreakdown.paymentMethodType);
-    const selectedPaymentMethodLabel = getPaymentMethodFeeLabel(selectedPaymentMethodType);
-    const feeUpdatePending = appliedPaymentMethodType !== selectedPaymentMethodType;
-    const amount = feeBreakdown.totalCharge;
+    const amount = getVisibleTotalCharge(feeBreakdown);
 
     useEffect(() => {
         setFeeBreakdown(initialFeeBreakdown);
-        setSelectedPaymentMethodType(normalizePaymentMethodFeeType(initialFeeBreakdown.paymentMethodType));
-        setFeeUpdateError(null);
-        setUpdatingFees(false);
     }, [initialFeeBreakdown, paymentIntent]);
-
-    useEffect(() => {
-        if (!paymentIntent || !selectedPaymentMethodType || appliedPaymentMethodType === selectedPaymentMethodType) {
-            return;
-        }
-
-        let cancelled = false;
-        setUpdatingFees(true);
-        setFeeUpdateError(null);
-        paymentService.updatePaymentIntentFeeForMethod(paymentIntent, selectedPaymentMethodType)
-            .then(async (result) => {
-                if (cancelled) return;
-                if (elements && typeof elements.update === 'function') {
-                    elements.update({
-                        amount: Math.max(1, Math.round(result.feeBreakdown.totalCharge)),
-                        currency: 'usd',
-                    });
-                }
-                if (elements && typeof elements.fetchUpdates === 'function') {
-                    await elements.fetchUpdates().catch(() => undefined);
-                }
-                if (cancelled) return;
-                setFeeBreakdown(result.feeBreakdown);
-                onFeeBreakdownChange?.(result.feeBreakdown);
-            })
-            .catch((error) => {
-                if (cancelled) return;
-                const message = error instanceof Error ? error.message : 'Failed to update payment fees.';
-                setFeeUpdateError(message);
-                onError(message);
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setUpdatingFees(false);
-                }
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        appliedPaymentMethodType,
-        elements,
-        onError,
-        onFeeBreakdownChange,
-        paymentIntent,
-        selectedPaymentMethodType,
-    ]);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
 
         if (!stripe || !elements) return;
-        if (updatingFees || feeUpdatePending) {
-            onError('Payment fees are still updating. Please wait a moment and try again.');
-            return;
-        }
-        if (feeUpdateError) {
-            onError(feeUpdateError);
-            return;
-        }
-
         setLoading(true);
 
         try {
@@ -153,11 +92,6 @@ export default function PaymentForm({
         }
     };
 
-    const handlePaymentElementChange = (event: StripePaymentElementChangeEvent) => {
-        const selectedType = event.value?.type;
-        setSelectedPaymentMethodType(normalizePaymentMethodFeeType(selectedType));
-    };
-
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -168,7 +102,6 @@ export default function PaymentForm({
             </div>
 
             <PaymentElement
-                onChange={handlePaymentElementChange}
                 options={{
                     layout: {
                         type: 'tabs',
@@ -193,15 +126,7 @@ export default function PaymentForm({
 
             <div className="border-t pt-4">
                 <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    {updatingFees ? (
-                        <span>Updating fees for {selectedPaymentMethodLabel}...</span>
-                    ) : feeUpdateError ? (
-                        <span className="text-red-600">{feeUpdateError}</span>
-                    ) : selectedPaymentMethodType === 'card' ? (
-                        <span>Card processing fee applied.</span>
-                    ) : (
-                        <span>Lower {selectedPaymentMethodLabel.toLowerCase()} processing fee applied.</span>
-                    )}
+                    <span>Processing fees are included in the online price.</span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold mb-4">
                     <span>Total:</span>
@@ -210,16 +135,16 @@ export default function PaymentForm({
 
                 <button
                     type="submit"
-                    disabled={!stripe || !elements || loading || updatingFees || feeUpdatePending || Boolean(feeUpdateError)}
-                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!stripe || !elements || loading || updatingFees || feeUpdatePending || feeUpdateError
+                    disabled={!stripe || !elements || loading}
+                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!stripe || !elements || loading
                             ? 'bg-gray-400 cursor-not-allowed text-white'
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
                 >
-                    {loading || updatingFees ? (
+                    {loading ? (
                         <div className="flex items-center justify-center">
                             <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                            {updatingFees ? 'Updating fees...' : 'Processing...'}
+                            Processing...
                         </div>
                     ) : (
                         `Pay ${formatPrice(amount)}`

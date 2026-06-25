@@ -144,9 +144,7 @@ export const SingleDivisionDefaultsPanel = ({
                 <SingleDivisionPricingControls
                     visible={Boolean(eventData.singleDivision) && !eventData.allowPaymentPlans}
                     control={control}
-                    priceCents={eventData.price}
                     eventType={eventData.eventType}
-                    taxable={eventTaxableForPreview}
                     maxPriceCents={maxPriceCents}
                     numberInputStyles={numberInputStyles}
                     hasStripeAccount={hasStripeAccount}

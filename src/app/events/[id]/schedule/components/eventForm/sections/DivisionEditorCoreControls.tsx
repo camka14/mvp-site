@@ -6,8 +6,7 @@ import {
     TextInput,
 } from '@mantine/core';
 
-import CentsInput from '@/components/ui/CentsInput';
-import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
+import HostPriceInput from '@/components/ui/HostPriceInput';
 import type { Event } from '@/types';
 
 import { AnimatedLayoutSection } from '../components/AnimatedSection';
@@ -23,7 +22,6 @@ type DivisionEditorCoreControlsProps = {
     singleDivision: boolean;
     teamSignup: boolean;
     eventType: Event['eventType'];
-    taxable: boolean;
     divisionEditorReady: boolean;
     divisionsImmutable: boolean;
     hasStripeAccount: boolean;
@@ -54,7 +52,6 @@ export const DivisionEditorCoreControls = ({
     singleDivision,
     teamSignup,
     eventType,
-    taxable,
     divisionEditorReady,
     divisionsImmutable,
     hasStripeAccount,
@@ -149,11 +146,12 @@ export const DivisionEditorCoreControls = ({
             className="md:col-span-3 md:col-start-1"
         >
             <div>
-                <CentsInput
-                    label="Division Price"
+                <HostPriceInput
+                    hostLabel="Host take-home"
+                    totalLabel="Division price"
+                    eventType={eventType}
                     maxCents={maxPriceCents}
                     value={price}
-                    maw={220}
                     disabled={divisionsImmutable || !divisionEditorReady || !hasStripeAccount}
                     onChange={(nextValue) => {
                         if (divisionsImmutable || !divisionEditorReady || !hasStripeAccount) {
@@ -161,11 +159,6 @@ export const DivisionEditorCoreControls = ({
                         }
                         onPriceChange(nextValue);
                     }}
-                />
-                <PriceWithFeesPreview
-                    amountCents={price}
-                    eventType={eventType}
-                    taxable={taxable}
                 />
             </div>
         </AnimatedLayoutSection>

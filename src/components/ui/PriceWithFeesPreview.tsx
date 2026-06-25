@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '@mantine/core';
 
-import { resolveMvpFeePercentage } from '@/lib/billingFees';
+import { calculateIncludedFeesFromTotalPrice } from '@/lib/billingFees';
 import { normalizePriceCents } from '@/lib/priceUtils';
 import { formatBillAmount } from '@/types';
 
@@ -31,28 +31,30 @@ export default function PriceWithFeesPreview({
   eventType,
   helperText = null,
   taxable = false,
-  totalLabel = 'Total charged with fees:',
+  totalLabel = 'Online price:',
 }: PriceWithFeesPreviewProps) {
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const normalizedAmountCents = normalizePriceCents(amountCents);
   const feeBreakdown = useMemo(
     () => {
-      const mvpFeePercentage = resolveMvpFeePercentage(eventType);
-      const mvpFeeCents = normalizedAmountCents > 0
-        ? Math.round(normalizedAmountCents * mvpFeePercentage)
-        : 0;
+      const breakdown = calculateIncludedFeesFromTotalPrice({
+        totalPriceCents: normalizedAmountCents,
+        eventType,
+      });
 
       return {
-        mvpFeeCents,
-        mvpFeePercentage,
-        subtotalBeforeStripeFeesCents: normalizedAmountCents + mvpFeeCents,
+        mvpFeeCents: breakdown.platformFeeCents,
+        mvpFeePercentage: breakdown.platformFeePercentage,
+        hostReceivesCents: breakdown.hostReceivesCents,
+        processingFeeCents: breakdown.processingFeeCents,
+        totalPriceCents: breakdown.totalPriceCents,
       };
     },
     [eventType, normalizedAmountCents],
   );
   const totalDisplayValue = normalizedAmountCents > 0
-    ? `${formatBillAmount(feeBreakdown.subtotalBeforeStripeFeesCents)}${taxable ? ' + Tax' : ''} + Stripe fees`
-    : formatBillAmount(feeBreakdown.subtotalBeforeStripeFeesCents);
+    ? `${formatBillAmount(feeBreakdown.totalPriceCents)}${taxable ? ' + Tax' : ''}`
+    : formatBillAmount(feeBreakdown.totalPriceCents);
 
   return (
     <div className={className}>
@@ -87,6 +89,18 @@ export default function PriceWithFeesPreview({
             </span>
           </div>
           <div className="flex items-center justify-between gap-4">
+            <span>Host take-home</span>
+            <span className="font-medium text-slate-900">
+              {formatBillAmount(feeBreakdown.hostReceivesCents)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span>Processing fee</span>
+            <span className="font-medium text-slate-900">
+              {formatBillAmount(feeBreakdown.processingFeeCents)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
             <span>{`BracketIQ fee (${formatPercentage(feeBreakdown.mvpFeePercentage)})`}</span>
             <span className="font-medium text-slate-900">
               {formatBillAmount(feeBreakdown.mvpFeeCents)}
@@ -96,12 +110,6 @@ export default function PriceWithFeesPreview({
             <div className="flex items-center justify-between gap-4">
               <span>Tax</span>
               <span className="font-medium text-slate-900">Calculated at checkout</span>
-            </div>
-          ) : null}
-          {normalizedAmountCents > 0 ? (
-            <div className="flex items-center justify-between gap-4">
-              <span>Stripe fees</span>
-              <span className="font-medium text-slate-900">Vary by payment method</span>
             </div>
           ) : null}
           <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900">

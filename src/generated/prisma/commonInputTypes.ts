@@ -956,6 +956,23 @@ export type EnumDiscountCodesStatusEnumWithAggregatesFilter<$PrismaModel = never
   _max?: Prisma.NestedEnumDiscountCodesStatusEnumFilter<$PrismaModel>
 }
 
+export type EnumDiscountCodeReservationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.DiscountCodeReservationStatusEnum | Prisma.EnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel> | $Enums.DiscountCodeReservationStatusEnum
+}
+
+export type EnumDiscountCodeReservationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.DiscountCodeReservationStatusEnum | Prisma.EnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumDiscountCodeReservationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.DiscountCodeReservationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel>
+}
+
 export type EnumOrganizationAccountingProviderEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.OrganizationAccountingProviderEnum | Prisma.EnumOrganizationAccountingProviderEnumFieldRefInput<$PrismaModel>
   in?: $Enums.OrganizationAccountingProviderEnum[] | Prisma.ListEnumOrganizationAccountingProviderEnumFieldRefInput<$PrismaModel>
@@ -2201,6 +2218,23 @@ export type NestedEnumDiscountCodesStatusEnumWithAggregatesFilter<$PrismaModel =
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumDiscountCodesStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumDiscountCodesStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.DiscountCodeReservationStatusEnum | Prisma.EnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel> | $Enums.DiscountCodeReservationStatusEnum
+}
+
+export type NestedEnumDiscountCodeReservationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.DiscountCodeReservationStatusEnum | Prisma.EnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.DiscountCodeReservationStatusEnum[] | Prisma.ListEnumDiscountCodeReservationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumDiscountCodeReservationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.DiscountCodeReservationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumDiscountCodeReservationStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumOrganizationAccountingProviderEnumFilter<$PrismaModel = never> = {

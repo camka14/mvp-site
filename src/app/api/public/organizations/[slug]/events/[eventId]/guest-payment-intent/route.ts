@@ -11,7 +11,10 @@ import {
   verifyGuestRegistrationToken,
 } from '@/server/publicGuestRegistration';
 import {
+  attachDiscountCodeReservationPaymentIntent,
   DiscountCodeError,
+  releaseDiscountCodeReservation,
+  reserveDiscountApplication,
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   }
   let checkoutAmountCents = priceCents;
   let discountApplication: ResolvedDiscountApplication | null = null;
+  let discountReservationCode: string | null = null;
   const requestedDiscountCode = normalizeGuestText(parsed.data.discountCode);
   if (requestedDiscountCode) {
     try {
@@ -124,6 +128,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
       });
       checkoutAmountCents = discountResult.amountCents;
       discountApplication = discountResult.discount;
+      if (discountResult.discount) {
+        discountReservationCode = requestedDiscountCode;
+      }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
@@ -168,6 +175,31 @@ export async function POST(req: NextRequest, context: RouteContext) {
     transferAmountCents: taxQuote.hostReceivesCents,
   });
 
+  if (discountApplication && discountReservationCode) {
+    try {
+      const reservationResult = await reserveDiscountApplication({
+        code: discountReservationCode,
+        purchaseType: 'event',
+        targetId: event.id,
+        originalAmountCents: priceCents,
+        buyerUserId: token.parentUserId,
+        guestEmail: receiptEmail,
+        registrationId: registration.id,
+        organizationId: organization.id,
+      });
+      if (reservationResult.amountCents !== checkoutAmountCents) {
+        throw new DiscountCodeError('Discount code pricing changed. Please refresh checkout and try again.', 409);
+      }
+      discountApplication = reservationResult.discount;
+    } catch (error) {
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   const isTeamRegistration = String(registration.registrantType ?? '').toUpperCase() === 'TEAM';
   const metadata: Record<string, string> = {
     purchase_type: 'event',
@@ -188,6 +220,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   appendMetadata(metadata, 'discount_code', discountApplication?.code);
   appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
   appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
+  appendMetadata(metadata, 'discount_reservation_id', discountApplication?.reservationId);
   appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
   appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
   appendMetadata(metadata, 'mvp_fee_cents', taxQuote.processingFeeCents);
@@ -216,6 +249,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
       ...(transferData ? { transfer_data: transferData } : {}),
     });
 
+    if (discountApplication?.reservationId) {
+      await attachDiscountCodeReservationPaymentIntent({
+        reservationId: discountApplication.reservationId,
+        paymentIntentId: intent.id,
+      }).catch((error) => {
+        console.warn('Failed to attach guest discount reservation to payment intent.', {
+          reservationId: discountApplication?.reservationId,
+          paymentIntentId: intent.id,
+          error,
+        });
+      });
+    }
+
     return NextResponse.json({
       paymentIntent: intent.client_secret ?? intent.id,
       publishableKey,
@@ -225,6 +271,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }, { status: 200 });
   } catch (error) {
     console.error('Guest Stripe payment intent failed', error);
+    await releaseDiscountCodeReservation({
+      reservationId: discountApplication?.reservationId,
+    });
     return NextResponse.json({ error: 'Unable to start payment.' }, { status: 500 });
   }
 }

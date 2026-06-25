@@ -9,8 +9,7 @@ import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { getOrderedEntityColorPair, type EntityColorReferenceValue } from '@/lib/entityColors';
-import CentsInput from '@/components/ui/CentsInput';
-import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
+import HostPriceInput from '@/components/ui/HostPriceInput';
 
 interface CreateRentalSlotModalProps {
   opened: boolean;
@@ -622,8 +621,9 @@ export default function CreateRentalSlotModal({
           )}
 
           <div>
-            <CentsInput
-              label="Price (optional)"
+            <HostPriceInput
+              hostLabel="Host take-home"
+              totalLabel="Rental price"
               value={organizationHasStripeAccount ? price : 0}
               onChange={(nextValue) => {
                 if (!organizationHasStripeAccount) {
@@ -633,10 +633,6 @@ export default function CreateRentalSlotModal({
                 setPrice(nextValue);
               }}
               disabled={!hasTargetFields || !organizationHasStripeAccount}
-            />
-            <PriceWithFeesPreview
-              amountCents={organizationHasStripeAccount ? price : 0}
-              taxable={organizationHasStripeAccount && price > 0}
             />
             {!organizationHasStripeAccount && (
               <Text size="xs" c="dimmed" mt={4}>

@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
@@ -94,17 +93,10 @@ export async function POST(
     return NextResponse.json({ error: 'eventAmountCents must be greater than 0' }, { status: 400 });
   }
 
-  const {
-    mvpFeeCents,
-    stripeFeeCents,
-  } = calculateMvpAndStripeFees({
-    eventAmountCents,
-    eventType: event.eventType,
-  });
   const taxAmountCents = parsed.data.taxAmountCents !== undefined
     ? Math.max(0, Math.round(parsed.data.taxAmountCents))
     : 0;
-  const totalAmountCents = eventAmountCents + mvpFeeCents + stripeFeeCents + taxAmountCents;
+  const totalAmountCents = eventAmountCents + taxAmountCents;
 
   const ownerType = parsed.data.ownerType;
   const requestedOwnerId = normalizeId(parsed.data.ownerId);
@@ -185,7 +177,7 @@ export async function POST(
   })();
   const lineItems: Array<{
     id: string;
-    type: 'EVENT' | 'FEE' | 'TAX';
+    type: 'EVENT' | 'TAX';
     label: string;
     amountCents: number;
   }> = [
@@ -196,22 +188,6 @@ export async function POST(
       amountCents: eventAmountCents,
     },
   ];
-  if (mvpFeeCents > 0) {
-    lineItems.push({
-      id: `line_${lineItems.length + 1}`,
-      type: 'FEE',
-      label: 'BracketIQ fee',
-      amountCents: mvpFeeCents,
-    });
-  }
-  if (stripeFeeCents > 0) {
-    lineItems.push({
-      id: `line_${lineItems.length + 1}`,
-      type: 'FEE',
-      label: 'Stripe fee',
-      amountCents: stripeFeeCents,
-    });
-  }
   if (taxAmountCents > 0) {
     lineItems.push({
       id: `line_${lineItems.length + 1}`,

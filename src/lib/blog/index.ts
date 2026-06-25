@@ -1738,7 +1738,7 @@ const paidPickupEventPayments: BlogPostEntry = {
     {
       question: 'What do players pay?',
       answer:
-        'Players see the event price plus BracketIQ and Stripe fees. The final total can change after the player chooses how to pay because Stripe fees vary by payment type.',
+        'Players see the event price you publish, with processing and platform costs already included. Tax may still be added when it applies.',
     },
   ],
   ogImageAlt: 'BracketIQ paid pickup event guide preview',

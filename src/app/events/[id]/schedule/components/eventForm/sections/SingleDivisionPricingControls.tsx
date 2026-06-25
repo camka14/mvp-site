@@ -6,8 +6,7 @@ import {
     Select as MantineSelect,
 } from '@mantine/core';
 
-import CentsInput from '@/components/ui/CentsInput';
-import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
+import HostPriceInput from '@/components/ui/HostPriceInput';
 import type { Event } from '@/types';
 import {
     normalizeEventTaxHandling,
@@ -21,9 +20,7 @@ import { AnimatedLayoutSection, AnimatedSection } from '../components/AnimatedSe
 type SingleDivisionPricingControlsProps = {
     visible: boolean;
     control: Control<EventFormValues>;
-    priceCents: number;
     eventType: Event['eventType'];
-    taxable: boolean;
     maxPriceCents: number;
     numberInputStyles?: ComponentProps<typeof NumberInput>['styles'];
     hasStripeAccount: boolean;
@@ -40,9 +37,7 @@ type SingleDivisionPricingControlsProps = {
 export const SingleDivisionPricingControls = ({
     visible,
     control,
-    priceCents,
     eventType,
-    taxable,
     maxPriceCents,
     numberInputStyles,
     hasStripeAccount,
@@ -63,11 +58,12 @@ export const SingleDivisionPricingControls = ({
             name="price"
             control={control}
             render={({ field }) => (
-                <CentsInput
-                    label="Price"
+                <HostPriceInput
+                    hostLabel="Host take-home"
+                    totalLabel="Online price"
+                    eventType={eventType}
                     maxCents={maxPriceCents}
                     value={field.value}
-                    w="100%"
                     onChange={(nextValue) => {
                         if (priceImmutable) return;
                         field.onChange(nextValue);
@@ -75,12 +71,6 @@ export const SingleDivisionPricingControls = ({
                     disabled={!hasStripeAccount || priceImmutable}
                 />
             )}
-        />
-        <PriceWithFeesPreview
-            amountCents={priceCents}
-            eventType={eventType}
-            taxable={taxable}
-            helperText={null}
         />
         <AnimatedSection in={organizerTaxCollectionAllowed}>
             <Alert color="yellow" variant="light" mt="sm">

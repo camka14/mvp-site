@@ -84,6 +84,16 @@ export const DiscountCodesStatusEnum = {
 export type DiscountCodesStatusEnum = (typeof DiscountCodesStatusEnum)[keyof typeof DiscountCodesStatusEnum]
 
 
+export const DiscountCodeReservationStatusEnum = {
+  ACTIVE: 'ACTIVE',
+  REDEEMED: 'REDEEMED',
+  RELEASED: 'RELEASED',
+  EXPIRED: 'EXPIRED'
+} as const
+
+export type DiscountCodeReservationStatusEnum = (typeof DiscountCodeReservationStatusEnum)[keyof typeof DiscountCodeReservationStatusEnum]
+
+
 export const EventsStateEnum = {
   PUBLISHED: 'PUBLISHED',
   UNPUBLISHED: 'UNPUBLISHED',

@@ -20,7 +20,7 @@ describe('billingFees', () => {
   });
 
   it.each(['EVENT', 'LEAGUE', 'TOURNAMENT'])(
-    'uses the standard 1%% fee for %s registrations',
+    'allocates included fees inside the listed %s registration price',
     (eventType) => {
       expect(
         calculateMvpAndStripeFees({
@@ -28,15 +28,15 @@ describe('billingFees', () => {
           eventType,
         }),
       ).toEqual({
-        mvpFeeCents: 10,
-        stripeFeeCents: 61,
-        totalChargeCents: 1071,
+        mvpFeeCents: 9,
+        stripeFeeCents: 59,
+        totalChargeCents: 1000,
         mvpFeePercentage: 0.01,
       });
     },
   );
 
-  it('calculates a lower gross-up for ACH Direct Debit than cards', () => {
+  it('keeps the listed price fixed while allocating included processing fees', () => {
     const cardFees = calculateMvpAndStripeFeesWithTax({
       eventAmountCents: 10000,
       eventType: 'EVENT',
@@ -52,15 +52,17 @@ describe('billingFees', () => {
     });
 
     expect(cardFees).toEqual(expect.objectContaining({
-      mvpFeeCents: 100,
-      stripeProcessingFeeCents: 333,
-      totalChargeCents: 10433,
+      mvpFeeCents: 96,
+      stripeProcessingFeeCents: 320,
+      totalChargeCents: 10000,
+      hostReceivesCents: 9584,
       paymentMethodType: 'card',
     }));
     expect(achFees).toEqual(expect.objectContaining({
-      mvpFeeCents: 100,
-      stripeProcessingFeeCents: 81,
-      totalChargeCents: 10181,
+      mvpFeeCents: 96,
+      stripeProcessingFeeCents: 320,
+      totalChargeCents: 10000,
+      hostReceivesCents: 9584,
       paymentMethodType: 'us_bank_account',
     }));
   });

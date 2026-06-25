@@ -13,6 +13,13 @@ jest.mock('@/lib/prisma', () => ({
       findFirst: jest.fn(),
       create: jest.fn(),
     },
+    discountCodeReservations: {
+      count: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    $queryRawUnsafe: jest.fn(),
     $transaction: jest.fn(),
   },
 }));
@@ -22,6 +29,8 @@ import {
   normalizeDiscountCode,
   normalizeDiscountedPriceCents,
   recordDiscountCodeRedemption,
+  releaseDiscountCodeReservation,
+  reserveDiscountApplication,
   resolveDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
 
@@ -29,6 +38,11 @@ describe('discountCodeResolver', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrisma.$transaction.mockImplementation(async (callback: (tx: typeof mockPrisma) => unknown) => callback(mockPrisma));
+    mockPrisma.discountCodeReservations.count.mockResolvedValue(0);
+    mockPrisma.discountCodeReservations.create.mockResolvedValue({ id: 'reservation_1' });
+    mockPrisma.discountCodeReservations.findUnique.mockResolvedValue(null);
+    mockPrisma.discountCodeReservations.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
   });
 
   it('normalizes buyer-entered codes', () => {
@@ -132,6 +146,90 @@ describe('discountCodeResolver', () => {
     expect(mockPrisma.discounts.findUnique).not.toHaveBeenCalled();
   });
 
+  it('counts active reservations against limited-use codes', async () => {
+    mockPrisma.discountCodes.findUnique.mockResolvedValue({
+      id: 'code_1',
+      discountId: 'discount_1',
+      code: 'HELD',
+      status: 'ACTIVE',
+      usageLimit: 2,
+      usedCount: 1,
+    });
+    mockPrisma.discountCodeReservations.count.mockResolvedValue(1);
+
+    await expect(reserveDiscountApplication({
+      code: 'HELD',
+      purchaseType: 'event',
+      targetId: 'event_1',
+      originalAmountCents: 1000,
+      buyerUserId: 'user_1',
+    })).rejects.toMatchObject({
+      name: 'DiscountCodeError',
+      status: 409,
+      message: 'Discount code has reached its usage limit.',
+    });
+
+    expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT id FROM "DiscountCodes" WHERE id = $1 FOR UPDATE',
+      'code_1',
+    );
+    expect(mockPrisma.discountCodeReservations.create).not.toHaveBeenCalled();
+  });
+
+  it('reserves an available limited-use code', async () => {
+    mockPrisma.discountCodes.findUnique.mockResolvedValue({
+      id: 'code_1',
+      discountId: 'discount_1',
+      code: 'OPEN',
+      status: 'ACTIVE',
+      usageLimit: 2,
+      usedCount: 1,
+    });
+    mockPrisma.discounts.findUnique.mockResolvedValue({
+      id: 'discount_1',
+      status: 'ACTIVE',
+      targetType: 'PRODUCT',
+      targetId: 'product_1',
+      discountedPriceCents: 700,
+    });
+    mockPrisma.discountCodeReservations.create.mockResolvedValue({ id: 'reservation_1' });
+
+    await expect(reserveDiscountApplication({
+      code: 'open',
+      purchaseType: 'product',
+      targetId: 'product_1',
+      originalAmountCents: 1200,
+      buyerUserId: 'user_1',
+      productId: 'product_1',
+      organizationId: 'org_1',
+    })).resolves.toMatchObject({
+      amountCents: 700,
+      discount: {
+        code: 'OPEN',
+        discountId: 'discount_1',
+        discountCodeId: 'code_1',
+        reservationId: 'reservation_1',
+        originalAmountCents: 1200,
+        discountedAmountCents: 700,
+      },
+    });
+
+    expect(mockPrisma.discountCodeReservations.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        discountId: 'discount_1',
+        discountCodeId: 'code_1',
+        code: 'OPEN',
+        userId: 'user_1',
+        purchaseType: 'PRODUCT',
+        purchaseTargetId: 'product_1',
+        productId: 'product_1',
+        organizationId: 'org_1',
+        originalAmountCents: 1200,
+        discountedAmountCents: 700,
+      }),
+    }));
+  });
+
   it('rejects codes for a different target item', async () => {
     mockPrisma.discountCodes.findUnique.mockResolvedValue({
       id: 'code_1',
@@ -178,6 +276,7 @@ describe('discountCodeResolver', () => {
         code: 'SUMMER25',
         discountId: 'discount_1',
         discountCodeId: 'code_1',
+        reservationId: 'reservation_1',
         originalAmountCents: 2500,
         discountedAmountCents: 1500,
       },
@@ -206,6 +305,36 @@ describe('discountCodeResolver', () => {
       where: { id: 'code_1' },
       data: { usedCount: { increment: 1 } },
     });
+    expect(mockPrisma.discountCodeReservations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'reservation_1',
+        status: { in: ['ACTIVE', 'EXPIRED', 'REDEEMED'] },
+      }),
+      data: expect.objectContaining({
+        status: 'REDEEMED',
+        paymentIntentId: 'pi_1',
+        registrationId: 'registration_1',
+      }),
+    }));
+  });
+
+  it('releases active reservations without incrementing usage', async () => {
+    mockPrisma.discountCodeReservations.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(releaseDiscountCodeReservation({
+      reservationId: 'reservation_1',
+    })).resolves.toEqual({ released: true });
+
+    expect(mockPrisma.discountCodeReservations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: 'reservation_1',
+        status: 'ACTIVE',
+      },
+      data: expect.objectContaining({
+        status: 'RELEASED',
+      }),
+    }));
+    expect(mockPrisma.discountCodes.update).not.toHaveBeenCalled();
   });
 
   it('does not double-count an existing redemption', async () => {

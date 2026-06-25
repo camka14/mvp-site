@@ -65,6 +65,96 @@ export const getPaymentMethodFeeLabel = (paymentMethodType: unknown): string => 
   return 'Card';
 };
 
+const normalizeCents = (value: unknown): number => (
+  Number.isFinite(Number(value))
+    ? Math.max(0, Math.round(Number(value)))
+    : 0
+);
+
+export type InclusivePriceBreakdown = {
+  hostReceivesCents: number;
+  processingFeeCents: number;
+  platformFeeCents: number;
+  totalPriceCents: number;
+  platformFeePercentage: number;
+};
+
+export const calculateInclusivePriceFromHostAmount = ({
+  hostAmountCents,
+  eventType,
+}: {
+  hostAmountCents: number;
+  eventType?: unknown;
+}): InclusivePriceBreakdown => {
+  const normalizedHostAmount = normalizeCents(hostAmountCents);
+  const platformFeePercentage = resolveMvpFeePercentage(eventType);
+  if (normalizedHostAmount <= 0) {
+    return {
+      hostReceivesCents: 0,
+      processingFeeCents: 0,
+      platformFeeCents: 0,
+      totalPriceCents: 0,
+      platformFeePercentage,
+    };
+  }
+
+  const platformFeeCents = Math.round(normalizedHostAmount * platformFeePercentage);
+  const totalPriceCents = calculateChargeAmount(normalizedHostAmount + platformFeeCents);
+  return {
+    hostReceivesCents: normalizedHostAmount,
+    processingFeeCents: Math.max(0, totalPriceCents - normalizedHostAmount - platformFeeCents),
+    platformFeeCents,
+    totalPriceCents,
+    platformFeePercentage,
+  };
+};
+
+export const calculateIncludedFeesFromTotalPrice = ({
+  totalPriceCents,
+  eventType,
+}: {
+  totalPriceCents: number;
+  eventType?: unknown;
+}): InclusivePriceBreakdown => {
+  const normalizedTotalPrice = normalizeCents(totalPriceCents);
+  const platformFeePercentage = resolveMvpFeePercentage(eventType);
+  if (normalizedTotalPrice <= 0) {
+    return {
+      hostReceivesCents: 0,
+      processingFeeCents: 0,
+      platformFeeCents: 0,
+      totalPriceCents: 0,
+      platformFeePercentage,
+    };
+  }
+
+  let low = 0;
+  let high = normalizedTotalPrice;
+  let best = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = calculateInclusivePriceFromHostAmount({
+      hostAmountCents: mid,
+      eventType,
+    }).totalPriceCents;
+    if (candidate <= normalizedTotalPrice) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const platformFeeCents = Math.round(best * platformFeePercentage);
+  return {
+    hostReceivesCents: best,
+    platformFeeCents,
+    processingFeeCents: Math.max(0, normalizedTotalPrice - best - platformFeeCents),
+    totalPriceCents: normalizedTotalPrice,
+    platformFeePercentage,
+  };
+};
+
 export const calculateChargeAmountForPaymentMethod = ({
   goalAmountCents,
   paymentMethodType,
@@ -123,9 +213,7 @@ export const calculateMvpAndStripeFees = ({
   totalChargeCents: number;
   mvpFeePercentage: number;
 } => {
-  const normalizedEventAmount = Number.isFinite(Number(eventAmountCents))
-    ? Math.max(0, Math.round(Number(eventAmountCents)))
-    : 0;
+  const normalizedEventAmount = normalizeCents(eventAmountCents);
   if (normalizedEventAmount === 0) {
     return {
       mvpFeeCents: 0,
@@ -134,16 +222,16 @@ export const calculateMvpAndStripeFees = ({
       mvpFeePercentage: resolveMvpFeePercentage(eventType),
     };
   }
-  const mvpFeePercentage = resolveMvpFeePercentage(eventType);
-  const mvpFeeCents = Math.round(normalizedEventAmount * mvpFeePercentage);
-  const totalChargeCents = calculateChargeAmount(normalizedEventAmount + mvpFeeCents);
-  const stripeFeeCents = Math.max(0, totalChargeCents - normalizedEventAmount - mvpFeeCents);
+  const includedFees = calculateIncludedFeesFromTotalPrice({
+    totalPriceCents: normalizedEventAmount,
+    eventType,
+  });
 
   return {
-    mvpFeeCents,
-    stripeFeeCents,
-    totalChargeCents,
-    mvpFeePercentage,
+    mvpFeeCents: includedFees.platformFeeCents,
+    stripeFeeCents: includedFees.processingFeeCents,
+    totalChargeCents: normalizedEventAmount,
+    mvpFeePercentage: includedFees.platformFeePercentage,
   };
 };
 
@@ -166,18 +254,13 @@ export const calculateMvpAndStripeFeesWithTax = ({
   stripeFeeCents: number;
   taxAmountCents: number;
   totalChargeCents: number;
+  hostReceivesCents: number;
   mvpFeePercentage: number;
   paymentMethodType: PaymentMethodFeeType;
 } => {
-  const normalizedEventAmount = Number.isFinite(Number(eventAmountCents))
-    ? Math.max(0, Math.round(Number(eventAmountCents)))
-    : 0;
-  const normalizedTaxAmount = Number.isFinite(Number(taxAmountCents))
-    ? Math.max(0, Math.round(Number(taxAmountCents)))
-    : 0;
-  const normalizedStripeTaxServiceFee = Number.isFinite(Number(stripeTaxServiceFeeCents))
-    ? Math.max(0, Math.round(Number(stripeTaxServiceFeeCents)))
-    : 0;
+  const normalizedEventAmount = normalizeCents(eventAmountCents);
+  const normalizedTaxAmount = normalizeCents(taxAmountCents);
+  const normalizedStripeTaxServiceFee = normalizeCents(stripeTaxServiceFeeCents);
   const mvpFeePercentage = resolveMvpFeePercentage(eventType);
 
   if (normalizedEventAmount === 0) {
@@ -188,30 +271,26 @@ export const calculateMvpAndStripeFeesWithTax = ({
       stripeFeeCents: normalizedStripeTaxServiceFee,
       taxAmountCents: normalizedTaxAmount,
       totalChargeCents: normalizedTaxAmount + normalizedStripeTaxServiceFee,
+      hostReceivesCents: 0,
       mvpFeePercentage,
       paymentMethodType: normalizePaymentMethodFeeType(paymentMethodType),
     };
   }
 
-  const mvpFeeCents = Math.round(normalizedEventAmount * mvpFeePercentage);
-  const goalAmountCents = normalizedEventAmount
-    + mvpFeeCents
-    + normalizedTaxAmount
-    + normalizedStripeTaxServiceFee;
-  const paymentMethodFees = calculateChargeAmountForPaymentMethod({
-    goalAmountCents,
-    paymentMethodType,
+  const includedFees = calculateIncludedFeesFromTotalPrice({
+    totalPriceCents: normalizedEventAmount,
+    eventType,
   });
-  const { totalChargeCents, stripeProcessingFeeCents } = paymentMethodFees;
 
   return {
-    mvpFeeCents,
-    stripeProcessingFeeCents,
+    mvpFeeCents: includedFees.platformFeeCents,
+    stripeProcessingFeeCents: includedFees.processingFeeCents,
     stripeTaxServiceFeeCents: normalizedStripeTaxServiceFee,
-    stripeFeeCents: stripeProcessingFeeCents + normalizedStripeTaxServiceFee,
+    stripeFeeCents: includedFees.processingFeeCents + normalizedStripeTaxServiceFee,
     taxAmountCents: normalizedTaxAmount,
-    totalChargeCents,
+    totalChargeCents: normalizedEventAmount + normalizedTaxAmount,
+    hostReceivesCents: includedFees.hostReceivesCents,
     mvpFeePercentage,
-    paymentMethodType: paymentMethodFees.paymentMethodType,
+    paymentMethodType: normalizePaymentMethodFeeType(paymentMethodType),
   };
 };

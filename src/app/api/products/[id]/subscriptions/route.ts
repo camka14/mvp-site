@@ -28,7 +28,10 @@ import {
   getCheckoutTaxCategoryFromMetadata,
 } from '@/lib/stripeCheckoutReuse';
 import {
+  attachDiscountCodeReservationPaymentIntent,
   DiscountCodeError,
+  releaseDiscountCodeReservation,
+  reserveDiscountApplication,
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
@@ -148,6 +151,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const validatedBillingAddress = validateUsBillingAddress(billingAddress);
   let subtotalCents = product.priceCents;
   let discountApplication: ResolvedDiscountApplication | null = null;
+  let discountReservationCode: string | null = null;
   const requestedDiscountCode = typeof parsed.data.discountCode === 'string'
     ? parsed.data.discountCode.trim()
     : '';
@@ -162,6 +166,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
       subtotalCents = discountResult.amountCents;
       discountApplication = discountResult.discount;
+      if (discountResult.discount) {
+        discountReservationCode = requestedDiscountCode;
+      }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
@@ -272,6 +279,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }, { status: 200 });
   }
 
+  if (discountApplication && discountReservationCode) {
+    try {
+      const reservationResult = await reserveDiscountApplication({
+        code: discountReservationCode,
+        purchaseType: 'product',
+        targetId: product.id,
+        originalAmountCents: product.priceCents,
+        buyerUserId: session.userId,
+        productId: product.id,
+        organizationId: product.organizationId,
+      });
+      if (reservationResult.amountCents !== subtotalCents) {
+        throw new DiscountCodeError('Discount code pricing changed. Please refresh checkout and try again.', 409);
+      }
+      discountApplication = reservationResult.discount;
+    } catch (error) {
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   const metadata: Stripe.MetadataParam = {
     product_id: product.id,
     user_id: session.userId,
@@ -294,104 +325,137 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   appendMetadata(metadata, 'discount_code', discountApplication?.code);
   appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
   appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
+  appendMetadata(metadata, 'discount_reservation_id', discountApplication?.reservationId);
   appendMetadata(metadata, 'original_amount_cents', discountApplication?.originalAmountCents);
   appendMetadata(metadata, 'discounted_amount_cents', discountApplication?.discountedAmountCents);
 
-  const subscription = await stripe.subscriptions.create({
-    customer: taxQuote.customerId,
-    automatic_tax: { enabled: true },
-    collection_method: 'charge_automatically',
-    payment_behavior: 'default_incomplete',
-    payment_settings: {
-      save_default_payment_method: 'on_subscription',
-    },
-    items: [
-      {
-        quantity: 1,
-        metadata: {
-          line_type: 'product_base',
-          local_product_id: product.id,
-        },
-        ...(discountApplication
-          ? {
-              price_data: {
-                currency: 'usd',
-                unit_amount: taxQuote.subtotalCents,
-                product: stripeCatalog.stripeProductId,
-                recurring: { interval: recurringInterval },
-                tax_behavior: 'exclusive' as const,
-              },
-            }
-          : { price: stripeCatalog.stripePriceId }),
+  let subscription: Stripe.Subscription;
+  try {
+    subscription = await stripe.subscriptions.create({
+      customer: taxQuote.customerId,
+      automatic_tax: { enabled: true },
+      collection_method: 'charge_automatically',
+      payment_behavior: 'default_incomplete',
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
       },
-      ...(recurringFeeAmountCents > 0
-        ? [
-            {
-              quantity: 1,
-              metadata: {
-                line_type: 'platform_fee',
-                local_product_id: product.id,
+      items: [
+        {
+          quantity: 1,
+          metadata: {
+            line_type: 'product_base',
+            local_product_id: product.id,
+          },
+          ...(discountApplication
+            ? {
+                price_data: {
+                  currency: 'usd',
+                  unit_amount: taxQuote.subtotalCents,
+                  product: stripeCatalog.stripeProductId,
+                  recurring: { interval: recurringInterval },
+                  tax_behavior: 'exclusive' as const,
+                },
+              }
+            : { price: stripeCatalog.stripePriceId }),
+        },
+        ...(recurringFeeAmountCents > 0
+          ? [
+              {
+                quantity: 1,
+                metadata: {
+                  line_type: 'platform_fee',
+                  local_product_id: product.id,
+                },
+                price_data: {
+                  currency: 'usd',
+                  unit_amount: recurringFeeAmountCents,
+                  product: platformFeeProductId!,
+                  recurring: { interval: recurringInterval },
+                  tax_behavior: 'exclusive' as const,
+                },
               },
-              price_data: {
-                currency: 'usd',
-                unit_amount: recurringFeeAmountCents,
-                product: platformFeeProductId!,
-                recurring: { interval: recurringInterval },
-                tax_behavior: 'exclusive' as const,
-              },
-            },
-          ]
-        : []),
-    ],
-    metadata,
-    ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
-    expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payments.data.payment.payment_intent', 'items.data.price'],
-  });
-
-  const latestInvoice = typeof subscription.latest_invoice === 'object' && subscription.latest_invoice
-    ? subscription.latest_invoice
-    : null;
-  let firstInvoicePaymentIntentId: string | null = null;
-  if (connectedAccountId && latestInvoice?.id) {
-    const invoiceWithPayments = await stripe.invoices.retrieve(latestInvoice.id, {
-      expand: ['payments.data.payment.payment_intent'],
+            ]
+          : []),
+      ],
+      metadata,
+      ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
+      expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payments.data.payment.payment_intent', 'items.data.price'],
     });
-    firstInvoicePaymentIntentId = getInvoicePaymentIntentId(invoiceWithPayments);
-  }
-  if (connectedAccountId && firstInvoicePaymentIntentId) {
-    await stripe.paymentIntents.update(firstInvoicePaymentIntentId, {
-      // The destination account comes from the subscription's transfer_data.
-      application_fee_amount: calculatePlatformApplicationFeeAmount({
-        totalChargeCents: taxQuote.totalChargeCents,
-        connectedAccountAmountCents: taxQuote.subtotalCents,
-      }),
+  } catch (error) {
+    await releaseDiscountCodeReservation({
+      reservationId: discountApplication?.reservationId,
     });
+    const message = error instanceof Error ? error.message : 'Unable to start recurring billing.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  await upsertStripeSubscriptionMirror({
-    subscription,
-    fallback: {
-      productId: product.id,
-      userId: session.userId,
-      organizationId: product.organizationId,
-    },
-  });
+  try {
+    const latestInvoice = typeof subscription.latest_invoice === 'object' && subscription.latest_invoice
+      ? subscription.latest_invoice
+      : null;
+    let firstInvoicePaymentIntentId: string | null = getInvoicePaymentIntentId(latestInvoice);
+    if (connectedAccountId && latestInvoice?.id && !firstInvoicePaymentIntentId) {
+      const invoiceWithPayments = await stripe.invoices.retrieve(latestInvoice.id, {
+        expand: ['payments.data.payment.payment_intent'],
+      });
+      firstInvoicePaymentIntentId = getInvoicePaymentIntentId(invoiceWithPayments);
+    }
+    if (connectedAccountId && firstInvoicePaymentIntentId) {
+      await stripe.paymentIntents.update(firstInvoicePaymentIntentId, {
+        // The destination account comes from the subscription's transfer_data.
+        application_fee_amount: calculatePlatformApplicationFeeAmount({
+          totalChargeCents: taxQuote.totalChargeCents,
+          connectedAccountAmountCents: taxQuote.hostReceivesCents,
+        }),
+      });
+    }
+    if (discountApplication?.reservationId && firstInvoicePaymentIntentId) {
+      await attachDiscountCodeReservationPaymentIntent({
+        reservationId: discountApplication.reservationId,
+        paymentIntentId: firstInvoicePaymentIntentId,
+      }).catch((error) => {
+        console.warn('Failed to attach subscription discount reservation to payment intent.', {
+          reservationId: discountApplication?.reservationId,
+          paymentIntentId: firstInvoicePaymentIntentId,
+          error,
+        });
+      });
+    }
 
-  const paymentIntentClientSecret = latestInvoice?.confirmation_secret?.client_secret ?? null;
-  if (!paymentIntentClientSecret) {
+    await upsertStripeSubscriptionMirror({
+      subscription,
+      fallback: {
+        productId: product.id,
+        userId: session.userId,
+        organizationId: product.organizationId,
+      },
+    });
+
+    const paymentIntentClientSecret = latestInvoice?.confirmation_secret?.client_secret ?? null;
+    if (!paymentIntentClientSecret) {
+      await releaseDiscountCodeReservation({
+        reservationId: discountApplication?.reservationId,
+      });
+      return NextResponse.json({
+        error: 'Stripe did not return a subscription payment intent.',
+      }, { status: 500 });
+    }
+
     return NextResponse.json({
-      error: 'Stripe did not return a subscription payment intent.',
-    }, { status: 500 });
+      paymentIntent: paymentIntentClientSecret,
+      publishableKey,
+      taxCalculationId: taxQuote.calculationId,
+      taxCategory: taxQuote.taxCategory,
+      feeBreakdown: toFeeBreakdown(taxQuote),
+      stripeSubscriptionId: subscription.id,
+      productId: product.id,
+      productPeriod: product.period,
+    }, { status: 200 });
+  } catch (error) {
+    await releaseDiscountCodeReservation({
+      reservationId: discountApplication?.reservationId,
+    });
+    const message = error instanceof Error ? error.message : 'Unable to prepare recurring billing checkout.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json({
-    paymentIntent: paymentIntentClientSecret,
-    publishableKey,
-    taxCalculationId: taxQuote.calculationId,
-    taxCategory: taxQuote.taxCategory,
-    feeBreakdown: toFeeBreakdown(taxQuote),
-    stripeSubscriptionId: subscription.id,
-    productId: product.id,
-    productPeriod: product.period,
-  }, { status: 200 });
 }

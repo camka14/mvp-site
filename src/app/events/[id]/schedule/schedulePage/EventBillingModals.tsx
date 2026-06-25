@@ -17,6 +17,7 @@ import {
 
 import { formatBillAmount } from '@/types';
 import type { Team } from '@/types';
+import HostPriceInput from '@/components/ui/HostPriceInput';
 
 import type { TeamBillingSnapshot } from './helpers';
 
@@ -309,19 +310,14 @@ export function CreateBillModal({
         </Group>
 
         <Group align="flex-end" wrap="wrap">
-          <NumberInput
-            label="Amount"
-            min={0}
-            decimalScale={2}
-            fixedDecimalScale
-            prefix="$"
-            value={amountDollars}
-            onChange={(value) => {
-              const numeric = typeof value === 'number' ? value : Number(value);
-              onAmountDollarsChange(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
-            }}
-            w={180}
-          />
+          <div className="min-w-[320px] flex-1">
+            <HostPriceInput
+              hostLabel="Host take-home"
+              totalLabel="Bill amount"
+              value={Math.round((Number(amountDollars) || 0) * 100)}
+              onChange={(nextCents) => onAmountDollarsChange(nextCents / 100)}
+            />
+          </div>
           <NumberInput
             label="Tax"
             min={0}
@@ -378,4 +374,3 @@ export function CreateBillModal({
     </Modal>
   );
 }
-

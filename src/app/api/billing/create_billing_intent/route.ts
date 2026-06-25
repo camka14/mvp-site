@@ -3,7 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { calculateChargeAmountForPaymentMethod, getPaymentMethodFeeLabel } from '@/lib/billingFees';
+import { calculateIncludedFeesFromTotalPrice, getPaymentMethodFeeLabel, normalizePaymentMethodFeeType } from '@/lib/billingFees';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
 
 export const dynamic = 'force-dynamic';
@@ -148,23 +148,11 @@ export async function POST(req: NextRequest) {
   }
 
   const amountCents = payment.amountCents;
-  const billLineItems = Array.isArray(bill.lineItems) ? bill.lineItems : [];
-  const billIncludesFeeLineItems = billLineItems.some((item) => {
-    if (!item || typeof item !== 'object') {
-      return false;
-    }
-    const type = typeof (item as { type?: unknown }).type === 'string'
-      ? (item as { type: string }).type.trim().toUpperCase()
-      : '';
-    return type === 'FEE' || type === 'TAX';
-  });
-  const appFeePercentage = billIncludesFeeLineItems ? 0 : 0.01;
-  const applicationFee = Math.round(amountCents * appFeePercentage);
-  const paymentMethodFees = calculateChargeAmountForPaymentMethod({
-    goalAmountCents: amountCents + applicationFee,
-  });
-  const totalCharge = paymentMethodFees.totalChargeCents;
-  const stripeFee = paymentMethodFees.stripeProcessingFeeCents;
+  const includedFees = calculateIncludedFeesFromTotalPrice({ totalPriceCents: amountCents });
+  const applicationFee = includedFees.platformFeeCents;
+  const totalCharge = includedFees.totalPriceCents;
+  const stripeFee = includedFees.processingFeeCents;
+  const paymentMethodType = normalizePaymentMethodFeeType('card');
 
   const feeBreakdown = {
     eventPrice: amountCents,
@@ -174,10 +162,10 @@ export async function POST(req: NextRequest) {
     processingFee: applicationFee,
     mvpFee: applicationFee,
     totalCharge,
-    hostReceives: amountCents,
-    feePercentage: appFeePercentage * 100,
-    paymentMethodType: paymentMethodFees.paymentMethodType,
-    paymentMethodLabel: getPaymentMethodFeeLabel(paymentMethodFees.paymentMethodType),
+    hostReceives: includedFees.hostReceivesCents,
+    feePercentage: includedFees.platformFeePercentage * 100,
+    paymentMethodType,
+    paymentMethodLabel: getPaymentMethodFeeLabel(paymentMethodType),
     purchaseType: 'bill',
   };
 
@@ -212,6 +200,7 @@ export async function POST(req: NextRequest) {
       automatic_payment_methods: { enabled: true },
       metadata: {
         purchase_type: 'bill',
+        fees_included_in_price: 'true',
         bill_id: bill.id,
         bill_payment_id: payment.id,
         amount_cents: String(amountCents),
@@ -221,8 +210,8 @@ export async function POST(req: NextRequest) {
         stripe_fee_cents: String(stripeFee),
         stripe_processing_fee_cents: String(stripeFee),
         stripe_tax_service_fee_cents: '0',
-        payment_method_fee_type: paymentMethodFees.paymentMethodType,
-        payment_method_fee_label: getPaymentMethodFeeLabel(paymentMethodFees.paymentMethodType),
+        payment_method_fee_type: paymentMethodType,
+        payment_method_fee_label: getPaymentMethodFeeLabel(paymentMethodType),
         ...(bill.eventId ? { event_id: bill.eventId } : {}),
         ...(bill.organizationId ? { organization_id: bill.organizationId } : {}),
         ...(userId ? { user_id: String(userId) } : {}),

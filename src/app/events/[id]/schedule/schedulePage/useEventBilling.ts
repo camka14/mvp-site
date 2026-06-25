@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { apiRequest } from '@/lib/apiClient';
-import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import type { Event, Team } from '@/types';
 
 import { normalizeIdToken, type TeamBillingSnapshot } from './helpers';
@@ -19,7 +18,6 @@ type UseEventBillingParams = {
 export default function useEventBilling({
   activeEventId,
   fallbackEventId,
-  eventType,
   teamSignup,
   appendSelectedOccurrenceQuery,
   refreshTeamCompliance,
@@ -282,20 +280,9 @@ export default function useEventBilling({
   }, [createBillIsUserOnly, createBillOwnerId, createBillOwnerType, createBillTeam, createBillUserOptions]);
 
   const createBillEventAmountCents = Math.max(0, Math.round((Number(createBillAmountDollars) || 0) * 100));
-  const createBillFeeBreakdown = useMemo(
-    () => calculateMvpAndStripeFees({
-      eventAmountCents: createBillEventAmountCents,
-      eventType: eventType ?? undefined,
-    }),
-    [createBillEventAmountCents, eventType],
-  );
-  const createBillMvpFeeAmountCents = createBillFeeBreakdown.mvpFeeCents;
-  const createBillStripeFeeAmountCents = createBillFeeBreakdown.stripeFeeCents;
   const createBillTaxAmountCents = Math.max(0, Math.round((Number(createBillTaxDollars) || 0) * 100));
   const createBillTotalCents = (
     createBillEventAmountCents
-    + createBillMvpFeeAmountCents
-    + createBillStripeFeeAmountCents
     + createBillTaxAmountCents
   );
   const createBillPreviewLineItems = useMemo(() => {
@@ -306,20 +293,6 @@ export default function useEventBilling({
         amountCents: createBillEventAmountCents,
       },
     ];
-    if (createBillMvpFeeAmountCents > 0) {
-      lineItems.push({
-        id: `line_${lineItems.length + 1}`,
-        label: 'BracketIQ fee',
-        amountCents: createBillMvpFeeAmountCents,
-      });
-    }
-    if (createBillStripeFeeAmountCents > 0) {
-      lineItems.push({
-        id: `line_${lineItems.length + 1}`,
-        label: 'Stripe fee',
-        amountCents: createBillStripeFeeAmountCents,
-      });
-    }
     if (createBillTaxAmountCents > 0) {
       lineItems.push({
         id: `line_${lineItems.length + 1}`,
@@ -331,8 +304,6 @@ export default function useEventBilling({
   }, [
     createBillEventAmountCents,
     createBillLabel,
-    createBillMvpFeeAmountCents,
-    createBillStripeFeeAmountCents,
     createBillTaxAmountCents,
   ]);
 

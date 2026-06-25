@@ -359,13 +359,14 @@ describe('POST /api/billing/webhook', () => {
           event_id: 'event_1',
           organization_id: 'org_1',
           event_name: 'Spring Volleyball',
+          fees_included_in_price: 'true',
           amount_cents: '4500',
           mvp_fee_cents: '45',
           stripe_fee_cents: '170',
-          total_charge_cents: '4715',
+          total_charge_cents: '4500',
         },
-        amount: 4715,
-        amountReceived: 4715,
+        amount: 4500,
+        amountReceived: 4500,
       })),
     );
 
@@ -378,13 +379,11 @@ describe('POST /api/billing/webhook', () => {
           ownerId: 'team_1',
           eventId: 'event_1',
           organizationId: 'org_1',
-          totalAmountCents: 4715,
-          paidAmountCents: 4715,
+          totalAmountCents: 4500,
+          paidAmountCents: 4500,
           status: 'PAID',
           lineItems: [
             { id: 'line_1', type: 'EVENT', label: 'Spring Volleyball', amountCents: 4500 },
-            { id: 'line_2', type: 'FEE', label: 'BracketIQ fee', amountCents: 45 },
-            { id: 'line_3', type: 'FEE', label: 'Stripe fee', amountCents: 170 },
           ],
         }),
       }),
@@ -393,7 +392,7 @@ describe('POST /api/billing/webhook', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           billId: 'bill_event_payment_1',
-          amountCents: 4715,
+          amountCents: 4500,
           status: 'PAID',
           paymentIntentId: 'pi_event_payment_1',
           payerUserId: 'manager_1',

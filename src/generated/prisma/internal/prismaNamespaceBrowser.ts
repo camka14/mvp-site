@@ -99,6 +99,7 @@ export const ModelName = {
   Discounts: 'Discounts',
   DiscountCodes: 'DiscountCodes',
   DiscountCodeRedemptions: 'DiscountCodeRedemptions',
+  DiscountCodeReservations: 'DiscountCodeReservations',
   OrganizationAccountingConnections: 'OrganizationAccountingConnections',
   AccountingSyncRecords: 'AccountingSyncRecords',
   OrganizationFinanceCategoryAccountingMappings: 'OrganizationFinanceCategoryAccountingMappings',
@@ -1165,6 +1166,32 @@ export const DiscountCodeRedemptionsScalarFieldEnum = {
 } as const
 
 export type DiscountCodeRedemptionsScalarFieldEnum = (typeof DiscountCodeRedemptionsScalarFieldEnum)[keyof typeof DiscountCodeRedemptionsScalarFieldEnum]
+
+
+export const DiscountCodeReservationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  discountId: 'discountId',
+  discountCodeId: 'discountCodeId',
+  code: 'code',
+  userId: 'userId',
+  guestEmail: 'guestEmail',
+  purchaseType: 'purchaseType',
+  purchaseTargetId: 'purchaseTargetId',
+  paymentIntentId: 'paymentIntentId',
+  registrationId: 'registrationId',
+  productId: 'productId',
+  organizationId: 'organizationId',
+  originalAmountCents: 'originalAmountCents',
+  discountedAmountCents: 'discountedAmountCents',
+  status: 'status',
+  expiresAt: 'expiresAt',
+  redeemedAt: 'redeemedAt',
+  releasedAt: 'releasedAt'
+} as const
+
+export type DiscountCodeReservationsScalarFieldEnum = (typeof DiscountCodeReservationsScalarFieldEnum)[keyof typeof DiscountCodeReservationsScalarFieldEnum]
 
 
 export const OrganizationAccountingConnectionsScalarFieldEnum = {

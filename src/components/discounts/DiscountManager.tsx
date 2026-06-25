@@ -85,6 +85,7 @@ export default function DiscountManager({
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
   const [targetId, setTargetId] = useState<string | null>(null);
+  const [selectedTargetSnapshot, setSelectedTargetSnapshot] = useState<DiscountTargetOption | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<DiscountMode>("PERCENT");
@@ -96,10 +97,12 @@ export default function DiscountManager({
   const [usageLimitInputs, setUsageLimitInputs] = useState<Record<string, number | "">>({});
   const [generatingCodeId, setGeneratingCodeId] = useState<string | null>(null);
 
-  const selectedTarget = useMemo(
-    () => targets.find((target) => target.id === targetId) ?? null,
-    [targetId, targets],
-  );
+  const selectedTarget = useMemo(() => {
+    if (selectedTargetSnapshot?.id === targetId) {
+      return selectedTargetSnapshot;
+    }
+    return targets.find((target) => target.id === targetId) ?? null;
+  }, [selectedTargetSnapshot, targetId, targets]);
   const originalPriceCents = selectedTarget?.priceCents ?? 0;
 
   const loadDiscounts = useCallback(async () => {
@@ -152,6 +155,7 @@ export default function DiscountManager({
 
   useEffect(() => {
     setTargetId(null);
+    setSelectedTargetSnapshot(null);
     setNewPriceCents(0);
     setDiscountAmountCents(0);
     setDiscountPercent(0);
@@ -169,23 +173,39 @@ export default function DiscountManager({
     setDiscountPercent(0);
   }, [selectedTarget]);
 
+  const displayedTargets = useMemo(() => {
+    if (!selectedTarget) {
+      return targets;
+    }
+    return [
+      selectedTarget,
+      ...targets.filter((target) => target.id !== selectedTarget.id),
+    ];
+  }, [selectedTarget, targets]);
+
   const targetOptions = useMemo(
-    () => targets.map((target) => ({
+    () => displayedTargets.map((target) => ({
       value: target.id,
       label: `${target.label} (${formatPrice(target.priceCents)})`,
     })),
-    [targets],
+    [displayedTargets],
   );
 
   const resetForm = useCallback(() => {
     setName("");
     setDescription("");
     setTargetId(null);
+    setSelectedTargetSnapshot(null);
     setTargetSearch("");
     setDiscountPercent(0);
     setDiscountAmountCents(0);
     setNewPriceCents(0);
   }, []);
+
+  const handleTargetChange = useCallback((value: string | null) => {
+    setTargetId(value);
+    setSelectedTargetSnapshot(value ? targets.find((target) => target.id === value) ?? null : null);
+  }, [targets]);
 
   const handlePercentChange = useCallback((value: string | number) => {
     const percent = Math.min(100, Math.max(0, Number(value) || 0));
@@ -300,7 +320,7 @@ export default function DiscountManager({
             placeholder={targetsLoading ? "Loading items..." : "Search and select an item"}
             data={targetOptions}
             value={targetId}
-            onChange={setTargetId}
+            onChange={handleTargetChange}
             searchValue={targetSearch}
             onSearchChange={setTargetSearch}
             searchable

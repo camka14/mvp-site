@@ -24,7 +24,7 @@ import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
-import CentsInput from '@/components/ui/CentsInput';
+import HostPriceInput from '@/components/ui/HostPriceInput';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
@@ -57,7 +57,6 @@ import {
   organizationVerificationStatusLabel,
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
-import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import {
   buildOrganizationCustomerPath,
   buildOrganizationTabPath,
@@ -4145,19 +4144,14 @@ function OrganizationDetailContent() {
                         onChange={(e) => setProductName(e.currentTarget.value)}
                         required
                       />
-                      <div>
-                        <CentsInput
-                          label="Price (USD)"
-                          value={productPriceCents}
-                          onChange={setProductPriceCents}
-                          required
-                        />
-                        <PriceWithFeesPreview
-                          amountCents={organizationHasStripeAccount ? productPriceCents : 0}
-                          helperText={isProductTypeTaxable(productType) ? 'Tax is calculated at checkout.' : null}
-                          taxable={organizationHasStripeAccount && isProductTypeTaxable(productType)}
-                        />
-                      </div>
+	                      <HostPriceInput
+	                        hostLabel="Host take-home"
+	                        totalLabel="Product price"
+	                        value={organizationHasStripeAccount ? productPriceCents : 0}
+	                        onChange={setProductPriceCents}
+	                        disabled={!organizationHasStripeAccount}
+	                        required
+	                      />
                       <Select
                         label="Billing period"
                         data={PRODUCT_PERIOD_OPTIONS}
@@ -4636,19 +4630,14 @@ function OrganizationDetailContent() {
               onChange={(e) => setEditProductName(e.currentTarget.value)}
               required
             />
-            <div>
-              <CentsInput
-                label="Price (USD)"
-                value={editProductPriceCents}
-                onChange={setEditProductPriceCents}
-                required
-              />
-              <PriceWithFeesPreview
-                amountCents={organizationHasStripeAccount ? editProductPriceCents : 0}
-                helperText={isProductTypeTaxable(editProductType) ? 'Tax is calculated at checkout.' : null}
-                taxable={organizationHasStripeAccount && isProductTypeTaxable(editProductType)}
-              />
-            </div>
+	            <HostPriceInput
+	              hostLabel="Host take-home"
+	              totalLabel="Product price"
+	              value={organizationHasStripeAccount ? editProductPriceCents : 0}
+	              onChange={setEditProductPriceCents}
+	              disabled={!organizationHasStripeAccount}
+	              required
+	            />
             <Select
               label="Billing period"
               data={PRODUCT_PERIOD_OPTIONS}

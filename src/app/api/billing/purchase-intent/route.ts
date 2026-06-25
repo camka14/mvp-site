@@ -68,7 +68,10 @@ import {
 } from '@/server/registrationQuestions';
 import { requireVerifiedEmailForPaidRegistration } from '@/server/emailVerificationGate';
 import {
+  attachDiscountCodeReservationPaymentIntent,
   DiscountCodeError,
+  releaseDiscountCodeReservation,
+  reserveDiscountApplication,
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
@@ -922,6 +925,11 @@ export async function POST(req: NextRequest) {
 
   let checkoutAmountCents = resolvedPurchase.amountCents;
   let discountApplication: ResolvedDiscountApplication | null = null;
+  let discountReservationRequest: {
+    code: string;
+    purchaseType: 'event' | 'product' | 'team_registration';
+    targetId: string;
+  } | null = null;
   const requestedDiscountCode = normalizeString(payload.discountCode);
   if (requestedDiscountCode) {
     if (
@@ -937,16 +945,24 @@ export async function POST(req: NextRequest) {
       productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
       teamId: teamId ?? resolvedPurchase.team?.id ?? null,
     });
+    const discountPurchaseType = resolvedPurchase.purchaseType as 'event' | 'product' | 'team_registration';
     try {
       const discountResult = await resolveDiscountApplication({
         code: requestedDiscountCode,
-        purchaseType: resolvedPurchase.purchaseType,
+        purchaseType: discountPurchaseType,
         targetId: discountTargetId ?? '',
         originalAmountCents: resolvedPurchase.amountCents,
         buyerUserId: session.userId,
       });
       checkoutAmountCents = discountResult.amountCents;
       discountApplication = discountResult.discount;
+      if (discountResult.discount && discountTargetId) {
+        discountReservationRequest = {
+          code: requestedDiscountCode,
+          purchaseType: discountPurchaseType,
+          targetId: discountTargetId,
+        };
+      }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
@@ -1094,7 +1110,7 @@ export async function POST(req: NextRequest) {
         mvpFee: fallbackFees.mvpFeeCents,
         taxAmount: 0,
         totalCharge: fallbackFees.totalChargeCents,
-        hostReceives: checkoutAmountCents,
+        hostReceives: fallbackFees.hostReceivesCents,
         feePercentage: fallbackFees.mvpFeePercentage * 100,
         paymentMethodType: fallbackFees.paymentMethodType,
         paymentMethodLabel: getPaymentMethodFeeLabel(fallbackFees.paymentMethodType),
@@ -1200,8 +1216,8 @@ export async function POST(req: NextRequest) {
 
   const feeBreakdown = buildFeeBreakdown(taxQuote);
   const connectedAccountTransferAmountCents = taxPolicyUsesOrganizerManualTax(taxPolicy)
-    ? taxQuote.subtotalCents + taxQuote.taxAmountCents
-    : taxQuote.subtotalCents;
+    ? taxQuote.hostReceivesCents + taxQuote.taxAmountCents
+    : taxQuote.hostReceivesCents;
 
   const transferData = await buildDestinationTransferData({
     organizationId,
@@ -1350,9 +1366,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (discountApplication && discountReservationRequest) {
+    try {
+      const reservationResult = await reserveDiscountApplication({
+        ...discountReservationRequest,
+        originalAmountCents: resolvedPurchase.amountCents,
+        buyerUserId: actorUserId,
+        registrationId: reservedRegistrationId,
+        productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+        organizationId,
+      });
+      if (reservationResult.amountCents !== checkoutAmountCents) {
+        throw new DiscountCodeError('Discount code pricing changed. Please refresh checkout and try again.', 409);
+      }
+      discountApplication = reservationResult.discount;
+    } catch (error) {
+      await releaseStartedCheckoutRegistration({
+        purchaseType: resolvedPurchase.purchaseType,
+        registrationId: reservedRegistrationId,
+        eventId,
+        teamId: checkoutTeamId,
+      });
+      await releaseReservedRentalWindow({
+        window: reservedRentalWindow,
+        userId: actorUserId,
+      });
+      if (error instanceof DiscountCodeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   try {
     const metadata: Record<string, string> = {
       purchase_type: resolvedPurchase.purchaseType,
+      fees_included_in_price: 'true',
     };
 
     appendMetadata(metadata, 'user_id', checkoutUserId);
@@ -1372,6 +1422,7 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'discount_code', discountApplication?.code);
     appendMetadata(metadata, 'discount_id', discountApplication?.discountId);
     appendMetadata(metadata, 'discount_code_id', discountApplication?.discountCodeId);
+    appendMetadata(metadata, 'discount_reservation_id', discountApplication?.reservationId);
     appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
     appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
     appendMetadata(metadata, 'mvp_fee_cents', taxQuote.processingFeeCents);
@@ -1444,6 +1495,19 @@ export async function POST(req: NextRequest) {
       ...(transferData ? { transfer_data: transferData } : {}),
     });
 
+    if (discountApplication?.reservationId) {
+      await attachDiscountCodeReservationPaymentIntent({
+        reservationId: discountApplication.reservationId,
+        paymentIntentId: intent.id,
+      }).catch((error) => {
+        console.warn('Failed to attach discount reservation to payment intent.', {
+          reservationId: discountApplication?.reservationId,
+          paymentIntentId: intent.id,
+          error,
+        });
+      });
+    }
+
     return NextResponse.json({
       paymentIntent: intent.client_secret ?? intent.id,
       publishableKey,
@@ -1465,6 +1529,9 @@ export async function POST(req: NextRequest) {
     await releaseReservedRentalWindow({
       window: reservedRentalWindow,
       userId: actorUserId,
+    });
+    await releaseDiscountCodeReservation({
+      reservationId: discountApplication?.reservationId,
     });
     const message = error instanceof Error ? error.message : 'Failed to create payment intent.';
     return NextResponse.json({

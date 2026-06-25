@@ -107,7 +107,6 @@ export const DivisionEditorLeaguePanel = ({
                 singleDivision={eventData.singleDivision}
                 teamSignup={eventData.teamSignup}
                 eventType={eventData.eventType}
-                taxable={eventTaxableForPreview}
                 divisionEditorReady={divisionEditorReady}
                 divisionsImmutable={isImmutableField('divisions')}
                 hasStripeAccount={hasStripeAccount}

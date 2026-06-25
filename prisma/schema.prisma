@@ -58,6 +58,13 @@ enum DiscountCodesStatusEnum {
   INACTIVE
 }
 
+enum DiscountCodeReservationStatusEnum {
+  ACTIVE
+  REDEEMED
+  RELEASED
+  EXPIRED
+}
+
 enum EventsStateEnum {
   PUBLISHED
   UNPUBLISHED
@@ -1490,6 +1497,35 @@ model DiscountCodeRedemptions {
   @@index([purchaseType, purchaseTargetId])
   @@unique([discountCodeId, paymentIntentId])
   @@unique([discountCodeId, registrationId])
+}
+
+model DiscountCodeReservations {
+  id                    String                            @id
+  createdAt             DateTime                          @default(now())
+  updatedAt             DateTime                          @updatedAt
+  discountId            String
+  discountCodeId        String
+  code                  String
+  userId                String?
+  guestEmail            String?
+  purchaseType          DiscountsTargetTypeEnum
+  purchaseTargetId      String
+  paymentIntentId       String?                           @unique
+  registrationId        String?
+  productId             String?
+  organizationId        String?
+  originalAmountCents   Int
+  discountedAmountCents Int
+  status                DiscountCodeReservationStatusEnum @default(ACTIVE)
+  expiresAt             DateTime
+  redeemedAt            DateTime?
+  releasedAt            DateTime?
+
+  @@index([discountId])
+  @@index([discountCodeId, status, expiresAt])
+  @@index([purchaseType, purchaseTargetId])
+  @@index([userId])
+  @@index([registrationId])
 }
 
 model OrganizationAccountingConnections {

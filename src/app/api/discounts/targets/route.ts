@@ -28,6 +28,19 @@ const normalizeCents = (value: unknown): number => {
   return Math.max(0, Math.round(numeric));
 };
 
+const requireDiscountSession = async (req: NextRequest) => {
+  try {
+    return { ok: true as const, session: await requireSession(req) };
+  } catch (error) {
+    if (error instanceof Response) {
+      const status = error.status || 401;
+      const message = status === 403 ? 'Forbidden' : 'Unauthorized';
+      return { ok: false as const, response: NextResponse.json({ error: message }, { status }) };
+    }
+    throw error;
+  }
+};
+
 const canManageDiscountsForOrganization = async (
   session: Awaited<ReturnType<typeof requireSession>>,
   organizationId: string,
@@ -68,7 +81,11 @@ const matchesQuery = (query: string) => (
 );
 
 export async function GET(req: NextRequest) {
-  const session = await requireSession(req);
+  const sessionResult = await requireDiscountSession(req);
+  if (!sessionResult.ok) {
+    return sessionResult.response;
+  }
+  const { session } = sessionResult;
   const ownerType = (req.nextUrl.searchParams.get('ownerType') ?? 'USER').trim().toUpperCase() as DiscountOwnerType;
   const ownerId = normalizeString(req.nextUrl.searchParams.get('ownerId')) ?? session.userId;
   const itemType = (req.nextUrl.searchParams.get('itemType') ?? 'EVENT').trim().toUpperCase() as DiscountItemType;
