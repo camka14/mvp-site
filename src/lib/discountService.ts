@@ -50,6 +50,10 @@ export type GenerateDiscountCodeInput = {
   usageLimit?: number | null;
 };
 
+export type UpdateDiscountCodeInput = {
+  status: DiscountCodeStatus;
+};
+
 class DiscountService {
   async listDiscounts(input: {
     ownerType?: DiscountOwnerType;
@@ -101,6 +105,33 @@ class DiscountService {
       throw new Error('Discount code was not returned.');
     }
     return result.code;
+  }
+
+  async updateCode(discountId: string, codeId: string, input: UpdateDiscountCodeInput): Promise<DiscountCode> {
+    const result = await apiRequest<{ code?: DiscountCode; error?: string }>(
+      `/api/discounts/${encodeURIComponent(discountId)}/codes/${encodeURIComponent(codeId)}`,
+      {
+        method: 'PATCH',
+        body: input,
+      },
+    );
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    if (!result?.code) {
+      throw new Error('Discount code was not returned.');
+    }
+    return result.code;
+  }
+
+  async deleteCode(discountId: string, codeId: string): Promise<void> {
+    const result = await apiRequest<{ ok?: boolean; error?: string }>(
+      `/api/discounts/${encodeURIComponent(discountId)}/codes/${encodeURIComponent(codeId)}`,
+      { method: 'DELETE' },
+    );
+    if (result?.error) {
+      throw new Error(result.error);
+    }
   }
 }
 

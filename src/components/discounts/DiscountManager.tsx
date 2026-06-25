@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Badge,
@@ -26,6 +26,7 @@ import { apiRequest } from "@/lib/apiClient";
 import {
   discountService,
   type Discount,
+  type DiscountCode,
   type DiscountOwnerType,
   type DiscountTargetType,
 } from "@/lib/discountService";
@@ -71,6 +72,31 @@ const calculatePercentFromPrice = (originalCents: number, discountedCents: numbe
   return Math.min(100, Math.max(0, Number((((originalCents - discountedCents) / originalCents) * 100).toFixed(2))));
 };
 
+const formGridStyle: CSSProperties = {
+  alignItems: "flex-end",
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "16px 20px",
+};
+
+const compactFieldStyle: CSSProperties = {
+  flex: "1 1 240px",
+  maxWidth: 360,
+  minWidth: 220,
+};
+
+const wideFieldStyle: CSSProperties = {
+  flex: "1 1 300px",
+  maxWidth: 460,
+  minWidth: 260,
+};
+
+const actionFieldStyle: CSSProperties = {
+  flex: "0 1 220px",
+  maxWidth: 240,
+  minWidth: 180,
+};
+
 export default function DiscountManager({
   ownerType,
   ownerId,
@@ -86,6 +112,7 @@ export default function DiscountManager({
   const [targetsError, setTargetsError] = useState<string | null>(null);
   const [targetId, setTargetId] = useState<string | null>(null);
   const [selectedTargetSnapshot, setSelectedTargetSnapshot] = useState<DiscountTargetOption | null>(null);
+  const [knownTargets, setKnownTargets] = useState<Record<string, DiscountTargetOption>>({});
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<DiscountMode>("PERCENT");
@@ -96,13 +123,14 @@ export default function DiscountManager({
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [usageLimitInputs, setUsageLimitInputs] = useState<Record<string, number | "">>({});
   const [generatingCodeId, setGeneratingCodeId] = useState<string | null>(null);
+  const [actingCodeId, setActingCodeId] = useState<string | null>(null);
 
   const selectedTarget = useMemo(() => {
     if (selectedTargetSnapshot?.id === targetId) {
       return selectedTargetSnapshot;
     }
-    return targets.find((target) => target.id === targetId) ?? null;
-  }, [selectedTargetSnapshot, targetId, targets]);
+    return (targetId ? knownTargets[targetId] : null) ?? targets.find((target) => target.id === targetId) ?? null;
+  }, [knownTargets, selectedTargetSnapshot, targetId, targets]);
   const originalPriceCents = selectedTarget?.priceCents ?? 0;
 
   const loadDiscounts = useCallback(async () => {
@@ -133,7 +161,15 @@ export default function DiscountManager({
       if (result?.error) {
         throw new Error(result.error);
       }
-      setTargets(result.targets ?? []);
+      const nextTargets = result.targets ?? [];
+      setTargets(nextTargets);
+      setKnownTargets((current) => {
+        const next = { ...current };
+        for (const target of nextTargets) {
+          next[target.id] = target;
+        }
+        return next;
+      });
     } catch (error) {
       setTargets([]);
       setTargetsError(error instanceof Error ? error.message : "Failed to load discount targets.");
@@ -204,8 +240,8 @@ export default function DiscountManager({
 
   const handleTargetChange = useCallback((value: string | null) => {
     setTargetId(value);
-    setSelectedTargetSnapshot(value ? targets.find((target) => target.id === value) ?? null : null);
-  }, [targets]);
+    setSelectedTargetSnapshot(value ? knownTargets[value] ?? targets.find((target) => target.id === value) ?? null : null);
+  }, [knownTargets, targets]);
 
   const handlePercentChange = useCallback((value: string | number) => {
     const percent = Math.min(100, Math.max(0, Number(value) || 0));
@@ -285,6 +321,54 @@ export default function DiscountManager({
     }
   }, [codeInputs, loadDiscounts, usageLimitInputs]);
 
+  const handleSetCodeActive = useCallback(async (
+    discountId: string,
+    code: DiscountCode,
+    active: boolean,
+  ) => {
+    try {
+      setActingCodeId(code.id);
+      await discountService.updateCode(discountId, code.id, {
+        status: active ? "ACTIVE" : "INACTIVE",
+      });
+      notifications.show({
+        color: "green",
+        message: active ? "Discount code activated." : "Discount code deactivated.",
+      });
+      await loadDiscounts();
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        message: error instanceof Error ? error.message : "Failed to update discount code.",
+      });
+    } finally {
+      setActingCodeId(null);
+    }
+  }, [loadDiscounts]);
+
+  const handleDeleteCode = useCallback(async (discountId: string, code: DiscountCode) => {
+    if (code.status === "ACTIVE") {
+      notifications.show({ color: "yellow", message: "Deactivate the code before deleting it." });
+      return;
+    }
+    if (typeof window !== "undefined" && !window.confirm(`Delete discount code "${code.code}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      setActingCodeId(code.id);
+      await discountService.deleteCode(discountId, code.id);
+      notifications.show({ color: "green", message: "Discount code deleted." });
+      await loadDiscounts();
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        message: error instanceof Error ? error.message : "Failed to delete discount code.",
+      });
+    } finally {
+      setActingCodeId(null);
+    }
+  }, [loadDiscounts]);
+
   return (
     <Stack gap="lg">
       <Paper withBorder radius="md" p="md">
@@ -300,13 +384,14 @@ export default function DiscountManager({
           </Button>
         </Group>
 
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+        <div style={formGridStyle}>
           <TextInput
             label="Discount name"
             placeholder="Early registration"
             value={name}
             onChange={(event) => setName(event.currentTarget.value)}
             required
+            style={compactFieldStyle}
           />
           <Select
             label="Item type"
@@ -314,6 +399,7 @@ export default function DiscountManager({
             value={itemType}
             onChange={(value) => setItemType((value as DiscountItemType) ?? "EVENT")}
             allowDeselect={false}
+            style={compactFieldStyle}
           />
           <Select
             label="Item"
@@ -327,6 +413,7 @@ export default function DiscountManager({
             clearable
             nothingFoundMessage={targetsLoading ? "Loading..." : "No paid items found"}
             rightSection={targetsLoading ? <Loader size="xs" /> : undefined}
+            style={wideFieldStyle}
           />
           <Textarea
             label="Description"
@@ -334,23 +421,12 @@ export default function DiscountManager({
             value={description}
             onChange={(event) => setDescription(event.currentTarget.value)}
             minRows={1}
+            style={wideFieldStyle}
           />
-        </SimpleGrid>
-
-        {targetsError ? <Alert color="red" mt="md">{targetsError}</Alert> : null}
-
-        {selectedTarget ? (
-          <Paper withBorder radius="md" p="md" mt="md">
-            <Group justify="space-between" align="center" mb="md">
-              <div>
-                <Text fw={700}>{selectedTarget.label}</Text>
-                <Text size="sm" c="dimmed">
-                  Current price: {formatPrice(selectedTarget.priceCents)}
-                  {selectedTarget.description ? ` • ${selectedTarget.description}` : ""}
-                </Text>
-              </div>
-              <Badge variant="light">{formatTargetType(selectedTarget.itemType)}</Badge>
-            </Group>
+          <Stack gap={4} style={compactFieldStyle}>
+            <Text component="label" size="sm" fw={500}>
+              Discount type
+            </Text>
             <SegmentedControl
               value={mode}
               onChange={(value) => setMode(value as DiscountMode)}
@@ -358,45 +434,67 @@ export default function DiscountManager({
                 { label: "Percent", value: "PERCENT" },
                 { label: "Flat amount", value: "FLAT" },
               ]}
-              mb="md"
             />
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              {mode === "PERCENT" ? (
-                <NumberInput
-                  label="Discount percent"
-                  min={0}
-                  max={100}
-                  suffix="%"
-                  decimalScale={2}
-                  value={discountPercent}
-                  onChange={handlePercentChange}
-                />
-              ) : (
-                <CentsInput
-                  label="Discount amount"
-                  value={discountAmountCents}
-                  onChange={handleDiscountAmountChange}
-                  maxCents={selectedTarget.priceCents}
-                />
-              )}
-              <CentsInput
-                label="New price"
-                value={newPriceCents}
-                onChange={handleNewPriceChange}
-                maxCents={selectedTarget.priceCents}
-                blankWhenZero={false}
-              />
-            </SimpleGrid>
-            <Group justify="space-between" mt="md">
+          </Stack>
+          {mode === "PERCENT" ? (
+            <NumberInput
+              label="Discount percent"
+              min={0}
+              max={100}
+              suffix="%"
+              decimalScale={2}
+              value={discountPercent}
+              onChange={handlePercentChange}
+              disabled={!selectedTarget}
+              style={compactFieldStyle}
+            />
+          ) : (
+            <CentsInput
+              label="Discount amount"
+              value={discountAmountCents}
+              onChange={handleDiscountAmountChange}
+              maxCents={selectedTarget?.priceCents ?? 0}
+              disabled={!selectedTarget}
+              style={compactFieldStyle}
+            />
+          )}
+          <CentsInput
+            label="New price"
+            value={newPriceCents}
+            onChange={handleNewPriceChange}
+            maxCents={selectedTarget?.priceCents ?? 0}
+            blankWhenZero={false}
+            disabled={!selectedTarget}
+            style={compactFieldStyle}
+          />
+          <Button
+            onClick={handleCreateDiscount}
+            loading={creatingDiscount}
+            disabled={!selectedTarget}
+            style={actionFieldStyle}
+          >
+            Create discount
+          </Button>
+        </div>
+
+        {targetsError ? <Alert color="red" mt="md">{targetsError}</Alert> : null}
+
+        <Group gap="xs" mt="md">
+          {selectedTarget ? (
+            <>
+              <Badge variant="light">{formatTargetType(selectedTarget.itemType)}</Badge>
               <Text size="sm" c="dimmed">
-                Discount saved as final price: {formatPrice(clampCents(newPriceCents, selectedTarget.priceCents))}
+                {selectedTarget.label} is currently {formatPrice(selectedTarget.priceCents)}. Discount saved as final price:{" "}
+                {formatPrice(clampCents(newPriceCents, selectedTarget.priceCents))}
+                {selectedTarget.description ? ` • ${selectedTarget.description}` : ""}
               </Text>
-              <Button onClick={handleCreateDiscount} loading={creatingDiscount}>
-                Create discount
-              </Button>
-            </Group>
-          </Paper>
-        ) : null}
+            </>
+          ) : (
+            <Text size="sm" c="dimmed">
+              Select a paid item to enable discount pricing.
+            </Text>
+          )}
+        </Group>
       </Paper>
 
       <Paper withBorder radius="md" p="md">
@@ -469,6 +567,7 @@ export default function DiscountManager({
                           <Table.Th>Used</Table.Th>
                           <Table.Th>Limit</Table.Th>
                           <Table.Th>Status</Table.Th>
+                          <Table.Th>Actions</Table.Th>
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
@@ -478,6 +577,41 @@ export default function DiscountManager({
                             <Table.Td>{code.usedCount}</Table.Td>
                             <Table.Td>{code.usageLimit ?? "Unlimited"}</Table.Td>
                             <Table.Td>{code.status}</Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                {code.status === "ACTIVE" ? (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="light"
+                                    color="yellow"
+                                    loading={actingCodeId === code.id}
+                                    onClick={() => void handleSetCodeActive(discount.id, code, false)}
+                                  >
+                                    Deactivate
+                                  </Button>
+                                ) : (
+                                  <>
+                                    <Button
+                                      size="compact-xs"
+                                      variant="light"
+                                      loading={actingCodeId === code.id}
+                                      onClick={() => void handleSetCodeActive(discount.id, code, true)}
+                                    >
+                                      Activate
+                                    </Button>
+                                    <Button
+                                      size="compact-xs"
+                                      variant="light"
+                                      color="red"
+                                      loading={actingCodeId === code.id}
+                                      onClick={() => void handleDeleteCode(discount.id, code)}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </>
+                                )}
+                              </Group>
+                            </Table.Td>
                           </Table.Tr>
                         ))}
                       </Table.Tbody>
