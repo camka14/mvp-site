@@ -1508,6 +1508,7 @@ export default function FieldsTabContent({
   const [facilityFormName, setFacilityFormName] = useState('');
   const [facilityFormLocation, setFacilityFormLocation] = useState('');
   const [facilityFormAddress, setFacilityFormAddress] = useState('');
+  const [facilityFormAffiliateUrl, setFacilityFormAffiliateUrl] = useState('');
   const [facilityFormCoordinates, setFacilityFormCoordinates] = useState<{ lat: number; lng: number }>(EMPTY_FACILITY_COORDINATES);
   const [facilityLocationSelected, setFacilityLocationSelected] = useState(false);
   const [facilityWeeklyHours, setFacilityWeeklyHours] = useState<FacilityWeeklyHoursFormRow[]>(() => buildDefaultFacilityWeeklyHours());
@@ -2152,6 +2153,7 @@ export default function FieldsTabContent({
     setFacilityFormName('');
     setFacilityFormLocation('');
     setFacilityFormAddress('');
+    setFacilityFormAffiliateUrl('');
     setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
     setFacilityLocationSelected(false);
     setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
@@ -2166,6 +2168,7 @@ export default function FieldsTabContent({
     setFacilityFormName(facility.name || '');
     setFacilityFormLocation(facility.location || facility.address || '');
     setFacilityFormAddress(facility.address || '');
+    setFacilityFormAffiliateUrl(facility.affiliateUrl || '');
     const nextCoordinates = facilityCoordinatesToInput(facility.coordinates);
     setFacilityFormCoordinates(nextCoordinates);
     setFacilityLocationSelected(Boolean((facility.location || facility.address || '').trim()) && hasFacilityCoordinates(nextCoordinates));
@@ -2209,6 +2212,7 @@ export default function FieldsTabContent({
             name,
             location,
             address: facilityFormAddress.trim() || null,
+            affiliateUrl: facilityFormAffiliateUrl.trim() || null,
             coordinates,
             operatingHours,
           })
@@ -2217,6 +2221,7 @@ export default function FieldsTabContent({
             name,
             location,
             address: facilityFormAddress.trim() || null,
+            affiliateUrl: facilityFormAffiliateUrl.trim() || null,
             coordinates,
             operatingHours,
             isDefault: facilities.length === 0,
@@ -2261,6 +2266,7 @@ export default function FieldsTabContent({
       setFacilityFormName('');
       setFacilityFormLocation('');
       setFacilityFormAddress('');
+      setFacilityFormAffiliateUrl('');
       setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
       setFacilityLocationSelected(false);
       setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
@@ -2278,6 +2284,7 @@ export default function FieldsTabContent({
     editingFacility,
     facilities,
     facilityFormAddress,
+    facilityFormAffiliateUrl,
     facilityFormCoordinates,
     facilityLocationSelected,
     facilityFormLocation,
@@ -5622,6 +5629,7 @@ export default function FieldsTabContent({
         formError={facilityFormError}
         name={facilityFormName}
         location={facilityFormLocation}
+        affiliateUrl={facilityFormAffiliateUrl}
         coordinates={facilityFormCoordinates}
         locationSelected={facilityLocationSelected}
         locationRequiredError={FACILITY_LOCATION_REQUIRED_ERROR}
@@ -5641,6 +5649,7 @@ export default function FieldsTabContent({
           setFacilityFormName('');
           setFacilityFormLocation('');
           setFacilityFormAddress('');
+          setFacilityFormAffiliateUrl('');
           setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
           setFacilityLocationSelected(false);
           setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
@@ -5663,6 +5672,7 @@ export default function FieldsTabContent({
             setFacilityFormError(null);
           }
         }}
+        onAffiliateUrlChange={setFacilityFormAffiliateUrl}
         onResourceIdsChange={(values) => setFacilityResourceIds(normalizeFieldIds(values))}
         onResourcesOpenChange={setFacilityResourcesOpen}
         onWeeklyHoursChange={setFacilityWeeklyHours}

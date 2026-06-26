@@ -10,6 +10,7 @@ export interface CreateFacilityData {
   name: string;
   location: string;
   address?: string | null;
+  affiliateUrl?: string | null;
   coordinates?: Facility['coordinates'];
   operatingHours?: Facility['operatingHours'];
   timeZone?: string;
@@ -21,6 +22,7 @@ export interface UpdateFacilityData {
   name?: string | null;
   location?: string;
   address?: string | null;
+  affiliateUrl?: string | null;
   coordinates?: Facility['coordinates'];
   operatingHours?: Facility['operatingHours'];
   timeZone?: string | null;
@@ -47,6 +49,7 @@ class FacilityService {
         name: data.name,
         location: data.location,
         address: data.address ?? null,
+        affiliateUrl: data.affiliateUrl ?? null,
         coordinates: data.coordinates ?? null,
         operatingHours: data.operatingHours ?? null,
         timeZone: data.timeZone,
@@ -71,6 +74,7 @@ class FacilityService {
           ...(data.name !== undefined ? { name: data.name } : {}),
           ...(data.location !== undefined ? { location: data.location } : {}),
           ...(data.address !== undefined ? { address: data.address } : {}),
+          ...(data.affiliateUrl !== undefined ? { affiliateUrl: data.affiliateUrl } : {}),
           ...(data.coordinates !== undefined ? { coordinates: data.coordinates } : {}),
           ...(data.operatingHours !== undefined ? { operatingHours: data.operatingHours } : {}),
           ...(data.timeZone !== undefined ? { timeZone: data.timeZone } : {}),
@@ -124,6 +128,9 @@ class FacilityService {
       name: row.name ?? '',
       location: row.location ?? '',
       address: row.address ?? null,
+      affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
+        ? row.affiliateUrl
+        : null,
       coordinates: row.coordinates ?? null,
       operatingHours: row.operatingHours ?? null,
       timeZone: row.timeZone ?? 'UTC',

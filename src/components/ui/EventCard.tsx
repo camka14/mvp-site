@@ -37,6 +37,7 @@ export default function EventCard({
   hostChangeDisabled = false,
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
+  const isAffiliateEvent = typeof event.affiliateUrl === 'string' && event.affiliateUrl.trim().length > 0;
   const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
   const lifecycleBadge = useMemo(() => {
     if (normalizedState === 'PRIVATE') {
@@ -84,7 +85,7 @@ export default function EventCard({
     }
 
     return {
-      label: formatEnumDisplayLabel(event.eventType, 'Event'),
+      label: normalizedEventType === 'AFFILIATE' ? 'Event' : formatEnumDisplayLabel(event.eventType, 'Event'),
       className: 'discover-badge-event',
       icon: '📅',
     };
@@ -93,11 +94,23 @@ export default function EventCard({
   const getDistance = () => {
     if (!showDistance || !userLocation) return null;
 
+    const eventLng = event.coordinates?.[0];
+    const eventLat = event.coordinates?.[1];
+    if (
+      typeof eventLat !== 'number'
+      || typeof eventLng !== 'number'
+      || !Number.isFinite(eventLat)
+      || !Number.isFinite(eventLng)
+      || (eventLat === 0 && eventLng === 0)
+    ) {
+      return null;
+    }
+
     const distanceKm = locationService.calculateDistance(
       userLocation.lat,
       userLocation.lng,
-      event.coordinates[1],
-      event.coordinates[0]
+      eventLat,
+      eventLng
     );
 
     const distanceMiles = locationService.kmToMiles(distanceKm);
@@ -228,7 +241,7 @@ export default function EventCard({
             </span>
           )}
           <span className="discover-muted-pill">
-            {event.teamSignup ? 'Team Registration' : 'Individual Registration'}
+            {isAffiliateEvent ? 'External registration' : event.teamSignup ? 'Team Registration' : 'Individual Registration'}
           </span>
           {lifecycleBadge && (
             <span className={`discover-event-badge ${lifecycleBadge.className}`}>
@@ -258,7 +271,7 @@ export default function EventCard({
             <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4v10m4-10v10m-4 4h4M4 7h16a2 2 0 012 2v8a2 2 0 01-2-2V9a2 2 0 012-2z" />
             </svg>
-            {date} at {time}
+            {isAffiliateEvent && event.scheduleText ? event.scheduleText : `${date} at ${time}`}
           </div>
 
           <div className="flex items-center">
@@ -291,8 +304,17 @@ export default function EventCard({
             <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            Hosted by {hostLabel}
+            {isAffiliateEvent && event.organizerName ? `Source: ${event.organizerName}` : `Hosted by ${hostLabel}`}
           </div>
+
+          {isAffiliateEvent && event.statusText && (
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+              </svg>
+              {event.statusText}
+            </div>
+          )}
 
           {canAssignHost && (
             <div className="pt-2">
@@ -321,11 +343,17 @@ export default function EventCard({
 
         <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-900">{formatEventDivisionPriceRange(event)}</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-xs text-slate-500">
-              {attendeeCount} / {participantCapacity} going
+            <span className="text-sm font-semibold text-slate-900">
+              {isAffiliateEvent && event.priceText ? event.priceText : formatEventDivisionPriceRange(event)}
             </span>
+            {!isAffiliateEvent && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-xs text-slate-500">
+                  {attendeeCount} / {participantCapacity} going
+                </span>
+              </>
+            )}
           </div>
           <span className="discover-details-pill">Details</span>
         </div>

@@ -137,7 +137,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Host doesn't need a refund request for their own event deletion.
-  refundUserIds.delete(event.hostId);
+  if (event.hostId) {
+    refundUserIds.delete(event.hostId);
+  }
 
   const targets = Array.from(refundUserIds);
   if (!targets.length) {

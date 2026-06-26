@@ -112,6 +112,8 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const [teamSize, setTeamSize] = useState<TeamSizeInputValue>(6);
   const [addSelfAsPlayer, setAddSelfAsPlayer] = useState(true);
   const [profileImageId, setProfileImageId] = useState('');
+  const [isAffiliateRegistration, setIsAffiliateRegistration] = useState(false);
+  const [affiliateUrl, setAffiliateUrl] = useState('');
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [selectedRequiredTemplateIds, setSelectedRequiredTemplateIds] = useState<string[]>([]);
@@ -241,6 +243,8 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     setTeamSize(6);
     setAddSelfAsPlayer(true);
     setProfileImageId('');
+    setIsAffiliateRegistration(false);
+    setAffiliateUrl('');
     setSelectedTeamImageUrl('');
     setSelectedRequiredTemplateIds([]);
     setError(null);
@@ -275,6 +279,11 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
       setError('Sign in again before creating a team.');
       return;
     }
+    const nextAffiliateUrl = affiliateUrl.trim();
+    if (isAffiliateRegistration && !nextAffiliateUrl) {
+      setError('Affiliate registration link is required.');
+      return;
+    }
 
     const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
     const nextDivision = buildDivisionName({
@@ -298,6 +307,9 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           divisionTypeId: nextDivisionTypeId,
           addSelfAsPlayer,
           organizationId,
+          affiliateUrl: isAffiliateRegistration ? nextAffiliateUrl : null,
+          joinPolicy: isAffiliateRegistration ? 'OPEN_REGISTRATION' : undefined,
+          openRegistration: isAffiliateRegistration,
           requiredTemplateIds: organizationId ? selectedRequiredTemplateIds : [],
         },
       );
@@ -388,6 +400,24 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           checked={addSelfAsPlayer}
           onChange={(e) => setAddSelfAsPlayer(e.currentTarget.checked)}
         />
+
+        <div className="space-y-3">
+          <Checkbox
+            label="External team registration"
+            description="Players will register through the linked site instead of BracketIQ."
+            checked={isAffiliateRegistration}
+            onChange={(event) => setIsAffiliateRegistration(event.currentTarget.checked)}
+          />
+          {isAffiliateRegistration ? (
+            <TextInput
+              label="Affiliate registration link"
+              value={affiliateUrl}
+              onChange={(event) => setAffiliateUrl(event.currentTarget.value)}
+              placeholder="https://example.com/team-registration"
+              required
+            />
+          ) : null}
+        </div>
 
         {organizationId && (
           <div>

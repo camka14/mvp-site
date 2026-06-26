@@ -42,6 +42,7 @@ const facilityPatchSchema = z.object({
   name: z.string().nullable().optional(),
   location: z.string().trim().min(1, 'Facility location is required').optional(),
   address: z.string().nullable().optional(),
+  affiliateUrl: z.string().nullable().optional(),
   coordinates: z.unknown().nullable().optional(),
   operatingHours: operatingHoursSchema.nullable().optional(),
   timeZone: z.string().nullable().optional(),
@@ -54,6 +55,7 @@ const FACILITY_MUTABLE_FIELDS = new Set([
   'name',
   'location',
   'address',
+  'affiliateUrl',
   'coordinates',
   'operatingHours',
   'timeZone',
@@ -188,7 +190,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const value = safePayload[key as keyof typeof safePayload];
     if (key === 'name') {
       updateData.name = normalizeText(value) ?? 'Main Facility';
-    } else if (key === 'location' || key === 'address' || key === 'timeZone' || key === 'status') {
+    } else if (key === 'location' || key === 'address' || key === 'affiliateUrl' || key === 'timeZone' || key === 'status') {
       updateData[key] = normalizeText(value);
     } else {
       updateData[key] = value;

@@ -95,6 +95,8 @@ import {
   buildSlotConflictContext,
   buildSlotConflictPayload,
 } from '../eventForm/slotConflictHelpers';
+import { buildEventDraft } from '../eventForm/buildEventDraft';
+import { buildEventFormSchema } from '../eventForm/schema';
 
 const makeField = (overrides: Partial<Field> & { $id: string }): Field => ({
   $id: overrides.$id,
@@ -126,6 +128,108 @@ const makeDivisionDetail = (overrides: Partial<DivisionDetailForm> & { id: strin
   installmentDueRelativeDays: overrides.installmentDueRelativeDays ?? [],
   installmentAmounts: overrides.installmentAmounts ?? [],
   fieldIds: overrides.fieldIds ?? [],
+  ...overrides,
+});
+
+const makeAffiliateEventFormValues = (overrides: Record<string, unknown> = {}) => ({
+  $id: '',
+  name: 'Affiliate Camp',
+  description: 'External partner listing',
+  isAffiliateEvent: true,
+  affiliateUrl: 'https://partner.example/events/camp',
+  tags: [],
+  location: '123 Main St, Portland, OR',
+  address: '123 Main St, Portland, OR',
+  coordinates: [-122.6765, 45.5231],
+  start: '2026-07-01T10:00',
+  end: '2026-07-01T12:00',
+  timeZone: 'America/Los_Angeles',
+  state: 'UNPUBLISHED',
+  eventType: 'EVENT',
+  parentEvent: null,
+  sportId: 'soccer',
+  sportConfig: null,
+  price: 4500,
+  minAge: undefined,
+  maxAge: undefined,
+  allowPaymentPlans: true,
+  installmentCount: 2,
+  installmentDueDates: [],
+  installmentDueRelativeDays: [],
+  installmentAmounts: [],
+  allowTeamSplitDefault: true,
+  maxParticipants: 24,
+  teamSizeLimit: 1,
+  teamSignup: true,
+  singleDivision: false,
+  splitLeaguePlayoffDivisions: true,
+  registrationByDivisionType: true,
+  divisions: ['stale_division'],
+  divisionDetails: [
+    makeDivisionDetail({
+      id: 'stale_division',
+      price: 9900,
+      maxParticipants: 99,
+      allowPaymentPlans: true,
+      installmentCount: 1,
+      installmentAmounts: [9900],
+      installmentDueDates: ['2026-06-30T10:00'],
+    }),
+  ],
+  playoffDivisionDetails: [],
+  divisionFieldIds: {},
+  selectedFieldIds: ['field_1'],
+  cancellationRefundHours: null,
+  registrationCutoffHours: 0,
+  organizationId: 'org_1',
+  taxHandling: 'ORGANIZER_MANUAL_TAX',
+  organizerManualTaxRateBps: 975,
+  requiredTemplateIds: ['template_1'],
+  hostId: 'user_1',
+  noFixedEndDateTime: false,
+  imageId: 'image_1',
+  seedColor: 1,
+  waitList: [],
+  freeAgents: [],
+  players: [],
+  teams: [],
+  officials: [],
+  officialIds: ['official_1'],
+  officialSchedulingMode: 'SCHEDULE',
+  officialPositions: [{ id: 'ref', name: 'Referee', count: 1, order: 0 }],
+  eventOfficials: [{ id: 'event_official_1', userId: 'official_1', positionIds: ['ref'], fieldIds: [], isActive: true }],
+  pendingStaffInvites: [{ firstName: 'Ava', lastName: 'Ref', email: 'ava@test.com', roles: ['OFFICIAL'] }],
+  assistantHostIds: ['assistant_1'],
+  doTeamsOfficiate: true,
+  teamOfficialsMaySwap: true,
+  matchRulesOverride: { scoringModel: 'POINTS_ONLY' },
+  autoCreatePointMatchIncidents: true,
+  leagueScoringConfig: {},
+  leagueSlots: [],
+  leagueData: { gamesPerOpponent: 1, includePlayoffs: false },
+  playoffData: {
+    doubleElimination: false,
+    winnerSetCount: 1,
+    loserSetCount: 1,
+    winnerBracketPointsToVictory: [],
+    loserBracketPointsToVictory: [],
+    prize: '',
+    fieldCount: 0,
+    restTimeMinutes: 0,
+  },
+  tournamentData: {
+    doubleElimination: false,
+    winnerSetCount: 1,
+    loserSetCount: 1,
+    winnerBracketPointsToVictory: [],
+    loserBracketPointsToVictory: [],
+    prize: '',
+    fieldCount: 0,
+    restTimeMinutes: 0,
+  },
+  fields: [],
+  fieldCount: 0,
+  joinAsParticipant: false,
   ...overrides,
 });
 
@@ -222,6 +326,83 @@ describe('event form payment helpers', () => {
       singleDivision: false,
       divisionDetails: [{ price: 0 }, { price: '1500' }],
     })).toBe(true);
+  });
+});
+
+describe('affiliate event form helpers', () => {
+  it('keeps affiliate division metadata while stripping BIQ-only setup from the draft', () => {
+    const source = makeAffiliateEventFormValues();
+    const schema = buildEventFormSchema({ allowMissingEventImage: true, allowMissingEventDivisions: true });
+
+    expect(schema.safeParse(source).success).toBe(true);
+
+    const draft = buildEventDraft({
+      activeEditingEvent: null,
+      currentUser: { $id: 'user_1' } as any,
+      fieldCount: 0,
+      fields: [],
+      fieldsReferencedInSlots: [],
+      hasImmutableTimeSlots: false,
+      hasRestrictedImmutableFields: false,
+      hasStripeAccount: false,
+      immutableFields: [],
+      immutableTimeSlots: [],
+      isEditMode: false,
+      isOrganizationHostedEvent: true,
+      isOrganizationManagedEvent: true,
+      joinAsParticipant: false,
+      organizationHostedEventId: 'org_1',
+      organizationOfficialsById: new Map(),
+      previousEventFieldLocation: '',
+      rentalLockedSlotsForDraft: [],
+      resolvedOrganization: {
+        $id: 'org_1',
+        ownerId: 'user_1',
+        staffMembers: [],
+        staffInvites: [],
+      } as any,
+      selectedRentedFieldIds: [],
+      shouldManageLocalFields: false,
+      shouldProvisionFields: false,
+      source: source as any,
+      sportsById: new Map(),
+    });
+
+    expect(draft).toMatchObject({
+      eventType: 'EVENT',
+      affiliateUrl: 'https://partner.example/events/camp',
+      price: 4500,
+      allowPaymentPlans: false,
+      allowTeamSplitDefault: false,
+      teamSignup: false,
+      singleDivision: true,
+      splitLeaguePlayoffDivisions: false,
+      registrationByDivisionType: false,
+      divisions: ['stale_division'],
+      playoffDivisionDetails: [],
+      requiredTemplateIds: [],
+      officialIds: [],
+      officialPositions: [],
+      eventOfficials: [],
+      assistantHostIds: [],
+      doTeamsOfficiate: false,
+      teamOfficialsMaySwap: false,
+      matchRulesOverride: null,
+      autoCreatePointMatchIncidents: false,
+      taxHandling: 'INHERIT_ORG',
+      organizerManualTaxRateBps: 0,
+    });
+    expect(draft.divisionDetails).toEqual([
+      expect.objectContaining({
+        id: 'stale_division',
+        price: 4500,
+        maxParticipants: 24,
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentAmounts: [],
+        installmentDueDates: [],
+      }),
+    ]);
   });
 });
 

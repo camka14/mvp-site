@@ -4178,6 +4178,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       hostId: true,
       organizationId: true,
       parentEvent: true,
+      affiliateUrl: true,
       location: true,
       officialPositions: true as any,
       officialSchedulingMode: true as any,
@@ -4251,6 +4252,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedOfficialIds = organizationAssignments
     ? organizationAssignments.officialIds
     : requestedEventOfficialIds;
+  const payloadIncludesAffiliateUrl = Object.prototype.hasOwnProperty.call(payload, 'affiliateUrl');
+  const payloadAffiliateUrl = typeof payload.affiliateUrl === 'string' ? payload.affiliateUrl.trim() : '';
+  const existingAffiliateUrl = typeof (existingEvent as any)?.affiliateUrl === 'string'
+    ? (existingEvent as any).affiliateUrl.trim()
+    : '';
+  const normalizedAffiliateUrl = payloadIncludesAffiliateUrl ? payloadAffiliateUrl : existingAffiliateUrl;
+  const isAffiliateExternalEvent = normalizedAffiliateUrl.length > 0;
   const [existingEventOfficialRows, sportRow] = await Promise.all([
     existingEvent ? loadEventOfficialRows(client, id) : Promise.resolve([]),
     (normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId))
@@ -4265,6 +4273,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizationId: resolvedOrganizationId,
     hostId: normalizedHostId,
   });
+  const canPersistEventPricing = billingOwnerHasStripeAccount || isAffiliateExternalEvent;
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
@@ -4321,7 +4330,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     };
   });
   const normalizeDivisionBilling = (detail: DivisionDetailPayload): DivisionDetailPayload => {
-    if (billingOwnerHasStripeAccount) {
+    if (canPersistEventPricing) {
       return detail;
     }
     return {
@@ -4361,16 +4370,20 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     includePlayoffs: includePlayoffsOrPools,
   });
   const start = coerceDate(payload.start, eventTimeZone) ?? new Date();
-  const canonicalTimeSlots = canonicalizeTimeSlots({
-    eventId: id,
-    slots: timeSlotsWithResolvedTimeZones,
-    fallbackStartDate: start,
-    timeZone: eventTimeZone,
-    fallbackDivisionKeys: normalizedEventDivisionIds,
-    enforceAllDivisions: singleDivisionEnabled && !isTournamentPoolPlay,
-    normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
-  });
-  await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
+  const canonicalTimeSlots = isAffiliateExternalEvent
+    ? []
+    : canonicalizeTimeSlots({
+      eventId: id,
+      slots: timeSlotsWithResolvedTimeZones,
+      fallbackStartDate: start,
+      timeZone: eventTimeZone,
+      fallbackDivisionKeys: normalizedEventDivisionIds,
+      enforceAllDivisions: singleDivisionEnabled && !isTournamentPoolPlay,
+      normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
+    });
+  if (!isAffiliateExternalEvent) {
+    await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
+  }
 
   const slotFieldIds = normalizeFieldIds(
     canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
@@ -4384,7 +4397,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : payloadLocalFieldIds.length
         ? normalizeFieldIds(payloadLocalFieldIds)
         : existingFieldIds;
-  if (fieldIds.length === 0) {
+  if (!isAffiliateExternalEvent && fieldIds.length === 0) {
     throw new Error(EVENT_FIELDS_REQUIRED_MESSAGE);
   }
   const hasExplicitOfficialPositions = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');
@@ -4458,11 +4471,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? payload.teamIds
     : teams.map((team: any) => team.$id || team.id).filter(Boolean);
   const derivedTimeSlotIds = canonicalTimeSlots.map((slot) => slot.id).filter(Boolean);
-  const timeSlotIds = derivedTimeSlotIds.length
-    ? derivedTimeSlotIds
-    : Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
-      ? payload.timeSlotIds
-      : [];
+  const timeSlotIds = isAffiliateExternalEvent
+    ? []
+    : derivedTimeSlotIds.length
+      ? derivedTimeSlotIds
+      : Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
+        ? payload.timeSlotIds
+        : [];
   const incomingDivisionFieldMap = coerceDivisionFieldMap(payload.divisionFieldIds);
   const divisionFieldMap = buildDivisionFieldMap(
     normalizedEventDivisionIds,
@@ -4477,7 +4492,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
-  const supportsNoFixedEndDateTime = isSchedulableEventType(nextEventType) || isWeeklyParent;
+  const supportsNoFixedEndDateTime = !isAffiliateExternalEvent && (isSchedulableEventType(nextEventType) || isWeeklyParent);
   const payloadIncludesEnd = Object.prototype.hasOwnProperty.call(payload, 'end');
   const payloadIncludesNoFixedEndDateTime = Object.prototype.hasOwnProperty.call(payload, 'noFixedEndDateTime');
   const parsedPayloadEnd = payloadIncludesEnd ? coerceDate(payload.end, eventTimeZone) : null;
@@ -4511,7 +4526,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
     throw new Error('End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.');
   }
-  if (normalizedEnd) {
+  if (!isAffiliateExternalEvent && normalizedEnd) {
     await assertNoEventFieldSchedulingConflicts({
       client,
       eventId: id,
@@ -4535,7 +4550,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? existingEvent.leagueScoringConfigId.trim()
     : null;
   let resolvedLeagueScoringConfigId = payloadLeagueScoringConfigId ?? existingLeagueScoringConfigId ?? null;
-  if (nextEventType === 'LEAGUE') {
+  if (isAffiliateExternalEvent) {
+    resolvedLeagueScoringConfigId = null;
+  } else if (nextEventType === 'LEAGUE') {
     const leagueScoringConfigId = normalizedLeagueScoringConfig?.id
       ?? payloadLeagueScoringConfigId
       ?? existingLeagueScoringConfigId
@@ -4559,7 +4576,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
 
   const normalizedEventPrice = (() => {
-    if (!billingOwnerHasStripeAccount) {
+    if (!canPersistEventPricing) {
       return 0;
     }
     const parsed = coerceNullableNumber(payload.price);
@@ -4568,34 +4585,43 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     }
     return 0;
   })();
-  const normalizedEventAllowPaymentPlans = billingOwnerHasStripeAccount
+  const normalizedEventAllowPaymentPlans = canPersistEventPricing && !isAffiliateExternalEvent
     ? (payload.allowPaymentPlans ?? null)
     : false;
-  const normalizedEventInstallmentCount = billingOwnerHasStripeAccount
+  const normalizedEventInstallmentCount = canPersistEventPricing && !isAffiliateExternalEvent
     ? (payload.installmentCount ?? null)
     : 0;
-  const normalizedEventInstallmentDueDates = billingOwnerHasStripeAccount
+  const normalizedEventInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent
     ? (isWeeklyParent ? [] : (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value, eventTimeZone)).filter(Boolean) as Date[]))
     : [];
-  const normalizedEventInstallmentDueRelativeDays = billingOwnerHasStripeAccount && isWeeklyParent
+  const normalizedEventInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && isWeeklyParent
     ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
-  const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
+  const normalizedEventInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
-  const officialSchedulingMode = normalizeOfficialSchedulingMode(
-    payload.officialSchedulingMode,
-    normalizeOfficialSchedulingMode((existingEvent as any)?.officialSchedulingMode),
-  );
+  const officialSchedulingMode = isAffiliateExternalEvent
+    ? 'OFF'
+    : normalizeOfficialSchedulingMode(
+      payload.officialSchedulingMode,
+      normalizeOfficialSchedulingMode((existingEvent as any)?.officialSchedulingMode),
+    );
   const requestedDoTeamsOfficiate = coerceNullableBoolean(payload.doTeamsOfficiate);
-  const normalizedDoTeamsOfficiate = officialSchedulingMode === 'TEAM_STAFFING'
-    ? true
-    : requestedDoTeamsOfficiate;
+  const normalizedDoTeamsOfficiate = isAffiliateExternalEvent
+    ? false
+    : (
+      officialSchedulingMode === 'TEAM_STAFFING'
+        ? true
+        : requestedDoTeamsOfficiate
+    );
   const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
     ? coerceBoolean(payload.teamOfficialsMaySwap, false)
     : false;
   const payloadIncludesMatchRulesOverride = Object.prototype.hasOwnProperty.call(payload, 'matchRulesOverride');
   const normalizedMatchRulesOverride = (() => {
+    if (isAffiliateExternalEvent) {
+      return null;
+    }
     if (payloadIncludesMatchRulesOverride) {
       const value = payload.matchRulesOverride;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -4611,11 +4637,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return existingMatchRulesOverride === null ? null : undefined;
   })();
   const payloadIncludesAutoCreatePointMatchIncidents = Object.prototype.hasOwnProperty.call(payload, 'autoCreatePointMatchIncidents');
-  const normalizedAutoCreatePointMatchIncidents = payloadIncludesAutoCreatePointMatchIncidents
-    ? coerceBoolean(payload.autoCreatePointMatchIncidents, false)
-    : typeof (existingEvent as any)?.autoCreatePointMatchIncidents === 'boolean'
-      ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
-      : undefined;
+  const normalizedAutoCreatePointMatchIncidents = isAffiliateExternalEvent
+    ? false
+    : payloadIncludesAutoCreatePointMatchIncidents
+      ? coerceBoolean(payload.autoCreatePointMatchIncidents, false)
+      : typeof (existingEvent as any)?.autoCreatePointMatchIncidents === 'boolean'
+        ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
+        : undefined;
   const normalizedSportId = normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId);
   const normalizedTaxHandling = normalizeEventTaxHandling(
     Object.prototype.hasOwnProperty.call(payload, 'taxHandling')
@@ -4635,9 +4663,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     end: normalizedEnd,
     timeZone: eventTimeZone,
     description: payload.description ?? null,
-    affiliateUrl: typeof payload.affiliateUrl === 'string' && payload.affiliateUrl.trim().length > 0
-      ? payload.affiliateUrl.trim()
-      : null,
+    affiliateUrl: normalizedAffiliateUrl.length > 0 ? normalizedAffiliateUrl : null,
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -4649,7 +4675,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     minAge: payload.minAge ?? null,
     maxAge: payload.maxAge ?? null,
     hostId: normalizedHostId,
-    assistantHostIds: normalizedAssistantHostIds,
+    assistantHostIds: isAffiliateExternalEvent ? [] : normalizedAssistantHostIds,
     noFixedEndDateTime,
     price: normalizedEventPrice,
     taxHandling: normalizedTaxHandling,
@@ -4657,7 +4683,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
     cancellationRefundHours: payload.cancellationRefundHours ?? null,
-    teamSignup: payload.teamSignup ?? true,
+    teamSignup: isAffiliateExternalEvent ? false : payload.teamSignup ?? true,
     prize: payload.prize ?? null,
     registrationCutoffHours: payload.registrationCutoffHours ?? null,
     seedColor: payload.seedColor ?? null,
@@ -4688,7 +4714,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     officialSchedulingMode,
     doTeamsOfficiate: normalizedDoTeamsOfficiate ?? null,
     teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
-    officialPositions: resolvedOfficialPositions,
+    officialPositions: isAffiliateExternalEvent ? [] : resolvedOfficialPositions,
     ...(normalizedMatchRulesOverride !== undefined ? { matchRulesOverride: normalizedMatchRulesOverride } : {}),
     ...(normalizedAutoCreatePointMatchIncidents !== undefined
       ? { autoCreatePointMatchIncidents: normalizedAutoCreatePointMatchIncidents }
@@ -4700,12 +4726,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     installmentAmounts: normalizedEventInstallmentAmounts,
     allowTeamSplitDefault: payload.allowTeamSplitDefault ?? null,
     splitLeaguePlayoffDivisions,
-    requiredTemplateIds: ensureStringArray(payload.requiredTemplateIds),
+    requiredTemplateIds: isAffiliateExternalEvent ? [] : ensureStringArray(payload.requiredTemplateIds),
     updatedAt: new Date(),
   };
 
   const defaultDivisionPrice = (() => {
-    if (!billingOwnerHasStripeAccount) {
+    if (!canPersistEventPricing) {
       return 0;
     }
     return normalizedEventPrice;
@@ -4725,7 +4751,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionAllowPaymentPlans = (() => {
-    if (!billingOwnerHasStripeAccount) {
+    if (!canPersistEventPricing || isAffiliateExternalEvent) {
       return false;
     }
     const parsed = coerceNullableBoolean(payload.allowPaymentPlans);
@@ -4735,7 +4761,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionInstallmentCount = (() => {
-    if (!billingOwnerHasStripeAccount) {
+    if (!canPersistEventPricing || isAffiliateExternalEvent) {
       return 0;
     }
     const parsed = coerceNullableNumber(payload.installmentCount);
@@ -4744,13 +4770,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     }
     return parsed ?? null;
   })();
-  const defaultDivisionInstallmentDueDates = billingOwnerHasStripeAccount
+  const defaultDivisionInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent
     ? (isWeeklyParent ? [] : normalizeInstallmentDateList(payload.installmentDueDates))
     : [];
-  const defaultDivisionInstallmentDueRelativeDays = billingOwnerHasStripeAccount && isWeeklyParent
+  const defaultDivisionInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && isWeeklyParent
     ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
-  const defaultDivisionInstallmentAmounts = billingOwnerHasStripeAccount
+  const defaultDivisionInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent
     ? normalizeInstallmentAmountList(payload.installmentAmounts)
     : [];
 
@@ -4770,9 +4796,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     syncWaitList: Object.prototype.hasOwnProperty.call(payload, 'waitListIds'),
     syncFreeAgents: Object.prototype.hasOwnProperty.call(payload, 'freeAgentIds'),
   });
-  if (hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
-    await persistEventOfficialRows(client, id, resolvedEventOfficials);
-    await clearRemovedEventOfficialMatchAssignments(client, id, resolvedEventOfficials);
+  if (isAffiliateExternalEvent || hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
+    const eventOfficialsToPersist = isAffiliateExternalEvent ? [] : resolvedEventOfficials;
+    await persistEventOfficialRows(client, id, eventOfficialsToPersist);
+    await clearRemovedEventOfficialMatchAssignments(client, id, eventOfficialsToPersist);
   }
 
   const syncedDivisionIds = await syncEventDivisions({

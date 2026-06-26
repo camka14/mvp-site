@@ -195,6 +195,7 @@ class TeamService {
               joinPolicy?: TeamJoinPolicy;
               openRegistration?: boolean;
               registrationPriceCents?: number;
+              affiliateUrl?: string | null;
               requiredTemplateIds?: string[];
           },
       ): Promise<Team> {
@@ -226,6 +227,7 @@ class TeamService {
                   registrationPriceCents: (options?.joinPolicy === 'REQUEST_TO_JOIN' || options?.openRegistration)
                       ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0))
                       : 0,
+                  affiliateUrl: options?.affiliateUrl ?? null,
                   requiredTemplateIds: Array.isArray(options?.requiredTemplateIds) ? options.requiredTemplateIds : [],
               };
 
@@ -424,6 +426,9 @@ class TeamService {
               registrationPriceCents: typeof row.registrationPriceCents === 'number'
                   ? Math.max(0, Math.round(row.registrationPriceCents))
                   : 0,
+              affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
+                  ? row.affiliateUrl
+                  : null,
               requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                   ? row.requiredTemplateIds.filter((value: any): value is string => typeof value === 'string' && value.trim().length > 0)
                   : [],
@@ -596,7 +601,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'teamSize' | 'captainId' | 'joinPolicy' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'teamSize' | 'captainId' | 'joinPolicy' | 'openRegistration' | 'registrationPriceCents' | 'affiliateUrl' | 'requiredTemplateIds' | 'playerRegistrations'>>,
       ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {

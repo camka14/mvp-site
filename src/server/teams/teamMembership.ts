@@ -69,6 +69,7 @@ type CanonicalTeamRow = {
   openRegistration?: boolean | null;
   joinPolicy?: string | null;
   registrationPriceCents?: number | null;
+  affiliateUrl?: string | null;
   requiredTemplateIds?: string[] | null;
   visibility?: string | null;
 };
@@ -96,6 +97,7 @@ type EventTeamRow = {
   teamSize: number;
   profileImageId?: string | null;
   sport?: string | null;
+  affiliateUrl?: string | null;
 };
 
 type TeamRegistrationSettingsSource = {

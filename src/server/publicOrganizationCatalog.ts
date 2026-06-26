@@ -72,6 +72,7 @@ export type PublicOrganizationTeamCard = {
   openRegistration: boolean;
   joinPolicy: string;
   registrationPriceCents: number;
+  affiliateUrl: string | null;
   requiredTemplateIds: string[];
   registrationUrl: string | null;
 };
@@ -154,6 +155,7 @@ export type PublicOrganizationTeamRegistrationData = {
     openRegistration: boolean;
     joinPolicy: string;
     registrationPriceCents: number;
+    affiliateUrl?: string | null;
     requiredTemplateIds: string[];
   };
 };
@@ -894,7 +896,9 @@ const mapPublicOrganizationEventCards = async (
       eventTypeLabel: formatPublicEventTypeLabel(eventType),
       sportName: typeof event.sportId === 'string' ? sportsById.get(event.sportId) ?? event.sportId : null,
       priceCents: typeof event.price === 'number' ? event.price : 0,
-      imageUrl: imageUrl(event.imageId),
+      imageUrl: typeof event.imageId === 'string' && event.imageId.trim().length > 0
+        ? imageUrl(event.imageId)
+        : organization.logoUrl,
       divisionLabels: divisionLabelsByEventId.get(String(event.id)) ?? [],
       detailsUrl: formatEventDetailsUrl(organization.slug, String(event.id)),
     };
@@ -1057,26 +1061,35 @@ export const listPublicOrganizationTeams = async (
     take: normalizeLimit(options.limit),
   });
   const occupancyByTeamId = await getPublicTeamOccupancyByTeamId(rows.map((row: Record<string, any>) => String(row.id)));
-  return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => ({
-    joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
-    id: String(team.id),
-    name: String(team.name ?? 'Unnamed team'),
-    sport: typeof team.sport === 'string' ? team.sport : null,
-    division: typeof team.division === 'string' ? team.division : null,
-    imageUrl: imageUrl(team.profileImageId, 240, 240),
-    currentSize: occupancyByTeamId.get(String(team.id)) ?? 0,
-    teamSize: normalizeNumber(team.teamSize),
-    isFull: normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize),
-    openRegistration: Boolean(team.openRegistration),
-    registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
-    requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
-    registrationUrl: (
-      (team.openRegistration || String(team.joinPolicy ?? '').toUpperCase() === 'REQUEST_TO_JOIN')
-      && !(normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize))
-    )
-      ? formatTeamRegistrationUrl(organization.slug, String(team.id))
-      : null,
-  }));
+  return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => {
+    const affiliateUrl = typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0
+      ? team.affiliateUrl.trim()
+      : null;
+    const teamSize = normalizeNumber(team.teamSize);
+    const currentSize = occupancyByTeamId.get(String(team.id)) ?? 0;
+    const isFull = teamSize > 0 && currentSize >= teamSize;
+    return {
+      joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
+      id: String(team.id),
+      name: String(team.name ?? 'Unnamed team'),
+      sport: typeof team.sport === 'string' ? team.sport : null,
+      division: typeof team.division === 'string' ? team.division : null,
+      imageUrl: imageUrl(team.profileImageId, 240, 240),
+      currentSize,
+      teamSize,
+      isFull,
+      openRegistration: Boolean(team.openRegistration),
+      registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+      affiliateUrl,
+      requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
+      registrationUrl: affiliateUrl ?? (
+        (team.openRegistration || String(team.joinPolicy ?? '').toUpperCase() === 'REQUEST_TO_JOIN')
+        && !isFull
+          ? formatTeamRegistrationUrl(organization.slug, String(team.id))
+          : null
+      ),
+    };
+  });
 };
 
 const mapPublicTeamCard = (
@@ -1097,6 +1110,7 @@ const mapPublicTeamCard = (
     openRegistration: Boolean(team.openRegistration),
     joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+    affiliateUrl: typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0 ? team.affiliateUrl.trim() : null,
     requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
   };
 };

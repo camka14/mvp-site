@@ -84,7 +84,7 @@ const ORG_EVENTS_LIMIT = 18;
 const CUSTOMER_PAGE_SIZE = 25;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
 const ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT = 'Create a field for this organization before creating an event.';
-const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'] as const;
+const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
 const ORG_EVENT_TYPE_OPTIONS = [...ORG_HOSTED_EVENT_TYPE_OPTIONS, 'RENTAL'] as const;
 const PRODUCT_PERIOD_OPTIONS: Array<{ label: string; value: Product['period'] }> = [
   { label: 'Single purchase', value: 'single' },
@@ -3561,7 +3561,7 @@ function OrganizationDetailContent() {
                             event={e}
                             onClick={() => handleOrganizationEventClick(e)}
                             hostOptions={canManageEvents ? eventHostOptions : undefined}
-                            selectedHostId={e.hostId}
+                            selectedHostId={e.hostId ?? undefined}
                             hostChangeDisabled={updatingEventHostId === e.$id}
                             onHostChange={canManageEvents ? (hostId) => {
                               void handleUpdateEventHost(e.$id, hostId);

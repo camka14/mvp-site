@@ -24,6 +24,7 @@ type EventDetailsPanelProps = {
     control: Control<EventFormValues>;
     eventData: EventFormValues;
     leagueData: LeagueConfig;
+    isAffiliateEvent: boolean;
     eventTypeOptions: Array<{ value: string; label: string }>;
     supportsEditableTeamSignup: boolean;
     showsFixedTeamEventToggle: boolean;
@@ -31,6 +32,7 @@ type EventDetailsPanelProps = {
     automaticRefundsAvailable: boolean;
     todaysDate: Date;
     maxStandardNumber: number;
+    maxPriceCents: number;
     maxResourceNameLength: number;
     selectStyles?: ComponentProps<typeof EventDetailsTypeControls>['selectStyles'];
     numberInputStyles?: ComponentProps<typeof EventDetailsTypeControls>['numberInputStyles'];
@@ -41,6 +43,7 @@ type EventDetailsPanelProps = {
     isImmutableField: (key: keyof Event) => boolean;
     onToggle: () => void;
     onEventTypeChange: ComponentProps<typeof EventDetailsTypeControls>['onEventTypeChange'];
+    onAffiliateEventChange: ComponentProps<typeof EventDetailsTypeControls>['onAffiliateEventChange'];
     onIncludePlayoffsChange: (checked: boolean) => void;
     onIncludePoolPlayChange: (checked: boolean) => void;
     onStartChange: (value: Date) => void;
@@ -55,6 +58,8 @@ type EventDetailsPanelProps = {
     templateOrganizationId?: string | null;
     templateOptions: Array<{ value: string; label: string }>;
     normalizeNumberValue: (value: unknown) => number | undefined;
+    showAffiliateListingControls?: boolean;
+    showRequiredDocumentControls?: boolean;
     localFieldCreationControl?: ReactNode;
     registrationQuestionsEditor: ReactNode;
     hasUnsetTeamCapacityLimits: boolean;
@@ -75,6 +80,7 @@ export const EventDetailsPanel = ({
     control,
     eventData,
     leagueData,
+    isAffiliateEvent,
     eventTypeOptions,
     supportsEditableTeamSignup,
     showsFixedTeamEventToggle,
@@ -82,6 +88,7 @@ export const EventDetailsPanel = ({
     automaticRefundsAvailable,
     todaysDate,
     maxStandardNumber,
+    maxPriceCents,
     maxResourceNameLength,
     selectStyles,
     numberInputStyles,
@@ -92,6 +99,7 @@ export const EventDetailsPanel = ({
     isImmutableField,
     onToggle,
     onEventTypeChange,
+    onAffiliateEventChange,
     onIncludePlayoffsChange,
     onIncludePoolPlayChange,
     onStartChange,
@@ -106,6 +114,8 @@ export const EventDetailsPanel = ({
     templateOrganizationId,
     templateOptions,
     normalizeNumberValue,
+    showAffiliateListingControls = false,
+    showRequiredDocumentControls = true,
     localFieldCreationControl,
     registrationQuestionsEditor,
     hasUnsetTeamCapacityLimits,
@@ -128,6 +138,7 @@ export const EventDetailsPanel = ({
             <EventDetailsTypeControls
                 control={control}
                 eventType={eventData.eventType}
+                isAffiliateEvent={isAffiliateEvent}
                 eventTypeOptions={eventTypeOptions}
                 includePlayoffs={Boolean(leagueData.includePlayoffs)}
                 supportsEditableTeamSignup={supportsEditableTeamSignup}
@@ -138,6 +149,7 @@ export const EventDetailsPanel = ({
                 comboboxProps={comboboxProps}
                 isImmutableField={isImmutableField}
                 onEventTypeChange={onEventTypeChange}
+                onAffiliateEventChange={onAffiliateEventChange}
                 onIncludePlayoffsChange={onIncludePlayoffsChange}
                 onIncludePoolPlayChange={onIncludePoolPlayChange}
             />
@@ -176,29 +188,54 @@ export const EventDetailsPanel = ({
             multiSelectStyles={multiSelectStyles}
             numberInputStyles={numberInputStyles}
             maxStandardNumber={maxStandardNumber}
+            maxPriceCents={maxPriceCents}
             normalizeNumberValue={normalizeNumberValue}
             minAge={eventData.minAge}
             maxAge={eventData.maxAge}
-            localFieldCreationControl={localFieldCreationControl}
+            showAffiliateListingControls={showAffiliateListingControls}
+            showRequiredDocumentControls={showRequiredDocumentControls}
+            resourceControls={showOrganizationFields ? (
+                <EventDetailsResourceControls
+                    control={control}
+                    showOrganizationFields={showOrganizationFields}
+                    organizationResourcePool={organizationResourcePool}
+                    resourceSelectorLoading={resourceSelectorLoading}
+                    organizationHostedEventId={organizationHostedEventId}
+                    isImmutableField={isImmutableField}
+                    rentalResourcesError={rentalResourcesError}
+                    showLocalFieldCreationControls={showLocalFieldCreationControls}
+                    eventLocalFields={eventLocalFields}
+                    fieldNamesCollapsed={fieldNamesCollapsed}
+                    setFieldNamesCollapsed={setFieldNamesCollapsed}
+                    maxResourceNameLength={maxResourceNameLength}
+                    embedded
+                    showLocalFieldNameControls={false}
+                    onLocalFieldNameChange={onLocalFieldNameChange}
+                />
+            ) : null}
+            localFieldNameControls={showLocalFieldCreationControls ? (
+                <EventDetailsResourceControls
+                    control={control}
+                    showOrganizationFields={showOrganizationFields}
+                    organizationResourcePool={organizationResourcePool}
+                    resourceSelectorLoading={resourceSelectorLoading}
+                    organizationHostedEventId={organizationHostedEventId}
+                    isImmutableField={isImmutableField}
+                    rentalResourcesError={rentalResourcesError}
+                    showLocalFieldCreationControls={showLocalFieldCreationControls}
+                    eventLocalFields={eventLocalFields}
+                    fieldNamesCollapsed={fieldNamesCollapsed}
+                    setFieldNamesCollapsed={setFieldNamesCollapsed}
+                    maxResourceNameLength={maxResourceNameLength}
+                    embedded
+                    showOrganizationResourceControls={false}
+                    localFieldCreationControl={localFieldCreationControl}
+                    onLocalFieldNameChange={onLocalFieldNameChange}
+                />
+            ) : null}
             registrationQuestionsEditor={registrationQuestionsEditor}
             hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
             teamSignup={Boolean(eventData.teamSignup)}
-        />
-
-        <EventDetailsResourceControls
-            control={control}
-            showOrganizationFields={showOrganizationFields}
-            organizationResourcePool={organizationResourcePool}
-            resourceSelectorLoading={resourceSelectorLoading}
-            organizationHostedEventId={organizationHostedEventId}
-            isImmutableField={isImmutableField}
-            rentalResourcesError={rentalResourcesError}
-            showLocalFieldCreationControls={showLocalFieldCreationControls}
-            eventLocalFields={eventLocalFields}
-            fieldNamesCollapsed={fieldNamesCollapsed}
-            setFieldNamesCollapsed={setFieldNamesCollapsed}
-            maxResourceNameLength={maxResourceNameLength}
-            onLocalFieldNameChange={onLocalFieldNameChange}
         />
     </EventDetailsSection>
 );

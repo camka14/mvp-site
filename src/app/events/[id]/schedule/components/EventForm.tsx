@@ -6,7 +6,7 @@ import { eventService } from '@/lib/eventService';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -31,6 +31,7 @@ import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { hasExternalRentalFieldForEvent } from './externalRentalField';
 import {
     buildEventTypeOptions,
+    hasAffiliateUrl,
     hasParentEventRef,
     isTournamentPoolPlayFormEnabled,
     shouldShowOrganizationFieldsInEventDetails,
@@ -49,8 +50,6 @@ import {
     sanitizeFieldsForForm,
     withEventFieldLocationDefault,
 } from './eventForm/fieldDefaults';
-import CentsInput from '@/components/ui/CentsInput';
-import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import {
     buildDivisionName,
     buildDivisionToken,
@@ -104,7 +103,6 @@ import {
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
 import {
-    buildFieldCountOptions,
     buildFieldById,
     buildOrganizationResourcePool,
     buildResolvedOrganizationFieldSignature,
@@ -508,8 +506,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const isAffiliateEvent = Boolean(eventData.isAffiliateEvent || hasAffiliateUrl(eventData.affiliateUrl));
     const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
-    const eventSupportsScheduleSlots = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const eventSupportsScheduleSlots = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const hasRestrictedImmutableFields = hasImmutableFields && !eventSupportsScheduleSlots;
     const immutableDefaultRentalTimeSlots = useMemo(
         () => immutableTimeSlotsFromDefaults.filter(isRentalLockedTimeSlot),
@@ -970,12 +969,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         || ''
     );
     const isOrganizationHostedEvent = organizationHostedEventId.length > 0;
-    const supportsOrganizationFieldSelection = supportsOrganizationFieldSelectionForEvent(
+    const supportsOrganizationFieldSelection = !isAffiliateEvent && supportsOrganizationFieldSelectionForEvent(
         eventData.eventType,
         eventData.parentEvent,
     );
-    const shouldLoadRentalResources = supportsOrganizationFieldSelection || eventSupportsScheduleSlots;
-    const shouldManageLocalFields = !hasRestrictedImmutableFields && supportsFieldCountForEvent(eventData.eventType);
+    const shouldLoadRentalResources = !isAffiliateEvent && (supportsOrganizationFieldSelection || eventSupportsScheduleSlots);
+    const shouldManageLocalFields = !isAffiliateEvent && !hasRestrictedImmutableFields && supportsFieldCountForEvent(eventData.eventType);
     const shouldProvisionFields = shouldManageLocalFields;
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
@@ -1088,10 +1087,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizerTaxCollectionAllowed = eventTaxPolicyForPreview.liabilityParty === 'ORGANIZER';
     const organizerManualTaxSelected = organizerTaxCollectionAllowed
         && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
-    const fieldCountOptions = useMemo(
-        () => buildFieldCountOptions(isOrganizationHostedEvent),
-        [isOrganizationHostedEvent],
-    );
     const slotDivisionLookup = useMemo(
         () => buildSlotDivisionLookup(
             eventData.divisionDetails || [],
@@ -1138,7 +1133,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventEnd: eventData.end,
     }), [eventData.end, eventData.start, slotConflictEventId]);
     const { hasPendingExternalConflictChecks, hasExternalSlotConflictWarnings } = useMemo(() => {
-        if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
+        if (isAffiliateEvent || !supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
             return {
                 hasPendingExternalConflictChecks: false,
                 hasExternalSlotConflictWarnings: false,
@@ -3150,7 +3145,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => buildEventTypeOptions(isRentalCreateFlow, Boolean(resolvedOrganizationId)),
         [isRentalCreateFlow, resolvedOrganizationId],
     );
-    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const supportsNoFixedEndDateTime = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEffect(() => {
         if (!isRentalCreateFlow) {
             return;
@@ -3360,8 +3355,42 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => buildDraftEvent(getValues()),
         [buildDraftEvent, getValues],
     );
-    const getRegistrationQuestionDrafts = useCallback((): RegistrationQuestionDraft[] => (
-        registrationQuestionDrafts
+    const applyAffiliateEventSimplifications = useCallback((checked: boolean) => {
+        setValue('isAffiliateEvent', checked, { shouldDirty: true, shouldValidate: true });
+        if (!checked) {
+            setValue('affiliateUrl', '', { shouldDirty: true, shouldValidate: true });
+            return;
+        }
+        setValue('teamSignup', false, { shouldDirty: true, shouldValidate: true });
+        setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+        setValue('registrationByDivisionType', false, { shouldDirty: true, shouldValidate: true });
+        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
+        setValue('allowPaymentPlans', false, { shouldDirty: true, shouldValidate: true });
+        setValue('installmentCount', 0, { shouldDirty: true, shouldValidate: true });
+        setValue('installmentAmounts', [], { shouldDirty: true, shouldValidate: true });
+        setValue('installmentDueDates', [], { shouldDirty: true, shouldValidate: true });
+        setValue('installmentDueRelativeDays', [], { shouldDirty: true, shouldValidate: true });
+        setValue('allowTeamSplitDefault', false, { shouldDirty: true, shouldValidate: true });
+        setValue('requiredTemplateIds', [], { shouldDirty: true, shouldValidate: true });
+        setValue('playoffDivisionDetails', [], { shouldDirty: true, shouldValidate: true });
+        setValue('assistantHostIds', [], { shouldDirty: true, shouldValidate: true });
+        setValue('officialIds', [], { shouldDirty: true, shouldValidate: true });
+        setValue('eventOfficials', [], { shouldDirty: true, shouldValidate: true });
+        setValue('pendingStaffInvites', [], { shouldDirty: true, shouldValidate: true });
+        setValue('doTeamsOfficiate', false, { shouldDirty: true, shouldValidate: true });
+        setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+        setValue('officialSchedulingMode', 'OFF', { shouldDirty: true, shouldValidate: true });
+        setValue('officialPositions', [], { shouldDirty: true, shouldValidate: true });
+        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: true });
+        setValue('autoCreatePointMatchIncidents', false, { shouldDirty: true, shouldValidate: true });
+        setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+    }, [setValue]);
+    const getRegistrationQuestionDrafts = useCallback((): RegistrationQuestionDraft[] => {
+        if (isAffiliateEvent) {
+            return [];
+        }
+
+        return registrationQuestionDrafts
             .map((question, index) => ({
                 id: question.id,
                 prompt: String(question.prompt ?? '').trim(),
@@ -3369,8 +3398,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 required: Boolean(question.required),
                 sortOrder: Number.isFinite(Number(question.sortOrder)) ? Number(question.sortOrder) : index,
             }))
-            .filter((question) => question.prompt.length > 0)
-    ), [registrationQuestionDrafts]);
+            .filter((question) => question.prompt.length > 0);
+    }, [isAffiliateEvent, registrationQuestionDrafts]);
 
     const validateDraft = useCallback(async () => {
         const isFormValid = await trigger();
@@ -3389,7 +3418,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return false;
         }
 
-        if (officialStaffingCoverageError) {
+        if (!isAffiliateEvent && officialStaffingCoverageError) {
             lastValidationErrorsRef.current = [
                 {
                     path: 'officialSchedulingMode',
@@ -3419,6 +3448,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         errors,
         eventValidationSchema,
         getValues,
+        isAffiliateEvent,
         officialStaffingCoverageError,
         requiredOfficialSlotsPerMatch,
         trigger,
@@ -3431,6 +3461,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         onDirtyStateChange?.(false);
     }, [getValues, onDirtyStateChange, reset]);
 
+    const validatePendingStaffAssignmentsForSubmit = useCallback(async () => {
+        if (isAffiliateEvent) {
+            return;
+        }
+        await validatePendingStaffAssignments();
+    }, [isAffiliateEvent, validatePendingStaffAssignments]);
+
+    const submitPendingStaffInvitesForSubmit = useCallback(async (eventId: string) => {
+        if (isAffiliateEvent) {
+            return;
+        }
+        await submitPendingStaffInvites(eventId);
+    }, [isAffiliateEvent, submitPendingStaffInvites]);
+
     useImperativeHandle(
         ref,
         () => ({
@@ -3438,11 +3482,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             getRegistrationQuestionDrafts,
             validate: validateDraft,
             getValidationErrors: () => lastValidationErrorsRef.current,
-            validatePendingStaffAssignments,
+            validatePendingStaffAssignments: validatePendingStaffAssignmentsForSubmit,
             commitDirtyBaseline,
-            submitPendingStaffInvites,
+            submitPendingStaffInvites: submitPendingStaffInvitesForSubmit,
         }),
-        [commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, submitPendingStaffInvites, validateDraft, validatePendingStaffAssignments],
+        [commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, submitPendingStaffInvitesForSubmit, validateDraft, validatePendingStaffAssignmentsForSubmit],
     );
 
     // Syncs the selected event image with component state after uploads or picker changes.
@@ -3456,12 +3500,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates') || hasExternalRentalField;
     const splitLeaguePlayoffDivisionsLocked = isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField;
-    const isSchedulableEventType = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const isSchedulableEventType = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const isWeeklyChildEvent = eventData.eventType === 'WEEKLY_EVENT' && hasParentEventRef(eventData.parentEvent);
-    const supportsEditableTeamSignup = eventData.eventType === 'EVENT' || eventData.eventType === 'WEEKLY_EVENT';
-    const showsFixedTeamEventToggle = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
+    const supportsEditableTeamSignup = !isAffiliateEvent && (eventData.eventType === 'EVENT' || eventData.eventType === 'WEEKLY_EVENT');
+    const showsFixedTeamEventToggle = !isAffiliateEvent && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
-    const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
+    const showScheduleConfig = !isAffiliateEvent && (isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent);
     const resourceSelectorLoading = fieldsLoading || rentalResourcesLoading;
     const showOrganizationFieldsInEventDetails = shouldShowOrganizationFieldsInEventDetails({
         isOrganizationHostedEvent,
@@ -3469,35 +3513,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         supportsOrganizationFieldSelection,
     });
     const localFieldCreationControl = showLocalFieldCreationControls ? (
-        <MantineSelect
-            label="Number of Resources"
-            placeholder="Select resource count"
-            data={fieldCountOptions}
-            value={String(fieldCount)}
+        <NumberInput
+            label="Count"
+            min={isOrganizationHostedEvent ? 0 : 1}
+            max={12}
+            value={fieldCount}
             w="100%"
             styles={alignedDetailsFieldStyles}
-            onChange={(val) => {
-                const parsed = Number(val);
-                setFieldCount(Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0);
+            clampBehavior="blur"
+            onChange={(value) => {
+                const parsed = typeof value === 'number' && Number.isFinite(value)
+                    ? value
+                    : Number(value);
+                const minimum = isOrganizationHostedEvent ? 0 : 1;
+                setFieldCount(Number.isFinite(parsed) ? Math.max(minimum, Math.trunc(parsed)) : minimum);
             }}
             error={errors.fieldCount?.message as string | undefined}
-            comboboxProps={sharedComboboxProps}
         />
     ) : null;
-    const showMatchRulesSection = eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
-    const showScoringConfigSection = eventData.eventType === 'LEAGUE'
-        || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs);
+    const showMatchRulesSection = !isAffiliateEvent && eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
+    const showStaffSection = !isAffiliateEvent;
+    const showScoringConfigSection = !isAffiliateEvent && (
+        eventData.eventType === 'LEAGUE'
+        || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs)
+    );
     const scoringConfigSectionLabel = eventData.eventType === 'TOURNAMENT'
         ? 'Pool Scoring Config'
         : 'League Scoring Config';
     const sectionNavItems = useMemo(
         () => buildEventFormSectionNavigationItems({
             showMatchRulesSection,
+            showStaffSection,
             scoringConfigSectionLabel,
+            divisionSettingsSectionLabel: 'Divisions',
             showScoringConfigSection,
             showScheduleConfig,
         }),
-        [scoringConfigSectionLabel, showMatchRulesSection, showScheduleConfig, showScoringConfigSection],
+        [isAffiliateEvent, scoringConfigSectionLabel, showMatchRulesSection, showScheduleConfig, showScoringConfigSection, showStaffSection],
     );
     const visibleSectionNavItems = useMemo(
         () => getVisibleSectionNavigationItems(sectionNavItems),
@@ -3583,7 +3635,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             collapsed={collapsedSections['section-basic-information']}
                             control={control}
                             errors={errors}
-                            eventType={eventData.eventType}
                             selectedImageUrl={selectedImageUrl}
                             allowImageEdit={allowImageEdit}
                             sportsLoading={sportsLoading}
@@ -3604,6 +3655,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             control={control}
                             eventData={eventData}
                             leagueData={leagueData}
+                            isAffiliateEvent={isAffiliateEvent}
                             eventTypeOptions={eventTypeOptions}
                             supportsEditableTeamSignup={supportsEditableTeamSignup}
                             showsFixedTeamEventToggle={showsFixedTeamEventToggle}
@@ -3611,6 +3663,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             automaticRefundsAvailable={automaticRefundsAvailable}
                             todaysDate={todaysDate}
                             maxStandardNumber={MAX_STANDARD_NUMBER}
+                            maxPriceCents={MAX_PRICE_CENTS}
                             maxResourceNameLength={MAX_MEDIUM_TEXT_LENGTH}
                             selectStyles={alignedDetailsFieldStyles}
                             numberInputStyles={alignedDetailsFieldStyles}
@@ -3622,7 +3675,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-event-details')}
                             onEventTypeChange={(nextType, applyValue) => {
                                 clearErrors('leagueSlots');
-                                const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
                                 applyValue(nextType);
                                 if (nextType === 'LEAGUE' || nextType === 'TOURNAMENT') {
                                     const tagName = nextType === 'LEAGUE' ? 'League' : 'Tournament';
@@ -3654,6 +3707,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
                                     }
                                 }
+                            }}
+                            onAffiliateEventChange={(checked, applyValue) => {
+                                applyValue(checked);
+                                applyAffiliateEventSimplifications(checked);
                             }}
                             onIncludePlayoffsChange={handleIncludePlayoffsToggle}
                             onIncludePoolPlayChange={(checked) => {
@@ -3706,15 +3763,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             templateOrganizationId={templateOrganizationId}
                             templateOptions={templateOptions}
                             normalizeNumberValue={normalizeNumber}
-                            localFieldCreationControl={localFieldCreationControl}
-                            registrationQuestionsEditor={registrationQuestionsEditor}
+                            showAffiliateListingControls={isAffiliateEvent}
+                            showRequiredDocumentControls={!isAffiliateEvent}
+                            localFieldCreationControl={isAffiliateEvent ? null : localFieldCreationControl}
+                            registrationQuestionsEditor={isAffiliateEvent ? null : registrationQuestionsEditor}
                             hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
-                            showOrganizationFields={showOrganizationFieldsInEventDetails}
+                            showOrganizationFields={isAffiliateEvent ? false : showOrganizationFieldsInEventDetails}
                             organizationResourcePool={organizationResourcePool}
                             resourceSelectorLoading={resourceSelectorLoading}
                             organizationHostedEventId={organizationHostedEventId}
                             rentalResourcesError={rentalResourcesError}
-                            showLocalFieldCreationControls={showLocalFieldCreationControls}
+                            showLocalFieldCreationControls={isAffiliateEvent ? false : showLocalFieldCreationControls}
                             eventLocalFields={eventLocalFields}
                             fieldNamesCollapsed={fieldNamesCollapsed}
                             setFieldNamesCollapsed={setFieldNamesCollapsed}
@@ -3743,10 +3802,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-match-rules')}
                         />
 
-                        <StaffSection
-                            collapsed={collapsedSections['section-officials']}
-                            onToggle={() => toggleSectionCollapse('section-officials')}
-                        >
+                        {showStaffSection ? (
+                            <StaffSection
+                                collapsed={collapsedSections['section-officials']}
+                                onToggle={() => toggleSectionCollapse('section-officials')}
+                            >
                                     <StaffManagementPanel
                                         control={control}
                                         eventData={eventData}
@@ -3815,25 +3875,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         onRemoveAssistantHost={handleRemoveAssistantHost}
                                         onUpdateEventOfficialEligibility={handleUpdateEventOfficialEligibility}
                                     />
-                        </StaffSection>
+                            </StaffSection>
+                        ) : null}
 
                         <DivisionSettingsSection
                             collapsed={collapsedSections['section-division-settings']}
+                            title="Divisions"
                             onToggle={() => toggleSectionCollapse('section-division-settings')}
                         >
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
-                                <DivisionModeControls
-                                    control={control}
-                                    supportsEditableTeamSignup={supportsEditableTeamSignup}
-                                    showsFixedTeamEventToggle={showsFixedTeamEventToggle}
-                                    eventType={eventData.eventType}
-                                    singleDivision={eventData.singleDivision}
-                                    leagueIncludesPlayoffs={Boolean(leagueData.includePlayoffs)}
-                                    splitLeaguePlayoffDivisionsLocked={splitLeaguePlayoffDivisionsLocked}
-                                    hasExternalRentalField={hasExternalRentalField}
-                                    isImmutableField={isImmutableField}
-                                />
-                                {eventData.singleDivision ? (
+                                {!isAffiliateEvent ? (
+                                    <DivisionModeControls
+                                        control={control}
+                                        supportsEditableTeamSignup={supportsEditableTeamSignup}
+                                        showsFixedTeamEventToggle={showsFixedTeamEventToggle}
+                                        eventType={eventData.eventType}
+                                        singleDivision={eventData.singleDivision}
+                                        leagueIncludesPlayoffs={Boolean(leagueData.includePlayoffs)}
+                                        splitLeaguePlayoffDivisionsLocked={splitLeaguePlayoffDivisionsLocked}
+                                        hasExternalRentalField={hasExternalRentalField}
+                                        isImmutableField={isImmutableField}
+                                    />
+                                ) : null}
+                                {!isAffiliateEvent && eventData.singleDivision ? (
                                     <SingleDivisionDefaultsPanel
                                         control={control}
                                         eventData={eventData}
@@ -3881,104 +3945,158 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         })}
                                     />
                                 ) : null}
-                                <DivisionEditorHeader
-                                    editing={Boolean(divisionEditor.editingId)}
-                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
-                                    divisionKind={divisionEditor.divisionKind}
-                                    disabled={isImmutableField('divisions')}
-                                    comboboxProps={sharedComboboxProps}
-                                    onDivisionKindChange={handleDivisionEditorKindChange}
-                                />
-                                <DivisionEditorLeaguePanel
-                                    divisionEditor={divisionEditor}
-                                    eventData={eventData}
-                                    leagueData={leagueData}
-                                    eventTaxableForPreview={eventTaxableForPreview}
-                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
-                                    divisionEditorReady={divisionEditorReady}
-                                    divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
-                                    hasStripeAccount={hasStripeAccount}
-                                    maxStandardNumber={MAX_STANDARD_NUMBER}
-                                    maxPriceCents={MAX_PRICE_CENTS}
-                                    maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                    numberInputStyles={alignedDetailsFieldStyles}
-                                    genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-                                    skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
-                                    ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
-                                    playoffDivisionOptions={playoffDivisionSelectOptions}
-                                    comboboxProps={sharedComboboxProps}
-                                    isImmutableField={isImmutableField}
-                                    setDivisionEditor={setDivisionEditor}
-                                    updateDivisionEditorSelection={updateDivisionEditorSelection}
-                                    setDivisionEditorLeagueConfig={setDivisionEditorLeagueConfig}
-                                    setDivisionEditorPlayoffConfig={setDivisionEditorPlayoffConfig}
-                                    syncDivisionInstallmentCount={syncDivisionInstallmentCount}
-                                    onInstallmentDueRelativeDayChange={setDivisionInstallmentDueRelativeDay}
-                                    onInstallmentDueDateChange={setDivisionInstallmentDueDate}
-                                    onInstallmentAmountChange={setDivisionInstallmentAmount}
-                                    onRemoveInstallment={removeDivisionInstallment}
-                                />
-                                <DivisionEditorPlayoffDivisionControls
-                                    visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}
-                                    name={divisionEditor.name}
-                                    maxParticipants={divisionEditor.maxParticipants}
-                                    teamSignup={eventData.teamSignup}
-                                    playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
-                                    sport={eventData.sportConfig ?? undefined}
-                                    maxStandardNumber={MAX_STANDARD_NUMBER}
-                                    maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                    disabled={isImmutableField('divisions')}
-                                    onNameChange={(name) => {
-                                        setDivisionEditor((prev) => ({
-                                            ...prev,
-                                            name,
-                                            nameTouched: true,
-                                            error: null,
-                                        }));
-                                    }}
-                                    onMaxParticipantsChange={(value) => {
-                                        setDivisionEditor((prev) => ({
-                                            ...prev,
-                                            maxParticipants: normalizePlayoffDivisionParticipantCount(value),
-                                            error: null,
-                                        }));
-                                    }}
-                                    onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
-                                />
-                                <DivisionEditorActionsAndErrors
-                                    isEditing={Boolean(divisionEditor.editingId)}
-                                    disabled={isImmutableField('divisions')}
-                                    editorError={divisionEditor.error}
-                                    divisionsError={errors.divisions?.message as string | undefined}
-                                    divisionDetailsError={errors.divisionDetails?.message as string | undefined}
-                                    playoffDivisionDetailsError={errors.playoffDivisionDetails?.message as string | undefined}
-                                    showMissingPlayoffDivisionWarning={splitDivisionEditorEnabled && (eventData.playoffDivisionDetails || []).length === 0}
-                                    onSave={handleSaveDivisionDetail}
-                                    onCancelEdit={resetDivisionEditor}
-                                />
-                                <DivisionSummaryList
-                                    divisionDetails={eventData.divisionDetails || []}
-                                    playoffDivisionDetails={eventData.playoffDivisionDetails || []}
-                                    singleDivision={eventData.singleDivision}
-                                    teamSignup={eventData.teamSignup}
-                                    eventType={eventData.eventType}
-                                    includePlayoffs={leagueData.includePlayoffs}
-                                    splitDivisionEditorEnabled={splitDivisionEditorEnabled}
-                                    eventPrice={eventData.price}
-                                    eventMaxParticipants={eventData.maxParticipants}
-                                    eventAllowPaymentPlans={Boolean(eventData.allowPaymentPlans)}
-                                    eventInstallmentCount={eventData.installmentCount}
-                                    eventInstallmentAmounts={eventData.installmentAmounts || []}
-                                    leaguePlayoffTeamCount={leagueData.playoffTeamCount}
-                                    disabled={isImmutableField('divisions')}
-                                    playoffDivisionCapacityWarnings={playoffDivisionCapacityWarnings}
-                                    derivePoolTeamCount={derivePoolTeamCount}
-                                    buildTournamentConfig={buildTournamentConfig}
-                                    onEditDivision={handleEditDivisionDetail}
-                                    onRemoveDivision={handleRemoveDivisionDetail}
-                                    onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
-                                    onRemovePlayoffDivision={handleRemovePlayoffDivision}
-                                />
+                                <>
+                                    <DivisionEditorHeader
+                                        editing={Boolean(divisionEditor.editingId)}
+                                        splitDivisionEditorEnabled={!isAffiliateEvent && splitDivisionEditorEnabled}
+                                        divisionKind={divisionEditor.divisionKind}
+                                        disabled={isImmutableField('divisions')}
+                                        comboboxProps={sharedComboboxProps}
+                                        onDivisionKindChange={handleDivisionEditorKindChange}
+                                    />
+                                    <DivisionEditorLeaguePanel
+                                        divisionEditor={divisionEditor}
+                                        eventData={isAffiliateEvent ? {
+                                            ...eventData,
+                                            teamSignup: false,
+                                            singleDivision: true,
+                                            allowPaymentPlans: false,
+                                        } : eventData}
+                                        leagueData={leagueData}
+                                        eventTaxableForPreview={eventTaxableForPreview}
+                                        splitDivisionEditorEnabled={!isAffiliateEvent && splitDivisionEditorEnabled}
+                                        divisionEditorReady={divisionEditorReady}
+                                        divisionMaxParticipantsWarning={isAffiliateEvent ? null : divisionMaxParticipantsWarning}
+                                        hasStripeAccount={hasStripeAccount}
+                                        maxStandardNumber={MAX_STANDARD_NUMBER}
+                                        maxPriceCents={MAX_PRICE_CENTS}
+                                        maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                        numberInputStyles={alignedDetailsFieldStyles}
+                                        hideCapacityAndPrice={isAffiliateEvent}
+                                        showPaymentPlanControls={!isAffiliateEvent}
+                                        showOperationalControls={!isAffiliateEvent}
+                                        showSingleDivisionNotice={!isAffiliateEvent}
+                                        genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                        skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
+                                        ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
+                                        playoffDivisionOptions={playoffDivisionSelectOptions}
+                                        comboboxProps={sharedComboboxProps}
+                                        isImmutableField={isImmutableField}
+                                        setDivisionEditor={setDivisionEditor}
+                                        updateDivisionEditorSelection={updateDivisionEditorSelection}
+                                        setDivisionEditorLeagueConfig={setDivisionEditorLeagueConfig}
+                                        setDivisionEditorPlayoffConfig={setDivisionEditorPlayoffConfig}
+                                        syncDivisionInstallmentCount={syncDivisionInstallmentCount}
+                                        onInstallmentDueRelativeDayChange={setDivisionInstallmentDueRelativeDay}
+                                        onInstallmentDueDateChange={setDivisionInstallmentDueDate}
+                                        onInstallmentAmountChange={setDivisionInstallmentAmount}
+                                        onRemoveInstallment={removeDivisionInstallment}
+                                    />
+                                    {!isAffiliateEvent ? (
+                                        <>
+                                        <DivisionEditorPlayoffDivisionControls
+                                            visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}
+                                            name={divisionEditor.name}
+                                            maxParticipants={divisionEditor.maxParticipants}
+                                            teamSignup={eventData.teamSignup}
+                                            playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            maxStandardNumber={MAX_STANDARD_NUMBER}
+                                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                                            disabled={isImmutableField('divisions')}
+                                            onNameChange={(name) => {
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    name,
+                                                    nameTouched: true,
+                                                    error: null,
+                                                }));
+                                            }}
+                                            onMaxParticipantsChange={(value) => {
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    maxParticipants: normalizePlayoffDivisionParticipantCount(value),
+                                                    error: null,
+                                                }));
+                                            }}
+                                            onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
+                                        />
+                                        <DivisionEditorActionsAndErrors
+                                            isEditing={Boolean(divisionEditor.editingId)}
+                                            disabled={isImmutableField('divisions')}
+                                            editorError={divisionEditor.error}
+                                            divisionsError={errors.divisions?.message as string | undefined}
+                                            divisionDetailsError={errors.divisionDetails?.message as string | undefined}
+                                            playoffDivisionDetailsError={errors.playoffDivisionDetails?.message as string | undefined}
+                                            showMissingPlayoffDivisionWarning={splitDivisionEditorEnabled && (eventData.playoffDivisionDetails || []).length === 0}
+                                            onSave={handleSaveDivisionDetail}
+                                            onCancelEdit={resetDivisionEditor}
+                                        />
+                                        <DivisionSummaryList
+                                            divisionDetails={eventData.divisionDetails || []}
+                                            playoffDivisionDetails={eventData.playoffDivisionDetails || []}
+                                            singleDivision={eventData.singleDivision}
+                                            teamSignup={eventData.teamSignup}
+                                            eventType={eventData.eventType}
+                                            includePlayoffs={leagueData.includePlayoffs}
+                                            splitDivisionEditorEnabled={splitDivisionEditorEnabled}
+                                            eventPrice={eventData.price}
+                                            eventMaxParticipants={eventData.maxParticipants}
+                                            eventAllowPaymentPlans={Boolean(eventData.allowPaymentPlans)}
+                                            eventInstallmentCount={eventData.installmentCount}
+                                            eventInstallmentAmounts={eventData.installmentAmounts || []}
+                                            leaguePlayoffTeamCount={leagueData.playoffTeamCount}
+                                            disabled={isImmutableField('divisions')}
+                                            playoffDivisionCapacityWarnings={playoffDivisionCapacityWarnings}
+                                            derivePoolTeamCount={derivePoolTeamCount}
+                                            buildTournamentConfig={buildTournamentConfig}
+                                            onEditDivision={handleEditDivisionDetail}
+                                            onRemoveDivision={handleRemoveDivisionDetail}
+                                            onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
+                                            onRemovePlayoffDivision={handleRemovePlayoffDivision}
+                                        />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <DivisionEditorActionsAndErrors
+                                                isEditing={Boolean(divisionEditor.editingId)}
+                                                disabled={isImmutableField('divisions')}
+                                                editorError={divisionEditor.error}
+                                                divisionsError={errors.divisions?.message as string | undefined}
+                                                divisionDetailsError={errors.divisionDetails?.message as string | undefined}
+                                                playoffDivisionDetailsError={undefined}
+                                                showMissingPlayoffDivisionWarning={false}
+                                                onSave={handleSaveDivisionDetail}
+                                                onCancelEdit={resetDivisionEditor}
+                                            />
+                                            <DivisionSummaryList
+                                                divisionDetails={eventData.divisionDetails || []}
+                                                playoffDivisionDetails={[]}
+                                                singleDivision
+                                                teamSignup={false}
+                                                eventType={eventData.eventType}
+                                                includePlayoffs={false}
+                                                splitDivisionEditorEnabled={false}
+                                                eventPrice={eventData.price}
+                                                eventMaxParticipants={eventData.maxParticipants}
+                                                eventAllowPaymentPlans={false}
+                                                eventInstallmentCount={0}
+                                                eventInstallmentAmounts={[]}
+                                                leaguePlayoffTeamCount={undefined}
+                                                disabled={isImmutableField('divisions')}
+                                                playoffDivisionCapacityWarnings={[]}
+                                                hidePricingAndCapacity
+                                                hideOperationalDetails
+                                                derivePoolTeamCount={derivePoolTeamCount}
+                                                buildTournamentConfig={buildTournamentConfig}
+                                                onEditDivision={handleEditDivisionDetail}
+                                                onRemoveDivision={handleRemoveDivisionDetail}
+                                                onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
+                                                onRemovePlayoffDivision={handleRemovePlayoffDivision}
+                                            />
+                                        </>
+                                    )}
+                                </>
                             </div>
 
                         </DivisionSettingsSection>

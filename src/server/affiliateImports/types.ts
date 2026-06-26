@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type AffiliateListingKind = 'EVENT' | 'RENTAL';
+export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM';
 
 export type ScrapedPage = {
   url: string;
@@ -16,21 +16,26 @@ export interface ScrapePageClient {
 
 export const fieldMappingSchema = z.object({
   selector: z.string().min(1),
-  mode: z.enum(['text', 'html', 'attribute']).default('text'),
+  mode: z.enum(['text', 'html', 'attribute', 'literal']).default('text'),
   attribute: z.string().min(1).optional(),
+  value: z.string().optional(),
+  valueMap: z.record(z.string(), z.string()).optional(),
+  fallbackValue: z.string().optional(),
   regex: z.string().min(1).optional(),
   required: z.boolean().optional(),
-  transform: z.enum(['trim', 'priceText', 'dateTime', 'absoluteUrl']).optional(),
+  transform: z.enum(['trim', 'priceText', 'dateTime', 'dateRangeEnd', 'absoluteUrl']).optional(),
 });
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
 
 export const affiliateScrapeMappingSchema = z.object({
-  kind: z.enum(['EVENT', 'RENTAL']),
+  kind: z.enum(['EVENT', 'RENTAL', 'TEAM']),
   listUrl: z.string().url(),
   renderJavascript: z.boolean().optional(),
   waitMs: z.number().int().min(0).max(30_000).optional(),
   itemSelector: z.string().min(1),
+  itemTextIncludes: z.array(z.string().min(1)).optional(),
+  itemTextExcludes: z.array(z.string().min(1)).optional(),
   fields: z.object({
     title: fieldMappingSchema,
     officialActionUrl: fieldMappingSchema,

@@ -599,8 +599,12 @@ describe('upsertEventFromPayload', () => {
     expect(openDivisionUpsertArgs?.create.ageCutoffDate).toEqual(new Date('2026-08-01T19:00:00.000Z'));
     expect(openDivisionUpsertArgs?.create.ageCutoffLabel).toBe('Age 18+ as of 08/01/2026');
     expect(openDivisionUpsertArgs?.create.ageCutoffSource).toBe('US Youth Soccer seasonal-year age grouping guidance.');
+    expect(openDivisionUpsertArgs?.create).not.toHaveProperty('minAge');
+    expect(openDivisionUpsertArgs?.create).not.toHaveProperty('maxAge');
     expect(openDivisionUpsertArgs?.update.divisionTypeId).toBe('skill_open_age_18plus');
     expect(openDivisionUpsertArgs?.update.ageCutoffDate).toEqual(new Date('2026-08-01T19:00:00.000Z'));
+    expect(openDivisionUpsertArgs?.update).not.toHaveProperty('minAge');
+    expect(openDivisionUpsertArgs?.update).not.toHaveProperty('maxAge');
     expect(openDivisionUpsertArgs?.create.playoffPlacementDivisionIds).toEqual([targetAdvancedDivisionId, '']);
     expect(openDivisionUpsertArgs?.update.playoffPlacementDivisionIds).toEqual([targetAdvancedDivisionId, '']);
 

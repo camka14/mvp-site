@@ -1,0 +1,3 @@
+ALTER TABLE "Divisions"
+  DROP COLUMN IF EXISTS "minAge",
+  DROP COLUMN IF EXISTS "maxAge";

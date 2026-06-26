@@ -1044,6 +1044,17 @@ const formatRefundSummary = (value: number | null | undefined): string => {
     return hours <= 0 ? 'Until event start' : `${Math.trunc(hours)}h before start`;
 };
 
+const formatNotSpecifiedValue = (value: unknown): string => {
+    if (value == null) {
+        return 'Not specified';
+    }
+    if (typeof value === 'number') {
+        return Number.isFinite(value) && value > 0 ? String(Math.trunc(value)) : 'Not specified';
+    }
+    const normalized = String(value).trim();
+    return normalized.length ? normalized : 'Not specified';
+};
+
 const formatOfficialSchedulingModeLabel = (value: Event['officialSchedulingMode']): string => {
     switch (value) {
         case 'STAFFING':
@@ -1709,7 +1720,7 @@ export default function EventDetailSheet({
     const ageWithinLimits = !hasAgeLimits
         || (typeof userAge === 'number' && Number.isFinite(userAge) && isAgeWithinRange(userAge, eventMinAge, eventMaxAge));
     const selectedDivisionAgeForUser = React.useMemo(() => {
-        if (!selectedDivisionOption || hasAgeLimits) {
+        if (!selectedDivisionOption) {
             return null;
         }
         return evaluateDivisionAgeEligibility({
@@ -1718,7 +1729,7 @@ export default function EventDetailSheet({
             sportInput: selectedDivisionOption.sportId ?? undefined,
             referenceDate: eventStartDate ?? undefined,
         });
-    }, [eventStartDate, hasAgeLimits, selectedDivisionOption, userDob]);
+    }, [eventStartDate, selectedDivisionOption, userDob]);
     const selfRegistrationBlockedReason = (() => {
         if (!user) return null;
         if (eventHasStarted) {
@@ -1731,8 +1742,7 @@ export default function EventDetailSheet({
             return `This event is limited to ages ${formatAgeRange(eventMinAge, eventMaxAge)}.`;
         }
         if (
-            !hasAgeLimits
-            && selectedDivisionAgeForUser?.applies
+            selectedDivisionAgeForUser?.applies
             && selectedDivisionAgeForUser.eligible === false
         ) {
             return selectedDivisionAgeForUser.message
@@ -1852,12 +1862,13 @@ export default function EventDetailSheet({
             setHostUser(null);
             return;
         }
+        const hostId = currentEvent.hostId;
 
         let cancelled = false;
 
         const loadHostUser = async () => {
             try {
-                const resolvedHost = await userService.getUserById(currentEvent.hostId, { eventId: currentEvent.$id });
+                const resolvedHost = await userService.getUserById(hostId, { eventId: currentEvent.$id });
                 if (!cancelled) {
                     setHostUser(resolvedHost ?? null);
                 }
@@ -3900,7 +3911,7 @@ export default function EventDetailSheet({
 
     const { date, time } = getEventDateTime(currentEvent);
     const affiliateActionUrl = typeof currentEvent.affiliateUrl === 'string' ? currentEvent.affiliateUrl.trim() : '';
-    const isAffiliateEvent = currentEvent.eventType === 'AFFILIATE';
+    const isAffiliateEvent = affiliateActionUrl.length > 0;
     const isTeamSignup = currentEvent.teamSignup;
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const startDateValue = parseDateValue(currentEvent.start ?? null);
@@ -4041,7 +4052,9 @@ export default function EventDetailSheet({
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
-    const eventPriceSummary = `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
+    const eventPriceSummary = isAffiliateEvent && typeof currentEvent.priceText === 'string' && currentEvent.priceText.trim().length > 0
+        ? currentEvent.priceText.trim()
+        : `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
     const maxParticipantsLabel = isTeamSignup ? 'Max teams' : 'Max players';
     const registrationCutoffSummary = formatRegistrationCutoffSummary(currentEvent.registrationCutoffHours);
     const refundSummary = formatRefundSummary(currentEvent.cancellationRefundHours);
@@ -4462,7 +4475,7 @@ export default function EventDetailSheet({
                                                 <ReadOnlyDetailsGrid
                                                     items={[
                                                         { label: 'Entry fee', value: eventPriceSummary },
-                                                        { label: maxParticipantsLabel, value: String(currentEvent.maxParticipants) },
+                                                        { label: maxParticipantsLabel, value: formatNotSpecifiedValue(currentEvent.maxParticipants) },
                                                         { label: 'Team size', value: String(currentEvent.teamSizeLimit) },
                                                         { label: 'Registration closes', value: registrationCutoffSummary },
                                                         { label: 'Refunds', value: refundSummary },
@@ -4483,11 +4496,10 @@ export default function EventDetailSheet({
                                                             );
                                                             const maxDivisionParticipants = currentEvent.singleDivision
                                                                 ? currentEvent.maxParticipants
-                                                                : Math.max(
-                                                                    2,
+                                                                : (
                                                                     Number.isFinite(Number(division.maxParticipants))
                                                                         ? Math.trunc(Number(division.maxParticipants))
-                                                                        : currentEvent.maxParticipants,
+                                                                        : null
                                                                 );
                                                             const paymentPlanCount = Math.max(
                                                                 typeof division.installmentCount === 'number' ? division.installmentCount : 0,
@@ -4519,7 +4531,7 @@ export default function EventDetailSheet({
                                                                             },
                                                                             {
                                                                                 label: isTeamSignup ? 'Max teams' : 'Max participants',
-                                                                                value: String(maxDivisionParticipants),
+                                                                                value: formatNotSpecifiedValue(maxDivisionParticipants),
                                                                             },
                                                                             ...(division.allowPaymentPlans && paymentPlanCount > 0
                                                                                 ? [{ label: 'Payment plan', value: `${paymentPlanCount} installments` }]
@@ -4838,7 +4850,7 @@ export default function EventDetailSheet({
                                         <div className="space-y-2 text-sm">
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Max Participants:</span>
-                                                <span className="font-medium">{participantCapacity}</span>
+                                                <span className="font-medium">{formatNotSpecifiedValue(participantCapacity)}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Team Size:</span>

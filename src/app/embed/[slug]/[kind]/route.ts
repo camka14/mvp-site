@@ -324,6 +324,7 @@ const renderTeams = (catalog: PublicOrganizationCatalog, options: WidgetRenderOp
   return catalog.teams.map((team) => {
     const capacityLabel = getTeamCapacityLabel(team);
     const capacityFill = getTeamCapacityFill(team);
+    const isAffiliateTeam = typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0;
     const cardBody = `
       <img src="${escapeHtml(team.imageUrl)}" alt="" class="media" />
       <span class="label">${escapeHtml(team.sport ?? 'Team')}</span>
@@ -338,13 +339,15 @@ const renderTeams = (catalog: PublicOrganizationCatalog, options: WidgetRenderOp
         ` : ''}
       </div>
       <p>${
-        team.openRegistration
+        isAffiliateTeam
+          ? 'External registration'
+          : team.openRegistration
           ? `Open registration - ${escapeHtml(formatPrice(team.registrationPriceCents))}`
           : 'Registration closed'
       }</p>
       ${
         team.registrationUrl
-          ? '<span class="card-action-link">Join team</span>'
+          ? `<span class="card-action-link">${isAffiliateTeam ? 'External registration' : 'Join team'}</span>`
           : team.openRegistration && team.isFull
             ? '<button type="button" class="card-action-button" disabled>Team full</button>'
             : ''

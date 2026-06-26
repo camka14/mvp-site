@@ -659,7 +659,7 @@ export const describeDivisionAgeBracket = (params: {
   sportInput?: string | null;
   referenceDate?: Date | null;
 }): string | null => {
-  const bracket = parseDivisionAgeBracket(params.divisionTypeId);
+  const bracket = parseDivisionAgeBracketFromId(params.divisionTypeId);
   if (!bracket) {
     return null;
   }
@@ -700,7 +700,7 @@ export const evaluateDivisionAgeEligibility = (params: {
     sportInput: params.sportInput,
     referenceDate: params.referenceDate,
   });
-  const bracket = parseDivisionAgeBracket(params.divisionTypeId);
+  const bracket = parseDivisionAgeBracketFromId(params.divisionTypeId);
   if (!bracket) {
     return {
       applies: false,

@@ -374,11 +374,15 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     const officialSchedulingMode = normalizeOfficialSchedulingMode(event.officialSchedulingMode);
     const doTeamsOfficiate = officialSchedulingMode === 'TEAM_STAFFING' || Boolean(event.doTeamsOfficiate);
 
+    const existingAffiliateUrl = event.affiliateUrl ?? '';
+    const normalizedEventType = event.eventType === 'AFFILIATE' ? 'EVENT' : event.eventType;
+
     return {
     $id: event.$id,
     name: event.name,
     description: event.description ?? '',
-    affiliateUrl: event.affiliateUrl ?? '',
+    isAffiliateEvent: existingAffiliateUrl.trim().length > 0 || event.eventType === 'AFFILIATE',
+    affiliateUrl: existingAffiliateUrl,
     tags: Array.isArray(event.tags) ? event.tags : [],
     location: event.location ?? '',
     address: event.address ?? '',
@@ -387,7 +391,7 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     end: event.end ? (formatEventDateTimeForForm(event.end, eventTimeZone) || event.end) : '',
     timeZone: eventTimeZone,
     state: (event.state as EventState) ?? 'DRAFT',
-    eventType: event.eventType,
+    eventType: normalizedEventType,
     parentEvent: event.parentEvent || undefined,
     sportId: resolvedSportId,
     sportConfig: event.sport && typeof event.sport === 'object'

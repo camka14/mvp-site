@@ -5,12 +5,14 @@ import { SECTION_ANIMATION_DURATION_MS } from '../constants';
 
 type DivisionSettingsSectionProps = {
     collapsed: boolean;
+    title?: string;
     onToggle: () => void;
     children: ReactNode;
 };
 
 export const DivisionSettingsSection = ({
     collapsed,
+    title = 'Divisions',
     onToggle,
     children,
 }: DivisionSettingsSectionProps) => (
@@ -23,7 +25,7 @@ export const DivisionSettingsSection = ({
         className="scroll-mt-20 bg-gray-50"
     >
         <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold">Divisions</h3>
+            <h3 className="text-lg font-semibold">{title}</h3>
             <Button
                 type="button"
                 variant="subtle"

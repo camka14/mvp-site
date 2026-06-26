@@ -35,6 +35,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!teamRow) {
       return NextResponse.json({ error: 'Team not found.' }, { status: 404 });
     }
+    const affiliateUrl = typeof (teamRow as any).affiliateUrl === 'string' ? (teamRow as any).affiliateUrl.trim() : '';
+    if (affiliateUrl.length > 0) {
+      return NextResponse.json({ error: 'This team uses external registration.' }, { status: 400 });
+    }
     if (!parentProfile) {
       return NextResponse.json({ error: 'User profile not found.' }, { status: 404 });
     }

@@ -1372,7 +1372,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const requestedStatus = typeof parsed.data.lifecycle.status === 'string'
             ? parsed.data.lifecycle.status.trim().toUpperCase()
             : null;
-          const officialAllowedStatuses = new Set(['SCHEDULED', 'READY', 'IN_PROGRESS']);
+          const officialAllowedStatuses = new Set(['SCHEDULED', 'READY', 'IN_PROGRESS', 'DELAYED']);
           const allowedOfficialLifecycleUpdate = isOfficial
             && lifecycleKeys.every((key) => officialAllowedKeys.has(key))
             && (!requestedStatus || officialAllowedStatuses.has(requestedStatus));

@@ -40,7 +40,8 @@ export default function TeamCard({
   const hasCapacity = teamSize !== null && teamSize > 0;
   const isFull = team.isFull === true || (hasCapacity && currentSize >= teamSize);
   const spotsLeft = hasCapacity ? Math.max(teamSize - currentSize, 0) : null;
-  const showRegistrationCapacity = team.openRegistration === true && hasCapacity;
+  const isAffiliateTeam = typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0;
+  const showRegistrationCapacity = !isAffiliateTeam && team.openRegistration === true && hasCapacity;
   const hasPendingInvites = Array.isArray(team.pending) && team.pending.length > 0;
 
   const visibleMembers = (team.players ?? []).filter((player) => {
@@ -149,7 +150,7 @@ export default function TeamCard({
     </Box>
   ) : null;
   const hasBelowActions = actionsPlacement === 'below' && Boolean(renderedActions);
-  const hasBodyContent = hasBelowActions || visibleMembers.length > 0 || hasPendingInvites || showRegistrationCapacity;
+  const hasBodyContent = hasBelowActions || visibleMembers.length > 0 || hasPendingInvites || showRegistrationCapacity || isAffiliateTeam;
   const headerMarginBottom = hasBodyContent ? (hasBelowActions ? 'xs' : 'sm') : 0;
 
   return (
@@ -198,14 +199,18 @@ export default function TeamCard({
         </Group>
       )}
 
-      {(hasPendingInvites || showRegistrationCapacity) && (
+      {(hasPendingInvites || showRegistrationCapacity || isAffiliateTeam) && (
         <Group justify="space-between" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
           <Group gap={8}>
             {hasPendingInvites && (
               <Text size="xs" c="orange" fw={600}>{team.pending.length} pending</Text>
             )}
           </Group>
-          {showRegistrationCapacity ? (
+          {isAffiliateTeam ? (
+            <Text size="xs" c="blue" fw={600}>
+              External registration
+            </Text>
+          ) : showRegistrationCapacity ? (
             <Text size="xs" c={isFull ? 'red' : 'green'} fw={600}>
               {isFull
                 ? 'Team Full'

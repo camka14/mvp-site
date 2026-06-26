@@ -1,0 +1,3 @@
+ALTER TABLE "Divisions"
+  ADD COLUMN "minAge" INTEGER,
+  ADD COLUMN "maxAge" INTEGER;

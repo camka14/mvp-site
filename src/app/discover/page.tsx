@@ -28,7 +28,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, EventTag, Field, Organization, Team, TimeSlot } from '@/types';
+import { Event, EventTag, Facility, Field, Organization, Team, TimeSlot } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
@@ -48,9 +48,11 @@ import {
 } from './utils/teamFilters';
 
 type RentalListing = {
+  kind: 'slot' | 'affiliateFacility';
   organization: Organization;
-  field: Field;
-  slot: TimeSlot;
+  facility?: Facility;
+  field?: Field;
+  slot?: TimeSlot;
   nextOccurrence: Date;
   distanceKm?: number;
 };
@@ -571,7 +573,15 @@ function DiscoverPageContent() {
   }, [router, user]);
 
   const handleSelectRentalOrganization = useCallback(
-    (organization: Organization) => {
+    (organization: Organization, listings: RentalListing[] = []) => {
+      const affiliateListings = listings.filter((listing) => listing.kind === 'affiliateFacility');
+      if (affiliateListings.length === listings.length && affiliateListings.length === 1) {
+        const affiliateUrl = affiliateListings[0]?.facility?.affiliateUrl?.trim();
+        if (affiliateUrl) {
+          window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
       router.push(`/organizations/${organization.$id}?tab=fields`);
     },
     [router],
@@ -618,6 +628,30 @@ function DiscoverPageContent() {
     rentalOrganizations.forEach((organization) => {
       const coordinates = getOrgCoordinates(organization);
 
+      (organization.facilities || []).forEach((facility) => {
+        const affiliateUrl = typeof facility.affiliateUrl === 'string' ? facility.affiliateUrl.trim() : '';
+        if (!affiliateUrl) {
+          return;
+        }
+        if (String(facility.status ?? 'ACTIVE').trim().toUpperCase() !== 'ACTIVE') {
+          return;
+        }
+        const listing: RentalListing = {
+          kind: 'affiliateFacility',
+          organization,
+          facility,
+          nextOccurrence: referenceDate,
+        };
+        if (location && coordinates) {
+          try {
+            listing.distanceKm = kmBetween(location, coordinates);
+          } catch {
+            // ignore distance issues
+          }
+        }
+        listings.push(listing);
+      });
+
       (organization.fields || []).forEach((field) => {
         (field.rentalSlots || []).forEach((slot) => {
           const nextOccurrence = getNextRentalOccurrence(slot, referenceDate);
@@ -625,6 +659,7 @@ function DiscoverPageContent() {
             return;
           }
           const listing: RentalListing = {
+            kind: 'slot',
             organization,
             field,
             slot,
@@ -650,6 +685,9 @@ function DiscoverPageContent() {
       }
       if (typeof a.distanceKm === 'number') return -1;
       if (typeof b.distanceKm === 'number') return 1;
+      if (a.kind !== b.kind) {
+        return a.kind === 'slot' ? -1 : 1;
+      }
       return a.nextOccurrence.getTime() - b.nextOccurrence.getTime();
     });
 
@@ -663,6 +701,9 @@ function DiscoverPageContent() {
     let earliest = 24;
     let latest = 0;
     rentalListings.forEach((listing) => {
+      if (listing.kind !== 'slot' || !listing.slot) {
+        return;
+      }
       const startHour =
         listing.nextOccurrence.getHours() + listing.nextOccurrence.getMinutes() / 60;
       const endMinutes =
@@ -673,6 +714,9 @@ function DiscoverPageContent() {
       earliest = Math.min(earliest, startHour);
       latest = Math.max(latest, endHour);
     });
+    if (earliest === 24 && latest === 0) {
+      return [8, 22];
+    }
     const floor = Math.max(0, Math.floor(earliest));
     const ceil = Math.min(24, Math.ceil(latest));
     if (floor === ceil) {
@@ -891,7 +935,7 @@ function DiscoverPageContent() {
               timeRange={timeRange}
               setTimeRange={setTimeRange}
               defaultTimeRange={defaultTimeRange}
-              onSelectOrganization={(org) => handleSelectRentalOrganization(org)}
+              onSelectOrganization={(org, listings) => handleSelectRentalOrganization(org, listings)}
             />
           </Tabs.Panel>
 
@@ -914,6 +958,11 @@ function DiscoverPageContent() {
               setSelectedDivisionTypeValues={setTeamSelectedDivisionTypeValues}
               divisionTypeOptions={teamDivisionTypeOptions}
               onSelectTeam={(team) => {
+                const affiliateUrl = typeof team.affiliateUrl === 'string' ? team.affiliateUrl.trim() : '';
+                if (affiliateUrl) {
+                  window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
+                  return;
+                }
                 if (team.organizationId) {
                   router.push(`/organizations/${team.organizationId}?tab=teams`);
                   return;
@@ -1530,8 +1579,8 @@ function TeamsTabContent(props: {
                   team={team}
                   onClick={() => onSelectTeam(team)}
                   actions={
-                    <Text size="xs" c="green" fw={600}>
-                      Open registration
+                    <Text size="xs" c={team.affiliateUrl?.trim() ? 'blue' : 'green'} fw={600}>
+                      {team.affiliateUrl?.trim() ? 'External registration' : 'Open registration'}
                     </Text>
                   }
                 />
@@ -1612,10 +1661,13 @@ function RentalsTabContent(props: {
         }
       }
       if (activeQuery) {
-        const searchBlob = `${listing.organization.name} ${listing.organization.description ?? ''} ${listing.organization.location ?? ''} ${listing.field.name}`.toLowerCase();
+        const searchBlob = `${listing.organization.name} ${listing.organization.description ?? ''} ${listing.organization.location ?? ''} ${listing.facility?.name ?? ''} ${listing.facility?.location ?? ''} ${listing.field?.name ?? ''}`.toLowerCase();
         if (!searchBlob.includes(activeQuery.toLowerCase())) {
           return false;
         }
+      }
+      if (listing.kind !== 'slot') {
+        return true;
       }
       const start = listing.nextOccurrence;
       const hour = start.getHours() + start.getMinutes() / 60;

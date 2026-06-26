@@ -11,7 +11,7 @@ import {
     normalizePlayoffDivisionParticipantCount,
     normalizeSlotDivisionKeysWithLookup,
 } from './divisionForm';
-import { isTournamentPoolPlayFormEnabled, supportsScheduleSlotsForEvent } from './eventRules';
+import { hasAffiliateUrl, isTournamentPoolPlayFormEnabled, supportsScheduleSlotsForEvent } from './eventRules';
 import { coordinatesAreSet } from './locationHelpers';
 import { isEventLocalField } from './resourceGroups';
 import { stringSetsEqual } from './shared';
@@ -102,6 +102,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         $id: z.string(),
         name: z.string().trim().min(1, 'Event name is required'),
         description: z.string().default(''),
+        isAffiliateEvent: z.boolean().default(false),
         affiliateUrl: z.string().trim().default(''),
         tags: z.array(z.object({
             id: z.string().optional(),
@@ -291,8 +292,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             });
         }
 
-        const requiresDivisionSelection = !(options.allowMissingEventDivisions && values.eventType === 'EVENT')
-            && values.eventType !== 'AFFILIATE';
+        const requiresDivisionSelection = !(options.allowMissingEventDivisions && values.eventType === 'EVENT');
         if (requiresDivisionSelection && values.divisions.length === 0) {
             ctx.addIssue({
                 code: "custom",
@@ -308,7 +308,9 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             });
         }
 
-        if (supportsScheduleSlotsForEvent(values.eventType, values.parentEvent) && !values.noFixedEndDateTime) {
+        const isAffiliateEvent = Boolean(values.isAffiliateEvent || hasAffiliateUrl(values.affiliateUrl));
+
+        if (!isAffiliateEvent && supportsScheduleSlotsForEvent(values.eventType, values.parentEvent) && !values.noFixedEndDateTime) {
             const parsedStart = parseLocalDateTime(values.start);
             const parsedEnd = parseLocalDateTime(values.end);
             if (!parsedStart || !parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
@@ -326,14 +328,14 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 .map((detail) => detail?.id)
                 .filter((value): value is string => typeof value === 'string'),
         );
-        if (!stringSetsEqual(divisionIds, detailIds)) {
+        if (requiresDivisionSelection && !stringSetsEqual(divisionIds, detailIds)) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Division details are out of sync. Re-add the affected division.',
                 path: ['divisionDetails'],
             });
         }
-        if (requiresOrganizationEventFieldSelection(values.eventType, values.organizationId, values.selectedFieldIds)) {
+        if (!isAffiliateEvent && requiresOrganizationEventFieldSelection(values.eventType, values.organizationId, values.selectedFieldIds)) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Select at least one organization resource for this event.',
@@ -349,14 +351,14 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             || localFieldCount > 0
             || scheduledFieldCount > 0
             || values.fieldCount > 0;
-        if ((values.eventType === 'EVENT' || values.eventType === 'WEEKLY_EVENT') && !hasAtLeastOneField) {
+        if (!isAffiliateEvent && (values.eventType === 'EVENT' || values.eventType === 'WEEKLY_EVENT') && !hasAtLeastOneField) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Select or create at least one resource for this event.',
                 path: ['fieldCount'],
             });
         }
-        if (values.eventType === 'AFFILIATE') {
+        if (isAffiliateEvent) {
             try {
                 const url = new URL(values.affiliateUrl);
                 if (!['http:', 'https:'].includes(url.protocol)) {
@@ -372,7 +374,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         }
 
         const usesRelativePaymentPlanDueDates = values.eventType === 'WEEKLY_EVENT' && !values.parentEvent;
-        if (values.allowPaymentPlans) {
+        if (!isAffiliateEvent && values.allowPaymentPlans) {
             const amounts = values.installmentAmounts || [];
             const dueDates = values.installmentDueDates || [];
             const relativeDueDays = values.installmentDueRelativeDays || [];
@@ -407,7 +409,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             }
         }
 
-        if (!values.singleDivision) {
+        if (!isAffiliateEvent && !values.singleDivision) {
             values.divisionDetails.forEach((detail, index) => {
                 if (!detail.allowPaymentPlans) {
                     return;
@@ -460,7 +462,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             }
         }
 
-        if (supportsScheduleSlotsForEvent(values.eventType, values.parentEvent)) {
+        if (!isAffiliateEvent && supportsScheduleSlotsForEvent(values.eventType, values.parentEvent)) {
             const slotDivisionLookup = buildSlotDivisionLookup(
                 values.divisionDetails,
                 values.eventType === 'LEAGUE' && values.leagueData.includePlayoffs && values.splitLeaguePlayoffDivisions

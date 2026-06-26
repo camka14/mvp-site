@@ -7,6 +7,7 @@ import {
     Text,
 } from '@mantine/core';
 
+import CentsInput from '@/components/ui/CentsInput';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import type { Event } from '@/types';
 
@@ -29,10 +30,14 @@ type EventDetailsLocationControlsProps = {
     multiSelectStyles?: ComponentProps<typeof MantineMultiSelect>['styles'];
     numberInputStyles?: ComponentProps<typeof NumberInput>['styles'];
     maxStandardNumber: number;
+    maxPriceCents: number;
     normalizeNumberValue: (value: unknown) => number | undefined;
     minAge?: unknown;
     maxAge?: unknown;
-    localFieldCreationControl?: ReactNode;
+    showAffiliateListingControls?: boolean;
+    showRequiredDocumentControls?: boolean;
+    resourceControls?: ReactNode;
+    localFieldNameControls?: ReactNode;
     registrationQuestionsEditor: ReactNode;
     hasUnsetTeamCapacityLimits: boolean;
     teamSignup: boolean;
@@ -54,10 +59,14 @@ export const EventDetailsLocationControls = ({
     multiSelectStyles,
     numberInputStyles,
     maxStandardNumber,
+    maxPriceCents,
     normalizeNumberValue,
     minAge,
     maxAge,
-    localFieldCreationControl,
+    showAffiliateListingControls = false,
+    showRequiredDocumentControls = true,
+    resourceControls,
+    localFieldNameControls,
     registrationQuestionsEditor,
     hasUnsetTeamCapacityLimits,
     teamSignup,
@@ -93,46 +102,102 @@ export const EventDetailsLocationControls = ({
                             requireSelection
                             selected={coordinatesSelected}
                             selectionErrorMessage="Select an event address from suggestions or the map"
+                            alwaysShowMap
                         />
                     )}
                 />
+                {resourceControls ? (
+                    <div className="mt-4">
+                        {resourceControls}
+                    </div>
+                ) : null}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:col-span-6 gap-4 md:items-start" data-testid="event-details-map-side-controls">
-                <div className="sm:col-span-2">
-                    <Controller
-                        name="requiredTemplateIds"
-                        control={control}
-                        render={({ field }) => (
-                            <MantineMultiSelect
-                                label="Required Documents"
-                                placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
-                                data={templateOptions}
-                                value={field.value ?? []}
-                                w="100%"
-                                styles={multiSelectStyles}
-                                disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
-                                comboboxProps={comboboxProps}
-                                onChange={(vals) => {
-                                    if (isImmutableField('requiredTemplateIds')) return;
-                                    field.onChange(vals);
-                                }}
-                                clearable
-                                searchable
+                {showRequiredDocumentControls ? (
+                    <div className="sm:col-span-2">
+                        <Controller
+                            name="requiredTemplateIds"
+                            control={control}
+                            render={({ field }) => (
+                                <MantineMultiSelect
+                                    label="Required Documents"
+                                    placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                    data={templateOptions}
+                                    value={field.value ?? []}
+                                    w="100%"
+                                    styles={multiSelectStyles}
+                                    disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                    comboboxProps={comboboxProps}
+                                    onChange={(vals) => {
+                                        if (isImmutableField('requiredTemplateIds')) return;
+                                        field.onChange(vals);
+                                    }}
+                                    clearable
+                                    searchable
+                                />
+                            )}
+                        />
+                        <AnimatedSection in={Boolean(templatesError)}>
+                            <Text size="sm" c="red">
+                                {templatesError}
+                            </Text>
+                        </AnimatedSection>
+                        <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
+                            <Text size="sm" c="dimmed">
+                                No templates yet. Create one in your organization Document Templates tab.
+                            </Text>
+                        </AnimatedSection>
+                    </div>
+                ) : null}
+                {showAffiliateListingControls ? (
+                    <>
+                        <div>
+                            <Controller
+                                name="maxParticipants"
+                                control={control}
+                                render={({ field, fieldState }) => (
+                                    <NumberInput
+                                        label="Max Participants"
+                                        min={2}
+                                        max={maxStandardNumber}
+                                        value={field.value ?? ''}
+                                        w="100%"
+                                        styles={numberInputStyles}
+                                        clampBehavior="blur"
+                                        disabled={isImmutableField('maxParticipants')}
+                                        onChange={(value) => {
+                                            if (isImmutableField('maxParticipants')) return;
+                                            const numeric = typeof value === 'number' && Number.isFinite(value)
+                                                ? Math.trunc(value)
+                                                : null;
+                                            field.onChange(numeric);
+                                        }}
+                                        error={fieldState.error?.message as string | undefined}
+                                    />
+                                )}
                             />
-                        )}
-                    />
-                    <AnimatedSection in={Boolean(templatesError)}>
-                        <Text size="sm" c="red">
-                            {templatesError}
-                        </Text>
-                    </AnimatedSection>
-                    <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
-                        <Text size="sm" c="dimmed">
-                            No templates yet. Create one in your organization Document Templates tab.
-                        </Text>
-                    </AnimatedSection>
-                </div>
+                        </div>
+                        <div>
+                            <Controller
+                                name="price"
+                                control={control}
+                                render={({ field }) => (
+                                    <CentsInput
+                                        label="Price"
+                                        maxCents={maxPriceCents}
+                                        value={field.value}
+                                        disabled={isImmutableField('price')}
+                                        onChange={(nextValue) => {
+                                            if (isImmutableField('price')) return;
+                                            field.onChange(nextValue);
+                                        }}
+                                    />
+                                )}
+                            />
+                        </div>
+                    </>
+                ) : null}
                 <div>
                     <Controller
                         name="minAge"
@@ -181,9 +246,6 @@ export const EventDetailsLocationControls = ({
                         )}
                     />
                 </div>
-                {localFieldCreationControl ? (
-                    <div>{localFieldCreationControl}</div>
-                ) : null}
                 <Text size="xs" c="dimmed" className="sm:col-span-2">
                     Leave age limits blank if anyone can register.
                 </Text>
@@ -201,6 +263,9 @@ export const EventDetailsLocationControls = ({
                     </Alert>
                 </AnimatedSection>
                 {registrationQuestionsEditor}
+                {localFieldNameControls ? (
+                    <div className="sm:col-span-2">{localFieldNameControls}</div>
+                ) : null}
             </div>
         </div>
 

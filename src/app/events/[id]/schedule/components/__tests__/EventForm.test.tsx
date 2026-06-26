@@ -293,6 +293,10 @@ describe('EventForm dirty state', () => {
     (organizationService.getOrganizationByIdForEventForm as jest.Mock).mockResolvedValue(null);
     (fieldService.listFields as jest.Mock).mockResolvedValue([]);
     (apiRequest as jest.Mock).mockResolvedValue({});
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ tags: [] }),
+    }) as jest.Mock;
   });
 
   const buildEvent = () => ({
@@ -1946,6 +1950,63 @@ describe('EventForm dirty state', () => {
     expect(mapSideControls).toContainElement(minimumAgeInput);
     expect(mapSideControls).toContainElement(maximumAgeInput);
     expect(locationMapColumn.compareDocumentPosition(mapSideControls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(locationMapColumn).queryByRole('button', { name: /show map|hide map/i })).not.toBeInTheDocument();
+  });
+
+  it('puts affiliate capacity and price in Event Details while keeping divisions metadata-only', async () => {
+    const onDirtyStateChange = jest.fn();
+    const baseDivision = buildEvent().divisionDetails[0];
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      isAffiliateEvent: true,
+      affiliateUrl: 'https://partner.example/events/open-play',
+      teamSignup: false,
+      singleDivision: true,
+      allowPaymentPlans: false,
+      price: 1500,
+      maxParticipants: 40,
+      divisions: ['division_open'],
+      divisionDetails: [
+        {
+          ...baseDivision,
+          id: 'division_open',
+          key: 'division_open',
+          name: 'Open Division',
+          price: 9900,
+          maxParticipants: 99,
+          allowPaymentPlans: true,
+          installmentCount: 1,
+          installmentAmounts: [9900],
+        },
+      ],
+    }, buildOrganization());
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsSection = document.getElementById('section-event-details');
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+    const mapSideControls = screen.getByTestId('event-details-map-side-controls');
+    const maxParticipantsInput = screen.getByLabelText('Max Participants');
+    const priceInput = within(mapSideControls).getByTestId('cents-input');
+
+    expect(eventDetailsSection).not.toBeNull();
+    expect(divisionSettingsSection).not.toBeNull();
+    expect(mapSideControls).toContainElement(maxParticipantsInput);
+    expect(mapSideControls).toContainElement(priceInput);
+    expect(screen.getByText('New Division')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gender')).toBeInTheDocument();
+    expect(screen.getByLabelText('Skill Division')).toBeInTheDocument();
+    expect(screen.getByLabelText('Age Division')).toBeInTheDocument();
+    expect(screen.getByText('Open Division')).toBeInTheDocument();
+    expect(screen.queryByText('Capacity & Price')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listing Capacity')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Division Max/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Payment Plans')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Price:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Payment plan:/)).not.toBeInTheDocument();
   });
 
   it('transitions division-specific controls when single division is toggled', async () => {
@@ -3027,8 +3088,8 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
-    expect(screen.queryByText('Resource Names')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Count')).toHaveValue('0');
+    expect(screen.getByText('Custom Resources')).toBeInTheDocument();
   });
 
   it('defaults organization event creation to host only without assigning officials', async () => {
@@ -3272,7 +3333,7 @@ describe('EventForm dirty state', () => {
     });
 
     expect(apiRequest).toHaveBeenCalledWith('/api/rentals/bookings?organizationId=org_1');
-    expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
+    expect(screen.getByLabelText('Count')).toHaveValue('0');
     const firstRentalResource = screen.getByLabelText(/Rental Court - Mar 12, 2026/i);
     const secondRentalResource = screen.getByLabelText(/Rental Court - Mar 13, 2026/i);
     expect(screen.queryByLabelText('Rental Court')).not.toBeInTheDocument();
@@ -3659,7 +3720,7 @@ describe('EventForm dirty state', () => {
       expect(apiRequest).toHaveBeenCalledWith('/api/rentals/bookings?organizationId=org_1');
     });
 
-    expect(screen.getByLabelText('Number of Resources')).toBeInTheDocument();
+    expect(screen.getByLabelText('Count')).toBeInTheDocument();
 
     await waitFor(() => {
       const scheduleProps = [...mockLeagueFieldsProps].reverse().find((props) => (
@@ -3711,7 +3772,7 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Number of Resources')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
   });
 
@@ -3737,7 +3798,7 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+    expect(screen.getByLabelText('Count')).toHaveValue('1');
   });
 
   it.each(['EVENT', 'LEAGUE', 'TOURNAMENT'] as const)(
@@ -3757,9 +3818,36 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+      expect(screen.getByLabelText('Count')).toHaveValue('1');
     },
   );
+
+  it('places custom resource controls below registration questions', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      { eventType: 'EVENT' },
+      null,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const registrationQuestionsHeading = screen.getByText('Registration questions');
+    const customResourcesHeading = screen.getByText('Custom Resources');
+    const resourceCountInput = screen.getByLabelText('Count');
+
+    expect(
+      Boolean(registrationQuestionsHeading.compareDocumentPosition(customResourcesHeading) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(customResourcesHeading.compareDocumentPosition(resourceCountInput) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+  });
 
   it.each(['LEAGUE', 'TOURNAMENT'] as const)(
     'defaults organization %s creation to zero local resources when the org has resources',
@@ -3794,7 +3882,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Resources')).toHaveValue('0');
+      expect(screen.getByLabelText('Count')).toHaveValue('0');
     },
   );
 
@@ -3818,7 +3906,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+      expect(screen.getByLabelText('Count')).toHaveValue('1');
     },
   );
 
@@ -3853,7 +3941,7 @@ describe('EventForm dirty state', () => {
         expect(onDirtyStateChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+      expect(screen.getByLabelText('Count')).toHaveValue('1');
 
       fireEvent.change(screen.getByLabelText('Event Type'), {
         target: { value: eventType },
@@ -3861,7 +3949,7 @@ describe('EventForm dirty state', () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText('Event Type')).toHaveValue(eventType);
-        expect(screen.getByLabelText('Number of Resources')).toHaveValue('1');
+        expect(screen.getByLabelText('Count')).toHaveValue('1');
         expect(formRef.current?.getDraft().fields).toEqual([
           expect.objectContaining({
             $id: 'local_field_1',

@@ -18,12 +18,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Candidate id is required.' }, { status: 400 });
     }
 
-    const listing = await publishAffiliateCandidate(candidateId, { publishedByUserId: session.userId });
-    return NextResponse.json({ listing: withLegacyFields(listing) }, { status: 200 });
+    const published = await publishAffiliateCandidate(candidateId, { publishedByUserId: session.userId });
+    return NextResponse.json({ published: withLegacyFields(published) }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     const message = error instanceof Error ? error.message : 'Failed to publish affiliate discovery.';
-    const status = message.includes('not found') ? 404 : 500;
+    const status = message.includes('not found')
+      ? 404
+      : message.includes('must be linked') || message.includes('organization')
+        ? 409
+        : 500;
     if (status === 500) {
       console.error('Failed to publish affiliate discovery', error);
     }

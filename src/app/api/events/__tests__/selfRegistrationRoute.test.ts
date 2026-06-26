@@ -153,6 +153,50 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
   });
 
+  it('enforces division type age buckets when the event has no age limits', async () => {
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      dateOfBirth: new Date('2013-07-02T00:00:00.000Z'),
+    });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'indoor-soccer',
+      registrationByDivisionType: false,
+      divisions: ['div_adult'],
+      requiredTemplateIds: [],
+      organizationId: null,
+    });
+    prismaMock.divisions.findMany.mockResolvedValue([
+      {
+        id: 'div_adult',
+        key: 'm_skill_d3_age_14plus',
+        name: "Men's D3",
+        sportId: 'indoor-soccer',
+        divisionTypeId: 'skill_d3_age_14plus',
+        divisionTypeName: "Men's D3 • 14+",
+        ratingType: 'SKILL',
+        gender: 'M',
+        ageCutoffDate: null,
+        ageCutoffLabel: 'Adult 14+',
+        ageCutoffSource: 'Affiliate source age label',
+      },
+    ]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/self', {
+        divisionId: 'div_adult',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('This division requires: Age 14+ as of 08/01/2026.');
+    expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
+  });
+
   it('blocks unverified users from paid event self registration', async () => {
     prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
     prismaMock.events.findUnique.mockResolvedValue({

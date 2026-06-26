@@ -139,4 +139,67 @@ describe('POST /api/events/search', () => {
       'event_registered_canonical',
     ]);
   });
+
+  it('includes real affiliate events in discover search results', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('event_troutdale_basketball', "Men's Basketball League"),
+        eventType: 'LEAGUE',
+        affiliateUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        sourceType: 'AFFILIATE_IMPORT',
+        sourceId: 'candidate_troutdale',
+        sourceUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        organizerName: 'Troutdale Indoor Sports',
+        scheduleText: 'Games are listed Friday and Sunday.',
+        priceText: '$850 flat fee listed for 7-week sessions.',
+        statusText: 'Confirm current session with Troutdale Indoor Sports',
+        sportId: 'sport_basketball',
+      },
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { query: 'Troutdale' },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
+    expect(searchWhere.OR).toEqual(expect.arrayContaining([
+      { organizerName: { contains: 'Troutdale', mode: 'insensitive' } },
+      { sourceUrl: { contains: 'Troutdale', mode: 'insensitive' } },
+      { scheduleText: { contains: 'Troutdale', mode: 'insensitive' } },
+    ]));
+    expect(json.events).toEqual([
+      expect.objectContaining({
+        $id: 'event_troutdale_basketball',
+        name: "Men's Basketball League",
+        eventType: 'LEAGUE',
+        affiliateUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        sourceType: 'AFFILIATE_IMPORT',
+        sourceId: 'candidate_troutdale',
+      }),
+    ]);
+  });
+
+  it('filters external-registration events by their behavioral type', async () => {
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { eventTypes: ['LEAGUE'] },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(200);
+    const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
+    expect(searchWhere.eventType).toEqual({ in: ['LEAGUE'] });
+  });
 });

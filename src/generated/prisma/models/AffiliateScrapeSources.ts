@@ -30,6 +30,7 @@ export type AffiliateScrapeSourcesMinAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   sourceKey: string | null
+  organizationId: string | null
   baseUrl: string | null
   listUrl: string | null
   targetKind: string | null
@@ -46,6 +47,7 @@ export type AffiliateScrapeSourcesMaxAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   sourceKey: string | null
+  organizationId: string | null
   baseUrl: string | null
   listUrl: string | null
   targetKind: string | null
@@ -62,6 +64,7 @@ export type AffiliateScrapeSourcesCountAggregateOutputType = {
   updatedAt: number
   name: number
   sourceKey: number
+  organizationId: number
   baseUrl: number
   listUrl: number
   targetKind: number
@@ -81,6 +84,7 @@ export type AffiliateScrapeSourcesMinAggregateInputType = {
   updatedAt?: true
   name?: true
   sourceKey?: true
+  organizationId?: true
   baseUrl?: true
   listUrl?: true
   targetKind?: true
@@ -97,6 +101,7 @@ export type AffiliateScrapeSourcesMaxAggregateInputType = {
   updatedAt?: true
   name?: true
   sourceKey?: true
+  organizationId?: true
   baseUrl?: true
   listUrl?: true
   targetKind?: true
@@ -113,6 +118,7 @@ export type AffiliateScrapeSourcesCountAggregateInputType = {
   updatedAt?: true
   name?: true
   sourceKey?: true
+  organizationId?: true
   baseUrl?: true
   listUrl?: true
   targetKind?: true
@@ -203,6 +209,7 @@ export type AffiliateScrapeSourcesGroupByOutputType = {
   updatedAt: Date
   name: string
   sourceKey: string
+  organizationId: string | null
   baseUrl: string | null
   listUrl: string
   targetKind: string
@@ -241,6 +248,7 @@ export type AffiliateScrapeSourcesWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"AffiliateScrapeSources"> | Date | string
   name?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
   sourceKey?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
+  organizationId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   baseUrl?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   listUrl?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
   targetKind?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
@@ -258,6 +266,7 @@ export type AffiliateScrapeSourcesOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   sourceKey?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   baseUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   listUrl?: Prisma.SortOrder
   targetKind?: Prisma.SortOrder
@@ -278,6 +287,7 @@ export type AffiliateScrapeSourcesWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"AffiliateScrapeSources"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"AffiliateScrapeSources"> | Date | string
   name?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
+  organizationId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   baseUrl?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   listUrl?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
   targetKind?: Prisma.StringFilter<"AffiliateScrapeSources"> | string
@@ -295,6 +305,7 @@ export type AffiliateScrapeSourcesOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   sourceKey?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   baseUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   listUrl?: Prisma.SortOrder
   targetKind?: Prisma.SortOrder
@@ -318,6 +329,7 @@ export type AffiliateScrapeSourcesScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"AffiliateScrapeSources"> | Date | string
   name?: Prisma.StringWithAggregatesFilter<"AffiliateScrapeSources"> | string
   sourceKey?: Prisma.StringWithAggregatesFilter<"AffiliateScrapeSources"> | string
+  organizationId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateScrapeSources"> | string | null
   baseUrl?: Prisma.StringNullableWithAggregatesFilter<"AffiliateScrapeSources"> | string | null
   listUrl?: Prisma.StringWithAggregatesFilter<"AffiliateScrapeSources"> | string
   targetKind?: Prisma.StringWithAggregatesFilter<"AffiliateScrapeSources"> | string
@@ -335,6 +347,7 @@ export type AffiliateScrapeSourcesCreateInput = {
   updatedAt?: Date | string
   name: string
   sourceKey: string
+  organizationId?: string | null
   baseUrl?: string | null
   listUrl: string
   targetKind?: string
@@ -352,6 +365,7 @@ export type AffiliateScrapeSourcesUncheckedCreateInput = {
   updatedAt?: Date | string
   name: string
   sourceKey: string
+  organizationId?: string | null
   baseUrl?: string | null
   listUrl: string
   targetKind?: string
@@ -369,6 +383,7 @@ export type AffiliateScrapeSourcesUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   sourceKey?: Prisma.StringFieldUpdateOperationsInput | string
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   baseUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   listUrl?: Prisma.StringFieldUpdateOperationsInput | string
   targetKind?: Prisma.StringFieldUpdateOperationsInput | string
@@ -386,6 +401,7 @@ export type AffiliateScrapeSourcesUncheckedUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   sourceKey?: Prisma.StringFieldUpdateOperationsInput | string
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   baseUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   listUrl?: Prisma.StringFieldUpdateOperationsInput | string
   targetKind?: Prisma.StringFieldUpdateOperationsInput | string
@@ -403,6 +419,7 @@ export type AffiliateScrapeSourcesCreateManyInput = {
   updatedAt?: Date | string
   name: string
   sourceKey: string
+  organizationId?: string | null
   baseUrl?: string | null
   listUrl: string
   targetKind?: string
@@ -420,6 +437,7 @@ export type AffiliateScrapeSourcesUpdateManyMutationInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   sourceKey?: Prisma.StringFieldUpdateOperationsInput | string
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   baseUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   listUrl?: Prisma.StringFieldUpdateOperationsInput | string
   targetKind?: Prisma.StringFieldUpdateOperationsInput | string
@@ -437,6 +455,7 @@ export type AffiliateScrapeSourcesUncheckedUpdateManyInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   sourceKey?: Prisma.StringFieldUpdateOperationsInput | string
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   baseUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   listUrl?: Prisma.StringFieldUpdateOperationsInput | string
   targetKind?: Prisma.StringFieldUpdateOperationsInput | string
@@ -454,6 +473,7 @@ export type AffiliateScrapeSourcesCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   sourceKey?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
   baseUrl?: Prisma.SortOrder
   listUrl?: Prisma.SortOrder
   targetKind?: Prisma.SortOrder
@@ -471,6 +491,7 @@ export type AffiliateScrapeSourcesMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   sourceKey?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
   baseUrl?: Prisma.SortOrder
   listUrl?: Prisma.SortOrder
   targetKind?: Prisma.SortOrder
@@ -487,6 +508,7 @@ export type AffiliateScrapeSourcesMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   sourceKey?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
   baseUrl?: Prisma.SortOrder
   listUrl?: Prisma.SortOrder
   targetKind?: Prisma.SortOrder
@@ -505,6 +527,7 @@ export type AffiliateScrapeSourcesSelect<ExtArgs extends runtime.Types.Extension
   updatedAt?: boolean
   name?: boolean
   sourceKey?: boolean
+  organizationId?: boolean
   baseUrl?: boolean
   listUrl?: boolean
   targetKind?: boolean
@@ -522,6 +545,7 @@ export type AffiliateScrapeSourcesSelectCreateManyAndReturn<ExtArgs extends runt
   updatedAt?: boolean
   name?: boolean
   sourceKey?: boolean
+  organizationId?: boolean
   baseUrl?: boolean
   listUrl?: boolean
   targetKind?: boolean
@@ -539,6 +563,7 @@ export type AffiliateScrapeSourcesSelectUpdateManyAndReturn<ExtArgs extends runt
   updatedAt?: boolean
   name?: boolean
   sourceKey?: boolean
+  organizationId?: boolean
   baseUrl?: boolean
   listUrl?: boolean
   targetKind?: boolean
@@ -556,6 +581,7 @@ export type AffiliateScrapeSourcesSelectScalar = {
   updatedAt?: boolean
   name?: boolean
   sourceKey?: boolean
+  organizationId?: boolean
   baseUrl?: boolean
   listUrl?: boolean
   targetKind?: boolean
@@ -567,7 +593,7 @@ export type AffiliateScrapeSourcesSelectScalar = {
   metadata?: boolean
 }
 
-export type AffiliateScrapeSourcesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "sourceKey" | "baseUrl" | "listUrl" | "targetKind" | "status" | "activeMappingId" | "lastScrapeRunId" | "lastScrapedAt" | "notes" | "metadata", ExtArgs["result"]["affiliateScrapeSources"]>
+export type AffiliateScrapeSourcesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "sourceKey" | "organizationId" | "baseUrl" | "listUrl" | "targetKind" | "status" | "activeMappingId" | "lastScrapeRunId" | "lastScrapedAt" | "notes" | "metadata", ExtArgs["result"]["affiliateScrapeSources"]>
 
 export type $AffiliateScrapeSourcesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateScrapeSources"
@@ -578,6 +604,7 @@ export type $AffiliateScrapeSourcesPayload<ExtArgs extends runtime.Types.Extensi
     updatedAt: Date
     name: string
     sourceKey: string
+    organizationId: string | null
     baseUrl: string | null
     listUrl: string
     targetKind: string
@@ -1015,6 +1042,7 @@ export interface AffiliateScrapeSourcesFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"AffiliateScrapeSources", 'DateTime'>
   readonly name: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly sourceKey: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
+  readonly organizationId: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly baseUrl: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly listUrl: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly targetKind: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>

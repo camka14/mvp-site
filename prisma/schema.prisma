@@ -425,10 +425,12 @@ model Facilities {
   status         String    @default("ACTIVE")
   isDefault      Boolean   @default(false)
   sortOrder      Int?
+  affiliateUrl   String?
 
   @@index([organizationId])
   @@index([organizationId, isDefault])
   @@index([status])
+  @@index([affiliateUrl])
 }
 
 model Matches {
@@ -1058,6 +1060,7 @@ model Teams {
   teamSize              Int
   profileImageId        String?
   sport                 String?
+  affiliateUrl          String?
 
   @@index([eventId])
   @@index([kind])
@@ -1087,11 +1090,18 @@ model CanonicalTeams {
   registrationPriceCents Int                 @default(0)
   requiredTemplateIds    String[]            @default([])
   visibility             TeamsVisibilityEnum @default(PUBLIC)
+  affiliateUrl           String?
+  sourceType             String?
+  sourceId               String?
+  sourceUrl              String?
 
   @@index([organizationId])
   @@index([createdBy])
   @@index([joinPolicy])
   @@index([visibility])
+  @@index([affiliateUrl])
+  @@index([sourceType, sourceId])
+  @@index([organizationId, sourceType])
   @@map("Teams")
 }
 
@@ -1431,6 +1441,7 @@ model AffiliateScrapeSources {
   updatedAt       DateTime  @updatedAt
   name            String
   sourceKey       String    @unique
+  organizationId  String?
   baseUrl         String?
   listUrl         String
   targetKind      String    @default("EVENT")
@@ -1442,6 +1453,7 @@ model AffiliateScrapeSources {
   metadata        Json?
 
   @@index([status])
+  @@index([organizationId])
   @@index([targetKind, status])
 }
 
@@ -1519,12 +1531,18 @@ model AffiliateImportCandidates {
   rawPayload               Json?
   warnings                 String[]  @default([])
   publishedListingId       String?
+  publishedEventId         String?
+  publishedTeamId          String?
+  publishedFacilityId      String?
 
   @@unique([sourceId, dedupeKey])
   @@index([runId])
   @@index([mappingId])
   @@index([listingKind, status])
   @@index([status])
+  @@index([publishedEventId])
+  @@index([publishedTeamId])
+  @@index([publishedFacilityId])
 }
 
 model AffiliateListings {
@@ -1833,6 +1851,13 @@ model Events {
   timeZone                      String                           @default("UTC")
   description                   String?
   affiliateUrl                  String?
+  sourceType                    String?
+  sourceId                      String?
+  sourceUrl                     String?
+  organizerName                 String?
+  scheduleText                  String?
+  priceText                     String?
+  statusText                    String?
   winnerSetCount                Int?
   loserSetCount                 Int?
   doubleElimination             Boolean?
@@ -1843,7 +1868,7 @@ model Events {
   maxParticipants               Int?
   minAge                        Int?
   maxAge                        Int?
-  hostId                        String
+  hostId                        String?
   assistantHostIds              String[]                         @default([])
   noFixedEndDateTime            Boolean                          @default(true)
   price                         Int
@@ -1856,7 +1881,7 @@ model Events {
   prize                         String?
   registrationCutoffHours       Int?
   seedColor                     Int?
-  imageId                       String
+  imageId                       String?
   fieldCount                    Int?
   winnerBracketPointsToVictory  Int[]
   loserBracketPointsToVictory   Int[]
@@ -1898,6 +1923,7 @@ model Events {
   @@index([hostId])
   @@index([sportId])
   @@index([parentEvent])
+  @@index([sourceType, sourceId])
 }
 
 model Organizations {

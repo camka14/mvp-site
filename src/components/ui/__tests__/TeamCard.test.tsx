@@ -237,6 +237,20 @@ describe('TeamCard registration capacity', () => {
     expect(screen.queryByText('Players')).not.toBeInTheDocument();
   });
 
+  it('shows external registration instead of internal capacity for affiliate teams', () => {
+    const team = createTeam({
+      affiliateUrl: 'https://partner.example.com/team-signup',
+      currentSize: 1,
+      teamSize: 6,
+      openRegistration: true,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.getByText('External registration')).toBeInTheDocument();
+    expect(screen.queryByText('5 spots left')).not.toBeInTheDocument();
+  });
+
   it('can place dense actions below the team identity', () => {
     renderWithMantine(
       <TeamCard

@@ -436,7 +436,6 @@ export const validateRegistrantAgeForSelection = (params: {
         error: `This event is limited to ages ${formatAgeRange(params.event.minAge, params.event.maxAge)}.`,
       };
     }
-    return { ageAtEvent };
   }
 
   if (!params.selection.divisionTypeId) {

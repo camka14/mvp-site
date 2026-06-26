@@ -26,6 +26,7 @@ type FacilityEditorModalProps = {
   formError: string | null;
   name: string;
   location: string;
+  affiliateUrl: string;
   coordinates: { lat: number; lng: number };
   locationSelected: boolean;
   locationRequiredError: string;
@@ -42,6 +43,7 @@ type FacilityEditorModalProps = {
   onClose: () => void;
   onSave: () => void;
   onNameChange: (value: string) => void;
+  onAffiliateUrlChange: (value: string) => void;
   onLocationChange: (location: string, lat: number, lng: number, address: string | undefined, meta?: LocationSelectionMeta) => void;
   onResourceIdsChange: (resourceIds: string[]) => void;
   onResourcesOpenChange: Dispatch<SetStateAction<boolean>>;
@@ -55,6 +57,7 @@ export default function FacilityEditorModal({
   formError,
   name,
   location,
+  affiliateUrl,
   coordinates,
   locationSelected,
   locationRequiredError,
@@ -71,6 +74,7 @@ export default function FacilityEditorModal({
   onClose,
   onSave,
   onNameChange,
+  onAffiliateUrlChange,
   onLocationChange,
   onResourceIdsChange,
   onResourcesOpenChange,
@@ -101,6 +105,12 @@ export default function FacilityEditorModal({
           onChange={(event) => onNameChange(event.currentTarget.value)}
           placeholder="Downtown Sports Center"
           required
+        />
+        <TextInput
+          label="Affiliate rental link"
+          value={affiliateUrl}
+          onChange={(event) => onAffiliateUrlChange(event.currentTarget.value)}
+          placeholder="https://example.com/rentals"
         />
         <LocationSelector
           label="Location"

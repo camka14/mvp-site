@@ -66,6 +66,7 @@ const createSchema = z.object({
   joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
+  affiliateUrl: z.string().nullable().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
   visibility: z.enum(['PUBLIC', 'ADMIN_ONLY']).optional(),
   playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
@@ -258,6 +259,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
+  const affiliateUrl = normalizeText(data.affiliateUrl);
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: organizationId },
@@ -279,9 +281,9 @@ export async function POST(req: NextRequest) {
     registrationSettings = await resolveTeamRegistrationSettings({
       organizationId,
       createdBy: session.userId,
-      joinPolicy: data.joinPolicy ?? inferTeamJoinPolicyFromOpenRegistration(data.openRegistration === true),
-      openRegistration: data.openRegistration === true,
-      registrationPriceCents: data.registrationPriceCents ?? 0,
+      joinPolicy: affiliateUrl ? 'OPEN_REGISTRATION' : data.joinPolicy ?? inferTeamJoinPolicyFromOpenRegistration(data.openRegistration === true),
+      openRegistration: affiliateUrl ? true : data.openRegistration === true,
+      registrationPriceCents: affiliateUrl ? 0 : data.registrationPriceCents ?? 0,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid registration settings.';
@@ -315,6 +317,7 @@ export async function POST(req: NextRequest) {
           joinPolicy: registrationSettings.joinPolicy,
           openRegistration: registrationSettings.openRegistration,
           registrationPriceCents: registrationSettings.registrationPriceCents,
+          affiliateUrl,
           requiredTemplateIds,
           visibility,
           createdAt: now,
@@ -359,6 +362,7 @@ export async function POST(req: NextRequest) {
       openRegistration: registrationSettings.openRegistration,
       joinPolicy: registrationSettings.joinPolicy,
       registrationPriceCents: registrationSettings.registrationPriceCents,
+      affiliateUrl,
       requiredTemplateIds,
       createdAt: new Date(),
       updatedAt: new Date(),

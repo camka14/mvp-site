@@ -1,0 +1,2 @@
+ALTER TABLE "Events"
+  ALTER COLUMN "imageId" DROP NOT NULL;

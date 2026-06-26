@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
       await acquireEventLock(tx, eventId);
       const eventAccess = await tx.events.findUnique({
         where: { id: eventId },
-        select: { id: true, hostId: true, assistantHostIds: true, organizationId: true },
+        select: { id: true, hostId: true, assistantHostIds: true, organizationId: true, affiliateUrl: true },
       });
       if (!eventAccess) {
         throw new Response('Not found', { status: 404 });
@@ -127,6 +127,10 @@ export async function POST(req: NextRequest) {
       }
 
       const event = await loadEventWithRelations(eventId, tx);
+      const affiliateUrl = typeof eventAccess.affiliateUrl === 'string' ? eventAccess.affiliateUrl.trim() : '';
+      if (affiliateUrl.length > 0) {
+        return { preview: false, event, matches: Object.values(event.matches), createdEvent };
+      }
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
         return { preview: false, event, matches: Object.values(event.matches), createdEvent };

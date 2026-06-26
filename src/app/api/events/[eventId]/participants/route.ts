@@ -923,7 +923,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
 const ensureTeamRefundRequest = async (
   params: {
     eventId: string;
-    hostId: string;
+    hostId: string | null;
     organizationId: string | null;
     teamId: string;
     requestedByUserId: string;
@@ -988,6 +988,13 @@ async function updateParticipants(
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+  const affiliateUrl = typeof event.affiliateUrl === 'string' ? event.affiliateUrl.trim() : '';
+  if (mode === 'add' && affiliateUrl.length > 0) {
+    return NextResponse.json(
+      { error: 'This event uses external registration.' },
+      { status: 400 },
+    );
   }
   const canManageCurrentEvent = await canManageEvent(session, event);
   const eventState = String(event.state ?? '').toUpperCase();

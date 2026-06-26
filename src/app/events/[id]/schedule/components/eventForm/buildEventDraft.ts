@@ -33,7 +33,7 @@ import {
     normalizeSportOfficialPositionTemplates,
 } from './officials';
 import { defaultFieldLocationForEvent, withEventFieldLocationDefault } from './fieldDefaults';
-import { isTournamentPoolPlayFormEnabled, supportsOrganizationFieldSelectionForEvent, supportsScheduleSlotsForEvent } from './eventRules';
+import { hasAffiliateUrl, isTournamentPoolPlayFormEnabled, supportsOrganizationFieldSelectionForEvent, supportsScheduleSlotsForEvent } from './eventRules';
 import { isEventLocalField, toFieldIdList } from './resourceGroups';
 import {
     buildDivisionLeagueConfig,
@@ -131,8 +131,10 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 .filter((id): id is string => id.length > 0);
         };
 
-        const pricingEnabled = hasStripeAccount;
-        const eventAllowPaymentPlans = pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
+        const affiliateUrl = source.isAffiliateEvent ? source.affiliateUrl?.trim() ?? '' : '';
+        const isAffiliateEvent = hasAffiliateUrl(affiliateUrl);
+        const pricingEnabled = hasStripeAccount || isAffiliateEvent;
+        const eventAllowPaymentPlans = !isAffiliateEvent && pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
         const installmentAmountsCents = eventAllowPaymentPlans
             ? normalizeInstallmentAmounts(source.installmentAmounts)
             : [];
@@ -256,7 +258,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             source.eventType,
             Boolean(source.leagueData.includePlayoffs),
         );
-        const singleDivisionEnabled = Boolean(source.singleDivision);
+        const singleDivisionEnabled = isAffiliateEvent || Boolean(source.singleDivision);
         const tournamentBracketConfig = normalizeTournamentConfigForSetMode(
             source.tournamentData,
             tournamentRequiresSets,
@@ -497,7 +499,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             hostId: normalizedHostId,
             name: (source.name ?? '').trim(),
             description: source.description,
-            affiliateUrl: source.eventType === 'AFFILIATE' ? source.affiliateUrl?.trim() || undefined : undefined,
+            affiliateUrl: source.isAffiliateEvent ? affiliateUrl : '',
             tags: Array.isArray(source.tags) ? source.tags : [],
             location: source.location,
             address: source.address?.trim() || undefined,
@@ -506,14 +508,14 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             timeZone: normalizeTimeZone(source.timeZone, getSystemTimeZone()),
             eventType: source.eventType,
             parentEvent: source.parentEvent || undefined,
-            noFixedEndDateTime: supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
+            noFixedEndDateTime: !isAffiliateEvent && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
                 ? Boolean(source.noFixedEndDateTime)
                 : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             price: eventPriceCents,
-            taxHandling: normalizeEventTaxHandling(source.taxHandling),
-            organizerManualTaxRateBps: normalizeOrganizerManualTaxRateBps(source.organizerManualTaxRateBps),
+            taxHandling: isAffiliateEvent ? 'INHERIT_ORG' : normalizeEventTaxHandling(source.taxHandling),
+            organizerManualTaxRateBps: isAffiliateEvent ? 0 : normalizeOrganizerManualTaxRateBps(source.organizerManualTaxRateBps),
             minAge,
             maxAge,
             allowPaymentPlans: eventAllowPaymentPlans,
@@ -522,13 +524,13 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 : undefined,
             installmentAmounts: eventAllowPaymentPlans ? installmentAmountsCents : [],
             installmentDueDates: eventAllowPaymentPlans ? source.installmentDueDates : [],
-            allowTeamSplitDefault: source.allowTeamSplitDefault,
+            allowTeamSplitDefault: isAffiliateEvent ? false : source.allowTeamSplitDefault,
             maxParticipants: source.maxParticipants ?? undefined,
             teamSizeLimit: source.teamSizeLimit ?? undefined,
-            teamSignup: source.teamSignup,
-            singleDivision: source.singleDivision,
-            splitLeaguePlayoffDivisions,
-            registrationByDivisionType: source.registrationByDivisionType,
+            teamSignup: isAffiliateEvent ? false : source.teamSignup,
+            singleDivision: isAffiliateEvent ? true : source.singleDivision,
+            splitLeaguePlayoffDivisions: isAffiliateEvent ? false : splitLeaguePlayoffDivisions,
+            registrationByDivisionType: isAffiliateEvent ? false : source.registrationByDivisionType,
             divisions: normalizedDivisionKeys,
             divisionDetails: (tournamentPoolPlayEnabled ? [] : normalizedDivisionDetailsForPayload).map((detail) => ({
                 ...detail,
@@ -550,7 +552,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                         : [])
                     : [],
             })),
-            playoffDivisionDetails: normalizedPlayoffDivisionDetails.map((division) => ({
+            playoffDivisionDetails: (isAffiliateEvent ? [] : normalizedPlayoffDivisionDetails).map((division) => ({
                 id: division.id,
                 key: division.key,
                 kind: 'PLAYOFF' as const,
@@ -596,23 +598,23 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
-            requiredTemplateIds: source.requiredTemplateIds,
+            requiredTemplateIds: isAffiliateEvent ? [] : source.requiredTemplateIds,
             imageId: finalImageId,
             seedColor: source.seedColor,
             waitListIds: source.waitList,
             freeAgentIds: source.freeAgents,
             teams: source.teams,
             players: source.players,
-            officials: normalizedOfficials,
-            officialIds: normalizedOfficialIds,
-            officialSchedulingMode: normalizeOfficialSchedulingMode(source.officialSchedulingMode),
-            officialPositions: normalizedOfficialPositionsForPayload,
-            eventOfficials: normalizedEventOfficials,
-            assistantHostIds: normalizedAssistantHostIds,
-            doTeamsOfficiate: source.doTeamsOfficiate,
-            teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
-            matchRulesOverride: source.matchRulesOverride ?? null,
-            autoCreatePointMatchIncidents: Boolean(source.autoCreatePointMatchIncidents),
+            officials: isAffiliateEvent ? [] : normalizedOfficials,
+            officialIds: isAffiliateEvent ? [] : normalizedOfficialIds,
+            officialSchedulingMode: isAffiliateEvent ? 'OFF' : normalizeOfficialSchedulingMode(source.officialSchedulingMode),
+            officialPositions: isAffiliateEvent ? [] : normalizedOfficialPositionsForPayload,
+            eventOfficials: isAffiliateEvent ? [] : normalizedEventOfficials,
+            assistantHostIds: isAffiliateEvent ? [] : normalizedAssistantHostIds,
+            doTeamsOfficiate: isAffiliateEvent ? false : source.doTeamsOfficiate,
+            teamOfficialsMaySwap: isAffiliateEvent ? false : source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
+            matchRulesOverride: isAffiliateEvent ? null : source.matchRulesOverride ?? null,
+            autoCreatePointMatchIncidents: isAffiliateEvent ? false : Boolean(source.autoCreatePointMatchIncidents),
             coordinates: baseCoordinates,
         };
 
@@ -832,7 +834,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             }
         }
 
-        if (!hasImmutableTimeSlots && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
+        if (!isAffiliateEvent && !hasImmutableTimeSlots && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
             const rentalLockedSlotDocuments = rentalLockedSlotsForDraft.map((slot) => {
                 const slotDivisions = normalizeSlotDivisionIdsWithLookup(slot.divisions, slotDivisionLookupForDraft);
                 return {

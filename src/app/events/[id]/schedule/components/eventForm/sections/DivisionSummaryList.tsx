@@ -35,6 +35,8 @@ type DivisionSummaryListProps = {
     leaguePlayoffTeamCount?: number | null;
     disabled: boolean;
     playoffDivisionCapacityWarnings: string[];
+    hidePricingAndCapacity?: boolean;
+    hideOperationalDetails?: boolean;
     derivePoolTeamCount: (maxTeams?: number | null, poolCount?: number | null) => number | undefined;
     buildTournamentConfig: (source?: Partial<TournamentConfig>) => TournamentConfig;
     onEditDivision: (divisionId: string) => void;
@@ -59,6 +61,8 @@ export const DivisionSummaryList = ({
     leaguePlayoffTeamCount,
     disabled,
     playoffDivisionCapacityWarnings,
+    hidePricingAndCapacity = false,
+    hideOperationalDetails = false,
     derivePoolTeamCount,
     buildTournamentConfig,
     onEditDivision,
@@ -137,29 +141,37 @@ export const DivisionSummaryList = ({
                                     <div className="space-y-1">
                                         <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
                                             <Text fw={700} size="sm" lineClamp={2}>{detail.name}</Text>
-                                            <Badge size="sm" radius="sm" variant="light">League</Badge>
+                                            {!hideOperationalDetails ? (
+                                                <Badge size="sm" radius="sm" variant="light">League</Badge>
+                                            ) : null}
                                         </Group>
-                                        <Text size="xs" c="dimmed">Division Type: League</Text>
+                                        {!hideOperationalDetails ? (
+                                            <Text size="xs" c="dimmed">Division Type: League</Text>
+                                        ) : null}
                                         <Text size="xs" c="dimmed">{divisionTypeSummary}</Text>
-                                        <Text size="xs" c="dimmed">
-                                            {`Price: ${formatPrice(effectiveDivisionPrice)} • ${teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
-                                        </Text>
-                                        <Text size="xs" c="dimmed">
-                                            {effectiveDivisionAllowPaymentPlans
-                                                ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
-                                                : 'Payment plan: disabled'}
-                                        </Text>
-                                        {eventType === 'LEAGUE' && includePlayoffs ? (
+                                        {!hidePricingAndCapacity ? (
+                                            <>
+                                                <Text size="xs" c="dimmed">
+                                                    {`Price: ${formatPrice(effectiveDivisionPrice)} • ${teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
+                                                </Text>
+                                                <Text size="xs" c="dimmed">
+                                                    {effectiveDivisionAllowPaymentPlans
+                                                        ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
+                                                        : 'Payment plan: disabled'}
+                                                </Text>
+                                            </>
+                                        ) : null}
+                                        {!hideOperationalDetails && eventType === 'LEAGUE' && includePlayoffs ? (
                                             <Text size="xs" c="dimmed">
                                                 {`Playoff teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'}`}
                                             </Text>
                                         ) : null}
-                                        {splitDivisionEditorEnabled && typeof effectiveDivisionPlayoffTeamCount === 'number' ? (
+                                        {!hideOperationalDetails && splitDivisionEditorEnabled && typeof effectiveDivisionPlayoffTeamCount === 'number' ? (
                                             <Text size="xs" c="dimmed">
                                                 {`Mapped placements: ${mappedPlacementCount}/${effectiveDivisionPlayoffTeamCount}`}
                                             </Text>
                                         ) : null}
-                                        {eventType === 'TOURNAMENT' && includePlayoffs ? (
+                                        {!hideOperationalDetails && eventType === 'TOURNAMENT' && includePlayoffs ? (
                                             <Text size="xs" c="dimmed">
                                                 {`Bracket teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'} - Pools: ${effectivePoolCount ?? 'Not set'} - Pool teams: ${effectivePoolTeamCount ?? 'Not set'}`}
                                             </Text>
@@ -242,7 +254,7 @@ export const DivisionSummaryList = ({
                 </ResponsiveCardGrid>
             )}
 
-            {playoffDivisionCapacityWarnings.length > 0 ? (
+            {!hideOperationalDetails && playoffDivisionCapacityWarnings.length > 0 ? (
                 <Alert color="yellow" radius="md">
                     <Stack gap={2}>
                         {playoffDivisionCapacityWarnings.map((warning) => (

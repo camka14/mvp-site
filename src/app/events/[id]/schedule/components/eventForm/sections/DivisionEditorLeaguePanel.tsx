@@ -42,6 +42,10 @@ type DivisionEditorLeaguePanelProps = {
     maxPriceCents: number;
     maxMediumTextLength: number;
     numberInputStyles?: ComponentProps<typeof DivisionEditorLeagueConfigControls>['numberInputStyles'];
+    hideCapacityAndPrice?: boolean;
+    showPaymentPlanControls?: boolean;
+    showOperationalControls?: boolean;
+    showSingleDivisionNotice?: boolean;
     genderOptions: ComponentProps<typeof DivisionEditorCoreControls>['genderOptions'];
     skillDivisionTypeOptions: ComponentProps<typeof DivisionEditorCoreControls>['skillDivisionTypeOptions'];
     ageDivisionTypeOptions: ComponentProps<typeof DivisionEditorCoreControls>['ageDivisionTypeOptions'];
@@ -74,6 +78,10 @@ export const DivisionEditorLeaguePanel = ({
     maxPriceCents,
     maxMediumTextLength,
     numberInputStyles,
+    hideCapacityAndPrice = false,
+    showPaymentPlanControls = true,
+    showOperationalControls = true,
+    showSingleDivisionNotice = true,
     genderOptions,
     skillDivisionTypeOptions,
     ageDivisionTypeOptions,
@@ -114,6 +122,7 @@ export const DivisionEditorLeaguePanel = ({
                 maxPriceCents={maxPriceCents}
                 maxMediumTextLength={maxMediumTextLength}
                 divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
+                hideCapacityAndPrice={hideCapacityAndPrice}
                 genderOptions={genderOptions}
                 skillDivisionTypeOptions={skillDivisionTypeOptions}
                 ageDivisionTypeOptions={ageDivisionTypeOptions}
@@ -144,7 +153,7 @@ export const DivisionEditorLeaguePanel = ({
                     }));
                 }}
             />
-            {!eventData.singleDivision ? (
+            {showPaymentPlanControls && !eventData.singleDivision ? (
                 <DivisionEditorPaymentPlanControls
                     allowPaymentPlans={divisionEditor.allowPaymentPlans}
                     installmentCount={divisionEditor.installmentCount || 0}
@@ -186,10 +195,11 @@ export const DivisionEditorLeaguePanel = ({
                 />
             ) : null}
             <DivisionEditorLeagueConfigControls
-                leagueConfigVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
-                playoffTeamCountVisible={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
+                leagueConfigVisible={showOperationalControls && eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
+                playoffTeamCountVisible={showOperationalControls && eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
                 playoffConfigVisible={
-                    eventData.eventType === 'LEAGUE'
+                    showOperationalControls
+                    && eventData.eventType === 'LEAGUE'
                     && !eventData.singleDivision
                     && leagueData.includePlayoffs
                     && !eventData.splitLeaguePlayoffDivisions
@@ -213,7 +223,7 @@ export const DivisionEditorLeaguePanel = ({
                 onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
             />
             <DivisionEditorPlayoffPlacementControls
-                visible={splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
+                visible={showOperationalControls && splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
                 playoffTeamCount={divisionEditor.playoffTeamCount}
                 playoffDivisionOptions={playoffDivisionOptions}
                 placementDivisionIds={normalizeDivisionKeys(divisionEditor.playoffPlacementDivisionIds || [])}
@@ -236,7 +246,7 @@ export const DivisionEditorLeaguePanel = ({
                 }}
             />
             <DivisionEditorTournamentPoolControls
-                visible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
+                visible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
                 playoffTeamCount={divisionEditor.playoffTeamCount}
                 poolCount={divisionEditor.poolCount}
                 poolTeamCount={derivePoolTeamCount(
@@ -264,8 +274,8 @@ export const DivisionEditorLeaguePanel = ({
                 }}
             />
             <DivisionEditorTournamentConfigControls
-                poolConfigVisible={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                tournamentConfigVisible={eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
+                poolConfigVisible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                tournamentConfigVisible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
                 leagueData={divisionEditor.leagueConfig}
                 tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
                 sport={eventData.sportConfig ?? undefined}
@@ -275,7 +285,7 @@ export const DivisionEditorLeaguePanel = ({
             />
         </motion.div>
         <SingleDivisionEditorNotice
-            visible={eventData.singleDivision}
+            visible={showSingleDivisionNotice && eventData.singleDivision}
             eventType={eventData.eventType}
         />
     </AnimatedSection>

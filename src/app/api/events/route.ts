@@ -536,6 +536,35 @@ const withLegacyEvent = (row: any) => {
   return legacy;
 };
 
+const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
+  Array.from(
+    new Set(
+      values
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0),
+    ),
+  )
+);
+
+const loadEventOrganizationsById = async (
+  events: Array<{ organizationId?: string | null }>,
+): Promise<Map<string, Record<string, unknown>>> => {
+  const organizationIds = uniqueStrings(events.map((event) => event.organizationId));
+  if (!organizationIds.length) {
+    return new Map();
+  }
+
+  const organizations = await prisma.organizations.findMany({
+    where: { id: { in: organizationIds } },
+    select: {
+      id: true,
+      name: true,
+      logoId: true,
+    },
+  });
+  return new Map(organizations.map((organization) => [organization.id, organization]));
+};
+
 const buildEventResponsePayload = async (event: any) => {
   const [eventOfficialRows, sportRow] = await Promise.all([
     typeof (prisma as any).eventOfficials?.findMany === 'function'
@@ -888,11 +917,17 @@ export async function GET(req: NextRequest) {
     console.error('Failed to enrich tags for events list', error);
     return new Map<string, Array<Record<string, unknown>>>();
   });
+  const organizationsById = await loadEventOrganizationsById(eventsWithParticipantIds).catch((error) => {
+    console.error('Failed to enrich event organizations for events list', error);
+    return new Map<string, Record<string, unknown>>();
+  });
 
   const normalized = eventsWithParticipantIds.map((row) => {
     const divisionDetails = divisionDetailsByEventId.get(row.id) ?? [];
+    const organizationId = typeof row.organizationId === 'string' ? row.organizationId : '';
     return withLegacyEvent({
       ...row,
+      organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(row.id) ?? [],
       divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
       divisionDetails,

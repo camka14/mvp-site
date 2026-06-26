@@ -122,6 +122,12 @@ function EventItem({ event }: { event: PublicOrganizationEventCard }) {
 function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
   const capacityLabel = getTeamCapacityLabel(team);
   const capacityFill = getTeamCapacityFill(team);
+  const isAffiliateTeam = typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0;
+  const registrationLabel = isAffiliateTeam
+    ? 'External registration'
+    : team.joinPolicy === 'REQUEST_TO_JOIN'
+      ? 'Request to join'
+      : 'Join team';
   const content = (
     <>
       <Image src={team.imageUrl} alt="" width={640} height={360} className={styles.itemImage} unoptimized />
@@ -137,7 +143,9 @@ function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
           ) : null}
         </div>
         <p className={styles.itemMeta}>
-          {team.joinPolicy === 'REQUEST_TO_JOIN'
+          {isAffiliateTeam
+            ? 'External registration'
+            : team.joinPolicy === 'REQUEST_TO_JOIN'
             ? `Request to join - ${formatPrice(team.registrationPriceCents)}`
             : team.openRegistration
             ? `Open registration - ${formatPrice(team.registrationPriceCents)}`
@@ -145,7 +153,7 @@ function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
         </p>
         {team.registrationUrl ? (
           <span className={styles.itemAction}>
-            {team.joinPolicy === 'REQUEST_TO_JOIN' ? 'Request to join' : 'Join team'}
+            {registrationLabel}
           </span>
         ) : null}
         {team.openRegistration && team.isFull ? (
@@ -159,7 +167,12 @@ function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
 
   if (team.registrationUrl) {
     return (
-      <Link href={team.registrationUrl} className={styles.item}>
+      <Link
+        href={team.registrationUrl}
+        className={styles.item}
+        target={isAffiliateTeam ? '_blank' : undefined}
+        rel={isAffiliateTeam ? 'noopener noreferrer' : undefined}
+      >
         {content}
       </Link>
     );

@@ -94,6 +94,39 @@ describe('CreateTeamModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('submits affiliate team registration settings', async () => {
+    const user = userEvent.setup();
+
+    renderWithMantine(
+      <CreateTeamModal
+        isOpen
+        onClose={jest.fn()}
+        currentUser={buildUser({ $id: 'user_1' })}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Team Name/i), 'Partner team');
+    await user.click(screen.getByLabelText(/External team registration/i));
+    await user.type(screen.getByLabelText(/Affiliate registration link/i), 'https://partner.example.com/signup');
+    await user.click(screen.getByRole('button', { name: /Create Team/i }));
+
+    await waitFor(() => {
+      expect(teamServiceMock.createTeam).toHaveBeenCalledWith(
+        'Partner team',
+        'user_1',
+        expect.any(String),
+        expect.any(String),
+        6,
+        undefined,
+        expect.objectContaining({
+          affiliateUrl: 'https://partner.example.com/signup',
+          joinPolicy: 'OPEN_REGISTRATION',
+          openRegistration: true,
+        }),
+      );
+    });
+  });
+
   it('shows a sign-in warning instead of submitting without a current user id', async () => {
     const user = userEvent.setup();
 

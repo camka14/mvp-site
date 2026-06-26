@@ -29,7 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } catch (error) {
     if (error instanceof Response) return error;
     const message = error instanceof Error ? error.message : 'Failed to scrape affiliate source.';
-    const status = message.includes('not found') ? 404 : message.includes('No active scrape mapping') ? 409 : 500;
+    const status = message.includes('not found')
+      ? 404
+      : message.includes('No active scrape mapping') || message.includes('must be linked') || message.includes('organization')
+        ? 409
+        : 500;
     if (status === 500) {
       console.error('Failed to scrape affiliate source', error);
     }

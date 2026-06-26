@@ -28,6 +28,7 @@ interface LocationSelectorProps {
     requireSelection?: boolean;
     selected?: boolean;
     selectionErrorMessage?: string;
+    alwaysShowMap?: boolean;
 }
 
 const MAP_SEARCH_PREDICTION_OPTIONS: PlacePredictionOptions = {
@@ -47,8 +48,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     requireSelection = false,
     selected,
     selectionErrorMessage = 'Select an address from suggestions or the map.',
+    alwaysShowMap = false,
 }) => {
-    const [showMap, setShowMap] = useState(false);
+    const [showMap, setShowMap] = useState(alwaysShowMap);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
     const [mapSearchQuery, setMapSearchQuery] = useState('');
     const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -76,6 +78,12 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
         libraries: GOOGLE_MAPS_LIBRARIES,
     });
+
+    useEffect(() => {
+        if (alwaysShowMap) {
+            setShowMap(true);
+        }
+    }, [alwaysShowMap]);
 
     useEffect(() => {
         if (!isLoaded || !showMap) return;
@@ -495,25 +503,27 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             autoComplete="off"
                         />
                     </div>
-                    <div className="ml-auto">
-                        <Button
-                            type="button"
-                            onClick={() => {
-                                if (disabled) return;
-                                const nextShowMap = !showMap;
-                                if (nextShowMap) {
-                                    setMapSearchQuery('');
-                                    startPredictionSession();
-                                } else {
-                                    resetPredictionSession();
-                                }
-                                setShowMap(nextShowMap);
-                            }}
-                            disabled={disabled}
-                        >
-                            {showMap ? 'Hide' : 'Show'} Map
-                        </Button>
-                    </div>
+                    {!alwaysShowMap ? (
+                        <div className="ml-auto">
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    if (disabled) return;
+                                    const nextShowMap = !showMap;
+                                    if (nextShowMap) {
+                                        setMapSearchQuery('');
+                                        startPredictionSession();
+                                    } else {
+                                        resetPredictionSession();
+                                    }
+                                    setShowMap(nextShowMap);
+                                }}
+                                disabled={disabled}
+                            >
+                                {showMap ? 'Hide' : 'Show'} Map
+                            </Button>
+                        </div>
+                    ) : null}
                 </div>
                 {(addressPredictionsLoading || addressPredictions.length > 0) && addressInputFocused ? (
                     <div

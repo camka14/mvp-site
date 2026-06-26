@@ -666,6 +666,36 @@ describe('publicOrganizationCatalog', () => {
     ]);
   });
 
+  it('uses affiliate URLs for public team registration cards', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_affiliate',
+        name: 'Partner Academy',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Soccer',
+        profileImageId: null,
+        teamSize: 20,
+        openRegistration: true,
+        joinPolicy: 'OPEN_REGISTRATION',
+        registrationPriceCents: 0,
+        affiliateUrl: 'https://partner.example.com/teams/register',
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_affiliate',
+        affiliateUrl: 'https://partner.example.com/teams/register',
+        registrationUrl: 'https://partner.example.com/teams/register',
+      }),
+    ]);
+  });
+
   it('ignores stale started team registrations in public fullness counts', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-21T22:00:00.000Z'));
     prismaMock.canonicalTeams.findMany.mockResolvedValue([

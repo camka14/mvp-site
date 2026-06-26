@@ -121,6 +121,25 @@ const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   )
 );
 
+const loadEventOrganizationsById = async (
+  events: Array<{ organizationId?: string | null }>,
+): Promise<Map<string, Record<string, unknown>>> => {
+  const organizationIds = uniqueStrings(events.map((event) => event.organizationId));
+  if (!organizationIds.length) {
+    return new Map();
+  }
+
+  const organizations = await prisma.organizations.findMany({
+    where: { id: { in: organizationIds } },
+    select: {
+      id: true,
+      name: true,
+      logoId: true,
+    },
+  });
+  return new Map(organizations.map((organization) => [organization.id, organization]));
+};
+
 const resolveOrganizationSearchClauses = async (queryTerm: string): Promise<any[]> => {
   const normalized = queryTerm.trim();
   if (!normalized) {
@@ -280,6 +299,15 @@ const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: u
     return normalizeIds(event.teamIds).length;
   }
   return normalizeIds(event.userIds).length;
+};
+
+const getComparableTime = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
+  }
+  return Number.MAX_SAFE_INTEGER;
 };
 
 const resolveSessionContext = async (
@@ -525,6 +553,12 @@ export async function POST(req: NextRequest) {
       { name: { contains: queryTerm, mode: 'insensitive' } },
       { description: { contains: queryTerm, mode: 'insensitive' } },
       { location: { contains: queryTerm, mode: 'insensitive' } },
+      { address: { contains: queryTerm, mode: 'insensitive' } },
+      { sourceUrl: { contains: queryTerm, mode: 'insensitive' } },
+      { organizerName: { contains: queryTerm, mode: 'insensitive' } },
+      { scheduleText: { contains: queryTerm, mode: 'insensitive' } },
+      { priceText: { contains: queryTerm, mode: 'insensitive' } },
+      { statusText: { contains: queryTerm, mode: 'insensitive' } },
       ...organizationSearchClauses,
     ];
   }
@@ -539,11 +573,11 @@ export async function POST(req: NextRequest) {
     ? undefined
     : hasQuery
       ? Math.min(Math.max((offset + limit) * 5, 50), 500)
-      : limit;
+      : offset + limit;
   let events = await prisma.events.findMany({
     where,
     orderBy: { start: 'asc' },
-    ...(hasDistanceFilter ? {} : { take: candidateTake, skip: hasQuery ? 0 : offset }),
+    ...(hasDistanceFilter ? {} : { take: candidateTake, skip: 0 }),
   });
 
   if (userLocation && typeof filters.maxDistance === 'number') {
@@ -560,7 +594,6 @@ export async function POST(req: NextRequest) {
       if (typeof lng !== 'number' || typeof latitude !== 'number') return true;
       return haversineMiles(lat, lon, latitude, lng) <= maxDistanceMiles;
     });
-    events = events.slice(offset, offset + limit);
   } else if (hasQuery) {
     events = events
       .sort((left, right) => {
@@ -571,7 +604,6 @@ export async function POST(req: NextRequest) {
         if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
-      .slice(offset, offset + limit);
   }
 
   const eventsWithAttendees = await withEventAttendeeCounts(events).catch((error) => {
@@ -604,16 +636,34 @@ export async function POST(req: NextRequest) {
     console.error('Failed to enrich event tags for event search', error);
     return new Map<string, Array<Record<string, unknown>>>();
   });
+  const organizationsById = await loadEventOrganizationsById(eventsWithParticipants).catch((error) => {
+    console.error('Failed to enrich event organizations for event search', error);
+    return new Map<string, Record<string, unknown>>();
+  });
 
   const normalized = eventsWithParticipants.map((event) => {
     const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
+    const organizationId = typeof event.organizationId === 'string' ? event.organizationId : '';
     return withLegacyEvent({
       ...event,
+      organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(event.id) ?? [],
       divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
       divisionDetails,
       tags: tagsByEventId.get(event.id) ?? [],
     });
   });
-  return NextResponse.json({ events: normalized }, { status: 200 });
+  const sortedEvents = hasQuery
+    ? normalized.sort((left, right) => {
+        const leftScore = eventRelevanceScore(left, normalizedQuery);
+        const rightScore = eventRelevanceScore(right, normalizedQuery);
+        if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
+        if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
+        if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
+        return (left.name ?? '').localeCompare(right.name ?? '');
+      })
+    : normalized.sort((left, right) => (
+        getComparableTime((left as any).start) - getComparableTime((right as any).start)
+      ));
+  return NextResponse.json({ events: sortedEvents.slice(offset, offset + limit) }, { status: 200 });
 }

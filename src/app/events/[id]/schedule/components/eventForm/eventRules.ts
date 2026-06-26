@@ -12,6 +12,9 @@ export const supportsScheduleSlots = (eventType: EventType): boolean =>
 export const hasParentEventRef = (value?: string | null): boolean =>
     typeof value === 'string' && value.trim().length > 0;
 
+export const hasAffiliateUrl = (value?: string | null): boolean =>
+    typeof value === 'string' && value.trim().length > 0;
+
 export const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: string | null): boolean => (
     supportsScheduleSlots(eventType)
     && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
@@ -29,12 +32,11 @@ export const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePla
 
 export const buildEventTypeOptions = (
     isRentalCreateFlow: boolean,
-    isOrganizationHostedEvent: boolean = false,
+    _isOrganizationHostedEvent: boolean = false,
 ): EventTypeOption[] => [
     { value: 'EVENT', label: 'Event' },
     { value: 'TOURNAMENT', label: 'Tournament' },
     { value: 'LEAGUE', label: 'League' },
-    ...(isOrganizationHostedEvent ? [{ value: 'AFFILIATE' as const, label: 'Affiliate' }] : []),
     ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT' as const, label: 'Weekly Event' }]),
 ];
 

@@ -40,6 +40,11 @@ type SingleDivisionDefaultsPanelProps = {
     organizerManualTaxSelected: boolean;
     organizationDefaultEventTaxHandling: ComponentProps<typeof SingleDivisionPricingControls>['organizationDefaultEventTaxHandling'];
     connectingStripe: boolean;
+    simplifiedPricing?: boolean;
+    showPaymentPlanControls?: boolean;
+    showScheduleControls?: boolean;
+    title?: string;
+    description?: string;
     isImmutableField: (field: keyof Event) => boolean;
     playoffTeamCountError?: string;
     setLeagueData: Dispatch<SetStateAction<LeagueConfig>>;
@@ -74,6 +79,11 @@ export const SingleDivisionDefaultsPanel = ({
     organizerManualTaxSelected,
     organizationDefaultEventTaxHandling,
     connectingStripe,
+    simplifiedPricing = false,
+    showPaymentPlanControls = true,
+    showScheduleControls = true,
+    title = 'Single Division',
+    description = 'Price, capacity, and payment plans apply to every selected division.',
     isImmutableField,
     playoffTeamCountError,
     setLeagueData,
@@ -92,9 +102,9 @@ export const SingleDivisionDefaultsPanel = ({
     <div className="rounded-lg border border-gray-200 bg-white p-4">
         <Stack gap="md">
             <div>
-                <Title order={6}>Single Division</Title>
+                <Title order={6}>{title}</Title>
                 <Text size="sm" c="dimmed">
-                    Price, capacity, and payment plans apply to every selected division.
+                    {description}
                 </Text>
             </div>
             <motion.div
@@ -122,27 +132,29 @@ export const SingleDivisionDefaultsPanel = ({
                         }));
                     }}
                 />
-                <SingleDivisionScheduleControls
-                    singleDivision={Boolean(eventData.singleDivision)}
-                    eventType={eventData.eventType}
-                    includePlayoffs={Boolean(leagueData.includePlayoffs)}
-                    splitLeaguePlayoffDivisions={eventData.splitLeaguePlayoffDivisions}
-                    leagueData={leagueData}
-                    playoffData={playoffData}
-                    tournamentData={tournamentData}
-                    sport={eventData.sportConfig ?? undefined}
-                    participantCount={eventData.maxParticipants ?? undefined}
-                    poolDefaults={poolDefaults}
-                    maxStandardNumber={maxStandardNumber}
-                    numberInputStyles={numberInputStyles}
-                    disabled={isImmutableField('divisions')}
-                    onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
-                    onPlayoffDataChange={setPlayoffData}
-                    onTournamentDataChange={setTournamentData}
-                    onPoolDefaultsChange={onPoolDefaultsChange}
-                />
+                {showScheduleControls ? (
+                    <SingleDivisionScheduleControls
+                        singleDivision={Boolean(eventData.singleDivision)}
+                        eventType={eventData.eventType}
+                        includePlayoffs={Boolean(leagueData.includePlayoffs)}
+                        splitLeaguePlayoffDivisions={eventData.splitLeaguePlayoffDivisions}
+                        leagueData={leagueData}
+                        playoffData={playoffData}
+                        tournamentData={tournamentData}
+                        sport={eventData.sportConfig ?? undefined}
+                        participantCount={eventData.maxParticipants ?? undefined}
+                        poolDefaults={poolDefaults}
+                        maxStandardNumber={maxStandardNumber}
+                        numberInputStyles={numberInputStyles}
+                        disabled={isImmutableField('divisions')}
+                        onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
+                        onPlayoffDataChange={setPlayoffData}
+                        onTournamentDataChange={setTournamentData}
+                        onPoolDefaultsChange={onPoolDefaultsChange}
+                    />
+                ) : null}
                 <SingleDivisionPricingControls
-                    visible={Boolean(eventData.singleDivision) && !eventData.allowPaymentPlans}
+                    visible={Boolean(eventData.singleDivision) && (!eventData.allowPaymentPlans || !showPaymentPlanControls)}
                     control={control}
                     eventType={eventData.eventType}
                     maxPriceCents={maxPriceCents}
@@ -155,32 +167,35 @@ export const SingleDivisionDefaultsPanel = ({
                     organizerManualTaxSelected={organizerManualTaxSelected}
                     organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
                     connectingStripe={connectingStripe}
+                    simplePriceInput={simplifiedPricing}
                     onConnectStripe={onConnectStripe}
                 />
-                <SingleDivisionPaymentPlanControls
-                    allowPaymentPlans={eventData.allowPaymentPlans}
-                    installmentCount={eventData.installmentCount || 0}
-                    installmentAmounts={eventData.installmentAmounts || []}
-                    installmentDueDates={eventData.installmentDueDates || []}
-                    installmentDueRelativeDays={eventData.installmentDueRelativeDays || []}
-                    teamSignup={eventData.teamSignup}
-                    allowTeamSplitDefault={eventData.allowTeamSplitDefault}
-                    eventType={eventData.eventType}
-                    parentEvent={eventData.parentEvent}
-                    eventStart={eventData.start}
-                    taxable={eventTaxableForPreview}
-                    hasStripeAccount={hasStripeAccount}
-                    maxStandardNumber={maxStandardNumber}
-                    maxPriceCents={maxPriceCents}
-                    onAllowPaymentPlansChange={onAllowPaymentPlansChange}
-                    onInstallmentCountChange={(count) => syncInstallmentCount(count)}
-                    onTeamSplitDefaultChange={onTeamSplitDefaultChange}
-                    onInstallmentDueRelativeDayChange={onInstallmentDueRelativeDayChange}
-                    onInstallmentDueDateChange={onInstallmentDueDateChange}
-                    onInstallmentAmountChange={onInstallmentAmountChange}
-                    onRemoveInstallment={onRemoveInstallment}
-                    onAddInstallment={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}
-                />
+                {showPaymentPlanControls ? (
+                    <SingleDivisionPaymentPlanControls
+                        allowPaymentPlans={eventData.allowPaymentPlans}
+                        installmentCount={eventData.installmentCount || 0}
+                        installmentAmounts={eventData.installmentAmounts || []}
+                        installmentDueDates={eventData.installmentDueDates || []}
+                        installmentDueRelativeDays={eventData.installmentDueRelativeDays || []}
+                        teamSignup={eventData.teamSignup}
+                        allowTeamSplitDefault={eventData.allowTeamSplitDefault}
+                        eventType={eventData.eventType}
+                        parentEvent={eventData.parentEvent}
+                        eventStart={eventData.start}
+                        taxable={eventTaxableForPreview}
+                        hasStripeAccount={hasStripeAccount}
+                        maxStandardNumber={maxStandardNumber}
+                        maxPriceCents={maxPriceCents}
+                        onAllowPaymentPlansChange={onAllowPaymentPlansChange}
+                        onInstallmentCountChange={(count) => syncInstallmentCount(count)}
+                        onTeamSplitDefaultChange={onTeamSplitDefaultChange}
+                        onInstallmentDueRelativeDayChange={onInstallmentDueRelativeDayChange}
+                        onInstallmentDueDateChange={onInstallmentDueDateChange}
+                        onInstallmentAmountChange={onInstallmentAmountChange}
+                        onRemoveInstallment={onRemoveInstallment}
+                        onAddInstallment={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}
+                    />
+                ) : null}
             </motion.div>
         </Stack>
     </div>

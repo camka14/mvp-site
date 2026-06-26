@@ -5,7 +5,7 @@ import { filterUserIdsForNotificationChannel } from '@/server/notificationPrefer
 
 interface EventCreationAudienceInput {
   eventId: string;
-  hostId: string;
+  hostId: string | null;
   eventName: string;
   eventStart: Date;
   location?: string | null;
@@ -36,6 +36,8 @@ export const notifySocialAudienceOfEventCreation = async ({
   baseUrl,
 }: EventCreationAudienceInput): Promise<void> => {
   try {
+    if (!hostId) return;
+
     const host = await prisma.userData.findUnique({
       where: { id: hostId },
       select: {

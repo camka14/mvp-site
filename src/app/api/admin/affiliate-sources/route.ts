@@ -13,6 +13,7 @@ const createSourceSchema = z.object({
   sourceKey: z.string().trim().min(1),
   listUrl: z.string().trim().url(),
   targetKind: z.string().trim().min(1).optional(),
+  organizationId: z.string().trim().min(1).nullable().optional(),
   baseUrl: z.string().trim().url().nullable().optional(),
   status: z.string().trim().min(1).optional(),
   notes: z.string().trim().max(4000).nullable().optional(),

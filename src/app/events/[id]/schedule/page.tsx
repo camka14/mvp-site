@@ -333,8 +333,10 @@ function EventScheduleContent() {
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
+  const activeEventAffiliateUrl = typeof activeEvent?.affiliateUrl === 'string' ? activeEvent.affiliateUrl.trim() : '';
   const isWeeklyParentEvent = Boolean(
-    activeEvent?.eventType === 'WEEKLY_EVENT'
+    activeEventAffiliateUrl.length === 0
+      && activeEvent?.eventType === 'WEEKLY_EVENT'
       && !normalizeIdToken(activeEvent?.parentEvent),
   );
   const selectedOccurrenceSlotId = normalizeIdToken(searchParams?.get('slotId'));
@@ -708,9 +710,13 @@ function EventScheduleContent() {
   }, [activeEvent?.$id, activeEvent?.fields, divisionLabelsByKey, isWeeklyParentEvent, selectedOccurrence, viewerWeeklyOccurrenceKeys, weeklyScheduleOccurrenceOptions]);
 
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
-  const isTournament = eventTypeForView === 'TOURNAMENT';
-  const isLeague = eventTypeForView === 'LEAGUE';
-  const tournamentPoolPlayEnabled = isTournamentPoolPlayViewEnabled(activeEvent ?? changesEvent);
+  const affiliateUrlForView = typeof (activeEvent?.affiliateUrl ?? changesEvent?.affiliateUrl) === 'string'
+    ? String(activeEvent?.affiliateUrl ?? changesEvent?.affiliateUrl).trim()
+    : '';
+  const isAffiliateEventForView = affiliateUrlForView.length > 0;
+  const isTournament = !isAffiliateEventForView && eventTypeForView === 'TOURNAMENT';
+  const isLeague = !isAffiliateEventForView && eventTypeForView === 'LEAGUE';
+  const tournamentPoolPlayEnabled = !isAffiliateEventForView && isTournamentPoolPlayViewEnabled(activeEvent ?? changesEvent);
 
   const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
     const labels = new Map<string, string>(divisionLabelsByKey);
@@ -1000,7 +1006,7 @@ function EventScheduleContent() {
     [participantDivisionColumns],
   );
 
-  const isSplitDivisionEvent = Boolean(
+  const isSplitDivisionEvent = !isAffiliateEventForView && Boolean(
     (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
       || (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'TOURNAMENT',
   ) && !activeEvent?.singleDivision && participantDivisionColumns.length > 0;
@@ -4497,7 +4503,8 @@ function EventScheduleContent() {
         return { ...base, ...(normalizedDraft as Event) };
       });
 
-      if (normalizedDraft.eventType !== 'EVENT' && normalizedDraft.eventType !== 'AFFILIATE') {
+      const normalizedAffiliateUrl = typeof normalizedDraft.affiliateUrl === 'string' ? normalizedDraft.affiliateUrl.trim() : '';
+      if (normalizedAffiliateUrl.length === 0 && normalizedDraft.eventType !== 'EVENT') {
         await schedulePreview(normalizedDraft);
         return;
       }

@@ -4,6 +4,7 @@ import {
     Checkbox,
     NumberInput,
     Select as MantineSelect,
+    TextInput,
 } from '@mantine/core';
 
 import type { Event } from '@/types';
@@ -14,6 +15,7 @@ import { AnimatedSection } from '../components/AnimatedSection';
 type EventDetailsTypeControlsProps = {
     control: Control<EventFormValues>;
     eventType: Event['eventType'];
+    isAffiliateEvent: boolean;
     eventTypeOptions: Array<{ value: string; label: string }>;
     includePlayoffs: boolean;
     supportsEditableTeamSignup: boolean;
@@ -24,6 +26,7 @@ type EventDetailsTypeControlsProps = {
     comboboxProps?: ComponentProps<typeof MantineSelect>['comboboxProps'];
     isImmutableField: (key: keyof Event) => boolean;
     onEventTypeChange: (eventType: Event['eventType'], applyValue: (eventType: Event['eventType']) => void) => void;
+    onAffiliateEventChange: (checked: boolean, applyValue: (checked: boolean) => void) => void;
     onIncludePlayoffsChange: (checked: boolean) => void;
     onIncludePoolPlayChange: (checked: boolean) => void;
 };
@@ -31,6 +34,7 @@ type EventDetailsTypeControlsProps = {
 export const EventDetailsTypeControls = ({
     control,
     eventType,
+    isAffiliateEvent,
     eventTypeOptions,
     includePlayoffs,
     supportsEditableTeamSignup,
@@ -41,6 +45,7 @@ export const EventDetailsTypeControls = ({
     comboboxProps,
     isImmutableField,
     onEventTypeChange,
+    onAffiliateEventChange,
     onIncludePlayoffsChange,
     onIncludePoolPlayChange,
 }: EventDetailsTypeControlsProps) => (
@@ -88,6 +93,46 @@ export const EventDetailsTypeControls = ({
                                     if (isImmutableField('includePlayoffs')) return;
                                     onIncludePoolPlayChange(event.currentTarget.checked);
                                 }}
+                            />
+                        </AnimatedSection>
+                        <Controller
+                            name="isAffiliateEvent"
+                            control={control}
+                            render={({ field: affiliateField }) => (
+                                <Checkbox
+                                    size="xs"
+                                    label="External registration"
+                                    aria-label="External registration"
+                                    checked={Boolean(affiliateField.value)}
+                                    disabled={isImmutableField('affiliateUrl')}
+                                    onChange={(event) => {
+                                        if (isImmutableField('affiliateUrl')) return;
+                                        onAffiliateEventChange(event.currentTarget.checked, affiliateField.onChange);
+                                    }}
+                                />
+                            )}
+                        />
+                        <AnimatedSection in={isAffiliateEvent}>
+                            <Controller
+                                name="affiliateUrl"
+                                control={control}
+                                render={({ field: affiliateUrlField, fieldState }) => (
+                                    <TextInput
+                                        label="Affiliate Link"
+                                        withAsterisk
+                                        disabled={isImmutableField('affiliateUrl')}
+                                        placeholder="https://example.com/event"
+                                        value={affiliateUrlField.value ?? ''}
+                                        name={affiliateUrlField.name}
+                                        onBlur={affiliateUrlField.onBlur}
+                                        ref={affiliateUrlField.ref}
+                                        error={fieldState.error?.message as string | undefined}
+                                        onChange={(event) => {
+                                            if (isImmutableField('affiliateUrl')) return;
+                                            affiliateUrlField.onChange(event.currentTarget.value);
+                                        }}
+                                    />
+                                )}
                             />
                         </AnimatedSection>
                     </div>

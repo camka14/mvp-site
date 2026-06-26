@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { Controller, type Control } from 'react-hook-form';
 import { Button, Collapse, Group, Text, TextInput, Title } from '@mantine/core';
 
@@ -22,6 +22,10 @@ type EventDetailsResourceControlsProps = {
     fieldNamesCollapsed: boolean;
     setFieldNamesCollapsed: Dispatch<SetStateAction<boolean>>;
     maxResourceNameLength: number;
+    embedded?: boolean;
+    showOrganizationResourceControls?: boolean;
+    showLocalFieldNameControls?: boolean;
+    localFieldCreationControl?: ReactNode;
     onLocalFieldNameChange: (fieldId: string, name: string) => void;
 };
 
@@ -38,75 +42,107 @@ export const EventDetailsResourceControls = ({
     fieldNamesCollapsed,
     setFieldNamesCollapsed,
     maxResourceNameLength,
+    embedded = false,
+    showOrganizationResourceControls = true,
+    showLocalFieldNameControls = true,
+    localFieldCreationControl,
     onLocalFieldNameChange,
-}: EventDetailsResourceControlsProps) => (
-    <>
-        {showOrganizationFields ? (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                <div className="md:col-span-6">
-                    <Controller
-                        name="selectedFieldIds"
-                        control={control}
-                        render={({ field, fieldState }) => (
-                            <FacilityResourceSelector
-                                label="Resources"
-                                description="Choose which resources this event can use."
-                                placeholder={resourceSelectorLoading ? 'Loading resources...' : 'Select one or more resources'}
-                                fields={organizationResourcePool}
-                                value={Array.isArray(field.value) ? field.value : []}
-                                disabled={resourceSelectorLoading || isImmutableField('fieldIds')}
-                                loading={resourceSelectorLoading}
-                                eventOrganizationId={organizationHostedEventId}
-                                onChange={(values) => {
-                                    if (isImmutableField('fieldIds')) return;
-                                    field.onChange(values);
-                                }}
-                                error={fieldState.error?.message || rentalResourcesError}
-                            />
-                        )}
-                    />
-                </div>
-            </div>
-        ) : null}
+}: EventDetailsResourceControlsProps) => {
+    const organizationResourceControl = showOrganizationResourceControls && showOrganizationFields ? (
+        <Controller
+            name="selectedFieldIds"
+            control={control}
+            render={({ field, fieldState }) => (
+                <FacilityResourceSelector
+                    label="Resources"
+                    description="Choose which resources this event can use."
+                    placeholder={resourceSelectorLoading ? 'Loading resources...' : 'Select one or more resources'}
+                    fields={organizationResourcePool}
+                    value={Array.isArray(field.value) ? field.value : []}
+                    disabled={resourceSelectorLoading || isImmutableField('fieldIds')}
+                    loading={resourceSelectorLoading}
+                    eventOrganizationId={organizationHostedEventId}
+                    onChange={(values) => {
+                        if (isImmutableField('fieldIds')) return;
+                        field.onChange(values);
+                    }}
+                    error={fieldState.error?.message || rentalResourcesError}
+                />
+            )}
+        />
+    ) : null;
+    const shouldShowLocalFieldNames = showLocalFieldNameControls
+        && showLocalFieldCreationControls
+        && (Boolean(localFieldCreationControl) || eventLocalFields.length > 0);
+    const shouldShowLocalFieldNameInputs = eventLocalFields.length > 0;
 
-        {showLocalFieldCreationControls && eventLocalFields.length > 0 ? (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-                <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
-                    <div>
-                        <Title order={6}>Resource Names</Title>
-                        <Text size="sm" c="dimmed">
-                            Resources will be created for this event using the names you provide below.
-                        </Text>
-                    </div>
-                    <Button
-                        type="button"
-                        variant="subtle"
-                        size="xs"
-                        aria-expanded={!fieldNamesCollapsed}
-                        aria-controls="event-local-field-names"
-                        onClick={() => setFieldNamesCollapsed((previous) => !previous)}
-                    >
-                        {fieldNamesCollapsed ? 'Expand' : 'Collapse'}
-                    </Button>
-                </Group>
-                <Collapse in={!fieldNamesCollapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                    <div
-                        id="event-local-field-names"
-                        className="mt-4 grid max-h-[22rem] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2"
-                    >
-                        {eventLocalFields.map((field) => (
-                            <TextInput
-                                key={field.$id}
-                                label={`${getFieldDisplayName(field, 'Resource')} Name`}
-                                value={field.name ?? ''}
-                                w="100%"
-                                maxLength={maxResourceNameLength}
-                                onChange={(event) => onLocalFieldNameChange(field.$id, event.currentTarget.value)}
-                            />
-                        ))}
-                    </div>
-                </Collapse>
+    const content = (
+        <>
+            {organizationResourceControl}
+
+            {shouldShowLocalFieldNames ? (
+                <div className={`${organizationResourceControl ? 'mt-4 ' : ''}rounded-lg border border-gray-200 bg-white p-4`}>
+                    <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap" className="min-w-0">
+                        <div className="min-w-0">
+                            <Title order={6}>Custom Resources</Title>
+                            <Text size="sm" c="dimmed">
+                                Add custom resources for this event and name each one below.
+                            </Text>
+                        </div>
+                        <Group gap="sm" align="flex-end" wrap="nowrap" className="shrink-0">
+                            {localFieldCreationControl ? (
+                                <div className="w-32">
+                                    {localFieldCreationControl}
+                                </div>
+                            ) : null}
+                            {shouldShowLocalFieldNameInputs ? (
+                                <Button
+                                    type="button"
+                                    variant="light"
+                                    size="sm"
+                                    className="shrink-0"
+                                    aria-expanded={!fieldNamesCollapsed}
+                                    aria-controls="event-local-field-names"
+                                    onClick={() => setFieldNamesCollapsed((previous) => !previous)}
+                                >
+                                    {fieldNamesCollapsed ? 'Expand' : 'Collapse'}
+                                </Button>
+                            ) : null}
+                        </Group>
+                    </Group>
+                    {shouldShowLocalFieldNameInputs ? (
+                        <Collapse in={!fieldNamesCollapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                            <div
+                                id="event-local-field-names"
+                                className="mt-4 grid max-h-[22rem] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2"
+                            >
+                                {eventLocalFields.map((field) => (
+                                    <TextInput
+                                        key={field.$id}
+                                        label={`${getFieldDisplayName(field, 'Resource')} Name`}
+                                        value={field.name ?? ''}
+                                        w="100%"
+                                        maxLength={maxResourceNameLength}
+                                        onChange={(event) => onLocalFieldNameChange(field.$id, event.currentTarget.value)}
+                                    />
+                                ))}
+                            </div>
+                        </Collapse>
+                    ) : null}
+                </div>
+            ) : null}
+        </>
+    );
+
+    if (embedded) {
+        return content;
+    }
+
+    return showOrganizationResourceControls && showOrganizationFields ? (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+            <div className="md:col-span-6">
+                {content}
             </div>
-        ) : null}
-    </>
-);
+        </div>
+    ) : content;
+};

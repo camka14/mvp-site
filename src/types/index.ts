@@ -704,6 +704,7 @@ export interface Facility {
   name: string;
   location: string;
   address?: string | null;
+  affiliateUrl?: string | null;
   coordinates?: [number, number] | Record<string, unknown> | null;
   operatingHours?: FacilityOperatingHours | null;
   timeZone?: string;
@@ -776,6 +777,7 @@ export interface Team {
   joinPolicy?: TeamJoinPolicy;
   openRegistration?: boolean;
   registrationPriceCents?: number;
+  affiliateUrl?: string | null;
   requiredTemplateIds?: string[];
   visibility?: 'PUBLIC' | 'ADMIN_ONLY' | string;
   $createdAt?: string;
@@ -814,6 +816,11 @@ export interface Event {
   name: string;
   description: string;
   affiliateUrl?: string | null;
+  sourceUrl?: string | null;
+  organizerName?: string | null;
+  scheduleText?: string | null;
+  priceText?: string | null;
+  statusText?: string | null;
   tags?: EventTag[];
   start: string;
   end: string | null;
@@ -827,8 +834,8 @@ export interface Event {
   minAge?: number;
   maxAge?: number;
   rating?: number;
-  imageId: string;
-  hostId: string;
+  imageId: string | null;
+  hostId: string | null;
   noFixedEndDateTime?: boolean;
   state: EventState;
   maxParticipants: number;

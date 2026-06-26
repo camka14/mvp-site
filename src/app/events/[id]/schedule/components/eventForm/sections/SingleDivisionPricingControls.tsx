@@ -6,6 +6,7 @@ import {
     Select as MantineSelect,
 } from '@mantine/core';
 
+import CentsInput from '@/components/ui/CentsInput';
 import HostPriceInput from '@/components/ui/HostPriceInput';
 import type { Event } from '@/types';
 import {
@@ -31,6 +32,7 @@ type SingleDivisionPricingControlsProps = {
     organizerManualTaxSelected: boolean;
     organizationDefaultEventTaxHandling: EventTaxHandling;
     connectingStripe: boolean;
+    simplePriceInput?: boolean;
     onConnectStripe: () => void;
 };
 
@@ -48,113 +50,142 @@ export const SingleDivisionPricingControls = ({
     organizerManualTaxSelected,
     organizationDefaultEventTaxHandling,
     connectingStripe,
+    simplePriceInput = false,
     onConnectStripe,
-}: SingleDivisionPricingControlsProps) => (
-    <AnimatedLayoutSection
-        in={visible}
-        className="md:col-span-3 md:col-start-1"
-    >
-        <Controller
-            name="price"
-            control={control}
-            render={({ field }) => (
-                <HostPriceInput
-                    hostLabel="Host take-home"
-                    totalLabel="Online price"
-                    eventType={eventType}
-                    maxCents={maxPriceCents}
-                    value={field.value}
-                    onChange={(nextValue) => {
-                        if (priceImmutable) return;
-                        field.onChange(nextValue);
-                    }}
-                    disabled={!hasStripeAccount || priceImmutable}
-                />
-            )}
-        />
-        <AnimatedSection in={organizerTaxCollectionAllowed}>
-            <Alert color="yellow" variant="light" mt="sm">
-                {organizerResponsibilityMessage}
-            </Alert>
-        </AnimatedSection>
-        <AnimatedSection in={showTaxHandlingControls}>
-            <div className="mt-3">
+}: SingleDivisionPricingControlsProps) => {
+    if (simplePriceInput) {
+        return (
+            <AnimatedLayoutSection
+                in={visible}
+                className="md:col-span-3 md:col-start-1"
+            >
                 <Controller
-                    name="taxHandling"
+                    name="price"
                     control={control}
                     render={({ field }) => (
-                        <MantineSelect
-                            label="Tax handling"
+                        <CentsInput
+                            label="Price"
+                            maxCents={maxPriceCents}
                             value={field.value}
-                            data={organizerTaxCollectionAllowed
-                                ? [
-                                    { value: 'INHERIT_ORG', label: 'Choose tax collection method' },
-                                    { value: 'ORGANIZER_MANUAL_TAX', label: 'Enter a sales tax rate' },
-                                    { value: 'ORGANIZER_STRIPE_TAX', label: 'Use Stripe Tax calculator' },
-                                ]
-                                : [
-                                    { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
-                                    { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
-                                    { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
-                                ]}
-                            onChange={(value) => {
-                                field.onChange(normalizeEventTaxHandling(value));
-                            }}
                             disabled={priceImmutable}
+                            onChange={(nextValue) => {
+                                if (priceImmutable) return;
+                                field.onChange(nextValue);
+                            }}
                         />
                     )}
                 />
-                <AnimatedSection in={organizerManualTaxSelected}>
-                    <div className="mt-3">
-                        <Controller
-                            name="organizerManualTaxRateBps"
-                            control={control}
-                            render={({ field }) => (
-                                <NumberInput
-                                    label="Sales tax rate"
-                                    min={0}
-                                    max={25}
-                                    suffix="%"
-                                    decimalScale={3}
-                                    value={(Number(field.value) || 0) / 100}
-                                    w="100%"
-                                    styles={numberInputStyles}
-                                    clampBehavior="blur"
-                                    disabled={priceImmutable}
-                                    onChange={(value) => {
-                                        const numeric = typeof value === 'number' && Number.isFinite(value)
-                                            ? value
-                                            : Number(value);
-                                        field.onChange(normalizeOrganizerManualTaxRateBps(numeric * 100));
-                                    }}
-                                />
-                            )}
-                        />
-                    </div>
-                </AnimatedSection>
-            </div>
-        </AnimatedSection>
-        <AnimatedSection in={!hasStripeAccount}>
-            <div className="mt-2">
-                <button
-                    type="button"
-                    onClick={onConnectStripe}
-                    disabled={connectingStripe}
-                    className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                >
-                    {connectingStripe ? (
-                        <span className="inline-flex items-center gap-2">
-                            <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                            Connecting...
-                        </span>
-                    ) : (
-                        'Connect Stripe Account'
-                    )}
-                </button>
-                <p className="text-sm text-gray-600 mt-1">
-                    Connect your Stripe account to enable paid events and set a price.
-                </p>
-            </div>
-        </AnimatedSection>
-    </AnimatedLayoutSection>
-);
+            </AnimatedLayoutSection>
+        );
+    }
+
+    return (
+        <AnimatedLayoutSection
+            in={visible}
+            className="md:col-span-3 md:col-start-1"
+        >
+            <Controller
+                name="price"
+                control={control}
+                render={({ field }) => (
+                    <HostPriceInput
+                        hostLabel="Host take-home"
+                        totalLabel="Online price"
+                        eventType={eventType}
+                        maxCents={maxPriceCents}
+                        value={field.value}
+                        onChange={(nextValue) => {
+                            if (priceImmutable) return;
+                            field.onChange(nextValue);
+                        }}
+                        disabled={!hasStripeAccount || priceImmutable}
+                    />
+                )}
+            />
+            <AnimatedSection in={organizerTaxCollectionAllowed}>
+                <Alert color="yellow" variant="light" mt="sm">
+                    {organizerResponsibilityMessage}
+                </Alert>
+            </AnimatedSection>
+            <AnimatedSection in={showTaxHandlingControls}>
+                <div className="mt-3">
+                    <Controller
+                        name="taxHandling"
+                        control={control}
+                        render={({ field }) => (
+                            <MantineSelect
+                                label="Tax handling"
+                                value={field.value}
+                                data={organizerTaxCollectionAllowed
+                                    ? [
+                                        { value: 'INHERIT_ORG', label: 'Choose tax collection method' },
+                                        { value: 'ORGANIZER_MANUAL_TAX', label: 'Enter a sales tax rate' },
+                                        { value: 'ORGANIZER_STRIPE_TAX', label: 'Use Stripe Tax calculator' },
+                                    ]
+                                    : [
+                                        { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
+                                        { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
+                                        { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
+                                    ]}
+                                onChange={(value) => {
+                                    field.onChange(normalizeEventTaxHandling(value));
+                                }}
+                                disabled={priceImmutable}
+                            />
+                        )}
+                    />
+                    <AnimatedSection in={organizerManualTaxSelected}>
+                        <div className="mt-3">
+                            <Controller
+                                name="organizerManualTaxRateBps"
+                                control={control}
+                                render={({ field }) => (
+                                    <NumberInput
+                                        label="Sales tax rate"
+                                        min={0}
+                                        max={25}
+                                        suffix="%"
+                                        decimalScale={3}
+                                        value={(Number(field.value) || 0) / 100}
+                                        w="100%"
+                                        styles={numberInputStyles}
+                                        clampBehavior="blur"
+                                        disabled={priceImmutable}
+                                        onChange={(value) => {
+                                            const numeric = typeof value === 'number' && Number.isFinite(value)
+                                                ? value
+                                                : Number(value);
+                                            field.onChange(normalizeOrganizerManualTaxRateBps(numeric * 100));
+                                        }}
+                                    />
+                                )}
+                            />
+                        </div>
+                    </AnimatedSection>
+                </div>
+            </AnimatedSection>
+            <AnimatedSection in={!hasStripeAccount}>
+                <div className="mt-2">
+                    <button
+                        type="button"
+                        onClick={onConnectStripe}
+                        disabled={connectingStripe}
+                        className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                        {connectingStripe ? (
+                            <span className="inline-flex items-center gap-2">
+                                <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                                Connecting...
+                            </span>
+                        ) : (
+                            'Connect Stripe Account'
+                        )}
+                    </button>
+                    <p className="text-sm text-gray-600 mt-1">
+                        Connect your Stripe account to enable paid events and set a price.
+                    </p>
+                </div>
+            </AnimatedSection>
+        </AnimatedLayoutSection>
+    );
+};

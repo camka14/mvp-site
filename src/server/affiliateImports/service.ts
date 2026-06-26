@@ -1,6 +1,13 @@
 import { createHash } from 'crypto';
+import {
+  buildCompositeDivisionTypeId,
+  buildDivisionToken,
+  deriveDivisionTypeDisplayName,
+  type DivisionGender,
+} from '@/lib/divisionTypes';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
+import { syncEventDivisions } from '@/server/repositories/events';
 import { extractAffiliateCandidatesFromPage } from './mappingExtractor';
 import { scrapingDogClient } from './scrapingDogClient';
 import {
@@ -15,6 +22,7 @@ type AffiliateSourceCreateInput = {
   sourceKey: string;
   listUrl: string;
   targetKind?: string;
+  organizationId?: string | null;
   baseUrl?: string | null;
   status?: string;
   notes?: string | null;
@@ -24,8 +32,12 @@ type AffiliateSourceCreateInput = {
 
 type AffiliateScrapeSourceRow = {
   id: string;
+  name?: string | null;
+  sourceKey?: string | null;
   activeMappingId: string | null;
   listUrl: string;
+  organizationId?: string | null;
+  baseUrl?: string | null;
 };
 
 type AffiliateScrapeMappingRow = {
@@ -42,6 +54,11 @@ const affiliatePrisma = () => {
     runs: client.affiliateScrapeRuns,
     candidates: client.affiliateImportCandidates,
     listings: client.affiliateListings,
+    events: client.events,
+    teams: client.canonicalTeams,
+    facilities: client.facilities,
+    organizations: client.organizations,
+    sports: client.sports,
   };
 };
 
@@ -59,6 +76,88 @@ const parseDateOrNull = (value: string | null | undefined): Date | null => {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeDateText = (value: string): string => (
+  value
+    .replace(/\s+/g, ' ')
+    .replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
+    .replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+/gi, '')
+    .trim()
+);
+
+const parseSourceDateOrNull = (
+  value: string | null | undefined,
+  params: { referenceYear?: number | null; endOfDay?: boolean } = {},
+): Date | null => {
+  const text = nullableString(value);
+  if (!text) return null;
+  const normalized = normalizeDateText(text);
+  const hasYear = /\b\d{4}\b/.test(normalized);
+  const year = Number.isInteger(params.referenceYear) ? params.referenceYear : new Date().getFullYear();
+  const parsed = new Date(hasYear ? normalized : `${normalized}, ${year}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (params.endOfDay) {
+    parsed.setHours(23, 59, 59, 999);
+  }
+  return parsed;
+};
+
+const candidateStartDate = (candidate: Pick<AffiliateCandidateInput, 'startsAt'> | any): Date | null => {
+  if (candidate.startsAt instanceof Date && !Number.isNaN(candidate.startsAt.getTime())) {
+    return candidate.startsAt;
+  }
+  return parseDateOrNull(typeof candidate.startsAt === 'string' ? candidate.startsAt : null);
+};
+
+const candidateRegistrationDeadline = (
+  candidate: Pick<AffiliateCandidateInput, 'registrationDeadlineText' | 'startsAt'> | any,
+): Date | null => {
+  const text = nullableString(candidate.registrationDeadlineText);
+  if (!text) return null;
+  const start = candidateStartDate(candidate);
+  return parseSourceDateOrNull(text, {
+    referenceYear: start?.getFullYear() ?? null,
+    endOfDay: true,
+  });
+};
+
+const isImportableCandidate = (
+  candidate: AffiliateCandidateInput,
+  now: Date = new Date(),
+): boolean => {
+  return candidateImportRejectionReasons(candidate, now).length === 0;
+};
+
+const candidateImportRejectionReasons = (
+  candidate: AffiliateCandidateInput,
+  now: Date = new Date(),
+): string[] => {
+  if (candidate.listingKind === 'RENTAL') return [];
+  const reasons: string[] = [];
+  const start = candidateStartDate(candidate);
+  if (!start || start.getTime() <= now.getTime()) {
+    reasons.push(start ? 'start is not in the future' : 'missing source start date');
+  }
+  const registrationDeadline = candidateRegistrationDeadline(candidate);
+  if (registrationDeadline && registrationDeadline.getTime() < now.getTime()) {
+    reasons.push('registration deadline passed');
+  }
+  return reasons;
+};
+
+const assertEventOrTeamCandidateImportable = (candidate: any) => {
+  const start = candidateStartDate(candidate);
+  if (!start) {
+    throw new Error('Affiliate event candidates must include a valid start date from the source.');
+  }
+  if (start.getTime() <= Date.now()) {
+    throw new Error('Affiliate event candidates must start in the future.');
+  }
+  const registrationDeadline = candidateRegistrationDeadline(candidate);
+  if (registrationDeadline && registrationDeadline.getTime() < Date.now()) {
+    throw new Error('Affiliate candidate registration deadline has passed.');
+  }
 };
 
 const candidateValue = (candidate: AffiliateCandidateInput, fieldName: string): string => {
@@ -91,6 +190,10 @@ const candidatePersistenceData = (
   },
 ) => {
   const { sourceId, runId, mappingId, dedupeKey, candidate } = params;
+  const rawPayload = {
+    ...(candidate.rawPayload ?? {}),
+    normalizedImport: buildAffiliateImportMetadata(candidate),
+  };
   return {
     sourceId,
     runId,
@@ -118,7 +221,7 @@ const candidatePersistenceData = (
     officialActionUrl: candidate.officialActionUrl,
     sourceUrl: candidate.sourceUrl,
     description: candidate.description ?? null,
-    rawPayload: candidate.rawPayload ?? null,
+    rawPayload,
     warnings: candidate.warnings ?? [],
   };
 };
@@ -138,6 +241,7 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
       id: sourceId,
       name: input.name.trim(),
       sourceKey: input.sourceKey.trim(),
+      organizationId: nullableString(input.organizationId),
       baseUrl: nullableString(input.baseUrl),
       listUrl: input.listUrl.trim(),
       targetKind: normalizeStatus(input.targetKind, 'EVENT'),
@@ -166,6 +270,534 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
     where: { id: sourceId },
     data: { activeMappingId: mapping.id },
   });
+};
+
+const normalizeSourceType = (value: unknown): string | null => (
+  nullableString(value)?.toUpperCase() ?? null
+);
+
+const normalizeListingKind = (value: unknown): 'EVENT' | 'TEAM' | 'RENTAL' => {
+  const normalized = normalizeSourceType(value);
+  if (normalized === 'EVENT' || normalized === 'TEAM' || normalized === 'RENTAL') {
+    return normalized;
+  }
+  throw new Error('Affiliate listing kind must be EVENT, TEAM, or RENTAL.');
+};
+
+const publishedEventIdFromCandidate = (candidate: any): string | null => (
+  nullableString(candidate?.publishedEventId)
+);
+
+const publishedTeamIdFromCandidate = (candidate: any): string | null => (
+  nullableString(candidate?.publishedTeamId)
+);
+
+const slugifyForId = (value: string): string => (
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'item'
+);
+
+const parseFirstPositiveInteger = (value: unknown): number | null => {
+  const text = nullableString(value);
+  if (!text) return null;
+  const match = text.match(/\b([1-9]\d{0,2})\b/);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseMaxParticipants = (value: unknown): number | null => {
+  const text = nullableString(value);
+  if (!text) return null;
+  const match = text.match(/\b(?:max(?:imum)?|capacity|limit(?:ed)?(?:\s+to)?|up\s+to)\s*:?\s*([1-9]\d{0,3})\b/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parsePriceCents = (value: unknown): number | null => {
+  const text = nullableString(value);
+  if (!text) return null;
+  const match = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/);
+  if (!match) return null;
+  const amount = Number.parseFloat(match[1]);
+  if (!Number.isFinite(amount)) return null;
+  return Math.max(0, Math.round(amount * 100));
+};
+
+const slugToken = (value: string): string => (
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+);
+
+const inferDivisionGender = (value: unknown): DivisionGender => {
+  const text = nullableString(value)?.toLowerCase() ?? '';
+  if (/\b(coed|co-ed|mixed)\b/.test(text)) return 'C';
+  if (/\b(women|womens|women's|female|girls?)\b/.test(text)) return 'F';
+  if (/\b(men|mens|men's|male|boys?)\b/.test(text)) return 'M';
+  return 'C';
+};
+
+const inferAgeRange = (candidate: any): { minAge: number | null; maxAge: number | null; ageDivisionTypeId: string | null } => {
+  const haystack = [
+    candidate.divisionText,
+    candidate.skillLevel,
+    candidate.ageGroup,
+    candidate.title,
+  ]
+    .map((value) => nullableString(value) ?? '')
+    .join(' ');
+
+  const upperMatch = haystack.match(/\bU\s*([1-9]\d?)\b/i) ?? haystack.match(/\b([1-9]\d?)\s*U\b/i);
+  if (upperMatch) {
+    const maxAge = Number.parseInt(upperMatch[1], 10);
+    return { minAge: null, maxAge, ageDivisionTypeId: `u${maxAge}` };
+  }
+
+  const overMatch = haystack.match(/\b(?:over|age|adult)\s*([1-9]\d?)\s*\+?\b/i)
+    ?? haystack.match(/\b([1-9]\d?)\s*\+\b/);
+  if (overMatch) {
+    const minAge = Number.parseInt(overMatch[1], 10);
+    return { minAge, maxAge: null, ageDivisionTypeId: `${minAge}plus` };
+  }
+
+  return { minAge: null, maxAge: null, ageDivisionTypeId: null };
+};
+
+const inferSkillDivisionTypeId = (value: unknown): string => {
+  const raw = nullableString(value) ?? '';
+  const withoutGender = raw
+    .replace(/\b(?:men|women)(?:['’]s)?\b|\b(?:mens|womens|coed|co-ed|mixed|male|female|boys?|girls?)\b/gi, ' ')
+    .replace(/\b(?:over|adult|age)\s*[1-9]\d?\+?\b/gi, ' ')
+    .replace(/\bU\s*[1-9]\d?\b/gi, ' ')
+    .replace(/\b[1-9]\d?\s*U\b/gi, ' ');
+  return slugToken(withoutGender) || 'open';
+};
+
+const buildAffiliateDivisionDetail = (candidate: any, sportId?: string | null) => {
+  const sourceLabel = nullableString(candidate.divisionText)
+    ?? nullableString(candidate.skillLevel);
+  if (!sourceLabel) return null;
+
+  const gender = inferDivisionGender(sourceLabel);
+  const ageRange = inferAgeRange(candidate);
+  const skillDivisionTypeId = inferSkillDivisionTypeId(sourceLabel);
+  const divisionTypeId = ageRange.ageDivisionTypeId
+    ? buildCompositeDivisionTypeId(skillDivisionTypeId, ageRange.ageDivisionTypeId)
+    : skillDivisionTypeId;
+  const key = buildDivisionToken({
+    gender,
+    ratingType: 'SKILL',
+    divisionTypeId,
+  });
+  const divisionTypeName = deriveDivisionTypeDisplayName({
+    sportInput: sportId ?? nullableString(candidate.sportName),
+    gender,
+    ratingType: 'SKILL',
+    divisionTypeId,
+  });
+
+  return {
+    key,
+    name: sourceLabel,
+    kind: 'LEAGUE',
+    divisionTypeId,
+    divisionTypeName,
+    ratingType: 'SKILL',
+    gender,
+    price: parsePriceCents(candidate.priceText),
+    maxParticipants: parseMaxParticipants(candidate.participantOptionsText),
+    ageCutoffLabel: nullableString(candidate.ageGroup),
+    ageCutoffSource: nullableString(candidate.ageGroup) ? 'Affiliate source age label' : null,
+    fieldIds: [],
+    teamIds: [],
+  };
+};
+
+const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
+  const ageRange = inferAgeRange(candidate);
+  return {
+    division: buildAffiliateDivisionDetail(candidate),
+    ageRange,
+    maxParticipants: parseMaxParticipants(candidate.participantOptionsText),
+  };
+};
+
+const eventStartFromCandidate = (candidate: any): Date => {
+  assertEventOrTeamCandidateImportable(candidate);
+  return candidateStartDate(candidate) as Date;
+};
+
+const buildAffiliateEventDescription = (candidate: any): string | null => {
+  const pieces = [
+    nullableString(candidate.description),
+    nullableString(candidate.scheduleText) ? `Schedule: ${nullableString(candidate.scheduleText)}` : null,
+    nullableString(candidate.priceText) ? `Price: ${nullableString(candidate.priceText)}` : null,
+    nullableString(candidate.statusText) ? `Status: ${nullableString(candidate.statusText)}` : null,
+  ].filter((piece): piece is string => Boolean(piece));
+  return pieces.length ? pieces.join('\n\n') : null;
+};
+
+const inferAffiliateEventType = (candidate: any): 'EVENT' | 'WEEKLY_EVENT' | 'LEAGUE' | 'TOURNAMENT' => {
+  const haystack = [
+    candidate.title,
+    candidate.formatName,
+    candidate.scheduleText,
+    candidate.description,
+  ]
+    .map((value) => nullableString(value)?.toLowerCase() ?? '')
+    .join(' ');
+  if (/\btournament\b|\bbracket\b|\bpool play\b/.test(haystack)) {
+    return 'TOURNAMENT';
+  }
+  if (/\bleague\b|\bleagues\b/.test(haystack)) {
+    return 'LEAGUE';
+  }
+  if (/\bweekly\b|\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(haystack)) {
+    return 'WEEKLY_EVENT';
+  }
+  return 'EVENT';
+};
+
+const resolveAffiliateSportId = async (sportName: unknown): Promise<string | null> => {
+  const name = nullableString(sportName);
+  if (!name) return null;
+  const { sports } = affiliatePrisma();
+  const sport = await sports.findFirst({
+    where: { name: { equals: name, mode: 'insensitive' } },
+    select: { id: true },
+  });
+  return sport?.id ?? null;
+};
+
+const buildAffiliateEventData = async (
+  candidate: any,
+  source: { id: string; organizationId?: string | null; name?: string | null },
+  state: 'UNPUBLISHED' | 'PUBLISHED' | 'PRIVATE' = 'UNPUBLISHED',
+) => {
+  const sportId = await resolveAffiliateSportId(candidate.sportName);
+  const start = eventStartFromCandidate(candidate);
+  const end = candidate.endsAt instanceof Date
+    ? candidate.endsAt
+    : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null);
+  const ageRange = inferAgeRange(candidate);
+  const maxParticipants = parseMaxParticipants(candidate.participantOptionsText);
+  const hasSourceDivision = Boolean(buildAffiliateDivisionDetail(candidate, sportId));
+  const teamSignup = /\badult\s+league\s+team\b|\bteam\s+registration\b/i.test(nullableString(candidate.title) ?? '');
+  const location = nullableString(candidate.venueName)
+    ?? nullableString(candidate.city)
+    ?? nullableString(candidate.address)
+    ?? 'Location TBD';
+  const organizerName = nullableString(candidate.organizerName) ?? nullableString(source.name);
+
+  return {
+    name: nullableString(candidate.title) ?? 'Untitled affiliate event',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    start,
+    end,
+    timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
+    description: buildAffiliateEventDescription(candidate),
+    affiliateUrl: nullableString(candidate.officialActionUrl),
+    sourceType: 'AFFILIATE_IMPORT',
+    sourceId: candidate.id,
+    sourceUrl: nullableString(candidate.sourceUrl),
+    organizerName,
+    scheduleText: nullableString(candidate.scheduleText),
+    priceText: nullableString(candidate.priceText),
+    statusText: nullableString(candidate.statusText),
+    winnerSetCount: null,
+    loserSetCount: null,
+    doubleElimination: false,
+    location,
+    address: nullableString(candidate.address),
+    rating: null,
+    teamSizeLimit: teamSignup ? 20 : 1,
+    maxParticipants,
+    minAge: ageRange.minAge,
+    maxAge: ageRange.maxAge,
+    hostId: null,
+    assistantHostIds: [],
+    noFixedEndDateTime: true,
+    price: 0,
+    taxHandling: 'ORGANIZER_COLLECTS',
+    organizerManualTaxRateBps: 0,
+    singleDivision: !hasSourceDivision,
+    registrationByDivisionType: hasSourceDivision,
+    cancellationRefundHours: null,
+    teamSignup,
+    prize: null,
+    registrationCutoffHours: null,
+    seedColor: 0,
+    imageId: null,
+    fieldCount: null,
+    winnerBracketPointsToVictory: [],
+    loserBracketPointsToVictory: [],
+    coordinates: [0, 0],
+    gamesPerOpponent: null,
+    includePlayoffs: false,
+    playoffTeamCount: null,
+    usesSets: false,
+    matchDurationMinutes: null,
+    setDurationMinutes: null,
+    setsPerMatch: null,
+    restTimeMinutes: null,
+    state,
+    pointsToVictory: [],
+    sportId,
+    timeSlotIds: [],
+    fieldIds: [],
+    leagueScoringConfigId: null,
+    organizationId: nullableString(source.organizationId),
+    parentEvent: null,
+    autoCancellation: null,
+    eventType: inferAffiliateEventType(candidate),
+    officialSchedulingMode: 'OFF',
+    doTeamsOfficiate: false,
+    teamOfficialsMaySwap: false,
+    officialPositions: [],
+    allowPaymentPlans: false,
+    installmentCount: 0,
+    installmentDueDates: [],
+    installmentDueRelativeDays: [],
+    installmentAmounts: [],
+    allowTeamSplitDefault: false,
+    splitLeaguePlayoffDivisions: false,
+    requiredTemplateIds: [],
+  };
+};
+
+const loadSourceOrganization = async (source: { organizationId?: string | null }) => {
+  const organizationId = nullableString(source.organizationId);
+  if (!organizationId) {
+    throw new Error('Affiliate source must be linked to a private organization before affiliate rows can be created.');
+  }
+
+  const { organizations } = affiliatePrisma();
+  const organization = await organizations.findUnique({
+    where: { id: organizationId },
+    select: { id: true, ownerId: true },
+  });
+  if (!organization) {
+    throw new Error('Affiliate source organization was not found.');
+  }
+  return organization;
+};
+
+const assertSourceOrganization = async (source: { organizationId?: string | null }) => {
+  await loadSourceOrganization(source);
+};
+
+const buildAffiliateTeamData = async (
+  candidate: any,
+  source: { id: string; organizationId?: string | null; name?: string | null },
+  visibility: 'ADMIN_ONLY' | 'PUBLIC' = 'ADMIN_ONLY',
+) => {
+  const organization = await loadSourceOrganization(source);
+  const sourceName = nullableString(source.name);
+  const title = nullableString(candidate.title) ?? 'Affiliate team registration';
+  const name = sourceName && !title.toLowerCase().includes(sourceName.toLowerCase())
+    ? `${sourceName} ${title}`
+    : title;
+  const division = nullableString(candidate.divisionText)
+    ?? nullableString(candidate.formatLabel)
+    ?? 'Community Team';
+  const divisionDetail = buildAffiliateDivisionDetail(candidate);
+
+  return {
+    name,
+    division,
+    divisionTypeId: divisionDetail?.divisionTypeId ?? null,
+    wins: null,
+    losses: null,
+    teamSize: parseFirstPositiveInteger(candidate.participantOptionsText) ?? 20,
+    profileImageId: null,
+    sport: nullableString(candidate.sportName) ?? 'Soccer',
+    organizationId: organization.id,
+    createdBy: nullableString(organization.ownerId),
+    openRegistration: true,
+    joinPolicy: 'OPEN_REGISTRATION',
+    registrationPriceCents: 0,
+    requiredTemplateIds: [],
+    visibility,
+    affiliateUrl: nullableString(candidate.officialActionUrl),
+    sourceType: 'AFFILIATE_IMPORT',
+    sourceId: candidate.id,
+    sourceUrl: nullableString(candidate.sourceUrl),
+  };
+};
+
+const upsertAffiliateTeamForCandidate = async (
+  candidate: any,
+  source: { id: string; organizationId?: string | null; name?: string | null },
+  options: { visibility?: 'ADMIN_ONLY' | 'PUBLIC' } = {},
+) => {
+  const { teams } = affiliatePrisma();
+  const existingTeamId = publishedTeamIdFromCandidate(candidate);
+  if (existingTeamId) {
+    const existingTeam = await teams.findUnique({ where: { id: existingTeamId } });
+    if (existingTeam) {
+      const updateData = await buildAffiliateTeamData(
+        candidate,
+        source,
+        options.visibility ?? existingTeam.visibility ?? 'ADMIN_ONLY',
+      );
+      return teams.update({
+        where: { id: existingTeamId },
+        data: updateData,
+      });
+    }
+  }
+
+  const existingBySource = await teams.findFirst({
+    where: {
+      sourceType: 'AFFILIATE_IMPORT',
+      sourceId: candidate.id,
+    },
+  });
+  if (existingBySource) {
+    const updateData = await buildAffiliateTeamData(
+      candidate,
+      source,
+      options.visibility ?? existingBySource.visibility ?? 'ADMIN_ONLY',
+    );
+    return teams.update({
+      where: { id: existingBySource.id },
+      data: updateData,
+    });
+  }
+
+  const createData = await buildAffiliateTeamData(candidate, source, options.visibility ?? 'ADMIN_ONLY');
+  return teams.create({
+    data: {
+      id: createId(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...createData,
+    },
+  });
+};
+
+const affiliateFacilityIdForCandidate = (candidate: any, source: AffiliateScrapeSourceRow): string => {
+  const sourceKey = nullableString(source.sourceKey) ?? nullableString(source.id) ?? 'source';
+  const title = nullableString(candidate.title) ?? nullableString(candidate.venueName) ?? candidate.id;
+  return `affiliate_facility_${slugifyForId(sourceKey)}_${slugifyForId(title)}`;
+};
+
+const upsertAffiliateFacilityForCandidate = async (
+  candidate: any,
+  source: AffiliateScrapeSourceRow,
+  options: { status?: string | null } = {},
+) => {
+  await assertSourceOrganization(source);
+  const { facilities } = affiliatePrisma();
+  const facilityId = nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
+  const name = nullableString(candidate.title)
+    ?? nullableString(candidate.venueName)
+    ?? 'Affiliate facility';
+  const location = nullableString(candidate.venueName)
+    ?? nullableString(candidate.city)
+    ?? nullableString(candidate.address)
+    ?? name;
+  const data = {
+    organizationId: nullableString(source.organizationId),
+    name,
+    location,
+    address: nullableString(candidate.address),
+    coordinates: null,
+    operatingHours: null,
+    timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
+    status: nullableString(options.status) ?? (candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT'),
+    isDefault: false,
+    affiliateUrl: nullableString(candidate.officialActionUrl),
+  };
+
+  return facilities.upsert({
+    where: { id: facilityId },
+    create: {
+      id: facilityId,
+      ...data,
+    },
+    update: data,
+  });
+};
+
+const upsertAffiliateEventForCandidate = async (
+  candidate: any,
+  source: { id: string; organizationId?: string | null; name?: string | null },
+  options: { state?: 'UNPUBLISHED' | 'PUBLISHED' | 'PRIVATE' } = {},
+) => {
+  await assertSourceOrganization(source);
+  const { events } = affiliatePrisma();
+  const syncSourceDivisions = async (event: any) => {
+    const divisionDetail = buildAffiliateDivisionDetail(candidate, event?.sportId ?? null);
+    if (!divisionDetail) {
+      return;
+    }
+    await syncEventDivisions({
+      eventId: event.id,
+      divisionIds: [divisionDetail.key],
+      fieldIds: [],
+      includePlayoffs: false,
+      singleDivision: false,
+      sportId: event?.sportId ?? null,
+      referenceDate: event?.start instanceof Date ? event.start : candidateStartDate(candidate),
+      organizationId: nullableString(source.organizationId),
+      divisionDetails: [divisionDetail],
+      defaultPrice: null,
+      defaultMaxParticipants: null,
+      eventType: event?.eventType ?? inferAffiliateEventType(candidate),
+    });
+  };
+  const existingEventId = publishedEventIdFromCandidate(candidate);
+  if (existingEventId) {
+    const existingEvent = await events.findUnique({ where: { id: existingEventId } });
+    if (existingEvent) {
+      const updateData = await buildAffiliateEventData(candidate, source, options.state ?? existingEvent.state ?? 'UNPUBLISHED');
+      delete (updateData as any).createdAt;
+      const event = await events.update({
+        where: { id: existingEventId },
+        data: updateData,
+      });
+      await syncSourceDivisions(event);
+      return event;
+    }
+  }
+
+  const existingBySource = await events.findFirst({
+    where: {
+      sourceType: 'AFFILIATE_IMPORT',
+      sourceId: candidate.id,
+    },
+  });
+  if (existingBySource) {
+    const updateData = await buildAffiliateEventData(candidate, source, options.state ?? existingBySource.state ?? 'UNPUBLISHED');
+    delete (updateData as any).createdAt;
+    const event = await events.update({
+      where: { id: existingBySource.id },
+      data: updateData,
+    });
+    await syncSourceDivisions(event);
+    return event;
+  }
+
+  const createData = await buildAffiliateEventData(candidate, source, options.state ?? 'UNPUBLISHED');
+  const event = await events.create({
+    data: {
+      id: createId(),
+      ...createData,
+    },
+  });
+  await syncSourceDivisions(event);
+  return event;
 };
 
 const resolveActiveMapping = async (
@@ -200,6 +832,9 @@ export const runAffiliateSourceScrape = async (
   }
 
   const { row: mappingRow, mapping } = await resolveActiveMapping(source);
+  if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM') {
+    await assertSourceOrganization(source);
+  }
   const run = await runs.create({
     data: {
       id: createId(),
@@ -219,9 +854,27 @@ export const runAffiliateSourceScrape = async (
       waitMs: mapping.waitMs,
     });
     const extractedCandidates = extractAffiliateCandidatesFromPage(page, mapping);
+    const now = new Date();
+    const rejectedCandidates: Array<{ title: string; reasons: string[] }> = [];
+    const importableCandidates = extractedCandidates.filter((candidate) => {
+      const reasons = candidateImportRejectionReasons(candidate, now);
+      if (reasons.length) {
+        rejectedCandidates.push({ title: candidate.title, reasons });
+        return false;
+      }
+      return true;
+    });
+    const rejectionSummary = rejectedCandidates.reduce<Record<string, number>>((summary, candidate) => {
+      candidate.reasons.forEach((reason) => {
+        summary[reason] = (summary[reason] ?? 0) + 1;
+      });
+      return summary;
+    }, {});
     const savedCandidates = [];
+    let createdCandidateCount = 0;
+    let updatedCandidateCount = 0;
 
-    for (const candidate of extractedCandidates) {
+    for (const candidate of importableCandidates) {
       const dedupeKey = buildAffiliateCandidateDedupeKey(sourceId, candidate, mapping);
       const existing = await candidates.findUnique({
         where: {
@@ -244,6 +897,10 @@ export const runAffiliateSourceScrape = async (
             where: { id: existing.id },
             data: {
               ...data,
+              publishedListingId: existing.publishedListingId ?? null,
+              publishedEventId: existing.publishedEventId ?? null,
+              publishedTeamId: existing.publishedTeamId ?? null,
+              publishedFacilityId: existing.publishedFacilityId ?? null,
               status: existing.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED',
             },
           })
@@ -253,7 +910,41 @@ export const runAffiliateSourceScrape = async (
               ...data,
             },
           });
-      savedCandidates.push(saved);
+      if (candidate.listingKind === 'EVENT') {
+        const event = await upsertAffiliateEventForCandidate(saved, source, {
+          state: saved.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED',
+        });
+        const savedWithEvent = await candidates.update({
+          where: { id: saved.id },
+          data: { publishedEventId: event.id },
+        });
+        savedCandidates.push(savedWithEvent);
+      } else if (candidate.listingKind === 'TEAM') {
+        const team = await upsertAffiliateTeamForCandidate(saved, source, {
+          visibility: saved.status === 'PUBLISHED' ? 'PUBLIC' : 'ADMIN_ONLY',
+        });
+        const savedWithTeam = await candidates.update({
+          where: { id: saved.id },
+          data: { publishedTeamId: team.id },
+        });
+        savedCandidates.push(savedWithTeam);
+      } else if (candidate.listingKind === 'RENTAL' && nullableString(source.organizationId)) {
+        const facility = await upsertAffiliateFacilityForCandidate(saved, source, {
+          status: saved.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
+        });
+        const savedWithFacility = await candidates.update({
+          where: { id: saved.id },
+          data: { publishedFacilityId: facility.id },
+        });
+        savedCandidates.push(savedWithFacility);
+      } else {
+        savedCandidates.push(saved);
+      }
+      if (existing) {
+        updatedCandidateCount += 1;
+      } else {
+        createdCandidateCount += 1;
+      }
     }
 
     const finishedRun = await runs.update({
@@ -265,6 +956,13 @@ export const runAffiliateSourceScrape = async (
         httpStatus: page.statusCode,
         itemCount: extractedCandidates.length,
         candidateCount: savedCandidates.length,
+        logs: {
+          createdCandidateCount,
+          updatedCandidateCount,
+          rejectedCount: rejectedCandidates.length,
+          rejectionSummary,
+          rejectedCandidates: rejectedCandidates.slice(0, 25),
+        },
       },
     });
     await sources.update({
@@ -312,6 +1010,86 @@ export const getAffiliateCandidate = async (candidateId: string) => {
   return candidates.findUnique({ where: { id: candidateId } });
 };
 
+export const deleteAffiliateCandidate = async (candidateId: string) => {
+  const { candidates } = affiliatePrisma();
+  const candidate = await candidates.findUnique({ where: { id: candidateId } });
+  if (!candidate) {
+    throw new Error('Affiliate import candidate not found.');
+  }
+  await candidates.delete({ where: { id: candidateId } });
+  return candidate;
+};
+
+export const reclassifyAffiliateCandidate = async (
+  candidateId: string,
+  listingKind: unknown,
+) => {
+  const nextKind = normalizeListingKind(listingKind);
+  const { candidates, sources } = affiliatePrisma();
+  const candidate = await candidates.findUnique({ where: { id: candidateId } });
+  if (!candidate) {
+    throw new Error('Affiliate import candidate not found.');
+  }
+  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+  if (!source) {
+    throw new Error('Affiliate scrape source not found.');
+  }
+
+  const nextCandidate = {
+    ...candidate,
+    listingKind: nextKind,
+  };
+
+  if (nextKind === 'EVENT') {
+    const event = await upsertAffiliateEventForCandidate(nextCandidate, source, {
+      state: candidate.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED',
+    });
+    const updatedCandidate = await candidates.update({
+      where: { id: candidateId },
+      data: {
+        listingKind: nextKind,
+        publishedEventId: event.id,
+        publishedTeamId: null,
+        publishedFacilityId: null,
+        publishedListingId: null,
+      },
+    });
+    return { candidate: updatedCandidate, target: event };
+  }
+
+  if (nextKind === 'TEAM') {
+    const team = await upsertAffiliateTeamForCandidate(nextCandidate, source, {
+      visibility: candidate.status === 'PUBLISHED' ? 'PUBLIC' : 'ADMIN_ONLY',
+    });
+    const updatedCandidate = await candidates.update({
+      where: { id: candidateId },
+      data: {
+        listingKind: nextKind,
+        publishedEventId: null,
+        publishedTeamId: team.id,
+        publishedFacilityId: null,
+        publishedListingId: null,
+      },
+    });
+    return { candidate: updatedCandidate, target: team };
+  }
+
+  const facility = await upsertAffiliateFacilityForCandidate(nextCandidate, source, {
+    status: candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
+  });
+  const updatedCandidate = await candidates.update({
+    where: { id: candidateId },
+    data: {
+      listingKind: nextKind,
+      publishedEventId: null,
+      publishedTeamId: null,
+      publishedFacilityId: facility.id,
+      publishedListingId: null,
+    },
+  });
+  return { candidate: updatedCandidate, target: facility };
+};
+
 const listingDataFromCandidate = (candidate: any, publishedByUserId?: string | null) => ({
   sourceId: candidate.sourceId,
   candidateId: candidate.id,
@@ -346,10 +1124,55 @@ export const publishAffiliateCandidate = async (
   candidateId: string,
   params: { publishedByUserId?: string | null } = {},
 ) => {
-  const { candidates, listings } = affiliatePrisma();
+  const { candidates, listings, sources } = affiliatePrisma();
   const candidate = await candidates.findUnique({ where: { id: candidateId } });
   if (!candidate) {
     throw new Error('Affiliate import candidate not found.');
+  }
+
+  if (normalizeSourceType(candidate.listingKind) === 'EVENT') {
+    const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+    if (!source) {
+      throw new Error('Affiliate scrape source not found.');
+    }
+    const event = await upsertAffiliateEventForCandidate(candidate, source, { state: 'PUBLISHED' });
+    await candidates.update({
+      where: { id: candidateId },
+      data: {
+        status: 'PUBLISHED',
+        publishedEventId: event.id,
+      },
+    });
+    return event;
+  }
+
+  if (normalizeSourceType(candidate.listingKind) === 'TEAM') {
+    const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+    if (!source) {
+      throw new Error('Affiliate scrape source not found.');
+    }
+    const team = await upsertAffiliateTeamForCandidate(candidate, source, { visibility: 'PUBLIC' });
+    await candidates.update({
+      where: { id: candidateId },
+      data: {
+        status: 'PUBLISHED',
+        publishedTeamId: team.id,
+      },
+    });
+    return team;
+  }
+
+  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+  if (normalizeSourceType(candidate.listingKind) === 'RENTAL' && nullableString(source?.organizationId)) {
+    const facility = await upsertAffiliateFacilityForCandidate(candidate, source, { status: 'ACTIVE' });
+    await candidates.update({
+      where: { id: candidateId },
+      data: {
+        status: 'PUBLISHED',
+        publishedFacilityId: facility.id,
+      },
+    });
+    return facility;
   }
 
   if (candidate.publishedListingId) {

@@ -21,7 +21,6 @@ type BasicInformationSectionProps = {
     collapsed: boolean;
     control: Control<EventFormValues>;
     errors: FieldErrors<EventFormValues>;
-    eventType: Event['eventType'];
     selectedImageUrl: string;
     allowImageEdit: boolean;
     sportsLoading: boolean;
@@ -41,7 +40,6 @@ export const BasicInformationSection = ({
     collapsed,
     control,
     errors,
-    eventType,
     selectedImageUrl,
     allowImageEdit,
     sportsLoading,
@@ -203,30 +201,6 @@ export const BasicInformationSection = ({
                     />
                 )}
             />
-            {eventType === 'AFFILIATE' ? (
-                <Controller
-                    name="affiliateUrl"
-                    control={control}
-                    render={({ field, fieldState }) => (
-                        <TextInput
-                            label="Affiliate Link"
-                            withAsterisk
-                            disabled={isImmutableField('affiliateUrl')}
-                            placeholder="https://example.com/event"
-                            className="mt-4"
-                            value={field.value ?? ''}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            ref={field.ref}
-                            error={fieldState.error?.message as string | undefined}
-                            onChange={(event) => {
-                                if (isImmutableField('affiliateUrl')) return;
-                                setValue('affiliateUrl', event.currentTarget.value, { shouldDirty: true, shouldValidate: true });
-                            }}
-                        />
-                    )}
-                />
-            ) : null}
         </Collapse>
     </Paper>
 );

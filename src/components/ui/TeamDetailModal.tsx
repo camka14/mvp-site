@@ -222,6 +222,7 @@ export default function TeamDetailModal({
     const [draftRegistrationPriceDollars, setDraftRegistrationPriceDollars] = useState(
         ((currentTeam.registrationPriceCents ?? 0) / 100),
     );
+    const [draftAffiliateUrl, setDraftAffiliateUrl] = useState(currentTeam.affiliateUrl ?? '');
     const [draftRegistrationQuestions, setDraftRegistrationQuestions] = useState<RegistrationQuestionDraft[]>(EMPTY_REGISTRATION_QUESTIONS);
     const [registrationQuestionsCollapsed, setRegistrationQuestionsCollapsed] = useState(true);
     const [questionsLoading, setQuestionsLoading] = useState(false);
@@ -259,6 +260,7 @@ export default function TeamDetailModal({
     const canChargeForTeamRegistration = canChargeRegistration ?? Boolean(user?.hasStripeAccount || (currentTeam.registrationPriceCents ?? 0) > 0);
     const registrationPriceCents = Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0));
     const effectiveJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
+    const currentAffiliateUrl = typeof currentTeam.affiliateUrl === 'string' ? currentTeam.affiliateUrl.trim() : '';
     const draftRegistrationEnabled = draftJoinPolicy === 'OPEN_REGISTRATION' || draftJoinPolicy === 'REQUEST_TO_JOIN';
     const draftRequestOnly = draftJoinPolicy === 'REQUEST_TO_JOIN';
     const assistantCoachIds = useMemo(() => (
@@ -654,8 +656,10 @@ export default function TeamDetailModal({
         setDraftTeamSize(currentTeam.teamSize || 0);
         setDraftJoinPolicy(currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'));
         setDraftRegistrationPriceDollars((Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0)) / 100));
+        setDraftAffiliateUrl(currentTeam.affiliateUrl ?? '');
     }, [
         currentTeam.$id,
+        currentTeam.affiliateUrl,
         currentTeam.division,
         currentTeam.divisionTypeId,
         currentTeam.joinPolicy,
@@ -881,9 +885,11 @@ export default function TeamDetailModal({
         });
         const nextTeamSize = Number(draftTeamSize) || 0;
         const nextCaptainId = draftCaptainId.trim();
-        const nextRegistrationPriceCents = draftJoinPolicy === 'REQUEST_TO_JOIN'
+        const nextAffiliateUrl = draftAffiliateUrl.trim();
+        const nextJoinPolicy = nextAffiliateUrl ? 'OPEN_REGISTRATION' : draftJoinPolicy;
+        const nextRegistrationPriceCents = nextJoinPolicy === 'REQUEST_TO_JOIN'
             ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
-            : draftJoinPolicy === 'OPEN_REGISTRATION' && canChargeForTeamRegistration
+            : nextJoinPolicy === 'OPEN_REGISTRATION' && canChargeForTeamRegistration && !nextAffiliateUrl
             ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
             : 0;
 
@@ -933,9 +939,10 @@ export default function TeamDetailModal({
             divisionTypeId: nextDivisionTypeId,
             teamSize: nextTeamSize,
             captainId: nextCaptainId,
-            joinPolicy: draftJoinPolicy,
-            openRegistration: draftJoinPolicy === 'OPEN_REGISTRATION',
+            joinPolicy: nextJoinPolicy,
+            openRegistration: nextJoinPolicy === 'OPEN_REGISTRATION',
             registrationPriceCents: nextRegistrationPriceCents,
+            affiliateUrl: nextAffiliateUrl || null,
             requiredTemplateIds: currentTeam.organizationId ? draftRequiredTemplateIds : [],
             playerRegistrations: buildPlayerRegistrationPayload(nextCaptainId),
         });
@@ -1564,11 +1571,13 @@ export default function TeamDetailModal({
                     <NumberInput
                         label="Registration cost"
                         description={
-                            draftRequestOnly
-                                ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
-                                : canChargeForTeamRegistration
-                                ? 'Leave at $0 for free registration.'
-                                : 'Connect Stripe to charge for registration. Free registration is still available.'
+                            draftAffiliateUrl.trim()
+                                ? 'Payments and registration happen on the linked site.'
+                                : draftRequestOnly
+                                    ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
+                                    : canChargeForTeamRegistration
+                                        ? 'Leave at $0 for free registration.'
+                                        : 'Connect Stripe to charge for registration. Free registration is still available.'
                         }
                         min={0}
                         decimalScale={2}
@@ -1579,7 +1588,20 @@ export default function TeamDetailModal({
                             const numeric = typeof value === 'number' ? value : Number(value);
                             setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
                         }}
-                        disabled={!draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
+                        disabled={Boolean(draftAffiliateUrl.trim()) || !draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
+                    />
+                    <TextInput
+                        label="Affiliate registration link"
+                        description="When present, search results send players to this external registration page."
+                        value={draftAffiliateUrl}
+                        onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            setDraftAffiliateUrl(value);
+                            if (value.trim()) {
+                                setDraftJoinPolicy('OPEN_REGISTRATION');
+                            }
+                        }}
+                        placeholder="https://example.com/team-registration"
                     />
                 </SimpleGrid>
 
@@ -2159,7 +2181,27 @@ export default function TeamDetailModal({
                         </div>
                     )}
 
-                    {showSelfServiceRegistrationActions && (
+                    {showSelfServiceRegistrationActions && currentAffiliateUrl && (
+                        <div className={rosterSectionClass('team-detail-roster-main', '')}>
+                            <Paper withBorder radius="md" p="md" mb={isPageMode ? 0 : 'md'}>
+                                <Group justify="space-between" align="center">
+                                    <div>
+                                        <Title order={5}>Team registration</Title>
+                                        <Text size="sm" c="dimmed">
+                                            Registration happens on the linked site.
+                                        </Text>
+                                    </div>
+                                    <Button
+                                        onClick={() => window.open(currentAffiliateUrl, '_blank', 'noopener,noreferrer')}
+                                    >
+                                        Register
+                                    </Button>
+                                </Group>
+                            </Paper>
+                        </div>
+                    )}
+
+                    {showSelfServiceRegistrationActions && !currentAffiliateUrl && (
                         <div className={rosterSectionClass('team-detail-roster-main', '')}>
                             <TeamRegistrationFlow
                                 team={currentTeam}

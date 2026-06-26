@@ -1269,6 +1269,21 @@ class EventService {
       affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
         ? row.affiliateUrl
         : null,
+      sourceUrl: typeof row.sourceUrl === 'string' && row.sourceUrl.trim().length > 0
+        ? row.sourceUrl
+        : null,
+      organizerName: typeof row.organizerName === 'string' && row.organizerName.trim().length > 0
+        ? row.organizerName
+        : null,
+      scheduleText: typeof row.scheduleText === 'string' && row.scheduleText.trim().length > 0
+        ? row.scheduleText
+        : null,
+      priceText: typeof row.priceText === 'string' && row.priceText.trim().length > 0
+        ? row.priceText
+        : null,
+      statusText: typeof row.statusText === 'string' && row.statusText.trim().length > 0
+        ? row.statusText
+        : null,
       tags: Array.isArray(row.tags)
         ? row.tags
             .map((tag: any) => ({

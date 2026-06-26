@@ -33,7 +33,7 @@ export class ScrapingDogClient implements ScrapePageClient {
 
     return {
       url: params.url,
-      finalUrl: response.url || params.url,
+      finalUrl: params.url,
       statusCode: response.status,
       body,
       fetchedAt: new Date().toISOString(),

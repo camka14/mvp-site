@@ -29,6 +29,7 @@ type DivisionEditorCoreControlsProps = {
     maxPriceCents: number;
     maxMediumTextLength: number;
     divisionMaxParticipantsWarning?: string | null;
+    hideCapacityAndPrice?: boolean;
     genderOptions: ComponentProps<typeof MantineSelect>['data'];
     skillDivisionTypeOptions: ComponentProps<typeof MantineSelect>['data'];
     ageDivisionTypeOptions: ComponentProps<typeof MantineSelect>['data'];
@@ -59,6 +60,7 @@ export const DivisionEditorCoreControls = ({
     maxPriceCents,
     maxMediumTextLength,
     divisionMaxParticipantsWarning,
+    hideCapacityAndPrice = false,
     genderOptions,
     skillDivisionTypeOptions,
     ageDivisionTypeOptions,
@@ -118,7 +120,7 @@ export const DivisionEditorCoreControls = ({
             disabled={divisionsImmutable || !divisionEditorReady}
             onChange={(event) => onNameChange(event.currentTarget.value)}
         />
-        <AnimatedLayoutSection in={!singleDivision} className="md:col-span-3">
+        <AnimatedLayoutSection in={!hideCapacityAndPrice && !singleDivision} className="md:col-span-3">
             <NumberInput
                 label={teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
                 min={0}
@@ -142,7 +144,7 @@ export const DivisionEditorCoreControls = ({
             ) : null}
         </AnimatedLayoutSection>
         <AnimatedLayoutSection
-            in={!singleDivision && !allowPaymentPlans}
+            in={!hideCapacityAndPrice && !singleDivision && !allowPaymentPlans}
             className="md:col-span-3 md:col-start-1"
         >
             <div>

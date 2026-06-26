@@ -6115,7 +6115,8 @@ export const FacilitiesScalarFieldEnum = {
   timeZone: 'timeZone',
   status: 'status',
   isDefault: 'isDefault',
-  sortOrder: 'sortOrder'
+  sortOrder: 'sortOrder',
+  affiliateUrl: 'affiliateUrl'
 } as const
 
 export type FacilitiesScalarFieldEnum = (typeof FacilitiesScalarFieldEnum)[keyof typeof FacilitiesScalarFieldEnum]
@@ -6676,7 +6677,8 @@ export const TeamsScalarFieldEnum = {
   pending: 'pending',
   teamSize: 'teamSize',
   profileImageId: 'profileImageId',
-  sport: 'sport'
+  sport: 'sport',
+  affiliateUrl: 'affiliateUrl'
 } as const
 
 export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
@@ -6700,7 +6702,11 @@ export const CanonicalTeamsScalarFieldEnum = {
   joinPolicy: 'joinPolicy',
   registrationPriceCents: 'registrationPriceCents',
   requiredTemplateIds: 'requiredTemplateIds',
-  visibility: 'visibility'
+  visibility: 'visibility',
+  affiliateUrl: 'affiliateUrl',
+  sourceType: 'sourceType',
+  sourceId: 'sourceId',
+  sourceUrl: 'sourceUrl'
 } as const
 
 export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
@@ -7032,6 +7038,7 @@ export const AffiliateScrapeSourcesScalarFieldEnum = {
   updatedAt: 'updatedAt',
   name: 'name',
   sourceKey: 'sourceKey',
+  organizationId: 'organizationId',
   baseUrl: 'baseUrl',
   listUrl: 'listUrl',
   targetKind: 'targetKind',
@@ -7118,7 +7125,10 @@ export const AffiliateImportCandidatesScalarFieldEnum = {
   description: 'description',
   rawPayload: 'rawPayload',
   warnings: 'warnings',
-  publishedListingId: 'publishedListingId'
+  publishedListingId: 'publishedListingId',
+  publishedEventId: 'publishedEventId',
+  publishedTeamId: 'publishedTeamId',
+  publishedFacilityId: 'publishedFacilityId'
 } as const
 
 export type AffiliateImportCandidatesScalarFieldEnum = (typeof AffiliateImportCandidatesScalarFieldEnum)[keyof typeof AffiliateImportCandidatesScalarFieldEnum]
@@ -7404,6 +7414,13 @@ export const EventsScalarFieldEnum = {
   timeZone: 'timeZone',
   description: 'description',
   affiliateUrl: 'affiliateUrl',
+  sourceType: 'sourceType',
+  sourceId: 'sourceId',
+  sourceUrl: 'sourceUrl',
+  organizerName: 'organizerName',
+  scheduleText: 'scheduleText',
+  priceText: 'priceText',
+  statusText: 'statusText',
   winnerSetCount: 'winnerSetCount',
   loserSetCount: 'loserSetCount',
   doubleElimination: 'doubleElimination',

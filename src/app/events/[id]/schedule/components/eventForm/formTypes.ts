@@ -24,6 +24,7 @@ export type EventFormState = {
     $id: string;
     name: string;
     description: string;
+    isAffiliateEvent: boolean;
     affiliateUrl: string;
     tags: EventTag[];
     location: string;

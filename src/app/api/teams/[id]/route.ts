@@ -76,6 +76,7 @@ const teamPatchSchema = z.object({
   joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
+  affiliateUrl: z.string().nullable().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
   parentTeamId: z.string().nullable().optional(),
   playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
@@ -102,6 +103,7 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'joinPolicy',
   'openRegistration',
   'registrationPriceCents',
+  'affiliateUrl',
   'requiredTemplateIds',
   'playerIds',
   'captainId',
@@ -218,6 +220,7 @@ type TeamState = {
   joinPolicy: TeamJoinPolicy;
   openRegistration: boolean;
   registrationPriceCents: number;
+  affiliateUrl: string | null;
   requiredTemplateIds: string[];
 };
 
@@ -281,6 +284,15 @@ const buildTeamState = (
             : inferTeamJoinPolicyFromOpenRegistration(false)
       )
       : existingJoinPolicy;
+  const affiliateUrl = hasOwn(payload, 'affiliateUrl')
+    ? normalizeText(payload.affiliateUrl)
+    : normalizeText(existing.affiliateUrl);
+  const effectiveJoinPolicy = affiliateUrl ? TEAM_JOIN_POLICY_OPEN_REGISTRATION : joinPolicy;
+  const registrationPriceCents = affiliateUrl
+    ? 0
+    : hasOwn(payload, 'registrationPriceCents')
+      ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
+      : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0)));
 
   return {
     name: payload.name ?? resolvedExistingName,
@@ -295,11 +307,10 @@ const buildTeamState = (
     pending,
     teamSize: normalizeNumber(payload.teamSize, normalizeNumber(existing.teamSize, playerIds.length)),
     profileImageId: nextProfileImage,
-    joinPolicy,
-    openRegistration: joinPolicy === TEAM_JOIN_POLICY_OPEN_REGISTRATION,
-    registrationPriceCents: hasOwn(payload, 'registrationPriceCents')
-      ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
-      : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))),
+    joinPolicy: effectiveJoinPolicy,
+    openRegistration: effectiveJoinPolicy === TEAM_JOIN_POLICY_OPEN_REGISTRATION,
+    registrationPriceCents,
+    affiliateUrl,
     requiredTemplateIds: hasOwn(payload, 'requiredTemplateIds')
       ? normalizeTemplateIds(payload.requiredTemplateIds)
       : normalizeTemplateIds(existing.requiredTemplateIds),
@@ -341,6 +352,9 @@ const hasVersionedProfileChanges = (
         break;
       case 'registrationPriceCents':
         if (Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))) !== next.registrationPriceCents) return true;
+        break;
+      case 'affiliateUrl':
+        if ((normalizeText(existing.affiliateUrl) ?? null) !== next.affiliateUrl) return true;
         break;
       case 'requiredTemplateIds': {
         const previous = [...normalizeTemplateIds(existing.requiredTemplateIds)].sort();
@@ -601,6 +615,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           joinPolicy: nextState.joinPolicy,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
+          affiliateUrl: nextState.affiliateUrl,
           requiredTemplateIds: nextState.requiredTemplateIds,
           updatedAt: now,
         },
@@ -746,6 +761,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           joinPolicy: nextState.joinPolicy,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
+          affiliateUrl: nextState.affiliateUrl,
           updatedAt: now,
         };
 
