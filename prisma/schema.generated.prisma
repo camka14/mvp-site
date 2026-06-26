@@ -776,54 +776,12 @@ model AffiliateImportCandidates {
   description              String?
   rawPayload               Json?
   warnings                 String[]  @default([])
-  publishedListingId       String?
 
   @@unique([sourceId, dedupeKey])
   @@index([runId])
   @@index([mappingId])
   @@index([listingKind, status])
   @@index([status])
-}
-
-model AffiliateListings {
-  id                       String    @id
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  sourceId                 String
-  candidateId              String?
-  listingKind              String
-  status                   String    @default("PUBLISHED")
-  title                    String
-  organizerName            String?
-  sportName                String?
-  formatLabel              String?
-  city                     String?
-  venueName                String?
-  address                  String?
-  startsAt                 DateTime?
-  endsAt                   DateTime?
-  timeZone                 String?
-  scheduleText             String?
-  skillLevel               String?
-  ageGroup                 String?
-  divisionText             String?
-  participantOptionsText   String?
-  priceText                String?
-  statusText               String?
-  registrationDeadlineText String?
-  officialActionUrl        String
-  sourceUrl                String
-  description              String?
-  rawPayload               Json?
-  metadata                 Json?
-  publishedAt              DateTime  @default(now())
-  publishedByUserId        String?
-  archivedAt               DateTime?
-
-  @@index([sourceId, status])
-  @@index([candidateId])
-  @@index([listingKind, status])
-  @@index([startsAt])
 }
 
 model EventTags {

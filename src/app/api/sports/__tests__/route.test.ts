@@ -102,6 +102,12 @@ describe('GET /api/sports', () => {
     const baseball = Array.isArray(createPayload?.data)
       ? createPayload.data.find((row: any) => row.id === 'Baseball')
       : null;
+    const softball = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Softball')
+      : null;
+    const ultimate = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Ultimate Frisbee')
+      : null;
     const beachSoccer = Array.isArray(createPayload?.data)
       ? createPayload.data.find((row: any) => row.id === 'Beach Soccer')
       : null;
@@ -148,6 +154,23 @@ describe('GET /api/sports', () => {
         autoCreatePointIncidentType: 'RUN',
       }),
     );
+    expect(softball?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        scoringModel: 'INNINGS',
+        segmentCount: 7,
+        segmentLabel: 'Inning',
+        autoCreatePointIncidentType: 'RUN',
+      }),
+    );
+    expect(ultimate?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        scoringModel: 'POINTS_ONLY',
+        segmentCount: 1,
+        segmentLabel: 'Game',
+        autoCreatePointIncidentType: 'GOAL',
+        supportedIncidentTypes: expect.arrayContaining(['GOAL', 'STALL_VIOLATION', 'FOUL', 'MISCONDUCT']),
+      }),
+    );
     expect(beachSoccer?.matchRulesTemplate).toEqual(
       expect.objectContaining({
         scoringModel: 'PERIODS',
@@ -185,6 +208,13 @@ describe('GET /api/sports', () => {
     expect(baseball?.officialPositionTemplates).toEqual([
       { name: 'Plate Umpire', count: 1 },
       { name: 'Base Umpire', count: 2 },
+    ]);
+    expect(softball?.officialPositionTemplates).toEqual([
+      { name: 'Plate Umpire', count: 1 },
+      { name: 'Base Umpire', count: 2 },
+    ]);
+    expect(ultimate?.officialPositionTemplates).toEqual([
+      { name: 'Observer', count: 1 },
     ]);
     expect(payload.sports.map((sport: any) => sport.name)).toEqual(
       expect.arrayContaining(['Indoor Soccer', 'Indoor Volleyball']),

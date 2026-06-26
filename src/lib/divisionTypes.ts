@@ -74,6 +74,7 @@ const DEFAULT_SPORT_AGE_CUTOFF: SportAgeCutoffRule = {
 // - USA Pickleball age policy (Dec 31)
 // - USTA leagues (age as of Dec 31)
 // - AAU basketball age chart (Aug 31)
+// - USA Ultimate youth division age guidance (Jun 1 seasonal cutoff)
 const SPORT_AGE_CUTOFFS: SportCutoffCatalog[] = [
   {
     sportKey: 'soccer',
@@ -128,6 +129,17 @@ const SPORT_AGE_CUTOFFS: SportCutoffCatalog[] = [
       yearOffset: -1,
       label: 'December 31 (previous year)',
       source: 'Little League Softball age determination date.',
+    },
+  },
+  {
+    sportKey: 'ultimate',
+    aliases: ['ultimate', 'ultimate frisbee', 'disc'],
+    rule: {
+      month: 6,
+      day: 1,
+      yearOffset: 0,
+      label: 'June 1',
+      source: 'USA Ultimate youth competition age-eligibility guidance.',
     },
   },
   {
@@ -199,6 +211,7 @@ const GENERIC_DIVISION_TYPES: DivisionTypeSeed[] = [
 // - Little League Baseball (Tee Ball through Senior League)
 // - USA Pickleball sanctioned formats (age+skill brackets)
 // - USTA NTRP league levels
+// - USA Ultimate youth, college, club, and masters division patterns
 const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
   {
     sportKey: 'soccer',
@@ -339,6 +352,28 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
       { id: 'a', name: 'A', ratingType: 'SKILL' },
       { id: 'aa', name: 'AA', ratingType: 'SKILL' },
       { id: 'b', name: 'B', ratingType: 'SKILL' },
+      { id: 'open', name: 'Open', ratingType: 'SKILL' },
+    ],
+  },
+  {
+    sportKey: 'ultimate',
+    aliases: ['ultimate', 'ultimate frisbee', 'disc'],
+    options: [
+      { id: 'u14', name: 'U14', ratingType: 'AGE' },
+      { id: 'u17', name: 'U17', ratingType: 'AGE' },
+      { id: 'u20', name: 'U20', ratingType: 'AGE' },
+      { id: '18plus', name: '18+', ratingType: 'AGE' },
+      { id: '25plus', name: '25+', ratingType: 'AGE' },
+      { id: '30plus', name: '30+', ratingType: 'AGE' },
+      { id: '33plus', name: '33+', ratingType: 'AGE' },
+      { id: '35plus', name: '35+', ratingType: 'AGE' },
+      { id: '40plus', name: '40+', ratingType: 'AGE' },
+      { id: '45plus', name: '45+', ratingType: 'AGE' },
+      { id: '50plus', name: '50+', ratingType: 'AGE' },
+      { id: '55plus', name: '55+', ratingType: 'AGE' },
+      { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+      { id: 'club', name: 'Club', ratingType: 'SKILL' },
+      { id: 'masters', name: 'Masters', ratingType: 'SKILL' },
       { id: 'open', name: 'Open', ratingType: 'SKILL' },
     ],
   },

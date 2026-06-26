@@ -1,6 +1,7 @@
 import {
   cleanDivisionDisplayName,
   getDivisionTypeOptionsForSport,
+  getSportAgeCutoffRule,
   inferDivisionDetails,
 } from '@/lib/divisionTypes';
 
@@ -38,6 +39,23 @@ describe('divisionTypes age alignment', () => {
     expect(volleyballAgeNames).not.toContain('12U');
     expect(hockeyAgeNames).toContain('U8');
     expect(hockeyAgeNames).not.toContain('8U');
+  });
+
+  it('uses ultimate frisbee division and cutoff defaults', () => {
+    const options = getDivisionTypeOptionsForSport('Ultimate Frisbee');
+    const ageNames = options
+      .filter((option) => option.ratingType === 'AGE')
+      .map((option) => option.name);
+    const skillNames = options
+      .filter((option) => option.ratingType === 'SKILL')
+      .map((option) => option.name);
+
+    expect(ageNames).toEqual(expect.arrayContaining(['U14', 'U17', 'U20', '33+', '55+']));
+    expect(skillNames).toEqual(expect.arrayContaining(['Recreational', 'Club', 'Masters', 'Open']));
+    expect(getSportAgeCutoffRule('Ultimate Frisbee')).toEqual(expect.objectContaining({
+      sportKey: 'ultimate',
+      label: 'June 1',
+    }));
   });
 
   it('humanizes legacy trailing-U ids with U-prefix format', () => {

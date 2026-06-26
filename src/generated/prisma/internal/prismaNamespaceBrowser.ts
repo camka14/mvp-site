@@ -99,7 +99,6 @@ export const ModelName = {
   AffiliateScrapeMappings: 'AffiliateScrapeMappings',
   AffiliateScrapeRuns: 'AffiliateScrapeRuns',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
-  AffiliateListings: 'AffiliateListings',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
   RefundRequests: 'RefundRequests',
@@ -1202,52 +1201,12 @@ export const AffiliateImportCandidatesScalarFieldEnum = {
   description: 'description',
   rawPayload: 'rawPayload',
   warnings: 'warnings',
-  publishedListingId: 'publishedListingId',
   publishedEventId: 'publishedEventId',
   publishedTeamId: 'publishedTeamId',
   publishedFacilityId: 'publishedFacilityId'
 } as const
 
 export type AffiliateImportCandidatesScalarFieldEnum = (typeof AffiliateImportCandidatesScalarFieldEnum)[keyof typeof AffiliateImportCandidatesScalarFieldEnum]
-
-
-export const AffiliateListingsScalarFieldEnum = {
-  id: 'id',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  sourceId: 'sourceId',
-  candidateId: 'candidateId',
-  listingKind: 'listingKind',
-  status: 'status',
-  title: 'title',
-  organizerName: 'organizerName',
-  sportName: 'sportName',
-  formatLabel: 'formatLabel',
-  city: 'city',
-  venueName: 'venueName',
-  address: 'address',
-  startsAt: 'startsAt',
-  endsAt: 'endsAt',
-  timeZone: 'timeZone',
-  scheduleText: 'scheduleText',
-  skillLevel: 'skillLevel',
-  ageGroup: 'ageGroup',
-  divisionText: 'divisionText',
-  participantOptionsText: 'participantOptionsText',
-  priceText: 'priceText',
-  statusText: 'statusText',
-  registrationDeadlineText: 'registrationDeadlineText',
-  officialActionUrl: 'officialActionUrl',
-  sourceUrl: 'sourceUrl',
-  description: 'description',
-  rawPayload: 'rawPayload',
-  metadata: 'metadata',
-  publishedAt: 'publishedAt',
-  publishedByUserId: 'publishedByUserId',
-  archivedAt: 'archivedAt'
-} as const
-
-export type AffiliateListingsScalarFieldEnum = (typeof AffiliateListingsScalarFieldEnum)[keyof typeof AffiliateListingsScalarFieldEnum]
 
 
 export const EventTagsScalarFieldEnum = {

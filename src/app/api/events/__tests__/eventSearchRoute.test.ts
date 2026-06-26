@@ -202,4 +202,64 @@ describe('POST /api/events/search', () => {
     const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
     expect(searchWhere.eventType).toEqual({ in: ['LEAGUE'] });
   });
+
+  it('returns pagination metadata without enriching rows past the requested page', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      eventRow('event_1'),
+      eventRow('event_2'),
+      eventRow('event_3'),
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 2,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 3,
+      skip: 0,
+    }));
+    expect(withEventAttendeeCountsMock).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'event_1' }),
+      expect.objectContaining({ id: 'event_2' }),
+    ]);
+    expect(json.events.map((event: any) => event.$id)).toEqual(['event_1', 'event_2']);
+    expect(json.pagination).toEqual({ hasMore: true, nextOffset: 2 });
+
+    jest.clearAllMocks();
+    prismaMock.organizations.findMany.mockResolvedValue([]);
+    prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.timeSlots.findMany.mockResolvedValue([]);
+    prismaMock.events.findMany.mockResolvedValue([
+      eventRow('event_1'),
+      eventRow('event_2'),
+    ]);
+
+    const endResponse = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 2,
+        offset: 2,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const endJson = await endResponse.json();
+
+    expect(endResponse.status).toBe(200);
+    expect(endJson.events).toEqual([]);
+    expect(endJson.pagination).toEqual({ hasMore: false, nextOffset: 2 });
+  });
 });

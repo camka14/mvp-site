@@ -137,6 +137,8 @@ function DiscoverPageContent() {
   const hasLoadedEventsRef = useRef(false);
   const latestFirstPageRequestRef = useRef(0);
   const isFirstPageRequestInFlightRef = useRef(false);
+  const isLoadMoreRequestInFlightRef = useRef(false);
+  const visibleEventIdsRef = useRef<Set<string>>(new Set());
 
   const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
@@ -185,6 +187,10 @@ function DiscoverPageContent() {
     }
     return new Set(hiddenEventIdsKey.split('\0'));
   }, [hiddenEventIdsKey]);
+
+  useEffect(() => {
+    visibleEventIdsRef.current = new Set(events.map((event) => event.$id));
+  }, [events]);
 
   /**
    * Rentals tab state
@@ -388,14 +394,14 @@ function DiscoverPageContent() {
     setEventsError(null);
     try {
       const filters = buildEventFilters(queryOverride);
-      const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
+      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, 0);
       if (requestId !== latestFirstPageRequestRef.current) {
         return;
       }
 
-      setEvents(page.filter((event) => !hiddenEventIds.has(event.$id)));
-      setEventOffset(page.length);
-      setHasMoreEvents(page.length === EVENTS_LIMIT);
+      setEvents(page.events.filter((event) => !hiddenEventIds.has(event.$id)));
+      setEventOffset(page.pagination.nextOffset);
+      setHasMoreEvents(page.pagination.hasMore);
       hasLoadedEventsRef.current = true;
     } catch (error) {
       if (requestId !== latestFirstPageRequestRef.current) {
@@ -412,14 +418,23 @@ function DiscoverPageContent() {
   }, [buildEventFilters, hiddenEventIds]);
 
   const loadMoreEvents = useCallback(async () => {
-    if (isLoadingInitial || isFirstPageRequestInFlightRef.current || isLoadingMore || !hasMoreEvents) return;
+    if (
+      isLoadingInitial ||
+      isFirstPageRequestInFlightRef.current ||
+      isLoadingMore ||
+      isLoadMoreRequestInFlightRef.current ||
+      !hasMoreEvents
+    ) return;
+    isLoadMoreRequestInFlightRef.current = true;
     setIsLoadingMore(true);
     setEventsError(null);
     try {
       const filters = buildEventFilters();
-      const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, eventOffset);
+      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, eventOffset);
+      const visiblePageEvents = page.events.filter((event) => !hiddenEventIds.has(event.$id));
+      const addedVisibleEventCount = visiblePageEvents.filter((event) => !visibleEventIdsRef.current.has(event.$id)).length;
       setEvents((prev) => {
-        const merged = [...prev, ...page.filter((event) => !hiddenEventIds.has(event.$id))];
+        const merged = [...prev, ...visiblePageEvents];
         const seen = new Set<string>();
         return merged.filter((event) => {
           if (seen.has(event.$id)) return false;
@@ -427,12 +442,14 @@ function DiscoverPageContent() {
           return true;
         });
       });
-      setEventOffset((prev) => prev + page.length);
-      setHasMoreEvents(page.length === EVENTS_LIMIT);
+      setEventOffset(page.pagination.nextOffset);
+      setHasMoreEvents(page.pagination.hasMore && addedVisibleEventCount > 0);
     } catch (error) {
       console.error('Failed to load more events:', error);
       setEventsError('Failed to load more events. Please try again.');
+      setHasMoreEvents(false);
     } finally {
+      isLoadMoreRequestInFlightRef.current = false;
       setIsLoadingMore(false);
     }
   }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, hiddenEventIds]);
@@ -574,9 +591,9 @@ function DiscoverPageContent() {
 
   const handleSelectRentalOrganization = useCallback(
     (organization: Organization, listings: RentalListing[] = []) => {
-      const affiliateListings = listings.filter((listing) => listing.kind === 'affiliateFacility');
-      if (affiliateListings.length === listings.length && affiliateListings.length === 1) {
-        const affiliateUrl = affiliateListings[0]?.facility?.affiliateUrl?.trim();
+      const affiliateFacilityListings = listings.filter((listing) => listing.kind === 'affiliateFacility');
+      if (affiliateFacilityListings.length === listings.length && affiliateFacilityListings.length === 1) {
+        const affiliateUrl = affiliateFacilityListings[0]?.facility?.affiliateUrl?.trim();
         if (affiliateUrl) {
           window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
           return;

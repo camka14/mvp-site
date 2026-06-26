@@ -307,15 +307,6 @@ export default function EventCard({
             {isAffiliateEvent && event.organizerName ? `Source: ${event.organizerName}` : `Hosted by ${hostLabel}`}
           </div>
 
-          {isAffiliateEvent && event.statusText && (
-            <div className="flex items-center">
-              <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
-              </svg>
-              {event.statusText}
-            </div>
-          )}
-
           {canAssignHost && (
             <div className="pt-2">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">

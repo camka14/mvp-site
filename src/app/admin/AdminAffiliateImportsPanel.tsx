@@ -11,6 +11,7 @@ import {
   Modal,
   Paper,
   ScrollArea,
+  SegmentedControl,
   Select,
   Stack,
   Table,
@@ -46,7 +47,6 @@ type AdminAffiliateCandidateRow = {
   officialActionUrl: string;
   sourceUrl: string;
   publishedEventId?: string | null;
-  publishedListingId?: string | null;
   publishedTeamId?: string | null;
   publishedFacilityId?: string | null;
   warnings?: string[];
@@ -104,8 +104,8 @@ const hasPublishedTarget = (candidate: AdminAffiliateCandidateRow): boolean => {
   const kind = String(candidate.listingKind ?? '').toUpperCase();
   if (kind === 'EVENT') return Boolean(candidate.publishedEventId);
   if (kind === 'TEAM') return Boolean(candidate.publishedTeamId);
-  if (kind === 'RENTAL') return Boolean(candidate.publishedFacilityId || candidate.publishedListingId);
-  return Boolean(candidate.publishedListingId);
+  if (kind === 'RENTAL') return Boolean(candidate.publishedFacilityId);
+  return false;
 };
 
 const publishedTargetLabel = (candidate: AdminAffiliateCandidateRow): string | null => {
@@ -113,7 +113,6 @@ const publishedTargetLabel = (candidate: AdminAffiliateCandidateRow): string | n
   if (kind === 'EVENT' && candidate.publishedEventId) return 'Event created';
   if (kind === 'TEAM' && candidate.publishedTeamId) return 'Team created';
   if (kind === 'RENTAL' && candidate.publishedFacilityId) return 'Facility created';
-  if (candidate.publishedListingId) return 'Listing created';
   return null;
 };
 
@@ -125,6 +124,11 @@ const listingKindOptions = [
   { value: 'EVENT', label: 'Event' },
   { value: 'TEAM', label: 'Team' },
   { value: 'RENTAL', label: 'Rental' },
+];
+
+const candidateStatusViewOptions = [
+  { value: 'DISCOVERED', label: 'Discovered' },
+  { value: 'PUBLISHED', label: 'Published' },
 ];
 
 const normalizeListingKindValue = (value: unknown): string => {
@@ -158,6 +162,7 @@ const scrapeResultMessage = (result: LastScrapeResult): string => {
 export default function AdminAffiliateImportsPanel({ active, refreshKey }: AdminAffiliateImportsPanelProps) {
   const [sources, setSources] = useState<AdminAffiliateSourceRow[]>([]);
   const [candidates, setCandidates] = useState<AdminAffiliateCandidateRow[]>([]);
+  const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'PUBLISHED'>('DISCOVERED');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scrapingSourceId, setScrapingSourceId] = useState<string | null>(null);
@@ -201,7 +206,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
     try {
       const [sourcesRes, candidatesRes] = await Promise.all([
         fetch('/api/admin/affiliate-sources', { credentials: 'include' }),
-        fetch('/api/admin/affiliate-discoveries', { credentials: 'include' }),
+        fetch(`/api/admin/affiliate-discoveries?status=${encodeURIComponent(candidateStatusView)}`, { credentials: 'include' }),
       ]);
       const [sourcesPayload, candidatesPayload] = await Promise.all([
         sourcesRes.json().catch(() => ({})),
@@ -220,7 +225,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [candidateStatusView]);
 
   const scrapeSource = useCallback(async (sourceId: string) => {
     setScrapingSourceId(sourceId);
@@ -521,6 +526,17 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
         <Group justify="space-between" mb="sm">
           <Title order={3}>Discovered Events, Teams And Rentals</Title>
           <Group gap="xs">
+            <SegmentedControl
+              size="xs"
+              data={candidateStatusViewOptions}
+              value={candidateStatusView}
+              onChange={(value) => {
+                const nextView = value === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
+                setCandidateStatusView(nextView);
+                setSelectedCandidateIds([]);
+                setSelectedCandidate(null);
+              }}
+            />
             <Text size="sm" c="dimmed">
               {selectedCandidateIds.length ? `${selectedCandidateIds.length} selected • ` : ''}
               {candidates.length} candidates
@@ -660,7 +676,11 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
             {!candidates.length && !loading ? (
               <Table.Tr>
                 <Table.Td colSpan={8}>
-                  <Text size="sm" c="dimmed">No discovered affiliate candidates yet.</Text>
+                  <Text size="sm" c="dimmed">
+                    {candidateStatusView === 'PUBLISHED'
+                      ? 'No published affiliate candidates yet.'
+                      : 'No discovered affiliate candidates yet.'}
+                  </Text>
                 </Table.Td>
               </Table.Tr>
             ) : null}

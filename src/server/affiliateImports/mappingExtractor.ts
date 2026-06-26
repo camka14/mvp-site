@@ -21,6 +21,9 @@ const nullableFieldNames = [
   'skillLevel',
   'ageGroup',
   'divisionText',
+  'maxParticipantsText',
+  'currentParticipantsText',
+  'spotsRemainingText',
   'participantOptionsText',
   'priceText',
   'statusText',
@@ -65,6 +68,27 @@ const toAbsoluteUrl = (value: string, baseUrl: string): string => {
   } catch {
     return value;
   }
+};
+
+const escapeRegExp = (value: string): string => (
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+);
+
+const findTelerikPostBackUrl = (dom: Document, elementId: string, baseUrl: string): string | null => {
+  const scripts = Array.from(dom.querySelectorAll('script'));
+  const idPattern = escapeRegExp(elementId);
+  const uniqueIdPattern = escapeRegExp(elementId.replace(/_/g, '$'));
+  const buttonScript = scripts
+    .map((script) => script.textContent ?? '')
+    .find((text) => text.includes(elementId) || text.includes(uniqueIdPattern));
+  if (!buttonScript) return null;
+
+  const postBackPattern = new RegExp(
+    `WebForm_DoPostBackWithOptions\\(new WebForm_PostBackOptions\\('(?:${idPattern}|${uniqueIdPattern})'[^)]*?,\\s*'([^']+)'`,
+  );
+  const match = buttonScript.match(postBackPattern);
+  const rawUrl = match?.[1]?.replace(/\\\\u0026/g, '&');
+  return rawUrl ? toAbsoluteUrl(rawUrl, baseUrl) : null;
 };
 
 const parseDateTimeValue = (value: string, referenceDate: Date): string => {
@@ -172,6 +196,23 @@ const applyValueMap = (value: string, mapping: FieldMapping): string => {
   return caseInsensitiveMatch?.[1] ?? mapping.fallbackValue ?? '';
 };
 
+const cloneElementWithoutExcludedSelectors = (element: Element, mapping: FieldMapping): Element => {
+  if (!mapping.excludeSelectors?.length) return element;
+  const clone = element.cloneNode(true) as Element;
+  mapping.excludeSelectors.forEach((selector) => {
+    clone.querySelectorAll(selector).forEach((excludedElement) => excludedElement.remove());
+  });
+  return clone;
+};
+
+const textContentWithBlockSpacing = (element: Element): string => {
+  const clone = element.cloneNode(true) as Element;
+  clone.querySelectorAll('br, p, li, div, ul, ol, section, article, tr').forEach((blockElement) => {
+    blockElement.appendChild(clone.ownerDocument.createTextNode(' '));
+  });
+  return clone.textContent ?? '';
+};
+
 const extractFieldValue = (
   root: Element,
   mapping: FieldMapping,
@@ -187,12 +228,19 @@ const extractFieldValue = (
       return null;
     }
 
+    const contentElement = cloneElementWithoutExcludedSelectors(element, mapping);
     if (mapping.mode === 'attribute') {
       value = mapping.attribute ? element.getAttribute(mapping.attribute) ?? '' : '';
     } else if (mapping.mode === 'html') {
-      value = element.innerHTML;
+      value = contentElement.innerHTML;
     } else {
-      value = element.textContent ?? '';
+      value = textContentWithBlockSpacing(contentElement);
+    }
+
+    if (mapping.transform === 'telerikPostBackUrl') {
+      const ownerDocument = element.ownerDocument;
+      const elementId = element.getAttribute('id') ?? '';
+      value = elementId ? findTelerikPostBackUrl(ownerDocument, elementId, baseUrl) ?? '' : '';
     }
   }
 

@@ -189,4 +189,171 @@ describe('extractAffiliateCandidatesFromPage', () => {
       endsAt: '2026-08-23T07:00:00.000Z',
     });
   });
+
+  it('extracts Portland Basketball blurbs without roster spot counts', () => {
+    const pickToPlayPage: ScrapedPage = {
+      ...page,
+      url: 'https://www.portlandbasketball.com/picktoplay.php',
+      finalUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      fetchedAt: '2026-06-26T20:00:00.000Z',
+      body: `
+        <div class="game-card">
+          <div class="game-court-header">
+            <h3 class="game-title">12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court. Columbia Christian School- 205 NE 92nd Avenue Portland</h3>
+          </div>
+          <div class="game-top-row">
+            <div class="game-img-box"><img src="/images/zero_ref_logo.jpg" alt="Logo"></div>
+            <div class="game-info-box">
+              <div class="price-row">$13.00</div>
+              <div class="blurb-text">This is a 54 minute game with a gym supervisor and 14 players divided onto 2 teams.</div>
+            </div>
+          </div>
+          <div class="interaction-area">
+            <div class="roster-spots-row">
+              <button type="button" class="roster-toggle-btn">View Signed Up Players (1)</button>
+              <div class="spot-count spot-green">13 spots available</div>
+            </div>
+            <div class="signup-area">
+              <form method="post" class="signup-form">
+                <input type="hidden" name="date[1]" value="2026-06-27 12:00:04">
+                <input type="hidden" name="location[1]" value="Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court. Columbia Christian School- 205 NE 92nd Avenue Portland">
+                <input type="submit" value="Sign Up" class="submit-btn">
+              </form>
+            </div>
+          </div>
+        </div>
+      `,
+    };
+    const pickToPlayMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      itemSelector: '.game-card:has(form.signup-form)',
+      fields: {
+        title: { selector: '.game-title', mode: 'text', required: true },
+        officialActionUrl: {
+          selector: ':scope',
+          mode: 'literal',
+          value: 'https://www.portlandbasketball.com/picktoplay.php',
+          required: true,
+          transform: 'absoluteUrl',
+        },
+        startsAt: {
+          selector: 'input[name^="date"]',
+          mode: 'attribute',
+          attribute: 'value',
+          required: true,
+          transform: 'dateTime',
+        },
+        priceText: { selector: '.price-row', mode: 'text' },
+        statusText: { selector: '.spot-count', mode: 'text' },
+        description: { selector: '.blurb-text', mode: 'text' },
+        maxParticipantsText: { selector: '.blurb-text', mode: 'text' },
+        currentParticipantsText: {
+          selector: '.roster-toggle-btn',
+          mode: 'text',
+          regex: '\\((\\d+)\\)',
+        },
+        spotsRemainingText: { selector: '.spot-count', mode: 'text' },
+      },
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(pickToPlayPage, pickToPlayMapping);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      title: '12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court. Columbia Christian School- 205 NE 92nd Avenue Portland',
+      priceText: '$13.00',
+      statusText: '13 spots available',
+      description: 'This is a 54 minute game with a gym supervisor and 14 players divided onto 2 teams.',
+      maxParticipantsText: 'This is a 54 minute game with a gym supervisor and 14 players divided onto 2 teams.',
+      currentParticipantsText: '1',
+      spotsRemainingText: '13 spots available',
+    });
+    expect(candidates[0].description).not.toContain('12:00 PM');
+    expect(candidates[0].description).not.toContain('$13.00');
+    expect(candidates[0].description).not.toContain('13 spots available');
+    expect(candidates[0].participantOptionsText).toBeUndefined();
+  });
+
+  it('extracts Telerik postback URLs from TeamSideline-style More Info buttons', () => {
+    const teamSidelinePage: ScrapedPage = {
+      ...page,
+      finalUrl: 'https://www.portlandsoftball.com/current-programs',
+      body: `
+        <div class="row">
+          <div class="col-lg-4"><img class="programImage" src="/program.png" /></div>
+          <div class="col-lg-8">
+            <p><strong><span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_ProgramNameLabel">4thefallen- Veterans benefit Tournament - Summer 2026</span></strong></p>
+            <p>Men's & Women's - July 11th. Coed - July 12th. $400 entry fee.</p>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_EnrollButton" class="RadButton currentProgramEnrollButton">
+              <input value="Register & Pay Here" />
+            </span>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_MoreButton" class="RadButton">
+              <input value="More Info" />
+            </span>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_RegistrationStatusLabel">Open</span>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_RegularRegistrationLabel">Tuesday, March 3, 2026 - Friday, July 3, 2026</span>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_ProgramDurationLabel">Saturday, July 11, 2026 - Sunday, July 12, 2026</span>
+            <span id="ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_RegularRegistrationCostLabel">$400.00</span>
+          </div>
+        </div>
+        <script>
+          $create(Telerik.Web.UI.RadButton, {"_postBackReference":"WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions('ctl00$ContentPlaceHolder1$CurrentProgramsControl$ProgramsListView$ctrl2$EnrollButton', '', false, '', '/user/place-order/cart.aspx?d=abc', false, true))","uniqueID":"ctl00$ContentPlaceHolder1$CurrentProgramsControl$ProgramsListView$ctrl2$EnrollButton"}, null, null, $get("ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_EnrollButton"));
+          $create(Telerik.Web.UI.RadButton, {"_postBackReference":"WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions('ctl00$ContentPlaceHolder1$CurrentProgramsControl$ProgramsListView$ctrl2$MoreButton', '', false, '', '/sites/portlandsoftball/program/110568/4thefallen-Veterans-benefit-Tournament', false, true))","uniqueID":"ctl00$ContentPlaceHolder1$CurrentProgramsControl$ProgramsListView$ctrl2$MoreButton"}, null, null, $get("ctl00_ContentPlaceHolder1_CurrentProgramsControl_ProgramsListView_ctrl2_MoreButton"));
+        </script>
+      `,
+    };
+    const teamSidelineMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://www.portlandsoftball.com/current-programs',
+      itemSelector: '.row:has(img.programImage)',
+      fields: {
+        title: { selector: '[id$="_ProgramNameLabel"]', required: true },
+        officialActionUrl: {
+          selector: '[id$="_MoreButton"]',
+          mode: 'attribute',
+          attribute: 'id',
+          transform: 'telerikPostBackUrl',
+          required: true,
+        },
+        startsAt: { selector: '[id$="_ProgramDurationLabel"]', transform: 'dateTime' },
+        endsAt: { selector: '[id$="_ProgramDurationLabel"]', transform: 'dateRangeEnd' },
+        priceText: { selector: '[id$="_RegularRegistrationCostLabel"]' },
+        statusText: { selector: '[id$="_RegistrationStatusLabel"]' },
+        registrationDeadlineText: { selector: '[id$="_RegularRegistrationLabel"]', regex: '[-–]\\s*(.+)$' },
+        description: {
+          selector: '.col-lg-8',
+          excludeSelectors: [
+            '[id$="_ProgramNameLabel"]',
+            '.RadButton',
+            '[id$="_RegistrationInfoPanel"]',
+            '[id*="Registration"]',
+            '[id$="_ProgramDurationLabel"]',
+            '[id$="_RegularRegistrationCostLabel"]',
+          ],
+        },
+        sourceUrl: {
+          selector: '[id$="_MoreButton"]',
+          mode: 'attribute',
+          attribute: 'id',
+          transform: 'telerikPostBackUrl',
+        },
+      },
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(teamSidelinePage, teamSidelineMapping);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      title: '4thefallen- Veterans benefit Tournament - Summer 2026',
+      officialActionUrl: 'https://www.portlandsoftball.com/sites/portlandsoftball/program/110568/4thefallen-Veterans-benefit-Tournament',
+      sourceUrl: 'https://www.portlandsoftball.com/sites/portlandsoftball/program/110568/4thefallen-Veterans-benefit-Tournament',
+      priceText: '$400.00',
+      statusText: 'Open',
+      registrationDeadlineText: 'Friday, July 3, 2026',
+      description: "Men's & Women's - July 11th. Coed - July 12th. $400 entry fee.",
+      startsAt: '2026-07-11T07:00:00.000Z',
+      endsAt: '2026-07-12T07:00:00.000Z',
+    });
+  });
 });

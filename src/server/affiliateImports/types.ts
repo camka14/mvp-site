@@ -22,8 +22,9 @@ export const fieldMappingSchema = z.object({
   valueMap: z.record(z.string(), z.string()).optional(),
   fallbackValue: z.string().optional(),
   regex: z.string().min(1).optional(),
+  excludeSelectors: z.array(z.string().min(1)).optional(),
   required: z.boolean().optional(),
-  transform: z.enum(['trim', 'priceText', 'dateTime', 'dateRangeEnd', 'absoluteUrl']).optional(),
+  transform: z.enum(['trim', 'priceText', 'dateTime', 'dateRangeEnd', 'absoluteUrl', 'telerikPostBackUrl']).optional(),
 });
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
@@ -51,6 +52,9 @@ export const affiliateScrapeMappingSchema = z.object({
     skillLevel: fieldMappingSchema.optional(),
     ageGroup: fieldMappingSchema.optional(),
     divisionText: fieldMappingSchema.optional(),
+    maxParticipantsText: fieldMappingSchema.optional(),
+    currentParticipantsText: fieldMappingSchema.optional(),
+    spotsRemainingText: fieldMappingSchema.optional(),
     participantOptionsText: fieldMappingSchema.optional(),
     priceText: fieldMappingSchema.optional(),
     statusText: fieldMappingSchema.optional(),
@@ -85,6 +89,9 @@ export type AffiliateCandidateInput = {
   skillLevel?: string | null;
   ageGroup?: string | null;
   divisionText?: string | null;
+  maxParticipantsText?: string | null;
+  currentParticipantsText?: string | null;
+  spotsRemainingText?: string | null;
   participantOptionsText?: string | null;
   priceText?: string | null;
   statusText?: string | null;

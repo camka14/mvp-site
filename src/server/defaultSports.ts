@@ -138,6 +138,16 @@ const baseballIncidentDefinitions = [
   adminIncident,
 ];
 
+const ultimateIncidentDefinitions = [
+  scoringIncident('GOAL', 'Goal'),
+  disciplineIncident('STALL_VIOLATION', 'Stall violation'),
+  disciplineIncident('FOUL', 'Foul'),
+  disciplineIncident('CONTESTED_CALL', 'Contested call'),
+  disciplineIncident('MISCONDUCT', 'Misconduct'),
+  noteIncident,
+  adminIncident,
+];
+
 const tennisIncidentDefinitions = [
   scoringIncident('POINT', 'Point'),
   disciplineIncident('WARNING', 'Warning'),
@@ -326,6 +336,27 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     autoCreatePointIncidentType: 'RUN',
     timekeeping: noTimer,
   },
+  Softball: {
+    scoringModel: 'INNINGS',
+    segmentCount: 7,
+    segmentLabel: 'Inning',
+    supportsDraw: false,
+    supportsOvertime: false,
+    supportsShootout: false,
+    canUseOvertime: false,
+    canUseShootout: false,
+    officialRoles: [],
+    supportedIncidentTypes: incidentCodes(baseballIncidentDefinitions),
+    incidentTypeDefinitions: baseballIncidentDefinitions,
+    autoCreatePointIncidentType: 'RUN',
+    timekeeping: noTimer,
+  },
+  'Ultimate Frisbee': pointsOnlyRules({
+    segmentLabel: 'Game',
+    supportedIncidentTypes: incidentCodes(ultimateIncidentDefinitions),
+    incidentTypeDefinitions: ultimateIncidentDefinitions,
+    autoCreatePointIncidentType: 'GOAL',
+  }),
   Other: pointsOnlyRules({
     supportsDraw: true,
     canUseOvertime: true,
@@ -388,6 +419,13 @@ const OFFICIAL_POSITION_TEMPLATES_BY_SPORT: Record<string, SportOfficialPosition
   Baseball: [
     { name: 'Plate Umpire', count: 1 },
     { name: 'Base Umpire', count: 2 },
+  ],
+  Softball: [
+    { name: 'Plate Umpire', count: 1 },
+    { name: 'Base Umpire', count: 2 },
+  ],
+  'Ultimate Frisbee': [
+    { name: 'Observer', count: 1 },
   ],
   Other: [
     { name: 'Official', count: 1 },
@@ -543,6 +581,28 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Baseball),
     skillDivisionTypes: skillDivisionTypesForSport('Baseball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Baseball),
+    usePointsForWin: true,
+    usePointsForLoss: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+  },
+  {
+    id: 'Softball',
+    name: 'Softball',
+    officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Softball),
+    skillDivisionTypes: skillDivisionTypesForSport('Softball'),
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Softball),
+    usePointsForWin: true,
+    usePointsForLoss: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+  },
+  {
+    id: 'Ultimate Frisbee',
+    name: 'Ultimate Frisbee',
+    officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Ultimate Frisbee']),
+    skillDivisionTypes: skillDivisionTypesForSport('Ultimate Frisbee'),
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Ultimate Frisbee']),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerGoalScored: false,

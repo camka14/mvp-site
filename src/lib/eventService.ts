@@ -203,10 +203,18 @@ const buildPaginatedEventsRequestKey = (
 ): string => JSON.stringify(toStableRequestValue({ filters, limit, offset }));
 
 const PAGINATED_EVENTS_RECENT_CACHE_MS = 2_000;
-const pendingPaginatedEventsRequests = new Map<string, Promise<Event[]>>();
+type PaginatedEventsPage = {
+  events: Event[];
+  pagination: {
+    hasMore: boolean;
+    nextOffset: number;
+  };
+};
+
+const pendingPaginatedEventsRequests = new Map<string, Promise<PaginatedEventsPage>>();
 const recentPaginatedEventsResponses = new Map<
   string,
-  { events: Event[]; expiresAt: number }
+  { page: PaginatedEventsPage; expiresAt: number }
 >();
 
 class EventService {
@@ -3183,27 +3191,26 @@ class EventService {
     return this.mapRowToEvent(payload);
   }
 
-  // Pagination methods remain largely the same but updated to use new types
-  async getEventsPaginated(
+  async getEventsPage(
     filters: EventFilters,
     limit: number = 18,
     offset: number = 0,
-  ): Promise<Event[]> {
+  ): Promise<PaginatedEventsPage> {
     try {
       const body = { filters, limit, offset };
       const requestKey = buildPaginatedEventsRequestKey(filters, limit, offset);
       const cachedResponse = recentPaginatedEventsResponses.get(requestKey);
       if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
-        return cachedResponse.events;
+        return cachedResponse.page;
       }
       if (cachedResponse) {
         recentPaginatedEventsResponses.delete(requestKey);
       }
 
-      let eventsPromise = pendingPaginatedEventsRequests.get(requestKey);
-      if (!eventsPromise) {
-        eventsPromise = (async () => {
-          const response = await apiRequest<{ events?: any[] }>(
+      let pagePromise = pendingPaginatedEventsRequests.get(requestKey);
+      if (!pagePromise) {
+        pagePromise = (async () => {
+          const response = await apiRequest<{ events?: any[]; pagination?: { hasMore?: boolean; nextOffset?: number } }>(
             "/api/events/search",
             {
               method: "POST",
@@ -3214,30 +3221,67 @@ class EventService {
           const rows = response.events ?? [];
           const events: Event[] = [];
           for (const row of rows) {
-            await this.ensureSportRelationship(row);
+            try {
+              await this.ensureSportRelationship(row);
+            } catch (error) {
+              const missingSport = error instanceof Error
+                && (
+                  error.message.includes("missing sport relationship data")
+                  || error.message.startsWith("Sport with id ")
+                );
+              if (!missingSport) {
+                throw error;
+              }
+              row.sport = createSport({
+                $id: typeof row.sportId === "string" && row.sportId.trim().length > 0
+                  ? row.sportId
+                  : "other",
+                name: "Other",
+              });
+            }
             await this.ensureLeagueScoringConfig(row);
             events.push(this.mapRowToEvent(row));
           }
-          return events;
+          return {
+            events,
+            pagination: {
+              hasMore: typeof response.pagination?.hasMore === 'boolean'
+                ? response.pagination.hasMore
+                : rows.length === limit,
+              nextOffset: typeof response.pagination?.nextOffset === 'number'
+                ? response.pagination.nextOffset
+                : offset + rows.length,
+            },
+          };
         })()
-          .then((events) => {
+          .then((page) => {
             recentPaginatedEventsResponses.set(requestKey, {
-              events,
+              page,
               expiresAt: Date.now() + PAGINATED_EVENTS_RECENT_CACHE_MS,
             });
-            return events;
+            return page;
           })
           .finally(() => {
             pendingPaginatedEventsRequests.delete(requestKey);
           });
-        pendingPaginatedEventsRequests.set(requestKey, eventsPromise);
+        pendingPaginatedEventsRequests.set(requestKey, pagePromise);
       }
 
-      return await eventsPromise;
+      return await pagePromise;
     } catch (error) {
       console.error("Failed to fetch paginated events:", error);
       throw new Error("Failed to load events");
     }
+  }
+
+  // Pagination methods remain largely the same but updated to use new types
+  async getEventsPaginated(
+    filters: EventFilters,
+    limit: number = 18,
+    offset: number = 0,
+  ): Promise<Event[]> {
+    const page = await this.getEventsPage(filters, limit, offset);
+    return page.events;
   }
 
   async reportEvent(

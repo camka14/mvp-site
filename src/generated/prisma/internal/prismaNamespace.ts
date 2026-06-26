@@ -432,7 +432,6 @@ export const ModelName = {
   AffiliateScrapeMappings: 'AffiliateScrapeMappings',
   AffiliateScrapeRuns: 'AffiliateScrapeRuns',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
-  AffiliateListings: 'AffiliateListings',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
   RefundRequests: 'RefundRequests',
@@ -474,7 +473,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "affiliateListings" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -4030,80 +4029,6 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    AffiliateListings: {
-      payload: Prisma.$AffiliateListingsPayload<ExtArgs>
-      fields: Prisma.AffiliateListingsFieldRefs
-      operations: {
-        findUnique: {
-          args: Prisma.AffiliateListingsFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload> | null
-        }
-        findUniqueOrThrow: {
-          args: Prisma.AffiliateListingsFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        findFirst: {
-          args: Prisma.AffiliateListingsFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload> | null
-        }
-        findFirstOrThrow: {
-          args: Prisma.AffiliateListingsFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        findMany: {
-          args: Prisma.AffiliateListingsFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>[]
-        }
-        create: {
-          args: Prisma.AffiliateListingsCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        createMany: {
-          args: Prisma.AffiliateListingsCreateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        createManyAndReturn: {
-          args: Prisma.AffiliateListingsCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>[]
-        }
-        delete: {
-          args: Prisma.AffiliateListingsDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        update: {
-          args: Prisma.AffiliateListingsUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        deleteMany: {
-          args: Prisma.AffiliateListingsDeleteManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateMany: {
-          args: Prisma.AffiliateListingsUpdateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateManyAndReturn: {
-          args: Prisma.AffiliateListingsUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>[]
-        }
-        upsert: {
-          args: Prisma.AffiliateListingsUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateListingsPayload>
-        }
-        aggregate: {
-          args: Prisma.AffiliateListingsAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateListings>
-        }
-        groupBy: {
-          args: Prisma.AffiliateListingsGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AffiliateListingsGroupByOutputType>[]
-        }
-        count: {
-          args: Prisma.AffiliateListingsCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AffiliateListingsCountAggregateOutputType> | number
-        }
-      }
-    }
     EventTags: {
       payload: Prisma.$EventTagsPayload<ExtArgs>
       fields: Prisma.EventTagsFieldRefs
@@ -7125,52 +7050,12 @@ export const AffiliateImportCandidatesScalarFieldEnum = {
   description: 'description',
   rawPayload: 'rawPayload',
   warnings: 'warnings',
-  publishedListingId: 'publishedListingId',
   publishedEventId: 'publishedEventId',
   publishedTeamId: 'publishedTeamId',
   publishedFacilityId: 'publishedFacilityId'
 } as const
 
 export type AffiliateImportCandidatesScalarFieldEnum = (typeof AffiliateImportCandidatesScalarFieldEnum)[keyof typeof AffiliateImportCandidatesScalarFieldEnum]
-
-
-export const AffiliateListingsScalarFieldEnum = {
-  id: 'id',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  sourceId: 'sourceId',
-  candidateId: 'candidateId',
-  listingKind: 'listingKind',
-  status: 'status',
-  title: 'title',
-  organizerName: 'organizerName',
-  sportName: 'sportName',
-  formatLabel: 'formatLabel',
-  city: 'city',
-  venueName: 'venueName',
-  address: 'address',
-  startsAt: 'startsAt',
-  endsAt: 'endsAt',
-  timeZone: 'timeZone',
-  scheduleText: 'scheduleText',
-  skillLevel: 'skillLevel',
-  ageGroup: 'ageGroup',
-  divisionText: 'divisionText',
-  participantOptionsText: 'participantOptionsText',
-  priceText: 'priceText',
-  statusText: 'statusText',
-  registrationDeadlineText: 'registrationDeadlineText',
-  officialActionUrl: 'officialActionUrl',
-  sourceUrl: 'sourceUrl',
-  description: 'description',
-  rawPayload: 'rawPayload',
-  metadata: 'metadata',
-  publishedAt: 'publishedAt',
-  publishedByUserId: 'publishedByUserId',
-  archivedAt: 'archivedAt'
-} as const
-
-export type AffiliateListingsScalarFieldEnum = (typeof AffiliateListingsScalarFieldEnum)[keyof typeof AffiliateListingsScalarFieldEnum]
 
 
 export const EventTagsScalarFieldEnum = {
@@ -8929,7 +8814,6 @@ export type GlobalOmitConfig = {
   affiliateScrapeMappings?: Prisma.AffiliateScrapeMappingsOmit
   affiliateScrapeRuns?: Prisma.AffiliateScrapeRunsOmit
   affiliateImportCandidates?: Prisma.AffiliateImportCandidatesOmit
-  affiliateListings?: Prisma.AffiliateListingsOmit
   eventTags?: Prisma.EventTagsOmit
   eventTagAssignments?: Prisma.EventTagAssignmentsOmit
   refundRequests?: Prisma.RefundRequestsOmit

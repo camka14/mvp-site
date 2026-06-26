@@ -24,6 +24,7 @@ The first visible outcome is an admin-only import surface where an admin chooses
 - [x] (2026-06-26 01:05Z) Saved the Troutdale Indoor Sports Rentals DB mapping and ran it through ScrapingDog, producing 2 persisted affiliate rental candidates from the rendered Natty Hatty booking page.
 - [x] (2026-06-26 01:16Z) Saved page-level Troutdale Indoor Sports event/program mappings for adult soccer, youth soccer, and men's basketball leagues, producing 3 persisted affiliate event candidates.
 - [x] (2026-06-26 09:30Z) Replaced the temporary published `AffiliateListings` event path with real `Events` rows for affiliate event candidates.
+- [x] (2026-06-26 23:15Z) Removed the legacy `AffiliateListings` model and `publishedListingId` candidate column now that events, teams, and rental facilities publish into real target tables.
 - [x] (2026-06-26 09:30Z) Made affiliate events hostless by allowing `Events.hostId` to be null and adjusting host-specific flows to no-op or skip host controls when no host exists.
 - [x] (2026-06-26 09:30Z) Added the manual first-time website setup requirement to source records through `AffiliateScrapeSources.organizationId`; event scrapes now require a linked organization.
 - [x] (2026-06-26 09:55Z) Updated affiliate event image handling so imports leave missing event images as `null` and public event cards can fall back to the source organization's logo.
@@ -110,7 +111,7 @@ The first visible outcome is an admin-only import surface where an admin chooses
 
 Initial planning is complete. The remaining implementation should start with the data model and public UI semantics before any scraper calls are wired, because publishing scraped listings needs a durable way to distinguish BracketIQ-owned registration from affiliate link-out listings.
 
-The first implementation slice is partially complete. The database now has durable records for sources, mappings, runs, candidates, and temporary published affiliate listings. The server has a ScrapingDog client and generic HTML mapping extractor. Admin-only routes and an admin dashboard tab can run saved mappings, review discoveries, and publish candidates. The temporary `AffiliateListings` event publish path should be replaced so publishing an event candidate creates or updates a real `Events` row with a behavioral event type and `affiliateUrl` set.
+The first implementation slice is partially complete. The database now has durable records for sources, mappings, runs, and candidates. Published event candidates create or update real `Events` rows, team candidates create or update canonical teams, and rental candidates create or update affiliate facilities. The temporary `AffiliateListings` table has been removed. The server has a ScrapingDog client and generic HTML mapping extractor. Admin-only routes and an admin dashboard tab can run saved mappings, review discoveries, and publish candidates.
 
 The Portland Metro Softball Association / TeamSideline experiment was removed from the active implementation path after product direction changed. The next retained proof point should use City of Gresham, Troutdale Indoor Sports, or The Courts at Clear Creek.
 

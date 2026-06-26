@@ -282,11 +282,6 @@ export type AffiliateScrapeRuns = Prisma.AffiliateScrapeRunsModel
  */
 export type AffiliateImportCandidates = Prisma.AffiliateImportCandidatesModel
 /**
- * Model AffiliateListings
- *
- */
-export type AffiliateListings = Prisma.AffiliateListingsModel
-/**
  * Model EventTags
  *
  */

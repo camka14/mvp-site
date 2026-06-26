@@ -138,6 +138,38 @@ describe('eventService', () => {
     expect(apiRequestMock).toHaveBeenCalledTimes(2);
   });
 
+  it('returns pagination metadata for event search pages with legacy response fallback', async () => {
+    apiRequestMock.mockResolvedValueOnce({
+      events: [{ ...baseEventRow }],
+      pagination: { hasMore: true, nextOffset: 1 },
+    });
+
+    const page = await eventService.getEventsPage({
+      query: 'metadata-page',
+    }, 18, 0);
+
+    expect(page.events.map((event) => event.$id)).toEqual(['evt_1']);
+    expect(page.pagination).toEqual({ hasMore: true, nextOffset: 1 });
+
+    apiRequestMock.mockResolvedValueOnce({
+      events: [
+        { ...baseEventRow, $id: 'evt_2' },
+        { ...baseEventRow, $id: 'evt_3', sport: undefined, sportId: undefined },
+      ],
+    });
+
+    const legacyPage = await eventService.getEventsPage({
+      query: 'legacy-page',
+    }, 2, 4);
+
+    expect(legacyPage.events.map((event) => event.$id)).toEqual(['evt_2', 'evt_3']);
+    expect(legacyPage.pagination).toEqual({ hasMore: true, nextOffset: 6 });
+    expect(legacyPage.events[1]?.sport).toEqual(expect.objectContaining({
+      $id: 'other',
+      name: 'Other',
+    }));
+  });
+
   it('uses the extended timeout when scheduling an event', async () => {
     apiRequestMock.mockResolvedValue({
       preview: false,

@@ -433,7 +433,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingEventIds = uniqueStrings(matchingDivisionRows.map((row) => row.eventId));
       if (!matchingEventIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
+        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
       }
       where.AND.push({ id: { in: matchingEventIds } });
     }
@@ -460,7 +460,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingTagIds = uniqueStrings(matchingTags.map((tag) => tag.id));
       if (!matchingTagIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
+        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
       }
       const matchingAssignments = await prisma.eventTagAssignments.findMany({
         where: { tagId: { in: matchingTagIds } },
@@ -468,7 +468,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingEventIds = uniqueStrings(matchingAssignments.map((assignment) => assignment.eventId));
       if (!matchingEventIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
+        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
       }
       where.AND.push({ id: { in: matchingEventIds } });
     }
@@ -494,7 +494,7 @@ export async function POST(req: NextRequest) {
 
       const sportIds = matchingSports.map((sport) => sport.id);
       if (!sportIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
+        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
       }
       where.sportId = { in: sportIds };
     }
@@ -572,8 +572,8 @@ export async function POST(req: NextRequest) {
   const candidateTake = hasDistanceFilter
     ? undefined
     : hasQuery
-      ? Math.min(Math.max((offset + limit) * 5, 50), 500)
-      : offset + limit;
+      ? Math.min(Math.max((offset + limit + 1) * 5, 50), 500)
+      : offset + limit + 1;
   let events = await prisma.events.findMany({
     where,
     orderBy: { start: 'asc' },
@@ -606,9 +606,25 @@ export async function POST(req: NextRequest) {
       })
   }
 
-  const eventsWithAttendees = await withEventAttendeeCounts(events).catch((error) => {
+  const sortedCandidateEvents = hasQuery
+    ? events.sort((left, right) => {
+        const leftScore = eventRelevanceScore(left, normalizedQuery);
+        const rightScore = eventRelevanceScore(right, normalizedQuery);
+        if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
+        if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
+        if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
+        return (left.name ?? '').localeCompare(right.name ?? '');
+      })
+    : events.sort((left, right) => (
+        getComparableTime((left as any).start) - getComparableTime((right as any).start)
+      ));
+  const pageRows = sortedCandidateEvents.slice(offset, offset + limit + 1);
+  const hasMore = pageRows.length > limit;
+  const pageEvents = pageRows.slice(0, limit);
+
+  const eventsWithAttendees = await withEventAttendeeCounts(pageEvents).catch((error) => {
     console.error('Failed to enrich attendee counts for event search', error);
-    return events.map((event) => ({
+    return pageEvents.map((event) => ({
       ...event,
       attendees: fallbackAttendeeCount(event),
     }));
@@ -653,17 +669,11 @@ export async function POST(req: NextRequest) {
       tags: tagsByEventId.get(event.id) ?? [],
     });
   });
-  const sortedEvents = hasQuery
-    ? normalized.sort((left, right) => {
-        const leftScore = eventRelevanceScore(left, normalizedQuery);
-        const rightScore = eventRelevanceScore(right, normalizedQuery);
-        if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
-        if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
-        if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
-        return (left.name ?? '').localeCompare(right.name ?? '');
-      })
-    : normalized.sort((left, right) => (
-        getComparableTime((left as any).start) - getComparableTime((right as any).start)
-      ));
-  return NextResponse.json({ events: sortedEvents.slice(offset, offset + limit) }, { status: 200 });
+  return NextResponse.json({
+    events: normalized,
+    pagination: {
+      hasMore,
+      nextOffset: offset + normalized.length,
+    },
+  }, { status: 200 });
 }

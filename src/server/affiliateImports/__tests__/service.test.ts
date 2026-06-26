@@ -3,6 +3,7 @@
 const prismaMock = {
   affiliateImportCandidates: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -19,10 +20,6 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
-  affiliateListings: {
-    findUnique: jest.fn(),
-    create: jest.fn(),
-  },
   organizations: {
     findUnique: jest.fn(),
   },
@@ -34,15 +31,18 @@ const prismaMock = {
     findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    deleteMany: jest.fn(),
   },
   canonicalTeams: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    deleteMany: jest.fn(),
   },
   facilities: {
     upsert: jest.fn(),
+    deleteMany: jest.fn(),
   },
   divisions: {
     findMany: jest.fn(),
@@ -60,40 +60,88 @@ jest.mock('@/lib/id', () => ({
     return `generated_${idCounter}`;
   },
 }));
+jest.mock('@/server/geocoding', () => ({
+  geocodeAddressToCoordinates: jest.fn(),
+}));
 
 import {
   deleteAffiliateCandidate,
+  listAffiliateCandidates,
   publishAffiliateCandidate,
   reclassifyAffiliateCandidate,
   runAffiliateSourceScrape,
 } from '@/server/affiliateImports/service';
+import { geocodeAddressToCoordinates } from '@/server/geocoding';
+
+const geocodeAddressToCoordinatesMock = jest.mocked(geocodeAddressToCoordinates);
 
 describe('affiliate import service', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     idCounter = 0;
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.divisions.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.divisions.upsert.mockImplementation(async ({ create }) => create);
+    prismaMock.events.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.canonicalTeams.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.facilities.deleteMany.mockResolvedValue({ count: 0 });
   });
 
-  it('deletes affiliate candidates without touching published targets', async () => {
+  it('deletes affiliate candidates and their backing target rows', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
       title: 'Published affiliate event',
       publishedEventId: 'event_1',
+      publishedTeamId: 'team_1',
+      publishedFacilityId: 'facility_1',
     });
     prismaMock.affiliateImportCandidates.delete.mockResolvedValue({
       id: 'candidate_1',
       title: 'Published affiliate event',
       publishedEventId: 'event_1',
+      publishedTeamId: 'team_1',
+      publishedFacilityId: 'facility_1',
     });
 
     const deleted = await deleteAffiliateCandidate('candidate_1');
 
     expect(deleted.id).toBe('candidate_1');
+    expect(prismaMock.divisions.deleteMany).toHaveBeenCalledWith({ where: { eventId: 'event_1' } });
+    expect(prismaMock.events.deleteMany).toHaveBeenCalledWith({ where: { id: 'event_1' } });
+    expect(prismaMock.canonicalTeams.deleteMany).toHaveBeenCalledWith({ where: { id: 'team_1' } });
+    expect(prismaMock.facilities.deleteMany).toHaveBeenCalledWith({ where: { id: 'facility_1' } });
     expect(prismaMock.affiliateImportCandidates.delete).toHaveBeenCalledWith({
       where: { id: 'candidate_1' },
     });
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
-    expect(prismaMock.events.create).not.toHaveBeenCalled();
+  });
+
+  it('does not list published affiliate candidates by default', async () => {
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([]);
+
+    await listAffiliateCandidates();
+
+    expect(prismaMock.affiliateImportCandidates.findMany).toHaveBeenCalledWith({
+      where: {
+        NOT: { status: 'PUBLISHED' },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+  });
+
+  it('lists published affiliate candidates only when explicitly requested', async () => {
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([]);
+
+    await listAffiliateCandidates({ status: 'published' });
+
+    expect(prismaMock.affiliateImportCandidates.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'PUBLISHED',
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
   });
 
   it('throws when deleting a missing affiliate candidate', async () => {
@@ -148,7 +196,6 @@ describe('affiliate import service', () => {
         publishedEventId: null,
         publishedTeamId: expect.any(String),
         publishedFacilityId: null,
-        publishedListingId: null,
       }),
     });
     expect(result.candidate.listingKind).toBe('TEAM');
@@ -179,6 +226,7 @@ describe('affiliate import service', () => {
   });
 
   it('publishes event candidates as real hostless affiliate events', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue([-122.387, 45.539]);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
       sourceId: 'source_1',
@@ -222,6 +270,8 @@ describe('affiliate import service', () => {
         hostId: null,
         imageId: null,
         organizationId: 'org_troutdale',
+        address: '819 NW Corporate Dr, Troutdale, OR 97060',
+        coordinates: [-122.387, 45.539],
         affiliateUrl: 'https://www.troutdaleindoorsports.com/baksetball',
         sourceType: 'AFFILIATE_IMPORT',
         sourceId: 'candidate_1',
@@ -233,6 +283,7 @@ describe('affiliate import service', () => {
         sportId: 'sport_basketball',
       }),
     });
+    expect(geocodeAddressToCoordinatesMock).toHaveBeenCalledWith('819 NW Corporate Dr, Troutdale, OR 97060');
     expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
       where: { id: 'candidate_1' },
       data: {
@@ -246,6 +297,118 @@ describe('affiliate import service', () => {
       hostId: null,
       organizationId: 'org_troutdale',
     }));
+  });
+
+  it('uses only the scraped source blurb as the event description', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_blurb',
+      sourceId: 'source_portland_basketball',
+      listingKind: 'EVENT',
+      title: '12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court',
+      organizerName: 'Portland Basketball',
+      sportName: 'Basketball',
+      venueName: 'Columbia Christian School',
+      city: 'Portland',
+      address: '205 NE 92nd Avenue Portland',
+      startsAt: new Date('2099-06-27T19:00:00.000Z'),
+      scheduleText: '12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court',
+      priceText: '$13.00',
+      statusText: '7 spots available',
+      description: 'Regular city league basketball game with referees- male or female welcome- 50 minutes 5v5 Full Court.',
+      maxParticipantsText: 'Regular city league basketball game with referees- male or female welcome- 50 minutes 5v5 Full Court.',
+      currentParticipantsText: '0',
+      spotsRemainingText: '7 spots available',
+      officialActionUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      sourceUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_portland_basketball',
+      name: 'Portland Basketball',
+      organizationId: 'org_portland_basketball',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_portland_basketball' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_basketball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_blurb' });
+
+    await publishAffiliateCandidate('candidate_blurb', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        description: 'Regular city league basketball game with referees- male or female welcome- 50 minutes 5v5 Full Court.',
+        scheduleText: '12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court',
+        priceText: '$13.00',
+        statusText: '7 spots available',
+        maxParticipants: 7,
+      }),
+    });
+  });
+
+  it('parses adult over-age phrases without using event times as ages', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_masters',
+      sourceId: 'source_portland_basketball',
+      listingKind: 'EVENT',
+      title: '6:00 PM - MASTERS GAME- WOMEN of ANY AGE and MEN ages 40 and over',
+      organizerName: 'Portland Basketball',
+      sportName: 'Basketball',
+      venueName: 'Columbia Christian School',
+      city: 'Portland',
+      address: '205 NE 92nd Avenue, Portland, OR',
+      startsAt: new Date('2099-07-01T01:00:00.000Z'),
+      endsAt: null,
+      divisionText: 'MASTERS GAME',
+      officialActionUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      sourceUrl: 'https://www.portlandbasketball.com/picktoplay.php',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_portland_basketball',
+      name: 'Portland Basketball',
+      organizationId: 'org_portland_basketball',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_portland_basketball' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_basketball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_masters' });
+
+    await publishAffiliateCandidate('candidate_masters', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        minAge: 40,
+        maxAge: null,
+      }),
+    });
+    expect(prismaMock.events.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        minAge: 6,
+      }),
+    });
+    expect(prismaMock.divisions.upsert).toHaveBeenCalledWith({
+      where: { id: 'generated_1__division__c_skill_masters_game_age_40plus' },
+      create: expect.objectContaining({
+        id: 'generated_1__division__c_skill_masters_game_age_40plus',
+        eventId: 'generated_1',
+        organizationId: 'org_portland_basketball',
+        sportId: 'sport_basketball',
+        name: 'MASTERS GAME',
+        key: 'c_skill_masters_game_age_40plus',
+        divisionTypeId: 'skill_masters_game_age_40plus',
+        gender: 'C',
+      }),
+      update: expect.objectContaining({
+        name: 'MASTERS GAME',
+        key: 'c_skill_masters_game_age_40plus',
+        divisionTypeId: 'skill_masters_game_age_40plus',
+        gender: 'C',
+      }),
+    });
   });
 
   it('requires event sources to be linked to an organization before publishing', async () => {
@@ -404,7 +567,6 @@ describe('affiliate import service', () => {
     prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_existing',
-      publishedListingId: null,
       publishedEventId: null,
       publishedTeamId: null,
       publishedFacilityId: null,
