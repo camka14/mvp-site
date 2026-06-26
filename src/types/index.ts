@@ -741,7 +741,7 @@ export interface Field {
   rentalSlots?: TimeSlot[];
 }
 
-export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT' | 'AFFILIATE';
+export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'facility' | 'rentalSlots' | 'rentalSlotIds';
 
@@ -801,20 +801,11 @@ export type TeamPayload = Omit<Team, 'matches'> & {
   matchIds?: string[];
 };
 
-export interface EventTag {
-  id?: string;
-  $id?: string;
-  name: string;
-  slug?: string;
-}
-
 // Core Event interface with relationships
 export interface Event {
   $id: string;
   name: string;
   description: string;
-  affiliateUrl?: string | null;
-  tags?: EventTag[];
   start: string;
   end: string | null;
   timeZone?: string;

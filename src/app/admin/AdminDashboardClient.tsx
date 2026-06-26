@@ -3,7 +3,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import AdminAffiliateImportsPanel from './AdminAffiliateImportsPanel';
 import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
@@ -33,7 +32,7 @@ import {
 } from '@mantine/core';
 import { ExternalLink, Search, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'affiliateImports';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation';
 
 type PageState<T> = {
   items: T[];
@@ -163,7 +162,6 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [selectedChatLoading, setSelectedChatLoading] = useState(false);
   const [selectedChatError, setSelectedChatError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
 
   const loadEvents = useCallback(async (offset = 0, query = eventsState.query) => {
     setEventsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -711,18 +709,6 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     if (activeTab === 'fields') return fieldsState;
     if (activeTab === 'chats') return chatsState;
     if (activeTab === 'moderation') return moderationState;
-    if (activeTab === 'affiliateImports') {
-      return {
-        items: [],
-        total: 0,
-        limit: DEFAULT_LIMIT,
-        offset: 0,
-        loading: false,
-        loaded: true,
-        error: null,
-        query: '',
-      };
-    }
     return usersState;
   }, [activeTab, chatsState, eventsState, fieldsState, moderationState, organizationsState, teamsState, verificationState, usersState]);
 
@@ -741,8 +727,6 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       void loadChats(chatsState.offset, chatsState.query);
     } else if (activeTab === 'moderation') {
       void loadModeration(moderationState.offset, moderationState.query);
-    } else if (activeTab === 'affiliateImports') {
-      setAffiliateRefreshKey((previous) => previous + 1);
     } else {
       void loadUsers(usersState.offset, usersState.query);
     }
@@ -880,7 +864,6 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
                 <Tabs.Tab value="chats">Chats ({chatsState.total})</Tabs.Tab>
                 <Tabs.Tab value="moderation">Moderation ({moderationState.total})</Tabs.Tab>
-                <Tabs.Tab value="affiliateImports">Affiliate imports</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="events">
@@ -998,13 +981,6 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                     }}
                   />
                 </AdminPanelState>
-              </Tabs.Panel>
-
-              <Tabs.Panel value="affiliateImports">
-                <AdminAffiliateImportsPanel
-                  active={activeTab === 'affiliateImports'}
-                  refreshKey={affiliateRefreshKey}
-                />
               </Tabs.Panel>
 
               <Tabs.Panel value="teams">

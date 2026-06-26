@@ -77,7 +77,6 @@ import {
   resolveTimeZoneFromCoordinates,
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
-import { syncEventTags } from '@/server/eventTags';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -4635,9 +4634,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     end: normalizedEnd,
     timeZone: eventTimeZone,
     description: payload.description ?? null,
-    affiliateUrl: typeof payload.affiliateUrl === 'string' && payload.affiliateUrl.trim().length > 0
-      ? payload.affiliateUrl.trim()
-      : null,
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -4755,9 +4751,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : [];
 
   await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
-  if (Object.prototype.hasOwnProperty.call(payload, 'tags')) {
-    await syncEventTags(id, payload.tags, client);
-  }
   await syncEventParticipantRegistrationsFromCompatibilityIds(client, {
     eventId: id,
     createdBy: normalizedHostId,

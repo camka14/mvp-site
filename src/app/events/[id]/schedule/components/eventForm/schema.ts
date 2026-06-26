@@ -102,13 +102,6 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         $id: z.string(),
         name: z.string().trim().min(1, 'Event name is required'),
         description: z.string().default(''),
-        affiliateUrl: z.string().trim().default(''),
-        tags: z.array(z.object({
-            id: z.string().optional(),
-            $id: z.string().optional(),
-            name: z.string().trim().min(1),
-            slug: z.string().optional(),
-        })).default([]),
         location: z.string().trim(),
         address: z.string().trim().default(''),
         coordinates: z.tuple([z.number(), z.number()]),
@@ -120,7 +113,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             .transform((value) => value ?? ''),
         timeZone: z.string().trim().default('UTC'),
         state: z.string().default('DRAFT'),
-        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE']),
+        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']),
         parentEvent: z.string().optional().nullable(),
         sportId: z.string().trim(),
         sportConfig: z.any().nullable(),
@@ -291,8 +284,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             });
         }
 
-        const requiresDivisionSelection = !(options.allowMissingEventDivisions && values.eventType === 'EVENT')
-            && values.eventType !== 'AFFILIATE';
+        const requiresDivisionSelection = !(options.allowMissingEventDivisions && values.eventType === 'EVENT');
         if (requiresDivisionSelection && values.divisions.length === 0) {
             ctx.addIssue({
                 code: "custom",
@@ -355,20 +347,6 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 message: 'Select or create at least one resource for this event.',
                 path: ['fieldCount'],
             });
-        }
-        if (values.eventType === 'AFFILIATE') {
-            try {
-                const url = new URL(values.affiliateUrl);
-                if (!['http:', 'https:'].includes(url.protocol)) {
-                    throw new Error('Invalid protocol');
-                }
-            } catch {
-                ctx.addIssue({
-                    code: "custom",
-                    message: 'Enter a valid affiliate link.',
-                    path: ['affiliateUrl'],
-                });
-            }
         }
 
         const usesRelativePaymentPlanDueDates = values.eventType === 'WEEKLY_EVENT' && !values.parentEvent;

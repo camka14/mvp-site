@@ -378,8 +378,6 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     $id: event.$id,
     name: event.name,
     description: event.description ?? '',
-    affiliateUrl: event.affiliateUrl ?? '',
-    tags: Array.isArray(event.tags) ? event.tags : [],
     location: event.location ?? '',
     address: event.address ?? '',
     coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],

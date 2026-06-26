@@ -162,7 +162,6 @@ export interface EventFilters {
   eventTypes?: EventType[];
   sports?: string[];
   divisions?: string[];
-  tags?: string[];
 }
 
 export interface FieldBlockingResult {
@@ -1266,19 +1265,6 @@ class EventService {
       $id: row.$id,
       name: row.name,
       description: row.description,
-      affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
-        ? row.affiliateUrl
-        : null,
-      tags: Array.isArray(row.tags)
-        ? row.tags
-            .map((tag: any) => ({
-              id: String(tag?.id ?? tag?.$id ?? ''),
-              $id: String(tag?.id ?? tag?.$id ?? ''),
-              name: String(tag?.name ?? ''),
-              slug: typeof tag?.slug === 'string' ? tag.slug : undefined,
-            }))
-            .filter((tag: any) => tag.name.length > 0)
-        : [],
       start: row.start,
       end: row.end,
       timeZone: typeof row.timeZone === "string" && row.timeZone.trim().length > 0 ? row.timeZone : "UTC",

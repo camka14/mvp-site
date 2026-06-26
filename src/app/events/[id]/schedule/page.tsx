@@ -4497,7 +4497,7 @@ function EventScheduleContent() {
         return { ...base, ...(normalizedDraft as Event) };
       });
 
-      if (normalizedDraft.eventType !== 'EVENT' && normalizedDraft.eventType !== 'AFFILIATE') {
+      if (normalizedDraft.eventType !== 'EVENT') {
         await schedulePreview(normalizedDraft);
         return;
       }

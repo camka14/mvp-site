@@ -16,7 +16,6 @@ import {
 import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
-import { getEventTagsForEventIds, slugifyEventTagName } from '@/server/eventTags';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +41,6 @@ const filterSchema = z.object({
   eventTypes: z.array(z.string()).optional(),
   sports: z.array(z.string()).optional(),
   divisions: z.array(z.string()).optional(),
-  tags: z.array(z.string()).optional(),
 }).partial();
 
 const searchSchema = z.object({
@@ -410,41 +408,6 @@ export async function POST(req: NextRequest) {
       where.AND.push({ id: { in: matchingEventIds } });
     }
   }
-  if (filters.tags?.length) {
-    const tagFilters = Array.from(
-      new Set(
-        filters.tags
-          .map((tag) => String(tag).trim())
-          .filter((tag) => tag.length > 0),
-      ),
-    );
-    const tagSlugs = tagFilters.map(slugifyEventTagName);
-    if (tagSlugs.length) {
-      const matchingTags = await prisma.eventTags.findMany({
-        where: {
-          OR: [
-            { id: { in: tagFilters } },
-            { slug: { in: tagSlugs } },
-            ...tagFilters.map((tag) => ({ name: { equals: tag, mode: 'insensitive' as const } })),
-          ],
-        },
-        select: { id: true },
-      });
-      const matchingTagIds = uniqueStrings(matchingTags.map((tag) => tag.id));
-      if (!matchingTagIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
-      }
-      const matchingAssignments = await prisma.eventTagAssignments.findMany({
-        where: { tagId: { in: matchingTagIds } },
-        select: { eventId: true },
-      });
-      const matchingEventIds = uniqueStrings(matchingAssignments.map((assignment) => assignment.eventId));
-      if (!matchingEventIds.length) {
-        return NextResponse.json({ events: [] }, { status: 200 });
-      }
-      where.AND.push({ id: { in: matchingEventIds } });
-    }
-  }
   if (filters.sports?.length) {
     const normalizedSports = Array.from(
       new Set(
@@ -597,14 +560,6 @@ export async function POST(req: NextRequest) {
     return new Map<string, Array<Record<string, unknown>>>();
   });
 
-  const tagsByEventId = await getEventTagsForEventIds(
-    eventsWithParticipants.map((event) => event.id),
-    prisma,
-  ).catch((error) => {
-    console.error('Failed to enrich event tags for event search', error);
-    return new Map<string, Array<Record<string, unknown>>>();
-  });
-
   const normalized = eventsWithParticipants.map((event) => {
     const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
     return withLegacyEvent({
@@ -612,7 +567,6 @@ export async function POST(req: NextRequest) {
       officialIds: officialIdsByEventId.get(event.id) ?? [],
       divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
       divisionDetails,
-      tags: tagsByEventId.get(event.id) ?? [],
     });
   });
   return NextResponse.json({ events: normalized }, { status: 200 });

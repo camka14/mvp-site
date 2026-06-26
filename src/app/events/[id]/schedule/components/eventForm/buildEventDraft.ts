@@ -497,8 +497,6 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             hostId: normalizedHostId,
             name: (source.name ?? '').trim(),
             description: source.description,
-            affiliateUrl: source.eventType === 'AFFILIATE' ? source.affiliateUrl?.trim() || undefined : undefined,
-            tags: Array.isArray(source.tags) ? source.tags : [],
             location: source.location,
             address: source.address?.trim() || undefined,
             start: source.start,

@@ -2,7 +2,6 @@ import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import type { EventTaxHandling } from '@/lib/taxPolicy';
 import type {
     Event,
-    EventTag,
     EventOfficial,
     EventOfficialPosition,
     EventState,
@@ -24,8 +23,6 @@ export type EventFormState = {
     $id: string;
     name: string;
     description: string;
-    affiliateUrl: string;
-    tags: EventTag[];
     location: string;
     address: string;
     coordinates: [number, number];

@@ -28,7 +28,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, EventTag, Field, Organization, Team, TimeSlot } from '@/types';
+import { Event, Field, Organization, Team, TimeSlot } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
@@ -136,14 +136,10 @@ function DiscoverPageContent() {
   const latestFirstPageRequestRef = useRef(0);
   const isFirstPageRequestInFlightRef = useRef(false);
 
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']);
   const [selectedSports, setSelectedSports] = useState<string[]>(() => urlSelectedSports);
-  const [selectedEventTags, setSelectedEventTags] = useState<string[]>([]);
-  const [eventTags, setEventTags] = useState<EventTag[]>([]);
-  const [eventTagsLoading, setEventTagsLoading] = useState(false);
-  const [eventTagsError, setEventTagsError] = useState<string | null>(null);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
@@ -153,29 +149,6 @@ function DiscoverPageContent() {
 
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setEventTagsLoading(true);
-    setEventTagsError(null);
-    fetch('/api/event-tags', { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load event tags')))
-      .then((body) => {
-        const tags = Array.isArray(body?.tags) ? body.tags : [];
-        setEventTags(tags);
-      })
-      .catch((error) => {
-        if (error.name !== 'AbortError') {
-          setEventTagsError('Unable to load event tags.');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setEventTagsLoading(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, []);
   const hiddenEventIdsKey = (user?.hiddenEventIds ?? []).slice().sort().join('\0');
   const hiddenEventIds = useMemo(() => {
     if (!hiddenEventIdsKey) {
@@ -352,7 +325,6 @@ function DiscoverPageContent() {
       return {
         eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
         sports: selectedSports.length > 0 ? selectedSports : undefined,
-        tags: selectedEventTags.length > 0 ? selectedEventTags : undefined,
         userLocation: location || undefined,
         maxDistance: location && typeof maxDistance === 'number' ? maxDistance : undefined,
         dateFrom,
@@ -363,7 +335,6 @@ function DiscoverPageContent() {
     [
       selectedEventTypes,
       selectedSports,
-      selectedEventTags,
       location,
       maxDistance,
       debouncedSearch,
@@ -821,11 +792,6 @@ function DiscoverPageContent() {
               eventTypeOptions={EVENT_TYPE_OPTIONS}
               selectedSports={selectedSports}
               setSelectedSports={setSelectedSports}
-              selectedTags={selectedEventTags}
-              setSelectedTags={setSelectedEventTags}
-              eventTags={eventTags}
-              eventTagsLoading={eventTagsLoading}
-              eventTagsError={eventTagsError}
               maxDistance={maxDistance}
               setMaxDistance={setMaxDistance}
               selectedStartDate={selectedStartDate}

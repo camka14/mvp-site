@@ -77,7 +77,6 @@ enum EventsEventTypeEnum {
   EVENT
   LEAGUE
   WEEKLY_EVENT
-  AFFILIATE
 }
 
 enum EventsOfficialSchedulingModeEnum {
@@ -1425,171 +1424,6 @@ model RentalBookingItems {
   @@index([eventTimeSlotId])
 }
 
-model AffiliateScrapeSources {
-  id              String    @id
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  name            String
-  sourceKey       String    @unique
-  baseUrl         String?
-  listUrl         String
-  targetKind      String    @default("EVENT")
-  status          String    @default("ACTIVE")
-  activeMappingId String?
-  lastScrapeRunId String?
-  lastScrapedAt   DateTime?
-  notes           String?
-  metadata        Json?
-
-  @@index([status])
-  @@index([targetKind, status])
-}
-
-model AffiliateScrapeMappings {
-  id              String    @id
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  sourceId        String
-  version         Int
-  isActive        Boolean   @default(false)
-  mapping         Json
-  createdByUserId String?
-  notes           String?
-  validatedAt     DateTime?
-
-  @@unique([sourceId, version])
-  @@index([sourceId, isActive])
-}
-
-model AffiliateScrapeRuns {
-  id                String    @id
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  sourceId          String
-  mappingId         String?
-  requestedByUserId String?
-  status            String    @default("PENDING")
-  startedAt         DateTime  @default(now())
-  finishedAt        DateTime?
-  fetchedUrl        String?
-  finalUrl          String?
-  httpStatus        Int?
-  itemCount         Int       @default(0)
-  candidateCount    Int       @default(0)
-  errorMessage      String?
-  logs              Json?
-  metadata          Json?
-
-  @@index([sourceId, createdAt])
-  @@index([mappingId])
-  @@index([status])
-}
-
-model AffiliateImportCandidates {
-  id                       String    @id
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  sourceId                 String
-  runId                    String
-  mappingId                String?
-  listingKind              String
-  status                   String    @default("DISCOVERED")
-  dedupeKey                String
-  title                    String
-  organizerName            String?
-  sportName                String?
-  formatLabel              String?
-  city                     String?
-  venueName                String?
-  address                  String?
-  startsAt                 DateTime?
-  endsAt                   DateTime?
-  timeZone                 String?
-  scheduleText             String?
-  skillLevel               String?
-  ageGroup                 String?
-  divisionText             String?
-  participantOptionsText   String?
-  priceText                String?
-  statusText               String?
-  registrationDeadlineText String?
-  officialActionUrl        String
-  sourceUrl                String
-  description              String?
-  rawPayload               Json?
-  warnings                 String[]  @default([])
-  publishedListingId       String?
-
-  @@unique([sourceId, dedupeKey])
-  @@index([runId])
-  @@index([mappingId])
-  @@index([listingKind, status])
-  @@index([status])
-}
-
-model AffiliateListings {
-  id                       String    @id
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  sourceId                 String
-  candidateId              String?
-  listingKind              String
-  status                   String    @default("PUBLISHED")
-  title                    String
-  organizerName            String?
-  sportName                String?
-  formatLabel              String?
-  city                     String?
-  venueName                String?
-  address                  String?
-  startsAt                 DateTime?
-  endsAt                   DateTime?
-  timeZone                 String?
-  scheduleText             String?
-  skillLevel               String?
-  ageGroup                 String?
-  divisionText             String?
-  participantOptionsText   String?
-  priceText                String?
-  statusText               String?
-  registrationDeadlineText String?
-  officialActionUrl        String
-  sourceUrl                String
-  description              String?
-  rawPayload               Json?
-  metadata                 Json?
-  publishedAt              DateTime  @default(now())
-  publishedByUserId        String?
-  archivedAt               DateTime?
-
-  @@index([sourceId, status])
-  @@index([candidateId])
-  @@index([listingKind, status])
-  @@index([startsAt])
-}
-
-model EventTags {
-  id         String   @id
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  name       String
-  slug       String   @unique
-
-  @@index([name])
-}
-
-model EventTagAssignments {
-  id              String   @id
-  createdAt       DateTime @default(now())
-  eventId         String
-  tagId           String
-  tagNameSnapshot String
-
-  @@unique([eventId, tagId])
-  @@index([eventId])
-  @@index([tagId])
-}
-
 model RefundRequests {
   id             String                    @id
   createdAt      DateTime?
@@ -1832,7 +1666,6 @@ model Events {
   end                           DateTime?
   timeZone                      String                           @default("UTC")
   description                   String?
-  affiliateUrl                  String?
   winnerSetCount                Int?
   loserSetCount                 Int?
   doubleElimination             Boolean?
