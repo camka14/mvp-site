@@ -10,6 +10,11 @@ import type { Event, Field, Organization, Sport, Team, TimeSlot, UserData } from
 import { normalizePriceCents } from '@/lib/priceUtils';
 import { normalizeOrganizerManualTaxRateBps, normalizeEventTaxHandling } from '@/lib/taxPolicy';
 import {
+    normalizeManualPaymentInstructions,
+    normalizeManualPaymentLinks,
+    normalizeRegistrationPaymentMode,
+} from '@/lib/manualRegistrationPayments';
+import {
     applyDivisionAgeCutoff,
     buildCompositeDivisionTypeId,
     buildSlotDivisionLookup,
@@ -133,7 +138,11 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
 
         const affiliateUrl = source.isAffiliateEvent ? source.affiliateUrl?.trim() ?? '' : '';
         const isAffiliateEvent = hasAffiliateUrl(affiliateUrl);
-        const pricingEnabled = hasStripeAccount || isAffiliateEvent;
+        const registrationPaymentMode = isAffiliateEvent
+            ? 'ONLINE'
+            : normalizeRegistrationPaymentMode(source.registrationPaymentMode);
+        const manualPaymentEnabled = registrationPaymentMode === 'MANUAL';
+        const pricingEnabled = hasStripeAccount || manualPaymentEnabled || isAffiliateEvent;
         const eventAllowPaymentPlans = !isAffiliateEvent && pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
         const installmentAmountsCents = eventAllowPaymentPlans
             ? normalizeInstallmentAmounts(source.installmentAmounts)
@@ -514,6 +523,11 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             price: eventPriceCents,
+            registrationPaymentMode,
+            manualPaymentLinks: manualPaymentEnabled ? normalizeManualPaymentLinks(source.manualPaymentLinks) : [],
+            manualPaymentInstructions: manualPaymentEnabled
+                ? normalizeManualPaymentInstructions(source.manualPaymentInstructions) ?? null
+                : null,
             taxHandling: isAffiliateEvent ? 'INHERIT_ORG' : normalizeEventTaxHandling(source.taxHandling),
             organizerManualTaxRateBps: isAffiliateEvent ? 0 : normalizeOrganizerManualTaxRateBps(source.organizerManualTaxRateBps),
             minAge,

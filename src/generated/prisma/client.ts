@@ -252,6 +252,11 @@ export type Bills = Prisma.BillsModel
  */
 export type BillPayments = Prisma.BillPaymentsModel
 /**
+ * Model BillPaymentProofs
+ *
+ */
+export type BillPaymentProofs = Prisma.BillPaymentProofsModel
+/**
  * Model RentalBookings
  *
  */

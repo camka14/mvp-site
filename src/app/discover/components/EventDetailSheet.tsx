@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea } from '@mantine/core';
+import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { QrCode } from 'lucide-react';
 import {
@@ -15,6 +15,8 @@ import {
     getUserHandle,
     getTeamAvatarUrl,
     PaymentIntent,
+    Bill,
+    BillPayment,
     getEventImageFallbackUrl,
     getEventImageUrl,
     formatEventDivisionPriceRange,
@@ -71,6 +73,10 @@ import {
     saveRegistrationProgress,
     type RegistrationProgressStep,
 } from '@/lib/registrationProgressStorage';
+import {
+    getManualPaymentProviderLabel,
+    normalizeManualPaymentProvider,
+} from '@/lib/manualRegistrationPayments';
 // Replaced shadcn Select with Mantine Select
 
 interface EventDetailSheetProps {
@@ -118,6 +124,138 @@ type PendingEventCheckoutState = {
     answers?: RegistrationQuestionAnswerInput[];
     discountCode?: string | null;
 };
+
+const MANUAL_PAYMENT_PROVIDER_LOGOS: Partial<Record<string, string>> = {
+    CASH_APP: '/payment-providers/cash-app-pay.svg',
+    VENMO: '/payment-providers/venmo.png',
+    PAYPAL: '/payment-providers/paypal.png',
+    STRIPE: '/payment-providers/stripe.svg',
+};
+
+const getNextManualBillPayment = (bill: Bill | null): BillPayment | null => {
+    const payments = (bill?.payments ?? [])
+        .filter((payment) => payment.status !== 'PAID' && payment.status !== 'VOID')
+        .sort((left, right) => left.sequence - right.sequence);
+    return payments[0] ?? null;
+};
+
+function ManualPaymentProofModal({
+    opened,
+    event,
+    bill,
+    onClose,
+    onSubmitted,
+}: {
+    opened: boolean;
+    event: Event | null;
+    bill: Bill | null;
+    onClose: () => void;
+    onSubmitted: () => void | Promise<void>;
+}) {
+    const [proofFile, setProofFile] = useState<File | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const payment = getNextManualBillPayment(bill);
+    const links = event?.manualPaymentLinks ?? [];
+    const amountDue = payment?.amountCents ?? bill?.nextPaymentAmountCents ?? bill?.totalAmountCents ?? event?.price ?? 0;
+
+    const handleSubmit = async () => {
+        if (!bill?.$id || !payment?.$id) {
+            setError('No pending bill payment was found for this registration.');
+            return;
+        }
+        if (!proofFile) {
+            setError('Upload an image showing proof of payment.');
+            return;
+        }
+        setSubmitting(true);
+        setError(null);
+        try {
+            const formData = new FormData();
+            formData.append('file', proofFile);
+            if (event?.organizationId) {
+                formData.append('organizationId', event.organizationId);
+            }
+            const upload = await apiRequest<{ file?: { id?: string } }>('/api/files/upload', {
+                method: 'POST',
+                body: formData,
+            });
+            const fileId = upload.file?.id;
+            if (!fileId) {
+                throw new Error('Proof image upload failed.');
+            }
+            await billService.submitManualPaymentProof({
+                billId: bill.$id,
+                billPaymentId: payment.$id,
+                fileId,
+            });
+            setProofFile(null);
+            await onSubmitted();
+        } catch (caught) {
+            setError(caught instanceof Error ? caught.message : 'Failed to submit payment proof.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title="Submit payment proof" centered size="lg" zIndex={SIGN_MODAL_Z_INDEX}>
+            <Stack gap="md">
+                <Alert color="yellow" variant="light">
+                    Manual payments are handled directly by the host. BracketIQ does not process this payment and cannot issue automatic refunds. The host is responsible for confirming payments and handling refunds.
+                </Alert>
+                <div>
+                    <Text size="sm" fw={600}>Amount due</Text>
+                    <Text size="xl" fw={700}>{formatPrice(amountDue)}</Text>
+                </div>
+                {links.length > 0 ? (
+                    <Stack gap="xs">
+                        <Text size="sm" fw={600}>Payment links</Text>
+                        <Group gap="sm">
+                            {links.map((link) => {
+                                const provider = normalizeManualPaymentProvider(link.provider);
+                                const logo = MANUAL_PAYMENT_PROVIDER_LOGOS[provider];
+                                return (
+                                    <Button
+                                        key={link.id || link.url}
+                                        component="a"
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        variant="default"
+                                        leftSection={logo ? (
+                                            <Image src={logo} alt={getManualPaymentProviderLabel(provider)} width={72} height={24} style={{ objectFit: 'contain' }} />
+                                        ) : undefined}
+                                    >
+                                        {link.label || getManualPaymentProviderLabel(provider)}
+                                    </Button>
+                                );
+                            })}
+                        </Group>
+                    </Stack>
+                ) : null}
+                {event?.manualPaymentInstructions ? (
+                    <Alert color="blue" variant="light">
+                        {event.manualPaymentInstructions}
+                    </Alert>
+                ) : null}
+                <FileInput
+                    label="Proof image"
+                    placeholder="Upload screenshot or receipt"
+                    accept="image/*"
+                    value={proofFile}
+                    onChange={setProofFile}
+                    disabled={submitting}
+                />
+                {error ? <Alert color="red" variant="light">{error}</Alert> : null}
+                <Group justify="flex-end">
+                    <Button variant="subtle" onClick={onClose} disabled={submitting}>Close</Button>
+                    <Button onClick={handleSubmit} loading={submitting}>Upload proof</Button>
+                </Group>
+            </Stack>
+        </Modal>
+    );
+}
 
 type LoadEventDetailsOptions = {
     automatic?: boolean;
@@ -1199,6 +1337,8 @@ export default function EventDetailSheet({
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+    const [manualPaymentBill, setManualPaymentBill] = useState<Bill | null>(null);
+    const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
     const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
     const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
     const [showDiscountCodeModal, setShowDiscountCodeModal] = useState(false);
@@ -2723,6 +2863,9 @@ export default function EventDetailSheet({
             && !currentEvent.teamSignup
             && (isFreeForUser || selectedDivisionBilling.allowPaymentPlans);
         let registrationResult: EventRegistration | null = null;
+        const isManualPaidRegistration = currentEvent.registrationPaymentMode === 'MANUAL'
+            && !isFreeForUser
+            && (intent.mode === 'user' || intent.mode === 'team');
 
         if (shouldRegisterSelf) {
             const result = await registrationService.registerSelfForEvent(currentEvent.$id, selection, intent.answers);
@@ -2745,6 +2888,32 @@ export default function EventDetailSheet({
             }
             await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team', selectedWeeklyOccurrence);
             setJoinNotice('Team added to waitlist.');
+            await loadEventDetails();
+            return;
+        }
+
+        if (isManualPaidRegistration) {
+            const joinTeam = intent.mode === 'team' ? resolvedTeam : undefined;
+            if (intent.mode === 'team' && !joinTeam?.$id) {
+                throw new Error('Team is required to register.');
+            }
+            const joinResult = await paymentService.joinEvent(
+                user,
+                checkoutEvent ?? currentEvent,
+                joinTeam,
+                selection,
+                JOIN_API_TIMEOUT_MS,
+                selectedWeeklyOccurrence,
+                intent.answers,
+            );
+            const billId = joinResult?.bill?.$id ?? (joinResult?.bill as any)?.id;
+            if (!billId) {
+                throw new Error('Registration was created, but no manual payment bill was returned.');
+            }
+            const fullBill = await billService.getBill(billId);
+            setManualPaymentBill(fullBill ?? joinResult?.bill ?? null);
+            setShowManualPaymentModal(true);
+            setJoinNotice('Registration started. Send payment to the host, then upload proof for review.');
             await loadEventDetails();
             return;
         }
@@ -6228,6 +6397,19 @@ export default function EventDetailSheet({
                     setPaymentData(null);
                     clearEventRegistrationProgress();
                     await confirmRegistrationAfterPayment({ pendingPayment: true });
+                }}
+            />
+            <ManualPaymentProofModal
+                opened={showManualPaymentModal}
+                event={checkoutEvent ?? currentEvent}
+                bill={manualPaymentBill}
+                onClose={() => setShowManualPaymentModal(false)}
+                onSubmitted={async () => {
+                    setShowManualPaymentModal(false);
+                    setManualPaymentBill(null);
+                    clearEventRegistrationProgress();
+                    await loadEventDetails();
+                    setJoinNotice('Payment proof uploaded. The host will review it and confirm your payment.');
                 }}
             />
             <RegistrationHoldTimer

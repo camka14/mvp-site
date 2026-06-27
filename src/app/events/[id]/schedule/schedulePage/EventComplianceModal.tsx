@@ -34,6 +34,12 @@ function formatCompliancePaymentLabel(payment: TeamComplianceSummary['payment'])
   if (status === 'FAILED') {
     return 'Payment failed';
   }
+  if (payment.manualPaymentProofStatus === 'SUBMITTED') {
+    return `Payment proof submitted (${formatBillAmount(payment.totalAmountCents)})`;
+  }
+  if (payment.manualPaymentProofStatus === 'ACCEPTED') {
+    return `Payment proof accepted (${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)})`;
+  }
   if (status === 'PENDING') {
     const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
     return `${prefix} pending (${formatBillAmount(payment.totalAmountCents)})`;

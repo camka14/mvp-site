@@ -112,6 +112,8 @@ export type EventsMinAggregateOutputType = {
   hostId: string | null
   noFixedEndDateTime: boolean | null
   price: number | null
+  registrationPaymentMode: $Enums.RegistrationPaymentModeEnum | null
+  manualPaymentInstructions: string | null
   taxHandling: string | null
   organizerManualTaxRateBps: number | null
   singleDivision: boolean | null
@@ -178,6 +180,8 @@ export type EventsMaxAggregateOutputType = {
   hostId: string | null
   noFixedEndDateTime: boolean | null
   price: number | null
+  registrationPaymentMode: $Enums.RegistrationPaymentModeEnum | null
+  manualPaymentInstructions: string | null
   taxHandling: string | null
   organizerManualTaxRateBps: number | null
   singleDivision: boolean | null
@@ -245,6 +249,9 @@ export type EventsCountAggregateOutputType = {
   assistantHostIds: number
   noFixedEndDateTime: number
   price: number
+  registrationPaymentMode: number
+  manualPaymentLinks: number
+  manualPaymentInstructions: number
   taxHandling: number
   organizerManualTaxRateBps: number
   singleDivision: number
@@ -381,6 +388,8 @@ export type EventsMinAggregateInputType = {
   hostId?: true
   noFixedEndDateTime?: true
   price?: true
+  registrationPaymentMode?: true
+  manualPaymentInstructions?: true
   taxHandling?: true
   organizerManualTaxRateBps?: true
   singleDivision?: true
@@ -447,6 +456,8 @@ export type EventsMaxAggregateInputType = {
   hostId?: true
   noFixedEndDateTime?: true
   price?: true
+  registrationPaymentMode?: true
+  manualPaymentInstructions?: true
   taxHandling?: true
   organizerManualTaxRateBps?: true
   singleDivision?: true
@@ -514,6 +525,9 @@ export type EventsCountAggregateInputType = {
   assistantHostIds?: true
   noFixedEndDateTime?: true
   price?: true
+  registrationPaymentMode?: true
+  manualPaymentLinks?: true
+  manualPaymentInstructions?: true
   taxHandling?: true
   organizerManualTaxRateBps?: true
   singleDivision?: true
@@ -680,6 +694,9 @@ export type EventsGroupByOutputType = {
   assistantHostIds: string[]
   noFixedEndDateTime: boolean
   price: number
+  registrationPaymentMode: $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks: runtime.JsonValue
+  manualPaymentInstructions: string | null
   taxHandling: string
   organizerManualTaxRateBps: number
   singleDivision: boolean | null
@@ -782,6 +799,9 @@ export type EventsWhereInput = {
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
   noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFilter<"Events"> | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonFilter<"Events">
+  manualPaymentInstructions?: Prisma.StringNullableFilter<"Events"> | string | null
   taxHandling?: Prisma.StringFilter<"Events"> | string
   organizerManualTaxRateBps?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -861,6 +881,9 @@ export type EventsOrderByWithRelationInput = {
   assistantHostIds?: Prisma.SortOrder
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  registrationPaymentMode?: Prisma.SortOrder
+  manualPaymentLinks?: Prisma.SortOrder
+  manualPaymentInstructions?: Prisma.SortOrderInput | Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
   organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -943,6 +966,9 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
   noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFilter<"Events"> | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonFilter<"Events">
+  manualPaymentInstructions?: Prisma.StringNullableFilter<"Events"> | string | null
   taxHandling?: Prisma.StringFilter<"Events"> | string
   organizerManualTaxRateBps?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -1022,6 +1048,9 @@ export type EventsOrderByWithAggregationInput = {
   assistantHostIds?: Prisma.SortOrder
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  registrationPaymentMode?: Prisma.SortOrder
+  manualPaymentLinks?: Prisma.SortOrder
+  manualPaymentInstructions?: Prisma.SortOrderInput | Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
   organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1109,6 +1138,9 @@ export type EventsScalarWhereWithAggregatesInput = {
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
   noFixedEndDateTime?: Prisma.BoolWithAggregatesFilter<"Events"> | boolean
   price?: Prisma.IntWithAggregatesFilter<"Events"> | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumWithAggregatesFilter<"Events"> | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonWithAggregatesFilter<"Events">
+  manualPaymentInstructions?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   taxHandling?: Prisma.StringWithAggregatesFilter<"Events"> | string
   organizerManualTaxRateBps?: Prisma.IntWithAggregatesFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -1188,6 +1220,9 @@ export type EventsCreateInput = {
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
   noFixedEndDateTime?: boolean
   price: number
+  registrationPaymentMode?: $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: string | null
   taxHandling?: string
   organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
@@ -1267,6 +1302,9 @@ export type EventsUncheckedCreateInput = {
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
   noFixedEndDateTime?: boolean
   price: number
+  registrationPaymentMode?: $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: string | null
   taxHandling?: string
   organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
@@ -1346,6 +1384,9 @@ export type EventsUpdateInput = {
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFieldUpdateOperationsInput | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
   organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1425,6 +1466,9 @@ export type EventsUncheckedUpdateInput = {
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFieldUpdateOperationsInput | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
   organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1504,6 +1548,9 @@ export type EventsCreateManyInput = {
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
   noFixedEndDateTime?: boolean
   price: number
+  registrationPaymentMode?: $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: string | null
   taxHandling?: string
   organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
@@ -1583,6 +1630,9 @@ export type EventsUpdateManyMutationInput = {
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFieldUpdateOperationsInput | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
   organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1662,6 +1712,9 @@ export type EventsUncheckedUpdateManyInput = {
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
+  registrationPaymentMode?: Prisma.EnumRegistrationPaymentModeEnumFieldUpdateOperationsInput | $Enums.RegistrationPaymentModeEnum
+  manualPaymentLinks?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  manualPaymentInstructions?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
   organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1741,6 +1794,9 @@ export type EventsCountOrderByAggregateInput = {
   assistantHostIds?: Prisma.SortOrder
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  registrationPaymentMode?: Prisma.SortOrder
+  manualPaymentLinks?: Prisma.SortOrder
+  manualPaymentInstructions?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
   organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
@@ -1847,6 +1903,8 @@ export type EventsMaxOrderByAggregateInput = {
   hostId?: Prisma.SortOrder
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  registrationPaymentMode?: Prisma.SortOrder
+  manualPaymentInstructions?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
   organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
@@ -1913,6 +1971,8 @@ export type EventsMinOrderByAggregateInput = {
   hostId?: Prisma.SortOrder
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  registrationPaymentMode?: Prisma.SortOrder
+  manualPaymentInstructions?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
   organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
@@ -2022,6 +2082,10 @@ export type EventsUpdateassistantHostIdsInput = {
   push?: string | string[]
 }
 
+export type EnumRegistrationPaymentModeEnumFieldUpdateOperationsInput = {
+  set?: $Enums.RegistrationPaymentModeEnum
+}
+
 export type EventsUpdatewinnerBracketPointsToVictoryInput = {
   set?: number[]
   push?: number | number[]
@@ -2112,6 +2176,9 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   assistantHostIds?: boolean
   noFixedEndDateTime?: boolean
   price?: boolean
+  registrationPaymentMode?: boolean
+  manualPaymentLinks?: boolean
+  manualPaymentInstructions?: boolean
   taxHandling?: boolean
   organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
@@ -2191,6 +2258,9 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   assistantHostIds?: boolean
   noFixedEndDateTime?: boolean
   price?: boolean
+  registrationPaymentMode?: boolean
+  manualPaymentLinks?: boolean
+  manualPaymentInstructions?: boolean
   taxHandling?: boolean
   organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
@@ -2270,6 +2340,9 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   assistantHostIds?: boolean
   noFixedEndDateTime?: boolean
   price?: boolean
+  registrationPaymentMode?: boolean
+  manualPaymentLinks?: boolean
+  manualPaymentInstructions?: boolean
   taxHandling?: boolean
   organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
@@ -2349,6 +2422,9 @@ export type EventsSelectScalar = {
   assistantHostIds?: boolean
   noFixedEndDateTime?: boolean
   price?: boolean
+  registrationPaymentMode?: boolean
+  manualPaymentLinks?: boolean
+  manualPaymentInstructions?: boolean
   taxHandling?: boolean
   organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
@@ -2397,7 +2473,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "registrationPaymentMode" | "manualPaymentLinks" | "manualPaymentInstructions" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2433,6 +2509,9 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     assistantHostIds: string[]
     noFixedEndDateTime: boolean
     price: number
+    registrationPaymentMode: $Enums.RegistrationPaymentModeEnum
+    manualPaymentLinks: runtime.JsonValue
+    manualPaymentInstructions: string | null
     taxHandling: string
     organizerManualTaxRateBps: number
     singleDivision: boolean | null
@@ -2932,6 +3011,9 @@ export interface EventsFieldRefs {
   readonly assistantHostIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly noFixedEndDateTime: Prisma.FieldRef<"Events", 'Boolean'>
   readonly price: Prisma.FieldRef<"Events", 'Int'>
+  readonly registrationPaymentMode: Prisma.FieldRef<"Events", 'RegistrationPaymentModeEnum'>
+  readonly manualPaymentLinks: Prisma.FieldRef<"Events", 'Json'>
+  readonly manualPaymentInstructions: Prisma.FieldRef<"Events", 'String'>
   readonly taxHandling: Prisma.FieldRef<"Events", 'String'>
   readonly organizerManualTaxRateBps: Prisma.FieldRef<"Events", 'Int'>
   readonly singleDivision: Prisma.FieldRef<"Events", 'Boolean'>

@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useApp } from "@/app/providers";
 import { useChat } from "@/context/ChatContext";
 import { useChatUI } from "@/context/ChatUIContext";
+import { apiRequest } from "@/lib/apiClient";
 import { authService } from "@/lib/auth";
 import {
   PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY,
@@ -45,6 +46,8 @@ import { ImageUploader } from "@/components/ui/ImageUploader";
 import {
   BillingAddress,
   Bill,
+  BillPayment,
+  Event,
   PaymentIntent,
   Team,
   UserData,
@@ -78,9 +81,11 @@ import {
   PasswordInput,
   Checkbox,
   Badge,
+  FileInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { paymentService } from "@/lib/paymentService";
+import { eventService } from "@/lib/eventService";
 import { billService } from "@/lib/billService";
 import { teamService } from "@/lib/teamService";
 import PaymentModal from "@/components/ui/PaymentModal";
@@ -106,6 +111,7 @@ import { selectBillOwnerTeams } from "@/lib/profileBilling";
 import { resolveClientPublicOrigin } from "@/lib/clientPublicOrigin";
 import { withSelectedProfileImage } from "./profileImageSelection";
 import DiscountManager from "@/components/discounts/DiscountManager";
+import { isManualRegistrationPaymentMode } from "@/lib/manualRegistrationPayments";
 import {
   Activity,
   Bell,
@@ -530,6 +536,7 @@ function ProfilePageContent() {
   type OwnedBill = Bill & { ownerLabel?: string };
 
   const [bills, setBills] = useState<OwnedBill[]>([]);
+  const [billEventsById, setBillEventsById] = useState<Record<string, Pick<Event, "$id" | "name" | "registrationPaymentMode">>>({});
   const [userTeams, setUserTeams] = useState<Record<string, Team>>({});
   const [loadingBills, setLoadingBills] = useState(false);
   const [billError, setBillError] = useState<string | null>(null);
@@ -541,6 +548,10 @@ function ProfilePageContent() {
   const [cancellingBillPaymentId, setCancellingBillPaymentId] = useState<
     string | null
   >(null);
+  const [manualProofBill, setManualProofBill] = useState<OwnedBill | null>(null);
+  const [manualProofFile, setManualProofFile] = useState<File | null>(null);
+  const [manualProofError, setManualProofError] = useState<string | null>(null);
+  const [submittingManualProof, setSubmittingManualProof] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [organizationsById, setOrganizationsById] = useState<
@@ -1523,7 +1534,39 @@ function ProfilePageContent() {
         ...teamBillsNested.flat(),
       ];
 
+      const billEventIds = Array.from(
+        new Set(
+          ownedBills
+            .map((bill) => bill.eventId)
+            .filter((eventId): eventId is string => typeof eventId === "string" && Boolean(eventId)),
+        ),
+      );
+      const billEvents = await Promise.all(
+        billEventIds.map(async (eventId) => {
+          try {
+            return await eventService.getEventById(eventId);
+          } catch (err) {
+            console.error(`Failed to load event ${eventId} for profile bill`, err);
+            return undefined;
+          }
+        }),
+      );
+
       setBills(ownedBills);
+      setBillEventsById(
+        Object.fromEntries(
+          billEvents
+            .filter((event): event is Event => Boolean(event?.$id))
+            .map((event) => [
+              event.$id,
+              {
+                $id: event.$id,
+                name: event.name,
+                registrationPaymentMode: event.registrationPaymentMode,
+              },
+            ]),
+        ),
+      );
       setUserTeams(teamsMap);
     } catch (err) {
       setBillError(err instanceof Error ? err.message : "Failed to load bills");
@@ -1600,6 +1643,82 @@ function ProfilePageContent() {
     },
     [loadBills],
   );
+
+  const getNextManualBillPayment = useCallback(
+    (bill: Bill | null): BillPayment | null => {
+      const payments = (bill?.payments ?? [])
+        .filter(
+          (payment) => payment.status !== "PAID" && payment.status !== "VOID",
+        )
+        .sort((a, b) => a.sequence - b.sequence);
+      return payments[0] ?? null;
+    },
+    [],
+  );
+
+  const closeManualProofModal = useCallback(() => {
+    setManualProofBill(null);
+    setManualProofFile(null);
+    setManualProofError(null);
+    setSubmittingManualProof(false);
+  }, []);
+
+  const handleSubmitManualProof = useCallback(async () => {
+    const bill = manualProofBill;
+    const payment = getNextManualBillPayment(bill);
+    if (!bill?.$id || !payment?.$id) {
+      setManualProofError("No pending bill payment was found.");
+      return;
+    }
+    if (!manualProofFile) {
+      setManualProofError("Upload an image showing proof of payment.");
+      return;
+    }
+
+    setSubmittingManualProof(true);
+    setManualProofError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", manualProofFile);
+      if (bill.organizationId) {
+        formData.append("organizationId", bill.organizationId);
+      }
+      const upload = await apiRequest<{ file?: { id?: string } }>(
+        "/api/files/upload",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const fileId = upload.file?.id;
+      if (!fileId) {
+        throw new Error("Proof image upload failed.");
+      }
+      await billService.submitManualPaymentProof({
+        billId: bill.$id,
+        billPaymentId: payment.$id,
+        fileId,
+      });
+      notifications.show({
+        color: "green",
+        message: "Payment proof uploaded. The host will review it.",
+      });
+      closeManualProofModal();
+      await loadBills();
+    } catch (err) {
+      setManualProofError(
+        err instanceof Error ? err.message : "Failed to submit payment proof.",
+      );
+    } finally {
+      setSubmittingManualProof(false);
+    }
+  }, [
+    closeManualProofModal,
+    getNextManualBillPayment,
+    loadBills,
+    manualProofBill,
+    manualProofFile,
+  ]);
 
   const handleSplitBill = useCallback(
     async (bill: OwnedBill) => {
@@ -4234,6 +4353,22 @@ function ProfilePageContent() {
                   const nextDue = bill.nextPaymentDue
                     ? formatDisplayDate(bill.nextPaymentDue)
                     : "TBD";
+                  const billEvent = bill.eventId
+                    ? billEventsById[bill.eventId]
+                    : undefined;
+                  const isManualRegistrationBill =
+                    bill.sourceType === "EVENT_REGISTRATION" &&
+                    isManualRegistrationPaymentMode(
+                      billEvent?.registrationPaymentMode,
+                    );
+                  const nextManualPayment = isManualRegistrationBill
+                    ? getNextManualBillPayment(bill)
+                    : null;
+                  const manualProofDisabled =
+                    nextAmount <= 0 ||
+                    isPaymentProcessing ||
+                    bill.status === "CANCELLED" ||
+                    !nextManualPayment;
                   const ownerName =
                     bill.ownerLabel ??
                     (bill.ownerType === "TEAM"
@@ -4299,6 +4434,12 @@ function ProfilePageContent() {
                             : "Your payment did not go through, so you were not registered and the rental was not booked. Complete the payment to try again."}
                         </Alert>
                       )}
+                      {isManualRegistrationBill && nextAmount > 0 && (
+                        <Alert color="yellow" variant="light" mt="md">
+                          This event uses manual payment. Upload a receipt or
+                          screenshot instead of paying through Stripe.
+                        </Alert>
+                      )}
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                           <Text size="xs" tt="uppercase" fw={700} c="dimmed">
@@ -4336,19 +4477,33 @@ function ProfilePageContent() {
                             Split across team
                           </Button>
                         )}
-                        <Button
-                          size="xs"
-                          onClick={() => handlePayBill(bill)}
-                          disabled={
-                            nextAmount <= 0 ||
-                            isPaymentProcessing ||
-                            bill.status === "CANCELLED"
-                          }
-                        >
-                          {hasPaymentIssue
-                            ? "Complete payment"
-                            : "Pay next installment"}
-                        </Button>
+                        {isManualRegistrationBill ? (
+                          <Button
+                            size="xs"
+                            onClick={() => {
+                              setManualProofBill(bill);
+                              setManualProofFile(null);
+                              setManualProofError(null);
+                            }}
+                            disabled={manualProofDisabled}
+                          >
+                            Upload payment proof
+                          </Button>
+                        ) : (
+                          <Button
+                            size="xs"
+                            onClick={() => handlePayBill(bill)}
+                            disabled={
+                              nextAmount <= 0 ||
+                              isPaymentProcessing ||
+                              bill.status === "CANCELLED"
+                            }
+                          >
+                            {hasPaymentIssue
+                              ? "Complete payment"
+                              : "Pay next installment"}
+                          </Button>
+                        )}
                         {processingPayment && (
                           <Button
                             size="xs"
@@ -5287,6 +5442,67 @@ function ProfilePageContent() {
           }}
           onPaymentPending={handleBillPaymentPending}
         />
+        <Modal
+          opened={!!manualProofBill}
+          onClose={closeManualProofModal}
+          title="Upload payment proof"
+          centered
+        >
+          <Stack gap="md">
+            <Alert color="yellow" variant="light">
+              Manual payments are handled directly by the host. BracketIQ does
+              not process this payment and cannot issue automatic refunds. The
+              host is responsible for confirming payments and handling refunds.
+            </Alert>
+            {manualProofBill && (
+              <div>
+                <Text fw={700}>
+                  Bill #{manualProofBill.$id.slice(0, 6)}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Amount due:{" "}
+                  {formatBillAmount(
+                    manualProofBill.nextPaymentAmountCents ??
+                      Math.max(
+                        manualProofBill.totalAmountCents -
+                          manualProofBill.paidAmountCents,
+                        0,
+                      ),
+                  )}
+                </Text>
+              </div>
+            )}
+            <FileInput
+              label="Proof image"
+              placeholder="Upload screenshot or receipt"
+              accept="image/*"
+              value={manualProofFile}
+              onChange={setManualProofFile}
+            />
+            {manualProofError && (
+              <Alert color="red" variant="light">
+                {manualProofError}
+              </Alert>
+            )}
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                onClick={closeManualProofModal}
+                disabled={submittingManualProof}
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  void handleSubmitManualProof();
+                }}
+                loading={submittingManualProof}
+              >
+                Upload proof
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       </div>
     </>
   );

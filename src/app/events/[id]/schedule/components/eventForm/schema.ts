@@ -104,6 +104,14 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         description: z.string().default(''),
         isAffiliateEvent: z.boolean().default(false),
         affiliateUrl: z.string().trim().default(''),
+        registrationPaymentMode: z.enum(['ONLINE', 'MANUAL']).default('ONLINE'),
+        manualPaymentLinks: z.array(z.object({
+            id: z.string().optional(),
+            provider: z.enum(['CASH_APP', 'VENMO', 'PAYPAL', 'STRIPE', 'ZELLE', 'OTHER']),
+            label: z.string().trim().optional(),
+            url: z.string().trim().url('Enter a valid payment link'),
+        })).default([]),
+        manualPaymentInstructions: z.string().trim().default(''),
         tags: z.array(z.object({
             id: z.string().optional(),
             $id: z.string().optional(),

@@ -135,10 +135,10 @@ const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payme
     if (!payment) {
         return 'Payment unavailable';
     }
-    if (payment.paymentPending) {
-        return 'Payment pending';
-    }
     if (!payment.hasBill) {
+        if (payment.paymentPending) {
+            return 'Payment pending';
+        }
         return 'No bill yet';
     }
     const status = String(payment.status ?? '').toUpperCase();
@@ -147,6 +147,12 @@ const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payme
     }
     if (status === 'FAILED') {
         return 'Payment failed';
+    }
+    if (payment.manualPaymentProofStatus === 'SUBMITTED') {
+        return `Payment proof submitted (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    if (payment.manualPaymentProofStatus === 'ACCEPTED') {
+        return `Payment proof accepted (${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)})`;
     }
     if (status === 'PENDING') {
         return `Bill pending (${formatBillAmount(payment.totalAmountCents)})`;

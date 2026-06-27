@@ -6,6 +6,7 @@ import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService
 import { FamilyChild } from '@/lib/familyService';
 import { useApp } from '@/app/providers';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
+import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { getRefundPolicy } from '@/lib/refundPolicy';
 
 interface RefundSectionProps {
@@ -225,6 +226,8 @@ export default function RefundSection({
 
   const isHost = user.$id === event.hostId;
   const isFreeForTarget = event.price === 0 || (isHost && selectedTarget.isSelf);
+  const isManualPaidRegistration = !isFreeForTarget
+    && isManualRegistrationPaymentMode(event.registrationPaymentMode);
 
   const leaveSelectedTarget = async () => {
     if (!selectedTarget) {
@@ -351,7 +354,7 @@ export default function RefundSection({
     }
   };
 
-  const sectionTitle = selectedTarget.state === 'participant' && !isFreeForTarget
+  const sectionTitle = selectedTarget.state === 'participant' && !isFreeForTarget && !isManualPaidRegistration
     ? 'Refund Options'
     : 'Registration';
 
@@ -423,6 +426,22 @@ export default function RefundSection({
                 Leave Event
               </Button>
             </>
+          )}
+        </div>
+      ) : isManualPaidRegistration ? (
+        <div className="space-y-2">
+          <Text size="sm" c="dimmed">
+            Payments and refunds for this registration are handled directly by the host outside BracketIQ.
+            Leaving removes this profile from the event, but it does not create an automatic refund or refund request.
+          </Text>
+          {eventHasStarted ? (
+            <Text size="sm" c="dimmed">
+              Event has already started. Leaving is no longer available.
+            </Text>
+          ) : (
+            <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
+              Leave Event
+            </Button>
           )}
         </div>
       ) : canAutoRefund ? (

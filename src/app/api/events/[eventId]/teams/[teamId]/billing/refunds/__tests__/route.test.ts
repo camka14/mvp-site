@@ -72,6 +72,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
       organizationId: 'org_1',
       teamIds: ['team_1'],
       teamSignup: true,
+      registrationPaymentMode: 'ONLINE',
     });
     prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
@@ -85,6 +86,35 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
       id: 'pi_1',
       transfer_data: null,
     });
+  });
+
+  it('rejects Stripe refunds for manual-payment team registrations', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      teamIds: ['team_1'],
+      teamSignup: true,
+      registrationPaymentMode: 'MANUAL',
+    });
+
+    const response = await POST(
+      requestFor({
+        billPaymentId: 'payment_1',
+        amountCents: 5000,
+      }),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Manual payment registrations are refunded outside BracketIQ by the host.');
+    expect(getEventParticipantIdsForEventMock).not.toHaveBeenCalled();
+    expect(prismaMock.billPayments.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.bills.findUnique).not.toHaveBeenCalled();
   });
 
   it('creates a partial stripe refund and persists refundedAmountCents on the payment', async () => {

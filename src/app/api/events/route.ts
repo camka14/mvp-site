@@ -44,6 +44,11 @@ import {
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
 import { getEventTagsForEventIds } from '@/server/eventTags';
+import {
+  normalizeManualPaymentInstructions,
+  normalizeManualPaymentLinks,
+  normalizeRegistrationPaymentMode,
+} from '@/lib/manualRegistrationPayments';
 
 export const dynamic = 'force-dynamic';
 
@@ -525,6 +530,11 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.requiredTemplateIds)) {
     (legacy as any).requiredTemplateIds = [];
   }
+  (legacy as any).registrationPaymentMode = normalizeRegistrationPaymentMode((legacy as any).registrationPaymentMode);
+  (legacy as any).manualPaymentLinks = normalizeManualPaymentLinks((legacy as any).manualPaymentLinks);
+  (legacy as any).manualPaymentInstructions = normalizeManualPaymentInstructions(
+    (legacy as any).manualPaymentInstructions,
+  );
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
     (legacy as any).noFixedEndDateTime = false;
   }

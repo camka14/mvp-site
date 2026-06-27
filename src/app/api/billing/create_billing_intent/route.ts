@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { calculateIncludedFeesFromTotalPrice, getPaymentMethodFeeLabel, normalizePaymentMethodFeeType } from '@/lib/billingFees';
+import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
 
 export const dynamic = 'force-dynamic';
@@ -127,6 +128,18 @@ export async function POST(req: NextRequest) {
   }
   if (payment.billId !== bill.id) {
     return NextResponse.json({ error: 'Bill payment does not belong to the bill' }, { status: 400 });
+  }
+  if (bill.eventId) {
+    const event = await prisma.events.findUnique({
+      where: { id: bill.eventId },
+      select: { registrationPaymentMode: true },
+    });
+    if (isManualRegistrationPaymentMode((event as any)?.registrationPaymentMode)) {
+      return NextResponse.json(
+        { error: 'This bill is paid outside BracketIQ. Upload proof of payment instead.' },
+        { status: 400 },
+      );
+    }
   }
   const isAssignedPayer = payment.payerUserId === session.userId;
   const canClaimTeamPayment = !payment.payerUserId

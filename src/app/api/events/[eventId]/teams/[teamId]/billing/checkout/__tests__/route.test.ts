@@ -74,6 +74,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
       organizationId: 'org_1',
       teamSignup: true,
       eventType: 'EVENT',
+      registrationPaymentMode: 'ONLINE',
     });
     prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
@@ -115,7 +116,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
     expect(response.status).toBe(200);
     expect(payload).toEqual(expect.objectContaining({
       checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_1',
-      amountCents: 5232,
+      amountCents: 5000,
       eventAmountCents: 5000,
       billOwnerType: 'TEAM',
       billOwnerId: 'team_1',
@@ -129,7 +130,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
         line_items: [
           expect.objectContaining({
             price_data: expect.objectContaining({
-              unit_amount: 5232,
+              unit_amount: 5000,
             }),
           }),
         ],
@@ -141,7 +142,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
             event_team_id: 'team_1',
             user_id: 'manager_1',
             amount_cents: '5000',
-            total_charge_cents: '5232',
+            total_charge_cents: '5000',
             division_id: 'open',
           }),
           transfer_data: {
@@ -154,7 +155,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
     expect(buildDestinationTransferDataMock).toHaveBeenCalledWith({
       organizationId: 'org_1',
       hostUserId: 'host_1',
-      transferAmountCents: 5000,
+      transferAmountCents: 4777,
     });
   });
 
@@ -216,6 +217,36 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
     expect(stripeCheckoutSessionsCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects Stripe checkout for manual-payment team events', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      name: 'Beach Tournament',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      teamSignup: true,
+      eventType: 'EVENT',
+      registrationPaymentMode: 'MANUAL',
+    });
+
+    const response = await POST(
+      requestFor({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventAmountCents: 5000,
+      }),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('This event uses manual payments. Send payment instructions and collect proof instead of starting Stripe checkout.');
+    expect(prismaMock.teams.findUnique).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreateMock).not.toHaveBeenCalled();
+  });
+
   it('creates a user Checkout Session for non-team event participants', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
@@ -225,6 +256,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
       organizationId: null,
       teamSignup: false,
       eventType: 'EVENT',
+      registrationPaymentMode: 'ONLINE',
     });
     getEventParticipantIdsForEventMock.mockResolvedValueOnce({
       teamIds: [],

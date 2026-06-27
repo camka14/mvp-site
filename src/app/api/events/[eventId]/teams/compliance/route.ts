@@ -73,6 +73,8 @@ const toPaymentSummary = (bill: {
   totalAmountCents: number | null;
   paidAmountCents: number | null;
   status: string | null;
+  manualPaymentProofStatus?: string | null;
+  manualPaymentProofCount?: number | null;
 } | null, inheritedFromTeamBill = false, paymentPending = false): TeamCompliancePaymentSummary => {
   if (!bill) {
     return {
@@ -103,6 +105,10 @@ const toPaymentSummary = (bill: {
     paidAmountCents,
     status: normalizedStatus,
     isPaidInFull,
+    manualPaymentProofStatus: bill.manualPaymentProofStatus ?? null,
+    manualPaymentProofCount: Number.isFinite(Number(bill.manualPaymentProofCount))
+      ? Number(bill.manualPaymentProofCount)
+      : 0,
     paymentPending,
     inheritedFromTeamBill,
   };
@@ -239,8 +245,8 @@ export async function GET(
       });
     })(),
   ]);
-  const answerResponses = registrationByTeamId.size
-    ? await prisma.registrationQuestionResponses.findMany({
+  const answerResponses: Array<{ subjectId: string; answersSnapshot: unknown }> = registrationByTeamId.size && typeof (prisma as any).registrationQuestionResponses?.findMany === 'function'
+    ? await (prisma as any).registrationQuestionResponses.findMany({
       where: {
         subjectType: 'EVENT_REGISTRATION' as any,
         subjectId: { in: Array.from(registrationByTeamId.values()).map((registration) => registration.id) },
@@ -353,6 +359,29 @@ export async function GET(
       });
     })(),
   ]);
+
+  const allBillIdsForProofs = [...teamBills, ...userBills].map((bill) => bill.id);
+  const proofRows = allBillIdsForProofs.length && typeof (prisma as any).billPaymentProofs?.findMany === 'function'
+    ? await (prisma as any).billPaymentProofs.findMany({
+      where: { billId: { in: allBillIdsForProofs } },
+      select: { billId: true, status: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    : [];
+  const proofSummaryByBillId = new Map<string, { count: number; status: string | null }>();
+  (proofRows as Array<{ billId: string; status: string | null }>).forEach((proof) => {
+    const existing = proofSummaryByBillId.get(proof.billId);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    proofSummaryByBillId.set(proof.billId, { count: 1, status: proof.status ?? null });
+  });
+  [...teamBills, ...userBills].forEach((bill) => {
+    const proofSummary = proofSummaryByBillId.get(bill.id);
+    (bill as any).manualPaymentProofStatus = proofSummary?.status ?? null;
+    (bill as any).manualPaymentProofCount = proofSummary?.count ?? 0;
+  });
 
   const templatesById = new Map(templates.map((template) => [template.id, template]));
   const signOnceTemplateIds = templates

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { calculateIncludedFeesFromTotalPrice } from '@/lib/billingFees';
+import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
@@ -71,6 +72,7 @@ export async function POST(
       organizationId: true,
       teamSignup: true,
       eventType: true,
+      registrationPaymentMode: true,
     },
   });
   if (!event) {
@@ -78,6 +80,12 @@ export async function POST(
   }
   if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isManualRegistrationPaymentMode(event.registrationPaymentMode)) {
+    return NextResponse.json(
+      { error: 'This event uses manual payments. Send payment instructions and collect proof instead of starting Stripe checkout.' },
+      { status: 400 },
+    );
   }
 
   const normalizedParticipantId = normalizeId(teamId);

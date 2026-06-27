@@ -6,7 +6,7 @@ import { eventService } from '@/lib/eventService';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
@@ -66,6 +66,9 @@ import {
     resolvePurchaseTaxPolicy,
     taxPolicyRequiresStripeTaxCalculation,
 } from '@/lib/taxPolicy';
+import {
+    normalizeManualPaymentProvider,
+} from '@/lib/manualRegistrationPayments';
 import {
     buildCompositeDivisionTypeId,
     buildDefaultDivisionDetailsForSport,
@@ -507,6 +510,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const eventData = formValues;
     const isAffiliateEvent = Boolean(eventData.isAffiliateEvent || hasAffiliateUrl(eventData.affiliateUrl));
+    const pricingControlsEnabled = hasStripeAccount || eventData.registrationPaymentMode === 'MANUAL';
     const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
     const eventSupportsScheduleSlots = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const hasRestrictedImmutableFields = hasImmutableFields && !eventSupportsScheduleSlots;
@@ -578,7 +582,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     } = useTemplateDocuments(templateOrganizationId);
 
     useEffect(() => {
-        if (!isCreateMode || hasStripeAccount) {
+        const manualPaymentsEnabled = eventData.registrationPaymentMode === 'MANUAL';
+        if (!isCreateMode || hasStripeAccount || manualPaymentsEnabled) {
             return;
         }
 
@@ -666,6 +671,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.installmentDueDates,
         eventData.installmentDueRelativeDays,
         eventData.price,
+        eventData.registrationPaymentMode,
         hasStripeAccount,
         isCreateMode,
         setValue,
@@ -1215,7 +1221,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         leagueData,
         playoffData,
         currentSportRequiresSets,
-        hasStripeAccount,
+        hasStripeAccount: pricingControlsEnabled,
         isCreateMode,
         setValue,
         getValues,
@@ -3281,7 +3287,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fieldsReferencedInSlots,
         hasImmutableTimeSlots,
         hasRestrictedImmutableFields,
-        hasStripeAccount,
+        pricingControlsEnabled,
         immutableFields,
         immutableTimeSlots,
         isEditMode,
@@ -3621,6 +3627,42 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         />
     );
 
+    const manualPaymentLinks = Array.isArray(eventData.manualPaymentLinks)
+        ? eventData.manualPaymentLinks
+        : [];
+    const setManualPaymentLinkValue = (
+        index: number,
+        field: 'provider' | 'label' | 'url',
+        value: string,
+    ) => {
+        const nextLinks = [...manualPaymentLinks];
+        const current = nextLinks[index];
+        if (!current) return;
+        nextLinks[index] = {
+            ...current,
+            [field]: field === 'provider' ? normalizeManualPaymentProvider(value) : value,
+        };
+        setValue('manualPaymentLinks', nextLinks, { shouldDirty: true, shouldValidate: true });
+    };
+    const addManualPaymentLink = () => {
+        setValue('manualPaymentLinks', [
+            ...manualPaymentLinks,
+            {
+                id: createClientId(),
+                provider: 'VENMO',
+                label: 'Venmo',
+                url: '',
+            },
+        ], { shouldDirty: true, shouldValidate: true });
+    };
+    const removeManualPaymentLink = (index: number) => {
+        setValue(
+            'manualPaymentLinks',
+            manualPaymentLinks.filter((_, linkIndex) => linkIndex !== index),
+            { shouldDirty: true, shouldValidate: true },
+        );
+    };
+
     const sheetContent = (
         <EventFormShell
             formId={formId}
@@ -3780,6 +3822,93 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onLocalFieldNameChange={handleLocalFieldNameChange}
                         />
 
+                        {!isAffiliateEvent ? (
+                            <Paper withBorder p="md" radius="md">
+                                <Stack gap="md">
+                                    <Controller
+                                        name="registrationPaymentMode"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <MantineSelect
+                                                label="Registration payment handling"
+                                                value={field.value ?? 'ONLINE'}
+                                                data={[
+                                                    { value: 'ONLINE', label: 'Online checkout with Stripe' },
+                                                    { value: 'MANUAL', label: 'Manual payment links' },
+                                                ]}
+                                                onChange={(value) => {
+                                                    const nextMode = value === 'MANUAL' ? 'MANUAL' : 'ONLINE';
+                                                    field.onChange(nextMode);
+                                                    if (nextMode === 'ONLINE') {
+                                                        setValue('manualPaymentLinks', [], { shouldDirty: true, shouldValidate: true });
+                                                        setValue('manualPaymentInstructions', '', { shouldDirty: true, shouldValidate: true });
+                                                    }
+                                                }}
+                                            />
+                                        )}
+                                    />
+                                    {eventData.registrationPaymentMode === 'MANUAL' ? (
+                                        <>
+                                            <Alert color="yellow" variant="light">
+                                                Manual payments are handled outside BracketIQ. Stripe checkout, platform fees, refund requests, and automatic refunds are disabled for these registrations. The host is responsible for confirming payments and handling refunds.
+                                            </Alert>
+                                            <Stack gap="sm">
+                                                {manualPaymentLinks.map((link, index) => (
+                                                    <Group key={link.id || index} align="flex-end" grow>
+                                                        <MantineSelect
+                                                            label={index === 0 ? 'Provider' : undefined}
+                                                            value={normalizeManualPaymentProvider(link.provider)}
+                                                            data={[
+                                                                { value: 'CASH_APP', label: 'Cash App' },
+                                                                { value: 'VENMO', label: 'Venmo' },
+                                                                { value: 'PAYPAL', label: 'PayPal' },
+                                                                { value: 'STRIPE', label: 'Stripe' },
+                                                                { value: 'ZELLE', label: 'Zelle' },
+                                                                { value: 'OTHER', label: 'Other' },
+                                                            ]}
+                                                            onChange={(value) => setManualPaymentLinkValue(index, 'provider', value ?? 'OTHER')}
+                                                        />
+                                                        <TextInput
+                                                            label={index === 0 ? 'Label' : undefined}
+                                                            value={link.label ?? ''}
+                                                            onChange={(event) => setManualPaymentLinkValue(index, 'label', event.currentTarget.value)}
+                                                        />
+                                                        <TextInput
+                                                            label={index === 0 ? 'Payment link' : undefined}
+                                                            value={link.url ?? ''}
+                                                            placeholder="https://..."
+                                                            onChange={(event) => setManualPaymentLinkValue(index, 'url', event.currentTarget.value)}
+                                                        />
+                                                        <Button variant="subtle" color="red" onClick={() => removeManualPaymentLink(index)}>
+                                                            Remove
+                                                        </Button>
+                                                    </Group>
+                                                ))}
+                                                <Group justify="flex-start">
+                                                    <Button variant="default" onClick={addManualPaymentLink}>Add payment link</Button>
+                                                </Group>
+                                            </Stack>
+                                            <Controller
+                                                name="manualPaymentInstructions"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <Textarea
+                                                        label="Manual payment instructions"
+                                                        autosize
+                                                        minRows={3}
+                                                        maxLength={2000}
+                                                        value={field.value ?? ''}
+                                                        onChange={field.onChange}
+                                                        placeholder="Tell registrants what to include in the payment note and how refunds are handled."
+                                                    />
+                                                )}
+                                            />
+                                        </>
+                                    ) : null}
+                                </Stack>
+                            </Paper>
+                        ) : null}
+
                         <MatchRulesConfigSection
                             visible={showMatchRulesSection}
                             collapsed={collapsedSections['section-match-rules']}
@@ -3909,7 +4038,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         maxStandardNumber={MAX_STANDARD_NUMBER}
                                         maxPriceCents={MAX_PRICE_CENTS}
                                         numberInputStyles={alignedDetailsFieldStyles}
-                                        hasStripeAccount={hasStripeAccount}
+                                        hasStripeAccount={pricingControlsEnabled}
                                         organizerTaxCollectionAllowed={organizerTaxCollectionAllowed}
                                         organizerResponsibilityMessage={eventTaxPolicyForPreview.organizerResponsibilityMessage}
                                         isOrganizationHostedEvent={isOrganizationHostedEvent}
@@ -3967,7 +4096,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         splitDivisionEditorEnabled={!isAffiliateEvent && splitDivisionEditorEnabled}
                                         divisionEditorReady={divisionEditorReady}
                                         divisionMaxParticipantsWarning={isAffiliateEvent ? null : divisionMaxParticipantsWarning}
-                                        hasStripeAccount={hasStripeAccount}
+                                        hasStripeAccount={pricingControlsEnabled}
                                         maxStandardNumber={MAX_STANDARD_NUMBER}
                                         maxPriceCents={MAX_PRICE_CENTS}
                                         maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}

@@ -829,6 +829,13 @@ export type TeamBillingPaymentSnapshot = {
   paidAt?: string | null;
   paymentIntentId?: string | null;
   isRefundable: boolean;
+  manualPaymentProofs?: Array<{
+    id: string;
+    status: string | null;
+    fileId: string;
+    fileUrl: string;
+    amountAcceptedCents?: number | null;
+  }>;
 };
 
 export type TeamBillingBillSnapshot = {

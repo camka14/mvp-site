@@ -73,6 +73,8 @@ const toPaymentSummary = (bill: {
   totalAmountCents: number | null;
   paidAmountCents: number | null;
   status: string | null;
+  manualPaymentProofStatus?: string | null;
+  manualPaymentProofCount?: number | null;
 } | null, paymentPending = false): TeamCompliancePaymentSummary => {
   if (!bill) {
     return {
@@ -102,6 +104,10 @@ const toPaymentSummary = (bill: {
     paidAmountCents,
     status: normalizedStatus,
     isPaidInFull,
+    manualPaymentProofStatus: bill.manualPaymentProofStatus ?? null,
+    manualPaymentProofCount: Number.isFinite(Number(bill.manualPaymentProofCount))
+      ? Number(bill.manualPaymentProofCount)
+      : 0,
     paymentPending,
   };
 };
@@ -238,6 +244,28 @@ export async function GET(
     }),
   ]);
 
+  const proofRows = userBills.length && typeof (prisma as any).billPaymentProofs?.findMany === 'function'
+    ? await (prisma as any).billPaymentProofs.findMany({
+      where: { billId: { in: userBills.map((bill) => bill.id) } },
+      select: { billId: true, status: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    : [];
+  const proofSummaryByBillId = new Map<string, { count: number; status: string | null }>();
+  (proofRows as Array<{ billId: string; status: string | null }>).forEach((proof) => {
+    const existing = proofSummaryByBillId.get(proof.billId);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    proofSummaryByBillId.set(proof.billId, { count: 1, status: proof.status ?? null });
+  });
+  userBills.forEach((bill) => {
+    const proofSummary = proofSummaryByBillId.get(bill.id);
+    (bill as any).manualPaymentProofStatus = proofSummary?.status ?? null;
+    (bill as any).manualPaymentProofCount = proofSummary?.count ?? 0;
+  });
+
   const latestRegistrationByUserId = new Map<
     string,
     {
@@ -275,8 +303,8 @@ export async function GET(
     ),
   );
   const signerUserIds = Array.from(new Set([...participantUserIds, ...parentUserIds]));
-  const responseRows = latestRegistrationByUserId.size
-    ? await prisma.registrationQuestionResponses.findMany({
+  const responseRows: Array<{ subjectId: string; answersSnapshot: unknown }> = latestRegistrationByUserId.size && typeof (prisma as any).registrationQuestionResponses?.findMany === 'function'
+    ? await (prisma as any).registrationQuestionResponses.findMany({
       where: {
         subjectType: 'EVENT_REGISTRATION' as any,
         subjectId: { in: Array.from(latestRegistrationByUserId.values()).map((registration) => registration.id) },

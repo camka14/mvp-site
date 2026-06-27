@@ -23,11 +23,18 @@ enum BillsStatusEnum {
 
 enum BillPaymentsStatusEnum {
   PENDING
+  PARTIAL
   PROCESSING
   FAILED
   DISPUTED
   PAID
   VOID
+}
+
+enum ManualPaymentProofStatusEnum {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
 }
 
 enum RefundRequestsStatusEnum {
@@ -78,6 +85,11 @@ enum EventsEventTypeEnum {
   LEAGUE
   WEEKLY_EVENT
   AFFILIATE
+}
+
+enum RegistrationPaymentModeEnum {
+  ONLINE
+  MANUAL
 }
 
 enum EventsOfficialSchedulingModeEnum {
@@ -1372,12 +1384,36 @@ model BillPayments {
   paidAt                   DateTime?
   paymentIntentId          String?
   payerUserId              String?
+  paidAmountCents          Int                     @default(0)
   refundedAmountCents      Int                     @default(0)
   taxCalculationId         String?
   taxTransactionId         String?
   taxAmountCents           Int                     @default(0)
   stripeProcessingFeeCents Int                     @default(0)
   stripeTaxServiceFeeCents Int                     @default(0)
+}
+
+model BillPaymentProofs {
+  id                  String                       @id
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  billId              String
+  billPaymentId       String
+  eventId             String?
+  organizationId      String?
+  fileId              String
+  uploadedByUserId    String
+  status              ManualPaymentProofStatusEnum @default(SUBMITTED)
+  amountAcceptedCents Int?
+  reviewedByUserId    String?
+  reviewedAt          DateTime?
+  reviewNote          String?
+
+  @@index([billId])
+  @@index([billPaymentId])
+  @@index([eventId])
+  @@index([uploadedByUserId])
+  @@index([status])
 }
 
 model RentalBookings {
@@ -1830,6 +1866,9 @@ model Events {
   assistantHostIds              String[]                         @default([])
   noFixedEndDateTime            Boolean                          @default(true)
   price                         Int
+  registrationPaymentMode       RegistrationPaymentModeEnum       @default(ONLINE)
+  manualPaymentLinks            Json                              @default("[]")
+  manualPaymentInstructions     String?
   taxHandling                   String                           @default("INHERIT_ORG")
   organizerManualTaxRateBps     Int                              @default(0)
   singleDivision                Boolean?

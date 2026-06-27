@@ -44,6 +44,12 @@ const prismaMock = {
   invites: {
     findMany: jest.fn(),
   },
+  eventTagAssignments: {
+    findMany: jest.fn(),
+  },
+  eventTags: {
+    findMany: jest.fn(),
+  },
   divisions: {
     findMany: jest.fn(),
   },
@@ -93,6 +99,8 @@ describe('event template privacy routes', () => {
     prismaMock.organizationRoles.findFirst.mockReset();
     prismaMock.organizationRolePermissions.findFirst.mockReset();
     prismaMock.invites.findMany.mockReset();
+    prismaMock.eventTagAssignments.findMany.mockReset();
+    prismaMock.eventTags.findMany.mockReset();
     prismaMock.divisions.findMany.mockReset();
     prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValue({ hiddenEventIds: [] });
@@ -103,6 +111,8 @@ describe('event template privacy routes', () => {
     prismaMock.organizationRoles.findFirst.mockResolvedValue(null);
     prismaMock.organizationRolePermissions.findFirst.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
+    prismaMock.eventTagAssignments.findMany.mockResolvedValue([]);
+    prismaMock.eventTags.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
     prismaMock.organizations.findMany.mockResolvedValue([]);
     getTokenFromRequestMock.mockReturnValue(null);
@@ -244,6 +254,20 @@ describe('event template privacy routes', () => {
 
     expect(res.status).toBe(200);
     expect(requireSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an event when optional tag loading fails', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PUBLISHED', hostId: 'host_1' });
+    prismaMock.eventTagAssignments.findMany.mockRejectedValueOnce(new Error('tag table unavailable'));
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.tags).toEqual([]);
   });
 
   it('includes set config on playoff division details in GET /api/events/:eventId', async () => {

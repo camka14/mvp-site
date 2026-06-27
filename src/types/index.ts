@@ -743,6 +743,15 @@ export interface Field {
 }
 
 export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT' | 'AFFILIATE';
+export type RegistrationPaymentMode = 'ONLINE' | 'MANUAL';
+export type ManualPaymentProvider = 'CASH_APP' | 'VENMO' | 'PAYPAL' | 'STRIPE' | 'ZELLE' | 'OTHER';
+
+export interface ManualPaymentLink {
+  id: string;
+  provider: ManualPaymentProvider;
+  label: string;
+  url: string;
+}
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'facility' | 'rentalSlots' | 'rentalSlotIds';
 
@@ -829,6 +838,9 @@ export interface Event {
   address?: string;
   coordinates: [number, number];
   price: number;
+  registrationPaymentMode?: RegistrationPaymentMode;
+  manualPaymentLinks?: ManualPaymentLink[];
+  manualPaymentInstructions?: string | null;
   taxHandling?: EventTaxHandling;
   organizerManualTaxRateBps?: number;
   minAge?: number;
@@ -2098,7 +2110,8 @@ export interface BillPayment {
   sequence: number;
   dueDate: string;
   amountCents: number;
-  status: 'PENDING' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID';
+  status: 'PENDING' | 'PARTIAL' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID';
+  paidAmountCents?: number;
   paidAt?: string;
   paymentIntentId?: string;
   payerUserId?: string;

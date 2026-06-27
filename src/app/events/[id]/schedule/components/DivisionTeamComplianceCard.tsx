@@ -24,11 +24,10 @@ const getPaymentLabel = (
     return { label: 'Payment details unavailable', color: 'gray' };
   }
 
-  if (summary.payment.paymentPending) {
-    return { label: 'Payment pending', color: 'yellow' };
-  }
-
   if (!summary.payment.hasBill) {
+    if (summary.payment.paymentPending) {
+      return { label: 'Payment pending', color: 'yellow' };
+    }
     return { label: cardKind === 'participant' ? 'No bill yet' : 'No team bill yet', color: 'gray' };
   }
 
@@ -38,6 +37,18 @@ const getPaymentLabel = (
   }
   if (paymentStatus === 'FAILED') {
     return { label: 'Payment failed', color: 'red' };
+  }
+  if (summary.payment.manualPaymentProofStatus === 'SUBMITTED') {
+    return {
+      label: `Payment proof submitted (${formatBillAmount(summary.payment.totalAmountCents)})`,
+      color: 'yellow',
+    };
+  }
+  if (summary.payment.manualPaymentProofStatus === 'ACCEPTED') {
+    return {
+      label: `Payment proof accepted (${formatBillAmount(summary.payment.paidAmountCents)} of ${formatBillAmount(summary.payment.totalAmountCents)})`,
+      color: summary.payment.isPaidInFull ? 'green' : 'yellow',
+    };
   }
   if (paymentStatus === 'PENDING') {
     return { label: `Bill pending (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'yellow' };

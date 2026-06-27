@@ -31,6 +31,7 @@ export type BillsStatusEnum = (typeof BillsStatusEnum)[keyof typeof BillsStatusE
 
 export const BillPaymentsStatusEnum = {
   PENDING: 'PENDING',
+  PARTIAL: 'PARTIAL',
   PROCESSING: 'PROCESSING',
   FAILED: 'FAILED',
   DISPUTED: 'DISPUTED',
@@ -39,6 +40,15 @@ export const BillPaymentsStatusEnum = {
 } as const
 
 export type BillPaymentsStatusEnum = (typeof BillPaymentsStatusEnum)[keyof typeof BillPaymentsStatusEnum]
+
+
+export const ManualPaymentProofStatusEnum = {
+  SUBMITTED: 'SUBMITTED',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED'
+} as const
+
+export type ManualPaymentProofStatusEnum = (typeof ManualPaymentProofStatusEnum)[keyof typeof ManualPaymentProofStatusEnum]
 
 
 export const RefundRequestsStatusEnum = {
@@ -113,6 +123,14 @@ export const EventsEventTypeEnum = {
 } as const
 
 export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof EventsEventTypeEnum]
+
+
+export const RegistrationPaymentModeEnum = {
+  ONLINE: 'ONLINE',
+  MANUAL: 'MANUAL'
+} as const
+
+export type RegistrationPaymentModeEnum = (typeof RegistrationPaymentModeEnum)[keyof typeof RegistrationPaymentModeEnum]
 
 
 export const EventsOfficialSchedulingModeEnum = {

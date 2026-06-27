@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { extractStripePaymentIntentId } from '@/lib/stripeClientSecret';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
@@ -27,9 +28,10 @@ type BillPaymentActionRow = {
   id: string;
   billId: string;
   amountCents: number;
-  status: 'PENDING' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID' | null;
+  status: 'PENDING' | 'PARTIAL' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID' | null;
   paymentIntentId: string | null;
   payerUserId: string | null;
+  paidAmountCents?: number | null;
   refundedAmountCents: number | null;
 };
 
@@ -47,9 +49,21 @@ const getLineItemMetadata = (bill: Pick<BillActionRow, 'lineItems'>): Record<str
   return firstObject ?? {};
 };
 
-const sumPaid = (payments: Array<{ amountCents: number; status: string | null }>) => (
+const getPaymentPaidAmountCents = (payment: {
+  amountCents: number;
+  status: string | null;
+  paidAmountCents?: number | null;
+}): number => {
+  const paidAmount = normalizeAmountCents(payment.paidAmountCents);
+  if (paidAmount > 0) {
+    return Math.min(normalizeAmountCents(payment.amountCents), paidAmount);
+  }
+  return payment.status === 'PAID' ? normalizeAmountCents(payment.amountCents) : 0;
+};
+
+const sumPaid = (payments: Array<{ amountCents: number; status: string | null; paidAmountCents?: number | null }>) => (
   payments.reduce((total, payment) => (
-    payment.status === 'PAID' ? total + payment.amountCents : total
+    total + getPaymentPaidAmountCents(payment)
   ), 0)
 );
 
@@ -79,6 +93,18 @@ const isAlreadyRefundedStripeError = (error: unknown): boolean => {
 const isUnpaidBillPaymentStatus = (status: BillPaymentActionRow['status']): boolean => (
   status !== 'PAID' && status !== 'VOID'
 );
+
+const resolveManualPaymentStatus = (
+  paidAmountCents: number,
+  amountCents: number,
+): 'PENDING' | 'PARTIAL' | 'PAID' => {
+  const paidAmount = normalizeAmountCents(paidAmountCents);
+  const amount = normalizeAmountCents(amountCents);
+  if (amount > 0 && paidAmount >= amount) {
+    return 'PAID';
+  }
+  return paidAmount > 0 ? 'PARTIAL' : 'PENDING';
+};
 
 export const loadBillForAction = async (billId: string) => (
   prisma.bills.findUnique({
@@ -126,6 +152,7 @@ export const loadBillPaymentForAction = async (billId: string, billPaymentId: st
         status: true,
         paymentIntentId: true,
         payerUserId: true,
+        paidAmountCents: true,
         refundedAmountCents: true,
       },
     }) as Promise<BillPaymentActionRow | null>,
@@ -265,6 +292,7 @@ export const reconcileBillForPendingPayment = async (billId: string, now: Date) 
     select: {
       amountCents: true,
       status: true,
+      paidAmountCents: true,
       dueDate: true,
     },
   });
@@ -328,12 +356,27 @@ export const markBillPaymentProcessingForAction = async ({
       status: 'PROCESSING',
       paymentIntentId,
       payerUserId: payment.payerUserId ?? userId,
+      paidAmountCents: 0,
       paidAt: null,
       updatedAt: now,
     },
   });
 
-  return reconcileBillForPendingPayment(bill.id, now);
+  const reconciledBill = await reconcileBillForPendingPayment(bill.id, now);
+  if (bill.sourceType === 'EVENT_REGISTRATION' && bill.sourceId) {
+    await prisma.eventRegistrations.updateMany({
+      where: {
+        id: bill.sourceId,
+        status: { in: ['PENDING', 'STARTED'] as any[] },
+      },
+      data: {
+        status: reconciledBill?.status === 'PAID' ? 'ACTIVE' as any : 'PENDING' as any,
+        updatedAt: now,
+      },
+    });
+  }
+
+  return reconciledBill;
 };
 
 const isStripeCancelableStatus = (status: Stripe.PaymentIntent.Status): boolean => (
@@ -468,6 +511,7 @@ export const cancelProcessingBillPaymentForAction = async ({
         status: 'PENDING',
         paymentIntentId: null,
         payerUserId: null,
+        paidAmountCents: 0,
         paidAt: null,
         updatedAt: now,
       },
@@ -482,6 +526,7 @@ export const cancelProcessingBillPaymentForAction = async ({
         status: 'VOID',
         paymentIntentId: null,
         payerUserId: null,
+        paidAmountCents: 0,
         paidAt: null,
         updatedAt: now,
       },
@@ -621,6 +666,7 @@ export const cancelBillPaymentPlanForAction = async ({
       paymentIntentId: true,
       payerUserId: true,
       refundedAmountCents: true,
+      paidAmountCents: true,
     },
   }) as BillPaymentActionRow[];
 
@@ -646,6 +692,7 @@ export const cancelBillPaymentPlanForAction = async ({
         status: 'VOID',
         paymentIntentId: null,
         payerUserId: null,
+        paidAmountCents: 0,
         paidAt: null,
         updatedAt: now,
       },
@@ -662,4 +709,137 @@ export const cancelBillPaymentPlanForAction = async ({
       },
     });
   });
+};
+
+export const submitManualBillPaymentProofForAction = async ({
+  bill,
+  payment,
+  fileId,
+  userId,
+  now,
+}: {
+  bill: BillActionRow;
+  payment: BillPaymentActionRow;
+  fileId: string;
+  userId: string;
+  now: Date;
+}) => {
+  if (payment.status === 'PAID') {
+    throw new Error('Bill payment is already paid.');
+  }
+  if (payment.status === 'VOID') {
+    throw new Error('Bill payment has been cancelled.');
+  }
+
+  const normalizedFileId = normalizeId(fileId);
+  if (!normalizedFileId) {
+    throw new Error('fileId is required.');
+  }
+
+  const file = await prisma.file.findUnique({
+    where: { id: normalizedFileId },
+    select: {
+      id: true,
+      uploaderId: true,
+      organizationId: true,
+      mimeType: true,
+    },
+  });
+  if (!file) {
+    throw new Error('Proof image not found.');
+  }
+  if (file.uploaderId && file.uploaderId !== userId) {
+    throw new Error('Proof image was uploaded by another user.');
+  }
+  if (file.mimeType && !file.mimeType.toLowerCase().startsWith('image/')) {
+    throw new Error('Proof must be an image upload.');
+  }
+
+  return (prisma as any).billPaymentProofs.create({
+    data: {
+      id: crypto.randomUUID(),
+      billId: bill.id,
+      billPaymentId: payment.id,
+      eventId: bill.eventId,
+      organizationId: bill.organizationId,
+      fileId: normalizedFileId,
+      uploadedByUserId: userId,
+      status: 'SUBMITTED',
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+};
+
+export const reviewManualBillPaymentProofForAction = async ({
+  bill,
+  payment,
+  proofId,
+  accepted,
+  amountAcceptedCents,
+  reviewedByUserId,
+  reviewNote,
+  now,
+}: {
+  bill: BillActionRow;
+  payment: BillPaymentActionRow;
+  proofId: string;
+  accepted: boolean;
+  amountAcceptedCents?: number | null;
+  reviewedByUserId: string;
+  reviewNote?: string | null;
+  now: Date;
+}) => {
+  const normalizedProofId = normalizeId(proofId);
+  if (!normalizedProofId) {
+    throw new Error('proofId is required.');
+  }
+  const proof = await (prisma as any).billPaymentProofs.findUnique({
+    where: { id: normalizedProofId },
+  });
+  if (!proof || proof.billId !== bill.id || proof.billPaymentId !== payment.id) {
+    throw new Error('Payment proof not found.');
+  }
+  if (proof.status !== 'SUBMITTED') {
+    throw new Error('Payment proof has already been reviewed.');
+  }
+  if (payment.status === 'VOID') {
+    throw new Error('Bill payment has been cancelled.');
+  }
+
+  const acceptedAmount = accepted
+    ? Math.min(normalizeAmountCents(payment.amountCents), normalizeAmountCents(amountAcceptedCents))
+    : 0;
+  const nextStatus = accepted
+    ? resolveManualPaymentStatus(acceptedAmount, payment.amountCents)
+    : payment.status;
+
+  await prisma.$transaction(async (tx) => {
+    await (tx as any).billPaymentProofs.update({
+      where: { id: proof.id },
+      data: {
+        status: accepted ? 'ACCEPTED' : 'REJECTED',
+        amountAcceptedCents: accepted ? acceptedAmount : null,
+        reviewedByUserId,
+        reviewedAt: now,
+        reviewNote: normalizeId(reviewNote) ?? null,
+        updatedAt: now,
+      },
+    });
+
+    if (accepted) {
+      await tx.billPayments.update({
+        where: { id: payment.id },
+        data: {
+          paidAmountCents: acceptedAmount,
+          status: nextStatus,
+          payerUserId: payment.payerUserId ?? proof.uploadedByUserId,
+          paidAt: nextStatus === 'PAID' ? now : null,
+          updatedAt: now,
+        },
+      });
+    }
+  });
+
+  return reconcileBillForPendingPayment(bill.id, now);
 };

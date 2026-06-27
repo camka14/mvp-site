@@ -28,12 +28,16 @@ type RefundTeamModalProps = {
   loading: boolean;
   snapshot: TeamBillingSnapshot | null;
   refundAmountDraftByPaymentId: Record<string, number>;
+  manualProofAmountDraftById: Record<string, number>;
   refundingPaymentId: string | null;
   cancellingPendingBillPaymentId: string | null;
+  reviewingManualProofId: string | null;
   onClose: () => void;
   onRefundAmountDraftChange: (paymentId: string, amountDollars: number) => void;
+  onManualProofAmountDraftChange: (proofId: string, amountDollars: number) => void;
   onSubmitRefund: (paymentId: string) => void;
   onCancelPendingPayment: (billId: string, paymentId: string) => void;
+  onReviewManualProof: (billId: string, paymentId: string, proofId: string, decision: 'ACCEPT' | 'REJECT') => void;
 };
 
 export function RefundTeamModal({
@@ -43,12 +47,16 @@ export function RefundTeamModal({
   loading,
   snapshot,
   refundAmountDraftByPaymentId,
+  manualProofAmountDraftById,
   refundingPaymentId,
   cancellingPendingBillPaymentId,
+  reviewingManualProofId,
   onClose,
   onRefundAmountDraftChange,
+  onManualProofAmountDraftChange,
   onSubmitRefund,
   onCancelPendingPayment,
+  onReviewManualProof,
 }: RefundTeamModalProps) {
   return (
     <Modal
@@ -184,6 +192,79 @@ export function RefundTeamModal({
                                       : 'This payment cannot be refunded because it is not linked to Stripe.'}
                                   </Text>
                                 )}
+                                {Array.isArray(payment.manualPaymentProofs) && payment.manualPaymentProofs.length > 0 ? (
+                                  <Stack gap="xs">
+                                    {payment.manualPaymentProofs.map((proof) => {
+                                      const proofStatus = String(proof.status ?? '').toUpperCase();
+                                      const canReviewProof = proofStatus === 'SUBMITTED';
+                                      return (
+                                        <Paper key={proof.id} withBorder radius="sm" p="sm">
+                                          <Group align="flex-start" justify="space-between" wrap="wrap">
+                                            <Group align="flex-start" gap="sm">
+                                              <a href={proof.fileUrl} target="_blank" rel="noopener noreferrer">
+                                                <img
+                                                  src={proof.fileUrl}
+                                                  alt="Payment proof"
+                                                  width={96}
+                                                  height={96}
+                                                  style={{ objectFit: 'cover', borderRadius: 6 }}
+                                                />
+                                              </a>
+                                              <Stack gap={2}>
+                                                <Text size="sm" fw={500}>Manual payment proof</Text>
+                                                <Badge size="xs" variant="light" color={proofStatus === 'ACCEPTED' ? 'green' : proofStatus === 'REJECTED' ? 'red' : 'yellow'}>
+                                                  {proofStatus || 'SUBMITTED'}
+                                                </Badge>
+                                                {proof.amountAcceptedCents != null ? (
+                                                  <Text size="xs" c="dimmed">
+                                                    Accepted amount: {formatBillAmount(proof.amountAcceptedCents)}
+                                                  </Text>
+                                                ) : null}
+                                              </Stack>
+                                            </Group>
+                                            {canReviewProof ? (
+                                              <Group align="flex-end" wrap="wrap">
+                                                <NumberInput
+                                                  label="Amount paid"
+                                                  min={0}
+                                                  max={payment.amountCents / 100}
+                                                  decimalScale={2}
+                                                  fixedDecimalScale
+                                                  prefix="$"
+                                                  value={manualProofAmountDraftById[proof.id] ?? (payment.amountCents / 100)}
+                                                  onChange={(value) => {
+                                                    const numeric = typeof value === 'number' ? value : Number(value);
+                                                    onManualProofAmountDraftChange(
+                                                      proof.id,
+                                                      Number.isFinite(numeric) ? Math.max(0, numeric) : 0,
+                                                    );
+                                                  }}
+                                                  w={170}
+                                                />
+                                                <Button
+                                                  size="xs"
+                                                  loading={reviewingManualProofId === proof.id}
+                                                  onClick={() => onReviewManualProof(bill.$id, payment.$id, proof.id, 'ACCEPT')}
+                                                >
+                                                  Accept
+                                                </Button>
+                                                <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  color="red"
+                                                  loading={reviewingManualProofId === proof.id}
+                                                  onClick={() => onReviewManualProof(bill.$id, payment.$id, proof.id, 'REJECT')}
+                                                >
+                                                  Reject
+                                                </Button>
+                                              </Group>
+                                            ) : null}
+                                          </Group>
+                                        </Paper>
+                                      );
+                                    })}
+                                  </Stack>
+                                ) : null}
                                 {canCancelPendingPayment ? (
                                   <Group>
                                     <Button

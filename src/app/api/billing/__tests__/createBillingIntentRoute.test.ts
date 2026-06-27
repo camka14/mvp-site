@@ -13,6 +13,9 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  events: {
+    findUnique: jest.fn(),
+  },
   teamRegistrations: {
     findFirst: jest.fn(),
   },
@@ -56,6 +59,10 @@ describe('POST /api/billing/create_billing_intent', () => {
       eventId: 'event_1',
       organizationId: 'org_1',
       lineItems: [],
+    });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      registrationPaymentMode: 'ONLINE',
     });
     prismaMock.billPayments.findUnique.mockResolvedValue({
       id: 'payment_1',
@@ -107,6 +114,24 @@ describe('POST /api/billing/create_billing_intent', () => {
     }));
 
     expect(response.status).toBe(403);
+    expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects Stripe billing intents for manual-payment event bills', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      registrationPaymentMode: 'MANUAL',
+    });
+
+    const response = await POST(jsonPost({
+      billId: 'bill_1',
+      billPaymentId: 'payment_1',
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('This bill is paid outside BracketIQ. Upload proof of payment instead.');
+    expect(prismaMock.teamRegistrations.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
   });
 });

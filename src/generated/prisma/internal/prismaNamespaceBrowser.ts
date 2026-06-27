@@ -93,6 +93,7 @@ export const ModelName = {
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
   BillPayments: 'BillPayments',
+  BillPaymentProofs: 'BillPaymentProofs',
   RentalBookings: 'RentalBookings',
   RentalBookingItems: 'RentalBookingItems',
   AffiliateScrapeSources: 'AffiliateScrapeSources',
@@ -1049,6 +1050,7 @@ export const BillPaymentsScalarFieldEnum = {
   paidAt: 'paidAt',
   paymentIntentId: 'paymentIntentId',
   payerUserId: 'payerUserId',
+  paidAmountCents: 'paidAmountCents',
   refundedAmountCents: 'refundedAmountCents',
   taxCalculationId: 'taxCalculationId',
   taxTransactionId: 'taxTransactionId',
@@ -1058,6 +1060,26 @@ export const BillPaymentsScalarFieldEnum = {
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
+
+
+export const BillPaymentProofsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  billId: 'billId',
+  billPaymentId: 'billPaymentId',
+  eventId: 'eventId',
+  organizationId: 'organizationId',
+  fileId: 'fileId',
+  uploadedByUserId: 'uploadedByUserId',
+  status: 'status',
+  amountAcceptedCents: 'amountAcceptedCents',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewedAt: 'reviewedAt',
+  reviewNote: 'reviewNote'
+} as const
+
+export type BillPaymentProofsScalarFieldEnum = (typeof BillPaymentProofsScalarFieldEnum)[keyof typeof BillPaymentProofsScalarFieldEnum]
 
 
 export const RentalBookingsScalarFieldEnum = {
@@ -1471,6 +1493,9 @@ export const EventsScalarFieldEnum = {
   assistantHostIds: 'assistantHostIds',
   noFixedEndDateTime: 'noFixedEndDateTime',
   price: 'price',
+  registrationPaymentMode: 'registrationPaymentMode',
+  manualPaymentLinks: 'manualPaymentLinks',
+  manualPaymentInstructions: 'manualPaymentInstructions',
   taxHandling: 'taxHandling',
   organizerManualTaxRateBps: 'organizerManualTaxRateBps',
   singleDivision: 'singleDivision',

@@ -50,6 +50,7 @@ import {
   isTournamentPoolValidationError,
   removeRegisteredTeamFromTournamentPools,
 } from '@/server/events/tournamentPools';
+import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 
 export const dynamic = 'force-dynamic';
 const RESTRICTED_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
@@ -247,6 +248,23 @@ const firstNonEmptyRelativeDayList = (...values: unknown[]): number[] => {
   return [];
 };
 
+const normalizeDateList = (value: unknown): Date[] => (
+  Array.isArray(value)
+    ? value
+      .map((entry) => {
+        if (entry instanceof Date && !Number.isNaN(entry.getTime())) {
+          return entry;
+        }
+        if (typeof entry === 'string' || typeof entry === 'number') {
+          const date = new Date(entry);
+          return Number.isNaN(date.getTime()) ? null : date;
+        }
+        return null;
+      })
+      .filter((entry): entry is Date => Boolean(entry))
+    : []
+);
+
 const resolveBillingDivision = async (
   client: PrismaLike,
   eventId: string,
@@ -418,6 +436,162 @@ const createWeeklyPaymentPlanBillForRegistration = async (
       updatedAt: new Date(),
     },
   });
+};
+
+const createManualRegistrationBillForRegistration = async (
+  params: {
+    tx: PrismaLike;
+    event: any;
+    ownerType: 'USER' | 'TEAM';
+    ownerId: string;
+    registrationId: string;
+    divisionSelection: {
+      divisionId?: string | null;
+      divisionTypeId?: string | null;
+      divisionTypeKey?: string | null;
+    };
+    occurrence: { slotId: string; occurrenceDate: string; slot: any } | null;
+    createdBy: string;
+  },
+) => {
+  if (!isManualRegistrationPaymentMode(params.event.registrationPaymentMode)) {
+    return null;
+  }
+
+  const ownerId = normalizeId(params.ownerId);
+  const registrationId = normalizeId(params.registrationId);
+  if (!ownerId || !registrationId) {
+    return null;
+  }
+
+  const division = await resolveBillingDivision(
+    params.tx,
+    params.event.id,
+    params.divisionSelection,
+  );
+  const totalAmountCents = Math.round(
+    typeof division?.price === 'number'
+      ? division.price
+      : typeof params.event.price === 'number'
+        ? params.event.price
+        : 0,
+  );
+  if (!Number.isFinite(totalAmountCents) || totalAmountCents <= 0) {
+    return null;
+  }
+
+  const existing = await params.tx.bills.findFirst({
+    where: {
+      ownerType: params.ownerType,
+      ownerId,
+      eventId: params.event.id,
+      slotId: params.occurrence?.slotId ?? null,
+      occurrenceDate: params.occurrence?.occurrenceDate ?? null,
+      parentBillId: null,
+      sourceType: 'EVENT_REGISTRATION',
+      sourceId: registrationId,
+    },
+    select: { id: true },
+  } as any);
+  if (existing) {
+    return existing;
+  }
+
+  const allowPaymentPlans = division?.allowPaymentPlans === true || params.event.allowPaymentPlans === true;
+  const installmentAmounts = allowPaymentPlans
+    ? firstNonEmptyNumberList(division?.installmentAmounts, params.event.installmentAmounts)
+    : [];
+  const amounts = installmentAmounts.length ? installmentAmounts : [totalAmountCents];
+  const now = new Date();
+  const dueDates = (() => {
+    if (params.occurrence) {
+      const relativeDueDays = firstNonEmptyRelativeDayList(
+        division?.installmentDueRelativeDays,
+        params.event.installmentDueRelativeDays,
+      );
+      const occurrenceStart = resolveWeeklyOccurrenceStartAt(
+        params.occurrence.slot,
+        params.occurrence.occurrenceDate,
+      );
+      if (occurrenceStart && relativeDueDays.length === amounts.length) {
+        return relativeDueDays.map((offset) => {
+          const dueDate = new Date(occurrenceStart.getTime());
+          dueDate.setDate(dueDate.getDate() + offset);
+          return dueDate;
+        });
+      }
+    }
+    const configuredDueDates = normalizeDateList(params.event.installmentDueDates);
+    if (configuredDueDates.length === amounts.length) {
+      return configuredDueDates;
+    }
+    return amounts.map(() => now);
+  })();
+
+  const bill = await params.tx.bills.create({
+    data: {
+      id: crypto.randomUUID(),
+      ownerType: params.ownerType,
+      ownerId,
+      totalAmountCents,
+      paidAmountCents: 0,
+      eventId: params.event.id,
+      slotId: params.occurrence?.slotId ?? null,
+      occurrenceDate: params.occurrence?.occurrenceDate ?? null,
+      organizationId: normalizeId(params.event.organizationId),
+      allowSplit: params.ownerType === 'TEAM' ? Boolean(params.event.allowTeamSplitDefault) : false,
+      status: 'OPEN',
+      sourceType: 'EVENT_REGISTRATION',
+      sourceId: registrationId,
+      paymentPlanEnabled: amounts.length > 1,
+      createdBy: params.createdBy,
+      lineItems: [
+        {
+          id: 'line_1',
+          type: 'EVENT',
+          label: 'Event registration',
+          amountCents: totalAmountCents,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
+  } as any);
+
+  const payments = await Promise.all(amounts.map((amount, index) => (
+    params.tx.billPayments.create({
+      data: {
+        id: crypto.randomUUID(),
+        billId: bill.id,
+        sequence: index + 1,
+        dueDate: dueDates[index] ?? now,
+        amountCents: amount,
+        paidAmountCents: 0,
+        status: 'PENDING',
+        createdAt: now,
+        updatedAt: now,
+      },
+    } as any)
+  )));
+
+  const nextPayment = payments.sort((left, right) => left.sequence - right.sequence)[0];
+  return params.tx.bills.update({
+    where: { id: bill.id },
+    data: {
+      nextPaymentDue: nextPayment?.dueDate ?? null,
+      nextPaymentAmountCents: nextPayment?.amountCents ?? null,
+      updatedAt: new Date(),
+    },
+  });
+};
+
+const createRegistrationBillForRegistration = async (
+  params: Parameters<typeof createManualRegistrationBillForRegistration>[0],
+) => {
+  if (isManualRegistrationPaymentMode(params.event.registrationPaymentMode)) {
+    return createManualRegistrationBillForRegistration(params);
+  }
+  return createWeeklyPaymentPlanBillForRegistration(params);
 };
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -785,10 +959,12 @@ const hasRefundablePaidTeamEventPayments = async (
     where: {
       billId: { in: bills.map((bill) => bill.id) },
       status: 'PAID',
+      paymentIntentId: { not: null },
     },
     select: {
       amountCents: true,
       refundedAmountCents: true,
+      paymentIntentId: true,
     },
   });
 
@@ -820,6 +996,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       maxParticipants: true,
       eventType: true,
       parentEvent: true,
+      registrationPaymentMode: true,
+      manualPaymentLinks: true,
+      manualPaymentInstructions: true,
       timeSlotIds: true,
     },
   });
@@ -1098,6 +1277,12 @@ async function updateParticipants(
   const requestedRefundMode = mode === 'remove' && teamId
     ? (parsed.data.refundMode ?? 'request')
     : undefined;
+  if (requestedRefundMode && isManualRegistrationPaymentMode(event.registrationPaymentMode)) {
+    return NextResponse.json(
+      { error: 'This event uses manual payments. The host is responsible for refunds outside BracketIQ.' },
+      { status: 400 },
+    );
+  }
   if (requestedRefundMode === 'auto' && !refundPolicy.canAutoRefund) {
     return NextResponse.json(
       { error: 'Automatic refund is not available for this event.' },
@@ -1361,10 +1546,20 @@ async function updateParticipants(
               occurrence: resolvedOccurrence,
             });
             const registeredEventTeamId = normalizeId((eventTeam as any)?.id) ?? teamId;
-            const eventRegistration = await findEventRegistration({
+            const eventRegistration = await upsertEventRegistration({
               eventId: event.id,
               registrantType: 'TEAM',
               registrantId: registeredEventTeamId,
+              parentId: normalizeId((eventTeam as any)?.parentTeamId) ?? teamId,
+              rosterRole: 'PARTICIPANT',
+              status: isManualRegistrationPaymentMode(event.registrationPaymentMode)
+                ? 'PENDING'
+                : 'ACTIVE',
+              eventTeamId: registeredEventTeamId,
+              divisionId: divisionSelection.divisionId ?? normalizeId((eventTeam as any)?.division),
+              divisionTypeId: divisionSelection.divisionTypeId ?? normalizeId((eventTeam as any)?.divisionTypeId),
+              divisionTypeKey: divisionSelection.divisionTypeKey,
+              createdBy: session.userId,
               occurrence: resolvedOccurrence,
             }, tx);
             if (eventAnswersSnapshot.length && eventRegistration?.id) {
@@ -1394,11 +1589,12 @@ async function updateParticipants(
               await syncDivisionTeamMembershipFromRegistrations(event, tx);
             }
             const bill = !canManageCurrentEvent
-              ? await createWeeklyPaymentPlanBillForRegistration({
+              ? await createRegistrationBillForRegistration({
                 tx,
                 event,
                 ownerType: 'TEAM',
                 ownerId: teamId,
+                registrationId: eventRegistration?.id ?? '',
                 divisionSelection,
                 occurrence: resolvedOccurrence,
                 createdBy: session.userId,
@@ -1693,7 +1889,11 @@ async function updateParticipants(
         registrantId: userId!,
         parentId,
         rosterRole: 'PARTICIPANT',
-        status: requiredTemplateIds.length > 0 ? 'STARTED' : 'ACTIVE',
+        status: requiredTemplateIds.length > 0
+          ? 'STARTED'
+          : isManualRegistrationPaymentMode(event.registrationPaymentMode)
+            ? 'PENDING'
+            : 'ACTIVE',
         ageAtEvent,
         divisionId: divisionSelection.divisionId,
         divisionTypeId: divisionSelection.divisionTypeId,
@@ -1726,11 +1926,12 @@ async function updateParticipants(
       });
 
       const bill = !canManageCurrentEvent && registrantType === 'SELF' && requiredTemplateIds.length === 0
-        ? await createWeeklyPaymentPlanBillForRegistration({
+        ? await createRegistrationBillForRegistration({
           tx,
           event,
           ownerType: 'USER',
           ownerId: userId!,
+          registrationId: registration.id,
           divisionSelection,
           occurrence: resolvedOccurrence,
           createdBy: session.userId,

@@ -26,6 +26,9 @@ export type EventFormState = {
     description: string;
     isAffiliateEvent: boolean;
     affiliateUrl: string;
+    registrationPaymentMode: 'ONLINE' | 'MANUAL';
+    manualPaymentLinks: Event['manualPaymentLinks'];
+    manualPaymentInstructions: string;
     tags: EventTag[];
     location: string;
     address: string;

@@ -157,6 +157,44 @@ describe('RefundSection', () => {
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
 
+  it('does not expose refund actions for manual paid registrations', async () => {
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
+    const start = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+    const event = buildEvent({
+      $id: 'event_manual_paid',
+      hostId: 'host_2',
+      price: 20,
+      cancellationRefundHours: null,
+      registrationPaymentMode: 'MANUAL',
+      start,
+    });
+
+    paymentServiceMock.leaveEvent.mockResolvedValue(undefined);
+    const onRefundSuccess = jest.fn();
+
+    renderWithMantine(
+      <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
+    );
+
+    expect(screen.getByText(/Payments and refunds for this registration are handled directly by the host/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Get Refund/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Request Refund/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Leave Event/i }));
+
+    await waitFor(() =>
+      expect(paymentServiceMock.leaveEvent).toHaveBeenCalledWith(
+        user,
+        event,
+        undefined,
+        user.$id,
+      ),
+    );
+    expect(paymentServiceMock.requestRefund).not.toHaveBeenCalled();
+    await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
+  });
+
   it('allows refund requests once the event has started for paid events', async () => {
     const user = { $id: 'user_1' };
     useAppMock.mockReturnValue({ user });

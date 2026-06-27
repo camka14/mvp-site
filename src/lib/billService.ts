@@ -149,6 +149,27 @@ class BillService {
         return result.bill;
     }
 
+    async submitManualPaymentProof(params: {
+        billId: string;
+        billPaymentId: string;
+        fileId: string;
+    }): Promise<any> {
+        const result = await apiRequest<{ proof?: any; error?: string }>(
+            `/api/billing/bills/${encodeURIComponent(params.billId)}/payments/${encodeURIComponent(params.billPaymentId)}/proof`,
+            {
+                method: 'POST',
+                body: { fileId: params.fileId },
+            },
+        );
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        if (!result.proof) {
+            throw new Error('Failed to submit payment proof');
+        }
+        return result.proof;
+    }
+
     async splitBill(billId: string, playerIds: string[]): Promise<Bill[]> {
         const result = await apiRequest<{ children?: Bill[]; error?: string }>(`/api/billing/bills/${billId}/split`, {
             method: 'POST',
@@ -229,6 +250,7 @@ class BillService {
             dueDate: row.dueDate ?? '',
             amountCents: toNumber(row.amountCents),
             status: row.status ?? 'PENDING',
+            paidAmountCents: toNumber(row.paidAmountCents),
             paidAt: row.paidAt,
             paymentIntentId: row.paymentIntentId,
             payerUserId: row.payerUserId,

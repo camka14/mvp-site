@@ -426,6 +426,7 @@ export const ModelName = {
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
   BillPayments: 'BillPayments',
+  BillPaymentProofs: 'BillPaymentProofs',
   RentalBookings: 'RentalBookings',
   RentalBookingItems: 'RentalBookingItems',
   AffiliateScrapeSources: 'AffiliateScrapeSources',
@@ -473,7 +474,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -3582,6 +3583,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.BillPaymentsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.BillPaymentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    BillPaymentProofs: {
+      payload: Prisma.$BillPaymentProofsPayload<ExtArgs>
+      fields: Prisma.BillPaymentProofsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BillPaymentProofsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BillPaymentProofsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        findFirst: {
+          args: Prisma.BillPaymentProofsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BillPaymentProofsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        findMany: {
+          args: Prisma.BillPaymentProofsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>[]
+        }
+        create: {
+          args: Prisma.BillPaymentProofsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        createMany: {
+          args: Prisma.BillPaymentProofsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BillPaymentProofsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>[]
+        }
+        delete: {
+          args: Prisma.BillPaymentProofsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        update: {
+          args: Prisma.BillPaymentProofsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        deleteMany: {
+          args: Prisma.BillPaymentProofsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BillPaymentProofsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BillPaymentProofsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>[]
+        }
+        upsert: {
+          args: Prisma.BillPaymentProofsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BillPaymentProofsPayload>
+        }
+        aggregate: {
+          args: Prisma.BillPaymentProofsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBillPaymentProofs>
+        }
+        groupBy: {
+          args: Prisma.BillPaymentProofsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BillPaymentProofsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BillPaymentProofsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BillPaymentProofsCountAggregateOutputType> | number
         }
       }
     }
@@ -6898,6 +6973,7 @@ export const BillPaymentsScalarFieldEnum = {
   paidAt: 'paidAt',
   paymentIntentId: 'paymentIntentId',
   payerUserId: 'payerUserId',
+  paidAmountCents: 'paidAmountCents',
   refundedAmountCents: 'refundedAmountCents',
   taxCalculationId: 'taxCalculationId',
   taxTransactionId: 'taxTransactionId',
@@ -6907,6 +6983,26 @@ export const BillPaymentsScalarFieldEnum = {
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
+
+
+export const BillPaymentProofsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  billId: 'billId',
+  billPaymentId: 'billPaymentId',
+  eventId: 'eventId',
+  organizationId: 'organizationId',
+  fileId: 'fileId',
+  uploadedByUserId: 'uploadedByUserId',
+  status: 'status',
+  amountAcceptedCents: 'amountAcceptedCents',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewedAt: 'reviewedAt',
+  reviewNote: 'reviewNote'
+} as const
+
+export type BillPaymentProofsScalarFieldEnum = (typeof BillPaymentProofsScalarFieldEnum)[keyof typeof BillPaymentProofsScalarFieldEnum]
 
 
 export const RentalBookingsScalarFieldEnum = {
@@ -7320,6 +7416,9 @@ export const EventsScalarFieldEnum = {
   assistantHostIds: 'assistantHostIds',
   noFixedEndDateTime: 'noFixedEndDateTime',
   price: 'price',
+  registrationPaymentMode: 'registrationPaymentMode',
+  manualPaymentLinks: 'manualPaymentLinks',
+  manualPaymentInstructions: 'manualPaymentInstructions',
   taxHandling: 'taxHandling',
   organizerManualTaxRateBps: 'organizerManualTaxRateBps',
   singleDivision: 'singleDivision',
@@ -8280,6 +8379,20 @@ export type ListEnumBillPaymentsStatusEnumFieldRefInput<$PrismaModel> = FieldRef
 
 
 /**
+ * Reference to a field of type 'ManualPaymentProofStatusEnum'
+ */
+export type EnumManualPaymentProofStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ManualPaymentProofStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'ManualPaymentProofStatusEnum[]'
+ */
+export type ListEnumManualPaymentProofStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ManualPaymentProofStatusEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'RefundRequestsStatusEnum'
  */
 export type EnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RefundRequestsStatusEnum'>
@@ -8444,6 +8557,20 @@ export type EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = Fie
  * Reference to a field of type 'StripeAccountsAccountOriginEnum[]'
  */
 export type ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'RegistrationPaymentModeEnum'
+ */
+export type EnumRegistrationPaymentModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RegistrationPaymentModeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'RegistrationPaymentModeEnum[]'
+ */
+export type ListEnumRegistrationPaymentModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RegistrationPaymentModeEnum[]'>
 
 
 
@@ -8808,6 +8935,7 @@ export type GlobalOmitConfig = {
   paymentIntents?: Prisma.PaymentIntentsOmit
   bills?: Prisma.BillsOmit
   billPayments?: Prisma.BillPaymentsOmit
+  billPaymentProofs?: Prisma.BillPaymentProofsOmit
   rentalBookings?: Prisma.RentalBookingsOmit
   rentalBookingItems?: Prisma.RentalBookingItemsOmit
   affiliateScrapeSources?: Prisma.AffiliateScrapeSourcesOmit

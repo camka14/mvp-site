@@ -2089,13 +2089,17 @@ function EventScheduleContent() {
     refundLoading,
     refundError,
     refundAmountDraftByPaymentId,
+    manualProofAmountDraftById,
     refundingPaymentId,
     cancellingPendingBillPaymentId,
+    reviewingManualProofId,
     closeRefundModal,
     openRefundModal,
     handleRefundAmountDraftChange,
+    handleManualProofAmountDraftChange,
     submitRefund,
     cancelPendingBillPayment,
+    reviewManualPaymentProof,
     createBillTeam,
     createBillError,
     creatingBill,
@@ -5743,12 +5747,16 @@ function EventScheduleContent() {
         loading={refundLoading}
         snapshot={refundSnapshot}
         refundAmountDraftByPaymentId={refundAmountDraftByPaymentId}
+        manualProofAmountDraftById={manualProofAmountDraftById}
         refundingPaymentId={refundingPaymentId}
         cancellingPendingBillPaymentId={cancellingPendingBillPaymentId}
+        reviewingManualProofId={reviewingManualProofId}
         onClose={closeRefundModal}
         onRefundAmountDraftChange={handleRefundAmountDraftChange}
+        onManualProofAmountDraftChange={handleManualProofAmountDraftChange}
         onSubmitRefund={(paymentId) => { void submitRefund(paymentId); }}
         onCancelPendingPayment={(billId, paymentId) => { void cancelPendingBillPayment(billId, paymentId); }}
+        onReviewManualProof={(billId, paymentId, proofId, decision) => { void reviewManualPaymentProof(billId, paymentId, proofId, decision); }}
       />
       <CreateBillModal
         team={createBillTeam}

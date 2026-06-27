@@ -6,6 +6,11 @@ import {
     normalizeEventTaxHandling,
     normalizeOrganizerManualTaxRateBps,
 } from '@/lib/taxPolicy';
+import {
+    normalizeManualPaymentInstructions,
+    normalizeManualPaymentLinks,
+    normalizeRegistrationPaymentMode,
+} from '@/lib/manualRegistrationPayments';
 import type { Event, EventState, Division as CoreDivision, LeagueScoringConfig, Sport } from '@/types';
 
 import {
@@ -383,6 +388,9 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     description: event.description ?? '',
     isAffiliateEvent: existingAffiliateUrl.trim().length > 0 || event.eventType === 'AFFILIATE',
     affiliateUrl: existingAffiliateUrl,
+    registrationPaymentMode: normalizeRegistrationPaymentMode(event.registrationPaymentMode),
+    manualPaymentLinks: normalizeManualPaymentLinks(event.manualPaymentLinks),
+    manualPaymentInstructions: normalizeManualPaymentInstructions(event.manualPaymentInstructions) ?? '',
     tags: Array.isArray(event.tags) ? event.tags : [],
     location: event.location ?? '',
     address: event.address ?? '',

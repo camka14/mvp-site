@@ -30,6 +30,8 @@ export default function useEventBilling({
   const [refundAmountDraftByPaymentId, setRefundAmountDraftByPaymentId] = useState<Record<string, number>>({});
   const [refundingPaymentId, setRefundingPaymentId] = useState<string | null>(null);
   const [cancellingPendingBillPaymentId, setCancellingPendingBillPaymentId] = useState<string | null>(null);
+  const [reviewingManualProofId, setReviewingManualProofId] = useState<string | null>(null);
+  const [manualProofAmountDraftById, setManualProofAmountDraftById] = useState<Record<string, number>>({});
   const [createBillTeam, setCreateBillTeam] = useState<Team | null>(null);
   const [createBillError, setCreateBillError] = useState<string | null>(null);
   const [creatingBill, setCreatingBill] = useState(false);
@@ -62,6 +64,8 @@ export default function useEventBilling({
     setRefundAmountDraftByPaymentId({});
     setRefundingPaymentId(null);
     setCancellingPendingBillPaymentId(null);
+    setReviewingManualProofId(null);
+    setManualProofAmountDraftById({});
   }, []);
 
   const openRefundModal = useCallback(
@@ -83,6 +87,15 @@ export default function useEventBilling({
           });
         });
         setRefundAmountDraftByPaymentId(defaults);
+        const proofDefaults: Record<string, number> = {};
+        snapshot.bills.forEach((bill) => {
+          bill.payments.forEach((payment) => {
+            payment.manualPaymentProofs?.forEach((proof) => {
+              proofDefaults[proof.id] = payment.amountCents / 100;
+            });
+          });
+        });
+        setManualProofAmountDraftById(proofDefaults);
       } catch (error) {
         console.error('Failed to load team billing snapshot:', error);
         setRefundError(error instanceof Error ? error.message : 'Failed to load billing details.');
@@ -179,6 +192,53 @@ export default function useEventBilling({
       }
     },
     [loadTeamBillingSnapshot, refreshTeamCompliance, selectedRefundTeam, setInfoMessage],
+  );
+
+  const handleManualProofAmountDraftChange = useCallback((proofId: string, amountDollars: number) => {
+    setManualProofAmountDraftById((current) => ({
+      ...current,
+      [proofId]: Number.isFinite(amountDollars) ? Math.max(0, amountDollars) : 0,
+    }));
+  }, []);
+
+  const reviewManualPaymentProof = useCallback(
+    async (billId: string, paymentId: string, proofId: string, decision: 'ACCEPT' | 'REJECT') => {
+      const team = selectedRefundTeam;
+      if (!team?.$id) {
+        return;
+      }
+      setReviewingManualProofId(proofId);
+      setRefundError(null);
+      try {
+        const amountDollars = manualProofAmountDraftById[proofId] ?? 0;
+        await apiRequest(
+          `/api/billing/bills/${encodeURIComponent(billId)}/payments/${encodeURIComponent(paymentId)}/proofs/${encodeURIComponent(proofId)}/review`,
+          {
+            method: 'POST',
+            body: {
+              decision,
+              ...(decision === 'ACCEPT' ? { amountAcceptedCents: Math.round(amountDollars * 100) } : {}),
+            },
+          },
+        );
+        const snapshot = await loadTeamBillingSnapshot(team.$id);
+        setRefundSnapshot(snapshot);
+        setInfoMessage(decision === 'ACCEPT' ? 'Manual payment proof accepted.' : 'Manual payment proof rejected.');
+        refreshTeamCompliance();
+      } catch (error) {
+        console.error('Failed to review manual payment proof:', error);
+        setRefundError(error instanceof Error ? error.message : 'Failed to review payment proof.');
+      } finally {
+        setReviewingManualProofId(null);
+      }
+    },
+    [
+      loadTeamBillingSnapshot,
+      manualProofAmountDraftById,
+      refreshTeamCompliance,
+      selectedRefundTeam,
+      setInfoMessage,
+    ],
   );
 
   const closeCreateBillModal = useCallback(() => {
@@ -377,13 +437,17 @@ export default function useEventBilling({
     refundLoading,
     refundError,
     refundAmountDraftByPaymentId,
+    manualProofAmountDraftById,
     refundingPaymentId,
     cancellingPendingBillPaymentId,
+    reviewingManualProofId,
     closeRefundModal,
     openRefundModal,
     handleRefundAmountDraftChange,
+    handleManualProofAmountDraftChange,
     submitRefund,
     cancelPendingBillPayment,
+    reviewManualPaymentProof,
     createBillTeam,
     createBillError,
     creatingBill,

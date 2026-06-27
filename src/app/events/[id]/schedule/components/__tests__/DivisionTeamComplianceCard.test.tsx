@@ -199,6 +199,29 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText('$0.00 of $50.00 paid')).not.toBeInTheDocument();
   });
 
+  it('shows submitted manual payment proof before generic unpaid status', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={{
+          ...createSummary(),
+          payment: {
+            ...createSummary().payment,
+            paidAmountCents: 0,
+            status: 'OPEN',
+            isPaidInFull: false,
+            manualPaymentProofStatus: 'SUBMITTED',
+            manualPaymentProofCount: 1,
+            paymentPending: true,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Payment proof submitted ($50.00)')).toBeInTheDocument();
+    expect(screen.queryByText('Payment pending')).not.toBeInTheDocument();
+  });
+
   it('renders actions after all team compliance text', () => {
     renderWithMantine(
       <DivisionTeamComplianceCard

@@ -40,6 +40,8 @@ export type TeamCompliancePaymentSummary = {
   paidAmountCents: number;
   status: string | null;
   isPaidInFull: boolean;
+  manualPaymentProofStatus?: string | null;
+  manualPaymentProofCount?: number;
   paymentPending?: boolean;
   inheritedFromTeamBill?: boolean;
 };

@@ -36,6 +36,11 @@ import {
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps } from '@/lib/taxPolicy';
 import {
+  normalizeManualPaymentInstructions,
+  normalizeManualPaymentLinks,
+  normalizeRegistrationPaymentMode,
+} from '@/lib/manualRegistrationPayments';
+import {
   buildEventOfficialPositionsFromTemplates,
   filterEventOfficialsByUserIds,
   normalizeEventOfficials,
@@ -65,6 +70,9 @@ const EVENT_UPDATE_FIELDS = new Set([
   'timeZone',
   'description',
   'affiliateUrl',
+  'registrationPaymentMode',
+  'manualPaymentLinks',
+  'manualPaymentInstructions',
   'divisions',
   'winnerSetCount',
   'loserSetCount',
@@ -250,6 +258,11 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.requiredTemplateIds)) {
     (legacy as any).requiredTemplateIds = [];
   }
+  (legacy as any).registrationPaymentMode = normalizeRegistrationPaymentMode((legacy as any).registrationPaymentMode);
+  (legacy as any).manualPaymentLinks = normalizeManualPaymentLinks((legacy as any).manualPaymentLinks);
+  (legacy as any).manualPaymentInstructions = normalizeManualPaymentInstructions(
+    (legacy as any).manualPaymentInstructions,
+  );
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
     (legacy as any).noFixedEndDateTime = false;
   }
@@ -259,6 +272,16 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).teamOfficialsMaySwap = false;
   }
   return legacy;
+};
+
+const getEventTagsForResponse = async (eventId: string) => {
+  try {
+    const tagsByEventId = await getEventTagsForEventIds([eventId]);
+    return tagsByEventId.get(eventId) ?? [];
+  } catch (error) {
+    console.warn('Failed to load event tags for event response', { eventId, error });
+    return [];
+  }
 };
 
 const buildEventOfficialResponse = async (event: any) => {
@@ -1718,7 +1741,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     getVisibleDivisionKeysForEventResponse(eventId, event),
     getDivisionKeysForEventKind(eventId, 'PLAYOFF'),
   ]);
-  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds, tagsByEventId] = await Promise.all([
+  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds, tags] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
       price: event.price,
@@ -1745,7 +1768,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       orderBy: { createdAt: 'desc' },
     }),
     getEventParticipantIdsForEvent(eventId),
-    getEventTagsForEventIds([eventId]),
+    getEventTagsForResponse(eventId),
   ]);
   const officialResponse = await buildEventOfficialResponse(event);
   return NextResponse.json(
@@ -1757,7 +1780,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       divisionFieldIds,
       divisionDetails,
       playoffDivisionDetails,
-      tags: tagsByEventId.get(eventId) ?? [],
+      tags,
       staffInvites: staffInvites.map((invite) => withLegacyFields(invite)),
     }),
     { status: 200 },
@@ -1936,6 +1959,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       if (Object.prototype.hasOwnProperty.call(data, 'organizerManualTaxRateBps')) {
         data.organizerManualTaxRateBps = normalizeOrganizerManualTaxRateBps(data.organizerManualTaxRateBps);
+      }
+      const targetRegistrationPaymentMode = Object.prototype.hasOwnProperty.call(data, 'registrationPaymentMode')
+        ? normalizeRegistrationPaymentMode(data.registrationPaymentMode)
+        : normalizeRegistrationPaymentMode((existing as any).registrationPaymentMode);
+      if (Object.prototype.hasOwnProperty.call(data, 'registrationPaymentMode')) {
+        data.registrationPaymentMode = targetRegistrationPaymentMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'manualPaymentLinks')) {
+        data.manualPaymentLinks = normalizeManualPaymentLinks(data.manualPaymentLinks);
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'manualPaymentInstructions')) {
+        data.manualPaymentInstructions = normalizeManualPaymentInstructions(data.manualPaymentInstructions);
+      }
+      if (
+        targetRegistrationPaymentMode !== 'MANUAL'
+        && (
+          Object.prototype.hasOwnProperty.call(data, 'registrationPaymentMode')
+          || Object.prototype.hasOwnProperty.call(data, 'manualPaymentLinks')
+          || Object.prototype.hasOwnProperty.call(data, 'manualPaymentInstructions')
+        )
+      ) {
+        data.manualPaymentLinks = [];
+        data.manualPaymentInstructions = null;
       }
       const hasLegacyTeamIdsInput = Object.prototype.hasOwnProperty.call(payload, 'teamIds');
       const hasLegacyUserIdsInput = Object.prototype.hasOwnProperty.call(payload, 'userIds');

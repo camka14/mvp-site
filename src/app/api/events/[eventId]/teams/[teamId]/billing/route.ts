@@ -137,6 +137,7 @@ export async function GET(
           sequence: true,
           dueDate: true,
           amountCents: true,
+          paidAmountCents: true,
           status: true,
           paidAt: true,
           paymentIntentId: true,
@@ -148,6 +149,29 @@ export async function GET(
         orderBy: [{ sequence: 'asc' }, { createdAt: 'asc' }],
       })
       : [];
+    const proofRows = billIds.length > 0
+      ? await (prisma as any).billPaymentProofs.findMany({
+        where: { billId: { in: billIds } },
+        select: {
+          id: true,
+          billPaymentId: true,
+          fileId: true,
+          status: true,
+          amountAcceptedCents: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      : [];
+    const proofsByPaymentId = new Map<string, typeof proofRows>();
+    (proofRows as any[]).forEach((proof) => {
+      const existing = proofsByPaymentId.get(proof.billPaymentId);
+      if (existing) {
+        existing.push(proof);
+      } else {
+        proofsByPaymentId.set(proof.billPaymentId, [proof]);
+      }
+    });
 
     const paymentsByBillId = new Map<string, typeof billPayments>();
     billPayments.forEach((payment) => {
@@ -170,11 +194,21 @@ export async function GET(
           refundedAmountCents,
           refundableAmountCents,
           isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
+          manualPaymentProofs: (proofsByPaymentId.get(payment.id) ?? []).map((proof: any) => ({
+            id: proof.id,
+            status: proof.status ?? null,
+            fileId: proof.fileId,
+            fileUrl: `/api/files/${encodeURIComponent(proof.fileId)}`,
+            amountAcceptedCents: proof.amountAcceptedCents ?? null,
+          })),
         };
       });
 
       const paidAmountCents = payments.reduce((sum, payment) => (
-        payment.status === 'PAID' ? sum + payment.amountCents : sum
+        sum + Math.min(
+          Math.max(0, payment.amountCents),
+          Math.max(0, Number((payment as any).paidAmountCents ?? (payment.status === 'PAID' ? payment.amountCents : 0))),
+        )
       ), 0);
       const refundedAmountCents = payments.reduce((sum, payment) => sum + payment.refundedAmountCents, 0);
       const refundableAmountCents = Math.max(0, paidAmountCents - refundedAmountCents);
@@ -340,6 +374,7 @@ export async function GET(
         sequence: true,
         dueDate: true,
         amountCents: true,
+        paidAmountCents: true,
         status: true,
         paidAt: true,
         paymentIntentId: true,
@@ -351,6 +386,29 @@ export async function GET(
       orderBy: [{ sequence: 'asc' }, { createdAt: 'asc' }],
     })
     : [];
+  const proofRows = billIds.length > 0
+    ? await (prisma as any).billPaymentProofs.findMany({
+      where: { billId: { in: billIds } },
+      select: {
+        id: true,
+        billPaymentId: true,
+        fileId: true,
+        status: true,
+        amountAcceptedCents: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    : [];
+  const proofsByPaymentId = new Map<string, typeof proofRows>();
+  (proofRows as any[]).forEach((proof) => {
+    const existing = proofsByPaymentId.get(proof.billPaymentId);
+    if (existing) {
+      existing.push(proof);
+    } else {
+      proofsByPaymentId.set(proof.billPaymentId, [proof]);
+    }
+  });
 
   const usersById = new Map(users.map((user) => [user.id, user]));
   const paymentsByBillId = new Map<string, typeof billPayments>();
@@ -377,15 +435,25 @@ export async function GET(
       return {
         ...payment,
         $id: payment.id,
-        refundedAmountCents,
-        refundableAmountCents,
-        isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
-      };
-    });
+      refundedAmountCents,
+      refundableAmountCents,
+      isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
+      manualPaymentProofs: (proofsByPaymentId.get(payment.id) ?? []).map((proof: any) => ({
+        id: proof.id,
+        status: proof.status ?? null,
+        fileId: proof.fileId,
+        fileUrl: `/api/files/${encodeURIComponent(proof.fileId)}`,
+        amountAcceptedCents: proof.amountAcceptedCents ?? null,
+      })),
+    };
+  });
 
-    const paidAmountCents = payments.reduce((sum, payment) => {
-      return payment.status === 'PAID' ? sum + payment.amountCents : sum;
-    }, 0);
+    const paidAmountCents = payments.reduce((sum, payment) => (
+      sum + Math.min(
+        Math.max(0, payment.amountCents),
+        Math.max(0, Number((payment as any).paidAmountCents ?? (payment.status === 'PAID' ? payment.amountCents : 0))),
+      )
+    ), 0);
     const refundedAmountCents = payments.reduce((sum, payment) => sum + payment.refundedAmountCents, 0);
     const refundableAmountCents = Math.max(0, paidAmountCents - refundedAmountCents);
 

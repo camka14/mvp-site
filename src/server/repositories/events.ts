@@ -4,6 +4,11 @@ import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
+  normalizeManualPaymentInstructions,
+  normalizeManualPaymentLinks,
+  normalizeRegistrationPaymentMode,
+} from '@/lib/manualRegistrationPayments';
+import {
   buildDivisionToken,
   buildEventDivisionId,
   cleanDivisionDisplayName,
@@ -4179,6 +4184,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       organizationId: true,
       parentEvent: true,
       affiliateUrl: true,
+      registrationPaymentMode: true as any,
+      manualPaymentLinks: true as any,
+      manualPaymentInstructions: true as any,
       location: true,
       officialPositions: true as any,
       officialSchedulingMode: true as any,
@@ -4269,11 +4277,27 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         })
       : Promise.resolve(null),
   ]);
+  const normalizedRegistrationPaymentMode = normalizeRegistrationPaymentMode(
+    Object.prototype.hasOwnProperty.call(payload, 'registrationPaymentMode')
+      ? payload.registrationPaymentMode
+      : (existingEvent as any)?.registrationPaymentMode,
+  );
+  const isManualRegistrationPayment = normalizedRegistrationPaymentMode === 'MANUAL';
+  const normalizedManualPaymentLinks = normalizeManualPaymentLinks(
+    Object.prototype.hasOwnProperty.call(payload, 'manualPaymentLinks')
+      ? payload.manualPaymentLinks
+      : (existingEvent as any)?.manualPaymentLinks,
+  );
+  const normalizedManualPaymentInstructions = normalizeManualPaymentInstructions(
+    Object.prototype.hasOwnProperty.call(payload, 'manualPaymentInstructions')
+      ? payload.manualPaymentInstructions
+      : (existingEvent as any)?.manualPaymentInstructions,
+  );
   const billingOwnerHasStripeAccount = await resolveBillingOwnerHasStripeAccount(client, {
     organizationId: resolvedOrganizationId,
     hostId: normalizedHostId,
   });
-  const canPersistEventPricing = billingOwnerHasStripeAccount || isAffiliateExternalEvent;
+  const canPersistEventPricing = billingOwnerHasStripeAccount || isManualRegistrationPayment || isAffiliateExternalEvent;
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
@@ -4678,6 +4702,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     assistantHostIds: isAffiliateExternalEvent ? [] : normalizedAssistantHostIds,
     noFixedEndDateTime,
     price: normalizedEventPrice,
+    registrationPaymentMode: isAffiliateExternalEvent ? 'ONLINE' : normalizedRegistrationPaymentMode,
+    manualPaymentLinks: isManualRegistrationPayment && !isAffiliateExternalEvent ? normalizedManualPaymentLinks : [],
+    manualPaymentInstructions: isManualRegistrationPayment && !isAffiliateExternalEvent
+      ? normalizedManualPaymentInstructions
+      : null,
     taxHandling: normalizedTaxHandling,
     organizerManualTaxRateBps: normalizedOrganizerManualTaxRateBps,
     singleDivision: payload.singleDivision ?? false,

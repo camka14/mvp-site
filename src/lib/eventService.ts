@@ -42,6 +42,11 @@ import {
   normalizeOrganizationTaxClassification,
   normalizeRentalTaxHandling,
 } from "@/lib/taxPolicy";
+import {
+  normalizeManualPaymentInstructions,
+  normalizeManualPaymentLinks,
+  normalizeRegistrationPaymentMode,
+} from "@/lib/manualRegistrationPayments";
 import type {
   EventTeamComplianceResponse,
   EventUserComplianceResponse,
@@ -1309,6 +1314,9 @@ class EventService {
       address: row.address ?? undefined,
       coordinates: row.coordinates,
       price: row.price,
+      registrationPaymentMode: normalizeRegistrationPaymentMode(row.registrationPaymentMode),
+      manualPaymentLinks: normalizeManualPaymentLinks(row.manualPaymentLinks),
+      manualPaymentInstructions: normalizeManualPaymentInstructions(row.manualPaymentInstructions),
       taxHandling: normalizeEventTaxHandling(row.taxHandling),
       organizerManualTaxRateBps: Number.isFinite(Number(row.organizerManualTaxRateBps))
         ? Math.max(0, Math.round(Number(row.organizerManualTaxRateBps)))

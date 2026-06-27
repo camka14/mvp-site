@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { canManageEvent } from '@/server/accessControl';
 import { withLegacyFields } from '@/server/legacyFormat';
@@ -97,6 +98,7 @@ export async function POST(
       assistantHostIds: true,
       organizationId: true,
       teamSignup: true,
+      registrationPaymentMode: true,
     },
   });
   if (!event) {
@@ -104,6 +106,12 @@ export async function POST(
   }
   if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isManualRegistrationPaymentMode(event.registrationPaymentMode)) {
+    return NextResponse.json(
+      { error: 'Manual payment registrations are refunded outside BracketIQ by the host.' },
+      { status: 400 },
+    );
   }
 
   const normalizedTeamId = normalizeId(teamId);
