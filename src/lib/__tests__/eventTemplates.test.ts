@@ -6,6 +6,10 @@ import {
   cloneEventAsTemplate,
   seedEventFromTemplate,
 } from '@/lib/eventTemplates';
+import {
+  getTemplateRentalResourceHintsFromEvent,
+  isTemplateRentalResourceSourceType,
+} from '@/lib/templateRentalResources';
 
 const makeIdFactory = (prefix = 'id') => {
   let counter = 0;
@@ -193,6 +197,93 @@ describe('eventTemplates', () => {
     expect(seeded.fields?.map((field) => field.$id)).toEqual(['seed_field_1']);
     expect(seeded.timeSlots?.[0]?.scheduledFieldId).toBe('seed_field_1');
     expect(seeded.timeSlots?.[0]?.scheduledFieldIds).toEqual(['org_field_1', 'seed_field_1']);
+  });
+
+  it('removes rental-only resources from templates while keeping a rental resource hint', () => {
+    const source = buildBaseEvent({
+      organizationId: 'org_1',
+      organization: {
+        $id: 'org_1',
+        name: 'River City Sports Club',
+        publicSlug: 'river-city-sports',
+      } as any,
+      fields: [
+        {
+          $id: 'rental_field',
+          name: 'Rental Court',
+          location: 'Fieldhouse',
+          organization: {
+            $id: 'org_1',
+            publicSlug: 'river-city-sports',
+          },
+        } as any,
+        {
+          $id: 'regular_field',
+          name: 'Practice Court',
+          location: 'Fieldhouse',
+        } as any,
+      ],
+      fieldIds: ['rental_field', 'regular_field'],
+      timeSlots: [
+        {
+          $id: 'rental_slot',
+          dayOfWeek: 0,
+          daysOfWeek: [0],
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-05T18:00:00',
+          endDate: '2026-01-05T20:00:00',
+          repeating: false,
+          scheduledFieldId: 'rental_field',
+          scheduledFieldIds: ['rental_field'],
+          sourceType: 'RENTAL_BOOKING',
+          rentalBookingId: 'booking_1',
+          rentalBookingItemId: 'item_1',
+          rentalLocked: true,
+          price: 5000,
+        },
+        {
+          $id: 'regular_slot',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-06T18:00:00',
+          endDate: '2026-01-06T20:00:00',
+          repeating: false,
+          scheduledFieldId: 'regular_field',
+          scheduledFieldIds: ['regular_field'],
+        },
+      ] as any,
+      timeSlotIds: ['rental_slot', 'regular_slot'],
+    });
+
+    const template = cloneEventAsTemplate(source, {
+      templateId: 'tmpl_rental',
+      idFactory: makeIdFactory('rental'),
+    });
+
+    expect(template.fieldIds).toEqual(['rental_1']);
+    expect(template.fields?.map((field) => field.$id)).toEqual(['rental_1']);
+
+    const rentalSlot = template.timeSlots?.find((slot) =>
+      isTemplateRentalResourceSourceType(slot.sourceType),
+    );
+    expect(rentalSlot?.scheduledFieldId).toBeUndefined();
+    expect(rentalSlot?.scheduledFieldIds).toEqual([]);
+    expect(rentalSlot?.rentalBookingId).toBeNull();
+    expect(rentalSlot?.rentalBookingItemId).toBeNull();
+    expect(rentalSlot?.rentalLocked).toBe(false);
+    expect(rentalSlot?.price).toBeUndefined();
+
+    const hints = getTemplateRentalResourceHintsFromEvent(template);
+    expect(hints).toEqual([
+      expect.objectContaining({
+        fieldId: 'rental_field',
+        fieldName: 'Rental Court',
+        organizationSlug: 'river-city-sports',
+      }),
+    ]);
   });
 
   it('remaps division identifiers to the new template id for complex division payloads without dropping metadata', () => {
@@ -496,6 +587,45 @@ describe('eventTemplates', () => {
     expect(seeded.timeSlotIds).toEqual(['seed_1']);
     expect(seeded.timeSlots?.[0].startDate).toBe('2026-02-01T10:30:00');
     expect(seeded.timeSlots?.[0].endDate).toBe('2026-02-08T10:30:00');
+  });
+
+  it('offsets individual template time slot dates by the selected event start date', () => {
+    const template = buildBaseEvent({
+      $id: 'tmpl_offset',
+      name: 'Offset League (TEMPLATE)',
+      state: 'TEMPLATE',
+      start: '2026-01-05T09:00:00',
+      end: '2026-01-12T09:00:00',
+      fieldIds: ['field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_offset',
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-07T18:00:00',
+          endDate: '2026-01-07T20:00:00',
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+        },
+      ],
+      timeSlotIds: ['slot_offset'],
+    });
+
+    const seeded = seedEventFromTemplate(template, {
+      newEventId: 'evt_offset',
+      newStartDate: new Date('2026-02-02T00:00:00'),
+      hostId: 'host_1',
+      idFactory: makeIdFactory('offset'),
+    });
+
+    expect(seeded.start).toBe('2026-02-02T09:00:00');
+    expect(seeded.timeSlots?.[0].startDate).toBe('2026-02-04T18:00:00');
+    expect(seeded.timeSlots?.[0].endDate).toBe('2026-02-04T20:00:00');
+    expect(seeded.timeSlots?.[0].dayOfWeek).toBe(2);
+    expect(seeded.timeSlots?.[0].daysOfWeek).toEqual([2]);
   });
 
   it('preserves scheduling and league config while clearing matches when seeding from template', () => {

@@ -4260,6 +4260,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedOfficialIds = organizationAssignments
     ? organizationAssignments.officialIds
     : requestedEventOfficialIds;
+  const normalizedState = typeof payload.state === 'string'
+    ? payload.state.trim().toUpperCase()
+    : typeof (existingEvent as any)?.state === 'string'
+      ? String((existingEvent as any).state).trim().toUpperCase()
+      : '';
+  const isTemplateState = normalizedState === 'TEMPLATE';
   const payloadIncludesAffiliateUrl = Object.prototype.hasOwnProperty.call(payload, 'affiliateUrl');
   const payloadAffiliateUrl = typeof payload.affiliateUrl === 'string' ? payload.affiliateUrl.trim() : '';
   const existingAffiliateUrl = typeof (existingEvent as any)?.affiliateUrl === 'string'
@@ -4404,6 +4410,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       fallbackDivisionKeys: normalizedEventDivisionIds,
       enforceAllDivisions: singleDivisionEnabled && !isTournamentPoolPlay,
       normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
+      allowTemplateRentalResourceReferences: isTemplateState,
     });
   if (!isAffiliateExternalEvent) {
     await reserveRentalBookingSlotsForEvent(client, id, canonicalTimeSlots);
@@ -4421,7 +4428,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : payloadLocalFieldIds.length
         ? normalizeFieldIds(payloadLocalFieldIds)
         : existingFieldIds;
-  if (!isAffiliateExternalEvent && fieldIds.length === 0) {
+  if (!isAffiliateExternalEvent && !isTemplateState && fieldIds.length === 0) {
     throw new Error(EVENT_FIELDS_REQUIRED_MESSAGE);
   }
   const hasExplicitOfficialPositions = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');

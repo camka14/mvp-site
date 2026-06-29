@@ -21,6 +21,7 @@ import EventForm, { type EventFormHandle, type EventFormProps } from '../compone
 import EventSchedulePendingChangesPopover from './EventSchedulePendingChangesPopover';
 import RentalCheckoutModals, { type RentalCheckoutModalsProps } from './RentalCheckoutModals';
 import type { PendingSaveChangeItem } from './helpers';
+import type { TemplateRentalResourcePrompt } from './useCreateEventFlow';
 
 type TemplateSelectItem = {
   value: string;
@@ -45,10 +46,12 @@ type CreateEventScheduleViewProps = {
   error: string | null;
   warningMessage: string | null;
   infoMessage: string | null;
+  templateRentalResourcePrompt: TemplateRentalResourcePrompt | null;
   onSubmitErrorClose: () => void;
   onErrorClose: () => void;
   onWarningMessageClose: () => void;
   onInfoMessageClose: () => void;
+  onTemplateRentalResourcePromptClose: () => void;
   templatePromptOpen: boolean;
   onCloseTemplatePrompt: () => void;
   isMobile: boolean;
@@ -95,10 +98,12 @@ export default function CreateEventScheduleView({
   error,
   warningMessage,
   infoMessage,
+  templateRentalResourcePrompt,
   onSubmitErrorClose,
   onErrorClose,
   onWarningMessageClose,
   onInfoMessageClose,
+  onTemplateRentalResourcePromptClose,
   templatePromptOpen,
   onCloseTemplatePrompt,
   isMobile,
@@ -186,6 +191,23 @@ export default function CreateEventScheduleView({
           {infoMessage && (
             <Alert color="green" radius="md" onClose={onInfoMessageClose} withCloseButton>
               {infoMessage}
+            </Alert>
+          )}
+          {templateRentalResourcePrompt && (
+            <Alert color="blue" radius="md" onClose={onTemplateRentalResourcePromptClose} withCloseButton>
+              <Group justify="space-between" align="center" gap="sm">
+                <Text size="sm">{templateRentalResourcePrompt.message}</Text>
+                {templateRentalResourcePrompt.href && (
+                  <Button
+                    component="a"
+                    href={templateRentalResourcePrompt.href}
+                    size="xs"
+                    variant="light"
+                  >
+                    Open Rentals
+                  </Button>
+                )}
+              </Group>
             </Alert>
           )}
 

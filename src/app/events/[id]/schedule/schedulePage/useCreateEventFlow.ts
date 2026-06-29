@@ -13,6 +13,11 @@ import { createId } from '@/lib/id';
 import { organizationService } from '@/lib/organizationService';
 import { paymentService } from '@/lib/paymentService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
+import {
+  buildTemplateRentalResourceHref,
+  getTemplateRentalResourceHintsFromEvent,
+  type TemplateRentalResourceHint,
+} from '@/lib/templateRentalResources';
 import type {
   Event,
   EventState,
@@ -39,6 +44,38 @@ import {
 type TemplateSummary = {
   id: string;
   name: string;
+};
+
+export type TemplateRentalResourcePrompt = {
+  message: string;
+  href: string | null;
+};
+
+const buildTemplateRentalResourcePrompt = (
+  event: Event,
+): TemplateRentalResourcePrompt | null => {
+  const hints = getTemplateRentalResourceHintsFromEvent(event);
+  if (hints.length === 0) {
+    return null;
+  }
+  const labels = hints
+    .map((hint: TemplateRentalResourceHint) => hint.fieldName ?? hint.facilityName ?? hint.location)
+    .filter((label): label is string => Boolean(label));
+  const uniqueLabels = Array.from(new Set(labels));
+  const resourceLabel = uniqueLabels.length > 0
+    ? uniqueLabels.slice(0, 3).join(', ')
+    : hints.length === 1
+      ? 'a rented resource'
+      : 'rented resources';
+  const overflow = uniqueLabels.length > 3 ? ` and ${uniqueLabels.length - 3} more` : '';
+  const href = hints
+    .map(buildTemplateRentalResourceHref)
+    .find((value): value is string => Boolean(value)) ?? null;
+
+  return {
+    message: `This template used ${resourceLabel}${overflow}. Create a new rental for the resource before scheduling this event there.`,
+    href,
+  };
 };
 
 type UseCreateEventFlowParams = {
@@ -135,6 +172,7 @@ export function useCreateEventFlow({
   const [templateSeedKey, setTemplateSeedKey] = useState(0);
   const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [templateRentalResourcePrompt, setTemplateRentalResourcePrompt] = useState<TemplateRentalResourcePrompt | null>(null);
 
   const createLocationDefaults = useMemo(
     () => buildScheduleLocationDefaults({
@@ -393,6 +431,7 @@ export function useCreateEventFlow({
     templateIdSeedResolvedRef.current = null;
     setTemplatePromptOpen(false);
     setTemplateSummaries([]);
+    setTemplateRentalResourcePrompt(null);
     setSelectedTemplateId(null);
     setSelectedTemplateStartDate(null);
     setTemplatesError(null);
@@ -440,6 +479,7 @@ export function useCreateEventFlow({
         setTemplatePromptOpen(false);
         setSelectedTemplateId(templateIdParam);
         setSelectedTemplateStartDate(startDate);
+        setTemplateRentalResourcePrompt(buildTemplateRentalResourcePrompt(seeded));
         setChangesEvent(seeded);
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);
@@ -517,6 +557,7 @@ export function useCreateEventFlow({
       });
 
       setChangesEvent(seeded);
+      setTemplateRentalResourcePrompt(buildTemplateRentalResourcePrompt(seeded));
       setHasUnsavedChanges(false);
       setFormHasUnsavedChanges(false);
       setTemplateSeedKey((prev) => prev + 1);
@@ -862,6 +903,8 @@ export function useCreateEventFlow({
     selectedTemplateStartDate,
     setSelectedTemplateStartDate,
     templateSeedKey,
+    templateRentalResourcePrompt,
+    dismissTemplateRentalResourcePrompt: () => setTemplateRentalResourcePrompt(null),
     handleApplyTemplate,
     buildTemplateSourceFromDraft,
   };

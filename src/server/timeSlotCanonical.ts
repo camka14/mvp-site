@@ -1,4 +1,5 @@
 import { normalizeRentalTaxHandling, type RentalTaxHandling } from '@/lib/taxPolicy';
+import { isTemplateRentalResourceSourceType } from '@/lib/templateRentalResources';
 import {
   DEFAULT_EVENT_TIME_ZONE,
   mondayDayInTimeZone,
@@ -136,6 +137,7 @@ type CanonicalizeSlotsParams = {
   fallbackDivisionKeys: string[];
   enforceAllDivisions: boolean;
   normalizeDivisions: (value: unknown) => string[];
+  allowTemplateRentalResourceReferences?: boolean;
 };
 
 export const canonicalizeTimeSlots = ({
@@ -146,6 +148,7 @@ export const canonicalizeTimeSlots = ({
   fallbackDivisionKeys,
   enforceAllDivisions,
   normalizeDivisions,
+  allowTemplateRentalResourceReferences = false,
 }: CanonicalizeSlotsParams): CanonicalTimeSlotInput[] => {
   const seenSlotIds = new Map<string, number>();
   const fallbackTimeZone = resolveTimeZone(timeZone, DEFAULT_EVENT_TIME_ZONE);
@@ -166,7 +169,9 @@ export const canonicalizeTimeSlots = ({
     });
 
     const normalizedFieldIds = normalizeTimeSlotFieldIds(slot);
-    if (normalizedFieldIds.length === 0) {
+    const allowFieldlessSlot = allowTemplateRentalResourceReferences
+      && isTemplateRentalResourceSourceType(slot.sourceType);
+    if (normalizedFieldIds.length === 0 && !allowFieldlessSlot) {
       return [];
     }
 

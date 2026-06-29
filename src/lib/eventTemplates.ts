@@ -5,6 +5,10 @@ import {
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
 import { createId } from '@/lib/id';
+import {
+  buildTemplateRentalResourceHintFromField,
+  buildTemplateRentalResourceSourceType,
+} from '@/lib/templateRentalResources';
 import type { Division, Event, Field, TimeSlot } from '@/types';
 
 const TEMPLATE_SUFFIX_RE = /\s*\(TEMPLATE\)\s*$/i;
@@ -105,13 +109,74 @@ const normalizeFieldIds = (values: unknown): string[] => {
 const resolveTemplateFieldIds = (
   source: Event,
   fieldIdMap: Map<string, string>,
+  excludedSourceFieldIds?: Set<string>,
 ): string[] => {
   const sourceFieldIds = normalizeFieldIds(source.fieldIds);
   const fallbackFieldIds = Array.isArray(source.fields)
     ? normalizeFieldIds((source.fields as Field[]).map((field) => field.$id))
     : [];
   return (sourceFieldIds.length ? sourceFieldIds : fallbackFieldIds)
+    .filter((fieldId) => !excludedSourceFieldIds?.has(fieldId))
     .map((fieldId) => fieldIdMap.get(fieldId) ?? fieldId);
+};
+
+const shiftLocalDateTime = (
+  value: string | null | undefined,
+  sourceStart: Date,
+  targetStart: Date,
+): string | null | undefined => {
+  if (value === null) {
+    return null;
+  }
+  const parsed = value ? parseLocalDateTime(value) : null;
+  if (!parsed) {
+    return value;
+  }
+  const shifted = new Date(parsed.getTime() + (targetStart.getTime() - sourceStart.getTime()));
+  return formatLocalDateTime(shifted);
+};
+
+const mondayDayIndex = (date: Date): TimeSlot['dayOfWeek'] =>
+  ((date.getDay() + 6) % 7) as TimeSlot['dayOfWeek'];
+
+const shiftDayIndex = (
+  value: number,
+  sourceStart: Date,
+  targetStart: Date,
+): TimeSlot['dayOfWeek'] => {
+  const dayOffset = Math.round((targetStart.getTime() - sourceStart.getTime()) / (24 * 60 * 60 * 1000));
+  return (((value + dayOffset) % 7 + 7) % 7) as TimeSlot['dayOfWeek'];
+};
+
+const isRentalBackedTimeSlot = (slot: TimeSlot): boolean =>
+  slot.rentalLocked === true
+  || Boolean(normalizeId(slot.rentalBookingId))
+  || Boolean(normalizeId(slot.rentalBookingItemId))
+  || normalizeId(slot.sourceType)?.toUpperCase() === 'RENTAL_BOOKING';
+
+const getSlotFieldIds = (slot: TimeSlot): string[] => normalizeFieldIds(
+  Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+    ? slot.scheduledFieldIds
+    : slot.scheduledFieldId
+      ? [slot.scheduledFieldId]
+      : [],
+);
+
+const getRentalOnlyFieldIds = (slots: TimeSlot[]): Set<string> => {
+  const rentalFieldIds = new Set<string>();
+  const nonRentalFieldIds = new Set<string>();
+  slots.forEach((slot) => {
+    getSlotFieldIds(slot).forEach((fieldId) => {
+      if (isRentalBackedTimeSlot(slot)) {
+        rentalFieldIds.add(fieldId);
+      } else {
+        nonRentalFieldIds.add(fieldId);
+      }
+    });
+  });
+  return new Set(
+    Array.from(rentalFieldIds).filter((fieldId) => !nonRentalFieldIds.has(fieldId)),
+  );
 };
 
 const cloneTimeSlots = (
@@ -119,30 +184,67 @@ const cloneTimeSlots = (
   params: {
     idFactory: () => string;
     scheduledFieldIdMap?: Map<string, string>;
-    start: string;
-    end: string;
+    sourceStart: Date;
+    targetStart: Date;
+    fallbackEnd: string;
+    rentalSourceFieldIds?: Set<string>;
+    sourceFieldById?: Map<string, Field>;
+    sourceEvent?: Event;
   },
 ): TimeSlot[] => {
-  const { idFactory, scheduledFieldIdMap, start, end } = params;
+  const {
+    idFactory,
+    scheduledFieldIdMap,
+    sourceStart,
+    targetStart,
+    fallbackEnd,
+    rentalSourceFieldIds,
+    sourceFieldById,
+    sourceEvent,
+  } = params;
   return sourceSlots.map((slot) => {
-    const scheduledFieldIds = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
-      ? slot.scheduledFieldIds
+    const slotFieldIds = getSlotFieldIds(slot);
+    const rentalBacked = isRentalBackedTimeSlot(slot)
+      && slotFieldIds.some((fieldId) => rentalSourceFieldIds?.has(fieldId));
+    const scheduledFieldIds = rentalBacked
+      ? []
+      : slotFieldIds
           .map((fieldId) => scheduledFieldIdMap?.get(fieldId) ?? fieldId)
-      : slot.scheduledFieldId
-      ? [scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId]
-      : [];
-    const scheduledFieldId = slot.scheduledFieldId
+          .filter((fieldId) => !rentalSourceFieldIds?.has(fieldId));
+    const scheduledFieldId = !rentalBacked && slot.scheduledFieldId
       ? scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId
       : scheduledFieldIds[0];
+    const shiftedStartDate = shiftLocalDateTime(slot.startDate, sourceStart, targetStart);
+    const shiftedEndDate = shiftLocalDateTime(slot.endDate, sourceStart, targetStart);
+    const parsedShiftedStartDate = shiftedStartDate ? parseLocalDateTime(shiftedStartDate) : null;
+    const shiftedDaysOfWeek = Array.isArray(slot.daysOfWeek)
+      ? Array.from(new Set(slot.daysOfWeek.map((day) => shiftDayIndex(day, sourceStart, targetStart)))).sort()
+      : undefined;
+    const shiftedDayOfWeek = parsedShiftedStartDate
+      ? mondayDayIndex(parsedShiftedStartDate)
+      : typeof slot.dayOfWeek === 'number'
+        ? shiftDayIndex(slot.dayOfWeek, sourceStart, targetStart)
+        : shiftedDaysOfWeek?.[0];
+    const rentalHint = rentalBacked && sourceEvent
+      ? buildTemplateRentalResourceHintFromField(sourceFieldById?.get(slotFieldIds[0]), sourceEvent)
+      : null;
 
     return {
       ...slot,
       $id: idFactory(),
       scheduledFieldId,
       scheduledFieldIds,
-      // Align with the new event window (EventForm will also re-stamp these on save for leagues).
-      startDate: start,
-      endDate: end,
+      dayOfWeek: shiftedDayOfWeek,
+      daysOfWeek: shiftedDaysOfWeek ?? (shiftedDayOfWeek !== undefined ? [shiftedDayOfWeek] : slot.daysOfWeek),
+      startDate: shiftedStartDate ?? formatLocalDateTime(targetStart),
+      endDate: slot.endDate === null ? null : shiftedEndDate ?? fallbackEnd,
+      sourceType: rentalHint
+        ? buildTemplateRentalResourceSourceType(rentalHint)
+        : slot.sourceType,
+      rentalBookingId: rentalHint ? null : slot.rentalBookingId,
+      rentalBookingItemId: rentalHint ? null : slot.rentalBookingItemId,
+      rentalLocked: rentalHint ? false : slot.rentalLocked,
+      price: rentalHint ? undefined : slot.price,
       event: undefined,
       eventId: undefined,
       field: undefined,
@@ -452,16 +554,26 @@ export const cloneEventAsTemplate = (
 
   const isOrganizationEvent = Boolean(source.organizationId);
   const sourceFields = Array.isArray(source.fields) ? source.fields as Field[] : [];
-  const { clonedFields, fieldIdMap } = splitTemplateFields(sourceFields, idFactory);
+  const sourceSlots = Array.isArray(source.timeSlots) ? source.timeSlots as TimeSlot[] : [];
+  const rentalOnlyFieldIds = getRentalOnlyFieldIds(sourceSlots);
+  const templateSourceFields = sourceFields.filter((field) => !rentalOnlyFieldIds.has(field.$id));
+  const sourceFieldById = new Map(sourceFields.map((field) => [field.$id, field]));
+  const { clonedFields, fieldIdMap } = splitTemplateFields(templateSourceFields, idFactory);
   const hasLocalFields = clonedFields.length > 0;
-  const fieldIds = resolveTemplateFieldIds(source, fieldIdMap);
+  const fieldIds = resolveTemplateFieldIds(source, fieldIdMap, rentalOnlyFieldIds);
+  const sourceStart = parseLocalDateTime(source.start) ?? new Date();
+  const sourceEnd = parseLocalDateTime(source.end) ?? sourceStart;
 
-  const timeSlots = Array.isArray(source.timeSlots) && source.timeSlots.length > 0
-    ? cloneTimeSlots(source.timeSlots as TimeSlot[], {
+  const timeSlots = sourceSlots.length > 0
+    ? cloneTimeSlots(sourceSlots, {
       idFactory,
       scheduledFieldIdMap: fieldIdMap,
-      start: source.start,
-      end: source.end ?? source.start,
+      sourceStart,
+      targetStart: sourceStart,
+      fallbackEnd: formatLocalDateTime(sourceEnd),
+      rentalSourceFieldIds: rentalOnlyFieldIds,
+      sourceFieldById,
+      sourceEvent: source,
     })
     : [];
 
@@ -533,8 +645,9 @@ export const seedEventFromTemplate = (
     ? cloneTimeSlots(template.timeSlots as TimeSlot[], {
       idFactory,
       scheduledFieldIdMap: fieldIdMap,
-      start: nextStartStr,
-      end: nextEndStr,
+      sourceStart: templateStart,
+      targetStart: nextStart,
+      fallbackEnd: nextEndStr,
     })
     : [];
 

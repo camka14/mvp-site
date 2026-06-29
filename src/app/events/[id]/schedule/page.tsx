@@ -451,6 +451,8 @@ function EventScheduleContent() {
     selectedTemplateStartDate,
     setSelectedTemplateStartDate,
     templateSeedKey,
+    templateRentalResourcePrompt,
+    dismissTemplateRentalResourcePrompt,
     handleApplyTemplate,
     buildTemplateSourceFromDraft,
   } = useCreateEventFlow({
@@ -5232,10 +5234,12 @@ function EventScheduleContent() {
         error={error}
         warningMessage={warningMessage}
         infoMessage={infoMessage}
+        templateRentalResourcePrompt={templateRentalResourcePrompt}
         onSubmitErrorClose={() => setSubmitError(null)}
         onErrorClose={() => setError(null)}
         onWarningMessageClose={() => setWarningMessage(null)}
         onInfoMessageClose={() => setInfoMessage(null)}
+        onTemplateRentalResourcePromptClose={dismissTemplateRentalResourcePrompt}
         templatePromptOpen={templatePromptOpen}
         onCloseTemplatePrompt={closeTemplatePrompt}
         isMobile={Boolean(isMobile)}
