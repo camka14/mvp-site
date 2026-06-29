@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Container, Text, Group, Button, Paper, Alert, Tabs, Stack, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, Checkbox, Badge, Textarea, Popover, type SelectProps } from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import type { View } from 'react-big-calendar';
 
@@ -34,8 +35,6 @@ import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
-import { createId } from '@/lib/id';
-import { cloneEventAsTemplate } from '@/lib/eventTemplates';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import {
   collectViewerDivisionHighlightKeys,
@@ -454,7 +453,6 @@ function EventScheduleContent() {
     templateRentalResourcePrompt,
     dismissTemplateRentalResourcePrompt,
     handleApplyTemplate,
-    buildTemplateSourceFromDraft,
   } = useCreateEventFlow({
     isCreateMode,
     eventId,
@@ -494,6 +492,34 @@ function EventScheduleContent() {
     setFormHasUnsavedChanges,
     setActionError,
   });
+  const [dismissedDirectTemplatePromptId, setDismissedDirectTemplatePromptId] = useState<string | null>(null);
+  useEffect(() => {
+    setDismissedDirectTemplatePromptId((current) => (
+      current && current !== templateIdParam ? null : current
+    ));
+  }, [templateIdParam]);
+  useEffect(() => {
+    if (isCreateMode && templateIdParam && !selectedTemplateId) {
+      setSelectedTemplateId(templateIdParam);
+    }
+  }, [isCreateMode, selectedTemplateId, setSelectedTemplateId, templateIdParam]);
+  const effectiveTemplatePromptOpen = templatePromptOpen || Boolean(
+    isCreateMode
+    && templateIdParam
+    && dismissedDirectTemplatePromptId !== templateIdParam
+  );
+  const handleCloseTemplatePrompt = useCallback(() => {
+    if (templateIdParam) {
+      setDismissedDirectTemplatePromptId(templateIdParam);
+    }
+    closeTemplatePrompt();
+  }, [closeTemplatePrompt, templateIdParam]);
+  const handleApplyTemplateWithPromptState = useCallback(async () => {
+    const applied = await handleApplyTemplate();
+    if (applied && templateIdParam) {
+      setDismissedDirectTemplatePromptId(templateIdParam);
+    }
+  }, [handleApplyTemplate, templateIdParam]);
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isHiddenEvent = HIDDEN_EVENT_STATES.has(String(activeEvent?.state ?? 'PUBLISHED').toUpperCase());
   const activeOrganization = useMemo(() => {
@@ -1758,29 +1784,20 @@ function EventScheduleContent() {
     setWarningMessage(null);
 
     try {
-      let sourceEvent: Event | null = null;
-      if (!isCreateMode) {
-        sourceEvent = (await eventService.getEventWithRelations(activeEvent.$id)) ?? null;
-      }
-      if (!sourceEvent) {
-        sourceEvent = buildTemplateSourceFromDraft();
-      }
-      if (!sourceEvent) {
-        throw new Error('Unable to load event details for templating.');
-      }
-
-      const templateId = createId();
-      const templateEvent = cloneEventAsTemplate(sourceEvent, { templateId, idFactory: createId });
-      await eventService.createEvent(templateEvent);
-
-      setInfoMessage(`Template created: ${templateEvent.name}`);
+      const response = await apiRequest<{ template?: { name?: string } }>('/api/event-templates', {
+        method: 'POST',
+        body: {
+          sourceEventId: activeEvent.$id,
+        },
+      });
+      setInfoMessage(`Template created: ${response.template?.name ?? activeEvent.name}`);
     } catch (error) {
       console.error('Failed to create event template:', error);
       setActionError(error instanceof Error ? error.message : 'Failed to create template.');
     } finally {
       setCreatingTemplate(false);
     }
-  }, [activeEvent, buildTemplateSourceFromDraft, canManageEvent, creatingTemplate, isCreateMode, user?.$id]);
+  }, [activeEvent, canManageEvent, creatingTemplate, user?.$id]);
 
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
@@ -3893,10 +3910,8 @@ function EventScheduleContent() {
 
   const buildSchedulePayload = useCallback(
     (draft: Partial<Event>): Record<string, unknown> => {
-      const resolvedId = typeof draft.$id === 'string' && draft.$id.length > 0
-        ? draft.$id
-        : eventId ?? createClientId();
-      const normalizedDraft = { ...draft, $id: resolvedId } as Event;
+      const resolvedId = eventId ?? createClientId();
+      const normalizedDraft = { ...draft, id: resolvedId } as Event;
       if (isRentalFlow && !resolvedHostOrgId) {
         normalizedDraft.organization = undefined;
         normalizedDraft.organizationId = null;
@@ -4504,19 +4519,25 @@ function EventScheduleContent() {
       }
 
       const normalizedDraft = draft.$id ? draft : { ...draft, $id: draft.$id ?? eventId };
+      const completeCreateDraft = {
+        ...(cloneValue(changesEvent ?? {}) as Partial<Event>),
+        ...(normalizedDraft as Partial<Event>),
+      } as Event;
       setChangesEvent((prev) => {
         const base = prev ?? ({} as Event);
-        return { ...base, ...(normalizedDraft as Event) };
+        return { ...base, ...completeCreateDraft };
       });
 
-      const normalizedAffiliateUrl = typeof normalizedDraft.affiliateUrl === 'string' ? normalizedDraft.affiliateUrl.trim() : '';
-      if (normalizedAffiliateUrl.length === 0 && normalizedDraft.eventType !== 'EVENT') {
-        await schedulePreview(normalizedDraft);
+      const normalizedAffiliateUrl = typeof completeCreateDraft.affiliateUrl === 'string'
+        ? completeCreateDraft.affiliateUrl.trim()
+        : '';
+      if (normalizedAffiliateUrl.length === 0 && completeCreateDraft.eventType !== 'EVENT') {
+        await schedulePreview(completeCreateDraft);
         return;
       }
 
       const draftToSave: Partial<Event> = {
-        ...normalizedDraft,
+        ...completeCreateDraft,
         state: 'UNPUBLISHED',
       };
 
@@ -4529,7 +4550,7 @@ function EventScheduleContent() {
 
         if (requiresSignature || requiresPayment) {
           await startRentalCheckoutFlow({
-            eventDraft: normalizedDraft as Event,
+            eventDraft: completeCreateDraft,
             draftToSave,
             rentalSlot: rentalPurchaseTimeSlot,
             requiresPayment,
@@ -5240,8 +5261,8 @@ function EventScheduleContent() {
         onWarningMessageClose={() => setWarningMessage(null)}
         onInfoMessageClose={() => setInfoMessage(null)}
         onTemplateRentalResourcePromptClose={dismissTemplateRentalResourcePrompt}
-        templatePromptOpen={templatePromptOpen}
-        onCloseTemplatePrompt={closeTemplatePrompt}
+        templatePromptOpen={effectiveTemplatePromptOpen}
+        onCloseTemplatePrompt={handleCloseTemplatePrompt}
         isMobile={Boolean(isMobile)}
         applyingTemplate={applyingTemplate}
         templatesError={templatesError}
@@ -5252,7 +5273,7 @@ function EventScheduleContent() {
         selectedTemplateStartDate={selectedTemplateStartDate}
         onSelectedTemplateIdChange={setSelectedTemplateId}
         onSelectedTemplateStartDateChange={setSelectedTemplateStartDate}
-        onApplyTemplate={handleApplyTemplate}
+        onApplyTemplate={handleApplyTemplateWithPromptState}
         user={user}
         event={changesEvent}
         templateSeedKey={templateSeedKey}
@@ -5314,7 +5335,7 @@ function EventScheduleContent() {
   const showRebuildWithoutPlaceholdersActionButton = isEditingEvent && (isLeague || isTournament);
   const showDeleteTemplateActionButton = isTemplateEvent;
   const showCancelActionButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
-  const showCreateTemplateButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
+  const showCreateTemplateButton = isEditingEvent && !isCreateMode && !isTemplateEvent;
   const activeEventStart = activeEvent?.start ? parseLocalDateTime(activeEvent.start) : null;
   const showDeleteEventActionButton = Boolean(
     canManageEvent
@@ -5413,11 +5434,59 @@ function EventScheduleContent() {
             onMatchConflictMessageClose={dismissMatchConflictMessage}
             warningMessage={warningMessage}
             onWarningMessageClose={() => setWarningMessage(null)}
+            templateRentalResourcePrompt={templateRentalResourcePrompt}
+            onTemplateRentalResourcePromptClose={dismissTemplateRentalResourcePrompt}
             showSplitDivisionWarning={canManageEvent && hasSplitDivisionUnassignedTeams}
             unassignedTeamLabels={unassignedFilledParticipantTeams.map(getTeamWarningLabel)}
             actionError={actionError}
             onActionErrorClose={() => setActionError(null)}
           />
+
+          {isCreateMode && templateIdParam && dismissedDirectTemplatePromptId !== templateIdParam && (
+            <Alert color="blue" radius="md" title="Start from template">
+              <Stack gap="sm">
+                <Text size="sm">
+                  Choose the new event start date before applying this template.
+                </Text>
+                <Group align="end" gap="sm" wrap="wrap">
+                  <Select
+                    label="Template"
+                    placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
+                    data={templateSelectData.length > 0 ? templateSelectData : [{ value: templateIdParam, label: 'Selected template' }]}
+                    value={selectedTemplateId ?? templateIdParam}
+                    onChange={setSelectedTemplateId}
+                    searchable
+                    disabled={templatesLoading || applyingTemplate}
+                    nothingFoundMessage="No templates found"
+                    style={{ minWidth: 240 }}
+                  />
+                  <DatePickerInput
+                    label="New event start date"
+                    valueFormat="MM/DD/YYYY"
+                    value={selectedTemplateStartDate}
+                    onChange={(value) => setSelectedTemplateStartDate(parseLocalDateTime(value))}
+                    minDate={new Date()}
+                    disabled={applyingTemplate}
+                    style={{ minWidth: 220 }}
+                  />
+                  <Button
+                    onClick={handleApplyTemplateWithPromptState}
+                    loading={applyingTemplate}
+                    disabled={!(selectedTemplateId ?? templateIdParam) || !selectedTemplateStartDate}
+                  >
+                    Use Template
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={handleCloseTemplatePrompt}
+                    disabled={applyingTemplate}
+                  >
+                    Start Blank
+                  </Button>
+                </Group>
+              </Stack>
+            </Alert>
+          )}
 
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>

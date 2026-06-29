@@ -18,6 +18,7 @@ import {
   Organization,
   Invite,
   getTeamAvatarUrl,
+  normalizePayloadIdentifiers,
   toEventPayload,
 } from "@/types";
 import type { RegistrationQuestionAnswerInput, TeamPlayerRegistration } from "@/types";
@@ -31,7 +32,6 @@ import { LeagueScheduleResponse } from "./leagueService";
 import {
   normalizeApiEvent,
   normalizeApiMatch,
-  normalizeOutgoingEventDocument,
 } from "./apiMappers";
 import { resolveOrganizationVerificationStatus } from "@/lib/organizationVerification";
 import { normalizeBracketSeed } from "@/lib/bracketSeeds";
@@ -221,6 +221,24 @@ const recentPaginatedEventsResponses = new Map<
   string,
   { page: PaginatedEventsPage; expiresAt: number }
 >();
+
+const normalizeNewFieldPayload = (field: unknown): Record<string, unknown> => {
+  if (!field || typeof field !== "object" || Array.isArray(field)) {
+    return {};
+  }
+
+  const normalizedField = { ...(field as Record<string, unknown>) };
+  const id =
+    typeof normalizedField.id === "string" && normalizedField.id.trim().length > 0
+      ? normalizedField.id.trim()
+      : null;
+
+  if (id) {
+    normalizedField.id = id;
+  }
+
+  return normalizedField;
+};
 
 class EventService {
   private resolveSportFromMap(
@@ -676,7 +694,9 @@ class EventService {
         delete payload.timeSlots;
       }
       if (hasLeagueScoringConfigOverride) {
-        payload.leagueScoringConfig = options.leagueScoringConfig;
+        payload.leagueScoringConfig = normalizePayloadIdentifiers(
+          options.leagueScoringConfig,
+        );
       }
 
       const response = await apiRequest<any>(`/api/events/${eventId}`, {
@@ -827,8 +847,9 @@ class EventService {
       includePlaceholderTeams?: boolean;
     } = {},
   ): Promise<LeagueScheduleResponse> {
-    const normalizedDocument = normalizeOutgoingEventDocument(eventDocument);
-    const payload: Record<string, any> = { eventDocument: normalizedDocument };
+    const payload: Record<string, any> = {
+      eventDocument: normalizePayloadIdentifiers(eventDocument),
+    };
 
     if (typeof options.participantCount === "number") {
       payload.participantCount = options.participantCount;
@@ -907,11 +928,6 @@ class EventService {
       >;
       delete payload.officialIds;
       const eventId = (() => {
-        const fromLegacyId =
-          typeof payload.$id === "string" ? payload.$id.trim() : "";
-        if (fromLegacyId) {
-          return fromLegacyId;
-        }
         const fromId = typeof payload.id === "string" ? payload.id.trim() : "";
         if (fromId) {
           return fromId;
@@ -920,7 +936,7 @@ class EventService {
       })();
 
       const newFields = Array.isArray(payload.fields)
-        ? payload.fields
+        ? payload.fields.map((field) => normalizeNewFieldPayload(field))
         : undefined;
       const timeSlots = Array.isArray(payload.timeSlots)
         ? payload.timeSlots
@@ -932,7 +948,6 @@ class EventService {
         ? payload.leagueScoringConfig
         : undefined;
 
-      delete payload.$id;
       delete payload.id;
       delete payload.matches;
       delete payload.fields;
@@ -2557,6 +2572,8 @@ class EventService {
           : row.verificationReviewUpdatedAt instanceof Date
             ? row.verificationReviewUpdatedAt.toISOString()
             : undefined,
+      publicSlug:
+        typeof row.publicSlug === "string" ? row.publicSlug : null,
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
     };

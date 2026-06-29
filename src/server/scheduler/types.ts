@@ -5,6 +5,8 @@ import type {
   MatchResultStatus,
   MatchResultType,
   MatchSegment,
+  ManualPaymentLink,
+  RegistrationPaymentMode,
   ResolvedMatchRules,
 } from '@/types';
 import {
@@ -219,6 +221,10 @@ export class TimeSlot {
   startTimeMinutes: number;
   endTimeMinutes: number;
   price?: number | null;
+  sourceType?: string | null;
+  rentalBookingId?: string | null;
+  rentalBookingItemId?: string | null;
+  rentalLocked?: boolean;
   field?: string | null;
   fieldIds: string[];
   divisions: Division[];
@@ -234,6 +240,10 @@ export class TimeSlot {
     startTimeMinutes: number;
     endTimeMinutes: number;
     price?: number | null;
+    sourceType?: string | null;
+    rentalBookingId?: string | null;
+    rentalBookingItemId?: string | null;
+    rentalLocked?: boolean;
     field?: string | null;
     fieldIds?: string[];
     divisions?: Division[];
@@ -271,6 +281,10 @@ export class TimeSlot {
     this.startTimeMinutes = params.startTimeMinutes;
     this.endTimeMinutes = params.endTimeMinutes;
     this.price = params.price ?? null;
+    this.sourceType = params.sourceType ?? null;
+    this.rentalBookingId = params.rentalBookingId ?? null;
+    this.rentalBookingItemId = params.rentalBookingItemId ?? null;
+    this.rentalLocked = params.rentalLocked ?? false;
     this.fieldIds = normalizedFieldIds;
     this.field = params.field ?? normalizedFieldIds[0] ?? null;
     this.divisions = params.divisions ?? [];
@@ -735,6 +749,11 @@ export class Tournament {
   requiredTemplateIds: string[];
   location: string;
   price: number | null;
+  registrationPaymentMode: RegistrationPaymentMode;
+  manualPaymentLinks: ManualPaymentLink[];
+  manualPaymentInstructions: string | null;
+  taxHandling: string;
+  organizerManualTaxRateBps: number;
   allowPaymentPlans: boolean;
   installmentCount: number;
   installmentDueDates: Date[];
@@ -809,6 +828,11 @@ export class Tournament {
     requiredTemplateIds?: string[];
     location?: string;
     price?: number | null;
+    registrationPaymentMode?: RegistrationPaymentMode;
+    manualPaymentLinks?: ManualPaymentLink[];
+    manualPaymentInstructions?: string | null;
+    taxHandling?: string;
+    organizerManualTaxRateBps?: number;
     allowPaymentPlans?: boolean;
     installmentCount?: number;
     installmentDueDates?: Date[];
@@ -882,6 +906,11 @@ export class Tournament {
     this.requiredTemplateIds = params.requiredTemplateIds ?? [];
     this.location = params.location ?? '';
     this.price = params.price ?? null;
+    this.registrationPaymentMode = params.registrationPaymentMode ?? 'ONLINE';
+    this.manualPaymentLinks = params.manualPaymentLinks ?? [];
+    this.manualPaymentInstructions = params.manualPaymentInstructions ?? null;
+    this.taxHandling = params.taxHandling ?? 'INHERIT_ORG';
+    this.organizerManualTaxRateBps = params.organizerManualTaxRateBps ?? 0;
     this.allowPaymentPlans = params.allowPaymentPlans ?? false;
     this.installmentCount = params.installmentCount ?? 0;
     this.installmentDueDates = params.installmentDueDates ?? [];

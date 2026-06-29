@@ -33,12 +33,29 @@ export const buildOrganizationEventCreateUrl = (
   return `/events/${eventId}/schedule?${query.toString()}`;
 };
 
-export const buildIndividualEventCreateUrl = (eventId: string): string => {
+type BuildIndividualEventCreateUrlParams = {
+  templateId?: string | null;
+  skipTemplatePrompt?: boolean;
+};
+
+export const buildIndividualEventCreateUrl = (
+  eventId: string,
+  params: BuildIndividualEventCreateUrlParams = {},
+): string => {
   const query = new URLSearchParams({
     create: '1',
     mode: 'edit',
     tab: 'details',
   });
+
+  const templateId = params.templateId?.trim() ?? '';
+  if (templateId.length > 0) {
+    query.set('templateId', templateId);
+  }
+
+  if (params.skipTemplatePrompt) {
+    query.set('skipTemplatePrompt', '1');
+  }
 
   return `/events/${eventId.trim()}/schedule?${query.toString()}`;
 };

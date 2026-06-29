@@ -544,7 +544,8 @@ type MatchRelationKeys =
   | 'winnerNextMatch'
   | 'loserNextMatch';
 
-export type MatchPayload = Omit<Match, MatchRelationKeys> & {
+export type MatchPayload = Omit<Match, MatchRelationKeys | '$id'> & {
+  id: string;
   division?: string | null;
 };
 
@@ -755,7 +756,8 @@ export interface ManualPaymentLink {
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'facility' | 'rentalSlots' | 'rentalSlotIds';
 
-export type FieldPayload = Omit<Field, FieldRelationKeys> & {
+export type FieldPayload = Omit<Field, FieldRelationKeys | '$id'> & {
+  id: string;
   divisions?: string[];
   matchIds?: string[];
   eventIds?: string[];
@@ -808,7 +810,8 @@ export interface Team {
   avatarUrl: string;
 }
 
-export type TeamPayload = Omit<Team, 'matches'> & {
+export type TeamPayload = Omit<Team, 'matches' | '$id'> & {
+  id: string;
   matchIds?: string[];
 };
 
@@ -943,7 +946,8 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'officials' | 'assistantHosts' | 'staffInvites'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'officials' | 'assistantHosts' | 'staffInvites' | '$id'> & {
+  id: string;
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];
@@ -1138,13 +1142,57 @@ const extractId = (value: unknown): string | undefined => {
   }
 
   const candidate = value as { $id?: unknown; id?: unknown };
-  if (typeof candidate.$id === 'string' && candidate.$id.length > 0) {
-    return candidate.$id;
-  }
   if (typeof candidate.id === 'string' && candidate.id.length > 0) {
     return candidate.id;
   }
+  if (typeof candidate.$id === 'string' && candidate.$id.length > 0) {
+    return candidate.$id;
+  }
   return undefined;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+export const normalizePayloadIdentifiers = <T>(
+  value: T,
+  seen: WeakMap<object, unknown> = new WeakMap(),
+): T => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizePayloadIdentifiers(entry, seen)) as T;
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  if (seen.has(value)) {
+    return seen.get(value) as T;
+  }
+
+  const next: Record<string, unknown> = {};
+  seen.set(value, next);
+
+  const normalizedId = extractId(value);
+  if (normalizedId) {
+    next.id = normalizedId;
+  }
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === '$id') {
+      continue;
+    }
+    next[key] = normalizePayloadIdentifiers(entry, seen);
+  }
+
+  if (normalizedId) {
+    next.id = normalizedId;
+  }
+
+  return next as T;
 };
 
 const uniqueIds = (values: (string | undefined | null)[]): string[] => {
@@ -1249,6 +1297,7 @@ export function toMatchPayload(match: Match): MatchPayload {
 
   const payload: MatchPayload = {
     ...base,
+    id: extractId(match) ?? '',
   };
 
   const divisionId = extractId(division);
@@ -1319,7 +1368,7 @@ export function toMatchPayload(match: Match): MatchPayload {
     }
   }
 
-  return payload;
+  return normalizePayloadIdentifiers(payload);
 }
 
 export function toFieldPayload(field: Field, matchIdsByField?: Map<string, string[]>): FieldPayload {
@@ -1335,6 +1384,7 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
 
   const payload: FieldPayload = {
     ...base,
+    id: extractId(field) ?? '',
   };
 
   const divisionIds = Array.isArray(divisions)
@@ -1357,8 +1407,9 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
       }
     });
   }
-  if (field.$id && matchIdsByField?.has(field.$id)) {
-    matchIdsByField.get(field.$id)?.forEach((id) => {
+  const fieldId = extractId(field);
+  if (fieldId && matchIdsByField?.has(fieldId)) {
+    matchIdsByField.get(fieldId)?.forEach((id) => {
       if (id) {
         matchIdSet.add(id);
       }
@@ -1380,17 +1431,17 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
     payload.organizationId = organizationId;
   }
 
-  return payload;
+  return normalizePayloadIdentifiers(payload);
 }
 
 export function toTimeSlotPayload(slot: TimeSlot): TimeSlotPayload {
-  const { event, field, $id, ...rest } = slot;
+  const { event, field, ...rest } = slot;
   const id = extractId(slot);
 
-  return {
+  return normalizePayloadIdentifiers({
     ...rest,
     id: id ?? '',
-  };
+  });
 }
 
 export function toEventPayload(event: Event): EventPayload {
@@ -1402,7 +1453,7 @@ export function toEventPayload(event: Event): EventPayload {
 
   const matchIdsByField = new Map<string, string[]>();
   matchPayloads?.forEach((match) => {
-    if (!match.$id) {
+    if (!match.id) {
       return;
     }
     const fieldId = typeof match.fieldId === 'string' && match.fieldId.length > 0 ? match.fieldId : undefined;
@@ -1410,7 +1461,7 @@ export function toEventPayload(event: Event): EventPayload {
       return;
     }
     const bucket = matchIdsByField.get(fieldId) ?? [];
-    bucket.push(match.$id);
+    bucket.push(match.id);
     matchIdsByField.set(fieldId, bucket);
   });
 
@@ -1426,11 +1477,12 @@ export function toEventPayload(event: Event): EventPayload {
           : [];
         const teamPayload: TeamPayload = {
           ...teamRest,
+          id: extractId(team) ?? '',
         };
         if (teamMatchIds.length) {
           teamPayload.matchIds = teamMatchIds;
         }
-        return teamPayload;
+        return normalizePayloadIdentifiers(teamPayload);
       })
     : undefined;
 
@@ -1468,6 +1520,7 @@ export function toEventPayload(event: Event): EventPayload {
 
   const payload: EventPayload = {
     ...rest,
+    id: extractId(event) ?? '',
   };
   const includePlayoffsOrPools =
     typeof rest.includePlayoffsOrPools === 'boolean'
@@ -1826,7 +1879,7 @@ export function toEventPayload(event: Event): EventPayload {
     payload.timeSlots = timeSlotPayloads;
   }
 
-  return payload;
+  return normalizePayloadIdentifiers(payload);
 }
 
 export function getUserFullName(user: UserData): string {

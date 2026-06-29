@@ -450,6 +450,11 @@ export const ModelName = {
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
   LeagueScoringConfigs: 'LeagueScoringConfigs',
+  EventTemplates: 'EventTemplates',
+  EventTemplateResources: 'EventTemplateResources',
+  EventTemplateTimeSlots: 'EventTemplateTimeSlots',
+  EventTemplateRentalResourceHints: 'EventTemplateRentalResourceHints',
+  EventTemplateLeagueScoringConfigs: 'EventTemplateLeagueScoringConfigs',
   Sports: 'Sports',
   TemplateDocuments: 'TemplateDocuments',
   SignedDocuments: 'SignedDocuments',
@@ -474,7 +479,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -5362,6 +5367,376 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    EventTemplates: {
+      payload: Prisma.$EventTemplatesPayload<ExtArgs>
+      fields: Prisma.EventTemplatesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTemplatesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTemplatesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTemplatesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTemplatesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        findMany: {
+          args: Prisma.EventTemplatesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>[]
+        }
+        create: {
+          args: Prisma.EventTemplatesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        createMany: {
+          args: Prisma.EventTemplatesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTemplatesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTemplatesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        update: {
+          args: Prisma.EventTemplatesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTemplatesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTemplatesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTemplatesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTemplatesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplatesPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTemplatesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTemplates>
+        }
+        groupBy: {
+          args: Prisma.EventTemplatesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplatesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTemplatesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplatesCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventTemplateResources: {
+      payload: Prisma.$EventTemplateResourcesPayload<ExtArgs>
+      fields: Prisma.EventTemplateResourcesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTemplateResourcesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTemplateResourcesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTemplateResourcesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTemplateResourcesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        findMany: {
+          args: Prisma.EventTemplateResourcesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>[]
+        }
+        create: {
+          args: Prisma.EventTemplateResourcesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        createMany: {
+          args: Prisma.EventTemplateResourcesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTemplateResourcesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTemplateResourcesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        update: {
+          args: Prisma.EventTemplateResourcesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTemplateResourcesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTemplateResourcesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTemplateResourcesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTemplateResourcesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateResourcesPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTemplateResourcesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTemplateResources>
+        }
+        groupBy: {
+          args: Prisma.EventTemplateResourcesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateResourcesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTemplateResourcesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateResourcesCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventTemplateTimeSlots: {
+      payload: Prisma.$EventTemplateTimeSlotsPayload<ExtArgs>
+      fields: Prisma.EventTemplateTimeSlotsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTemplateTimeSlotsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTemplateTimeSlotsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTemplateTimeSlotsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTemplateTimeSlotsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        findMany: {
+          args: Prisma.EventTemplateTimeSlotsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>[]
+        }
+        create: {
+          args: Prisma.EventTemplateTimeSlotsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        createMany: {
+          args: Prisma.EventTemplateTimeSlotsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTemplateTimeSlotsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTemplateTimeSlotsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        update: {
+          args: Prisma.EventTemplateTimeSlotsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTemplateTimeSlotsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTemplateTimeSlotsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTemplateTimeSlotsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTemplateTimeSlotsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateTimeSlotsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTemplateTimeSlotsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTemplateTimeSlots>
+        }
+        groupBy: {
+          args: Prisma.EventTemplateTimeSlotsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateTimeSlotsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTemplateTimeSlotsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateTimeSlotsCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventTemplateRentalResourceHints: {
+      payload: Prisma.$EventTemplateRentalResourceHintsPayload<ExtArgs>
+      fields: Prisma.EventTemplateRentalResourceHintsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTemplateRentalResourceHintsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTemplateRentalResourceHintsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTemplateRentalResourceHintsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTemplateRentalResourceHintsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        findMany: {
+          args: Prisma.EventTemplateRentalResourceHintsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>[]
+        }
+        create: {
+          args: Prisma.EventTemplateRentalResourceHintsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        createMany: {
+          args: Prisma.EventTemplateRentalResourceHintsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTemplateRentalResourceHintsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTemplateRentalResourceHintsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        update: {
+          args: Prisma.EventTemplateRentalResourceHintsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTemplateRentalResourceHintsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTemplateRentalResourceHintsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTemplateRentalResourceHintsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTemplateRentalResourceHintsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateRentalResourceHintsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTemplateRentalResourceHintsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTemplateRentalResourceHints>
+        }
+        groupBy: {
+          args: Prisma.EventTemplateRentalResourceHintsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateRentalResourceHintsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTemplateRentalResourceHintsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateRentalResourceHintsCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventTemplateLeagueScoringConfigs: {
+      payload: Prisma.$EventTemplateLeagueScoringConfigsPayload<ExtArgs>
+      fields: Prisma.EventTemplateLeagueScoringConfigsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTemplateLeagueScoringConfigsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTemplateLeagueScoringConfigsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTemplateLeagueScoringConfigsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTemplateLeagueScoringConfigsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        findMany: {
+          args: Prisma.EventTemplateLeagueScoringConfigsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>[]
+        }
+        create: {
+          args: Prisma.EventTemplateLeagueScoringConfigsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        createMany: {
+          args: Prisma.EventTemplateLeagueScoringConfigsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTemplateLeagueScoringConfigsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTemplateLeagueScoringConfigsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        update: {
+          args: Prisma.EventTemplateLeagueScoringConfigsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTemplateLeagueScoringConfigsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTemplateLeagueScoringConfigsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTemplateLeagueScoringConfigsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTemplateLeagueScoringConfigsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTemplateLeagueScoringConfigsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTemplateLeagueScoringConfigsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTemplateLeagueScoringConfigs>
+        }
+        groupBy: {
+          args: Prisma.EventTemplateLeagueScoringConfigsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateLeagueScoringConfigsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTemplateLeagueScoringConfigsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTemplateLeagueScoringConfigsCountAggregateOutputType> | number
+        }
+      }
+    }
     Sports: {
       payload: Prisma.$SportsPayload<ExtArgs>
       fields: Prisma.SportsFieldRefs
@@ -7594,6 +7969,166 @@ export const LeagueScoringConfigsScalarFieldEnum = {
 export type LeagueScoringConfigsScalarFieldEnum = (typeof LeagueScoringConfigsScalarFieldEnum)[keyof typeof LeagueScoringConfigsScalarFieldEnum]
 
 
+export const EventTemplatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  archivedAt: 'archivedAt',
+  schemaVersion: 'schemaVersion',
+  name: 'name',
+  description: 'description',
+  sourceEventId: 'sourceEventId',
+  ownerUserId: 'ownerUserId',
+  organizationId: 'organizationId',
+  createdByUserId: 'createdByUserId',
+  sportId: 'sportId',
+  eventType: 'eventType',
+  timeZone: 'timeZone',
+  endOffsetMinutesFromEventStart: 'endOffsetMinutesFromEventStart',
+  location: 'location',
+  address: 'address',
+  affiliateUrl: 'affiliateUrl',
+  winnerSetCount: 'winnerSetCount',
+  loserSetCount: 'loserSetCount',
+  doubleElimination: 'doubleElimination',
+  rating: 'rating',
+  teamSizeLimit: 'teamSizeLimit',
+  maxParticipants: 'maxParticipants',
+  minAge: 'minAge',
+  maxAge: 'maxAge',
+  assistantHostIds: 'assistantHostIds',
+  noFixedEndDateTime: 'noFixedEndDateTime',
+  price: 'price',
+  registrationPaymentMode: 'registrationPaymentMode',
+  manualPaymentLinks: 'manualPaymentLinks',
+  manualPaymentInstructions: 'manualPaymentInstructions',
+  taxHandling: 'taxHandling',
+  organizerManualTaxRateBps: 'organizerManualTaxRateBps',
+  singleDivision: 'singleDivision',
+  registrationByDivisionType: 'registrationByDivisionType',
+  cancellationRefundHours: 'cancellationRefundHours',
+  teamSignup: 'teamSignup',
+  prize: 'prize',
+  registrationCutoffHours: 'registrationCutoffHours',
+  seedColor: 'seedColor',
+  imageId: 'imageId',
+  winnerBracketPointsToVictory: 'winnerBracketPointsToVictory',
+  loserBracketPointsToVictory: 'loserBracketPointsToVictory',
+  coordinates: 'coordinates',
+  gamesPerOpponent: 'gamesPerOpponent',
+  includePlayoffs: 'includePlayoffs',
+  playoffTeamCount: 'playoffTeamCount',
+  usesSets: 'usesSets',
+  matchDurationMinutes: 'matchDurationMinutes',
+  setDurationMinutes: 'setDurationMinutes',
+  setsPerMatch: 'setsPerMatch',
+  restTimeMinutes: 'restTimeMinutes',
+  pointsToVictory: 'pointsToVictory',
+  officialSchedulingMode: 'officialSchedulingMode',
+  doTeamsOfficiate: 'doTeamsOfficiate',
+  teamOfficialsMaySwap: 'teamOfficialsMaySwap',
+  officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
+  allowPaymentPlans: 'allowPaymentPlans',
+  installmentCount: 'installmentCount',
+  installmentDueDates: 'installmentDueDates',
+  installmentDueRelativeDays: 'installmentDueRelativeDays',
+  installmentAmounts: 'installmentAmounts',
+  allowTeamSplitDefault: 'allowTeamSplitDefault',
+  splitLeaguePlayoffDivisions: 'splitLeaguePlayoffDivisions',
+  requiredTemplateIds: 'requiredTemplateIds',
+  divisions: 'divisions',
+  divisionDetails: 'divisionDetails',
+  playoffDivisionDetails: 'playoffDivisionDetails',
+  divisionResourceIds: 'divisionResourceIds',
+  leagueScoringConfigId: 'leagueScoringConfigId'
+} as const
+
+export type EventTemplatesScalarFieldEnum = (typeof EventTemplatesScalarFieldEnum)[keyof typeof EventTemplatesScalarFieldEnum]
+
+
+export const EventTemplateResourcesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceResourceId: 'sourceResourceId',
+  name: 'name',
+  resourceType: 'resourceType',
+  location: 'location',
+  organizationId: 'organizationId',
+  facilityId: 'facilityId',
+  facilityName: 'facilityName',
+  lat: 'lat',
+  long: 'long',
+  heading: 'heading',
+  sortOrder: 'sortOrder'
+} as const
+
+export type EventTemplateResourcesScalarFieldEnum = (typeof EventTemplateResourcesScalarFieldEnum)[keyof typeof EventTemplateResourcesScalarFieldEnum]
+
+
+export const EventTemplateTimeSlotsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceTimeSlotId: 'sourceTimeSlotId',
+  dayOffsetFromEventStart: 'dayOffsetFromEventStart',
+  startOffsetMinutesFromEventStart: 'startOffsetMinutesFromEventStart',
+  endOffsetMinutesFromEventStart: 'endOffsetMinutesFromEventStart',
+  startTimeMinutes: 'startTimeMinutes',
+  endTimeMinutes: 'endTimeMinutes',
+  daysOfWeek: 'daysOfWeek',
+  divisions: 'divisions',
+  templateResourceIds: 'templateResourceIds',
+  rentalResourceHintIds: 'rentalResourceHintIds',
+  requiredTemplateIds: 'requiredTemplateIds',
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  price: 'price',
+  sortOrder: 'sortOrder'
+} as const
+
+export type EventTemplateTimeSlotsScalarFieldEnum = (typeof EventTemplateTimeSlotsScalarFieldEnum)[keyof typeof EventTemplateTimeSlotsScalarFieldEnum]
+
+
+export const EventTemplateRentalResourceHintsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceResourceId: 'sourceResourceId',
+  sourceOrganizationId: 'sourceOrganizationId',
+  name: 'name',
+  facilityName: 'facilityName',
+  location: 'location',
+  resourceType: 'resourceType',
+  notes: 'notes'
+} as const
+
+export type EventTemplateRentalResourceHintsScalarFieldEnum = (typeof EventTemplateRentalResourceHintsScalarFieldEnum)[keyof typeof EventTemplateRentalResourceHintsScalarFieldEnum]
+
+
+export const EventTemplateLeagueScoringConfigsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventTemplateId: 'eventTemplateId',
+  pointsForWin: 'pointsForWin',
+  pointsForDraw: 'pointsForDraw',
+  pointsForLoss: 'pointsForLoss',
+  pointsPerSetWin: 'pointsPerSetWin',
+  pointsPerSetLoss: 'pointsPerSetLoss',
+  pointsPerGameWin: 'pointsPerGameWin',
+  pointsPerGameLoss: 'pointsPerGameLoss',
+  pointsPerGoalScored: 'pointsPerGoalScored',
+  pointsPerGoalConceded: 'pointsPerGoalConceded'
+} as const
+
+export type EventTemplateLeagueScoringConfigsScalarFieldEnum = (typeof EventTemplateLeagueScoringConfigsScalarFieldEnum)[keyof typeof EventTemplateLeagueScoringConfigsScalarFieldEnum]
+
+
 export const SportsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -8959,6 +9494,11 @@ export type GlobalOmitConfig = {
   subscriptions?: Prisma.SubscriptionsOmit
   timeSlots?: Prisma.TimeSlotsOmit
   leagueScoringConfigs?: Prisma.LeagueScoringConfigsOmit
+  eventTemplates?: Prisma.EventTemplatesOmit
+  eventTemplateResources?: Prisma.EventTemplateResourcesOmit
+  eventTemplateTimeSlots?: Prisma.EventTemplateTimeSlotsOmit
+  eventTemplateRentalResourceHints?: Prisma.EventTemplateRentalResourceHintsOmit
+  eventTemplateLeagueScoringConfigs?: Prisma.EventTemplateLeagueScoringConfigsOmit
   sports?: Prisma.SportsOmit
   templateDocuments?: Prisma.TemplateDocumentsOmit
   signedDocuments?: Prisma.SignedDocumentsOmit

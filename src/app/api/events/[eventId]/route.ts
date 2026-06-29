@@ -773,9 +773,9 @@ const normalizeLeagueScoringConfigUpdate = (
   }
 
   const row = value as Record<string, unknown>;
-  const configuredId = [row.id, row.$id]
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .find((entry) => entry.length > 0);
+  const configuredId = typeof row.id === 'string' && row.id.trim().length > 0
+    ? row.id.trim()
+    : undefined;
   const data: Record<string, number | boolean | null> = {};
 
   for (const key of LEAGUE_SCORING_NUMBER_FIELDS) {
@@ -2138,9 +2138,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const existingFieldIds = normalizeFieldIds(existing.fieldIds);
       const payloadFieldIds = incomingFields
         .map((field) => {
-          if (typeof field.$id === 'string' && field.$id.length > 0) {
-            return field.$id;
-          }
           if (typeof field.id === 'string' && field.id.length > 0) {
             return field.id;
           }
@@ -2491,9 +2488,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextFieldIdSet = new Set(nextFieldIds);
       const incomingFieldsById = new Map<string, Record<string, any>>();
       for (const field of incomingFields) {
-        const fieldId = typeof field.$id === 'string' && field.$id.length > 0
-          ? field.$id
-          : typeof field.id === 'string' && field.id.length > 0
+        const fieldId = typeof field.id === 'string' && field.id.length > 0
             ? field.id
             : null;
         if (!fieldId) continue;

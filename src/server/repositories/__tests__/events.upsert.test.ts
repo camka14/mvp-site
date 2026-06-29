@@ -92,7 +92,7 @@ const createMockClient = (): MockClient => ({
 });
 
 const baseEventPayload = () => ({
-  $id: 'event_1',
+  id: 'event_1',
   name: 'League Event',
   start: '2026-01-05T09:00:00.000Z',
   end: '2026-03-05T09:00:00.000Z',
@@ -101,7 +101,7 @@ const baseEventPayload = () => ({
   hostId: 'host_1',
   fields: [
     {
-      $id: 'field_1',
+      id: 'field_1',
       name: 'Court A',
       location: 'Main Gym',
       lat: 0,
@@ -193,7 +193,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           location: 'Main Gym',
           divisions: ['OPEN'],
@@ -201,7 +201,7 @@ describe('upsertEventFromPayload', () => {
       ],
       timeSlots: [
         {
-          $id: 'slot_pacific',
+          id: 'slot_pacific',
           dayOfWeek: 4,
           daysOfWeek: [4],
           divisions: ['OPEN'],
@@ -259,7 +259,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           location: 'Main Gym',
           lat: 37.8,
@@ -269,7 +269,7 @@ describe('upsertEventFromPayload', () => {
       ],
       timeSlots: [
         {
-          $id: 'slot_field_timezone',
+          id: 'slot_field_timezone',
           dayOfWeek: 4,
           daysOfWeek: [4],
           divisions: ['OPEN'],
@@ -316,7 +316,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       timeSlots: [
         {
-          $id: 'slot_rental_1',
+          id: 'slot_rental_1',
           dayOfWeek: 4,
           daysOfWeek: [4],
           divisions: ['OPEN'],
@@ -379,7 +379,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       timeSlots: [
         {
-          $id: 'slot_rental_1',
+          id: 'slot_rental_1',
           dayOfWeek: 4,
           daysOfWeek: [4],
           divisions: ['OPEN'],
@@ -412,7 +412,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       timeSlots: [
         {
-          $id: 'slot_multi',
+          id: 'slot_multi',
           dayOfWeek: 1,
           daysOfWeek: [1, 3],
           divisions: ['OPEN'],
@@ -456,7 +456,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       timeSlots: [
         {
-          $id: 'slot_duplicate',
+          id: 'slot_duplicate',
           dayOfWeek: 1,
           daysOfWeek: [1],
           divisions: ['OPEN'],
@@ -468,7 +468,7 @@ describe('upsertEventFromPayload', () => {
           endDate: '2026-03-05T09:00:00.000Z',
         },
         {
-          $id: 'slot_duplicate',
+          id: 'slot_duplicate',
           dayOfWeek: 2,
           daysOfWeek: [2],
           divisions: ['OPEN'],
@@ -503,7 +503,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['BEGINNER', 'ADVANCED'],
       timeSlots: [
         {
-          $id: 'slot_single_division',
+          id: 'slot_single_division',
           dayOfWeek: 1,
           daysOfWeek: [1],
           divisions: ['BEGINNER'],
@@ -534,7 +534,7 @@ describe('upsertEventFromPayload', () => {
 
     const payload = {
       ...baseEventPayload(),
-      $id: 'event_target',
+      id: 'event_target',
       divisions: [sourceOpenDivisionId, sourceAdvancedDivisionId],
       divisionDetails: [
         {
@@ -565,7 +565,7 @@ describe('upsertEventFromPayload', () => {
       ],
       timeSlots: [
         {
-          $id: 'slot_foreign_divisions',
+          id: 'slot_foreign_divisions',
           dayOfWeek: 1,
           daysOfWeek: [1],
           divisions: [sourceOpenDivisionId],
@@ -867,12 +867,12 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fieldIds: ['field_old'],
       fields: [
-        { $id: 'field_1', name: 'Court A', divisions: ['OPEN'] },
-        { $id: 'field_2', name: 'Court B', divisions: ['OPEN'] },
+        { id: 'field_1', name: 'Court A', divisions: ['OPEN'] },
+        { id: 'field_2', name: 'Court B', divisions: ['OPEN'] },
       ],
       timeSlots: [
         {
-          $id: 'slot_multi',
+          id: 'slot_multi',
           daysOfWeek: [1, 3],
           divisions: ['OPEN'],
           startTimeMinutes: 9 * 60,
@@ -911,7 +911,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['BEGINNER', 'ADVANCED'],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: [],
         },
@@ -931,12 +931,12 @@ describe('upsertEventFromPayload', () => {
       location: 'City Rec Center',
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: ['OPEN'],
         },
         {
-          $id: 'field_2',
+          id: 'field_2',
           name: 'Court B',
           location: 'Annex Court',
           divisions: ['OPEN'],
@@ -958,7 +958,7 @@ describe('upsertEventFromPayload', () => {
       organizationId: 'org_1',
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: ['OPEN'],
           // rentalSlotIds intentionally omitted
@@ -983,7 +983,7 @@ describe('upsertEventFromPayload', () => {
       organizationId: null,
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: ['OPEN'],
           organizationId: null,
@@ -1006,7 +1006,7 @@ describe('upsertEventFromPayload', () => {
       divisions: [],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: [],
         },
@@ -1028,7 +1028,7 @@ describe('upsertEventFromPayload', () => {
       divisions: [],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           divisions: [],
         },
@@ -1726,7 +1726,7 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           location: 'Main Gym',
           lat: 0,
@@ -2138,14 +2138,14 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
-  it('persists event teams with the resolved event id when payload only provides $id', async () => {
+  it('persists event teams with the resolved event id from the id-only payload', async () => {
     const client = createMockClient();
     const payload = {
       ...baseEventPayload(),
       divisions: ['OPEN'],
       teams: [
         {
-          $id: 'team_1',
+          id: 'team_1',
           name: 'Place Holder 1',
           captainId: '',
           playerIds: [],

@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react';
+import { useEffect, useState, type ReactNode, type Ref } from 'react';
 import {
   Alert,
   Button,
@@ -64,7 +64,7 @@ type CreateEventScheduleViewProps = {
   selectedTemplateStartDate: Date | null;
   onSelectedTemplateIdChange: (templateId: string | null) => void;
   onSelectedTemplateStartDateChange: (startDate: Date | null) => void;
-  onApplyTemplate: () => void;
+  onApplyTemplate: () => void | Promise<boolean | void>;
   user: UserData | null;
   event: Event | null;
   templateSeedKey: number;
@@ -131,6 +131,35 @@ export default function CreateEventScheduleView({
   formId,
   rentalCheckout,
 }: CreateEventScheduleViewProps) {
+  const [directTemplateId, setDirectTemplateId] = useState<string | null>(null);
+  const [dismissedDirectTemplateId, setDismissedDirectTemplateId] = useState<string | null>(null);
+  useEffect(() => {
+    const nextTemplateId = new URLSearchParams(window.location.search).get('templateId')?.trim() || null;
+    setDirectTemplateId(nextTemplateId);
+    setDismissedDirectTemplateId((current) => (
+      current && current !== nextTemplateId ? null : current
+    ));
+  }, []);
+  useEffect(() => {
+    if (directTemplateId && !selectedTemplateId) {
+      onSelectedTemplateIdChange(directTemplateId);
+    }
+  }, [directTemplateId, onSelectedTemplateIdChange, selectedTemplateId]);
+  const effectiveTemplatePromptOpen = templatePromptOpen || Boolean(
+    directTemplateId && dismissedDirectTemplateId !== directTemplateId,
+  );
+  const handleCloseTemplatePrompt = () => {
+    if (directTemplateId) {
+      setDismissedDirectTemplateId(directTemplateId);
+    }
+    onCloseTemplatePrompt();
+  };
+  const handleApplyTemplate = async () => {
+    const applied = await onApplyTemplate();
+    if (applied !== false && directTemplateId) {
+      setDismissedDirectTemplateId(directTemplateId);
+    }
+  };
   return (
     <>
       <Navigation />
@@ -173,6 +202,52 @@ export default function CreateEventScheduleView({
             </Group>
           </Group>
 
+          {directTemplateId && dismissedDirectTemplateId !== directTemplateId && (
+            <Alert color="blue" radius="md" title="Start from template">
+              <Stack gap="sm">
+                <Text size="sm">
+                  Choose the new event start date before applying this template.
+                </Text>
+                <Group align="end" gap="sm" wrap="wrap">
+                  <Select
+                    label="Template"
+                    placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
+                    data={templateSelectData.length > 0 ? templateSelectData : [{ value: directTemplateId, label: 'Selected template' }]}
+                    value={selectedTemplateId ?? directTemplateId}
+                    onChange={onSelectedTemplateIdChange}
+                    searchable
+                    disabled={templatesLoading || applyingTemplate}
+                    nothingFoundMessage="No templates found"
+                    style={{ minWidth: 240 }}
+                  />
+                  <DatePickerInput
+                    label="New event start date"
+                    valueFormat="MM/DD/YYYY"
+                    value={selectedTemplateStartDate}
+                    onChange={(value) => onSelectedTemplateStartDateChange(parseLocalDateTime(value))}
+                    minDate={new Date()}
+                    disabled={applyingTemplate}
+                    style={{ minWidth: 220 }}
+                  />
+                  <Button
+                    onClick={handleApplyTemplate}
+                    loading={applyingTemplate}
+                    disabled={!(selectedTemplateId ?? directTemplateId) || !selectedTemplateStartDate}
+                  >
+                    Use Template
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={handleCloseTemplatePrompt}
+                    disabled={applyingTemplate}
+                  >
+                    Start Blank
+                  </Button>
+                </Group>
+              </Stack>
+            </Alert>
+          )}
+
           {submitError && (
             <Alert color="red" radius="md" onClose={onSubmitErrorClose} withCloseButton>
               {submitError}
@@ -212,8 +287,8 @@ export default function CreateEventScheduleView({
           )}
 
           <Modal
-            opened={templatePromptOpen}
-            onClose={onCloseTemplatePrompt}
+            opened={effectiveTemplatePromptOpen}
+            onClose={handleCloseTemplatePrompt}
             title="Start from a template?"
             centered
             size="lg"
@@ -258,13 +333,13 @@ export default function CreateEventScheduleView({
               <Group justify="space-between" mt="md">
                 <Button
                   variant="default"
-                  onClick={onCloseTemplatePrompt}
+                  onClick={handleCloseTemplatePrompt}
                   disabled={applyingTemplate}
                 >
                   Start Blank
                 </Button>
                 <Button
-                  onClick={onApplyTemplate}
+                  onClick={handleApplyTemplate}
                   loading={applyingTemplate}
                   disabled={!selectedTemplateId || !selectedTemplateStartDate}
                 >

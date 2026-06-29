@@ -179,7 +179,7 @@ describe('eventService', () => {
 
     await eventService.scheduleEvent(
       {
-        $id: 'evt_1',
+        id: 'evt_1',
         name: 'Test Event',
         eventType: 'LEAGUE',
         divisions: [],
@@ -207,7 +207,7 @@ describe('eventService', () => {
 
     await eventService.scheduleEvent(
       {
-        $id: 'evt_1',
+        id: 'evt_1',
         name: 'Test Event',
         eventType: 'LEAGUE',
         divisions: [],
@@ -225,6 +225,80 @@ describe('eventService', () => {
         }),
       }),
     );
+  });
+
+  it('sends schedule payload ids as id only', async () => {
+    apiRequestMock.mockResolvedValue({
+      preview: false,
+      event: { ...baseEventRow, id: 'evt_1' },
+      matches: [],
+    });
+
+    await eventService.scheduleEvent(
+      {
+        id: 'evt_1',
+        name: 'Test Event',
+        eventType: 'LEAGUE',
+        sport: { $id: 'sport_1', name: 'Volleyball' },
+        fields: [
+          {
+            id: 'field_1',
+            name: 'Court A',
+          },
+        ],
+        timeSlots: [
+          {
+            id: 'slot_1',
+            scheduledFieldIds: ['field_1'],
+          },
+        ],
+        matches: [
+          {
+            id: 'match_1',
+            field: { id: 'field_1', name: 'Court A' },
+          },
+        ],
+      },
+      { eventId: 'evt_1' },
+    );
+
+    const scheduleCall = apiRequestMock.mock.calls[0]?.[1];
+    const eventDocument = scheduleCall?.body?.eventDocument as Record<string, any>;
+
+    expect(eventDocument.id).toBe('evt_1');
+    expect(eventDocument.$id).toBeUndefined();
+    expect(eventDocument.sport).toEqual(
+      expect.objectContaining({
+        id: 'sport_1',
+        name: 'Volleyball',
+      }),
+    );
+    expect(eventDocument.sport?.$id).toBeUndefined();
+    expect(eventDocument.fields?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'field_1',
+        name: 'Court A',
+      }),
+    );
+    expect(eventDocument.fields?.[0]?.$id).toBeUndefined();
+    expect(eventDocument.timeSlots?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'slot_1',
+        scheduledFieldIds: ['field_1'],
+      }),
+    );
+    expect(eventDocument.timeSlots?.[0]?.$id).toBeUndefined();
+    expect(eventDocument.matches?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'match_1',
+        field: expect.objectContaining({
+          id: 'field_1',
+          name: 'Court A',
+        }),
+      }),
+    );
+    expect(eventDocument.matches?.[0]?.$id).toBeUndefined();
+    expect(eventDocument.matches?.[0]?.field?.$id).toBeUndefined();
   });
 
   it('creates event via apiRequest', async () => {
@@ -264,9 +338,58 @@ describe('eventService', () => {
         event: expect.any(Object),
       }),
     );
+    expect(createCall?.body?.event?.$id).toBeUndefined();
     expect(createCall?.body?.event?.fields).toBeUndefined();
     expect(createCall?.body?.newFields).toBeUndefined();
     expect(created.$id).toBe('evt_1');
+  });
+
+  it('serializes created local fields with id only', async () => {
+    apiRequestMock.mockResolvedValue({ event: { ...baseEventRow } });
+
+    await eventService.createEvent({
+      $id: 'evt_1',
+      name: 'Test Event',
+      description: 'Desc',
+      start: '2025-01-01T00:00:00Z',
+      end: '2025-01-01T01:00:00Z',
+      location: 'Denver',
+      coordinates: [0, 0],
+      price: 1000,
+      imageId: 'img_1',
+      hostId: 'host_1',
+      state: 'PUBLISHED',
+      maxParticipants: 10,
+      teamSizeLimit: 6,
+      teamSignup: false,
+      singleDivision: false,
+      waitListIds: [],
+      freeAgentIds: [],
+      cancellationRefundHours: null,
+      registrationCutoffHours: 0,
+      seedColor: 0,
+      eventType: 'EVENT',
+      sport: { $id: 'sport_1', name: 'Volleyball' },
+      divisions: [],
+      fields: [
+        {
+          $id: 'field_local_1',
+          name: 'Court A',
+          location: 'Denver',
+          lat: 39.7392,
+          long: -104.9903,
+        },
+      ],
+    } as any);
+
+    const createCall = apiRequestMock.mock.calls[0][1];
+    expect(createCall?.body?.newFields).toEqual([
+      expect.objectContaining({
+        id: 'field_local_1',
+        name: 'Court A',
+      }),
+    ]);
+    expect(createCall?.body?.newFields?.[0]?.$id).toBeUndefined();
   });
 
   it('sends division pricing and league scoring updates when updating an event', async () => {
@@ -531,7 +654,7 @@ describe('eventService', () => {
           name: 'Updated Event',
           fields: [
             expect.objectContaining({
-              $id: 'field_1',
+              id: 'field_1',
               divisions: ['evt_1__division__open'],
               matchIds: ['match_1'],
             }),
@@ -561,6 +684,7 @@ describe('eventService', () => {
             }),
           ],
           leagueScoringConfig: expect.objectContaining({
+            id: 'cfg_1',
             pointsForWin: 3,
             pointsForDraw: 1,
             pointsForLoss: 0,
@@ -568,6 +692,7 @@ describe('eventService', () => {
         }),
       }),
     );
+    expect((options?.body as any)?.event?.leagueScoringConfig?.$id).toBeUndefined();
     expect((options?.body as any)?.event?.fields?.[0]?.matches).toBeUndefined();
     expect((options?.body as any)?.event?.timeSlots?.[0]?.event).toBeUndefined();
     expect((options?.body as any)?.event?.waitList).toBeUndefined();

@@ -851,6 +851,11 @@ const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Prom
         taxHandling: true,
         divisions: true,
         requiredTemplateIds: true,
+        hostRequiredTemplateIds: true,
+        sourceType: true,
+        rentalBookingId: true,
+        rentalBookingItemId: true,
+        rentalLocked: true,
       } as any,
     });
   } catch (error) {
@@ -872,6 +877,10 @@ const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Prom
         scheduledFieldId: true,
         price: true,
         taxHandling: true,
+        sourceType: true,
+        rentalBookingId: true,
+        rentalBookingItemId: true,
+        rentalLocked: true,
       } as any,
     });
     return legacyRows.map((row: any) => ({
@@ -1035,7 +1044,7 @@ const normalizeDivisionDetailsPayload = (
         return null;
       }
       const row = entry as Record<string, unknown>;
-      const rawId = normalizeDivisionKey(row.id) ?? normalizeDivisionKey(row.$id);
+      const rawId = normalizeDivisionKey(row.id);
       const rawKey = normalizeDivisionKey(row.key) ?? (rawId ? extractDivisionTokenFromId(rawId) : null);
       const inferred = inferDivisionDetails({
         identifier: rawKey ?? rawId ?? 'c_skill_open',
@@ -1484,9 +1493,9 @@ const normalizeLeagueScoringConfigPayload = (
   }
 
   const row = value as Record<string, unknown>;
-  const configuredId = [row.id, row.$id]
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .find((entry) => entry.length > 0);
+  const configuredId = typeof row.id === 'string' && row.id.trim().length > 0
+    ? row.id.trim()
+    : undefined;
   const data: Record<string, number | boolean | null> = {};
 
   for (const key of LEAGUE_SCORING_NUMBER_FIELDS) {
@@ -1729,6 +1738,51 @@ const buildDivisions = (
   return { divisions: result, map, fieldIdsByDivision };
 };
 
+const serializeDivisionDetailsForTemplate = (divisionRows: any[]): Array<Record<string, unknown>> => (
+  divisionRows.map((row, index) => ({
+    id: row.id,
+    key: row.key ?? extractDivisionTokenFromId(row.id) ?? row.id,
+    name: row.name,
+    kind: normalizeDivisionKind(row.kind, 'LEAGUE'),
+    sortOrder: typeof row.sortOrder === 'number' ? row.sortOrder : index,
+    sportId: row.sportId ?? null,
+    price: row.price ?? null,
+    maxParticipants: row.maxParticipants ?? null,
+    playoffTeamCount: row.playoffTeamCount ?? null,
+    playoffPlacementDivisionIds: ensureStringArray(row.playoffPlacementDivisionIds),
+    standingsOverrides: row.standingsOverrides ?? null,
+    gamesPerOpponent: row.gamesPerOpponent ?? null,
+    restTimeMinutes: row.restTimeMinutes ?? null,
+    usesSets: row.usesSets ?? null,
+    matchDurationMinutes: row.matchDurationMinutes ?? null,
+    setDurationMinutes: row.setDurationMinutes ?? null,
+    setsPerMatch: row.setsPerMatch ?? null,
+    pointsToVictory: ensureNumberArray(row.pointsToVictory),
+    standingsConfirmedAt: row.standingsConfirmedAt instanceof Date
+      ? row.standingsConfirmedAt.toISOString()
+      : row.standingsConfirmedAt ?? null,
+    standingsConfirmedBy: row.standingsConfirmedBy ?? null,
+    allowPaymentPlans: row.allowPaymentPlans ?? null,
+    installmentCount: row.installmentCount ?? null,
+    installmentDueDates: ensureArray(row.installmentDueDates)
+      .map((value) => coerceDate(value))
+      .filter(Boolean)
+      .map((date) => (date as Date).toISOString()),
+    installmentDueRelativeDays: ensureNumberArray(row.installmentDueRelativeDays),
+    installmentAmounts: ensureNumberArray(row.installmentAmounts),
+    divisionTypeId: row.divisionTypeId ?? null,
+    ratingType: row.ratingType ?? null,
+    gender: row.gender ?? null,
+    ageCutoffDate: row.ageCutoffDate instanceof Date
+      ? row.ageCutoffDate.toISOString()
+      : row.ageCutoffDate ?? null,
+    ageCutoffLabel: row.ageCutoffLabel ?? null,
+    ageCutoffSource: row.ageCutoffSource ?? null,
+    fieldIds: ensureStringArray(row.fieldIds),
+    teamIds: [],
+  }))
+);
+
 const buildTeams = (
   rows: any[],
   divisionMap: Map<string, Division>,
@@ -1840,6 +1894,10 @@ const buildTimeSlots = (
       startTimeMinutes,
       endTimeMinutes,
       price: row.price ?? null,
+      sourceType: row.sourceType ?? null,
+      rentalBookingId: row.rentalBookingId ?? null,
+      rentalBookingItemId: row.rentalBookingItemId ?? null,
+      rentalLocked: Boolean(row.rentalLocked),
       field: normalizedFieldIds[0] ?? null,
       fieldIds: normalizedFieldIds,
       divisions: [...slotDivisions],
@@ -2928,6 +2986,13 @@ export const loadEventWithRelations = async (
     location: event.location ?? '',
     address: event.address ?? null,
     price: event.price ?? null,
+    registrationPaymentMode: (event as any).registrationPaymentMode ?? 'ONLINE',
+    manualPaymentLinks: Array.isArray((event as any).manualPaymentLinks)
+      ? (event as any).manualPaymentLinks
+      : [],
+    manualPaymentInstructions: (event as any).manualPaymentInstructions ?? null,
+    taxHandling: (event as any).taxHandling ?? 'INHERIT_ORG',
+    organizerManualTaxRateBps: (event as any).organizerManualTaxRateBps ?? 0,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
     installmentCount: event.installmentCount ?? 0,
     installmentDueDates: ensureArray(event.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
@@ -3017,6 +3082,8 @@ export const loadEventWithRelations = async (
   );
   constructed.matches = matches;
   (constructed as any).parentEvent = normalizedParentEvent;
+  (constructed as any).divisionDetails = serializeDivisionDetailsForTemplate(leagueDivisionRows);
+  (constructed as any).playoffDivisionDetails = serializeDivisionDetailsForTemplate(playoffDivisionRows);
   return constructed;
 };
 
@@ -4167,7 +4234,7 @@ export const syncEventDivisions = async (
 };
 
 export const upsertEventFromPayload = async (payload: any, client: PrismaLike = prisma): Promise<string> => {
-  const id = payload?.$id || payload?.id;
+  const id = payload?.id;
   if (!id) {
     throw new Error('Event payload missing id');
   }
@@ -4327,9 +4394,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
   const payloadFieldById = new Map<string, Record<string, unknown>>();
   for (const field of fields) {
-    const fieldId = typeof field?.$id === 'string' && field.$id.trim().length > 0
-      ? field.$id.trim()
-      : typeof field?.id === 'string' && field.id.trim().length > 0
+    const fieldId = typeof field?.id === 'string' && field.id.trim().length > 0
         ? field.id.trim()
         : '';
     if (fieldId) {
@@ -4420,7 +4485,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
   );
   const hasPayloadFieldIds = Array.isArray(payload.fieldIds);
-  const payloadLocalFieldIds = fields.map((field: any) => field.$id || field.id).filter(Boolean);
+  const payloadLocalFieldIds = fields.map((field: any) => field.id).filter(Boolean);
   const fieldIds = slotFieldIds.length
     ? slotFieldIds
     : hasPayloadFieldIds
@@ -4475,12 +4540,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const allowedFieldIdSet = new Set(fieldIds);
   const fieldsToPersist = allowedFieldIdSet.size
     ? fields.filter((field: any) => {
-      const fieldId = field?.$id || field?.id;
+      const fieldId = field?.id;
       return typeof fieldId === 'string' && allowedFieldIdSet.has(fieldId);
     })
     : fields;
   const fieldsToPersistIds = fieldsToPersist
-    .map((field: any) => field?.$id || field?.id)
+    .map((field: any) => field?.id)
     .filter((fieldId: unknown): fieldId is string => typeof fieldId === 'string' && fieldId.length > 0);
   const existingFieldOwnershipById = new Map<string, { organizationId: string | null; createdBy: string | null }>();
   if (fieldsToPersistIds.length && typeof (client as any).fields?.findMany === 'function') {
@@ -4500,7 +4565,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
-    : teams.map((team: any) => team.$id || team.id).filter(Boolean);
+    : teams.map((team: any) => team.id).filter(Boolean);
   const derivedTimeSlotIds = canonicalTimeSlots.map((slot) => slot.id).filter(Boolean);
   const timeSlotIds = isAffiliateExternalEvent
     ? []
@@ -4880,7 +4945,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
 
   for (const field of fieldsToPersist) {
-    const fieldId = field.$id || field.id;
+    const fieldId = field.id;
     if (!fieldId) continue;
     const existingFieldOwnership = existingFieldOwnershipById.get(fieldId);
     const incomingFieldOrganizationId = normalizeEntityId(field.organizationId);
@@ -4939,7 +5004,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
 
   for (const team of teams) {
-    const teamId = team.$id || team.id;
+    const teamId = team.id;
     if (!teamId) continue;
     const normalizedTeamDivision = normalizeDivisionKey(
       typeof team.division === 'string' ? team.division : team.division?.id,

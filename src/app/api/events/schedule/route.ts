@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       let createdEvent = false;
       if (eventDocument) {
         const eventPayload = eventDocument as Record<string, unknown>;
-        const payloadEventId = String(eventPayload.id ?? eventPayload.$id ?? '').trim();
+        const payloadEventId = String(eventPayload.id ?? '').trim();
         const existingEvent = payloadEventId
           ? await tx.events.findUnique({
               where: { id: payloadEventId },

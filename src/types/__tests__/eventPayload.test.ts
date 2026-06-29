@@ -77,4 +77,11 @@ describe('toEventPayload division teamIds serialization', () => {
     }));
     expect(Object.prototype.hasOwnProperty.call(payload.timeSlots?.[0] ?? {}, '$id')).toBe(false);
   });
+
+  it('serializes the event id as id instead of $id', () => {
+    const payload = toEventPayload(baseEvent());
+
+    expect(payload.id).toBe('event_1');
+    expect(Object.prototype.hasOwnProperty.call(payload, '$id')).toBe(false);
+  });
 });

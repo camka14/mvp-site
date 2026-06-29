@@ -261,7 +261,25 @@ const clearParticipants = (event: Partial<Event>): Partial<Event> => ({
   teams: [],
   players: [],
   attendees: 0,
+  divisionDetails: clearDivisionParticipants(event.divisionDetails),
+  playoffDivisionDetails: clearDivisionParticipants(event.playoffDivisionDetails),
 });
+
+const clearDivisionParticipants = (
+  details: Event['divisionDetails'],
+): Event['divisionDetails'] => {
+  if (!Array.isArray(details)) {
+    return details;
+  }
+
+  return details.map((detail) => ({
+    ...detail,
+    teamIds: [],
+    standingsOverrides: undefined,
+    standingsConfirmedAt: undefined,
+    standingsConfirmedBy: undefined,
+  }));
+};
 
 type DivisionRemapParams = {
   divisionIdMap: Map<string, string>;
@@ -460,6 +478,10 @@ const remapDivisionDetails = (
       ...detail,
       id,
       key: typeof detail.key === 'string' && detail.key.trim().length > 0 ? detail.key : token,
+      teamIds: [],
+      standingsOverrides: undefined,
+      standingsConfirmedAt: undefined,
+      standingsConfirmedBy: undefined,
       playoffPlacementDivisionIds: Array.isArray(detail.playoffPlacementDivisionIds)
         ? remapPlacementDivisionIds(detail.playoffPlacementDivisionIds, params)
         : detail.playoffPlacementDivisionIds,

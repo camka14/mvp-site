@@ -348,6 +348,31 @@ export type TimeSlots = Prisma.TimeSlotsModel
  */
 export type LeagueScoringConfigs = Prisma.LeagueScoringConfigsModel
 /**
+ * Model EventTemplates
+ *
+ */
+export type EventTemplates = Prisma.EventTemplatesModel
+/**
+ * Model EventTemplateResources
+ *
+ */
+export type EventTemplateResources = Prisma.EventTemplateResourcesModel
+/**
+ * Model EventTemplateTimeSlots
+ *
+ */
+export type EventTemplateTimeSlots = Prisma.EventTemplateTimeSlotsModel
+/**
+ * Model EventTemplateRentalResourceHints
+ *
+ */
+export type EventTemplateRentalResourceHints = Prisma.EventTemplateRentalResourceHintsModel
+/**
+ * Model EventTemplateLeagueScoringConfigs
+ *
+ */
+export type EventTemplateLeagueScoringConfigs = Prisma.EventTemplateLeagueScoringConfigsModel
+/**
  * Model Sports
  *
  */

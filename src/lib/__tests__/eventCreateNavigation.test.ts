@@ -30,4 +30,13 @@ describe('buildOrganizationEventCreateUrl', () => {
       '/events/event_3/schedule?create=1&mode=edit&tab=details',
     );
   });
+
+  it('builds an individual create-event URL from a template', () => {
+    expect(buildIndividualEventCreateUrl(' event_4 ', {
+      templateId: 'template_4',
+      skipTemplatePrompt: true,
+    })).toBe(
+      '/events/event_4/schedule?create=1&mode=edit&tab=details&templateId=template_4&skipTemplatePrompt=1',
+    );
+  });
 });

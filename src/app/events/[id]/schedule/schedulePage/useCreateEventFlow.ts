@@ -5,8 +5,6 @@ import type { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import { apiRequest } from '@/lib/apiClient';
 import { boldsignService, type SignStep } from '@/lib/boldsignService';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import { eventService } from '@/lib/eventService';
-import { seedEventFromTemplate } from '@/lib/eventTemplates';
 import { getFieldResolvedLocation } from '@/lib/fieldUtils';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
@@ -44,6 +42,29 @@ import {
 type TemplateSummary = {
   id: string;
   name: string;
+};
+
+const seedEventTemplate = async (
+  templateId: string,
+  params: {
+    newEventId: string;
+    newStartDate: Date;
+  },
+): Promise<Event> => {
+  const response = await apiRequest<{ event?: Event }>(
+    `/api/event-templates/${encodeURIComponent(templateId)}/seed`,
+    {
+      method: 'POST',
+      body: {
+        newEventId: params.newEventId,
+        newStartDate: formatLocalDateTime(params.newStartDate),
+      },
+    },
+  );
+  if (!response?.event) {
+    throw new Error('Template seed response did not include an event.');
+  }
+  return response.event;
 };
 
 export type TemplateRentalResourcePrompt = {
@@ -159,6 +180,7 @@ export function useCreateEventFlow({
 }: UseCreateEventFlowParams) {
   const templatePromptResolvedRef = useRef(false);
   const templateIdSeedResolvedRef = useRef<string | null>(null);
+  const templateRentalResourcePromptDismissedRef = useRef(false);
 
   const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
   const [rentalOrganization, setRentalOrganization] = useState<Organization | null>(null);
@@ -427,12 +449,16 @@ export function useCreateEventFlow({
     if (!isCreateMode) {
       return;
     }
+    if (templateIdParam && templateIdSeedResolvedRef.current === templateIdParam) {
+      return;
+    }
     templatePromptResolvedRef.current = false;
     templateIdSeedResolvedRef.current = null;
-    setTemplatePromptOpen(false);
+    templateRentalResourcePromptDismissedRef.current = false;
+    setTemplatePromptOpen(Boolean(templateIdParam));
     setTemplateSummaries([]);
     setTemplateRentalResourcePrompt(null);
-    setSelectedTemplateId(null);
+    setSelectedTemplateId(templateIdParam ?? null);
     setSelectedTemplateStartDate(null);
     setTemplatesError(null);
     setFailedTemplateSeedId(null);
@@ -442,80 +468,24 @@ export function useCreateEventFlow({
     if (!isCreateMode || !eventId || !user?.$id || !templateIdParam) {
       return;
     }
-    if (templateIdSeedResolvedRef.current === templateIdParam) {
+    if (
+      templateIdSeedResolvedRef.current === templateIdParam
+      || templatePromptResolvedRef.current
+    ) {
       return;
     }
 
-    let cancelled = false;
-    (async () => {
-      setApplyingTemplate(true);
-      setTemplatesError(null);
-      setActionError(null);
-      setFailedTemplateSeedId(null);
-      let applied = false;
-      try {
-        const template = await eventService.getEventWithRelations(templateIdParam);
-        if (!template) {
-          throw new Error('Template not found.');
-        }
-
-        const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
-        const seed = base ?? new Date();
-        const startDate = new Date(seed);
-        startDate.setHours(0, 0, 0, 0);
-
-        const seeded = seedEventFromTemplate(template, {
-          newEventId: eventId,
-          newStartDate: startDate,
-          hostId: user.$id,
-          idFactory: createId,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        templatePromptResolvedRef.current = true;
-        setTemplatePromptOpen(false);
-        setSelectedTemplateId(templateIdParam);
-        setSelectedTemplateStartDate(startDate);
-        setTemplateRentalResourcePrompt(buildTemplateRentalResourcePrompt(seeded));
-        setChangesEvent(seeded);
-        setHasUnsavedChanges(false);
-        setFormHasUnsavedChanges(false);
-        setTemplateSeedKey((prev) => prev + 1);
-        applied = true;
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : 'Failed to apply template.';
-        templatePromptResolvedRef.current = false;
-        setTemplatePromptOpen(false);
-        setFailedTemplateSeedId(templateIdParam);
-        setTemplatesError(message);
-        setActionError(`Unable to apply template: ${message}`);
-      } finally {
-        if (!cancelled) {
-          if (applied) {
-            templateIdSeedResolvedRef.current = templateIdParam;
-          }
-          setApplyingTemplate(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    setTemplatesError(null);
+    setActionError(null);
+    setFailedTemplateSeedId(null);
+    setSelectedTemplateId(templateIdParam);
+    setSelectedTemplateStartDate(null);
+    setTemplatePromptOpen(true);
   }, [
-    changesEvent?.start,
     eventId,
     isCreateMode,
+    resolvedHostOrgId,
     setActionError,
-    setChangesEvent,
-    setFormHasUnsavedChanges,
-    setHasUnsavedChanges,
     templateIdParam,
     user?.$id,
   ]);
@@ -523,20 +493,20 @@ export function useCreateEventFlow({
   const handleApplyTemplate = useCallback(async () => {
     if (!isCreateMode || !user?.$id) {
       closeTemplatePrompt();
-      return;
+      return false;
     }
 
     if (!selectedTemplateId) {
       setTemplatesError('Select a template to continue.');
-      return;
+      return false;
     }
     if (!selectedTemplateStartDate) {
       setTemplatesError('Select a start date to continue.');
-      return;
+      return false;
     }
     if (!eventId) {
       setTemplatesError('Missing event id for creation.');
-      return;
+      return false;
     }
 
     setApplyingTemplate(true);
@@ -544,27 +514,28 @@ export function useCreateEventFlow({
     setActionError(null);
 
     try {
-      const template = await eventService.getEventWithRelations(selectedTemplateId);
-      if (!template) {
-        throw new Error('Template not found.');
-      }
-
-      const seeded = seedEventFromTemplate(template, {
+      const seeded = await seedEventTemplate(selectedTemplateId, {
         newEventId: eventId,
         newStartDate: selectedTemplateStartDate,
-        hostId: user.$id,
-        idFactory: createId,
       });
 
       setChangesEvent(seeded);
-      setTemplateRentalResourcePrompt(buildTemplateRentalResourcePrompt(seeded));
+      templateRentalResourcePromptDismissedRef.current = false;
+      setTemplateRentalResourcePrompt(
+        buildTemplateRentalResourcePrompt(seeded),
+      );
       setHasUnsavedChanges(false);
       setFormHasUnsavedChanges(false);
       setTemplateSeedKey((prev) => prev + 1);
+      if (selectedTemplateId === templateIdParam) {
+        templateIdSeedResolvedRef.current = selectedTemplateId;
+      }
       closeTemplatePrompt();
+      return true;
     } catch (error) {
       console.error('Failed to apply template:', error);
       setActionError(error instanceof Error ? error.message : 'Failed to apply template.');
+      return false;
     } finally {
       setApplyingTemplate(false);
     }
@@ -578,14 +549,27 @@ export function useCreateEventFlow({
     setChangesEvent,
     setFormHasUnsavedChanges,
     setHasUnsavedChanges,
+    templateIdParam,
     user?.$id,
   ]);
 
   useEffect(() => {
-    if (!isCreateMode || !user) return;
-    if (templateIdParam && failedTemplateSeedId !== templateIdParam) {
+    if (
+      !isCreateMode
+      || templateRentalResourcePrompt
+      || templateRentalResourcePromptDismissedRef.current
+      || !changesEvent
+    ) {
       return;
     }
+    const prompt = buildTemplateRentalResourcePrompt(changesEvent);
+    if (prompt) {
+      setTemplateRentalResourcePrompt(prompt);
+    }
+  }, [changesEvent, isCreateMode, templateRentalResourcePrompt]);
+
+  useEffect(() => {
+    if (!isCreateMode || !user) return;
     setChangesEvent((prev) => {
       if (prev) return prev;
       const defaultStartDate = new Date(Date.now() + 60 * 60 * 1000);
@@ -649,11 +633,9 @@ export function useCreateEventFlow({
     createLocationDefaults,
     defaultSport,
     eventId,
-    failedTemplateSeedId,
     isCreateMode,
     rentalImmutableDefaults,
     setChangesEvent,
-    templateIdParam,
     user,
   ]);
 
@@ -664,7 +646,6 @@ export function useCreateEventFlow({
       !user?.$id ||
       isGuest ||
       isRentalFlow ||
-      (Boolean(templateIdParam) && failedTemplateSeedId !== templateIdParam) ||
       skipTemplatePromptParam
     ) {
       setTemplateSummaries([]);
@@ -682,18 +663,17 @@ export function useCreateEventFlow({
         setTemplatesLoading(true);
         setTemplatesError(null);
         const qs = new URLSearchParams();
-        qs.set('state', 'TEMPLATE');
         if (resolvedHostOrgId) {
           qs.set('organizationId', resolvedHostOrgId);
         } else {
           qs.set('hostId', user.$id);
         }
         qs.set('limit', '50');
-        const response = await apiRequest<{ events?: any[] }>(`/api/events?${qs.toString()}`);
-        const rows = Array.isArray(response?.events) ? response.events : [];
+        const response = await apiRequest<{ templates?: any[] }>(`/api/event-templates?${qs.toString()}`);
+        const rows = Array.isArray(response?.templates) ? response.templates : [];
         const summaries = rows
           .map((row) => ({
-            id: String(row?.$id ?? row?.id ?? ''),
+            id: String(row?.id ?? ''),
             name: String(row?.name ?? 'Untitled Template'),
           }))
           .filter((entry) => entry.id.length > 0);
@@ -701,10 +681,11 @@ export function useCreateEventFlow({
         if (cancelled) return;
         setTemplateSummaries(summaries);
 
-        if (summaries.length > 0 && !templatePromptResolvedRef.current) {
+        if ((summaries.length > 0 || templateIdParam) && !templatePromptResolvedRef.current) {
           setTemplatePromptOpen(true);
-          setSelectedTemplateId((prev) => prev ?? null);
+          setSelectedTemplateId((prev) => prev ?? templateIdParam ?? null);
           setSelectedTemplateStartDate((prev) => {
+            if (templateIdParam) return prev;
             if (prev) return prev;
             const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
             const seed = base ?? new Date();
@@ -718,7 +699,8 @@ export function useCreateEventFlow({
       } catch (error) {
         if (cancelled) return;
         setTemplateSummaries([]);
-        setTemplatePromptOpen(false);
+        setTemplatePromptOpen(Boolean(templateIdParam));
+        setSelectedTemplateId((prev) => prev ?? templateIdParam ?? null);
         setTemplatesError(error instanceof Error ? error.message : 'Failed to load templates.');
       } finally {
         if (!cancelled) {
@@ -893,7 +875,12 @@ export function useCreateEventFlow({
     rentalPurchaseContext,
     rentalPurchaseTimeSlot,
     templateSelectData,
-    templatePromptOpen,
+    templatePromptOpen: templatePromptOpen || Boolean(
+      isCreateMode
+      && templateIdParam
+      && templateIdSeedResolvedRef.current !== templateIdParam
+      && !templatePromptResolvedRef.current,
+    ),
     closeTemplatePrompt,
     applyingTemplate,
     templatesError,
@@ -904,7 +891,10 @@ export function useCreateEventFlow({
     setSelectedTemplateStartDate,
     templateSeedKey,
     templateRentalResourcePrompt,
-    dismissTemplateRentalResourcePrompt: () => setTemplateRentalResourcePrompt(null),
+    dismissTemplateRentalResourcePrompt: () => {
+      templateRentalResourcePromptDismissedRef.current = true;
+      setTemplateRentalResourcePrompt(null);
+    },
     handleApplyTemplate,
     buildTemplateSourceFromDraft,
   };

@@ -18,6 +18,7 @@ import {
   type EventLifecycleStatus,
   type PendingSaveChangeItem,
 } from './helpers';
+import type { TemplateRentalResourcePrompt } from './useCreateEventFlow';
 
 type EventScheduleHeaderProps = {
   eventId: string;
@@ -85,6 +86,8 @@ type EventScheduleHeaderProps = {
   onMatchConflictMessageClose: () => void;
   warningMessage: string | null;
   onWarningMessageClose: () => void;
+  templateRentalResourcePrompt: TemplateRentalResourcePrompt | null;
+  onTemplateRentalResourcePromptClose: () => void;
   showSplitDivisionWarning: boolean;
   unassignedTeamLabels: string[];
   actionError: string | null;
@@ -157,6 +160,8 @@ export default function EventScheduleHeader({
   onMatchConflictMessageClose,
   warningMessage,
   onWarningMessageClose,
+  templateRentalResourcePrompt,
+  onTemplateRentalResourcePromptClose,
   showSplitDivisionWarning,
   unassignedTeamLabels,
   actionError,
@@ -397,6 +402,24 @@ export default function EventScheduleHeader({
       {warningMessage && (
         <Alert color="yellow" radius="md" onClose={onWarningMessageClose} withCloseButton>
           {warningMessage}
+        </Alert>
+      )}
+
+      {templateRentalResourcePrompt && (
+        <Alert color="blue" radius="md" onClose={onTemplateRentalResourcePromptClose} withCloseButton>
+          <Group justify="space-between" align="center" gap="sm">
+            <span>{templateRentalResourcePrompt.message}</span>
+            {templateRentalResourcePrompt.href && (
+              <Button
+                component="a"
+                href={templateRentalResourcePrompt.href}
+                size="xs"
+                variant="light"
+              >
+                Open Rentals
+              </Button>
+            )}
+          </Group>
         </Alert>
       )}
 

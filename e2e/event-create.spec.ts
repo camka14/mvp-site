@@ -93,6 +93,24 @@ test("creates an event from the schedule create flow", async ({ page }) => {
   await sportInput.click();
   await page.getByRole("option", { name: "Indoor Volleyball" }).click();
 
+  const sidebar = page.getByRole("complementary");
+  await sidebar.getByRole("button", { name: "Divisions" }).click();
+
+  const genderInput = page.getByRole("textbox", { name: "Gender" });
+  await expect(genderInput).toBeVisible({ timeout: 10000 });
+  await genderInput.click();
+  await page.getByRole("option", { name: "Mens", exact: true }).click();
+
+  const skillInput = page.getByRole("textbox", { name: "Skill Division" });
+  await skillInput.click();
+  await page.getByRole("option", { name: "Open" }).click();
+
+  const ageInput = page.getByRole("textbox", { name: "Age Division" });
+  await ageInput.click();
+  await page.getByRole("option", { name: "18+" }).click();
+
+  await page.getByRole("button", { name: "Add Division" }).click();
+
   const scheduleRequestPromise = page.waitForRequest(
     (req) =>
       req.url().includes("/api/events/schedule") && req.method() === "POST",
@@ -117,11 +135,10 @@ test("creates an event from the schedule create flow", async ({ page }) => {
     eventDocument?: Record<string, unknown>;
   };
   const eventDocument = payload.eventDocument ?? {};
-  const payloadId = (eventDocument.id ?? eventDocument.$id) as
-    | string
-    | undefined;
+  const payloadId = eventDocument.id as string | undefined;
 
   expect(payloadId).toBe(eventId);
+  expect(eventDocument.$id).toBeUndefined();
   expect(eventDocument.hostId).toBe(SEED_USERS.host.id);
   expect(eventDocument.sportId).toBe(SEED_SPORT.id);
   expect(eventDocument.eventType).toBe("EVENT");
@@ -144,8 +161,12 @@ test("creates an event from the schedule create flow", async ({ page }) => {
   const normalizedTimeSlotIds = Array.isArray(eventDocument.timeSlotIds)
     ? eventDocument.timeSlotIds
     : [];
-  expect(normalizedFieldIds).toHaveLength(0);
-  expect(normalizedTimeSlotIds).toHaveLength(0);
+  expect(
+    normalizedFieldIds.every((fieldId) => typeof fieldId === "string"),
+  ).toBeTruthy();
+  expect(
+    normalizedTimeSlotIds.every((timeSlotId) => typeof timeSlotId === "string"),
+  ).toBeTruthy();
 
   await expect(
     page.getByRole("heading", { name: "E2E Create Event" }),

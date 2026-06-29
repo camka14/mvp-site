@@ -261,7 +261,7 @@ describe('schedule routes', () => {
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
       eventDocument: {
-        $id: 'event_1',
+        id: 'event_1',
         fields: [
           {
             id: 'field_inline_1',
@@ -349,7 +349,7 @@ describe('schedule routes', () => {
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
       eventDocument: {
-        $id: 'event_1',
+        id: 'event_1',
         name: 'New Scheduled Event',
         eventType: 'EVENT',
       },
@@ -430,7 +430,6 @@ describe('schedule routes', () => {
     expect(upsertEventFromPayloadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'event_1',
-        $id: 'event_1',
         maxParticipants: 5,
         fields: [
           expect.objectContaining({
@@ -494,7 +493,7 @@ describe('schedule routes', () => {
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
       eventDocument: {
-        $id: 'event_1',
+        id: 'event_1',
         eventType: 'EVENT',
       },
     }));
@@ -516,7 +515,7 @@ describe('schedule routes', () => {
 
     const res = await schedulePost(
       jsonRequest('http://localhost/api/events/schedule', {
-        eventDocument: { $id: 'event_1' },
+        eventDocument: { id: 'event_1' },
       }),
     );
     const json = await res.json();
@@ -539,7 +538,7 @@ describe('schedule routes', () => {
     const res = await schedulePost(
       jsonRequest('http://localhost/api/events/schedule', {
         eventDocument: {
-          $id: 'event_1',
+          id: 'event_1',
           organizationId: 'org_1',
           eventType: 'EVENT',
         },

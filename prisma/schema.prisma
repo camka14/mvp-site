@@ -1420,21 +1420,21 @@ model RentalBookings {
   id                   String    @id
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  organizationId        String
-  renterType            String    @default("USER")
-  renterUserId          String?
-  renterOrganizationId  String?
-  createdByUserId       String?
-  billId                String?
-  eventId               String?
-  status                String    @default("PENDING_PAYMENT")
-  totalAmountCents      Int       @default(0)
-  currency              String    @default("usd")
-  paymentIntentId       String?   @unique
-  expiresAt             DateTime?
-  confirmedAt           DateTime?
-  cancelledAt           DateTime?
-  metadata              Json?
+  organizationId       String
+  renterType           String    @default("USER")
+  renterUserId         String?
+  renterOrganizationId String?
+  createdByUserId      String?
+  billId               String?
+  eventId              String?
+  status               String    @default("PENDING_PAYMENT")
+  totalAmountCents     Int       @default(0)
+  currency             String    @default("usd")
+  paymentIntentId      String?   @unique
+  expiresAt            DateTime?
+  confirmedAt          DateTime?
+  cancelledAt          DateTime?
+  metadata             Json?
 
   @@index([organizationId, status])
   @@index([renterUserId, status])
@@ -1444,24 +1444,24 @@ model RentalBookings {
 }
 
 model RentalBookingItems {
-  id                       String    @id
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  bookingId                String
-  organizationId            String
-  facilityId               String?
-  fieldId                  String
-  availabilitySlotId       String?
-  eventId                  String?
-  eventTimeSlotId          String?
-  start                    DateTime
-  end                      DateTime
-  timeZone                 String    @default("UTC")
-  priceCents               Int       @default(0)
-  status                   String    @default("CONFIRMED")
-  requiredTemplateIds      String[]  @default([])
-  hostRequiredTemplateIds  String[]  @default([])
-  metadata                 Json?
+  id                      String   @id
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  bookingId               String
+  organizationId          String
+  facilityId              String?
+  fieldId                 String
+  availabilitySlotId      String?
+  eventId                 String?
+  eventTimeSlotId         String?
+  start                   DateTime
+  end                     DateTime
+  timeZone                String   @default("UTC")
+  priceCents              Int      @default(0)
+  status                  String   @default("CONFIRMED")
+  requiredTemplateIds     String[] @default([])
+  hostRequiredTemplateIds String[] @default([])
+  metadata                Json?
 
   @@index([bookingId])
   @@index([organizationId, status])
@@ -1581,11 +1581,11 @@ model AffiliateImportCandidates {
 }
 
 model EventTags {
-  id         String   @id
+  id        String   @id
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  name       String
-  slug       String   @unique
+  name      String
+  slug      String   @unique
 
   @@index([name])
 }
@@ -1653,8 +1653,8 @@ model DiscountCodes {
 }
 
 model DiscountCodeRedemptions {
-  id                    String                   @id
-  createdAt             DateTime                 @default(now())
+  id                    String                  @id
+  createdAt             DateTime                @default(now())
   discountId            String
   discountCodeId        String
   code                  String
@@ -1669,12 +1669,12 @@ model DiscountCodeRedemptions {
   originalAmountCents   Int
   discountedAmountCents Int
 
+  @@unique([discountCodeId, paymentIntentId])
+  @@unique([discountCodeId, registrationId])
   @@index([discountId])
   @@index([discountCodeId])
   @@index([userId])
   @@index([purchaseType, purchaseTargetId])
-  @@unique([discountCodeId, paymentIntentId])
-  @@unique([discountCodeId, registrationId])
 }
 
 model DiscountCodeReservations {
@@ -1707,39 +1707,39 @@ model DiscountCodeReservations {
 }
 
 model OrganizationAccountingConnections {
-  id                         String                                     @id
-  createdAt                  DateTime                                   @default(now())
-  updatedAt                  DateTime                                   @updatedAt
-  organizationId             String
-  provider                   OrganizationAccountingProviderEnum
-  status                     OrganizationAccountingConnectionStatusEnum @default(CONNECTED)
-  externalCompanyId          String?
-  externalCompanyIdEncrypted String?
-  externalCompanyName        String?
-  environment                String                                     @default("sandbox")
-  scopes                     String[]                                   @default([])
-  accessTokenEncrypted       String?
-  refreshTokenEncrypted      String?
-  tokenType                  String?
-  accessTokenExpiresAt       DateTime?
-  refreshTokenExpiresAt      DateTime?
-  refreshTokenHardExpiresAt  DateTime?
-  connectedAt                DateTime?
-  connectedByUserId          String?
-  disconnectedAt             DateTime?
-  disconnectedByUserId       String?
-  lastSyncedAt               DateTime?
-  lastIntuitTid              String?
-  lastErrorAt                DateTime?
-  lastError                  String?
+  id                                String                                     @id
+  createdAt                         DateTime                                   @default(now())
+  updatedAt                         DateTime                                   @updatedAt
+  organizationId                    String
+  provider                          OrganizationAccountingProviderEnum
+  status                            OrganizationAccountingConnectionStatusEnum @default(CONNECTED)
+  externalCompanyId                 String?
+  externalCompanyIdEncrypted        String?
+  externalCompanyName               String?
+  environment                       String                                     @default("sandbox")
+  scopes                            String[]                                   @default([])
+  accessTokenEncrypted              String?
+  refreshTokenEncrypted             String?
+  tokenType                         String?
+  accessTokenExpiresAt              DateTime?
+  refreshTokenExpiresAt             DateTime?
+  refreshTokenHardExpiresAt         DateTime?
+  connectedAt                       DateTime?
+  connectedByUserId                 String?
+  disconnectedAt                    DateTime?
+  disconnectedByUserId              String?
+  lastSyncedAt                      DateTime?
+  lastIntuitTid                     String?
+  lastErrorAt                       DateTime?
+  lastError                         String?
   payrollExpenseAccountExternalId   String?
   payrollExpenseAccountName         String?
   payrollLiabilityAccountExternalId String?
   payrollLiabilityAccountName       String?
   financeClearingAccountExternalId  String?
   financeClearingAccountName        String?
-  createdBy                  String?
-  updatedBy                  String?
+  createdBy                         String?
+  updatedBy                         String?
 
   @@unique([organizationId, provider])
   @@index([organizationId])
@@ -1750,27 +1750,27 @@ model OrganizationAccountingConnections {
 }
 
 model AccountingSyncRecords {
-  id                   String                         @id
-  createdAt            DateTime                       @default(now())
-  updatedAt            DateTime                       @updatedAt
-  organizationId        String
-  provider              OrganizationAccountingProviderEnum
-  sourceType            AccountingSyncSourceTypeEnum
-  staffPayRunId         String?
-  sourceKey             String?
-  status                AccountingSyncStatusEnum       @default(PENDING)
-  externalTxnId         String?
-  externalTxnType       String?
-  externalTxnDocNumber  String?
-  intuitTid             String?
-  errorCode             String?
-  errorMessage          String?
-  requestSummary        Json?
-  responseSummary       Json?
-  syncedAt              DateTime?
-  syncedByUserId        String?
-  createdBy             String?
-  updatedBy             String?
+  id                   String                             @id
+  createdAt            DateTime                           @default(now())
+  updatedAt            DateTime                           @updatedAt
+  organizationId       String
+  provider             OrganizationAccountingProviderEnum
+  sourceType           AccountingSyncSourceTypeEnum
+  staffPayRunId        String?
+  sourceKey            String?
+  status               AccountingSyncStatusEnum           @default(PENDING)
+  externalTxnId        String?
+  externalTxnType      String?
+  externalTxnDocNumber String?
+  intuitTid            String?
+  errorCode            String?
+  errorMessage         String?
+  requestSummary       Json?
+  responseSummary      Json?
+  syncedAt             DateTime?
+  syncedByUserId       String?
+  createdBy            String?
+  updatedBy            String?
 
   @@unique([provider, sourceType, staffPayRunId])
   @@unique([provider, sourceType, sourceKey])
@@ -1866,8 +1866,8 @@ model Events {
   assistantHostIds              String[]                         @default([])
   noFixedEndDateTime            Boolean                          @default(true)
   price                         Int
-  registrationPaymentMode       RegistrationPaymentModeEnum       @default(ONLINE)
-  manualPaymentLinks            Json                              @default("[]")
+  registrationPaymentMode       RegistrationPaymentModeEnum      @default(ONLINE)
+  manualPaymentLinks            Json                             @default("[]")
   manualPaymentInstructions     String?
   taxHandling                   String                           @default("INHERIT_ORG")
   organizerManualTaxRateBps     Int                              @default(0)
@@ -2039,6 +2039,172 @@ model LeagueScoringConfigs {
   pointsPerGameLoss     Float?
   pointsPerGoalScored   Float?
   pointsPerGoalConceded Float?
+}
+
+model EventTemplates {
+  id                             String                           @id
+  createdAt                      DateTime?                        @default(now())
+  updatedAt                      DateTime?                        @updatedAt
+  archivedAt                     DateTime?
+  schemaVersion                  Int                              @default(1)
+  name                           String
+  description                    String?
+  sourceEventId                  String?
+  ownerUserId                    String?
+  organizationId                 String?
+  createdByUserId                String
+  sportId                        String?
+  eventType                      EventsEventTypeEnum?
+  timeZone                       String                           @default("UTC")
+  endOffsetMinutesFromEventStart Int?
+  location                       String
+  address                        String?
+  affiliateUrl                   String?
+  winnerSetCount                 Int?
+  loserSetCount                  Int?
+  doubleElimination              Boolean?
+  rating                         Float?
+  teamSizeLimit                  Int
+  maxParticipants                Int?
+  minAge                         Int?
+  maxAge                         Int?
+  assistantHostIds               String[]                         @default([])
+  noFixedEndDateTime             Boolean                          @default(true)
+  price                          Int
+  registrationPaymentMode        RegistrationPaymentModeEnum      @default(ONLINE)
+  manualPaymentLinks             Json                             @default("[]")
+  manualPaymentInstructions      String?
+  taxHandling                    String                           @default("INHERIT_ORG")
+  organizerManualTaxRateBps      Int                              @default(0)
+  singleDivision                 Boolean?
+  registrationByDivisionType     Boolean?
+  cancellationRefundHours        Int?
+  teamSignup                     Boolean?
+  prize                          String?
+  registrationCutoffHours        Int?
+  seedColor                      Int?
+  imageId                        String?
+  winnerBracketPointsToVictory   Int[]                            @default([])
+  loserBracketPointsToVictory    Int[]                            @default([])
+  coordinates                    Json?
+  gamesPerOpponent               Int?
+  includePlayoffs                Boolean?
+  playoffTeamCount               Int?
+  usesSets                       Boolean?
+  matchDurationMinutes           Int?
+  setDurationMinutes             Int?
+  setsPerMatch                   Int?
+  restTimeMinutes                Int?
+  pointsToVictory                Int[]                            @default([])
+  officialSchedulingMode         EventsOfficialSchedulingModeEnum @default(SCHEDULE)
+  doTeamsOfficiate               Boolean?
+  teamOfficialsMaySwap           Boolean?
+  officialPositions              Json?
+  matchRulesOverride             Json?
+  autoCreatePointMatchIncidents  Boolean?                         @default(false)
+  allowPaymentPlans              Boolean?
+  installmentCount               Int?
+  installmentDueDates            DateTime[]                       @default([])
+  installmentDueRelativeDays     Int[]                            @default([])
+  installmentAmounts             Int[]                            @default([])
+  allowTeamSplitDefault          Boolean?
+  splitLeaguePlayoffDivisions    Boolean?                         @default(false)
+  requiredTemplateIds            String[]                         @default([])
+  divisions                      String[]                         @default([])
+  divisionDetails                Json?
+  playoffDivisionDetails         Json?
+  divisionResourceIds            Json?
+  leagueScoringConfigId          String?
+
+  @@index([ownerUserId])
+  @@index([organizationId])
+  @@index([sourceEventId])
+  @@index([sportId])
+  @@index([archivedAt])
+}
+
+model EventTemplateResources {
+  id               String    @id
+  createdAt        DateTime? @default(now())
+  updatedAt        DateTime? @updatedAt
+  templateId       String
+  sourceResourceId String?
+  name             String?
+  resourceType     String?
+  location         String?
+  organizationId   String?
+  facilityId       String?
+  facilityName     String?
+  lat              Float?
+  long             Float?
+  heading          Float?
+  sortOrder        Int       @default(0)
+
+  @@index([templateId])
+  @@index([sourceResourceId])
+  @@index([organizationId])
+  @@index([facilityId])
+}
+
+model EventTemplateTimeSlots {
+  id                               String    @id
+  createdAt                        DateTime? @default(now())
+  updatedAt                        DateTime? @updatedAt
+  templateId                       String
+  sourceTimeSlotId                 String?
+  dayOffsetFromEventStart          Int       @default(0)
+  startOffsetMinutesFromEventStart Int       @default(0)
+  endOffsetMinutesFromEventStart   Int       @default(0)
+  startTimeMinutes                 Int?
+  endTimeMinutes                   Int?
+  daysOfWeek                       Int[]     @default([])
+  divisions                        String[]  @default([])
+  templateResourceIds              String[]  @default([])
+  rentalResourceHintIds            String[]  @default([])
+  requiredTemplateIds              String[]  @default([])
+  hostRequiredTemplateIds          String[]  @default([])
+  price                            Int?
+  sortOrder                        Int       @default(0)
+
+  @@index([templateId])
+  @@index([sourceTimeSlotId])
+}
+
+model EventTemplateRentalResourceHints {
+  id                   String    @id
+  createdAt            DateTime? @default(now())
+  updatedAt            DateTime? @updatedAt
+  templateId           String
+  sourceResourceId     String?
+  sourceOrganizationId String?
+  name                 String?
+  facilityName         String?
+  location             String?
+  resourceType         String?
+  notes                String?
+
+  @@index([templateId])
+  @@index([sourceResourceId])
+  @@index([sourceOrganizationId])
+}
+
+model EventTemplateLeagueScoringConfigs {
+  id                    String    @id
+  createdAt             DateTime? @default(now())
+  updatedAt             DateTime? @updatedAt
+  eventTemplateId       String
+  pointsForWin          Int?
+  pointsForDraw         Int?
+  pointsForLoss         Int?
+  pointsPerSetWin       Float?
+  pointsPerSetLoss      Float?
+  pointsPerGameWin      Float?
+  pointsPerGameLoss     Float?
+  pointsPerGoalScored   Float?
+  pointsPerGoalConceded Float?
+
+  @@unique([eventTemplateId])
+  @@index([eventTemplateId])
 }
 
 model Sports {

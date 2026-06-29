@@ -102,6 +102,8 @@ describe('eventTemplates', () => {
       userIds: ['user_1'],
       waitListIds: ['user_2'],
       freeAgentIds: ['user_3'],
+      teams: [{ $id: 'team_1' } as any],
+      matches: [{ $id: 'match_1' } as any],
     });
 
     const template = cloneEventAsTemplate(source, { templateId: 'tmpl_1', idFactory });
@@ -113,6 +115,8 @@ describe('eventTemplates', () => {
     expect(template.userIds).toEqual([]);
     expect(template.waitListIds).toEqual([]);
     expect(template.freeAgentIds).toEqual([]);
+    expect(template.teams).toEqual([]);
+    expect(template.matches).toEqual([]);
 
     expect(template.timeSlots?.[0].$id).toBe('new_2');
     expect(template.timeSlots?.[0].$id).not.toBe('slot_a');
@@ -323,6 +327,9 @@ describe('eventTemplates', () => {
           ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
           playoffPlacementDivisionIds: [playoffUpperSourceId, '', 'playoff_lower'],
           teamIds: ['team_a'],
+          standingsOverrides: { team_a: 8 },
+          standingsConfirmedAt: '2026-01-20T10:30:00.000Z',
+          standingsConfirmedBy: 'host_1',
         } as any,
         {
           id: advancedSourceId,
@@ -408,6 +415,10 @@ describe('eventTemplates', () => {
           ageCutoffLabel: 'Age 18+ as of 08/01/2026',
           ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
           playoffPlacementDivisionIds: [playoffUpperTemplateId, '', playoffLowerTemplateId],
+          teamIds: [],
+          standingsOverrides: undefined,
+          standingsConfirmedAt: undefined,
+          standingsConfirmedBy: undefined,
         }),
         expect.objectContaining({
           id: advancedTemplateId,
@@ -417,6 +428,7 @@ describe('eventTemplates', () => {
           ageCutoffDate: '2026-08-01T19:00:00.000Z',
           ageCutoffLabel: 'Age 17 or younger as of 08/01/2026',
           ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          teamIds: [],
         }),
       ]),
     );
@@ -439,6 +451,8 @@ describe('eventTemplates', () => {
     // Source event must remain unchanged after cloning.
     expect(source.divisions).toEqual([openSourceId, advancedSourceId]);
     expect(source.divisionDetails?.[0]?.id).toBe(openSourceId);
+    expect(source.divisionDetails?.[0]?.teamIds).toEqual(['team_a']);
+    expect(source.divisionDetails?.[0]?.standingsOverrides).toEqual({ team_a: 8 });
     expect(source.timeSlots?.[0]?.divisions).toEqual([openSourceId]);
   });
 
@@ -781,6 +795,63 @@ describe('eventTemplates', () => {
     });
     expect((seeded.fields?.[0] as any)?.divisions).toEqual([seededOpenId]);
     expect(seeded.timeSlots?.[0]?.divisions).toEqual([seededOpenId]);
+  });
+
+  it('clears carried division team state when seeding from a template', () => {
+    const templateOpenId = buildEventDivisionId('tmpl_seed_dirty', 'open');
+    const templatePlayoffId = buildEventDivisionId('tmpl_seed_dirty', 'playoff');
+    const seeded = seedEventFromTemplate(
+      buildBaseEvent({
+        $id: 'tmpl_seed_dirty',
+        name: 'Dirty Template (TEMPLATE)',
+        state: 'TEMPLATE',
+        singleDivision: false,
+        divisions: [templateOpenId],
+        divisionDetails: [
+          {
+            id: templateOpenId,
+            key: 'open',
+            name: 'Open',
+            teamIds: ['placeholder_team'],
+            standingsOverrides: { placeholder_team: 3 },
+            standingsConfirmedAt: '2026-01-20T10:30:00.000Z',
+            standingsConfirmedBy: 'host_1',
+          } as any,
+        ],
+        playoffDivisionDetails: [
+          {
+            id: templatePlayoffId,
+            key: 'playoff',
+            name: 'Playoff',
+            kind: 'PLAYOFF',
+            teamIds: ['placeholder_playoff_team'],
+          } as any,
+        ],
+      }),
+      {
+        newEventId: 'event_seeded_dirty',
+        newStartDate: new Date('2026-03-01T00:00:00'),
+        hostId: 'host_1',
+      },
+    );
+
+    expect(seeded.divisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          teamIds: [],
+          standingsOverrides: undefined,
+          standingsConfirmedAt: undefined,
+          standingsConfirmedBy: undefined,
+        }),
+      ]),
+    );
+    expect(seeded.playoffDivisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          teamIds: [],
+        }),
+      ]),
+    );
   });
 
   it('preserves duplicate same-type league divisions when seeding from a template', () => {

@@ -1525,7 +1525,7 @@ describe('League schedule page', () => {
     expect(screen.queryByRole('menuitem', { name: /delete event/i })).not.toBeInTheDocument();
   });
 
-  it('creates a template from an unsaved create-mode draft', async () => {
+  it('does not show Create Template for an unsaved create-mode draft', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'create') return '1';
@@ -1534,36 +1534,21 @@ describe('League schedule page', () => {
       },
     });
 
-    mockEventFormDraft = {
-      ...buildApiEvent({
-        id: 'event_unsaved',
-        $id: 'event_unsaved',
-        name: 'Unsaved League',
-        state: 'DRAFT',
-        eventType: 'LEAGUE',
-      }),
-    };
-
     apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [] });
       }
       return Promise.resolve({});
     });
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await clickMoreAction(/create template/i);
-
     await waitFor(() => {
-      expect(eventService.createEvent).toHaveBeenCalledTimes(1);
+      expect(capturedEventFormProps?.event?.state).toBe('DRAFT');
     });
 
-    const templateEvent = (eventService.createEvent as jest.Mock).mock.calls[0]?.[0];
-
-    expect(templateEvent?.$id).toBeTruthy();
-    expect(templateEvent?.state).toBe('TEMPLATE');
-    expect(templateEvent?.name).toBe('Unsaved League (TEMPLATE)');
+    expect(screen.queryByRole('menuitem', { name: /create template/i })).not.toBeInTheDocument();
+    expect(eventService.createEvent).not.toHaveBeenCalled();
     expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
   });
 
@@ -1577,8 +1562,8 @@ describe('League schedule page', () => {
     });
 
     apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [] });
       }
       return Promise.resolve({});
     });
@@ -1601,8 +1586,8 @@ describe('League schedule page', () => {
     });
 
     apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [] });
       }
       return Promise.resolve({});
     });
@@ -1617,7 +1602,7 @@ describe('League schedule page', () => {
     expect(screen.getByRole('button', { name: /^create event$/i })).toBeInTheDocument();
   });
 
-  it('creates a template from persisted edit data and preserves complex divisions/time slots', async () => {
+  it('creates a template from the persisted source event id in edit mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'mode') return 'edit';
@@ -1774,71 +1759,17 @@ describe('League schedule page', () => {
     await clickMoreAction(/create template/i);
 
     await waitFor(() => {
-      expect(eventService.createEvent).toHaveBeenCalledTimes(1);
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/event-templates', {
+        method: 'POST',
+        body: {
+          sourceEventId: 'event_1',
+        },
+      });
     });
-
-    const templateEvent = (eventService.createEvent as jest.Mock).mock.calls[0]?.[0];
-    const templateId = String(templateEvent?.$id ?? '');
-    const openTemplateDivisionId = buildEventDivisionId(templateId, 'open');
-    const advancedTemplateDivisionId = buildEventDivisionId(templateId, 'advanced');
-    const playoffUpperTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_upper');
-    const playoffLowerTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_lower');
-
-    expect(templateId).toBeTruthy();
-    expect(templateEvent?.state).toBe('TEMPLATE');
-    expect(templateEvent?.name).toBe('Test League (TEMPLATE)');
-    expect(templateEvent?.divisions).toEqual([openTemplateDivisionId, advancedTemplateDivisionId]);
-    expect(templateEvent?.divisionDetails).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: openTemplateDivisionId,
-          key: 'open',
-          divisionTypeId: 'skill_open_age_18plus',
-          ageCutoffDate: '2026-08-01T19:00:00.000Z',
-          playoffPlacementDivisionIds: [playoffUpperTemplateDivisionId, '', playoffLowerTemplateDivisionId],
-          teamIds: ['team_a'],
-        }),
-        expect.objectContaining({
-          id: advancedTemplateDivisionId,
-          key: 'advanced',
-          divisionTypeId: 'skill_premier_age_u17',
-          ageCutoffDate: '2026-08-01T19:00:00.000Z',
-          playoffPlacementDivisionIds: [playoffUpperTemplateDivisionId, '', playoffLowerTemplateDivisionId],
-          teamIds: ['team_b'],
-        }),
-      ]),
-    );
-    expect(templateEvent?.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          divisions: [openTemplateDivisionId, advancedTemplateDivisionId],
-        }),
-        expect.objectContaining({
-          divisions: [advancedTemplateDivisionId],
-        }),
-      ]),
-    );
-    expect(templateEvent?.timeSlots).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          dayOfWeek: 1,
-          daysOfWeek: [1, 3],
-          divisions: [openTemplateDivisionId],
-          requiredTemplateIds: ['tmpl_waiver'],
-        }),
-        expect.objectContaining({
-          dayOfWeek: 4,
-          daysOfWeek: [4],
-          divisions: [advancedTemplateDivisionId],
-        }),
-      ]),
-    );
-    const divisionTypeIds = (templateEvent?.divisionDetails ?? []).map((entry: { divisionTypeId?: string }) => entry.divisionTypeId);
-    expect(divisionTypeIds).not.toContain('skill_undefined_age_undefined');
-    expect(eventService.getEventWithRelations).toHaveBeenCalledWith('event_1');
+    expect(eventService.createEvent).not.toHaveBeenCalled();
   });
 
-  it('seeds create mode from templateId query and does not fetch standings for unsaved events', async () => {
+  it('does not auto-seed create mode from a templateId query before a start date is chosen', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'create') return '1';
@@ -1848,28 +1779,38 @@ describe('League schedule page', () => {
       },
     });
 
-    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(
-      buildApiEvent({
-        id: 'template_1',
-        $id: 'template_1',
-        name: 'Template League (TEMPLATE)',
-        state: 'TEMPLATE',
-        eventType: 'LEAGUE',
-        divisions: ['division_open'],
-        divisionDetails: [
-          {
-            id: 'division_open',
-            name: 'Open',
-            teams: [],
-            teamIds: [],
-          },
-        ],
-      }),
-    );
-
-    apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-06-10',
+          url: '/terms',
+          summary: ['Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.'],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (path === '/api/event-templates/template_1/seed' && options?.method === 'POST') {
+        return Promise.resolve({
+          event: buildApiEvent({
+            id: 'event_1',
+            $id: 'event_1',
+            name: 'Template League',
+            state: 'DRAFT',
+            eventType: 'LEAGUE',
+            divisions: ['division_open'],
+            divisionDetails: [
+              {
+                id: 'division_open',
+                name: 'Open',
+                teams: [],
+                teamIds: [],
+              },
+            ],
+          }),
+        });
+      }
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [{ id: 'template_1', name: 'Template League' }] });
       }
       return Promise.resolve({});
     });
@@ -1877,13 +1818,12 @@ describe('League schedule page', () => {
     renderWithMantine(<LeagueSchedulePage />);
 
     await waitFor(() => {
-      expect(eventService.getEventWithRelations).toHaveBeenCalledWith('template_1');
-    });
-
-    await waitFor(() => {
-      expect(capturedEventFormProps?.event?.name).toBe('Template League');
+      expect(capturedEventFormProps?.event?.$id).toBe('event_1');
       expect(capturedEventFormProps?.event?.state).toBe('DRAFT');
     });
+    expect(apiRequestMock.mock.calls.some(([path]) => (
+      path === '/api/event-templates/template_1/seed'
+    ))).toBe(false);
 
     const standingsCalls = apiRequestMock.mock.calls.filter(([path]) => (
       typeof path === 'string' && path.includes('/standings')
@@ -1891,7 +1831,7 @@ describe('League schedule page', () => {
     expect(standingsCalls).toHaveLength(0);
   });
 
-  it('preserves template-seeded location values when org defaults hydrate create mode', async () => {
+  it('does not auto-apply an org template before a start date is chosen', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'create') return '1';
@@ -1901,27 +1841,6 @@ describe('League schedule page', () => {
         return null;
       },
     });
-
-    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(
-      buildApiEvent({
-        id: 'template_org_1',
-        $id: 'template_org_1',
-        name: 'Template League (TEMPLATE)',
-        state: 'TEMPLATE',
-        eventType: 'LEAGUE',
-        location: 'Template Arena',
-        coordinates: [-121.9, 37.3],
-        fields: [
-          {
-            $id: 'field_template_1',
-            name: 'Template Court',
-            location: 'Template Arena',
-            lat: 37.3,
-            long: -121.9,
-          },
-        ],
-      }),
-    );
 
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
       $id: 'org_1',
@@ -1941,26 +1860,58 @@ describe('League schedule page', () => {
       officials: [{ $id: 'official_org_1' }],
     });
 
-    apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-06-10',
+          url: '/terms',
+          summary: ['Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.'],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (path === '/api/event-templates/template_org_1/seed' && options?.method === 'POST') {
+        return Promise.resolve({
+          event: buildApiEvent({
+            id: 'event_1',
+            $id: 'event_1',
+            name: 'Template League',
+            state: 'DRAFT',
+            eventType: 'LEAGUE',
+            organizationId: 'org_1',
+            location: 'Template Arena',
+            coordinates: [-121.9, 37.3],
+            fields: [
+              {
+                $id: 'field_template_1',
+                name: 'Template Court',
+                location: 'Template Arena',
+                lat: 37.3,
+                long: -121.9,
+              },
+            ],
+          }),
+        });
+      }
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [{ id: 'template_org_1', name: 'Template League' }] });
       }
       return Promise.resolve({});
     });
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await waitFor(() => {
-      expect(eventService.getEventWithRelations).toHaveBeenCalledWith('template_org_1');
-    });
+    expect(eventService.getEventWithRelations).not.toHaveBeenCalledWith('template_org_1');
     await waitFor(() => {
       expect(organizationService.getOrganizationById).toHaveBeenCalledWith('org_1', true);
     });
+    expect(apiRequestMock.mock.calls.some(([path]) => (
+      path === '/api/event-templates/template_org_1/seed'
+    ))).toBe(false);
     await waitFor(() => {
       expect(capturedEventFormProps?.event?.organizationId).toBe('org_1');
-      expect(capturedEventFormProps?.event?.location).toBe('Template Arena');
-      expect(capturedEventFormProps?.event?.coordinates).toEqual([-121.9, 37.3]);
-      expect(capturedEventFormProps?.event?.fields?.[0]?.name).toBe('Template Court');
+      expect(capturedEventFormProps?.event?.location).toBe('Organization HQ');
+      expect(capturedEventFormProps?.event?.coordinates).toEqual([-83.0, 42.0]);
     });
   });
 
@@ -4563,8 +4514,8 @@ describe('League schedule page', () => {
     });
 
     apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith('/api/events?state=TEMPLATE')) {
-        return Promise.resolve({ events: [] });
+      if (path.startsWith('/api/event-templates')) {
+        return Promise.resolve({ templates: [] });
       }
       return Promise.resolve({});
     });

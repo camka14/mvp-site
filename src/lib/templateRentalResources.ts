@@ -100,7 +100,7 @@ export const buildTemplateRentalResourceHref = (
     return `/o/${encodeURIComponent(hint.organizationSlug)}/rentals`;
   }
   if (hint.organizationId) {
-    return `/organizations/${encodeURIComponent(hint.organizationId)}`;
+    return `/organizations/${encodeURIComponent(hint.organizationId)}/facilities`;
   }
   return null;
 };

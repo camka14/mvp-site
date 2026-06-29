@@ -117,6 +117,11 @@ export const ModelName = {
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
   LeagueScoringConfigs: 'LeagueScoringConfigs',
+  EventTemplates: 'EventTemplates',
+  EventTemplateResources: 'EventTemplateResources',
+  EventTemplateTimeSlots: 'EventTemplateTimeSlots',
+  EventTemplateRentalResourceHints: 'EventTemplateRentalResourceHints',
+  EventTemplateLeagueScoringConfigs: 'EventTemplateLeagueScoringConfigs',
   Sports: 'Sports',
   TemplateDocuments: 'TemplateDocuments',
   SignedDocuments: 'SignedDocuments',
@@ -1669,6 +1674,166 @@ export const LeagueScoringConfigsScalarFieldEnum = {
 } as const
 
 export type LeagueScoringConfigsScalarFieldEnum = (typeof LeagueScoringConfigsScalarFieldEnum)[keyof typeof LeagueScoringConfigsScalarFieldEnum]
+
+
+export const EventTemplatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  archivedAt: 'archivedAt',
+  schemaVersion: 'schemaVersion',
+  name: 'name',
+  description: 'description',
+  sourceEventId: 'sourceEventId',
+  ownerUserId: 'ownerUserId',
+  organizationId: 'organizationId',
+  createdByUserId: 'createdByUserId',
+  sportId: 'sportId',
+  eventType: 'eventType',
+  timeZone: 'timeZone',
+  endOffsetMinutesFromEventStart: 'endOffsetMinutesFromEventStart',
+  location: 'location',
+  address: 'address',
+  affiliateUrl: 'affiliateUrl',
+  winnerSetCount: 'winnerSetCount',
+  loserSetCount: 'loserSetCount',
+  doubleElimination: 'doubleElimination',
+  rating: 'rating',
+  teamSizeLimit: 'teamSizeLimit',
+  maxParticipants: 'maxParticipants',
+  minAge: 'minAge',
+  maxAge: 'maxAge',
+  assistantHostIds: 'assistantHostIds',
+  noFixedEndDateTime: 'noFixedEndDateTime',
+  price: 'price',
+  registrationPaymentMode: 'registrationPaymentMode',
+  manualPaymentLinks: 'manualPaymentLinks',
+  manualPaymentInstructions: 'manualPaymentInstructions',
+  taxHandling: 'taxHandling',
+  organizerManualTaxRateBps: 'organizerManualTaxRateBps',
+  singleDivision: 'singleDivision',
+  registrationByDivisionType: 'registrationByDivisionType',
+  cancellationRefundHours: 'cancellationRefundHours',
+  teamSignup: 'teamSignup',
+  prize: 'prize',
+  registrationCutoffHours: 'registrationCutoffHours',
+  seedColor: 'seedColor',
+  imageId: 'imageId',
+  winnerBracketPointsToVictory: 'winnerBracketPointsToVictory',
+  loserBracketPointsToVictory: 'loserBracketPointsToVictory',
+  coordinates: 'coordinates',
+  gamesPerOpponent: 'gamesPerOpponent',
+  includePlayoffs: 'includePlayoffs',
+  playoffTeamCount: 'playoffTeamCount',
+  usesSets: 'usesSets',
+  matchDurationMinutes: 'matchDurationMinutes',
+  setDurationMinutes: 'setDurationMinutes',
+  setsPerMatch: 'setsPerMatch',
+  restTimeMinutes: 'restTimeMinutes',
+  pointsToVictory: 'pointsToVictory',
+  officialSchedulingMode: 'officialSchedulingMode',
+  doTeamsOfficiate: 'doTeamsOfficiate',
+  teamOfficialsMaySwap: 'teamOfficialsMaySwap',
+  officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
+  allowPaymentPlans: 'allowPaymentPlans',
+  installmentCount: 'installmentCount',
+  installmentDueDates: 'installmentDueDates',
+  installmentDueRelativeDays: 'installmentDueRelativeDays',
+  installmentAmounts: 'installmentAmounts',
+  allowTeamSplitDefault: 'allowTeamSplitDefault',
+  splitLeaguePlayoffDivisions: 'splitLeaguePlayoffDivisions',
+  requiredTemplateIds: 'requiredTemplateIds',
+  divisions: 'divisions',
+  divisionDetails: 'divisionDetails',
+  playoffDivisionDetails: 'playoffDivisionDetails',
+  divisionResourceIds: 'divisionResourceIds',
+  leagueScoringConfigId: 'leagueScoringConfigId'
+} as const
+
+export type EventTemplatesScalarFieldEnum = (typeof EventTemplatesScalarFieldEnum)[keyof typeof EventTemplatesScalarFieldEnum]
+
+
+export const EventTemplateResourcesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceResourceId: 'sourceResourceId',
+  name: 'name',
+  resourceType: 'resourceType',
+  location: 'location',
+  organizationId: 'organizationId',
+  facilityId: 'facilityId',
+  facilityName: 'facilityName',
+  lat: 'lat',
+  long: 'long',
+  heading: 'heading',
+  sortOrder: 'sortOrder'
+} as const
+
+export type EventTemplateResourcesScalarFieldEnum = (typeof EventTemplateResourcesScalarFieldEnum)[keyof typeof EventTemplateResourcesScalarFieldEnum]
+
+
+export const EventTemplateTimeSlotsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceTimeSlotId: 'sourceTimeSlotId',
+  dayOffsetFromEventStart: 'dayOffsetFromEventStart',
+  startOffsetMinutesFromEventStart: 'startOffsetMinutesFromEventStart',
+  endOffsetMinutesFromEventStart: 'endOffsetMinutesFromEventStart',
+  startTimeMinutes: 'startTimeMinutes',
+  endTimeMinutes: 'endTimeMinutes',
+  daysOfWeek: 'daysOfWeek',
+  divisions: 'divisions',
+  templateResourceIds: 'templateResourceIds',
+  rentalResourceHintIds: 'rentalResourceHintIds',
+  requiredTemplateIds: 'requiredTemplateIds',
+  hostRequiredTemplateIds: 'hostRequiredTemplateIds',
+  price: 'price',
+  sortOrder: 'sortOrder'
+} as const
+
+export type EventTemplateTimeSlotsScalarFieldEnum = (typeof EventTemplateTimeSlotsScalarFieldEnum)[keyof typeof EventTemplateTimeSlotsScalarFieldEnum]
+
+
+export const EventTemplateRentalResourceHintsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  templateId: 'templateId',
+  sourceResourceId: 'sourceResourceId',
+  sourceOrganizationId: 'sourceOrganizationId',
+  name: 'name',
+  facilityName: 'facilityName',
+  location: 'location',
+  resourceType: 'resourceType',
+  notes: 'notes'
+} as const
+
+export type EventTemplateRentalResourceHintsScalarFieldEnum = (typeof EventTemplateRentalResourceHintsScalarFieldEnum)[keyof typeof EventTemplateRentalResourceHintsScalarFieldEnum]
+
+
+export const EventTemplateLeagueScoringConfigsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventTemplateId: 'eventTemplateId',
+  pointsForWin: 'pointsForWin',
+  pointsForDraw: 'pointsForDraw',
+  pointsForLoss: 'pointsForLoss',
+  pointsPerSetWin: 'pointsPerSetWin',
+  pointsPerSetLoss: 'pointsPerSetLoss',
+  pointsPerGameWin: 'pointsPerGameWin',
+  pointsPerGameLoss: 'pointsPerGameLoss',
+  pointsPerGoalScored: 'pointsPerGoalScored',
+  pointsPerGoalConceded: 'pointsPerGoalConceded'
+} as const
+
+export type EventTemplateLeagueScoringConfigsScalarFieldEnum = (typeof EventTemplateLeagueScoringConfigsScalarFieldEnum)[keyof typeof EventTemplateLeagueScoringConfigsScalarFieldEnum]
 
 
 export const SportsScalarFieldEnum = {

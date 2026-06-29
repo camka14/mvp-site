@@ -18,6 +18,7 @@
     "test:watch": "jest --watch",
     "test:ci": "jest --runInBand --coverage",
     "cleanup:user-teamids": "tsx scripts/cleanup-user-teamids-canonical.ts",
+    "backfill:event-templates": "tsx scripts/backfill-event-template-records.ts",
     "db:up": "docker compose --env-file .env.docker up -d db",
     "db:down": "docker compose --env-file .env.docker down",
     "db:ps": "docker compose --env-file .env.docker ps",

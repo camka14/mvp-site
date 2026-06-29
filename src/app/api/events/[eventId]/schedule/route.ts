@@ -135,7 +135,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         const eventDocument = {
           ...parsed.data.eventDocument,
           id: eventId,
-          $id: eventId,
         };
         await upsertEventFromPayload(eventDocument, tx);
         event = await loadEventWithRelations(eventId, tx);

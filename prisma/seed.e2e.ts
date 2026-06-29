@@ -633,7 +633,6 @@ const seed = async (): Promise<void> => {
       start: new Date(SEED_START),
       end: new Date(SEED_END),
       description: "Seeded event for E2E tests",
-      divisions: [SEED_DIVISION.id],
       location: SEED_ORG.location,
       rating: 5,
       teamSizeLimit: 6,

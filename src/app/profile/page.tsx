@@ -15,6 +15,8 @@ import { useChat } from "@/context/ChatContext";
 import { useChatUI } from "@/context/ChatUIContext";
 import { apiRequest } from "@/lib/apiClient";
 import { authService } from "@/lib/auth";
+import { buildIndividualEventCreateUrl } from "@/lib/eventCreateNavigation";
+import { createId } from "@/lib/id";
 import {
   PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY,
   PUBLIC_ACCOUNT_VISIBILITY,
@@ -1909,23 +1911,14 @@ function ProfilePageContent() {
     setEventTemplatesError(null);
     try {
       const params = new URLSearchParams();
-      params.set("state", "TEMPLATE");
       params.set("limit", "100");
-      const response = await fetch(`/api/events?${params.toString()}`, {
-        credentials: "include",
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Failed to load event templates.");
-      }
-      const rows = Array.isArray(payload?.events) ? payload.events : [];
+      const payload = await apiRequest<{ templates?: any[] }>(`/api/event-templates?${params.toString()}`);
+      const rows = Array.isArray(payload?.templates) ? payload.templates : [];
       setEventTemplates(
         rows
           .map((row: Record<string, any>) => ({
-            id: String(row?.$id ?? row?.id ?? ""),
+            id: String(row?.id ?? ""),
             name: String(row?.name ?? "Untitled Template"),
-            start: typeof row?.start === "string" ? row.start : undefined,
-            end: typeof row?.end === "string" ? row.end : undefined,
           }))
           .filter((row: { id: string }) => row.id.length > 0),
       );
@@ -4191,9 +4184,12 @@ function ProfilePageContent() {
                 size="xs"
                 variant="light"
                 mt="lg"
-                onClick={() => router.push(`/events/${template.id}/schedule`)}
+                onClick={() => router.push(buildIndividualEventCreateUrl(createId(), {
+                  templateId: template.id,
+                  skipTemplatePrompt: false,
+                }))}
               >
-                Open template
+                Create event
               </Button>
             </Paper>
           ))}

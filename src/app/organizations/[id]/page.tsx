@@ -1103,7 +1103,12 @@ function OrganizationDetailContent() {
   const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [eventTemplates, setEventTemplates] = useState<Event[]>([]);
+  const [eventTemplates, setEventTemplates] = useState<Array<{
+    id: string;
+    name: string;
+    eventType?: string | null;
+    sportId?: string | null;
+  }>>([]);
   const [eventTemplatesLoading, setEventTemplatesLoading] = useState(false);
   const [eventTemplatesError, setEventTemplatesError] = useState<string | null>(null);
   const [eventTemplateCreateModalOpen, setEventTemplateCreateModalOpen] = useState(false);
@@ -1611,15 +1616,20 @@ function OrganizationDetailContent() {
         return;
       }
       const params = new URLSearchParams();
-      params.set('state', 'TEMPLATE');
       params.set('organizationId', orgId);
       params.set('limit', '200');
-      const response = await apiRequest<{ events?: any[] }>(`/api/events?${params.toString()}`);
-      const rows = Array.isArray(response?.events) ? response.events : [];
-      const mapped = await Promise.all(
-        rows.map((row) => eventService.mapRowFromDatabase(row, false)),
+      const response = await apiRequest<{ templates?: any[] }>(`/api/event-templates?${params.toString()}`);
+      const rows = Array.isArray(response?.templates) ? response.templates : [];
+      setEventTemplates(
+        rows
+          .map((row) => ({
+            id: String(row?.id ?? ''),
+            name: String(row?.name ?? 'Untitled Template'),
+            eventType: typeof row?.eventType === 'string' ? row.eventType : null,
+            sportId: typeof row?.sportId === 'string' ? row.sportId : null,
+          }))
+          .filter((row) => row.id.length > 0),
       );
-      setEventTemplates(mapped.filter((row): row is Event => Boolean(row?.$id)));
       if (!silent) {
         setEventTemplatesError(null);
       }
@@ -1942,7 +1952,7 @@ function OrganizationDetailContent() {
     if (!eventTemplateCreateModalOpen || selectedCreateEventTemplateId || eventTemplates.length === 0) {
       return;
     }
-    setSelectedCreateEventTemplateId(eventTemplates[0].$id);
+    setSelectedCreateEventTemplateId(eventTemplates[0].id);
   }, [eventTemplateCreateModalOpen, eventTemplates, selectedCreateEventTemplateId]);
 
   useEffect(() => {
@@ -1961,9 +1971,9 @@ function OrganizationDetailContent() {
 
   const eventTemplateOptions = useMemo(
     () => eventTemplates
-      .filter((template) => typeof template.$id === 'string' && template.$id.length > 0)
+      .filter((template) => typeof template.id === 'string' && template.id.length > 0)
       .map((template) => ({
-        value: template.$id,
+        value: template.id,
         label: template.name?.trim() || 'Untitled Template',
       })),
     [eventTemplates],
@@ -1990,10 +2000,10 @@ function OrganizationDetailContent() {
       return;
     }
     setSelectedCreateEventTemplateId((previous) => {
-      if (previous && eventTemplates.some((template) => template.$id === previous)) {
+      if (previous && eventTemplates.some((template) => template.id === previous)) {
         return previous;
       }
-      return eventTemplates[0]?.$id ?? null;
+      return eventTemplates[0]?.id ?? null;
     });
     setEventTemplateCreateModalOpen(true);
     if (org?.$id && !eventTemplatesLoading && eventTemplates.length === 0) {
@@ -3735,11 +3745,34 @@ function OrganizationDetailContent() {
                 ) : eventTemplates.length > 0 ? (
                   <ResponsiveCardGrid>
                     {eventTemplates.map((eventTemplate) => (
-                      <EventCard
-                        key={eventTemplate.$id}
-                        event={eventTemplate}
-                        onClick={() => openOrganizationEvent(eventTemplate.$id)}
-                      />
+                      <Paper
+                        key={eventTemplate.id}
+                        withBorder
+                        radius="md"
+                        p="md"
+                        className="org-tab-item"
+                      >
+                        <Stack gap="sm">
+                          <Badge variant="light" color="blue" radius="xl">
+                            Event template
+                          </Badge>
+                          <div>
+                            <Text fw={700}>{eventTemplate.name}</Text>
+                            {eventTemplate.eventType && (
+                              <Text size="xs" c="dimmed" mt={4}>
+                                {eventTemplate.eventType}
+                              </Text>
+                            )}
+                          </div>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            onClick={() => navigateToEventCreate(eventTemplate.id)}
+                          >
+                            Create event
+                          </Button>
+                        </Stack>
+                      </Paper>
                     ))}
                   </ResponsiveCardGrid>
                 ) : (
