@@ -6,7 +6,9 @@ import { useApp } from '@/app/providers';
 import { ApiError, authService, type AuthSessionResult } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
 import { ONBOARDING_PATH } from '@/lib/onboardingIntent';
+import { userService } from '@/lib/userService';
 import Loading from '@/components/ui/Loading';
+import { ProfileImageUploadField } from '@/components/ui/ProfileImageUploadField';
 
 interface FormData {
   email: string;
@@ -37,6 +39,7 @@ const getSafeMfaReturnPath = (value: string | null): string | null => {
 function LoginPageContent() {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '', dateOfBirth: '' });
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [mfaState, setMfaState] = useState<MfaLoginState | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaReturnPath, setMfaReturnPath] = useState<string | null>(null);
@@ -160,6 +163,31 @@ function LoginPageContent() {
         ? '/complete-profile'
         : returnPath || getHomePathForUser(extendedUser),
     );
+  };
+
+  const attachProfileImageToAuthResult = async (authResult: AuthSessionResult): Promise<AuthSessionResult> => {
+    if (!profileImageFile) {
+      return authResult;
+    }
+
+    const userId = authResult.profile?.$id ?? authResult.user?.$id;
+    if (!userId) {
+      return authResult;
+    }
+
+    try {
+      const upload = await userService.uploadProfileImage(profileImageFile);
+      const updatedProfile = await userService.updateProfile(userId, {
+        profileImageId: upload.fileId,
+      });
+      return {
+        ...authResult,
+        profile: updatedProfile,
+      };
+    } catch (uploadError) {
+      console.error('Profile image upload failed after account creation:', uploadError);
+      return authResult;
+    }
   };
 
   const maybeOfferMfaSetup = async (authResult: AuthSessionResult): Promise<boolean> => {
@@ -291,6 +319,7 @@ function LoginPageContent() {
           formData.userName,
           formData.dateOfBirth
         );
+        authResult = await attachProfileImageToAuthResult(authResult);
       }
 
       if (await maybeOfferMfaSetup(authResult)) {
@@ -488,6 +517,16 @@ function LoginPageContent() {
             </>
           ) : !isLogin && (
             <>
+              <ProfileImageUploadField
+                file={profileImageFile}
+                onFileChange={(file) => {
+                  setError('');
+                  setProfileImageFile(file);
+                }}
+                disabled={loading}
+                onError={setError}
+              />
+
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
                 <input
@@ -665,6 +704,7 @@ function LoginPageContent() {
                   setError('');
                   setVerificationPendingEmail('');
                   setVerificationMessage('');
+                  setProfileImageFile(null);
                   resetMfaState();
                 }}
                 className="text-blue-600 hover:text-blue-800 font-medium text-sm"

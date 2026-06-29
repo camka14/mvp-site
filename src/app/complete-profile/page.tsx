@@ -7,6 +7,7 @@ import { useApp } from '@/app/providers';
 import { authService, type RequiredProfileField } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
 import { userService } from '@/lib/userService';
+import { ProfileImageUploadField } from '@/components/ui/ProfileImageUploadField';
 
 const FIELD_LABELS: Record<RequiredProfileField, string> = {
   firstName: 'first name',
@@ -41,6 +42,8 @@ function CompleteProfilePageContent() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImageId, setProfileImageId] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -60,6 +63,7 @@ function CompleteProfilePageContent() {
     if (user) {
       setFirstName((current) => current || user.firstName || '');
       setLastName((current) => current || user.lastName || '');
+      setProfileImageId((current) => current || user.profileImageId || '');
     }
   }, [user]);
 
@@ -109,10 +113,19 @@ function CompleteProfilePageContent() {
     setSaving(true);
     setError('');
     try {
+      let nextProfileImageId = profileImageId.trim();
+      if (profileImageFile) {
+        const upload = await userService.uploadProfileImage(profileImageFile);
+        nextProfileImageId = upload.fileId;
+      }
+      const currentProfileImageId = user?.profileImageId ?? '';
       const updatedUser = await userService.updateProfile(userId, {
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         dateOfBirth: parsedDob.toISOString(),
+        ...(profileImageFile || nextProfileImageId !== currentProfileImageId
+          ? { profileImageId: nextProfileImageId }
+          : {}),
       });
       setUser(updatedUser);
       await refreshSession();
@@ -147,6 +160,20 @@ function CompleteProfilePageContent() {
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
+          <ProfileImageUploadField
+            file={profileImageFile}
+            onFileChange={(file) => {
+              setError('');
+              setProfileImageFile(file);
+              if (!file && profileImageId) {
+                setProfileImageId('');
+              }
+            }}
+            currentImageUrl={profileImageId ? `/api/files/${profileImageId}/preview?w=160&h=160&fit=cover` : ''}
+            disabled={saving}
+            onError={setError}
+          />
+
           <div>
             <label htmlFor="firstName" className="mb-2 block text-sm font-medium text-slate-700">
               First Name
