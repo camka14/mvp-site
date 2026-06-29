@@ -12,6 +12,7 @@ import { AgentProvider } from '@/context/AgentContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
 import { AIAssistantDrawer } from '@/components/agent/AIAssistantDrawer';
 import ProfileCompletionGate from '@/components/auth/ProfileCompletionGate';
+import PostHogIdentity from '@/components/analytics/PostHogIdentity';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
@@ -65,6 +66,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <Suspense fallback={null}>
               <ProfileCompletionGate />
             </Suspense>
+            <PostHogIdentity />
             <div className="flex min-h-screen flex-col">
               <div className="flex-1">
                 <AgentProvider>
