@@ -7,6 +7,7 @@ import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { findPresentKeys, findUnknownKeys } from '@/server/http/strictPatch';
 import { getFacilityForOrganization } from '@/server/facilities';
 import { attachFacilitiesToFieldRows, withLegacyFieldPayload } from '@/server/fieldFacilityPayload';
+import { deleteOrArchiveField, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +121,7 @@ const findFieldOwnership = async (id: string): Promise<{
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const field = await prisma.fields.findUnique({ where: { id } });
-  if (!field) {
+  if (!field || field.archivedAt) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   const [fieldWithFacility] = await attachFacilitiesToFieldRows([field]);
@@ -275,7 +276,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const existing = await prisma.fields.findUnique({
     where: { id },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, archivedAt: true, archivedByUserId: true, archiveReason: true },
   });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -299,6 +300,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.fields.delete({ where: { id } });
-  return NextResponse.json({ deleted: true }, { status: 200 });
+  const result = await deleteOrArchiveField({
+    client: prisma,
+    entity: existing,
+    actorUserId: session.userId,
+    reason: 'delete_requested',
+  });
+  return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
 }

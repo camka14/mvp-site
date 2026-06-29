@@ -846,6 +846,7 @@ const buildPublicOrganizationEventWhere = (
   ].filter((filter): filter is Record<string, unknown> => Boolean(filter));
   return {
     organizationId: organization.id,
+    archivedAt: null,
     ...(eventIds.length ? { id: { in: eventIds } } : {}),
     OR: PUBLIC_EVENT_STATES.map((state) => ({ state })),
     NOT: { state: 'TEMPLATE' },
@@ -1329,9 +1330,13 @@ const loadPublicSchedulableEvent = async (
       organizationId: true,
       state: true,
       eventType: true,
+      archivedAt: true,
     },
   });
   if (!eventAccess || eventAccess.organizationId !== organization.id) {
+    return null;
+  }
+  if (eventAccess.archivedAt) {
     return null;
   }
 

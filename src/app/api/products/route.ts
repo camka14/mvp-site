@@ -40,12 +40,14 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const organizationId = params.get('organizationId');
+  const includeInactive = params.get('includeInactive') === '1' || params.get('includeInactive') === 'true';
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
 
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (organizationId) where.organizationId = organizationId;
+  if (!includeInactive) where.OR = [{ isActive: true }, { isActive: null }];
 
   const products = await prisma.products.findMany({
     where,

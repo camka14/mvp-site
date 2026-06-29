@@ -1986,15 +1986,21 @@ describe('DELETE /api/events/[eventId]/participants', () => {
       },
       select: { id: true },
     });
-    expect(prismaMock.eventRegistrations.deleteMany).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           eventId: 'event_1',
           registrantId: 'child_1',
           registrantType: { in: ['SELF', 'CHILD'] },
+          status: { not: 'CANCELLED' },
+        }),
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          updatedAt: expect.any(Date),
         }),
       }),
     );
+    expect(prismaMock.eventRegistrations.deleteMany).not.toHaveBeenCalled();
   });
 
   it('forbids removing an unrelated participant', async () => {

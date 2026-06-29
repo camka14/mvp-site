@@ -46,6 +46,9 @@ export type TimeSlotsMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   dayOfWeek: number | null
   startTimeMinutes: number | null
   endTimeMinutes: number | null
@@ -66,6 +69,9 @@ export type TimeSlotsMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   dayOfWeek: number | null
   startTimeMinutes: number | null
   endTimeMinutes: number | null
@@ -86,6 +92,9 @@ export type TimeSlotsCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  archivedAt: number
+  archivedByUserId: number
+  archiveReason: number
   dayOfWeek: number
   daysOfWeek: number
   startTimeMinutes: number
@@ -129,6 +138,9 @@ export type TimeSlotsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   dayOfWeek?: true
   startTimeMinutes?: true
   endTimeMinutes?: true
@@ -149,6 +161,9 @@ export type TimeSlotsMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   dayOfWeek?: true
   startTimeMinutes?: true
   endTimeMinutes?: true
@@ -169,6 +184,9 @@ export type TimeSlotsCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   dayOfWeek?: true
   daysOfWeek?: true
   startTimeMinutes?: true
@@ -281,6 +299,9 @@ export type TimeSlotsGroupByOutputType = {
   id: string
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   dayOfWeek: number | null
   daysOfWeek: number[]
   startTimeMinutes: number | null
@@ -329,6 +350,9 @@ export type TimeSlotsWhereInput = {
   id?: Prisma.StringFilter<"TimeSlots"> | string
   createdAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
   dayOfWeek?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
@@ -354,6 +378,9 @@ export type TimeSlotsOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrderInput | Prisma.SortOrder
   daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -382,6 +409,9 @@ export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.TimeSlotsWhereInput | Prisma.TimeSlotsWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
   dayOfWeek?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
@@ -407,6 +437,9 @@ export type TimeSlotsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrderInput | Prisma.SortOrder
   daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -440,6 +473,9 @@ export type TimeSlotsScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"TimeSlots"> | string
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
+  archiveReason?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
   dayOfWeek?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
   daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
@@ -465,6 +501,9 @@ export type TimeSlotsCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   dayOfWeek?: number | null
   daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
@@ -490,6 +529,9 @@ export type TimeSlotsUncheckedCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   dayOfWeek?: number | null
   daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
@@ -515,6 +557,9 @@ export type TimeSlotsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -540,6 +585,9 @@ export type TimeSlotsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -565,6 +613,9 @@ export type TimeSlotsCreateManyInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   dayOfWeek?: number | null
   daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
@@ -590,6 +641,9 @@ export type TimeSlotsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -615,6 +669,9 @@ export type TimeSlotsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -640,6 +697,9 @@ export type TimeSlotsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrder
   daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
@@ -673,6 +733,9 @@ export type TimeSlotsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrder
@@ -693,6 +756,9 @@ export type TimeSlotsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrder
@@ -768,6 +834,9 @@ export type TimeSlotsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   dayOfWeek?: boolean
   daysOfWeek?: boolean
   startTimeMinutes?: boolean
@@ -793,6 +862,9 @@ export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   dayOfWeek?: boolean
   daysOfWeek?: boolean
   startTimeMinutes?: boolean
@@ -818,6 +890,9 @@ export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   dayOfWeek?: boolean
   daysOfWeek?: boolean
   startTimeMinutes?: boolean
@@ -843,6 +918,9 @@ export type TimeSlotsSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   dayOfWeek?: boolean
   daysOfWeek?: boolean
   startTimeMinutes?: boolean
@@ -864,7 +942,7 @@ export type TimeSlotsSelectScalar = {
   rentalLocked?: boolean
 }
 
-export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "timeZone" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "taxHandling" | "divisions" | "requiredTemplateIds" | "hostRequiredTemplateIds" | "sourceType" | "rentalBookingId" | "rentalBookingItemId" | "rentalLocked", ExtArgs["result"]["timeSlots"]>
+export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "timeZone" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "taxHandling" | "divisions" | "requiredTemplateIds" | "hostRequiredTemplateIds" | "sourceType" | "rentalBookingId" | "rentalBookingItemId" | "rentalLocked", ExtArgs["result"]["timeSlots"]>
 
 export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TimeSlots"
@@ -873,6 +951,9 @@ export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    archivedAt: Date | null
+    archivedByUserId: string | null
+    archiveReason: string | null
     dayOfWeek: number | null
     daysOfWeek: number[]
     startTimeMinutes: number | null
@@ -1318,6 +1399,9 @@ export interface TimeSlotsFieldRefs {
   readonly id: Prisma.FieldRef<"TimeSlots", 'String'>
   readonly createdAt: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"TimeSlots", 'DateTime'>
+  readonly archivedAt: Prisma.FieldRef<"TimeSlots", 'DateTime'>
+  readonly archivedByUserId: Prisma.FieldRef<"TimeSlots", 'String'>
+  readonly archiveReason: Prisma.FieldRef<"TimeSlots", 'String'>
   readonly dayOfWeek: Prisma.FieldRef<"TimeSlots", 'Int'>
   readonly daysOfWeek: Prisma.FieldRef<"TimeSlots", 'Int[]'>
   readonly startTimeMinutes: Prisma.FieldRef<"TimeSlots", 'Int'>

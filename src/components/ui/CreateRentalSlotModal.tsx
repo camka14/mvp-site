@@ -342,7 +342,7 @@ export default function CreateRentalSlotModal({
 
     const confirmed = typeof window === 'undefined'
       ? true
-      : window.confirm('Delete this rental slot? This cannot be undone.');
+      : window.confirm('Delete this rental slot? If it has bookings or billing history, it will be archived instead.');
     if (!confirmed) {
       return;
     }
@@ -355,8 +355,8 @@ export default function CreateRentalSlotModal({
         onClose();
         return;
       }
-      const updatedField = await fieldService.deleteRentalSlot(field, slot.$id);
-      onSaved?.([updatedField]);
+      const result = await fieldService.deleteRentalSlotResult(field, slot.$id);
+      onSaved?.([result.field]);
       onClose();
     } catch (err) {
       console.error('Failed to delete rental slot:', err);

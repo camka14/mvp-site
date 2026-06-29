@@ -70,6 +70,7 @@ import OrganizationPublicSettingsPanel from './OrganizationPublicSettingsPanel';
 import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
 import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import DiscountManager from '@/components/discounts/DiscountManager';
+import { describeDeleteOutcome } from '@/lib/deleteOutcome';
 
 export default function OrganizationDetailPage() {
   return (
@@ -2440,15 +2441,22 @@ function OrganizationDetailContent() {
   const handleDeleteProduct = useCallback(async () => {
     if (!org || !selectedProduct || !canManageProducts) return;
     if (typeof window !== 'undefined') {
-      const confirmed = window.confirm(`Delete product "${selectedProduct.name}"? This cannot be undone.`);
+      const confirmed = window.confirm(`Delete product "${selectedProduct.name}"? If it has subscriptions or purchase history, it will be deactivated instead.`);
       if (!confirmed) {
         return;
       }
     }
     try {
       setDeletingProduct(true);
-      await productService.deleteProduct(selectedProduct.$id);
-      notifications.show({ color: 'green', message: 'Product deleted.' });
+      const outcome = await productService.deleteProductResult(selectedProduct.$id);
+      notifications.show({
+        color: 'green',
+        message: describeDeleteOutcome(outcome, {
+          deleted: 'Product deleted.',
+          deactivated: 'Product deactivated because it has billing history.',
+          fallback: 'Product removed from active listings.',
+        }),
+      });
       await refreshOrganizationProducts(org.$id);
       closeProductModal();
     } catch (error) {

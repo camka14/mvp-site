@@ -11,6 +11,7 @@ import {
   resolveTimeZone,
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
+import { deleteOrArchiveTimeSlot, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -360,8 +361,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const { id } = await params;
-  await prisma.timeSlots.delete({ where: { id } });
-  return NextResponse.json({ deleted: true }, { status: 200 });
+  const existing = await prisma.timeSlots.findUnique({
+    where: { id },
+    select: { id: true, archivedAt: true, archivedByUserId: true, archiveReason: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const result = await deleteOrArchiveTimeSlot({
+    client: prisma,
+    entity: existing,
+    actorUserId: session.userId,
+    reason: 'delete_requested',
+  });
+  return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
 }

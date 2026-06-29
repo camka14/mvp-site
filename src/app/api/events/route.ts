@@ -846,7 +846,7 @@ export async function GET(req: NextRequest) {
   })();
   const canViewOrganizationDrafts = await includeManagedOrganizationDrafts;
 
-  const where: any = {};
+  const where: any = { archivedAt: null };
   // Event templates are not real events and should not appear in normal lists.
   if (!normalizedState) {
     const visibilityClause = buildDefaultEventVisibilityClause(

@@ -398,7 +398,7 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-  const where: any = {};
+  const where: any = { archivedAt: null };
   const visibilityClause = buildDiscoverVisibilityClause(sessionUserId, isAdmin);
   where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
   if (hiddenEventIds.length > 0) {

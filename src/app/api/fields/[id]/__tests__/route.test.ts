@@ -6,6 +6,7 @@ const prismaMock = {
   fields: {
     findUnique: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
   },
   facilities: {
     findFirst: jest.fn(),
@@ -13,6 +14,19 @@ const prismaMock = {
   },
   events: {
     findFirst: jest.fn(),
+    count: jest.fn(),
+  },
+  timeSlots: {
+    count: jest.fn(),
+  },
+  rentalBookingItems: {
+    count: jest.fn(),
+  },
+  staffScheduleAssignments: {
+    count: jest.fn(),
+  },
+  eventOfficials: {
+    count: jest.fn(),
   },
   organizations: {
     findUnique: jest.fn(),
@@ -28,7 +42,7 @@ jest.mock('@/server/accessControl', () => ({
   hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
 
-import { GET, PATCH } from '@/app/api/fields/[id]/route';
+import { DELETE, GET, PATCH } from '@/app/api/fields/[id]/route';
 
 const patchRequest = (body: unknown) => new NextRequest('http://localhost/api/fields/field_1', {
   method: 'PATCH',
@@ -47,6 +61,12 @@ describe('PATCH /api/fields/[id]', () => {
       name: 'Main Facility',
     });
     prismaMock.facilities.findMany.mockResolvedValue([]);
+    prismaMock.events.count.mockResolvedValue(0);
+    prismaMock.timeSlots.count.mockResolvedValue(0);
+    prismaMock.rentalBookingItems.count.mockResolvedValue(0);
+    prismaMock.staffScheduleAssignments.count.mockResolvedValue(0);
+    prismaMock.eventOfficials.count.mockResolvedValue(0);
+    prismaMock.fields.delete.mockResolvedValue({});
   });
 
   it('returns facility metadata with a field', async () => {
@@ -257,5 +277,78 @@ describe('PATCH /api/fields/[id]', () => {
         }),
       }),
     );
+  });
+
+  it('hard deletes an unreferenced field', async () => {
+    prismaMock.fields.findUnique.mockResolvedValueOnce({
+      id: 'field_1',
+      organizationId: 'org_1',
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/fields/field_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      deleted: true,
+      archived: false,
+      action: 'deleted',
+      entityType: 'field',
+      entityId: 'field_1',
+    }));
+    expect(prismaMock.fields.delete).toHaveBeenCalledWith({ where: { id: 'field_1' } });
+    expect(prismaMock.fields.update).not.toHaveBeenCalled();
+  });
+
+  it('archives a field with rental references', async () => {
+    prismaMock.fields.findUnique.mockResolvedValueOnce({
+      id: 'field_1',
+      organizationId: 'org_1',
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+    prismaMock.rentalBookingItems.count.mockResolvedValueOnce(2);
+    prismaMock.fields.update.mockResolvedValueOnce({});
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/fields/field_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      deleted: false,
+      archived: true,
+      action: 'archived',
+      entityType: 'field',
+      entityId: 'field_1',
+      references: [{ type: 'rental_booking_items', count: 2 }],
+    }));
+    expect(prismaMock.fields.update).toHaveBeenCalledWith({
+      where: { id: 'field_1' },
+      data: expect.objectContaining({
+        archivedAt: expect.any(Date),
+        archivedByUserId: 'user_1',
+        archiveReason: 'delete_requested',
+        updatedAt: expect.any(Date),
+      }),
+    });
+    expect(prismaMock.fields.delete).not.toHaveBeenCalled();
   });
 });

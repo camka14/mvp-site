@@ -404,23 +404,27 @@ model AppReleases {
 }
 
 model Fields {
-  id             String    @id
-  createdAt      DateTime?
-  updatedAt      DateTime?
-  lat            Float?
-  long           Float?
-  heading        Float?
-  inUse          Boolean?
-  name           String?
-  rentalSlotIds  String[]
-  location       String?
-  organizationId String?
-  facilityId     String?
-  createdBy      String?
+  id               String    @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  archivedAt       DateTime?
+  archivedByUserId String?
+  archiveReason    String?
+  lat              Float?
+  long             Float?
+  heading          Float?
+  inUse            Boolean?
+  name             String?
+  rentalSlotIds    String[]
+  location         String?
+  organizationId   String?
+  facilityId       String?
+  createdBy        String?
 
   @@index([organizationId])
   @@index([facilityId])
   @@index([createdBy])
+  @@index([archivedAt])
 }
 
 model Facilities {
@@ -1053,6 +1057,9 @@ model Teams {
   id                    String              @id
   createdAt             DateTime?
   updatedAt             DateTime?
+  archivedAt            DateTime?
+  archivedByUserId      String?
+  archiveReason         String?
   eventId               String?
   kind                  EventTeamsKindEnum? @default(REGISTERED)
   playerIds             String[]
@@ -1080,6 +1087,7 @@ model Teams {
   @@index([managerId])
   @@index([headCoachId])
   @@index([parentTeamId])
+  @@index([archivedAt])
   @@map("EventTeams")
 }
 
@@ -1087,6 +1095,9 @@ model CanonicalTeams {
   id                     String              @id
   createdAt              DateTime?
   updatedAt              DateTime?
+  archivedAt             DateTime?
+  archivedByUserId       String?
+  archiveReason          String?
   name                   String
   division               String?
   divisionTypeId         String?
@@ -1114,6 +1125,8 @@ model CanonicalTeams {
   @@index([affiliateUrl])
   @@index([sourceType, sourceId])
   @@index([organizationId, sourceType])
+  @@index([archivedAt])
+  @@index([organizationId, archivedAt])
   @@map("Teams")
 }
 
@@ -1839,6 +1852,9 @@ model Events {
   id                            String                           @id
   createdAt                     DateTime?
   updatedAt                     DateTime?
+  archivedAt                    DateTime?
+  archivedByUserId              String?
+  archiveReason                 String?
   name                          String
   start                         DateTime
   end                           DateTime?
@@ -1921,6 +1937,8 @@ model Events {
   @@index([sportId])
   @@index([parentEvent])
   @@index([sourceType, sourceId])
+  @@index([archivedAt])
+  @@index([organizationId, archivedAt])
 }
 
 model Organizations {
@@ -2000,6 +2018,9 @@ model TimeSlots {
   id                      String    @id
   createdAt               DateTime?
   updatedAt               DateTime?
+  archivedAt              DateTime?
+  archivedByUserId        String?
+  archiveReason           String?
   dayOfWeek               Int?
   daysOfWeek              Int[]     @default([])
   startTimeMinutes        Int?
@@ -2024,6 +2045,7 @@ model TimeSlots {
   @@index([sourceType])
   @@index([rentalBookingId])
   @@index([rentalBookingItemId])
+  @@index([archivedAt])
 }
 
 model LeagueScoringConfigs {

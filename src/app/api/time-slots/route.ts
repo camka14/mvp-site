@@ -237,7 +237,7 @@ export async function GET(req: NextRequest) {
   }
 
   const slots = await prisma.timeSlots.findMany({
-    where: whereClauses.length ? { AND: whereClauses } : {},
+    where: { AND: [{ archivedAt: null }, ...whereClauses] },
     orderBy: { startDate: 'asc' },
   });
 

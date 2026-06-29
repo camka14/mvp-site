@@ -20,6 +20,7 @@ import {
   normalizeProductTaxCategory,
   syncPlatformProductCatalog,
 } from '@/lib/stripeProducts';
+import { deleteOrDeactivateProduct, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,6 +212,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.products.delete({ where: { id } });
-  return NextResponse.json({ deleted: true }, { status: 200 });
+  const result = await deleteOrDeactivateProduct({
+    client: prisma,
+    entity: existing,
+    actorUserId: session.userId,
+    reason: 'delete_requested',
+  });
+  return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
 }

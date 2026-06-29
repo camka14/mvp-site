@@ -3,6 +3,7 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
+import type { DeleteOrArchiveResult } from '@/lib/deleteOutcome';
 import { eventService } from './eventService';
 import { facilityService } from './facilityService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
@@ -36,6 +37,11 @@ export interface UpdateFieldData {
 export interface ManageRentalSlotResult {
   field: Field;
   slot: TimeSlot;
+}
+
+export interface DeleteRentalSlotResult {
+  field: Field;
+  outcome: DeleteOrArchiveResult;
 }
 
 export interface FieldRangeFetchOptions {
@@ -494,7 +500,7 @@ class FieldService {
     return { field: updatedField, slot: updatedSlot };
   }
 
-  async deleteRentalSlot(field: Field, slotId: string): Promise<Field> {
+  async deleteRentalSlotResult(field: Field, slotId: string): Promise<DeleteRentalSlotResult> {
     if (!field?.$id) {
       throw new Error('Rental slot delete requires a field id');
     }
@@ -511,7 +517,7 @@ class FieldService {
       body: { field: { rentalSlotIds: nextRentalSlotIds } },
     });
 
-    await apiRequest(`/api/time-slots/${slotId}`, {
+    const outcome = await apiRequest<DeleteOrArchiveResult>(`/api/time-slots/${slotId}`, {
       method: 'DELETE',
     });
 
@@ -520,7 +526,15 @@ class FieldService {
     await this.hydrateFieldRentalSlots([updatedField]);
     await this.hydrateFieldFacilities([updatedField]);
 
-    return updatedField;
+    return {
+      field: updatedField,
+      outcome: outcome ?? { deleted: true, action: 'deleted' },
+    };
+  }
+
+  async deleteRentalSlot(field: Field, slotId: string): Promise<Field> {
+    const result = await this.deleteRentalSlotResult(field, slotId);
+    return result.field;
   }
 }
 

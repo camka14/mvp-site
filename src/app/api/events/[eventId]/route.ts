@@ -56,6 +56,7 @@ import {
   isTournamentPoolPlayEnabled,
 } from '@/server/events/tournamentPools';
 import { getEventTagsForEventIds, syncEventTags } from '@/server/eventTags';
+import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -2851,6 +2852,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
       timeSlotIds: true,
       state: true,
       leagueScoringConfigId: true,
+      archivedAt: true,
+      archivedByUserId: true,
+      archiveReason: true,
     },
   });
   if (!event) {
@@ -2860,204 +2864,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const billIds = await collectEventBillIds(eventId);
-  try {
-    await settleEventBillingBeforeDelete({ eventId, billIds });
-  } catch (error) {
-    console.error('Failed to settle billing before deleting event.', error);
-    const message = error instanceof Error
-      ? error.message
-      : 'Failed to settle billing before deleting event';
-    return NextResponse.json({ error: message }, { status: 502 });
-  }
-
-  const eventFieldIds = normalizeEntityIdList(event.fieldIds);
-  const eventTimeSlotIds = normalizeEntityIdList(event.timeSlotIds);
-  const eventState = typeof event.state === 'string' ? event.state.toUpperCase() : '';
-  const leagueScoringConfigId = normalizeEntityId(event.leagueScoringConfigId);
-
-  await prisma.$transaction(async (tx) => {
-    if (eventState === 'TEMPLATE') {
-      const [eventsUsingTemplate, timeSlotsUsingTemplate] = await Promise.all([
-        tx.events.findMany({
-          where: {
-            id: { not: eventId },
-            requiredTemplateIds: { has: eventId },
-          },
-          select: {
-            id: true,
-            requiredTemplateIds: true,
-          },
-        }),
-        tx.timeSlots.findMany({
-          where: {
-            OR: [
-              { requiredTemplateIds: { has: eventId } },
-              { hostRequiredTemplateIds: { has: eventId } },
-            ],
-          },
-          select: {
-            id: true,
-            requiredTemplateIds: true,
-            hostRequiredTemplateIds: true,
-          },
-        }),
-      ]);
-
-      for (const linkedEvent of eventsUsingTemplate) {
-        await tx.events.update({
-          where: { id: linkedEvent.id },
-          data: {
-            requiredTemplateIds: removeEntityIdFromList(linkedEvent.requiredTemplateIds, eventId),
-            updatedAt: new Date(),
-          },
-        });
-      }
-
-      for (const linkedSlot of timeSlotsUsingTemplate) {
-        await tx.timeSlots.update({
-          where: { id: linkedSlot.id },
-          data: {
-            requiredTemplateIds: removeEntityIdFromList(linkedSlot.requiredTemplateIds, eventId),
-            hostRequiredTemplateIds: removeEntityIdFromList(linkedSlot.hostRequiredTemplateIds, eventId),
-            updatedAt: new Date(),
-          },
-        });
-      }
-    }
-
-    const registrations = await tx.eventRegistrations.findMany({
-      where: { eventId },
-      select: {
-        registrantId: true,
-        registrantType: true,
-      },
-    });
-    const registrationTeamIds = registrations
-      .filter((row: { registrantType: string }) => row.registrantType === 'TEAM')
-      .map((row: { registrantId: string }) => row.registrantId);
-    const seedTeamIds = Array.from(new Set(normalizeEntityIdList(registrationTeamIds)));
-
-    const linkedTeams = seedTeamIds.length > 0
-      ? await tx.teams.findMany({
-          where: {
-            OR: [
-              { id: { in: seedTeamIds } },
-              { parentTeamId: { in: seedTeamIds } },
-            ],
-          },
-          select: {
-            id: true,
-            parentTeamId: true,
-            kind: true,
-            captainId: true,
-            name: true,
-          },
-        })
-      : [];
-    const candidateTeamIds = Array.from(
-      new Set([...seedTeamIds, ...linkedTeams.map((row: { id: string }) => row.id)]),
-    );
-
-    const referencedTeamIds = new Set<string>();
-    if (candidateTeamIds.length > 0) {
-      const registrationsUsingTeams = await tx.eventRegistrations.findMany({
-        where: {
-          eventId: { not: eventId },
-          registrantType: 'TEAM',
-          registrantId: { in: candidateTeamIds },
-        },
-        select: { registrantId: true },
-      });
-      normalizeEntityIdList(registrationsUsingTeams.map((row: { registrantId: string }) => row.registrantId))
-        .forEach((id) => referencedTeamIds.add(id));
-
-    }
-    const forcedTeamIdsToDelete = new Set(
-      linkedTeams
-        .filter((team: { parentTeamId: string | null; kind?: string | null; captainId: string; name: string | null }) => (
-          normalizeEntityId(team.parentTeamId) !== null
-          || String(team.kind ?? '').toUpperCase() === 'PLACEHOLDER'
-          || normalizeEntityId(team.captainId) === null
-          || isPlaceholderTeamName(team.name)
-        ))
-        .map((team: { id: string }) => team.id),
-    );
-
-    const teamIdsToDelete = candidateTeamIds.filter(
-      (teamId) => forcedTeamIdsToDelete.has(teamId) || !referencedTeamIds.has(teamId),
-    );
-
-    const localFieldIds = eventFieldIds.length > 0
-      ? (await tx.fields.findMany({
-          where: {
-            id: { in: eventFieldIds },
-            organizationId: null,
-          },
-          select: { id: true },
-        })).map((row: { id: string }) => row.id)
-      : [];
-
-    await tx.matches.deleteMany({ where: { eventId } });
-    await tx.divisions.deleteMany({ where: { eventId } });
-    await tx.eventRegistrations.deleteMany({ where: { eventId } });
-    await tx.refundRequests.deleteMany({ where: { eventId } });
-    await tx.signedDocuments.deleteMany({ where: { eventId } });
-    await tx.invites.deleteMany({ where: { eventId } });
-    await tx.paymentIntents.deleteMany({ where: { eventId } });
-    await tx.templateDocuments.deleteMany({ where: { templateId: eventId } });
-
-    if (billIds.length > 0) {
-      await tx.billPayments.deleteMany({
-        where: {
-          billId: { in: billIds },
-        },
-      });
-      await tx.bills.deleteMany({
-        where: {
-          id: { in: billIds },
-        },
-      });
-    }
-
-    if (eventTimeSlotIds.length > 0) {
-      await tx.timeSlots.deleteMany({
-        where: {
-          id: { in: eventTimeSlotIds },
-        },
-      });
-    }
-
-    if (localFieldIds.length > 0) {
-      await tx.fields.deleteMany({
-        where: {
-          id: { in: localFieldIds },
-          organizationId: null,
-        },
-      });
-    }
-
-    if (teamIdsToDelete.length > 0) {
-      await tx.teams.deleteMany({
-        where: {
-          id: { in: teamIdsToDelete },
-        },
-      });
-    }
-
-    await tx.events.delete({ where: { id: eventId } });
-
-    if (leagueScoringConfigId) {
-      const remainingEventsUsingConfig = await tx.events.count({
-        where: { leagueScoringConfigId },
-      });
-      if (remainingEventsUsingConfig === 0) {
-        await tx.leagueScoringConfigs.deleteMany({
-          where: { id: leagueScoringConfigId },
-        });
-      }
-    }
+  const result = await deleteOrArchiveEvent({
+    client: prisma,
+    event,
+    actorUserId: session.userId,
+    reason: 'delete_requested',
   });
 
-  return NextResponse.json({ deleted: true }, { status: 200 });
+  return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
 }

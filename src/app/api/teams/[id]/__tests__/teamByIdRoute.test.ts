@@ -4,9 +4,13 @@ import { NextRequest } from 'next/server';
 
 const findUniqueMock = jest.fn();
 const updateMock = jest.fn();
+const deleteMock = jest.fn();
 const findManyMock = jest.fn();
 const eventsFindManyMock = jest.fn();
 const teamRegistrationsUpdateManyMock = jest.fn();
+const countMock = jest.fn();
+const billsFindManyMock = jest.fn();
+const eventTeamStaffAssignmentsUpdateManyMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
 const staffMemberFindUniqueMock = jest.fn();
 const inviteFindFirstMock = jest.fn();
@@ -15,6 +19,7 @@ const evaluateRazumlyAdminAccessMock = jest.fn();
 const txClientMock = {
   teams: {
     update: (...args: any[]) => updateMock(...args),
+    delete: (...args: any[]) => deleteMock(...args),
     findMany: (...args: any[]) => findManyMock(...args),
   },
   events: {
@@ -23,13 +28,59 @@ const txClientMock = {
   teamRegistrations: {
     updateMany: (...args: any[]) => teamRegistrationsUpdateManyMock(...args),
   },
+  eventTeamStaffAssignments: {
+    updateMany: (...args: any[]) => eventTeamStaffAssignmentsUpdateManyMock(...args),
+  },
 };
 
 const prismaMock = {
   teams: {
     findUnique: (...args: any[]) => findUniqueMock(...args),
     update: (...args: any[]) => updateMock(...args),
+    delete: (...args: any[]) => deleteMock(...args),
     findMany: (...args: any[]) => findManyMock(...args),
+  },
+  bills: {
+    findMany: (...args: any[]) => billsFindManyMock(...args),
+  },
+  billPayments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  billPaymentProofs: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  eventRegistrations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  matches: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  matchSegments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  matchIncidents: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  refundRequests: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  signedDocuments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  eventTeamStaffAssignments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  boldSignSyncOperations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  events: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  divisions: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  chatGroup: {
+    count: (...args: any[]) => countMock(...args),
   },
   organizations: {
     findFirst: (...args: any[]) => organizationFindFirstMock(...args),
@@ -54,7 +105,7 @@ jest.mock('@/server/razumlyAdmin', () => ({
   evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
 }));
 
-import { PATCH } from '@/app/api/teams/[id]/route';
+import { DELETE, PATCH } from '@/app/api/teams/[id]/route';
 
 const patchJson = (body: unknown) => new NextRequest('http://localhost/api/teams/team_1', {
   method: 'PATCH',
@@ -72,6 +123,10 @@ describe('/api/teams/[id] PATCH', () => {
     inviteFindFirstMock.mockResolvedValue(null);
     findManyMock.mockResolvedValue([]);
     eventsFindManyMock.mockResolvedValue([]);
+    countMock.mockResolvedValue(0);
+    billsFindManyMock.mockResolvedValue([]);
+    deleteMock.mockResolvedValue({});
+    eventTeamStaffAssignmentsUpdateManyMock.mockResolvedValue({ count: 0 });
     findUniqueMock.mockResolvedValue({
       id: 'team_1',
       name: 'Team One',
@@ -201,5 +256,69 @@ describe('/api/teams/[id] PATCH', () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe('Invalid input');
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('hard deletes an unreferenced event team', async () => {
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/teams/team_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      deleted: true,
+      archived: false,
+      action: 'deleted',
+      entityType: 'team',
+      entityId: 'team_1',
+    }));
+    expect(deleteMock).toHaveBeenCalledWith({ where: { id: 'team_1' } });
+    expect(updateMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({ archivedAt: expect.any(Date) }),
+    }));
+  });
+
+  it('archives a referenced event team', async () => {
+    countMock.mockImplementation(async ({ where }: any) => {
+      if (where?.OR?.some?.((entry: Record<string, unknown>) => entry.team1Id === 'team_1')) {
+        return 1;
+      }
+      return 0;
+    });
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/teams/team_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      deleted: false,
+      archived: true,
+      action: 'archived',
+      entityType: 'team',
+      entityId: 'team_1',
+      references: [{ type: 'matches', count: 1 }],
+    }));
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({
+        archivedAt: expect.any(Date),
+        archivedByUserId: 'captain_1',
+        archiveReason: 'delete_requested',
+        updatedAt: expect.any(Date),
+      }),
+    });
+    expect(eventTeamStaffAssignmentsUpdateManyMock).toHaveBeenCalledWith({
+      where: { eventTeamId: 'team_1' },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(deleteMock).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,9 @@ export type TeamsMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   eventId: string | null
   kind: $Enums.EventTeamsKindEnum | null
   division: string | null
@@ -63,6 +66,9 @@ export type TeamsMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   eventId: string | null
   kind: $Enums.EventTeamsKindEnum | null
   division: string | null
@@ -84,6 +90,9 @@ export type TeamsCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  archivedAt: number
+  archivedByUserId: number
+  archiveReason: number
   eventId: number
   kind: number
   playerIds: number
@@ -124,6 +133,9 @@ export type TeamsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   eventId?: true
   kind?: true
   division?: true
@@ -145,6 +157,9 @@ export type TeamsMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   eventId?: true
   kind?: true
   division?: true
@@ -166,6 +181,9 @@ export type TeamsCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   eventId?: true
   kind?: true
   playerIds?: true
@@ -279,6 +297,9 @@ export type TeamsGroupByOutputType = {
   id: string
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   eventId: string | null
   kind: $Enums.EventTeamsKindEnum | null
   playerIds: string[]
@@ -328,6 +349,9 @@ export type TeamsWhereInput = {
   id?: Prisma.StringFilter<"Teams"> | string
   createdAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Teams"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Teams"> | string | null
   eventId?: Prisma.StringNullableFilter<"Teams"> | string | null
   kind?: Prisma.EnumEventTeamsKindEnumNullableFilter<"Teams"> | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.StringNullableListFilter<"Teams">
@@ -354,6 +378,9 @@ export type TeamsOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   kind?: Prisma.SortOrderInput | Prisma.SortOrder
   playerIds?: Prisma.SortOrder
@@ -383,6 +410,9 @@ export type TeamsWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.TeamsWhereInput | Prisma.TeamsWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Teams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Teams"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Teams"> | string | null
   eventId?: Prisma.StringNullableFilter<"Teams"> | string | null
   kind?: Prisma.EnumEventTeamsKindEnumNullableFilter<"Teams"> | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.StringNullableListFilter<"Teams">
@@ -409,6 +439,9 @@ export type TeamsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   kind?: Prisma.SortOrderInput | Prisma.SortOrder
   playerIds?: Prisma.SortOrder
@@ -443,6 +476,9 @@ export type TeamsScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"Teams"> | string
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Teams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Teams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Teams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
+  archiveReason?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
   kind?: Prisma.EnumEventTeamsKindEnumNullableWithAggregatesFilter<"Teams"> | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.StringNullableListFilter<"Teams">
@@ -469,6 +505,9 @@ export type TeamsCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   eventId?: string | null
   kind?: $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsCreateplayerIdsInput | string[]
@@ -495,6 +534,9 @@ export type TeamsUncheckedCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   eventId?: string | null
   kind?: $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsCreateplayerIdsInput | string[]
@@ -521,6 +563,9 @@ export type TeamsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumEventTeamsKindEnumFieldUpdateOperationsInput | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsUpdateplayerIdsInput | string[]
@@ -547,6 +592,9 @@ export type TeamsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumEventTeamsKindEnumFieldUpdateOperationsInput | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsUpdateplayerIdsInput | string[]
@@ -573,6 +621,9 @@ export type TeamsCreateManyInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   eventId?: string | null
   kind?: $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsCreateplayerIdsInput | string[]
@@ -599,6 +650,9 @@ export type TeamsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumEventTeamsKindEnumFieldUpdateOperationsInput | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsUpdateplayerIdsInput | string[]
@@ -625,6 +679,9 @@ export type TeamsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumEventTeamsKindEnumFieldUpdateOperationsInput | $Enums.EventTeamsKindEnum | null
   playerIds?: Prisma.TeamsUpdateplayerIdsInput | string[]
@@ -651,6 +708,9 @@ export type TeamsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   kind?: Prisma.SortOrder
   playerIds?: Prisma.SortOrder
@@ -683,6 +743,9 @@ export type TeamsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   kind?: Prisma.SortOrder
   division?: Prisma.SortOrder
@@ -704,6 +767,9 @@ export type TeamsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   kind?: Prisma.SortOrder
   division?: Prisma.SortOrder
@@ -782,6 +848,9 @@ export type TeamsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   eventId?: boolean
   kind?: boolean
   playerIds?: boolean
@@ -808,6 +877,9 @@ export type TeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   eventId?: boolean
   kind?: boolean
   playerIds?: boolean
@@ -834,6 +906,9 @@ export type TeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   eventId?: boolean
   kind?: boolean
   playerIds?: boolean
@@ -860,6 +935,9 @@ export type TeamsSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   eventId?: boolean
   kind?: boolean
   playerIds?: boolean
@@ -882,7 +960,7 @@ export type TeamsSelectScalar = {
   affiliateUrl?: boolean
 }
 
-export type TeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "kind" | "playerIds" | "playerRegistrationIds" | "division" | "divisionTypeId" | "wins" | "losses" | "name" | "captainId" | "managerId" | "headCoachId" | "coachIds" | "staffAssignmentIds" | "parentTeamId" | "pending" | "teamSize" | "profileImageId" | "sport" | "affiliateUrl", ExtArgs["result"]["teams"]>
+export type TeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "eventId" | "kind" | "playerIds" | "playerRegistrationIds" | "division" | "divisionTypeId" | "wins" | "losses" | "name" | "captainId" | "managerId" | "headCoachId" | "coachIds" | "staffAssignmentIds" | "parentTeamId" | "pending" | "teamSize" | "profileImageId" | "sport" | "affiliateUrl", ExtArgs["result"]["teams"]>
 
 export type $TeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Teams"
@@ -891,6 +969,9 @@ export type $TeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs 
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    archivedAt: Date | null
+    archivedByUserId: string | null
+    archiveReason: string | null
     eventId: string | null
     kind: $Enums.EventTeamsKindEnum | null
     playerIds: string[]
@@ -1337,6 +1418,9 @@ export interface TeamsFieldRefs {
   readonly id: Prisma.FieldRef<"Teams", 'String'>
   readonly createdAt: Prisma.FieldRef<"Teams", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Teams", 'DateTime'>
+  readonly archivedAt: Prisma.FieldRef<"Teams", 'DateTime'>
+  readonly archivedByUserId: Prisma.FieldRef<"Teams", 'String'>
+  readonly archiveReason: Prisma.FieldRef<"Teams", 'String'>
   readonly eventId: Prisma.FieldRef<"Teams", 'String'>
   readonly kind: Prisma.FieldRef<"Teams", 'EventTeamsKindEnum'>
   readonly playerIds: Prisma.FieldRef<"Teams", 'String[]'>

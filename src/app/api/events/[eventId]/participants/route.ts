@@ -1950,11 +1950,12 @@ async function updateParticipants(
   }
 
   const updatedEvent = await prisma.$transaction(async (tx) => {
-    await tx.eventRegistrations.deleteMany({
+    await tx.eventRegistrations.updateMany({
       where: {
         eventId: event.id,
         registrantId: userId!,
         registrantType: { in: ['SELF', 'CHILD'] },
+        status: { not: 'CANCELLED' },
         ...(resolvedOccurrence
           ? {
             slotId: resolvedOccurrence.slotId,
@@ -1964,6 +1965,10 @@ async function updateParticipants(
             slotId: null,
             occurrenceDate: null,
           }),
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: new Date(),
       },
     });
     return tx.events.update({

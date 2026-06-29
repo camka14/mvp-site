@@ -12,6 +12,8 @@ import type {
 } from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
+import type { DeleteOrArchiveResult } from '@/lib/deleteOutcome';
+import { deleteOutcomeSucceeded } from '@/lib/deleteOutcome';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
@@ -904,11 +906,17 @@ class TeamService {
         }
     }
 
-    async deleteTeam(teamId: string): Promise<boolean> {
+    async deleteTeamResult(teamId: string): Promise<DeleteOrArchiveResult> {
         try {
             const team = await this.getTeamById(teamId);
 
-            await apiRequest(`/api/teams/${teamId}`, { method: 'DELETE' });
+            const response = await apiRequest<{ deleted?: boolean; archived?: boolean; error?: string }>(
+                `/api/teams/${teamId}`,
+                { method: 'DELETE' },
+            );
+            if (response?.error) {
+                throw new Error(response.error);
+            }
 
             if (team) {
                 await Promise.all(team.pending.map(async (userId) => {
@@ -916,9 +924,18 @@ class TeamService {
                 }));
             }
 
-            return true;
+            return response ?? { deleted: true, action: 'deleted' };
         } catch (error) {
             console.error('Failed to delete team:', error);
+            throw error;
+        }
+    }
+
+    async deleteTeam(teamId: string): Promise<boolean> {
+        try {
+            const response = await this.deleteTeamResult(teamId);
+            return deleteOutcomeSucceeded(response);
+        } catch (error) {
             return false;
         }
     }

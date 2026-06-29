@@ -186,6 +186,7 @@ export async function GET(req: NextRequest) {
       ...(ownerType === 'ORGANIZATION'
         ? { organizationId: ownerId }
         : { createdBy: ownerId, organizationId: null }),
+      archivedAt: null,
       registrationPriceCents: { gt: 0 },
       ...(queryFilter ? { name: queryFilter } : {}),
     },

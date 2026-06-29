@@ -408,6 +408,7 @@ describe('publicOrganizationCatalog', () => {
         organizationId: true,
         state: true,
         eventType: true,
+        archivedAt: true,
       },
     });
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('league_1');

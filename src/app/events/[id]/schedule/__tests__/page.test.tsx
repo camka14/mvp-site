@@ -67,6 +67,7 @@ jest.mock('@/lib/eventService', () => ({
     getEventWithRelations: jest.fn(),
     getEventDetailBootstrap: jest.fn(),
     deleteEvent: jest.fn(),
+    deleteEventResult: jest.fn(),
     deleteUnpublishedEvent: jest.fn(),
     updateEvent: jest.fn(),
     createEvent: jest.fn(),
@@ -1477,7 +1478,7 @@ describe('League schedule page', () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     (leagueService.deleteMatchesByEvent as jest.Mock).mockResolvedValue(undefined);
     (leagueService.deleteWeeklySchedulesForEvent as jest.Mock).mockResolvedValue(undefined);
-    (eventService.deleteEvent as jest.Mock).mockResolvedValue(true);
+    (eventService.deleteEventResult as jest.Mock).mockResolvedValue({ deleted: true, action: 'deleted' });
 
     try {
       renderWithMantine(<LeagueSchedulePage />);
@@ -1488,9 +1489,9 @@ describe('League schedule page', () => {
       await waitFor(() => {
         expect(leagueService.deleteMatchesByEvent).toHaveBeenCalledWith('event_1');
       });
-      expect(confirmSpy).toHaveBeenCalledWith('Delete this event? This will delete the schedule and the event.');
+      expect(confirmSpy).toHaveBeenCalledWith('Delete this event? If it has registrations, billing, or schedule history, it will be archived instead.');
       expect(leagueService.deleteWeeklySchedulesForEvent).toHaveBeenCalledWith('event_1');
-      expect(eventService.deleteEvent).toHaveBeenCalledWith(
+      expect(eventService.deleteEventResult).toHaveBeenCalledWith(
         expect.objectContaining({
           $id: 'event_1',
           start: futureEvent.start,

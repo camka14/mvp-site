@@ -3,10 +3,16 @@
 import { NextRequest } from 'next/server';
 
 const canonicalUpdateMock = jest.fn();
+const canonicalDeleteMock = jest.fn();
 const teamFindManyMock = jest.fn();
 const teamUpdateMock = jest.fn();
 const eventsFindManyMock = jest.fn();
 const eventRegistrationsFindManyMock = jest.fn();
+const countMock = jest.fn();
+const billsFindManyMock = jest.fn();
+const teamRegistrationsUpdateManyMock = jest.fn();
+const teamStaffAssignmentsUpdateManyMock = jest.fn();
+const chatGroupUpdateManyMock = jest.fn();
 const canonicalFindUniqueMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
 const organizationFindUniqueMock = jest.fn();
@@ -14,6 +20,7 @@ const organizationFindUniqueMock = jest.fn();
 const txClientMock = {
   canonicalTeams: {
     update: (...args: any[]) => canonicalUpdateMock(...args),
+    delete: (...args: any[]) => canonicalDeleteMock(...args),
   },
   teams: {
     findMany: (...args: any[]) => teamFindManyMock(...args),
@@ -24,6 +31,18 @@ const txClientMock = {
   },
   eventRegistrations: {
     findMany: (...args: any[]) => eventRegistrationsFindManyMock(...args),
+    count: (...args: any[]) => countMock(...args),
+  },
+  teamRegistrations: {
+    count: (...args: any[]) => countMock(...args),
+    updateMany: (...args: any[]) => teamRegistrationsUpdateManyMock(...args),
+  },
+  teamStaffAssignments: {
+    count: (...args: any[]) => countMock(...args),
+    updateMany: (...args: any[]) => teamStaffAssignmentsUpdateManyMock(...args),
+  },
+  chatGroup: {
+    updateMany: (...args: any[]) => chatGroupUpdateManyMock(...args),
   },
 };
 
@@ -31,6 +50,49 @@ const prismaMock = {
   canonicalTeams: {
     findUnique: (...args: any[]) => canonicalFindUniqueMock(...args),
     update: (...args: any[]) => canonicalUpdateMock(...args),
+    delete: (...args: any[]) => canonicalDeleteMock(...args),
+  },
+  teams: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  bills: {
+    findMany: (...args: any[]) => billsFindManyMock(...args),
+  },
+  billPayments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  billPaymentProofs: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  teamRegistrations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  teamStaffAssignments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  teamJoinRequests: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  eventRegistrations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  signedDocuments: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  boldSignSyncOperations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  discounts: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  discountCodeRedemptions: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  discountCodeReservations: {
+    count: (...args: any[]) => countMock(...args),
+  },
+  chatGroup: {
+    count: (...args: any[]) => countMock(...args),
   },
   organizations: {
     findFirst: (...args: any[]) => organizationFindFirstMock(...args),
@@ -85,7 +147,7 @@ jest.mock('@/server/razumlyAdmin', () => ({
   evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
 }));
 
-import { GET, PATCH } from '@/app/api/teams/[id]/route';
+import { DELETE, GET, PATCH } from '@/app/api/teams/[id]/route';
 
 const patchJson = (body: unknown) => new NextRequest('http://localhost/api/teams/team_1', {
   method: 'PATCH',
@@ -137,6 +199,12 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     ]);
     canonicalUpdateMock.mockResolvedValue({ id: 'team_1' });
     teamUpdateMock.mockResolvedValue({ id: 'event_team_1' });
+    canonicalDeleteMock.mockResolvedValue({});
+    countMock.mockResolvedValue(0);
+    billsFindManyMock.mockResolvedValue([]);
+    teamRegistrationsUpdateManyMock.mockResolvedValue({ count: 0 });
+    teamStaffAssignmentsUpdateManyMock.mockResolvedValue({ count: 0 });
+    chatGroupUpdateManyMock.mockResolvedValue({ count: 0 });
     loadCanonicalTeamByIdMock.mockResolvedValue({
       id: 'team_1',
       name: 'Sandstorm',
@@ -345,6 +413,100 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       tx: txClientMock,
     }));
     expect(payload.playerIds).toEqual(['manager_1']);
+  });
+
+  it('hard deletes an unreferenced canonical team', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Team One',
+      organizationId: null,
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/teams/team_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      deleted: true,
+      archived: false,
+      action: 'deleted',
+      entityType: 'team',
+      entityId: 'team_1',
+    }));
+    expect(canonicalDeleteMock).toHaveBeenCalledWith({ where: { id: 'team_1' } });
+    expect(canonicalUpdateMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({ archivedAt: expect.any(Date) }),
+    }));
+  });
+
+  it('archives a referenced canonical team and removes active memberships', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Team One',
+      organizationId: null,
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+    countMock.mockImplementation(async ({ where }: any) => {
+      if (where?.teamId === 'team_1') {
+        return 2;
+      }
+      return 0;
+    });
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/teams/team_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      deleted: false,
+      archived: true,
+      action: 'archived',
+      entityType: 'team',
+      entityId: 'team_1',
+    }));
+    expect(payload.references).toEqual(expect.arrayContaining([
+      { type: 'team_registrations', count: 2 },
+      { type: 'team_staff_assignments', count: 2 },
+      { type: 'team_join_requests', count: 2 },
+    ]));
+    expect(canonicalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({
+        archivedAt: expect.any(Date),
+        archivedByUserId: 'manager_1',
+        archiveReason: 'delete_requested',
+        updatedAt: expect.any(Date),
+      }),
+    });
+    expect(teamRegistrationsUpdateManyMock).toHaveBeenCalledWith({
+      where: { teamId: 'team_1' },
+      data: {
+        status: 'REMOVED',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(teamStaffAssignmentsUpdateManyMock).toHaveBeenCalledWith({
+      where: { teamId: 'team_1' },
+      data: {
+        status: 'REMOVED',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(canonicalDeleteMock).not.toHaveBeenCalled();
   });
 
   it('treats verified Razumly admins as admins for canonical roster patches', async () => {

@@ -3,6 +3,8 @@
 import { apiRequest } from '@/lib/apiClient';
 import { deriveProductTypeFromTaxCategory } from '@/lib/productTypes';
 import type { BillingAddress, PaymentIntent, Product, ProductPeriod, ProductType, Subscription, UserData } from '@/types';
+import type { DeleteOrArchiveResult } from '@/lib/deleteOutcome';
+import { deleteOutcomeSucceeded } from '@/lib/deleteOutcome';
 
 
 const normalizeProductPeriod = (value: unknown): ProductPeriod => {
@@ -231,19 +233,24 @@ class ProductService {
     }
   }
 
-  async deleteProduct(productId: string): Promise<boolean> {
+  async deleteProductResult(productId: string): Promise<DeleteOrArchiveResult> {
     try {
-      const result = await apiRequest<{ deleted?: boolean; error?: string }>(`/api/products/${productId}`, {
+      const result = await apiRequest<DeleteOrArchiveResult>(`/api/products/${productId}`, {
         method: 'DELETE',
       });
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
-      return Boolean(result?.deleted);
+      return result ?? { deleted: true, action: 'deleted' };
     } catch (error) {
       console.error('Failed to delete product:', error);
       throw error;
     }
+  }
+
+  async deleteProduct(productId: string): Promise<boolean> {
+    const result = await this.deleteProductResult(productId);
+    return deleteOutcomeSucceeded(result);
   }
 
   async cancelSubscription(subscriptionId: string): Promise<boolean> {

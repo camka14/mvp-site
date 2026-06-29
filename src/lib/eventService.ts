@@ -51,6 +51,8 @@ import type {
   EventTeamComplianceResponse,
   EventUserComplianceResponse,
 } from "@/lib/eventTeamCompliance";
+import type { DeleteOrArchiveResult } from "@/lib/deleteOutcome";
+import { deleteOutcomeSucceeded } from "@/lib/deleteOutcome";
 
 export interface LeagueGenerationOptions {
   dryRun?: boolean;
@@ -720,20 +722,32 @@ class EventService {
     }
   }
 
-  async deleteEvent(event: Event): Promise<boolean> {
+  async deleteEventResult(event: Event): Promise<DeleteOrArchiveResult> {
     try {
       const normalizedEvent = this.withNormalizedOfficials(
         this.withNormalizedEventEnums(event),
       );
       const payload = buildPayload(normalizedEvent);
       delete payload.officialIds;
-      await apiRequest(`/api/events/${event.$id}`, {
+      const response = await apiRequest<{ deleted?: boolean; archived?: boolean; error?: string }>(`/api/events/${event.$id}`, {
         method: "DELETE",
         body: { event: payload },
       });
-      return true;
+      if (response?.error) {
+        throw new Error(response.error);
+      }
+      return response ?? { deleted: true, action: "deleted" };
     } catch (error) {
       console.error("Failed to delete event:", error);
+      throw error;
+    }
+  }
+
+  async deleteEvent(event: Event): Promise<boolean> {
+    try {
+      const response = await this.deleteEventResult(event);
+      return deleteOutcomeSucceeded(response);
+    } catch (error) {
       return false;
     }
   }

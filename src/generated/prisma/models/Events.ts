@@ -86,6 +86,9 @@ export type EventsMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string | null
   start: Date | null
   end: Date | null
@@ -154,6 +157,9 @@ export type EventsMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string | null
   start: Date | null
   end: Date | null
@@ -222,6 +228,9 @@ export type EventsCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  archivedAt: number
+  archivedByUserId: number
+  archiveReason: number
   name: number
   start: number
   end: number
@@ -362,6 +371,9 @@ export type EventsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   start?: true
   end?: true
@@ -430,6 +442,9 @@ export type EventsMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   start?: true
   end?: true
@@ -498,6 +513,9 @@ export type EventsCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   start?: true
   end?: true
@@ -667,6 +685,9 @@ export type EventsGroupByOutputType = {
   id: string
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string
   start: Date
   end: Date | null
@@ -772,6 +793,9 @@ export type EventsWhereInput = {
   id?: Prisma.StringFilter<"Events"> | string
   createdAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Events"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Events"> | string | null
   name?: Prisma.StringFilter<"Events"> | string
   start?: Prisma.DateTimeFilter<"Events"> | Date | string
   end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
@@ -854,6 +878,9 @@ export type EventsOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -939,6 +966,9 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.EventsWhereInput | Prisma.EventsWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Events"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Events"> | string | null
   name?: Prisma.StringFilter<"Events"> | string
   start?: Prisma.DateTimeFilter<"Events"> | Date | string
   end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
@@ -1021,6 +1051,9 @@ export type EventsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1111,6 +1144,9 @@ export type EventsScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"Events"> | string
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
+  archiveReason?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   name?: Prisma.StringWithAggregatesFilter<"Events"> | string
   start?: Prisma.DateTimeWithAggregatesFilter<"Events"> | Date | string
   end?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
@@ -1193,6 +1229,9 @@ export type EventsCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   start: Date | string
   end?: Date | string | null
@@ -1275,6 +1314,9 @@ export type EventsUncheckedCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   start: Date | string
   end?: Date | string | null
@@ -1357,6 +1399,9 @@ export type EventsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1439,6 +1484,9 @@ export type EventsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1521,6 +1569,9 @@ export type EventsCreateManyInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   start: Date | string
   end?: Date | string | null
@@ -1603,6 +1654,9 @@ export type EventsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1685,6 +1739,9 @@ export type EventsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1767,6 +1824,9 @@ export type EventsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
@@ -1877,6 +1937,9 @@ export type EventsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
@@ -1945,6 +2008,9 @@ export type EventsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
@@ -2149,6 +2215,9 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   start?: boolean
   end?: boolean
@@ -2231,6 +2300,9 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   start?: boolean
   end?: boolean
@@ -2313,6 +2385,9 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   start?: boolean
   end?: boolean
@@ -2395,6 +2470,9 @@ export type EventsSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   start?: boolean
   end?: boolean
@@ -2473,7 +2551,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "registrationPaymentMode" | "manualPaymentLinks" | "manualPaymentInstructions" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "registrationPaymentMode" | "manualPaymentLinks" | "manualPaymentInstructions" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2482,6 +2560,9 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    archivedAt: Date | null
+    archivedByUserId: string | null
+    archiveReason: string | null
     name: string
     start: Date
     end: Date | null
@@ -2984,6 +3065,9 @@ export interface EventsFieldRefs {
   readonly id: Prisma.FieldRef<"Events", 'String'>
   readonly createdAt: Prisma.FieldRef<"Events", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Events", 'DateTime'>
+  readonly archivedAt: Prisma.FieldRef<"Events", 'DateTime'>
+  readonly archivedByUserId: Prisma.FieldRef<"Events", 'String'>
+  readonly archiveReason: Prisma.FieldRef<"Events", 'String'>
   readonly name: Prisma.FieldRef<"Events", 'String'>
   readonly start: Prisma.FieldRef<"Events", 'DateTime'>
   readonly end: Prisma.FieldRef<"Events", 'DateTime'>

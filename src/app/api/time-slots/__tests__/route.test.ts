@@ -4,8 +4,10 @@ import { NextRequest } from 'next/server';
 
 const prismaMock = {
   $executeRaw: jest.fn().mockResolvedValue(1),
+  $transaction: jest.fn(async (callback: (tx: typeof prismaMock) => Promise<unknown>) => callback(prismaMock)),
   fields: {
     findMany: jest.fn(),
+    update: jest.fn(),
   },
   organizations: {
     findUnique: jest.fn(),
@@ -16,6 +18,24 @@ const prismaMock = {
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+  },
+  events: {
+    count: jest.fn(),
+  },
+  bills: {
+    findMany: jest.fn(),
+  },
+  billPayments: {
+    count: jest.fn(),
+  },
+  billPaymentProofs: {
+    count: jest.fn(),
+  },
+  rentalBookingItems: {
+    count: jest.fn(),
+  },
+  staffScheduleAssignments: {
+    count: jest.fn(),
   },
 };
 
@@ -48,7 +68,7 @@ jest.mock('@/server/legacyFormat', () => ({
 }));
 
 import { GET, POST } from '@/app/api/time-slots/route';
-import { PATCH } from '@/app/api/time-slots/[id]/route';
+import { DELETE, PATCH } from '@/app/api/time-slots/[id]/route';
 
 const jsonRequest = (url: string, body: unknown, method: 'POST' | 'PATCH' = 'POST') =>
   new NextRequest(url, {
@@ -62,6 +82,7 @@ describe('time-slots routes', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.fields.update.mockResolvedValue({});
     prismaMock.organizations.findUnique.mockResolvedValue(null);
     prismaMock.timeSlots.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
       id: where.id,
@@ -72,6 +93,14 @@ describe('time-slots routes', () => {
       scheduledFieldId: null,
       scheduledFieldIds: [],
     }));
+    prismaMock.events.count.mockResolvedValue(0);
+    prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.billPayments.count.mockResolvedValue(0);
+    prismaMock.billPaymentProofs.count.mockResolvedValue(0);
+    prismaMock.rentalBookingItems.count.mockResolvedValue(0);
+    prismaMock.staffScheduleAssignments.count.mockResolvedValue(0);
+    prismaMock.timeSlots.delete.mockResolvedValue({});
+    prismaMock.timeSlots.update.mockResolvedValue({});
   });
 
   it('GET applies array-aware field/day filters and returns canonical arrays with legacy aliases', async () => {
@@ -99,6 +128,7 @@ describe('time-slots routes', () => {
       expect.objectContaining({
         where: {
           AND: [
+            { archivedAt: null },
             {
               OR: [
                 { scheduledFieldId: { in: ['field_2'] } },
@@ -134,6 +164,7 @@ describe('time-slots routes', () => {
       expect.objectContaining({
         where: {
           AND: [
+            { archivedAt: null },
             {
               OR: [
                 { scheduledFieldId: { in: ['field_1', 'field_2'] } },
@@ -178,6 +209,7 @@ describe('time-slots routes', () => {
       expect.objectContaining({
         where: {
           AND: [
+            { archivedAt: null },
             {
               OR: [
                 { scheduledFieldId: { in: ['field_1'] } },
@@ -402,5 +434,77 @@ describe('time-slots routes', () => {
     expect(updateCallArg.data).not.toHaveProperty('id');
     expect(updateCallArg.data).not.toHaveProperty('createdAt');
     expect(updateCallArg.data).toHaveProperty('updatedAt');
+  });
+
+  it('DELETE hard deletes an unreferenced slot and removes it from field rentalSlotIds', async () => {
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_delete',
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+    prismaMock.fields.findMany.mockResolvedValueOnce([
+      { id: 'field_1', rentalSlotIds: ['slot_keep', 'slot_delete'] },
+    ]);
+
+    const res = await DELETE(
+      new NextRequest('http://localhost/api/time-slots/slot_delete', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'slot_delete' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      deleted: true,
+      archived: false,
+      action: 'deleted',
+      entityType: 'timeSlot',
+      entityId: 'slot_delete',
+    }));
+    expect(prismaMock.fields.update).toHaveBeenCalledWith({
+      where: { id: 'field_1' },
+      data: {
+        rentalSlotIds: ['slot_keep'],
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(prismaMock.timeSlots.delete).toHaveBeenCalledWith({ where: { id: 'slot_delete' } });
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
+  it('DELETE archives a referenced slot', async () => {
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_archive',
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+    prismaMock.rentalBookingItems.count.mockResolvedValueOnce(1);
+
+    const res = await DELETE(
+      new NextRequest('http://localhost/api/time-slots/slot_archive', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'slot_archive' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      deleted: false,
+      archived: true,
+      action: 'archived',
+      entityType: 'timeSlot',
+      entityId: 'slot_archive',
+      references: [{ type: 'rental_booking_items', count: 1 }],
+    }));
+    expect(prismaMock.timeSlots.update).toHaveBeenCalledWith({
+      where: { id: 'slot_archive' },
+      data: expect.objectContaining({
+        archivedAt: expect.any(Date),
+        archivedByUserId: 'user_1',
+        archiveReason: 'delete_requested',
+        updatedAt: expect.any(Date),
+      }),
+    });
+    expect(prismaMock.timeSlots.delete).not.toHaveBeenCalled();
   });
 });

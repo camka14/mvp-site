@@ -72,6 +72,9 @@ type CanonicalTeamRow = {
   affiliateUrl?: string | null;
   requiredTemplateIds?: string[] | null;
   visibility?: string | null;
+  archivedAt?: Date | string | null;
+  archivedByUserId?: string | null;
+  archiveReason?: string | null;
 };
 
 type EventTeamRow = {
@@ -98,6 +101,9 @@ type EventTeamRow = {
   profileImageId?: string | null;
   sport?: string | null;
   affiliateUrl?: string | null;
+  archivedAt?: Date | string | null;
+  archivedByUserId?: string | null;
+  archiveReason?: string | null;
 };
 
 type TeamRegistrationSettingsSource = {
@@ -654,13 +660,15 @@ export const listCanonicalTeamsForUser = async (params: {
   query?: string | null;
   openRegistrationOnly?: boolean;
   includeAdminOnly?: boolean;
+  includeArchived?: boolean;
   limit?: number;
 }, client: PrismaLike = prisma) => {
   if (params.ids?.length) {
     const teams = await listTeamsByIds(params.ids, client, { eventId: params.eventId });
-    return params.includeAdminOnly
-      ? teams
-      : teams.filter((team) => !isAdminOnlyCanonicalTeam(team as Record<string, unknown>));
+    return teams.filter((team) => (
+      (params.includeArchived || !(team as Record<string, unknown>).archivedAt)
+      && (params.includeAdminOnly || !isAdminOnlyCanonicalTeam(team as Record<string, unknown>))
+    ));
   }
 
   const canonicalTeamsDelegate = getCanonicalTeamsDelegate(client);
@@ -697,6 +705,9 @@ export const listCanonicalTeamsForUser = async (params: {
     }
     if (params.openRegistrationOnly) {
       andFilters.push({ openRegistration: true });
+    }
+    if (!params.includeArchived) {
+      andFilters.push({ archivedAt: null });
     }
     if (normalizedQuery) {
       andFilters.push({ OR: [
@@ -739,6 +750,9 @@ export const listCanonicalTeamsForUser = async (params: {
     const where: Record<string, unknown> = params.includeAdminOnly
       ? {}
       : { visibility: TEAM_VISIBILITY_PUBLIC };
+    if (!params.includeArchived) {
+      where.archivedAt = null;
+    }
     if (params.organizationId) {
       where.organizationId = params.organizationId;
     }
@@ -767,6 +781,7 @@ export const listCanonicalTeamsForUser = async (params: {
       Boolean(team)
       && (!params.organizationId || normalizeId((team as Record<string, unknown>).organizationId as string | null | undefined) === params.organizationId)
       && (!params.openRegistrationOnly || (team as Record<string, unknown>).openRegistration === true)
+      && (params.includeArchived || !(team as Record<string, unknown>).archivedAt)
       && teamMatchesQuery(team as Record<string, unknown>)
       && (params.includeAdminOnly || !isAdminOnlyCanonicalTeam(team as Record<string, unknown>))
     ))

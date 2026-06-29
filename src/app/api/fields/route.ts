@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     ids = Array.isArray(event?.fieldIds) ? event?.fieldIds : [];
   }
 
-  const where: any = {};
+  const where: any = { archivedAt: null };
   if (ids && ids.length) {
     where.id = { in: ids };
   }

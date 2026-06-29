@@ -4587,7 +4587,7 @@ function EventScheduleContent() {
     const templateEvent = activeEvent ?? event;
     if (!templateEvent?.$id) return;
 
-    if (!window.confirm('Delete this template? This will remove its saved schedule and cannot be undone.')) {
+    if (!window.confirm('Delete this template? If it has history, it will be archived instead of permanently deleted.')) {
       return;
     }
 
@@ -4600,7 +4600,7 @@ function EventScheduleContent() {
     try {
       await leagueService.deleteMatchesByEvent(templateEvent.$id);
       await leagueService.deleteWeeklySchedulesForEvent(templateEvent.$id);
-      await eventService.deleteEvent(templateEvent);
+      await eventService.deleteEventResult(templateEvent);
       router.push(homePath);
     } catch (err) {
       console.error('Failed to delete template:', err);
@@ -4621,7 +4621,7 @@ function EventScheduleContent() {
       return;
     }
 
-    if (!window.confirm('Delete this event? This will delete the schedule and the event.')) {
+    if (!window.confirm('Delete this event? If it has registrations, billing, or schedule history, it will be archived instead.')) {
       return;
     }
 
@@ -4634,7 +4634,7 @@ function EventScheduleContent() {
     try {
       await leagueService.deleteMatchesByEvent(eventToDelete.$id);
       await leagueService.deleteWeeklySchedulesForEvent(eventToDelete.$id);
-      await eventService.deleteEvent(eventToDelete);
+      await eventService.deleteEventResult(eventToDelete);
       router.push(homePath);
     } catch (err) {
       console.error('Failed to delete event:', err);
@@ -4721,13 +4721,13 @@ function EventScheduleContent() {
       return;
     }
 
-    if (!window.confirm(`Cancel this ${entityLabel.toLowerCase()}? This will delete the schedule and the event.`)) return;
+    if (!window.confirm(`Cancel this ${entityLabel.toLowerCase()}? If it has registrations, billing, or schedule history, it will be archived instead.`)) return;
     setCancelling(true);
     setError(null);
     try {
       await leagueService.deleteMatchesByEvent(event.$id);
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
-      await eventService.deleteEvent(event);
+      await eventService.deleteEventResult(event);
       router.push(homePath);
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);

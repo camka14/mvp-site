@@ -42,6 +42,9 @@ export type FieldsMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   lat: number | null
   long: number | null
   heading: number | null
@@ -57,6 +60,9 @@ export type FieldsMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   lat: number | null
   long: number | null
   heading: number | null
@@ -72,6 +78,9 @@ export type FieldsCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  archivedAt: number
+  archivedByUserId: number
+  archiveReason: number
   lat: number
   long: number
   heading: number
@@ -102,6 +111,9 @@ export type FieldsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   lat?: true
   long?: true
   heading?: true
@@ -117,6 +129,9 @@ export type FieldsMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   lat?: true
   long?: true
   heading?: true
@@ -132,6 +147,9 @@ export type FieldsCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   lat?: true
   long?: true
   heading?: true
@@ -235,6 +253,9 @@ export type FieldsGroupByOutputType = {
   id: string
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   lat: number | null
   long: number | null
   heading: number | null
@@ -274,6 +295,9 @@ export type FieldsWhereInput = {
   id?: Prisma.StringFilter<"Fields"> | string
   createdAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Fields"> | string | null
   lat?: Prisma.FloatNullableFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableFilter<"Fields"> | number | null
@@ -290,6 +314,9 @@ export type FieldsOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   lat?: Prisma.SortOrderInput | Prisma.SortOrder
   long?: Prisma.SortOrderInput | Prisma.SortOrder
   heading?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -309,6 +336,9 @@ export type FieldsWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.FieldsWhereInput | Prisma.FieldsWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"Fields"> | string | null
   lat?: Prisma.FloatNullableFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableFilter<"Fields"> | number | null
@@ -325,6 +355,9 @@ export type FieldsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   lat?: Prisma.SortOrderInput | Prisma.SortOrder
   long?: Prisma.SortOrderInput | Prisma.SortOrder
   heading?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -349,6 +382,9 @@ export type FieldsScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"Fields"> | string
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Fields"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Fields"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
+  archiveReason?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
   lat?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
@@ -365,6 +401,9 @@ export type FieldsCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -381,6 +420,9 @@ export type FieldsUncheckedCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -397,6 +439,9 @@ export type FieldsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -413,6 +458,9 @@ export type FieldsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -429,6 +477,9 @@ export type FieldsCreateManyInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -445,6 +496,9 @@ export type FieldsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -461,6 +515,9 @@ export type FieldsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -477,6 +534,9 @@ export type FieldsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   lat?: Prisma.SortOrder
   long?: Prisma.SortOrder
   heading?: Prisma.SortOrder
@@ -499,6 +559,9 @@ export type FieldsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   lat?: Prisma.SortOrder
   long?: Prisma.SortOrder
   heading?: Prisma.SortOrder
@@ -514,6 +577,9 @@ export type FieldsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   lat?: Prisma.SortOrder
   long?: Prisma.SortOrder
   heading?: Prisma.SortOrder
@@ -562,6 +628,9 @@ export type FieldsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -578,6 +647,9 @@ export type FieldsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -594,6 +666,9 @@ export type FieldsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -610,6 +685,9 @@ export type FieldsSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -622,7 +700,7 @@ export type FieldsSelectScalar = {
   createdBy?: boolean
 }
 
-export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "facilityId" | "createdBy", ExtArgs["result"]["fields"]>
+export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "facilityId" | "createdBy", ExtArgs["result"]["fields"]>
 
 export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Fields"
@@ -631,6 +709,9 @@ export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    archivedAt: Date | null
+    archivedByUserId: string | null
+    archiveReason: string | null
     lat: number | null
     long: number | null
     heading: number | null
@@ -1067,6 +1148,9 @@ export interface FieldsFieldRefs {
   readonly id: Prisma.FieldRef<"Fields", 'String'>
   readonly createdAt: Prisma.FieldRef<"Fields", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Fields", 'DateTime'>
+  readonly archivedAt: Prisma.FieldRef<"Fields", 'DateTime'>
+  readonly archivedByUserId: Prisma.FieldRef<"Fields", 'String'>
+  readonly archiveReason: Prisma.FieldRef<"Fields", 'String'>
   readonly lat: Prisma.FieldRef<"Fields", 'Float'>
   readonly long: Prisma.FieldRef<"Fields", 'Float'>
   readonly heading: Prisma.FieldRef<"Fields", 'Float'>

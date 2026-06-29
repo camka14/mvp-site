@@ -44,6 +44,9 @@ export type CanonicalTeamsMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string | null
   division: string | null
   divisionTypeId: string | null
@@ -68,6 +71,9 @@ export type CanonicalTeamsMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string | null
   division: string | null
   divisionTypeId: string | null
@@ -92,6 +98,9 @@ export type CanonicalTeamsCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  archivedAt: number
+  archivedByUserId: number
+  archiveReason: number
   name: number
   division: number
   divisionTypeId: number
@@ -133,6 +142,9 @@ export type CanonicalTeamsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   division?: true
   divisionTypeId?: true
@@ -157,6 +169,9 @@ export type CanonicalTeamsMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   division?: true
   divisionTypeId?: true
@@ -181,6 +196,9 @@ export type CanonicalTeamsCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  archivedAt?: true
+  archivedByUserId?: true
+  archiveReason?: true
   name?: true
   division?: true
   divisionTypeId?: true
@@ -293,6 +311,9 @@ export type CanonicalTeamsGroupByOutputType = {
   id: string
   createdAt: Date | null
   updatedAt: Date | null
+  archivedAt: Date | null
+  archivedByUserId: string | null
+  archiveReason: string | null
   name: string
   division: string | null
   divisionTypeId: string | null
@@ -341,6 +362,9 @@ export type CanonicalTeamsWhereInput = {
   id?: Prisma.StringFilter<"CanonicalTeams"> | string
   createdAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   name?: Prisma.StringFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
@@ -366,6 +390,9 @@ export type CanonicalTeamsOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -394,6 +421,9 @@ export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.CanonicalTeamsWhereInput | Prisma.CanonicalTeamsWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableFilter<"CanonicalTeams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
+  archiveReason?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   name?: Prisma.StringFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
@@ -419,6 +449,9 @@ export type CanonicalTeamsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  archiveReason?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -452,6 +485,9 @@ export type CanonicalTeamsScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"CanonicalTeams"> | string
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CanonicalTeams"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CanonicalTeams"> | Date | string | null
+  archivedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CanonicalTeams"> | Date | string | null
+  archivedByUserId?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
+  archiveReason?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
   name?: Prisma.StringWithAggregatesFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
@@ -477,6 +513,9 @@ export type CanonicalTeamsCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   division?: string | null
   divisionTypeId?: string | null
@@ -502,6 +541,9 @@ export type CanonicalTeamsUncheckedCreateInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   division?: string | null
   divisionTypeId?: string | null
@@ -527,6 +569,9 @@ export type CanonicalTeamsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -552,6 +597,9 @@ export type CanonicalTeamsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -577,6 +625,9 @@ export type CanonicalTeamsCreateManyInput = {
   id: string
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  archivedAt?: Date | string | null
+  archivedByUserId?: string | null
+  archiveReason?: string | null
   name: string
   division?: string | null
   divisionTypeId?: string | null
@@ -602,6 +653,9 @@ export type CanonicalTeamsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -627,6 +681,9 @@ export type CanonicalTeamsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  archiveReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -652,6 +709,9 @@ export type CanonicalTeamsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -684,6 +744,9 @@ export type CanonicalTeamsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -708,6 +771,9 @@ export type CanonicalTeamsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  archivedAt?: Prisma.SortOrder
+  archivedByUserId?: Prisma.SortOrder
+  archiveReason?: Prisma.SortOrder
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -758,6 +824,9 @@ export type CanonicalTeamsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
@@ -783,6 +852,9 @@ export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
@@ -808,6 +880,9 @@ export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
@@ -833,6 +908,9 @@ export type CanonicalTeamsSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  archivedAt?: boolean
+  archivedByUserId?: boolean
+  archiveReason?: boolean
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
@@ -854,7 +932,7 @@ export type CanonicalTeamsSelectScalar = {
   sourceUrl?: boolean
 }
 
-export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "joinPolicy" | "registrationPriceCents" | "requiredTemplateIds" | "visibility" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl", ExtArgs["result"]["canonicalTeams"]>
+export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "name" | "division" | "divisionTypeId" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "joinPolicy" | "registrationPriceCents" | "requiredTemplateIds" | "visibility" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl", ExtArgs["result"]["canonicalTeams"]>
 
 export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "CanonicalTeams"
@@ -863,6 +941,9 @@ export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    archivedAt: Date | null
+    archivedByUserId: string | null
+    archiveReason: string | null
     name: string
     division: string | null
     divisionTypeId: string | null
@@ -1308,6 +1389,9 @@ export interface CanonicalTeamsFieldRefs {
   readonly id: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly createdAt: Prisma.FieldRef<"CanonicalTeams", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"CanonicalTeams", 'DateTime'>
+  readonly archivedAt: Prisma.FieldRef<"CanonicalTeams", 'DateTime'>
+  readonly archivedByUserId: Prisma.FieldRef<"CanonicalTeams", 'String'>
+  readonly archiveReason: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly name: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly division: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly divisionTypeId: Prisma.FieldRef<"CanonicalTeams", 'String'>

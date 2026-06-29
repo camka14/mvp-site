@@ -32,6 +32,11 @@ import {
   resolveSerializedTeamJoinPolicy,
   type TeamJoinPolicy,
 } from '@/server/teams/teamJoinPolicy';
+import {
+  deleteOrArchiveCanonicalTeam,
+  deleteOrArchiveEventTeam,
+  toDeleteOrArchiveResponse,
+} from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -808,25 +813,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    await prisma.$transaction(async (tx) => {
-      await deleteTeamChatInTx(tx, id);
-      await tx.teamRegistrations?.updateMany?.({
-        where: { teamId: id },
-        data: {
-          status: 'REMOVED',
-          updatedAt: new Date(),
-        },
-      });
-      await tx.teamStaffAssignments?.updateMany?.({
-        where: { teamId: id },
-        data: {
-          status: 'REMOVED',
-          updatedAt: new Date(),
-        },
-      });
-      await tx.canonicalTeams.delete({ where: { id } });
+    const result = await deleteOrArchiveCanonicalTeam({
+      client: prisma,
+      entity: existingCanonical as Record<string, any>,
+      actorUserId: session.userId,
+      reason: 'delete_requested',
     });
-    return NextResponse.json({ deleted: true }, { status: 200 });
+    return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
   }
 
   const teamsDelegate = getTeamsDelegate(prisma);
@@ -845,13 +838,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    const txTeams = getTeamsDelegate(tx);
-    if (!txTeams?.delete) {
-      throw new Error('Team storage is unavailable in transaction.');
-    }
-    await deleteTeamChatInTx(tx, id);
-    await txTeams.delete({ where: { id } });
+  const result = await deleteOrArchiveEventTeam({
+    client: prisma,
+    entity: existing as Record<string, any>,
+    actorUserId: session.userId,
+    reason: 'delete_requested',
   });
-  return NextResponse.json({ deleted: true }, { status: 200 });
+  if (result.action === 'deleted') {
+    await prisma.$transaction(async (tx) => {
+      await deleteTeamChatInTx(tx, id);
+    });
+  }
+  return NextResponse.json(toDeleteOrArchiveResponse(result), { status: 200 });
 }

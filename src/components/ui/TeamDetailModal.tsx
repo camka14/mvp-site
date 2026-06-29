@@ -22,6 +22,7 @@ import TeamFinancePanel from './TeamFinancePanel';
 import TeamRegistrationFlow from './TeamRegistrationFlow';
 import { type PaymentEventSummary } from './PaymentModal';
 import InvitePlayersModal from '@/app/teams/components/InvitePlayersModal';
+import { describeDeleteOutcome } from '@/lib/deleteOutcome';
 
 export type TeamDetailPageTab = 'roster' | 'schedule' | 'finance';
 
@@ -1258,8 +1259,16 @@ export default function TeamDetailModal({
 
     const handleDeleteTeam = async () => {
         try {
-            const success = await teamService.deleteTeam(currentTeam.$id);
-            if (success) {
+            const outcome = await teamService.deleteTeamResult(currentTeam.$id);
+            if (outcome.deleted || outcome.archived || outcome.action) {
+                notifications.show({
+                    color: 'green',
+                    message: describeDeleteOutcome(outcome, {
+                        deleted: 'Team deleted.',
+                        archived: 'Team archived because it has history.',
+                        fallback: 'Team removed from active lists.',
+                    }),
+                });
                 onTeamDeleted?.(currentTeam.$id);
                 onClose();
             }
@@ -2290,7 +2299,7 @@ export default function TeamDetailModal({
                         <div className={isPageMode ? 'team-detail-roster-side team-detail-roster-danger' : 'border-t pt-6'}>
                             <Paper withBorder radius="md" p="md" bg={'red.0'}>
                                 <Title order={5} c="red" mb={4}>Danger Zone</Title>
-                                <Text c="red" size="sm" mb="sm">Once you delete a team, there is no going back. Please be certain.</Text>
+                                <Text c="red" size="sm" mb="sm">Teams with history are archived so registrations, bills, and schedules stay traceable.</Text>
                                 <Button color="red" onClick={() => setShowDeleteConfirm(true)}>Delete Team</Button>
                             </Paper>
                         </div>
@@ -2302,9 +2311,9 @@ export default function TeamDetailModal({
                 {/* Delete Confirmation Modal */}
                 {showDeleteConfirm && (
                     <Modal opened={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Team" centered>
-                        <Text c="dimmed" mb="sm">This action cannot be undone</Text>
+                        <Text c="dimmed" mb="sm">Referenced teams will be archived instead of permanently deleted.</Text>
                         <Text size="sm" mb="md">
-                            Are you sure you want to delete <strong>{`"${currentTeam.name}"`}</strong>? This will permanently remove the team and all its data.
+                            Are you sure you want to delete <strong>{`"${currentTeam.name}"`}</strong>? If it has registrations, billing, or schedule history, it will be hidden from active lists and kept for records.
                         </Text>
                         <Group grow>
                             <Button variant="default" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
