@@ -1062,7 +1062,7 @@ svg {
 .shared-calendar-shell .rbc-event:focus,
 .shared-calendar-shell .rbc-event:focus-visible {
   background: transparent;
-  outline: 2px solid color-mix(in srgb, var(--mvp-primary-300) 72%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--mvp-primary-300) 46%, transparent);
   outline-offset: 1px;
 }
 
@@ -1327,12 +1327,12 @@ svg {
 }
 
 .shared-calendar-event--conflict {
-  --shared-calendar-event-bg: #fee2e2;
-  --shared-calendar-event-border: #dc2626;
-  --shared-calendar-event-text: #7f1d1d;
-  border-width: 2px;
+  --shared-calendar-event-bg: #fff5f5;
+  --shared-calendar-event-border: #fca5a5;
+  --shared-calendar-event-text: #991b1b;
+  border-width: 1px;
   box-shadow:
-    inset 0 0 0 1px rgba(220, 38, 38, 0.22),
+    inset 0 0 0 1px rgba(220, 38, 38, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
@@ -1379,7 +1379,7 @@ svg {
 }
 
 .shared-calendar-event--selected {
-  box-shadow: 0 0 0 2px var(--mvp-success), 0 0 0 5px color-mix(in srgb, var(--mvp-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mvp-success) 46%, transparent), 0 0 0 4px color-mix(in srgb, var(--mvp-success) 8%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .shared-calendar-event__title,
@@ -1458,76 +1458,64 @@ svg {
 
 .match-card--highlight-participant {
   filter:
-    drop-shadow(0 0 12px rgb(34 197 94 / 0.88))
-    drop-shadow(0 0 34px rgb(34 197 94 / 0.68));
+    drop-shadow(0 0 5px rgb(34 197 94 / 0.22))
+    drop-shadow(0 0 14px rgb(34 197 94 / 0.14));
   box-shadow:
-    0 0 0 3px rgb(34 197 94 / 0.42),
-    0 0 18px rgb(34 197 94 / 0.74),
-    0 0 44px rgb(34 197 94 / 0.54),
-    0 0 72px rgb(34 197 94 / 0.28),
-    0 14px 32px rgb(15 23 42 / 0.22);
+    0 0 0 1px rgb(34 197 94 / 0.18),
+    0 0 10px rgb(34 197 94 / 0.16),
+    0 8px 18px rgb(15 23 42 / 0.12);
 }
 
 .match-card--highlight-participant:hover {
   filter:
-    drop-shadow(0 0 14px rgb(34 197 94 / 0.98))
-    drop-shadow(0 0 42px rgb(34 197 94 / 0.78));
+    drop-shadow(0 0 6px rgb(34 197 94 / 0.3))
+    drop-shadow(0 0 16px rgb(34 197 94 / 0.18));
   box-shadow:
-    0 0 0 3px rgb(34 197 94 / 0.5),
-    0 0 22px rgb(34 197 94 / 0.82),
-    0 0 52px rgb(34 197 94 / 0.62),
-    0 0 84px rgb(34 197 94 / 0.34),
-    0 16px 36px rgb(15 23 42 / 0.24);
+    0 0 0 1px rgb(34 197 94 / 0.28),
+    0 0 12px rgb(34 197 94 / 0.22),
+    0 10px 20px rgb(15 23 42 / 0.14);
 }
 
 .match-card--highlight-official {
   filter:
-    drop-shadow(0 0 13px rgb(217 119 6 / 1))
-    drop-shadow(0 0 36px rgb(217 119 6 / 0.82));
+    drop-shadow(0 0 5px rgb(217 119 6 / 0.24))
+    drop-shadow(0 0 14px rgb(217 119 6 / 0.16));
   box-shadow:
-    0 0 0 3px rgb(217 119 6 / 0.5),
-    0 0 20px rgb(217 119 6 / 0.9),
-    0 0 48px rgb(217 119 6 / 0.62),
-    0 0 76px rgb(217 119 6 / 0.36),
-    0 14px 32px rgb(15 23 42 / 0.26);
+    0 0 0 1px rgb(217 119 6 / 0.22),
+    0 0 10px rgb(217 119 6 / 0.18),
+    0 8px 18px rgb(15 23 42 / 0.13);
 }
 
 .dark .match-card--highlight-official,
 [data-mantine-color-scheme='dark'] .match-card--highlight-official {
   filter:
-    drop-shadow(0 0 13px rgb(217 119 6 / 1))
-    drop-shadow(0 0 40px rgb(217 119 6 / 0.98));
+    drop-shadow(0 0 6px rgb(217 119 6 / 0.34))
+    drop-shadow(0 0 16px rgb(217 119 6 / 0.26));
   box-shadow:
-    0 0 0 3px rgb(217 119 6 / 0.6),
-    0 0 20px rgb(217 119 6 / 1),
-    0 0 52px rgb(217 119 6 / 0.82),
-    0 0 86px rgb(217 119 6 / 0.5),
-    0 14px 32px rgb(0 0 0 / 0.42);
+    0 0 0 1px rgb(217 119 6 / 0.34),
+    0 0 12px rgb(217 119 6 / 0.3),
+    0 8px 18px rgb(0 0 0 / 0.32);
 }
 
 .match-card--highlight-official:hover {
   filter:
-    drop-shadow(0 0 15px rgb(217 119 6 / 1))
-    drop-shadow(0 0 44px rgb(217 119 6 / 0.9));
+    drop-shadow(0 0 6px rgb(217 119 6 / 0.32))
+    drop-shadow(0 0 16px rgb(217 119 6 / 0.22));
   box-shadow:
-    0 0 0 3px rgb(217 119 6 / 0.58),
-    0 0 24px rgb(217 119 6 / 0.98),
-    0 0 56px rgb(217 119 6 / 0.7),
-    0 0 90px rgb(217 119 6 / 0.42),
-    0 16px 36px rgb(15 23 42 / 0.28);
+    0 0 0 1px rgb(217 119 6 / 0.32),
+    0 0 12px rgb(217 119 6 / 0.24),
+    0 10px 20px rgb(15 23 42 / 0.15);
 }
 
 .dark .match-card--highlight-official:hover,
 [data-mantine-color-scheme='dark'] .match-card--highlight-official:hover {
   filter:
-    drop-shadow(0 0 17px rgb(217 119 6 / 1))
-    drop-shadow(0 0 50px rgb(217 119 6 / 1));
+    drop-shadow(0 0 7px rgb(217 119 6 / 0.4))
+    drop-shadow(0 0 18px rgb(217 119 6 / 0.3));
   box-shadow:
-    0 0 0 3px rgb(217 119 6 / 0.66),
-    0 0 24px rgb(217 119 6 / 1),
-    0 0 60px rgb(217 119 6 / 0.88),
-    0 0 98px rgb(217 119 6 / 0.56),
-    0 16px 36px rgb(0 0 0 / 0.46);
+    0 0 0 1px rgb(217 119 6 / 0.42),
+    0 0 14px rgb(217 119 6 / 0.34),
+    0 10px 20px rgb(0 0 0 / 0.34);
 }
 
 .match-card--adaptive {

@@ -733,10 +733,10 @@ export function LeagueCalendarView({
       return {
         style: {
           backgroundColor: hasConflict
-            ? 'var(--mantine-color-red-0, var(--mvp-danger-soft))'
+            ? 'color-mix(in srgb, var(--mvp-danger-soft) 42%, transparent)'
             : 'transparent',
           border: hasConflict
-            ? '2px solid var(--mvp-danger)'
+            ? '1px solid color-mix(in srgb, var(--mvp-danger) 38%, transparent)'
             : 'none',
           padding: 0,
           cursor: canManage ? 'grab' : onMatchClick ? 'pointer' : 'default',

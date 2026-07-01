@@ -262,9 +262,11 @@ function MatchCard({
     const clickable = typeof onClick === 'function';
     const effectiveMatchHighlight = matchHighlight ?? (highlightCurrentUser ? 'participant' : undefined);
     const borderClass = hasConflict
-        ? 'border-red-400 hover:border-red-500'
+        ? 'border-red-200 hover:border-red-300'
         : effectiveMatchHighlight === 'participant'
-            ? 'border-green-300 hover:border-green-400'
+            ? 'border-green-200 hover:border-green-300'
+            : effectiveMatchHighlight === 'official'
+                ? 'border-amber-200 hover:border-amber-300'
             : match.losersBracket
                 ? 'border-orange-200 hover:border-orange-300'
                 : 'border-blue-200 hover:border-blue-300';

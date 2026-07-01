@@ -69,7 +69,7 @@ describe('MatchCard conflict rendering', () => {
     expect(screen.getByText('Court 2')).toBeInTheDocument();
   });
 
-  it('shows a red border and no inline conflict message when match has a field-time conflict', () => {
+  it('shows a subtle red border and no inline conflict message when match has a field-time conflict', () => {
     renderWithMantine(
       createElement(MatchCard, {
         match: buildMatch(),
@@ -78,10 +78,10 @@ describe('MatchCard conflict rendering', () => {
     );
 
     expect(screen.queryByText(/there is a conflict/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-red-400');
+    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-red-200');
   });
 
-  it('uses a contrast border when the viewer is assigned as an official', () => {
+  it('uses a subtle amber border when the viewer is assigned as an official', () => {
     renderWithMantine(
       createElement(MatchCard, {
         match: buildMatch(),
@@ -89,7 +89,7 @@ describe('MatchCard conflict rendering', () => {
       }),
     );
 
-    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-black', 'dark:border-white');
+    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-amber-200');
   });
 
   it('labels winner and loser separately when the same prior match feeds both slots', () => {

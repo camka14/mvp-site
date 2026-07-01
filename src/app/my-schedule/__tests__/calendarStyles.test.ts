@@ -9,6 +9,13 @@ const findRulesWithDeclaration = (declaration: string): string[] => {
 };
 
 describe('my schedule calendar card styles', () => {
+  it('keeps match highlight and conflict styling subdued', () => {
+    expect(globalsCss).toContain('drop-shadow(0 0 5px rgb(34 197 94 / 0.22))');
+    expect(globalsCss).toContain('0 0 0 1px rgb(34 197 94 / 0.18)');
+    expect(globalsCss).toContain('--shared-calendar-event-border: #fca5a5;');
+    expect(globalsCss).toContain('border-width: 1px;');
+  });
+
   it('keeps week all-day cards tall enough for readable labels', () => {
     const minHeightRules = findRulesWithDeclaration('min-height: 2.7rem;');
     const contentRules = findRulesWithDeclaration('overflow: visible;');
