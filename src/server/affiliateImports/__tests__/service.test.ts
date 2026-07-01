@@ -153,6 +153,167 @@ describe('affiliate import service', () => {
     expect(prismaMock.affiliateImportCandidates.delete).not.toHaveBeenCalled();
   });
 
+  it('runs manual evergreen mappings without falling back to the body selector candidate', async () => {
+    const manualCandidates = [
+      {
+        title: 'Troutdale Indoor Sports Adult Soccer Leagues',
+        officialActionUrl: 'https://www.troutdaleindoorsports.com/adult',
+        sourceUrl: 'https://www.troutdaleindoorsports.com/adult',
+        sportName: 'Indoor Soccer',
+        venueName: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        scheduleText: 'No fixed start date. Check the official page for current adult league sessions and availability.',
+        dateDisplayMode: 'NO_FIXED_DATE' as const,
+        dateDisplayText: 'No fixed start date',
+        priceText: '$850 per 8-week team session.',
+      },
+      {
+        title: 'Troutdale Indoor Sports Youth Soccer League',
+        officialActionUrl: 'https://www.troutdaleindoorsports.com/youth',
+        sourceUrl: 'https://www.troutdaleindoorsports.com/youth',
+        sportName: 'Indoor Soccer',
+        venueName: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        scheduleText: 'No fixed start date. Check the official page for youth league availability.',
+        dateDisplayMode: 'NO_FIXED_DATE' as const,
+        dateDisplayText: 'No fixed start date',
+        priceText: '$530 flat fee per team for 8 games.',
+      },
+      {
+        title: "Troutdale Indoor Sports Men's Basketball League",
+        officialActionUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        sourceUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        sportName: 'Basketball',
+        venueName: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        scheduleText: 'No fixed start date. Check the official page for current basketball league availability.',
+        dateDisplayMode: 'NO_FIXED_DATE' as const,
+        dateDisplayText: 'No fixed start date',
+        priceText: '$850 flat fee per 7-week session.',
+      },
+      {
+        title: 'Troutdale Indoor Sports Indoor Soccer Friendly Match',
+        officialActionUrl: 'https://www.troutdaleindoorsports.com/adult',
+        sourceUrl: 'https://www.troutdaleindoorsports.com/adult',
+        sportName: 'Indoor Soccer',
+        venueName: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        scheduleText: 'Friendly games available, $75 per game. Call for availability.',
+        dateDisplayMode: 'NO_FIXED_DATE' as const,
+        dateDisplayText: 'Call for availability',
+        priceText: '$75 per game',
+      },
+      {
+        title: 'Troutdale Indoor Sports Field and Court Rentals',
+        officialActionUrl: 'https://nattyhatty.com/114/bookings',
+        sourceUrl: 'https://nattyhatty.com/114/bookings',
+        sportName: 'Indoor sports',
+        venueName: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        scheduleText: 'Use the official booking calendar for current field and court availability.',
+        dateDisplayMode: 'ONGOING' as const,
+        dateDisplayText: 'Ongoing rental availability',
+      },
+    ];
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_troutdale',
+      name: 'Troutdale Indoor Sports Programs',
+      sourceKey: 'troutdale-indoor-sports-programs',
+      activeMappingId: 'mapping_troutdale',
+      listUrl: 'https://www.troutdaleindoorsports.com/',
+      organizationId: 'org_troutdale',
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_troutdale',
+      sourceId: 'source_troutdale',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://www.troutdaleindoorsports.com/',
+        itemSelector: 'body',
+        fields: {
+          title: {
+            selector: 'body',
+            mode: 'literal',
+            value: 'Troutdale Indoor Sports Programs',
+          },
+          officialActionUrl: {
+            selector: 'body',
+            mode: 'literal',
+            value: 'https://www.troutdaleindoorsports.com/',
+          },
+        },
+        dedupe: {
+          fields: ['officialActionUrl', 'title', 'dateDisplayMode'],
+        },
+        manualCandidates,
+      },
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_troutdale', ownerId: 'owner_1' });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_1' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.sports.findFirst.mockImplementation(async ({ where }) => ({
+      id: String(where.name.equals).toLowerCase().includes('basketball') ? 'sport_basketball' : 'sport_indoor_soccer',
+    }));
+
+    const result = await runAffiliateSourceScrape('source_troutdale', {
+      client: {
+        fetchPage: async () => ({
+          url: 'https://www.troutdaleindoorsports.com/',
+          finalUrl: 'https://www.troutdaleindoorsports.com/',
+          statusCode: 200,
+          fetchedAt: '2026-07-01T12:00:00.000Z',
+          body: '<html><body>Troutdale Indoor Sports Programs</body></html>',
+        }),
+      },
+    });
+
+    expect(result.run).toEqual(expect.objectContaining({
+      itemCount: 5,
+      candidateCount: 5,
+      logs: expect.objectContaining({
+        rejectedCount: 0,
+        createdCandidateCount: 5,
+      }),
+    }));
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledTimes(5);
+    expect(prismaMock.events.create).toHaveBeenCalledTimes(5);
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Troutdale Indoor Sports Adult Soccer Leagues',
+        start: new Date('2099-12-31T12:00:00.000Z'),
+        end: null,
+        dateDisplayMode: 'NO_FIXED_DATE',
+        dateDisplayText: 'No fixed start date',
+        price: 85000,
+      }),
+    });
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Troutdale Indoor Sports Indoor Soccer Friendly Match',
+        start: new Date('2099-12-31T12:00:00.000Z'),
+        end: null,
+        dateDisplayMode: 'NO_FIXED_DATE',
+        dateDisplayText: 'Call for availability',
+        price: 7500,
+      }),
+    });
+    expect(prismaMock.events.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Troutdale Indoor Sports Programs',
+      }),
+    });
+  });
+
   it('reclassifies a scraped candidate and creates the matching target draft', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
@@ -294,7 +455,7 @@ describe('affiliate import service', () => {
       venueName: 'Troutdale Indoor Sports',
       city: 'Troutdale',
       address: '819 NW Corporate Dr, Troutdale, OR 97060',
-      startsAt: new Date('2026-07-01T18:00:00.000Z'),
+      startsAt: new Date('2099-07-01T18:00:00.000Z'),
       endsAt: null,
       timeZone: null,
       scheduleText: 'Friday and Sunday games.',
