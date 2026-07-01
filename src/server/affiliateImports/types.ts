@@ -25,7 +25,15 @@ export const fieldMappingSchema = z.object({
   regex: z.string().min(1).optional(),
   excludeSelectors: z.array(z.string().min(1)).optional(),
   required: z.boolean().optional(),
-  transform: z.enum(['trim', 'priceText', 'dateTime', 'dateRangeEnd', 'absoluteUrl', 'telerikPostBackUrl']).optional(),
+  transform: z.enum([
+    'trim',
+    'priceText',
+    'dateTime',
+    'dateRangeEnd',
+    'absoluteUrl',
+    'telerikPostBackUrl',
+    'previousDaySectionDateTime',
+  ]).optional(),
 });
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;

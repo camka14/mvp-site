@@ -320,6 +320,80 @@ describe('extractAffiliateCandidatesFromPage', () => {
     expect(candidates[0].participantOptionsText).toBeUndefined();
   });
 
+  it('extracts Rose City Volleyball card dates from preceding day sections', () => {
+    const volleyballPage: ScrapedPage = {
+      ...page,
+      url: 'https://www.portlandbasketball.com/rosecityvb.php',
+      finalUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
+      fetchedAt: '2026-07-01T20:00:00.000Z',
+      body: `
+        <div class="day-section">Wednesday, July 1st</div>
+        <div class="game-card">
+          <h3>8:05 PM - TEAM PLAY WEDNESDAYS (Individuals too) Beaverton- Beaverton Hoop YMCA- 9685 SW Harvest Court (2 Hours 5 Mins)</h3>
+          <div class="game-flex">
+            <div class="game-desc"><strong>$14.00</strong> | Male and female mixed-traditional open gym. Up to 42 players play on 3 nets.</div>
+          </div>
+          <div class="spot-count spot-green">12 spots available</div>
+          <form method="post"><input type="submit" value="Confirm Spot"></form>
+          <button class="roster-toggle">View Roster (16)</button>
+        </div>
+      `,
+    };
+    const volleyballMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
+      itemSelector: '.game-card:has(form)',
+      fields: {
+        title: { selector: 'h3', mode: 'text', required: true },
+        officialActionUrl: {
+          selector: ':scope',
+          mode: 'literal',
+          value: 'https://www.portlandbasketball.com/rosecityvb.php',
+          required: true,
+          transform: 'absoluteUrl',
+        },
+        startsAt: {
+          selector: 'h3',
+          mode: 'text',
+          required: true,
+          transform: 'previousDaySectionDateTime',
+        },
+        priceText: { selector: '.game-desc strong', mode: 'text' },
+        description: {
+          selector: '.game-desc',
+          mode: 'text',
+          excludeSelectors: ['strong'],
+          regex: '^\\s*\\|?\\s*(.+)$',
+        },
+        maxParticipantsText: { selector: '.game-desc', mode: 'text' },
+        currentParticipantsText: {
+          selector: '.roster-toggle',
+          mode: 'text',
+          regex: '\\((\\d+)\\)',
+        },
+        spotsRemainingText: { selector: '.spot-count', mode: 'text' },
+        sportName: { selector: ':scope', mode: 'literal', value: 'Indoor Volleyball' },
+        organizerName: { selector: ':scope', mode: 'literal', value: 'Rose City Volleyball' },
+      },
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(volleyballPage, volleyballMapping);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      title: '8:05 PM - TEAM PLAY WEDNESDAYS (Individuals too) Beaverton- Beaverton Hoop YMCA- 9685 SW Harvest Court (2 Hours 5 Mins)',
+      officialActionUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
+      startsAt: '2026-07-02T03:05:00.000Z',
+      priceText: '$14.00',
+      description: 'Male and female mixed-traditional open gym. Up to 42 players play on 3 nets.',
+      maxParticipantsText: '$14.00 | Male and female mixed-traditional open gym. Up to 42 players play on 3 nets.',
+      currentParticipantsText: '16',
+      spotsRemainingText: '12 spots available',
+      sportName: 'Indoor Volleyball',
+      organizerName: 'Rose City Volleyball',
+    });
+  });
+
   it('extracts Telerik postback URLs from TeamSideline-style More Info buttons', () => {
     const teamSidelinePage: ScrapedPage = {
       ...page,

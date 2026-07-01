@@ -170,6 +170,52 @@ const parseDateRangeEndValue = (value: string, referenceDate: Date): string => {
   return parseDateTimeValue(trimmed, referenceDate);
 };
 
+const findNearestPreviousText = (element: Element, selector: string): string | null => {
+  let current: Element | null = element;
+  while (current) {
+    let sibling = current.previousElementSibling;
+    while (sibling) {
+      if (sibling.matches(selector)) {
+        return sibling.textContent ?? null;
+      }
+      const nestedMatches = Array.from(sibling.querySelectorAll(selector));
+      const lastNestedMatch = nestedMatches[nestedMatches.length - 1];
+      if (lastNestedMatch) {
+        return lastNestedMatch.textContent ?? null;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+    current = current.parentElement;
+  }
+  return null;
+};
+
+const parsePreviousDaySectionDateTimeValue = (
+  element: Element | null,
+  value: string,
+  referenceDate: Date,
+): string => {
+  if (!element) return '';
+  const timeMatch = normalizeWhitespace(value).match(/\b(\d{1,2}:\d{2}\s*[AP]M)\b/i);
+  if (!timeMatch?.[1]) return '';
+  const dayText = findNearestPreviousText(element, '.day-section');
+  if (!dayText) return '';
+
+  const normalizedDay = normalizeDateText(dayText);
+  const parsed = new Date(`${normalizedDay}, ${referenceDate.getFullYear()} ${timeMatch[1]}`);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  const dayStart = new Date(referenceDate);
+  dayStart.setHours(0, 0, 0, 0);
+  if (parsed.getTime() < dayStart.getTime() - 24 * 60 * 60 * 1000) {
+    parsed.setFullYear(parsed.getFullYear() + 1);
+  }
+
+  return parsed.toISOString();
+};
+
 const selectElement = (root: Element, selector: string): Element | null => {
   const normalized = selector.trim();
   if (normalized === ':scope' || normalized === '&') {
@@ -222,10 +268,11 @@ const extractFieldValue = (
   referenceDate: Date,
 ): string | null => {
   let value = '';
+  let element: Element | null = null;
   if (mapping.mode === 'literal') {
     value = mapping.value ?? '';
   } else {
-    const element = selectElement(root, mapping.selector);
+    element = selectElement(root, mapping.selector);
     if (!element) {
       return null;
     }
@@ -259,6 +306,8 @@ const extractFieldValue = (
     value = parseDateTimeValue(value, referenceDate);
   } else if (transform === 'dateRangeEnd') {
     value = parseDateRangeEndValue(value, referenceDate);
+  } else if (transform === 'previousDaySectionDateTime') {
+    value = parsePreviousDaySectionDateTimeValue(element, value, referenceDate);
   } else {
     value = normalizeWhitespace(value);
   }
