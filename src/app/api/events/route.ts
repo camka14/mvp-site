@@ -543,6 +543,25 @@ const withLegacyEvent = (row: any) => {
   } else if (typeof (legacy as any).teamOfficialsMaySwap !== 'boolean') {
     (legacy as any).teamOfficialsMaySwap = false;
   }
+  const legacyTeamCheckInMode = typeof (legacy as any).teamCheckInMode === 'string'
+    ? (legacy as any).teamCheckInMode.trim().toUpperCase()
+    : 'OFF';
+  (legacy as any).teamCheckInMode =
+    (legacy as any).teamSignup === true && ['OFF', 'EVENT', 'MATCH'].includes(legacyTeamCheckInMode)
+      ? legacyTeamCheckInMode
+      : 'OFF';
+  const legacyOpenMinutes = Number((legacy as any).teamCheckInOpenMinutesBefore);
+  (legacy as any).teamCheckInOpenMinutesBefore = Number.isFinite(legacyOpenMinutes)
+    ? Math.max(0, Math.trunc(legacyOpenMinutes))
+    : 60;
+  (legacy as any).allowMatchRosterEdits =
+    (legacy as any).teamSignup === true && typeof (legacy as any).allowMatchRosterEdits === 'boolean'
+      ? Boolean((legacy as any).allowMatchRosterEdits)
+      : false;
+  (legacy as any).allowTemporaryMatchPlayers =
+    (legacy as any).allowMatchRosterEdits === true && typeof (legacy as any).allowTemporaryMatchPlayers === 'boolean'
+      ? Boolean((legacy as any).allowTemporaryMatchPlayers)
+      : false;
   return legacy;
 };
 

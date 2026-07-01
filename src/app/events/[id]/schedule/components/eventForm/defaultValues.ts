@@ -98,6 +98,12 @@ export const buildEventFormDefaultValues = ({
         : base.installmentAmounts.length;
     base.installmentCount = normalizedInstallmentCount || 0;
     base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
+    base.teamCheckInMode = base.teamSignup ? base.teamCheckInMode ?? 'OFF' : 'OFF';
+    base.teamCheckInOpenMinutesBefore = Number.isFinite(Number(base.teamCheckInOpenMinutesBefore))
+        ? Math.max(0, Math.trunc(Number(base.teamCheckInOpenMinutesBefore)))
+        : 60;
+    base.allowMatchRosterEdits = base.teamSignup ? Boolean(base.allowMatchRosterEdits) : false;
+    base.allowTemporaryMatchPlayers = base.allowMatchRosterEdits ? Boolean(base.allowTemporaryMatchPlayers) : false;
     if (!base.organizationId && resolvedOrganizationId) {
         base.organizationId = resolvedOrganizationId;
     }

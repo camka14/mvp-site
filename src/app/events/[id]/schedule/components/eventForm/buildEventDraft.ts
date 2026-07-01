@@ -627,6 +627,15 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             assistantHostIds: isAffiliateEvent ? [] : normalizedAssistantHostIds,
             doTeamsOfficiate: isAffiliateEvent ? false : source.doTeamsOfficiate,
             teamOfficialsMaySwap: isAffiliateEvent ? false : source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
+            teamCheckInMode: isAffiliateEvent || !source.teamSignup ? 'OFF' : source.teamCheckInMode,
+            teamCheckInOpenMinutesBefore: Number.isFinite(Number(source.teamCheckInOpenMinutesBefore))
+                ? Math.max(0, Math.trunc(Number(source.teamCheckInOpenMinutesBefore)))
+                : 60,
+            allowMatchRosterEdits: isAffiliateEvent || !source.teamSignup ? false : Boolean(source.allowMatchRosterEdits),
+            allowTemporaryMatchPlayers:
+                isAffiliateEvent || !source.teamSignup || !source.allowMatchRosterEdits
+                    ? false
+                    : Boolean(source.allowTemporaryMatchPlayers),
             matchRulesOverride: isAffiliateEvent ? null : source.matchRulesOverride ?? null,
             autoCreatePointMatchIncidents: isAffiliateEvent ? false : Boolean(source.autoCreatePointMatchIncidents),
             coordinates: baseCoordinates,

@@ -409,6 +409,12 @@ class TournamentService {
             segmentOperations?: MatchSegmentOperation[];
             incidentOperations?: MatchIncidentOperation[];
             officialCheckIn?: MatchOfficialCheckInOperation;
+            matchAction?: {
+                action: 'FORFEIT' | 'CANCEL' | 'SUSPEND' | 'RESUME';
+                forfeitingEventTeamId?: string | null;
+                winnerEventTeamId?: string | null;
+                reason?: string | null;
+            };
             finalize?: boolean;
             time?: string;
         },

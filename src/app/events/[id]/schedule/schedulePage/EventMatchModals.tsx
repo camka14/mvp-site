@@ -16,6 +16,8 @@ type EventMatchModalsProps = {
   scoreUpdateMatch: Match | null;
   isScoreModalOpen: boolean;
   canManageScore: (match: Match) => boolean;
+  canEditRoster?: (match: Match) => boolean;
+  onOpenRoster?: (match: Match) => void;
   onScoreChange: NonNullable<ScoreUpdateModalProps['onScoreChange']>;
   onSetComplete: NonNullable<ScoreUpdateModalProps['onSetComplete']>;
   onScoreSubmit: NonNullable<ScoreUpdateModalProps['onSubmit']>;
@@ -39,6 +41,8 @@ export default function EventMatchModals({
   scoreUpdateMatch,
   isScoreModalOpen,
   canManageScore,
+  canEditRoster,
+  onOpenRoster,
   onScoreChange,
   onSetComplete,
   onScoreSubmit,
@@ -72,6 +76,8 @@ export default function EventMatchModals({
           isOpen={isScoreModalOpen}
           team1Placeholder={scoreMatchId ? scheduleBracketPlaceholderAssignments[`${scoreMatchId}:team1`] : undefined}
           team2Placeholder={scoreMatchId ? scheduleBracketPlaceholderAssignments[`${scoreMatchId}:team2`] : undefined}
+          canEditRoster={canEditRoster?.(scoreUpdateMatch) ?? false}
+          onOpenRoster={onOpenRoster ? () => onOpenRoster(scoreUpdateMatch) : undefined}
         />
       )}
       <MatchEditModal

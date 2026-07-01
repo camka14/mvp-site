@@ -408,6 +408,8 @@ export const ModelName = {
   StaffPayRun: 'StaffPayRun',
   StaffPayRunItem: 'StaffPayRunItem',
   EventOfficials: 'EventOfficials',
+  TeamCheckIns: 'TeamCheckIns',
+  MatchRosterEntries: 'MatchRosterEntries',
   Teams: 'Teams',
   CanonicalTeams: 'CanonicalTeams',
   TeamRegistrations: 'TeamRegistrations',
@@ -479,7 +481,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -2256,6 +2258,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.EventOfficialsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.EventOfficialsCountAggregateOutputType> | number
+        }
+      }
+    }
+    TeamCheckIns: {
+      payload: Prisma.$TeamCheckInsPayload<ExtArgs>
+      fields: Prisma.TeamCheckInsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TeamCheckInsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TeamCheckInsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        findFirst: {
+          args: Prisma.TeamCheckInsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TeamCheckInsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        findMany: {
+          args: Prisma.TeamCheckInsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>[]
+        }
+        create: {
+          args: Prisma.TeamCheckInsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        createMany: {
+          args: Prisma.TeamCheckInsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TeamCheckInsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>[]
+        }
+        delete: {
+          args: Prisma.TeamCheckInsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        update: {
+          args: Prisma.TeamCheckInsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        deleteMany: {
+          args: Prisma.TeamCheckInsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TeamCheckInsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TeamCheckInsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>[]
+        }
+        upsert: {
+          args: Prisma.TeamCheckInsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamCheckInsPayload>
+        }
+        aggregate: {
+          args: Prisma.TeamCheckInsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeamCheckIns>
+        }
+        groupBy: {
+          args: Prisma.TeamCheckInsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamCheckInsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TeamCheckInsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamCheckInsCountAggregateOutputType> | number
+        }
+      }
+    }
+    MatchRosterEntries: {
+      payload: Prisma.$MatchRosterEntriesPayload<ExtArgs>
+      fields: Prisma.MatchRosterEntriesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MatchRosterEntriesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MatchRosterEntriesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        findFirst: {
+          args: Prisma.MatchRosterEntriesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MatchRosterEntriesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        findMany: {
+          args: Prisma.MatchRosterEntriesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>[]
+        }
+        create: {
+          args: Prisma.MatchRosterEntriesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        createMany: {
+          args: Prisma.MatchRosterEntriesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MatchRosterEntriesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>[]
+        }
+        delete: {
+          args: Prisma.MatchRosterEntriesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        update: {
+          args: Prisma.MatchRosterEntriesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        deleteMany: {
+          args: Prisma.MatchRosterEntriesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MatchRosterEntriesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MatchRosterEntriesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>[]
+        }
+        upsert: {
+          args: Prisma.MatchRosterEntriesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchRosterEntriesPayload>
+        }
+        aggregate: {
+          args: Prisma.MatchRosterEntriesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMatchRosterEntries>
+        }
+        groupBy: {
+          args: Prisma.MatchRosterEntriesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchRosterEntriesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MatchRosterEntriesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchRosterEntriesCountAggregateOutputType> | number
         }
       }
     }
@@ -7033,6 +7183,47 @@ export const EventOfficialsScalarFieldEnum = {
 export type EventOfficialsScalarFieldEnum = (typeof EventOfficialsScalarFieldEnum)[keyof typeof EventOfficialsScalarFieldEnum]
 
 
+export const TeamCheckInsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  eventTeamId: 'eventTeamId',
+  checkInKey: 'checkInKey',
+  checkedInAt: 'checkedInAt',
+  checkedInByUserId: 'checkedInByUserId',
+  scope: 'scope',
+  status: 'status'
+} as const
+
+export type TeamCheckInsScalarFieldEnum = (typeof TeamCheckInsScalarFieldEnum)[keyof typeof TeamCheckInsScalarFieldEnum]
+
+
+export const MatchRosterEntriesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  eventTeamId: 'eventTeamId',
+  source: 'source',
+  status: 'status',
+  userId: 'userId',
+  firstName: 'firstName',
+  lastName: 'lastName',
+  email: 'email',
+  linkedAt: 'linkedAt',
+  linkedByUserId: 'linkedByUserId',
+  createdByUserId: 'createdByUserId',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  metadata: 'metadata'
+} as const
+
+export type MatchRosterEntriesScalarFieldEnum = (typeof MatchRosterEntriesScalarFieldEnum)[keyof typeof MatchRosterEntriesScalarFieldEnum]
+
+
 export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -7845,6 +8036,10 @@ export const EventsScalarFieldEnum = {
   officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
+  teamCheckInMode: 'teamCheckInMode',
+  teamCheckInOpenMinutesBefore: 'teamCheckInOpenMinutesBefore',
+  allowMatchRosterEdits: 'allowMatchRosterEdits',
+  allowTemporaryMatchPlayers: 'allowTemporaryMatchPlayers',
   officialPositions: 'officialPositions',
   matchRulesOverride: 'matchRulesOverride',
   autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
@@ -9471,6 +9666,8 @@ export type GlobalOmitConfig = {
   staffPayRun?: Prisma.StaffPayRunOmit
   staffPayRunItem?: Prisma.StaffPayRunItemOmit
   eventOfficials?: Prisma.EventOfficialsOmit
+  teamCheckIns?: Prisma.TeamCheckInsOmit
+  matchRosterEntries?: Prisma.MatchRosterEntriesOmit
   teams?: Prisma.TeamsOmit
   canonicalTeams?: Prisma.CanonicalTeamsOmit
   teamRegistrations?: Prisma.TeamRegistrationsOmit

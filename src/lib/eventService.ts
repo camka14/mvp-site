@@ -1682,6 +1682,21 @@ class EventService {
             ? row.teamOfficialsMaySwap
             : false
           : false,
+      teamCheckInMode:
+        row.teamSignup === true &&
+        typeof row.teamCheckInMode === "string" &&
+        ["OFF", "EVENT", "MATCH"].includes(row.teamCheckInMode.trim().toUpperCase())
+          ? row.teamCheckInMode.trim().toUpperCase() as "OFF" | "EVENT" | "MATCH"
+          : "OFF",
+      teamCheckInOpenMinutesBefore:
+        Number.isFinite(Number(row.teamCheckInOpenMinutesBefore))
+          ? Math.max(0, Math.trunc(Number(row.teamCheckInOpenMinutesBefore)))
+          : 60,
+      allowMatchRosterEdits: row.teamSignup === true && row.allowMatchRosterEdits === true,
+      allowTemporaryMatchPlayers:
+        row.teamSignup === true &&
+        row.allowMatchRosterEdits === true &&
+        row.allowTemporaryMatchPlayers === true,
       matchRulesOverride:
         normalizedMatchRulesOverride === undefined
           ? null

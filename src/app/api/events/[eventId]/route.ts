@@ -123,6 +123,10 @@ const EVENT_UPDATE_FIELDS = new Set([
   'officialSchedulingMode',
   'doTeamsOfficiate',
   'teamOfficialsMaySwap',
+  'teamCheckInMode',
+  'teamCheckInOpenMinutesBefore',
+  'allowMatchRosterEdits',
+  'allowTemporaryMatchPlayers',
   'matchRulesOverride',
   'autoCreatePointMatchIncidents',
   'officialPositions',
@@ -272,6 +276,25 @@ const withLegacyEvent = (row: any) => {
   } else if (typeof (legacy as any).teamOfficialsMaySwap !== 'boolean') {
     (legacy as any).teamOfficialsMaySwap = false;
   }
+  const legacyTeamCheckInMode = typeof (legacy as any).teamCheckInMode === 'string'
+    ? (legacy as any).teamCheckInMode.trim().toUpperCase()
+    : 'OFF';
+  (legacy as any).teamCheckInMode =
+    (legacy as any).teamSignup === true && ['OFF', 'EVENT', 'MATCH'].includes(legacyTeamCheckInMode)
+      ? legacyTeamCheckInMode
+      : 'OFF';
+  const legacyOpenMinutes = Number((legacy as any).teamCheckInOpenMinutesBefore);
+  (legacy as any).teamCheckInOpenMinutesBefore = Number.isFinite(legacyOpenMinutes)
+    ? Math.max(0, Math.trunc(legacyOpenMinutes))
+    : 60;
+  (legacy as any).allowMatchRosterEdits =
+    (legacy as any).teamSignup === true && typeof (legacy as any).allowMatchRosterEdits === 'boolean'
+      ? Boolean((legacy as any).allowMatchRosterEdits)
+      : false;
+  (legacy as any).allowTemporaryMatchPlayers =
+    (legacy as any).allowMatchRosterEdits === true && typeof (legacy as any).allowTemporaryMatchPlayers === 'boolean'
+      ? Boolean((legacy as any).allowTemporaryMatchPlayers)
+      : false;
   return legacy;
 };
 
@@ -704,6 +727,25 @@ const normalizeOptionalBoolean = (value: unknown): boolean | null => {
     }
   }
   return null;
+};
+
+const normalizeTeamCheckInMode = (value: unknown): 'OFF' | 'EVENT' | 'MATCH' | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'OFF' || normalized === 'EVENT' || normalized === 'MATCH') {
+    return normalized;
+  }
+  return null;
+};
+
+const normalizeOpenMinutesBefore = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(0, Math.trunc(parsed));
 };
 
 const normalizeInstallmentAmountList = (value: unknown): number[] => {
@@ -1945,6 +1987,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           delete payload.teamOfficialsMaySwap;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(payload, 'teamCheckInMode')) {
+        const normalizedTeamCheckInMode = normalizeTeamCheckInMode(payload.teamCheckInMode);
+        if (normalizedTeamCheckInMode !== null) {
+          payload.teamCheckInMode = normalizedTeamCheckInMode;
+        } else {
+          delete payload.teamCheckInMode;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'teamCheckInOpenMinutesBefore')) {
+        const normalizedOpenMinutesBefore = normalizeOpenMinutesBefore(payload.teamCheckInOpenMinutesBefore);
+        if (normalizedOpenMinutesBefore !== null) {
+          payload.teamCheckInOpenMinutesBefore = normalizedOpenMinutesBefore;
+        } else {
+          delete payload.teamCheckInOpenMinutesBefore;
+        }
+      }
+      for (const booleanField of ['allowMatchRosterEdits', 'allowTemporaryMatchPlayers'] as const) {
+        if (!Object.prototype.hasOwnProperty.call(payload, booleanField)) continue;
+        const normalized = normalizeOptionalBoolean(payload[booleanField]);
+        if (normalized !== null) {
+          payload[booleanField] = normalized;
+        } else {
+          delete payload[booleanField];
+        }
+      }
       if (Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')) {
         payload.includePlayoffs = Boolean(payload.includePlayoffsOrPools);
         delete payload.includePlayoffsOrPools;
@@ -2030,6 +2097,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.teamOfficialsMaySwap = Boolean(payload.teamOfficialsMaySwap);
       } else if (!Object.prototype.hasOwnProperty.call(data, 'teamOfficialsMaySwap')) {
         data.teamOfficialsMaySwap = Boolean((existing as any).teamOfficialsMaySwap);
+      }
+      const targetTeamSignup = Object.prototype.hasOwnProperty.call(data, 'teamSignup')
+        ? Boolean(data.teamSignup)
+        : Boolean((existing as any).teamSignup);
+      if (!targetTeamSignup) {
+        data.teamCheckInMode = 'OFF';
+        data.allowMatchRosterEdits = false;
+        data.allowTemporaryMatchPlayers = false;
+      } else {
+        data.teamCheckInMode = Object.prototype.hasOwnProperty.call(data, 'teamCheckInMode')
+          ? data.teamCheckInMode
+          : ((existing as any).teamCheckInMode ?? 'OFF');
+        data.teamCheckInOpenMinutesBefore = Object.prototype.hasOwnProperty.call(data, 'teamCheckInOpenMinutesBefore')
+          ? data.teamCheckInOpenMinutesBefore
+          : ((existing as any).teamCheckInOpenMinutesBefore ?? 60);
+        data.allowMatchRosterEdits = Object.prototype.hasOwnProperty.call(data, 'allowMatchRosterEdits')
+          ? Boolean(data.allowMatchRosterEdits)
+          : Boolean((existing as any).allowMatchRosterEdits);
+        data.allowTemporaryMatchPlayers = data.allowMatchRosterEdits
+          ? (
+            Object.prototype.hasOwnProperty.call(data, 'allowTemporaryMatchPlayers')
+              ? Boolean(data.allowTemporaryMatchPlayers)
+              : Boolean((existing as any).allowTemporaryMatchPlayers)
+          )
+          : false;
       }
       const nextOrganizationId = normalizeEntityId(data.organizationId ?? existing.organizationId ?? null);
       const requestedEventOfficialIds = Array.isArray(payload.eventOfficials)

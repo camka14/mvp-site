@@ -23,6 +23,12 @@ const EMPTY_TEAMS: Team[] = [];
 const EMPTY_USERS: UserData[] = [];
 const EMPTY_OFFICIAL_POSITIONS: EventOfficialPosition[] = [];
 const EMPTY_EVENT_OFFICIALS: EventOfficial[] = [];
+const RESULT_TYPE_OPTIONS = [
+  { value: 'REGULATION', label: 'Regulation result' },
+  { value: 'FORFEIT', label: 'Forfeit' },
+  { value: 'NO_CONTEST', label: 'No contest / cancelled' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
 
 interface MatchEditModalProps {
   opened: boolean;
@@ -538,6 +544,10 @@ export default function MatchEditModal({
   const [error, setError] = useState<string | null>(null);
   const [matchStartedValue, setMatchStartedValue] = useState(false);
   const [statusSegmentsValue, setStatusSegmentsValue] = useState<MatchSegment[]>([]);
+  const [resultTypeValue, setResultTypeValue] = useState<string>('REGULATION');
+  const [winnerEventTeamIdValue, setWinnerEventTeamIdValue] = useState<string | null>(null);
+  const [forfeitingEventTeamIdValue, setForfeitingEventTeamIdValue] = useState<string | null>(null);
+  const [statusReasonValue, setStatusReasonValue] = useState('');
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
   const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
@@ -564,6 +574,10 @@ export default function MatchEditModal({
       setError(null);
       setMatchStartedValue(false);
       setStatusSegmentsValue([]);
+      setResultTypeValue('REGULATION');
+      setWinnerEventTeamIdValue(null);
+      setForfeitingEventTeamIdValue(null);
+      setStatusReasonValue('');
       return;
     }
 
@@ -615,6 +629,28 @@ export default function MatchEditModal({
     const initialStatusRules = resolveStatusRules(match, tournament);
     const initialStatusSegments = buildStatusSegments(match, initialStatusRules, initialTeam1Id, initialTeam2Id);
     setStatusSegmentsValue(initialStatusSegments);
+    const initialResultType = String(match.resultType ?? '').toUpperCase();
+    const initialStatus = String(match.status ?? '').toUpperCase();
+    const initialWinnerId = normalizeOptionalId(match.winnerEventTeamId);
+    const initialTeamIds = [initialTeam1Id, initialTeam2Id].filter((teamId): teamId is string => Boolean(teamId));
+    if (initialResultType === 'FORFEIT') {
+      setResultTypeValue('FORFEIT');
+      setWinnerEventTeamIdValue(initialWinnerId);
+      setForfeitingEventTeamIdValue(initialWinnerId ? initialTeamIds.find((teamId) => teamId !== initialWinnerId) ?? null : null);
+    } else if (initialResultType === 'NO_CONTEST' || initialStatus === 'CANCELLED') {
+      setResultTypeValue('NO_CONTEST');
+      setWinnerEventTeamIdValue(null);
+      setForfeitingEventTeamIdValue(null);
+    } else if (initialStatus === 'SUSPENDED') {
+      setResultTypeValue('SUSPENDED');
+      setWinnerEventTeamIdValue(null);
+      setForfeitingEventTeamIdValue(null);
+    } else {
+      setResultTypeValue('REGULATION');
+      setWinnerEventTeamIdValue(initialWinnerId);
+      setForfeitingEventTeamIdValue(null);
+    }
+    setStatusReasonValue(typeof match.statusReason === 'string' ? match.statusReason : '');
     setMatchStartedValue(Boolean(
       ['IN_PROGRESS', 'COMPLETE'].includes(String(match.status ?? '').toUpperCase())
       || initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
@@ -827,6 +863,20 @@ export default function MatchEditModal({
 
   const selectedTeam1 = useMemo(() => findTeamById(team1Id, teams, match?.team1), [team1Id, teams, match]);
   const selectedTeam2 = useMemo(() => findTeamById(team2Id, teams, match?.team2), [team2Id, teams, match]);
+  const resultTeamOptions = useMemo(
+    () => [
+      team1Id ? { value: team1Id, label: resolveTeamName(selectedTeam1 ?? match?.team1, teams) } : null,
+      team2Id ? { value: team2Id, label: resolveTeamName(selectedTeam2 ?? match?.team2, teams) } : null,
+    ].filter((option): option is { value: string; label: string } => Boolean(option)),
+    [match?.team1, match?.team2, selectedTeam1, selectedTeam2, team1Id, team2Id, teams],
+  );
+  const resultTypeIsForfeit = resultTypeValue === 'FORFEIT';
+  const resultTypeIsNoContest = resultTypeValue === 'NO_CONTEST';
+  const resultTypeIsSuspended = resultTypeValue === 'SUSPENDED';
+  const resultTypeIsExceptional = resultTypeIsForfeit || resultTypeIsNoContest || resultTypeIsSuspended;
+  const derivedForfeitWinnerId = resultTypeIsForfeit
+    ? resultTeamOptions.find((option) => option.value !== forfeitingEventTeamIdValue)?.value ?? null
+    : null;
   const selectedTeamOfficial = useMemo(
     () => findTeamById(teamOfficialId, teams, match?.teamOfficial ?? (match as any)?.official),
     [teamOfficialId, teams, match],
@@ -1238,6 +1288,12 @@ export default function MatchEditModal({
       setError('Team 1 and Team 2 must be different.');
       return;
     }
+    if (resultTypeIsForfeit) {
+      if (!forfeitingEventTeamIdValue || !derivedForfeitWinnerId) {
+        setError('Forfeit requires selecting the team that forfeited.');
+        return;
+      }
+    }
 
     const nodesForValidation = bracketNodes.map((node) => {
       if (!currentMatchId || node.id !== currentMatchId) {
@@ -1337,9 +1393,9 @@ export default function MatchEditModal({
     }
     if (statusRules) {
       const statusSegmentsForSave = (
-        matchStartedValue ? statusSegments : statusSegments.map(resetSegmentConfirmation)
+        matchStartedValue && !resultTypeIsExceptional ? statusSegments : statusSegments.map(resetSegmentConfirmation)
       ).map((segment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }));
-      const legacyStatus = matchStartedValue
+      const legacyStatus = matchStartedValue && !resultTypeIsExceptional
         ? statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id)
         : {
             team1Points: Array.isArray(match.team1Points) ? [...match.team1Points] : [],
@@ -1347,20 +1403,46 @@ export default function MatchEditModal({
             setResults: Array.isArray(match.setResults) ? [...match.setResults] : [],
           };
       const isMatchComplete = matchStartedValue
+        && !resultTypeIsExceptional
         && statusMatchComplete(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id);
-      updated.status = matchStartedValue
-        ? isMatchComplete ? 'COMPLETE' : 'IN_PROGRESS'
-        : 'SCHEDULED';
       updated.segments = statusSegmentsForSave;
       updated.team1Points = legacyStatus.team1Points;
       updated.team2Points = legacyStatus.team2Points;
       updated.setResults = legacyStatus.setResults;
-      updated.winnerEventTeamId = isMatchComplete
-        ? resolveCompletedMatchWinner(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id)
-        : null;
-      updated.resultStatus = isMatchComplete ? updated.resultStatus ?? null : null;
-      updated.resultType = isMatchComplete ? updated.resultType ?? null : null;
-      updated.statusReason = isMatchComplete ? updated.statusReason ?? null : null;
+      const reason = statusReasonValue.trim() || null;
+      if (resultTypeIsForfeit) {
+        updated.status = 'COMPLETE';
+        updated.resultStatus = 'FINAL';
+        updated.resultType = 'FORFEIT';
+        updated.winnerEventTeamId = derivedForfeitWinnerId;
+        updated.statusReason = reason;
+        updated.actualEnd = updated.actualEnd ?? new Date().toISOString();
+        updated.locked = true;
+      } else if (resultTypeIsNoContest) {
+        updated.status = 'CANCELLED';
+        updated.resultStatus = 'NO_CONTEST';
+        updated.resultType = 'NO_CONTEST';
+        updated.winnerEventTeamId = null;
+        updated.statusReason = reason ?? 'Cancelled';
+        updated.actualEnd = updated.actualEnd ?? new Date().toISOString();
+        updated.locked = true;
+      } else if (resultTypeIsSuspended) {
+        updated.status = 'SUSPENDED';
+        updated.resultStatus = null;
+        updated.resultType = null;
+        updated.winnerEventTeamId = null;
+        updated.statusReason = reason ?? 'Suspended';
+      } else {
+        updated.status = matchStartedValue
+          ? isMatchComplete ? 'COMPLETE' : 'IN_PROGRESS'
+          : 'SCHEDULED';
+        updated.winnerEventTeamId = isMatchComplete
+          ? (winnerEventTeamIdValue ?? resolveCompletedMatchWinner(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id))
+          : null;
+        updated.resultStatus = isMatchComplete ? updated.resultStatus ?? null : null;
+        updated.resultType = isMatchComplete ? null : null;
+        updated.statusReason = isMatchComplete ? reason : null;
+      }
     }
     const sanitizedAssignments = assignmentSlots
       .map(({ position, slotIndex }) => assignmentBySlotKey.get(`${position.id}:${slotIndex}`) ?? null)
@@ -1471,10 +1553,67 @@ export default function MatchEditModal({
     return (
       <SectionPanel title="Match Status">
         <Stack gap="xs">
+          <FieldRow label="Result type">
+            <Select
+              aria-label="Result type"
+              data={RESULT_TYPE_OPTIONS}
+              value={resultTypeValue}
+              disabled={!canManageOperations}
+              onChange={(value) => {
+                const nextValue = value ?? 'REGULATION';
+                setResultTypeValue(nextValue);
+                if (nextValue !== 'FORFEIT') {
+                  setForfeitingEventTeamIdValue(null);
+                }
+                if (nextValue === 'NO_CONTEST' || nextValue === 'SUSPENDED') {
+                  setWinnerEventTeamIdValue(null);
+                }
+                setError(null);
+              }}
+              size="sm"
+            />
+          </FieldRow>
+          {resultTypeIsForfeit && (
+            <>
+              <FieldRow label="Forfeiting team" required>
+                <Select
+                  aria-label="Forfeiting team"
+                  data={resultTeamOptions}
+                  value={forfeitingEventTeamIdValue}
+                  disabled={!canManageOperations}
+                  onChange={(value) => {
+                    setForfeitingEventTeamIdValue(value);
+                    const derivedWinner = resultTeamOptions.find((option) => option.value !== value)?.value ?? null;
+                    setWinnerEventTeamIdValue(derivedWinner);
+                    setError(null);
+                  }}
+                  placeholder="Select team"
+                  size="sm"
+                />
+              </FieldRow>
+              <FieldRow label="Winner">
+                <Badge color={derivedForfeitWinnerId ? 'green' : 'gray'} variant="light">
+                  {resultTeamOptions.find((option) => option.value === derivedForfeitWinnerId)?.label ?? 'Select forfeiting team'}
+                </Badge>
+              </FieldRow>
+            </>
+          )}
+          {(resultTypeIsForfeit || resultTypeIsNoContest || resultTypeIsSuspended) && (
+            <FieldRow label="Reason">
+              <TextInput
+                aria-label="Result reason"
+                value={statusReasonValue}
+                disabled={!canManageOperations}
+                onChange={(event) => setStatusReasonValue(event.currentTarget.value)}
+                placeholder={resultTypeIsForfeit ? 'Optional forfeit note' : resultTypeIsNoContest ? 'Weather, unsafe conditions, etc.' : 'Suspension reason'}
+                size="sm"
+              />
+            </FieldRow>
+          )}
           <Checkbox
             label="Match started"
             checked={matchStartedChecked}
-            disabled={matchStartedDisabled}
+            disabled={matchStartedDisabled || resultTypeIsExceptional}
             onChange={(event) => {
               void handleMatchStartedChange(event.currentTarget.checked);
             }}
@@ -1488,6 +1627,7 @@ export default function MatchEditModal({
               const validFinalScore = segmentHasValidFinalScore(segment, index);
               const disabled =
                 !canManageOperations
+                || resultTypeIsExceptional
                 || (!checked && (!matchStartedChecked || !previousComplete || !validFinalScore));
               return (
                 <Checkbox

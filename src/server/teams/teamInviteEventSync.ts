@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
+import { syncNewCanonicalPlayerIntoMatchRosters } from '@/server/matches/teamCheckIns';
 import {
   getEventTeamsDelegate,
   loadCanonicalTeamById,
@@ -295,6 +296,15 @@ export const acceptTeamInviteEventSyncs = async (
           updatedAt: now,
         },
       });
+      if (!row.eventTeamHadUser) {
+        await syncNewCanonicalPlayerIntoMatchRosters(tx, {
+          eventId: row.eventId,
+          eventTeamId: row.eventTeamId,
+          userId: row.userId,
+          actorUserId: normalizeId(invite.createdBy) ?? row.userId,
+          now,
+        });
+      }
     }
 
     const registrationId = resolveSyncRegistrationId(row);

@@ -21,6 +21,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import { apiRequest } from '@/lib/apiClient';
 import {
   CalendarDays,
   ChevronDown,
@@ -70,6 +71,12 @@ export type ScorePayload = {
   incidentOperations?: MatchIncidentOperation[];
   lifecycle?: MatchLifecycleOperation;
   officialCheckIn?: MatchOfficialCheckInOperation;
+  matchAction?: {
+    action: 'FORFEIT' | 'CANCEL' | 'SUSPEND' | 'RESUME';
+    forfeitingEventTeamId?: string | null;
+    winnerEventTeamId?: string | null;
+    reason?: string | null;
+  };
   team1Points: number[];
   team2Points: number[];
   setResults: number[];
@@ -98,6 +105,8 @@ interface ScoreUpdateModalProps {
   isOpen: boolean;
   team1Placeholder?: string;
   team2Placeholder?: string;
+  canEditRoster?: boolean;
+  onOpenRoster?: () => void;
   embedded?: boolean;
   defaultShowDetails?: boolean;
   hideStatusControls?: boolean;
@@ -1015,6 +1024,8 @@ export default function ScoreUpdateModal({
   isOpen,
   team1Placeholder,
   team2Placeholder,
+  canEditRoster = false,
+  onOpenRoster,
   embedded = false,
   defaultShowDetails = false,
   hideStatusControls = false,
@@ -1023,6 +1034,8 @@ export default function ScoreUpdateModal({
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [actualTimesSaving, setActualTimesSaving] = useState(false);
+  const [matchActionSaving, setMatchActionSaving] = useState(false);
+  const [matchTeamCheckInsById, setMatchTeamCheckInsById] = useState<Record<string, boolean>>({});
   const [timerSaving, setTimerSaving] = useState(false);
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [segmentConfirming, setSegmentConfirming] = useState(false);
@@ -1074,6 +1087,39 @@ export default function ScoreUpdateModal({
   const team2Label = bracketTeamLabel(match, team2, match.previousRightMatch, team2Placeholder, 'team2');
   const teamOfficialId = match.teamOfficialId ?? entityId(match.teamOfficial);
   const teamOfficial = teamOfficialId ? eventTeamsById.get(teamOfficialId) ?? match.teamOfficial : match.teamOfficial;
+
+  useEffect(() => {
+    const eventId = tournament.$id ?? match.eventId;
+    if (!isOpen || !canManage || tournament.teamCheckInMode !== 'MATCH' || !eventId || !match.$id) {
+      setMatchTeamCheckInsById({});
+      return;
+    }
+    let cancelled = false;
+    apiRequest<{ checkIns?: Array<{ eventTeamId?: string | null; status?: string | null }> }>(
+      `/api/events/${encodeURIComponent(eventId)}/matches/${encodeURIComponent(match.$id)}/team-check-ins`,
+    )
+      .then((response) => {
+        if (cancelled) return;
+        const next: Record<string, boolean> = {};
+        (response.checkIns ?? []).forEach((row) => {
+          const teamId = typeof row.eventTeamId === 'string' ? row.eventTeamId.trim() : '';
+          if (teamId && String(row.status ?? '').toUpperCase() === 'CHECKED_IN') {
+            next[teamId] = true;
+          }
+        });
+        setMatchTeamCheckInsById(next);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Failed to load match team check-ins', error);
+          setMatchTeamCheckInsById({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, isOpen, match.$id, match.eventId, tournament.$id, tournament.teamCheckInMode]);
+
   const usesSets = typeof tournament.usesSets === 'boolean' ? tournament.usesSets : Boolean(tournament.leagueConfig?.usesSets);
   const isTimedMatch = !usesSets;
   const playoff = tournament.eventType === 'TOURNAMENT' || Boolean(match.losersBracket || match.winnerNextMatchId || match.loserNextMatchId);
@@ -2195,6 +2241,31 @@ export default function ScoreUpdateModal({
     }));
   };
 
+  const runMatchAction = async (
+    action: NonNullable<ScorePayload['matchAction']>['action'],
+    options: Omit<NonNullable<ScorePayload['matchAction']>, 'action'> = {},
+  ) => {
+    const confirmationMessage = action === 'FORFEIT'
+      ? 'Mark this match as a forfeit?'
+      : action === 'CANCEL'
+        ? 'Cancel this match?'
+        : null;
+    if (confirmationMessage && !window.confirm(confirmationMessage)) {
+      return;
+    }
+    setMatchActionSaving(true);
+    const success = await emit(payload(segmentsRef.current, {
+      matchAction: {
+        action,
+        ...options,
+      },
+    }));
+    setMatchActionSaving(false);
+    if (!success) {
+      alert('Failed to update match action. Please try again.');
+    }
+  };
+
   const saveActualTimes = async (nextStart: Date | null, nextEnd: Date | null, options?: { markInProgress?: boolean }) => {
     if (nextStart && nextEnd && nextEnd.getTime() <= nextStart.getTime()) {
       alert('Actual end time must be after the actual start time.');
@@ -2399,8 +2470,13 @@ export default function ScoreUpdateModal({
       : match.status === "IN_PROGRESS"
         ? "green"
         : match.status === "CANCELLED"
-          ? "red"
+        ? "red"
           : "blue";
+  const normalizedMatchStatus = typeof match.status === "string" ? match.status.toUpperCase() : "";
+  const matchActionTerminal = normalizedMatchStatus === "COMPLETE" || normalizedMatchStatus === "CANCELLED";
+  const showResumeAction = canManage && normalizedMatchStatus === "SUSPENDED";
+  const showSuspendAction = canManage && !matchActionTerminal && normalizedMatchStatus !== "SUSPENDED";
+  const showForfeitCancelActions = canManage && !matchActionTerminal;
   const actualDurationLabel = (() => {
     if (!actualStartValue || !actualEndValue) return "Not set";
     const totalMinutes = Math.max(
@@ -2739,7 +2815,82 @@ export default function ScoreUpdateModal({
         {showStatusBlock && match.resultType
           ? renderDetailRow("Result", titleCaseValue(match.resultType))
           : null}
+        {canManage && tournament.teamCheckInMode === 'MATCH' && (team1Id || team2Id) && (
+          <Group gap="xs" wrap="wrap">
+            {team1Id && (
+              <Badge color={matchTeamCheckInsById[team1Id] ? 'green' : 'gray'} variant="light">
+                {team1Label}: {matchTeamCheckInsById[team1Id] ? 'Checked in' : 'Not checked in'}
+              </Badge>
+            )}
+            {team2Id && (
+              <Badge color={matchTeamCheckInsById[team2Id] ? 'green' : 'gray'} variant="light">
+                {team2Label}: {matchTeamCheckInsById[team2Id] ? 'Checked in' : 'Not checked in'}
+              </Badge>
+            )}
+          </Group>
+        )}
         {statusReason ? <Text size="sm">{statusReason}</Text> : null}
+        {(showResumeAction || showSuspendAction || showForfeitCancelActions) && (
+          <>
+            <Divider />
+            <Group gap="xs" wrap="wrap">
+              {showResumeAction && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  loading={matchActionSaving}
+                  onClick={() => void runMatchAction('RESUME')}
+                >
+                  Resume
+                </Button>
+              )}
+              {showSuspendAction && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="yellow"
+                  loading={matchActionSaving}
+                  onClick={() => void runMatchAction('SUSPEND')}
+                >
+                  Suspend
+                </Button>
+              )}
+              {showForfeitCancelActions && team1Id && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="red"
+                  loading={matchActionSaving}
+                  onClick={() => void runMatchAction('FORFEIT', { forfeitingEventTeamId: team1Id })}
+                >
+                  {team1Label} Forfeit
+                </Button>
+              )}
+              {showForfeitCancelActions && team2Id && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="red"
+                  loading={matchActionSaving}
+                  onClick={() => void runMatchAction('FORFEIT', { forfeitingEventTeamId: team2Id })}
+                >
+                  {team2Label} Forfeit
+                </Button>
+              )}
+              {showForfeitCancelActions && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="red"
+                  loading={matchActionSaving}
+                  onClick={() => void runMatchAction('CANCEL')}
+                >
+                  Cancel Match
+                </Button>
+              )}
+            </Group>
+          </>
+        )}
       </Stack>
     </Paper>
   );
@@ -3198,6 +3349,16 @@ export default function ScoreUpdateModal({
             </Text>
           </Group>
           <Group gap="xs">
+            {canEditRoster && onOpenRoster && (
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<ListChecks size={14} />}
+                onClick={onOpenRoster}
+              >
+                Edit roster
+              </Button>
+            )}
             <Button
               variant="default"
               size="xs"

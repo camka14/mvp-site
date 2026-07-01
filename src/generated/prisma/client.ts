@@ -162,6 +162,16 @@ export type StaffPayRunItem = Prisma.StaffPayRunItemModel
  */
 export type EventOfficials = Prisma.EventOfficialsModel
 /**
+ * Model TeamCheckIns
+ *
+ */
+export type TeamCheckIns = Prisma.TeamCheckInsModel
+/**
+ * Model MatchRosterEntries
+ *
+ */
+export type MatchRosterEntries = Prisma.MatchRosterEntriesModel
+/**
  * Model Teams
  *
  */

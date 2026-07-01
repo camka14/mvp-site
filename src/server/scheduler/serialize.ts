@@ -222,6 +222,12 @@ const serializeTournamentExtras = (event: Tournament) => ({
   setsPerMatch: event.setsPerMatch ?? null,
   doTeamsOfficiate: usesTeamOfficialScheduling(event),
   teamOfficialsMaySwap: usesTeamOfficialScheduling(event) ? event.teamOfficialsMaySwap ?? false : false,
+  teamCheckInMode: event.teamSignup ? event.teamCheckInMode ?? 'OFF' : 'OFF',
+  teamCheckInOpenMinutesBefore: event.teamCheckInOpenMinutesBefore ?? 60,
+  allowMatchRosterEdits: event.teamSignup ? event.allowMatchRosterEdits ?? false : false,
+  allowTemporaryMatchPlayers: event.teamSignup && event.allowMatchRosterEdits
+    ? event.allowTemporaryMatchPlayers ?? false
+    : false,
 });
 
 const serializeLeagueExtras = (event: League) => ({

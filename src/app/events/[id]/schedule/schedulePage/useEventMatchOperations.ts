@@ -44,6 +44,12 @@ export type MatchOperationPayload = {
   incidentOperations?: MatchIncidentOperation[];
   lifecycle?: MatchLifecycleOperation;
   officialCheckIn?: MatchOfficialCheckInOperation;
+  matchAction?: {
+    action: 'FORFEIT' | 'CANCEL' | 'SUSPEND' | 'RESUME';
+    forfeitingEventTeamId?: string | null;
+    winnerEventTeamId?: string | null;
+    reason?: string | null;
+  };
   team1Points: number[];
   team2Points: number[];
   setResults: number[];
@@ -433,6 +439,7 @@ export default function useEventMatchOperations({
       incidentOperations,
       lifecycle,
       officialCheckIn,
+      matchAction,
       time,
     }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
@@ -443,7 +450,8 @@ export default function useEventMatchOperations({
           || Boolean(segmentOperations?.length)
           || Boolean(incidentOperations?.length)
           || Boolean(lifecycle)
-          || Boolean(officialCheckIn);
+          || Boolean(officialCheckIn)
+          || Boolean(matchAction);
         let updated: Match;
         if (scoreSet) {
           updated = await tournamentService.setMatchScore(targetEventId, matchId, scoreSet);
@@ -461,6 +469,7 @@ export default function useEventMatchOperations({
             incidentOperations,
             lifecycle,
             officialCheckIn,
+            matchAction,
             time,
           });
         } else {

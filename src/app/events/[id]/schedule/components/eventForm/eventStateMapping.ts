@@ -43,6 +43,14 @@ import {
     normalizeOfficialSchedulingMode,
     normalizeSportOfficialPositionTemplates,
 } from './officials';
+
+const normalizeTeamCheckInMode = (value: unknown): 'OFF' | 'EVENT' | 'MATCH' => {
+    if (typeof value !== 'string') {
+        return 'OFF';
+    }
+    const normalized = value.trim().toUpperCase();
+    return normalized === 'EVENT' || normalized === 'MATCH' ? normalized : 'OFF';
+};
 import {
     normalizeInstallmentAmounts,
     normalizeInstallmentRelativeDays,
@@ -478,6 +486,15 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsOfficiate,
     teamOfficialsMaySwap: doTeamsOfficiate && Boolean((event as any).teamOfficialsMaySwap),
+    teamCheckInMode: Boolean(event.teamSignup) ? normalizeTeamCheckInMode((event as any).teamCheckInMode) : 'OFF',
+    teamCheckInOpenMinutesBefore: Number.isFinite(Number((event as any).teamCheckInOpenMinutesBefore))
+        ? Math.max(0, Math.trunc(Number((event as any).teamCheckInOpenMinutesBefore)))
+        : 60,
+    allowMatchRosterEdits: Boolean(event.teamSignup) && Boolean((event as any).allowMatchRosterEdits),
+    allowTemporaryMatchPlayers:
+        Boolean(event.teamSignup) &&
+        Boolean((event as any).allowMatchRosterEdits) &&
+        Boolean((event as any).allowTemporaryMatchPlayers),
     matchRulesOverride: sanitizeMatchRulesOverrideForEditor((event as any).matchRulesOverride),
     autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
     leagueScoringConfig: createLeagueScoringConfig(

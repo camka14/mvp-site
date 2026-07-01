@@ -148,6 +148,7 @@ export type MatchScoringModel = 'SETS' | 'PERIODS' | 'INNINGS' | 'POINTS_ONLY';
 export type MatchLifecycleStatus = 'SCHEDULED' | 'READY' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED' | 'FORFEIT' | 'SUSPENDED';
 export type MatchResultStatus = 'PENDING' | 'OFFICIAL' | 'OVERRIDDEN' | 'DISPUTED';
 export type MatchResultType = 'REGULATION' | 'OVERTIME' | 'SHOOTOUT' | 'FORFEIT' | 'NO_CONTEST' | 'DRAW';
+export type TeamCheckInMode = 'OFF' | 'EVENT' | 'MATCH';
 export type MatchSegmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'VOID';
 export type MatchTimerMode = 'NONE' | 'COUNT_UP';
 export type MatchIncidentDefinitionKind = 'SCORING' | 'DISCIPLINE' | 'NOTE' | 'ADMIN';
@@ -933,6 +934,10 @@ export interface Event {
   setsPerMatch?: number;
   doTeamsOfficiate?: boolean;
   teamOfficialsMaySwap?: boolean;
+  teamCheckInMode?: TeamCheckInMode;
+  teamCheckInOpenMinutesBefore?: number;
+  allowMatchRosterEdits?: boolean;
+  allowTemporaryMatchPlayers?: boolean;
   matchRulesOverride?: MatchRulesConfig | null;
   autoCreatePointMatchIncidents?: boolean;
   resolvedMatchRules?: ResolvedMatchRules | null;
@@ -1852,6 +1857,21 @@ export function toEventPayload(event: Event): EventPayload {
   } else if (typeof payload.teamOfficialsMaySwap === 'boolean') {
     payload.teamOfficialsMaySwap = Boolean(payload.teamOfficialsMaySwap);
   }
+
+  const normalizedTeamCheckInMode = typeof payload.teamCheckInMode === 'string'
+    ? payload.teamCheckInMode.trim().toUpperCase()
+    : undefined;
+  if (normalizedTeamCheckInMode === 'EVENT' || normalizedTeamCheckInMode === 'MATCH') {
+    payload.teamCheckInMode = normalizedTeamCheckInMode;
+  } else {
+    payload.teamCheckInMode = 'OFF';
+  }
+  const openMinutes = Number(payload.teamCheckInOpenMinutesBefore);
+  payload.teamCheckInOpenMinutesBefore = Number.isFinite(openMinutes)
+    ? Math.max(0, Math.trunc(openMinutes))
+    : 60;
+  payload.allowMatchRosterEdits = Boolean(payload.teamSignup) && Boolean(payload.allowMatchRosterEdits);
+  payload.allowTemporaryMatchPlayers = Boolean(payload.allowMatchRosterEdits) && Boolean(payload.allowTemporaryMatchPlayers);
 
   if (payload.eventType && payload.eventType !== 'LEAGUE') {
     delete payload.leagueScoringConfig;

@@ -75,6 +75,8 @@ export const ModelName = {
   StaffPayRun: 'StaffPayRun',
   StaffPayRunItem: 'StaffPayRunItem',
   EventOfficials: 'EventOfficials',
+  TeamCheckIns: 'TeamCheckIns',
+  MatchRosterEntries: 'MatchRosterEntries',
   Teams: 'Teams',
   CanonicalTeams: 'CanonicalTeams',
   TeamRegistrations: 'TeamRegistrations',
@@ -738,6 +740,47 @@ export const EventOfficialsScalarFieldEnum = {
 } as const
 
 export type EventOfficialsScalarFieldEnum = (typeof EventOfficialsScalarFieldEnum)[keyof typeof EventOfficialsScalarFieldEnum]
+
+
+export const TeamCheckInsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  eventTeamId: 'eventTeamId',
+  checkInKey: 'checkInKey',
+  checkedInAt: 'checkedInAt',
+  checkedInByUserId: 'checkedInByUserId',
+  scope: 'scope',
+  status: 'status'
+} as const
+
+export type TeamCheckInsScalarFieldEnum = (typeof TeamCheckInsScalarFieldEnum)[keyof typeof TeamCheckInsScalarFieldEnum]
+
+
+export const MatchRosterEntriesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  eventTeamId: 'eventTeamId',
+  source: 'source',
+  status: 'status',
+  userId: 'userId',
+  firstName: 'firstName',
+  lastName: 'lastName',
+  email: 'email',
+  linkedAt: 'linkedAt',
+  linkedByUserId: 'linkedByUserId',
+  createdByUserId: 'createdByUserId',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  metadata: 'metadata'
+} as const
+
+export type MatchRosterEntriesScalarFieldEnum = (typeof MatchRosterEntriesScalarFieldEnum)[keyof typeof MatchRosterEntriesScalarFieldEnum]
 
 
 export const TeamsScalarFieldEnum = {
@@ -1552,6 +1595,10 @@ export const EventsScalarFieldEnum = {
   officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
+  teamCheckInMode: 'teamCheckInMode',
+  teamCheckInOpenMinutesBefore: 'teamCheckInOpenMinutesBefore',
+  allowMatchRosterEdits: 'allowMatchRosterEdits',
+  allowTemporaryMatchPlayers: 'allowTemporaryMatchPlayers',
   officialPositions: 'officialPositions',
   matchRulesOverride: 'matchRulesOverride',
   autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',

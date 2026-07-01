@@ -218,6 +218,25 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback;
 };
 
+const normalizeTeamCheckInMode = (value: unknown, fallback: 'OFF' | 'EVENT' | 'MATCH' = 'OFF'): 'OFF' | 'EVENT' | 'MATCH' => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'EVENT' || normalized === 'MATCH' || normalized === 'OFF') {
+    return normalized;
+  }
+  return fallback;
+};
+
+const normalizeOpenMinutesBefore = (value: unknown, fallback = 60): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.trunc(parsed));
+};
+
 const normalizeEntityId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -3013,6 +3032,15 @@ export const loadEventWithRelations = async (
       doTeamsOfficiate && typeof (event as any).teamOfficialsMaySwap === 'boolean'
         ? Boolean((event as any).teamOfficialsMaySwap)
         : false,
+    teamCheckInMode: Boolean(event.teamSignup)
+      ? normalizeTeamCheckInMode((event as any).teamCheckInMode)
+      : 'OFF',
+    teamCheckInOpenMinutesBefore: normalizeOpenMinutesBefore((event as any).teamCheckInOpenMinutesBefore),
+    allowMatchRosterEdits: Boolean(event.teamSignup) && Boolean((event as any).allowMatchRosterEdits),
+    allowTemporaryMatchPlayers:
+      Boolean(event.teamSignup) &&
+      Boolean((event as any).allowMatchRosterEdits) &&
+      Boolean((event as any).allowTemporaryMatchPlayers),
     officialSchedulingMode,
     officialPositions,
     eventOfficials,
@@ -4713,6 +4741,21 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
     ? coerceBoolean(payload.teamOfficialsMaySwap, false)
     : false;
+  const normalizedTeamSignup = isAffiliateExternalEvent ? false : payload.teamSignup ?? true;
+  const existingTeamCheckInMode = normalizeTeamCheckInMode((existingEvent as any)?.teamCheckInMode);
+  const normalizedTeamCheckInMode = normalizedTeamSignup
+    ? normalizeTeamCheckInMode(payload.teamCheckInMode, existingTeamCheckInMode)
+    : 'OFF';
+  const normalizedTeamCheckInOpenMinutesBefore = normalizeOpenMinutesBefore(
+    payload.teamCheckInOpenMinutesBefore,
+    normalizeOpenMinutesBefore((existingEvent as any)?.teamCheckInOpenMinutesBefore),
+  );
+  const normalizedAllowMatchRosterEdits = normalizedTeamSignup
+    ? coerceBoolean(payload.allowMatchRosterEdits, Boolean((existingEvent as any)?.allowMatchRosterEdits))
+    : false;
+  const normalizedAllowTemporaryMatchPlayers = normalizedTeamSignup && normalizedAllowMatchRosterEdits
+    ? coerceBoolean(payload.allowTemporaryMatchPlayers, Boolean((existingEvent as any)?.allowTemporaryMatchPlayers))
+    : false;
   const payloadIncludesMatchRulesOverride = Object.prototype.hasOwnProperty.call(payload, 'matchRulesOverride');
   const normalizedMatchRulesOverride = (() => {
     if (isAffiliateExternalEvent) {
@@ -4784,7 +4827,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
     cancellationRefundHours: payload.cancellationRefundHours ?? null,
-    teamSignup: isAffiliateExternalEvent ? false : payload.teamSignup ?? true,
+    teamSignup: normalizedTeamSignup,
     prize: payload.prize ?? null,
     registrationCutoffHours: payload.registrationCutoffHours ?? null,
     seedColor: payload.seedColor ?? null,
@@ -4815,6 +4858,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     officialSchedulingMode,
     doTeamsOfficiate: normalizedDoTeamsOfficiate ?? null,
     teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
+    teamCheckInMode: normalizedTeamCheckInMode,
+    teamCheckInOpenMinutesBefore: normalizedTeamCheckInOpenMinutesBefore,
+    allowMatchRosterEdits: normalizedAllowMatchRosterEdits,
+    allowTemporaryMatchPlayers: normalizedAllowTemporaryMatchPlayers,
     officialPositions: isAffiliateExternalEvent ? [] : resolvedOfficialPositions,
     ...(normalizedMatchRulesOverride !== undefined ? { matchRulesOverride: normalizedMatchRulesOverride } : {}),
     ...(normalizedAutoCreatePointMatchIncidents !== undefined

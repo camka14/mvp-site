@@ -8,6 +8,7 @@ import type {
   ManualPaymentLink,
   RegistrationPaymentMode,
   ResolvedMatchRules,
+  TeamCheckInMode,
 } from '@/types';
 import {
   getDateTimePartsInTimeZone,
@@ -771,6 +772,10 @@ export class Tournament {
   maxAge: number | null;
   doTeamsOfficiate: boolean;
   teamOfficialsMaySwap: boolean;
+  teamCheckInMode: TeamCheckInMode;
+  teamCheckInOpenMinutesBefore: number;
+  allowMatchRosterEdits: boolean;
+  allowTemporaryMatchPlayers: boolean;
   officialSchedulingMode: OfficialSchedulingMode;
   officialPositions: EventOfficialPosition[];
   eventOfficials: EventOfficial[];
@@ -850,6 +855,10 @@ export class Tournament {
     maxAge?: number | null;
     doTeamsOfficiate?: boolean;
     teamOfficialsMaySwap?: boolean;
+    teamCheckInMode?: TeamCheckInMode;
+    teamCheckInOpenMinutesBefore?: number;
+    allowMatchRosterEdits?: boolean;
+    allowTemporaryMatchPlayers?: boolean;
     officialSchedulingMode?: OfficialSchedulingMode;
     officialPositions?: EventOfficialPosition[];
     eventOfficials?: EventOfficial[];
@@ -931,6 +940,12 @@ export class Tournament {
       ? true
       : Boolean(params.doTeamsOfficiate);
     this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
+    this.teamCheckInMode = this.teamSignup ? params.teamCheckInMode ?? 'OFF' : 'OFF';
+    this.teamCheckInOpenMinutesBefore = typeof params.teamCheckInOpenMinutesBefore === 'number' && Number.isFinite(params.teamCheckInOpenMinutesBefore)
+      ? Math.max(0, Math.trunc(params.teamCheckInOpenMinutesBefore))
+      : 60;
+    this.allowMatchRosterEdits = this.teamSignup ? Boolean(params.allowMatchRosterEdits) : false;
+    this.allowTemporaryMatchPlayers = this.allowMatchRosterEdits ? Boolean(params.allowTemporaryMatchPlayers) : false;
     this.officialPositions = params.officialPositions ?? [];
     this.eventOfficials = params.eventOfficials ?? [];
     this.matchRulesOverride = params.matchRulesOverride ?? null;

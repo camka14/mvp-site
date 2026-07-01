@@ -1053,6 +1053,52 @@ model EventOfficials {
   @@index([userId])
 }
 
+model TeamCheckIns {
+  id                String   @id
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  eventId           String
+  matchId           String?
+  eventTeamId       String
+  checkInKey        String   @unique
+  checkedInAt       DateTime
+  checkedInByUserId String
+  scope             String
+  status            String   @default("CHECKED_IN")
+
+  @@index([eventId])
+  @@index([eventId, eventTeamId, scope])
+  @@index([eventId, matchId, eventTeamId])
+  @@index([checkedInByUserId])
+}
+
+model MatchRosterEntries {
+  id              String   @id
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  eventId         String
+  matchId         String
+  eventTeamId     String
+  source          String
+  status          String
+  userId          String?
+  firstName       String?
+  lastName        String?
+  email           String?
+  linkedAt        DateTime?
+  linkedByUserId  String?
+  createdByUserId String
+  removedAt       DateTime?
+  removedByUserId String?
+  metadata        Json     @default("{}")
+
+  @@index([eventId])
+  @@index([eventId, matchId])
+  @@index([eventId, matchId, eventTeamId])
+  @@index([eventTeamId, userId])
+  @@index([userId])
+}
+
 model Teams {
   id                    String              @id
   createdAt             DateTime?
@@ -1924,6 +1970,10 @@ model Events {
   officialSchedulingMode        EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate              Boolean?
   teamOfficialsMaySwap          Boolean?
+  teamCheckInMode               String                            @default("OFF")
+  teamCheckInOpenMinutesBefore  Int                               @default(60)
+  allowMatchRosterEdits         Boolean                           @default(false)
+  allowTemporaryMatchPlayers    Boolean                           @default(false)
   officialPositions             Json?
   matchRulesOverride            Json?
   autoCreatePointMatchIncidents Boolean?                         @default(false)

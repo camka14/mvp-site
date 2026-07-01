@@ -3187,6 +3187,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [eventData.eventType, eventData.teamSignup, setEventData]);
 
+    useEffect(() => {
+        if (eventData.teamSignup) {
+            if (!eventData.allowMatchRosterEdits && eventData.allowTemporaryMatchPlayers) {
+                setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
+            }
+            return;
+        }
+        if (
+            eventData.teamCheckInMode !== 'OFF' ||
+            eventData.allowMatchRosterEdits ||
+            eventData.allowTemporaryMatchPlayers
+        ) {
+            setValue('teamCheckInMode', 'OFF', { shouldDirty: true, shouldValidate: true });
+            setValue('allowMatchRosterEdits', false, { shouldDirty: true, shouldValidate: true });
+            setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
+        }
+    }, [
+        eventData.allowMatchRosterEdits,
+        eventData.allowTemporaryMatchPlayers,
+        eventData.teamCheckInMode,
+        eventData.teamSignup,
+        setValue,
+    ]);
+
     
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
@@ -3967,6 +3991,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         eventOfficialsDisabled={isImmutableField('eventOfficials')}
                                         assistantHostsDisabled={isImmutableField('assistantHostIds')}
                                         hostDisabled={isImmutableField('hostId')}
+                                        onRosterEditsChange={(checked) => {
+                                            if (!checked) {
+                                                setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
+                                            }
+                                        }}
                                         onTeamsOfficiateChange={(checked) => {
                                             if (!checked) {
                                                 setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });

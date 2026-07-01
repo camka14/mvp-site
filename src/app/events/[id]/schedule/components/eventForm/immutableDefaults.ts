@@ -157,6 +157,23 @@ export const applyImmutableEventDefaults = ({
     if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
         next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
     }
+    if (typeof (defaults as any).teamCheckInMode === 'string') {
+        const normalized = (defaults as any).teamCheckInMode.trim().toUpperCase();
+        next.teamCheckInMode = next.teamSignup && (normalized === 'EVENT' || normalized === 'MATCH')
+            ? normalized
+            : 'OFF';
+    }
+    if (typeof (defaults as any).teamCheckInOpenMinutesBefore === 'number') {
+        next.teamCheckInOpenMinutesBefore = Math.max(0, Math.trunc((defaults as any).teamCheckInOpenMinutesBefore));
+    }
+    if (typeof (defaults as any).allowMatchRosterEdits === 'boolean') {
+        next.allowMatchRosterEdits = next.teamSignup ? Boolean((defaults as any).allowMatchRosterEdits) : false;
+    }
+    if (typeof (defaults as any).allowTemporaryMatchPlayers === 'boolean') {
+        next.allowTemporaryMatchPlayers = next.allowMatchRosterEdits
+            ? Boolean((defaults as any).allowTemporaryMatchPlayers)
+            : false;
+    }
     if ((defaults as any).matchRulesOverride && typeof (defaults as any).matchRulesOverride === 'object') {
         next.matchRulesOverride = sanitizeMatchRulesOverrideForEditor((defaults as any).matchRulesOverride);
     } else if ((defaults as any).matchRulesOverride === null) {

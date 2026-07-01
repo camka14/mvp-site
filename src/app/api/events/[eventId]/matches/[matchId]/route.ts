@@ -112,6 +112,12 @@ const matchPolicySchema = z.object({
   timekeeping: z.record(z.string(), z.unknown()).nullable().optional(),
 }).optional();
 const matchRulesSnapshotSchema = z.record(z.string(), z.unknown()).nullable().optional();
+const matchActionSchema = z.object({
+  action: z.enum(['FORFEIT', 'CANCEL', 'SUSPEND', 'RESUME']),
+  forfeitingEventTeamId: z.string().nullable().optional(),
+  winnerEventTeamId: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
+}).optional();
 
 const updateSchema = z.object({
   locked: z.boolean().optional(),
@@ -139,6 +145,7 @@ const updateSchema = z.object({
   time: z.string().optional(),
   matchPolicy: matchPolicySchema,
   matchRulesSnapshot: matchRulesSnapshotSchema,
+  matchAction: matchActionSchema,
   ...clientOperationFields,
 });
 
@@ -829,6 +836,67 @@ const applyLifecycleOperation = (match: any, lifecycle: NonNullable<z.infer<type
   }
 };
 
+const isTerminalMatchStatus = (match: any): boolean => {
+  const status = typeof match.status === 'string' ? match.status.toUpperCase() : '';
+  return status === 'COMPLETE' || status === 'CANCELLED';
+};
+
+const applyMatchActionOperation = (
+  match: any,
+  actionInput: NonNullable<z.infer<typeof matchActionSchema>>,
+  actorIsHostOrOfficial: boolean,
+) => {
+  if (!actorIsHostOrOfficial) {
+    throw new Response('Forbidden', { status: 403 });
+  }
+  if (isTerminalMatchStatus(match)) {
+    throw new Response('Completed or cancelled matches cannot be changed from match actions.', { status: 409 });
+  }
+  const now = new Date();
+  const reason = typeof actionInput.reason === 'string' && actionInput.reason.trim().length > 0
+    ? actionInput.reason.trim()
+    : null;
+  const teamIds = [normalizeIdToken(match.team1?.id ?? match.team1?.$id ?? match.team1Id), normalizeIdToken(match.team2?.id ?? match.team2?.$id ?? match.team2Id)]
+    .filter((teamId): teamId is string => Boolean(teamId));
+  if (actionInput.action === 'FORFEIT') {
+    const forfeitingTeamId = normalizeIdToken(actionInput.forfeitingEventTeamId);
+    const explicitWinnerId = normalizeIdToken(actionInput.winnerEventTeamId);
+    const winnerEventTeamId = explicitWinnerId ?? (
+      forfeitingTeamId ? teamIds.find((teamId) => teamId !== forfeitingTeamId) ?? null : null
+    );
+    if (!winnerEventTeamId || !teamIds.includes(winnerEventTeamId)) {
+      throw new Response('Forfeit requires a match winner or forfeiting team.', { status: 400 });
+    }
+    match.status = 'COMPLETE';
+    match.resultStatus = 'FINAL';
+    match.resultType = 'FORFEIT';
+    match.winnerEventTeamId = winnerEventTeamId;
+    match.actualEnd = match.actualEnd ?? now;
+    match.statusReason = reason;
+    match.locked = true;
+    return;
+  }
+  if (actionInput.action === 'CANCEL') {
+    match.status = 'CANCELLED';
+    match.resultStatus = 'NO_CONTEST';
+    match.resultType = 'NO_CONTEST';
+    match.winnerEventTeamId = null;
+    match.actualEnd = match.actualEnd ?? now;
+    match.statusReason = reason ?? 'Cancelled';
+    match.locked = true;
+    return;
+  }
+  if (actionInput.action === 'SUSPEND') {
+    match.status = 'SUSPENDED';
+    match.statusReason = reason ?? 'Suspended';
+    return;
+  }
+  if (actionInput.action === 'RESUME') {
+    match.status = match.actualStart ? 'IN_PROGRESS' : 'READY';
+    match.statusReason = null;
+  }
+};
+
 const applyOfficialCheckInOperation = (
   match: any,
   checkIn: NonNullable<z.infer<typeof officialCheckInSchema>>,
@@ -1339,6 +1407,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       assertLegacyScoreArraysAllowed(targetMatch, event, parsed.data);
       assertLegacySetScoreUpdateAllowed(event, targetMatch, parsed.data);
       applyMatchUpdates(event, targetMatch, updates);
+      if (parsed.data.matchAction) {
+        applyMatchActionOperation(targetMatch, parsed.data.matchAction, isHostOrAdmin || isOfficial);
+      }
       if (shouldFreezeMatchRulesSnapshot({
         segmentOperations: parsed.data.segmentOperations,
         incidentOperations: sanitizedIncidentOperations,

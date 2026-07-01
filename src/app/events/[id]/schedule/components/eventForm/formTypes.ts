@@ -84,6 +84,10 @@ export type EventFormState = {
     assistantHostIds: string[];
     doTeamsOfficiate: boolean;
     teamOfficialsMaySwap: boolean;
+    teamCheckInMode: 'OFF' | 'EVENT' | 'MATCH';
+    teamCheckInOpenMinutesBefore: number;
+    allowMatchRosterEdits: boolean;
+    allowTemporaryMatchPlayers: boolean;
     matchRulesOverride: MatchRulesConfig | null;
     autoCreatePointMatchIncidents: boolean;
     leagueScoringConfig: LeagueScoringConfig;

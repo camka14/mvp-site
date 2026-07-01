@@ -103,6 +103,7 @@ import {
 import EventMatchModals from './schedulePage/EventMatchModals';
 import EventScheduleHeader from './schedulePage/EventScheduleHeader';
 import FinanceTabPanel from './schedulePage/FinanceTabPanel';
+import MatchRosterModal from './schedulePage/MatchRosterModal';
 import ParticipantsPanel from './schedulePage/ParticipantsPanel';
 import RentalCheckoutModals from './schedulePage/RentalCheckoutModals';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
@@ -281,6 +282,11 @@ function EventScheduleContent() {
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
   const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
+  const [eventTeamCheckInsById, setEventTeamCheckInsById] = useState<Record<string, boolean>>({});
+  const [rosterModalMatch, setRosterModalMatch] = useState<Match | null>(null);
+  const [rosterModalTeam, setRosterModalTeam] = useState<Team | null>(null);
+  const eventCheckInPromptedRef = useRef<Set<string>>(new Set());
+  const matchCheckInPromptedRef = useRef<Set<string>>(new Set());
   const [userComplianceById, setUserComplianceById] = useState<Record<string, TeamComplianceUserSummary>>({});
   const [userComplianceLoading, setUserComplianceLoading] = useState(false);
   const [userComplianceError, setUserComplianceError] = useState<string | null>(null);
@@ -1895,6 +1901,39 @@ function EventScheduleContent() {
   );
 
   useEffect(() => {
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (!targetEventId || !canManageEvent || activeEvent?.teamCheckInMode !== 'EVENT') {
+      setEventTeamCheckInsById({});
+      return;
+    }
+
+    let cancelled = false;
+    apiRequest<{ checkIns?: Array<{ eventTeamId?: string | null; status?: string | null }> }>(
+      `/api/events/${encodeURIComponent(targetEventId)}/team-check-ins`,
+    )
+      .then((response) => {
+        if (cancelled) return;
+        const next: Record<string, boolean> = {};
+        (response.checkIns ?? []).forEach((row) => {
+          const teamId = normalizeIdToken(row.eventTeamId);
+          if (teamId && String(row.status ?? '').toUpperCase() === 'CHECKED_IN') {
+            next[teamId] = true;
+          }
+        });
+        setEventTeamCheckInsById(next);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Failed to load event team check-ins', error);
+          setEventTeamCheckInsById({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.$id, activeEvent?.teamCheckInMode, canManageEvent, eventId]);
+
+  useEffect(() => {
     if (!canUseTeamCompliance) {
       setTeamComplianceError(null);
       setTeamComplianceLoading(false);
@@ -2245,6 +2284,187 @@ function EventScheduleContent() {
     }
     return null;
   }, [participantTeamsById, user?.$id, userOnTeam]);
+
+  const userCanManageRosterTeam = useCallback(
+    (team: Team | null | undefined) => {
+      if (!team || !user?.$id) return false;
+      const managerOrCoachIds = new Set<string>();
+      const addId = (value: unknown) => {
+        const normalized = normalizeIdToken(value);
+        if (normalized) {
+          managerOrCoachIds.add(normalized);
+        }
+      };
+      addId(team.managerId);
+      addId(team.headCoachId);
+      if (Array.isArray(team.assistantCoachIds)) {
+        team.assistantCoachIds.forEach(addId);
+      }
+      if (Array.isArray(team.coachIds)) {
+        team.coachIds.forEach(addId);
+      }
+      const teamRelations = team as Team & {
+        manager?: UserData | null;
+        headCoach?: UserData | null;
+        assistantCoaches?: UserData[] | null;
+        coaches?: UserData[] | null;
+        eventTeamStaffAssignments?: Array<{
+          userId?: string | null;
+          role?: string | null;
+          status?: string | null;
+        }> | null;
+      };
+      addId(teamRelations.manager?.$id);
+      addId(teamRelations.headCoach?.$id);
+      if (Array.isArray(teamRelations.assistantCoaches)) {
+        teamRelations.assistantCoaches.forEach((coach) => addId(coach?.$id));
+      }
+      if (Array.isArray(teamRelations.coaches)) {
+        teamRelations.coaches.forEach((coach) => addId(coach?.$id));
+      }
+      if (Array.isArray(teamRelations.eventTeamStaffAssignments)) {
+        teamRelations.eventTeamStaffAssignments.forEach((assignment) => {
+          const role = String(assignment?.role ?? '').toUpperCase();
+          const status = String(assignment?.status ?? 'ACTIVE').toUpperCase();
+          if (status === 'ACTIVE' && ['MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'].includes(role)) {
+            addId(assignment.userId);
+          }
+        });
+      }
+      return managerOrCoachIds.has(user.$id);
+    },
+    [user?.$id],
+  );
+
+  const findUserManagedEventTeam = useCallback(() => {
+    for (const team of participantTeamsById.values()) {
+      if (userCanManageRosterTeam(team)) {
+        return team;
+      }
+    }
+    return null;
+  }, [participantTeamsById, userCanManageRosterTeam]);
+
+  const findUserManagedMatchTeam = useCallback(
+    (match: Match | null | undefined) => {
+      if (!match) return null;
+      const team1 = resolveTeam(match.team1 ?? match.team1Id);
+      if (userCanManageRosterTeam(team1)) {
+        return team1;
+      }
+      const team2 = resolveTeam(match.team2 ?? match.team2Id);
+      if (userCanManageRosterTeam(team2)) {
+        return team2;
+      }
+      return null;
+    },
+    [resolveTeam, userCanManageRosterTeam],
+  );
+
+  const isTeamCheckInOpen = useCallback(
+    (start: string | Date | null | undefined) => {
+      if (!start) return true;
+      const startDate = start instanceof Date ? start : new Date(start);
+      if (Number.isNaN(startDate.getTime())) return true;
+      const minutes = Number.isFinite(Number(activeEvent?.teamCheckInOpenMinutesBefore))
+        ? Math.max(0, Math.trunc(Number(activeEvent?.teamCheckInOpenMinutesBefore)))
+        : 60;
+      return Date.now() >= startDate.getTime() - minutes * 60_000;
+    },
+    [activeEvent?.teamCheckInOpenMinutesBefore],
+  );
+
+  const performTeamCheckIn = useCallback(
+    async (scope: 'EVENT' | 'MATCH', team: Team, match?: Match | null) => {
+      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+      const eventTeamId = normalizeIdToken(team.$id);
+      if (!targetEventId || !eventTeamId) {
+        return false;
+      }
+      const endpoint = scope === 'MATCH'
+        ? (
+            match?.$id
+              ? `/api/events/${encodeURIComponent(targetEventId)}/matches/${encodeURIComponent(match.$id)}/team-check-ins`
+              : null
+          )
+        : `/api/events/${encodeURIComponent(targetEventId)}/team-check-ins`;
+      if (!endpoint) {
+        return false;
+      }
+      try {
+        await apiRequest(endpoint, {
+          method: 'POST',
+          body: { eventTeamId },
+        });
+        if (scope === 'EVENT') {
+          setEventTeamCheckInsById((current) => ({ ...current, [eventTeamId]: true }));
+        }
+        return true;
+      } catch (checkInError) {
+        console.error('Failed to check in team', checkInError);
+        setError(checkInError instanceof Error ? checkInError.message : 'Failed to check in team.');
+        return false;
+      }
+    },
+    [activeEvent?.$id, eventId],
+  );
+
+  const openRosterForMatch = useCallback(
+    (match: Match) => {
+      const managedTeam = findUserManagedMatchTeam(match);
+      if (!managedTeam) {
+        return;
+      }
+      closeScoreModal();
+      setRosterModalMatch(match);
+      setRosterModalTeam(managedTeam);
+    },
+    [closeScoreModal, findUserManagedMatchTeam],
+  );
+
+  const canUserEditMatchRoster = useCallback(
+    (match: Match) => Boolean(
+      activeEvent?.teamSignup === true
+        && activeEvent?.allowMatchRosterEdits === true
+        && findUserManagedMatchTeam(match)
+    ),
+    [activeEvent?.allowMatchRosterEdits, activeEvent?.teamSignup, findUserManagedMatchTeam],
+  );
+
+  useEffect(() => {
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (
+      !targetEventId
+      || activeEvent?.teamSignup !== true
+      || activeEvent?.teamCheckInMode !== 'EVENT'
+      || !isTeamCheckInOpen(activeEvent?.start)
+    ) {
+      return;
+    }
+    const managedTeam = findUserManagedEventTeam();
+    const eventTeamId = normalizeIdToken(managedTeam?.$id);
+    if (!managedTeam || !eventTeamId || eventTeamCheckInsById[eventTeamId]) {
+      return;
+    }
+    const promptKey = `${targetEventId}:${eventTeamId}`;
+    if (eventCheckInPromptedRef.current.has(promptKey)) {
+      return;
+    }
+    eventCheckInPromptedRef.current.add(promptKey);
+    if (window.confirm(`Check in ${managedTeam.name} for this event?`)) {
+      void performTeamCheckIn('EVENT', managedTeam);
+    }
+  }, [
+    activeEvent?.$id,
+    activeEvent?.start,
+    activeEvent?.teamCheckInMode,
+    activeEvent?.teamSignup,
+    eventId,
+    eventTeamCheckInsById,
+    findUserManagedEventTeam,
+    isTeamCheckInOpen,
+    performTeamCheckIn,
+  ]);
 
   const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
   useEffect(() => {
@@ -3581,6 +3801,25 @@ function EventScheduleContent() {
     enableDetailsView?: boolean;
     fullWidth?: boolean;
   }) => {
+    const eventTeamId = normalizeIdToken(team.$id ?? (team as any).id);
+    const checkInBadge = activeEvent?.teamCheckInMode === 'EVENT' && eventTeamId
+      ? (
+        <Badge
+          color={eventTeamCheckInsById[eventTeamId] ? 'green' : 'gray'}
+          variant="light"
+        >
+          {eventTeamCheckInsById[eventTeamId] ? 'Checked in' : 'Not checked in'}
+        </Badge>
+      )
+      : null;
+    const mergedActions = checkInBadge || actions
+      ? (
+        <Group gap="xs" wrap="wrap">
+          {checkInBadge}
+          {actions}
+        </Group>
+      )
+      : undefined;
     if (isEditingEvent) {
       return (
         <DivisionTeamComplianceCard
@@ -3595,19 +3834,19 @@ function EventScheduleContent() {
           onClick={showComplianceDetails ? () => {
             setSelectedComplianceTeamId(team.$id);
           } : undefined}
-          actions={actions}
+          actions={mergedActions}
         />
       );
     }
 
-    const teamCardActions = actions
+    const teamCardActions = mergedActions
       ? (
         <div
           onClick={(event) => {
             event.stopPropagation();
           }}
         >
-          {actions}
+          {mergedActions}
         </div>
       )
       : undefined;
@@ -5040,17 +5279,51 @@ function EventScheduleContent() {
         }
       }
 
+      if (
+        activeEvent?.teamSignup === true
+        && activeEvent?.teamCheckInMode === 'MATCH'
+        && isTeamCheckInOpen(modalMatch.start)
+      ) {
+        let openedRosterAfterCheckIn = false;
+        const managedMatchTeam = findUserManagedMatchTeam(modalMatch);
+        const managedMatchTeamId = normalizeIdToken(managedMatchTeam?.$id);
+        const matchId = normalizeIdToken(modalMatch.$id);
+        if (managedMatchTeam && managedMatchTeamId && matchId) {
+          const promptKey = `${matchId}:${managedMatchTeamId}`;
+          if (!matchCheckInPromptedRef.current.has(promptKey)) {
+            matchCheckInPromptedRef.current.add(promptKey);
+            if (window.confirm(`Check in ${managedMatchTeam.name} for this match?`)) {
+              const checkedIn = await performTeamCheckIn('MATCH', managedMatchTeam, modalMatch);
+              if (checkedIn && activeEvent.allowMatchRosterEdits === true) {
+                setRosterModalMatch(modalMatch);
+                setRosterModalTeam(managedMatchTeam);
+                openedRosterAfterCheckIn = true;
+              }
+            }
+          }
+        }
+        if (openedRosterAfterCheckIn) {
+          return;
+        }
+      }
+
       openScoreModalForMatch(modalMatch);
     },
     [
       activeEvent?.doTeamsOfficiate,
+      activeEvent?.allowMatchRosterEdits,
+      activeEvent?.teamCheckInMode,
+      activeEvent?.teamSignup,
       activeEvent?.teamOfficialsMaySwap,
       activeMatches,
       canEditMatches,
+      findUserManagedMatchTeam,
       findUserEventTeam,
       handleMatchEditRequest,
       isOfficialCheckedIn,
+      isTeamCheckInOpen,
       openScoreModalForMatch,
+      performTeamCheckIn,
       resolveTeam,
       updateMatchOfficialState,
       user,
@@ -5871,6 +6144,8 @@ function EventScheduleContent() {
         scoreUpdateMatch={scoreUpdateMatch}
         isScoreModalOpen={isScoreModalOpen}
         canManageScore={canUserManageScore}
+        canEditRoster={canUserEditMatchRoster}
+        onOpenRoster={openRosterForMatch}
         onScoreChange={handleScoreChange}
         onSetComplete={handleSetComplete}
         onScoreSubmit={handleScoreSubmit}
@@ -5885,6 +6160,16 @@ function EventScheduleContent() {
         onMatchEditClose={handleMatchEditClose}
         onMatchEditSave={handleMatchEditSave}
         onMatchDelete={handleMatchDelete}
+      />
+      <MatchRosterModal
+        opened={Boolean(rosterModalMatch && rosterModalTeam)}
+        eventId={normalizeIdToken(activeEvent?.$id ?? eventId)}
+        match={rosterModalMatch}
+        team={rosterModalTeam}
+        onClose={() => {
+          setRosterModalMatch(null);
+          setRosterModalTeam(null);
+        }}
       />
       <RentalCheckoutModals {...rentalCheckout} />
     </div>

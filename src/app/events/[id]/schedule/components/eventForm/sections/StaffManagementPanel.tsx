@@ -24,6 +24,7 @@ import { StaffAssignedCardsGrid } from './StaffAssignedCardsGrid';
 import { StaffNonOrganizationInvitePanel } from './StaffNonOrganizationInvitePanel';
 import { StaffOfficialPositionEditor } from './StaffOfficialPositionEditor';
 import { StaffOrganizationRosterPicker } from './StaffOrganizationRosterPicker';
+import { TeamCheckInControls } from './TeamCheckInControls';
 import { TeamOfficiatingControls } from './TeamOfficiatingControls';
 
 type StaffManagementPanelProps = {
@@ -57,6 +58,7 @@ type StaffManagementPanelProps = {
     eventOfficialsDisabled: boolean;
     assistantHostsDisabled: boolean;
     hostDisabled: boolean;
+    onRosterEditsChange: (checked: boolean) => void;
     onTeamsOfficiateChange: (checked: boolean) => void;
     onSchedulingModeChange: (value: string | null) => void;
     onLoadSportDefaults: () => void;
@@ -116,6 +118,7 @@ export const StaffManagementPanel = ({
     eventOfficialsDisabled,
     assistantHostsDisabled,
     hostDisabled,
+    onRosterEditsChange,
     onTeamsOfficiateChange,
     onSchedulingModeChange,
     onLoadSportDefaults,
@@ -145,6 +148,12 @@ export const StaffManagementPanel = ({
             control={control}
             doTeamsOfficiate={Boolean(eventData.doTeamsOfficiate)}
             onTeamsOfficiateChange={onTeamsOfficiateChange}
+        />
+        <TeamCheckInControls
+            control={control}
+            teamSignup={Boolean(eventData.teamSignup)}
+            allowMatchRosterEdits={Boolean(eventData.allowMatchRosterEdits)}
+            onRosterEditsChange={onRosterEditsChange}
         />
         <StaffOfficialPositionEditor
             officialSchedulingMode={eventData.officialSchedulingMode}
