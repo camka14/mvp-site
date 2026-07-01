@@ -8,6 +8,10 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import { assertSetScoreUpdateAllowed } from '@/server/matches/setScoringRules';
+import {
+  OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
+  assertWindowOpen,
+} from '@/server/matches/matchWindows';
 import type { MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -194,6 +198,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }));
       if (!isHostOrAdmin && !isEventOfficial && !isTeamOfficialMember && !isAssignedOfficialUser && !isAssignedTeamOfficialById) {
         throw new Response('Forbidden', { status: 403 });
+      }
+      if (!isHostOrAdmin) {
+        assertWindowOpen(
+          match.start,
+          OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
+          'Official match actions open one hour before the scheduled match start.',
+        );
+      }
+      if (!match.actualStart) {
+        throw new Response('Scoring is disabled until the match is started.', { status: 409 });
       }
       if (matchRequiresPlayerRecordedScoring(match, event)) {
         throw new Response('Player-recorded scoring must use the match incident endpoint.', { status: 400 });

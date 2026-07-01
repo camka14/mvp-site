@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "auth_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwic2Vzc2lvblZlcnNpb24iOjAsImlhdCI6MTc3ODI3MTQ0NiwiZXhwIjoxNzc4ODc2MjQ2fQ.akmz7NA_D_syH6e7szZfMlGud-942MgRABEKwOLRsKs",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwic2Vzc2lvblZlcnNpb24iOjAsImlhdCI6MTc4Mjc2MDA3Mn0.K1rASuOq7lcNDxhcBK3lpz3M3YO2rwHxUsfgOdGoHHg",
       "domain": "localhost",
       "path": "/",
-      "expires": 1778876246.005,
+      "expires": 1817320072.51,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Lax"
@@ -21,7 +21,7 @@
         },
         {
           "name": "app-user",
-          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-05-08T20:17:23.282Z\",\"updatedAt\":\"2026-05-08T20:17:23.282Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"requiredProfileFieldsCompletedAt\":null,\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[\"team_1\",\"team_2\",\"team_3\",\"team_4\",\"team_5\",\"team_6\",\"team_7\",\"team_8\"],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"blockedUserIds\":[],\"hiddenEventIds\":[],\"chatTermsAcceptedAt\":null,\"chatTermsVersion\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
+          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-06-29T19:07:50.946Z\",\"updatedAt\":\"2026-06-29T19:07:50.946Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"requiredProfileFieldsCompletedAt\":null,\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[\"team_1\",\"team_2\",\"team_3\",\"team_4\",\"team_5\",\"team_6\",\"team_7\",\"team_8\",\"readonly-jersey-qa-team\"],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"blockedUserIds\":[],\"hiddenEventIds\":[],\"chatTermsAcceptedAt\":null,\"chatTermsVersion\":null,\"onboardingIntent\":null,\"accountVisibility\":\"PUBLIC\",\"notificationSettings\":{},\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
         }
       ]
     }

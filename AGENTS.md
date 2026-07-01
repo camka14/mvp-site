@@ -76,6 +76,10 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
     - `DO_SPACES_ENDPOINT`, `DO_SPACES_REGION`, `DO_SPACES_BUCKET`
     - `DO_SPACES_KEY`, `DO_SPACES_SECRET`
 
+### Live Database Access
+
+If live DigitalOcean Postgres commands such as `prisma migrate deploy`, DBHub, or one-off release metadata scripts time out or fail to connect, first check whether this machine's current public IP is allowed on the DigitalOcean managed database firewall. Use the DigitalOcean MCP database firewall tools to add the current IP while preserving the existing App Platform and IP rules, then retry the live DB operation.
+
 ### Installation Steps
 
 ```bash

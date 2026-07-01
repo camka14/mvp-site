@@ -32,6 +32,10 @@ import {
   shouldFreezeMatchRulesSnapshot,
 } from '@/server/matches/matchOperations';
 import {
+  OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
+  assertWindowOpen,
+} from '@/server/matches/matchWindows';
+import {
   buildMatchRulesSnapshot,
   resolveMatchSetPointTargets,
   type MatchPolicyOverrideInput,
@@ -148,6 +152,33 @@ const updateSchema = z.object({
   matchAction: matchActionSchema,
   ...clientOperationFields,
 });
+
+const startsMatch = (lifecycle: z.infer<typeof lifecycleSchema>): boolean => {
+  if (!lifecycle || !Object.prototype.hasOwnProperty.call(lifecycle, 'actualStart')) {
+    return false;
+  }
+  return typeof lifecycle.actualStart === 'string' && lifecycle.actualStart.trim().length > 0;
+};
+
+const hasScoreWrite = (update: z.infer<typeof updateSchema>): boolean => {
+  const hasLegacyScoreOnlyWrite =
+    (update.team1Points !== undefined || update.team2Points !== undefined || update.setResults !== undefined) &&
+    !update.matchAction &&
+    !update.officialCheckIn &&
+    !update.lifecycle &&
+    update.segmentOperations === undefined &&
+    update.incidentOperations === undefined;
+  if (hasLegacyScoreOnlyWrite) {
+    return true;
+  }
+  if (update.segmentOperations?.some((operation) => Object.prototype.hasOwnProperty.call(operation, 'scores'))) {
+    return true;
+  }
+  return update.incidentOperations?.some((operation) => {
+    const delta = Number(operation.linkedPointDelta ?? 0);
+    return Number.isFinite(delta) && delta !== 0;
+  }) === true;
+};
 
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
 
@@ -1295,8 +1326,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Forbidden', { status: 403 });
       }
 
+      if (parsed.data.officialCheckIn) {
+        assertWindowOpen(
+          targetMatch.start,
+          OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
+          'Official check-in opens one hour before the scheduled match start.',
+        );
+      }
+
+      if (!isHostOrAdmin) {
+        assertWindowOpen(
+          targetMatch.start,
+          OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
+          'Official match actions open one hour before the scheduled match start.',
+        );
+      }
+
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
         throw new Response('Unsupported event type', { status: 400 });
+      }
+
+      if (!targetMatch.actualStart && hasScoreWrite(parsed.data) && !startsMatch(parsed.data.lifecycle)) {
+        throw new Response('Scoring is disabled until the match is started.', { status: 409 });
       }
 
       const hasMatchPolicyUpdate = hasOwn(parsed.data, 'matchPolicy') || hasOwn(parsed.data, 'matchRulesSnapshot');

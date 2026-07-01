@@ -1044,6 +1044,13 @@ export default function ScoreUpdateModal({
   const [editingActualTimes, setEditingActualTimes] = useState(false);
   const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
   const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
+  const matchStarted = Boolean(actualStartValue);
+  const officialMatchWindowOpen = useMemo(() => {
+    if (!match.start) return true;
+    const startDate = new Date(match.start);
+    if (Number.isNaN(startDate.getTime())) return true;
+    return Date.now() >= startDate.getTime() - 60 * 60_000;
+  }, [match.start]);
   const [incidentType, setIncidentType] = useState('NOTE');
   const [incidentTeamId, setIncidentTeamId] = useState<string | null>(null);
   const [incidentParticipantId, setIncidentParticipantId] = useState<string | null>(null);
@@ -1814,7 +1821,7 @@ export default function ScoreUpdateModal({
   };
 
   const updateScore = (eventTeamId: string | null, delta: number) => {
-    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    if (!canManage || !matchStarted || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
     const next = applyLocalSegmentState(applyScoreDelta(segmentsRef.current, eventTeamId, delta));
     const nextSegment = next.find((segment) => {
       const segmentId = segment.id ?? segment.$id;
@@ -1844,7 +1851,7 @@ export default function ScoreUpdateModal({
       note?: string | null;
     } = {},
   ) => {
-    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    if (!canManage || !matchStarted || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
     const next = applyLocalSegmentState(applyScoreDelta(segmentsRef.current, eventTeamId, 1));
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
@@ -1972,6 +1979,7 @@ export default function ScoreUpdateModal({
     const nextIsScoring = isScoringIncidentType(incidentType, rules);
     const previousDelta = wasScoring ? score(existing.linkedPointDelta) : 0;
     const nextDelta = nextIsScoring ? Math.max(1, score(existing.linkedPointDelta) || 1) : 0;
+    if (nextDelta > 0 && !matchStarted) return;
     const targetSegmentId = existing.segmentId ?? activeSegment?.id ?? null;
     let next = segmentsRef.current;
     if (previousDelta && existing.eventTeamId) {
@@ -2055,6 +2063,7 @@ export default function ScoreUpdateModal({
 
   const requestScore = (eventTeamId: string | null, delta: number) => {
     if (!eventTeamId) return;
+    if (!matchStarted) return;
     if (delta > 0 && !canIncreaseTeamScore(eventTeamId)) return;
     if (delta > 0 && scoringUsesIncidentWorkflow) {
       const clockDetails = currentClockDetails();
@@ -2082,6 +2091,7 @@ export default function ScoreUpdateModal({
 
   const confirmSegment = async () => {
     if (!activeSegment || !team1Id || !team2Id) return;
+    if (!matchStarted) return;
     if (segmentConfirming) return;
     if (rules.scoringModel === 'SETS' && !setWinConditionMet()) {
       alert('A set can only finish at the victory target, or above it when the winner leads by 2.');
@@ -2132,6 +2142,7 @@ export default function ScoreUpdateModal({
   };
 
   const saveMatch = async () => {
+    if (!matchStarted) return;
     setLoading(true);
     const endedAt = new Date().toISOString();
     const next = isTimedMatch
@@ -2182,6 +2193,7 @@ export default function ScoreUpdateModal({
   const addIncident = () => {
     if (!activeSegment) return;
     const isScoring = isScoringIncidentType(incidentType, rules);
+    if (isScoring && !matchStarted) return;
     const next = isScoring && incidentTeamId
       ? applyLocalSegmentState(applyScoreDelta(segmentsRef.current, incidentTeamId, 1))
       : segmentsRef.current;
@@ -2231,6 +2243,7 @@ export default function ScoreUpdateModal({
   };
 
   const checkIn = (assignment: any) => {
+    if (!officialMatchWindowOpen) return;
     void emit(payload(segmentsRef.current, {
       officialCheckIn: {
         positionId: assignment.positionId,
@@ -2424,7 +2437,7 @@ export default function ScoreUpdateModal({
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed` : null;
   const googleMapsLink = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
   const canScore =
-    canManage && activeSegment?.status !== "COMPLETE" && !matchComplete();
+    canManage && matchStarted && activeSegment?.status !== "COMPLETE" && !matchComplete();
   const activeSegmentLabel = activeSegment
     ? labelForSegment(rules, activeSegment.sequence)
     : labelForSegment(rules, 1);
@@ -2569,6 +2582,7 @@ export default function ScoreUpdateModal({
                   <Button
                     size="xs"
                     variant="light"
+                    disabled={!officialMatchWindowOpen}
                     onClick={() => checkIn(assignment)}
                   >
                     Check in
@@ -2779,9 +2793,12 @@ export default function ScoreUpdateModal({
               variant="light"
               onClick={editingIncidentId ? updateIncident : addIncident}
               disabled={
-                rules.pointIncidentRequiresParticipant &&
-                isScoringIncidentType(incidentType, rules) &&
-                !selectedParticipant
+                (
+                  rules.pointIncidentRequiresParticipant &&
+                  isScoringIncidentType(incidentType, rules) &&
+                  !selectedParticipant
+                ) ||
+                (isScoringIncidentType(incidentType, rules) && !matchStarted)
               }
             >
               {editingIncidentId ? "Save Match Log" : "Add to Match Log"}
@@ -3500,6 +3517,7 @@ export default function ScoreUpdateModal({
                   </Button>
                 )}
                 {canManage &&
+                  matchStarted &&
                   activeSegment?.status !== "COMPLETE" &&
                   (!isTimedMatch || rules.scoringModel !== "POINTS_ONLY") && (
                     <Button
@@ -3514,6 +3532,7 @@ export default function ScoreUpdateModal({
                     </Button>
                   )}
                 {canManage &&
+                  matchStarted &&
                   isTimedMatch &&
                   rules.scoringModel === "POINTS_ONLY" && (
                     <Button onClick={saveMatch} loading={loading}>

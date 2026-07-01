@@ -2374,6 +2374,13 @@ function EventScheduleContent() {
     [activeEvent?.teamCheckInOpenMinutesBefore],
   );
 
+  const isOfficialMatchWindowOpen = useCallback((start: string | Date | null | undefined) => {
+    if (!start) return true;
+    const startDate = start instanceof Date ? start : new Date(start);
+    if (Number.isNaN(startDate.getTime())) return true;
+    return Date.now() >= startDate.getTime() - 60 * 60_000;
+  }, []);
+
   const performTeamCheckIn = useCallback(
     async (scope: 'EVENT' | 'MATCH', team: Team, match?: Match | null) => {
       const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
@@ -2426,9 +2433,16 @@ function EventScheduleContent() {
     (match: Match) => Boolean(
       activeEvent?.teamSignup === true
         && activeEvent?.allowMatchRosterEdits === true
+        && (
+          isTeamCheckInOpen(match.start)
+          || Boolean(match.actualEnd)
+          || String(match.status ?? '').toUpperCase() === 'COMPLETE'
+          || String(match.status ?? '').toUpperCase() === 'CANCELLED'
+          || String(match.resultType ?? '').toUpperCase() === 'FORFEIT'
+        )
         && findUserManagedMatchTeam(match)
     ),
-    [activeEvent?.allowMatchRosterEdits, activeEvent?.teamSignup, findUserManagedMatchTeam],
+    [activeEvent?.allowMatchRosterEdits, activeEvent?.teamSignup, findUserManagedMatchTeam, isTeamCheckInOpen],
   );
 
   useEffect(() => {
@@ -5235,8 +5249,9 @@ function EventScheduleContent() {
           Boolean(currentUserEventTeamId && assignedTeamOfficialId && currentUserEventTeamId === assignedTeamOfficialId);
         const userIsCurrentOfficial = isAssignedUserOfficial || isAssignedTeamOfficial;
         const checkedIn = isOfficialCheckedIn(modalMatch);
+        const officialWindowOpen = isOfficialMatchWindowOpen(modalMatch.start);
 
-        if (!checkedIn && userIsCurrentOfficial) {
+        if (!checkedIn && userIsCurrentOfficial && officialWindowOpen) {
           const confirmCheckIn = window.confirm('Would you like to check in as official?');
           if (confirmCheckIn) {
             modalMatch = await updateMatchOfficialState(
@@ -5248,10 +5263,11 @@ function EventScheduleContent() {
         } else {
           const canSwapIntoRef =
             !checkedIn &&
-            Boolean(activeEvent?.doTeamsOfficiate) &&
-            Boolean(activeEvent?.teamOfficialsMaySwap) &&
-            Boolean(currentUserEventTeamId) &&
-            assignedTeamOfficialId !== currentUserEventTeamId;
+              Boolean(activeEvent?.doTeamsOfficiate) &&
+              Boolean(activeEvent?.teamOfficialsMaySwap) &&
+              officialWindowOpen &&
+              Boolean(currentUserEventTeamId) &&
+              assignedTeamOfficialId !== currentUserEventTeamId;
 
           if (canSwapIntoRef && currentUserEventTeamId) {
             const confirmSwap = window.confirm(
@@ -5321,6 +5337,7 @@ function EventScheduleContent() {
       findUserEventTeam,
       handleMatchEditRequest,
       isOfficialCheckedIn,
+      isOfficialMatchWindowOpen,
       isTeamCheckInOpen,
       openScoreModalForMatch,
       performTeamCheckIn,

@@ -74,6 +74,7 @@ export function buildAppVersionResponse(
   updateAvailable: boolean;
   updateRequired: boolean;
   latestVersion: ReturnType<typeof serializeRelease> | null;
+  releases: ReturnType<typeof serializeRelease>[];
 } {
   const active = releases.filter((release) => release.isActive);
   const latest = latestAppRelease(active);
@@ -82,6 +83,7 @@ export function buildAppVersionResponse(
       updateAvailable: false,
       updateRequired: false,
       latestVersion: null,
+      releases: [],
     };
   }
 
@@ -93,6 +95,9 @@ export function buildAppVersionResponse(
     updateAvailable,
     updateRequired,
     latestVersion: serializeRelease(latest),
+    releases: newerReleases
+      .sort(compareReleaseRowsAsc)
+      .map(serializeRelease),
   };
 }
 
@@ -124,6 +129,10 @@ function compareReleaseRowsDesc(left: AppReleaseRow, right: AppReleaseRow): numb
   if (versionComparison !== 0) return -versionComparison;
 
   return toTimestamp(right.createdAt) - toTimestamp(left.createdAt);
+}
+
+function compareReleaseRowsAsc(left: AppReleaseRow, right: AppReleaseRow): number {
+  return -compareReleaseRowsDesc(left, right);
 }
 
 function parseVersionName(value: string | null | undefined): number[] {

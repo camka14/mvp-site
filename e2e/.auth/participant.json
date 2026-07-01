@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "auth_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX3BhcnRpY2lwYW50IiwiaXNBZG1pbiI6ZmFsc2UsInNlc3Npb25WZXJzaW9uIjowLCJpYXQiOjE3NzgyNzE0NDUsImV4cCI6MTc3ODg3NjI0NX0.5cgTQzTTvTWW42hpq2kXFtuY4W32eQYX6AZSDfrzRVg",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX3BhcnRpY2lwYW50IiwiaXNBZG1pbiI6ZmFsc2UsInNlc3Npb25WZXJzaW9uIjowLCJpYXQiOjE3ODI3NjAwNzJ9.eD1p7XQUaXWzvsILekGeYS7cfDGfHbpO9KcFp_Pp8p0",
       "domain": "localhost",
       "path": "/",
-      "expires": 1778876246.004,
+      "expires": 1817320072.511,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Lax"
@@ -21,7 +21,7 @@
         },
         {
           "name": "app-user",
-          "value": "{\"id\":\"user_participant\",\"createdAt\":\"2026-05-08T20:17:23.282Z\",\"updatedAt\":\"2026-05-08T20:17:23.282Z\",\"firstName\":\"Player\",\"lastName\":\"User\",\"dateOfBirth\":\"2000-01-01T00:00:00.000Z\",\"requiredProfileFieldsCompletedAt\":null,\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[],\"friendIds\":[],\"userName\":\"playeruser\",\"hasStripeAccount\":false,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"blockedUserIds\":[],\"hiddenEventIds\":[],\"chatTermsAcceptedAt\":null,\"chatTermsVersion\":null,\"$id\":\"user_participant\",\"fullName\":\"Player User\",\"avatarUrl\":\"\"}"
+          "value": "{\"id\":\"user_participant\",\"createdAt\":\"2026-06-29T19:07:50.946Z\",\"updatedAt\":\"2026-06-29T19:07:50.946Z\",\"firstName\":\"Player\",\"lastName\":\"User\",\"dateOfBirth\":\"2000-01-01T00:00:00.000Z\",\"requiredProfileFieldsCompletedAt\":null,\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[\"e2e_browser_playoff_1782277223614_team_1\",\"e2e_browser_playoff_1782277223614_team_4\",\"e2e_browser_playoff_1782277279445_team_2\",\"e2e_browser_playoff_1782277279445_team_4\",\"e2e_browser_playoff_1782277366962_team_1\",\"e2e_browser_playoff_1782277383275_team_1\",\"e2e_browser_playoff_1782277383275_team_3\",\"e2e_browser_playoff_1782277383275_team_4\",\"e2e_browser_playoff_1782277419191_team_1\",\"e2e_browser_playoff_1782277419191_team_4\",\"e2e_browser_playoff_1782277464260_team_1\",\"e2e_browser_playoff_1782277464260_team_2\",\"e2e_browser_playoff_1782277464260_team_3\",\"e2e_browser_playoff_1782277464260_team_4\",\"e2e_browser_playoff_1782277223614_team_2\",\"e2e_browser_playoff_1782277223614_team_3\",\"e2e_browser_playoff_1782277340057_team_1\",\"e2e_browser_playoff_1782277340057_team_4\",\"e2e_browser_playoff_1782277366962_team_2\",\"e2e_browser_playoff_1782277340057_team_2\",\"e2e_browser_playoff_1782277340057_team_3\",\"e2e_browser_playoff_1782277279445_team_1\",\"e2e_browser_playoff_1782277279445_team_3\",\"e2e_browser_playoff_1782277366962_team_3\",\"e2e_browser_playoff_1782277366962_team_4\",\"e2e_browser_playoff_1782277383275_team_2\",\"e2e_browser_playoff_1782277419191_team_2\",\"e2e_browser_playoff_1782277419191_team_3\",\"manual_team_qa_team_20260627\"],\"friendIds\":[],\"userName\":\"playeruser\",\"hasStripeAccount\":false,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"blockedUserIds\":[],\"hiddenEventIds\":[],\"chatTermsAcceptedAt\":null,\"chatTermsVersion\":null,\"onboardingIntent\":null,\"accountVisibility\":\"PUBLIC\",\"notificationSettings\":{},\"$id\":\"user_participant\",\"fullName\":\"Player User\",\"avatarUrl\":\"\"}"
         }
       ]
     }
