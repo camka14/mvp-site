@@ -501,6 +501,17 @@ export async function POST(req: NextRequest) {
   }
   const parsedDateFrom = typeof filters.dateFrom === 'string' ? new Date(filters.dateFrom) : null;
   const hasExplicitDateFrom = Boolean(parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime()));
+  const parsedDateTo = typeof filters.dateTo === 'string' ? new Date(filters.dateTo) : null;
+  const hasExplicitDateTo = Boolean(parsedDateTo && !Number.isNaN(parsedDateTo.getTime()));
+  const hasExplicitDateFilter = hasExplicitDateFrom || hasExplicitDateTo;
+  if (hasExplicitDateFilter) {
+    where.AND.push({
+      OR: [
+        { dateDisplayMode: null },
+        { dateDisplayMode: 'SCHEDULED' },
+      ],
+    });
+  }
   const effectiveDateFrom = hasExplicitDateFrom
     ? (parsedDateFrom as Date)
     : startOfToday;
@@ -525,8 +536,7 @@ export async function POST(req: NextRequest) {
       ],
     });
   }
-  const parsedDateTo = typeof filters.dateTo === 'string' ? new Date(filters.dateTo) : null;
-  if (parsedDateTo && !Number.isNaN(parsedDateTo.getTime())) {
+  if (hasExplicitDateTo) {
     where.AND.push({
       OR: [
         {

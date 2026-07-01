@@ -1320,6 +1320,12 @@ class EventService {
       scheduleText: typeof row.scheduleText === 'string' && row.scheduleText.trim().length > 0
         ? row.scheduleText
         : null,
+      dateDisplayMode: typeof row.dateDisplayMode === 'string' && row.dateDisplayMode.trim().length > 0
+        ? row.dateDisplayMode
+        : null,
+      dateDisplayText: typeof row.dateDisplayText === 'string' && row.dateDisplayText.trim().length > 0
+        ? row.dateDisplayText
+        : null,
       priceText: typeof row.priceText === 'string' && row.priceText.trim().length > 0
         ? row.priceText
         : null,

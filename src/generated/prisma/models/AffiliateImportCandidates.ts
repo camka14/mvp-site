@@ -45,6 +45,8 @@ export type AffiliateImportCandidatesMinAggregateOutputType = {
   endsAt: Date | null
   timeZone: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   skillLevel: string | null
   ageGroup: string | null
   divisionText: string | null
@@ -81,6 +83,8 @@ export type AffiliateImportCandidatesMaxAggregateOutputType = {
   endsAt: Date | null
   timeZone: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   skillLevel: string | null
   ageGroup: string | null
   divisionText: string | null
@@ -117,6 +121,8 @@ export type AffiliateImportCandidatesCountAggregateOutputType = {
   endsAt: number
   timeZone: number
   scheduleText: number
+  dateDisplayMode: number
+  dateDisplayText: number
   skillLevel: number
   ageGroup: number
   divisionText: number
@@ -157,6 +163,8 @@ export type AffiliateImportCandidatesMinAggregateInputType = {
   endsAt?: true
   timeZone?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   skillLevel?: true
   ageGroup?: true
   divisionText?: true
@@ -193,6 +201,8 @@ export type AffiliateImportCandidatesMaxAggregateInputType = {
   endsAt?: true
   timeZone?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   skillLevel?: true
   ageGroup?: true
   divisionText?: true
@@ -229,6 +239,8 @@ export type AffiliateImportCandidatesCountAggregateInputType = {
   endsAt?: true
   timeZone?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   skillLevel?: true
   ageGroup?: true
   divisionText?: true
@@ -340,6 +352,8 @@ export type AffiliateImportCandidatesGroupByOutputType = {
   endsAt: Date | null
   timeZone: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   skillLevel: string | null
   ageGroup: string | null
   divisionText: string | null
@@ -399,6 +413,8 @@ export type AffiliateImportCandidatesWhereInput = {
   endsAt?: Prisma.DateTimeNullableFilter<"AffiliateImportCandidates"> | Date | string | null
   timeZone?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   scheduleText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayMode?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   skillLevel?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   ageGroup?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   divisionText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
@@ -437,6 +453,8 @@ export type AffiliateImportCandidatesOrderByWithRelationInput = {
   endsAt?: Prisma.SortOrderInput | Prisma.SortOrder
   timeZone?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleText?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrderInput | Prisma.SortOrder
   skillLevel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageGroup?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionText?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -479,6 +497,8 @@ export type AffiliateImportCandidatesWhereUniqueInput = Prisma.AtLeast<{
   endsAt?: Prisma.DateTimeNullableFilter<"AffiliateImportCandidates"> | Date | string | null
   timeZone?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   scheduleText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayMode?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   skillLevel?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   ageGroup?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   divisionText?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
@@ -517,6 +537,8 @@ export type AffiliateImportCandidatesOrderByWithAggregationInput = {
   endsAt?: Prisma.SortOrderInput | Prisma.SortOrder
   timeZone?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleText?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrderInput | Prisma.SortOrder
   skillLevel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageGroup?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionText?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -561,6 +583,8 @@ export type AffiliateImportCandidatesScalarWhereWithAggregatesInput = {
   endsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AffiliateImportCandidates"> | Date | string | null
   timeZone?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   scheduleText?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayMode?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
+  dateDisplayText?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   skillLevel?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   ageGroup?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   divisionText?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
@@ -599,6 +623,8 @@ export type AffiliateImportCandidatesCreateInput = {
   endsAt?: Date | string | null
   timeZone?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   skillLevel?: string | null
   ageGroup?: string | null
   divisionText?: string | null
@@ -637,6 +663,8 @@ export type AffiliateImportCandidatesUncheckedCreateInput = {
   endsAt?: Date | string | null
   timeZone?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   skillLevel?: string | null
   ageGroup?: string | null
   divisionText?: string | null
@@ -675,6 +703,8 @@ export type AffiliateImportCandidatesUpdateInput = {
   endsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   skillLevel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageGroup?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -713,6 +743,8 @@ export type AffiliateImportCandidatesUncheckedUpdateInput = {
   endsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   skillLevel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageGroup?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -751,6 +783,8 @@ export type AffiliateImportCandidatesCreateManyInput = {
   endsAt?: Date | string | null
   timeZone?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   skillLevel?: string | null
   ageGroup?: string | null
   divisionText?: string | null
@@ -789,6 +823,8 @@ export type AffiliateImportCandidatesUpdateManyMutationInput = {
   endsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   skillLevel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageGroup?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -827,6 +863,8 @@ export type AffiliateImportCandidatesUncheckedUpdateManyInput = {
   endsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   skillLevel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageGroup?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -870,6 +908,8 @@ export type AffiliateImportCandidatesCountOrderByAggregateInput = {
   endsAt?: Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   skillLevel?: Prisma.SortOrder
   ageGroup?: Prisma.SortOrder
   divisionText?: Prisma.SortOrder
@@ -908,6 +948,8 @@ export type AffiliateImportCandidatesMaxOrderByAggregateInput = {
   endsAt?: Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   skillLevel?: Prisma.SortOrder
   ageGroup?: Prisma.SortOrder
   divisionText?: Prisma.SortOrder
@@ -944,6 +986,8 @@ export type AffiliateImportCandidatesMinOrderByAggregateInput = {
   endsAt?: Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   skillLevel?: Prisma.SortOrder
   ageGroup?: Prisma.SortOrder
   divisionText?: Prisma.SortOrder
@@ -991,6 +1035,8 @@ export type AffiliateImportCandidatesSelect<ExtArgs extends runtime.Types.Extens
   endsAt?: boolean
   timeZone?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   skillLevel?: boolean
   ageGroup?: boolean
   divisionText?: boolean
@@ -1029,6 +1075,8 @@ export type AffiliateImportCandidatesSelectCreateManyAndReturn<ExtArgs extends r
   endsAt?: boolean
   timeZone?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   skillLevel?: boolean
   ageGroup?: boolean
   divisionText?: boolean
@@ -1067,6 +1115,8 @@ export type AffiliateImportCandidatesSelectUpdateManyAndReturn<ExtArgs extends r
   endsAt?: boolean
   timeZone?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   skillLevel?: boolean
   ageGroup?: boolean
   divisionText?: boolean
@@ -1105,6 +1155,8 @@ export type AffiliateImportCandidatesSelectScalar = {
   endsAt?: boolean
   timeZone?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   skillLevel?: boolean
   ageGroup?: boolean
   divisionText?: boolean
@@ -1122,7 +1174,7 @@ export type AffiliateImportCandidatesSelectScalar = {
   publishedFacilityId?: boolean
 }
 
-export type AffiliateImportCandidatesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "sourceId" | "runId" | "mappingId" | "listingKind" | "status" | "dedupeKey" | "title" | "organizerName" | "sportName" | "formatLabel" | "city" | "venueName" | "address" | "startsAt" | "endsAt" | "timeZone" | "scheduleText" | "skillLevel" | "ageGroup" | "divisionText" | "participantOptionsText" | "priceText" | "statusText" | "registrationDeadlineText" | "officialActionUrl" | "sourceUrl" | "description" | "rawPayload" | "warnings" | "publishedEventId" | "publishedTeamId" | "publishedFacilityId", ExtArgs["result"]["affiliateImportCandidates"]>
+export type AffiliateImportCandidatesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "sourceId" | "runId" | "mappingId" | "listingKind" | "status" | "dedupeKey" | "title" | "organizerName" | "sportName" | "formatLabel" | "city" | "venueName" | "address" | "startsAt" | "endsAt" | "timeZone" | "scheduleText" | "dateDisplayMode" | "dateDisplayText" | "skillLevel" | "ageGroup" | "divisionText" | "participantOptionsText" | "priceText" | "statusText" | "registrationDeadlineText" | "officialActionUrl" | "sourceUrl" | "description" | "rawPayload" | "warnings" | "publishedEventId" | "publishedTeamId" | "publishedFacilityId", ExtArgs["result"]["affiliateImportCandidates"]>
 
 export type $AffiliateImportCandidatesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateImportCandidates"
@@ -1148,6 +1200,8 @@ export type $AffiliateImportCandidatesPayload<ExtArgs extends runtime.Types.Exte
     endsAt: Date | null
     timeZone: string | null
     scheduleText: string | null
+    dateDisplayMode: string | null
+    dateDisplayText: string | null
     skillLevel: string | null
     ageGroup: string | null
     divisionText: string | null
@@ -1606,6 +1660,8 @@ export interface AffiliateImportCandidatesFieldRefs {
   readonly endsAt: Prisma.FieldRef<"AffiliateImportCandidates", 'DateTime'>
   readonly timeZone: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly scheduleText: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
+  readonly dateDisplayMode: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
+  readonly dateDisplayText: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly skillLevel: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly ageGroup: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly divisionText: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>

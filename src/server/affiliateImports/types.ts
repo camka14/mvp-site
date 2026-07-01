@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM';
+export type AffiliateDateDisplayMode = 'SCHEDULED' | 'NO_FIXED_DATE' | 'ONGOING';
 
 export type ScrapedPage = {
   url: string;
@@ -29,6 +30,40 @@ export const fieldMappingSchema = z.object({
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
 
+const affiliateDateDisplayModeSchema = z.enum(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
+
+const optionalNullableStringSchema = z.string().nullable().optional();
+
+const affiliateManualCandidateSchema = z.object({
+  title: z.string().trim().min(1),
+  officialActionUrl: z.string().trim().url(),
+  sourceUrl: z.string().trim().url().nullable().optional(),
+  organizerName: optionalNullableStringSchema,
+  sportName: optionalNullableStringSchema,
+  formatLabel: optionalNullableStringSchema,
+  city: optionalNullableStringSchema,
+  venueName: optionalNullableStringSchema,
+  address: optionalNullableStringSchema,
+  startsAt: optionalNullableStringSchema,
+  endsAt: optionalNullableStringSchema,
+  timeZone: optionalNullableStringSchema,
+  scheduleText: optionalNullableStringSchema,
+  dateDisplayMode: affiliateDateDisplayModeSchema.optional(),
+  dateDisplayText: optionalNullableStringSchema,
+  skillLevel: optionalNullableStringSchema,
+  ageGroup: optionalNullableStringSchema,
+  divisionText: optionalNullableStringSchema,
+  maxParticipantsText: optionalNullableStringSchema,
+  currentParticipantsText: optionalNullableStringSchema,
+  spotsRemainingText: optionalNullableStringSchema,
+  participantOptionsText: optionalNullableStringSchema,
+  priceText: optionalNullableStringSchema,
+  statusText: optionalNullableStringSchema,
+  registrationDeadlineText: optionalNullableStringSchema,
+  description: optionalNullableStringSchema,
+  warnings: z.array(z.string()).optional(),
+});
+
 export const affiliateScrapeMappingSchema = z.object({
   kind: z.enum(['EVENT', 'RENTAL', 'TEAM']),
   listUrl: z.string().url(),
@@ -49,6 +84,8 @@ export const affiliateScrapeMappingSchema = z.object({
     startsAt: fieldMappingSchema.optional(),
     endsAt: fieldMappingSchema.optional(),
     scheduleText: fieldMappingSchema.optional(),
+    dateDisplayMode: fieldMappingSchema.optional(),
+    dateDisplayText: fieldMappingSchema.optional(),
     skillLevel: fieldMappingSchema.optional(),
     ageGroup: fieldMappingSchema.optional(),
     divisionText: fieldMappingSchema.optional(),
@@ -69,6 +106,7 @@ export const affiliateScrapeMappingSchema = z.object({
   dedupe: z.object({
     fields: z.array(z.string().min(1)).min(1),
   }).optional(),
+  manualCandidates: z.array(affiliateManualCandidateSchema).optional(),
 });
 
 export type AffiliateScrapeMapping = z.infer<typeof affiliateScrapeMappingSchema>;
@@ -86,6 +124,8 @@ export type AffiliateCandidateInput = {
   endsAt?: string | null;
   timeZone?: string | null;
   scheduleText?: string | null;
+  dateDisplayMode?: AffiliateDateDisplayMode | string | null;
+  dateDisplayText?: string | null;
   skillLevel?: string | null;
   ageGroup?: string | null;
   divisionText?: string | null;

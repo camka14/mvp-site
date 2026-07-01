@@ -18,6 +18,8 @@ const nullableFieldNames = [
   'startsAt',
   'endsAt',
   'scheduleText',
+  'dateDisplayMode',
+  'dateDisplayText',
   'skillLevel',
   'ageGroup',
   'divisionText',
@@ -268,6 +270,33 @@ export const extractAffiliateCandidatesFromPage = (
   page: ScrapedPage,
   mapping: AffiliateScrapeMapping,
 ): AffiliateCandidateInput[] => {
+  const baseUrl = page.finalUrl || page.url;
+  if (mapping.manualCandidates?.length) {
+    return mapping.manualCandidates.map((manualCandidate, index) => {
+      const candidate: AffiliateCandidateInput = {
+        listingKind: mapping.kind,
+        title: manualCandidate.title,
+        officialActionUrl: toAbsoluteUrl(manualCandidate.officialActionUrl, baseUrl),
+        sourceUrl: toAbsoluteUrl(manualCandidate.sourceUrl ?? manualCandidate.officialActionUrl, baseUrl),
+        rawPayload: {
+          sourceIndex: index,
+          manualSummaryCandidate: true,
+          extractedFields: manualCandidate,
+        },
+        warnings: manualCandidate.warnings ?? [],
+      };
+
+      nullableFieldNames.forEach((fieldName) => {
+        const value = manualCandidate[fieldName as keyof typeof manualCandidate];
+        if (typeof value === 'string' && value.trim().length > 0) {
+          candidate[fieldName] = value.trim();
+        }
+      });
+
+      return candidate;
+    });
+  }
+
   const dom = new JSDOM(page.body, { url: page.finalUrl || page.url });
   const referenceDate = new Date(page.fetchedAt);
   const effectiveReferenceDate = Number.isNaN(referenceDate.getTime()) ? new Date() : referenceDate;
@@ -279,7 +308,6 @@ export const extractAffiliateCandidatesFromPage = (
       return requiredIncludes.every((needle) => itemText.includes(needle))
         && !requiredExcludes.some((needle) => itemText.includes(needle));
     });
-  const baseUrl = page.finalUrl || page.url;
 
   return itemElements
     .map((element, index): AffiliateCandidateInput | null => {

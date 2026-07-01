@@ -16,6 +16,7 @@ import {
 } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
 import {
+  type AffiliateDateDisplayMode,
   type AffiliateCandidateInput,
   type AffiliateScrapeMapping,
   parseAffiliateScrapeMapping,
@@ -72,6 +73,26 @@ const nullableString = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+const AFFILIATE_DATE_DISPLAY_MODES = new Set(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
+const EVERGREEN_AFFILIATE_START_DATE = new Date('2099-12-31T12:00:00.000Z');
+
+const normalizeDateDisplayMode = (value: unknown): AffiliateDateDisplayMode => {
+  const normalized = nullableString(value)?.toUpperCase();
+  return normalized && AFFILIATE_DATE_DISPLAY_MODES.has(normalized)
+    ? normalized as AffiliateDateDisplayMode
+    : 'SCHEDULED';
+};
+
+const isEvergreenAffiliateCandidate = (candidate: any): boolean => (
+  normalizeDateDisplayMode(candidate?.dateDisplayMode) !== 'SCHEDULED'
+);
+
+const dateDisplayTextFromCandidate = (candidate: any): string | null => (
+  nullableString(candidate.dateDisplayText)
+  ?? (isEvergreenAffiliateCandidate(candidate) ? nullableString(candidate.scheduleText) : null)
+  ?? (isEvergreenAffiliateCandidate(candidate) ? 'No fixed start date' : null)
+);
 
 const normalizeStatus = (value: unknown, fallback: string): string => (
   nullableString(value)?.toUpperCase() ?? fallback
@@ -141,7 +162,7 @@ const candidateImportRejectionReasons = (
   if (candidate.listingKind === 'RENTAL') return [];
   const reasons: string[] = [];
   const start = candidateStartDate(candidate);
-  if (!start || start.getTime() <= now.getTime()) {
+  if (!isEvergreenAffiliateCandidate(candidate) && (!start || start.getTime() <= now.getTime())) {
     reasons.push(start ? 'start is not in the future' : 'missing source start date');
   }
   const registrationDeadline = candidateRegistrationDeadline(candidate);
@@ -153,10 +174,10 @@ const candidateImportRejectionReasons = (
 
 const assertEventOrTeamCandidateImportable = (candidate: any) => {
   const start = candidateStartDate(candidate);
-  if (!start) {
+  if (!isEvergreenAffiliateCandidate(candidate) && !start) {
     throw new Error('Affiliate event candidates must include a valid start date from the source.');
   }
-  if (start.getTime() <= Date.now()) {
+  if (!isEvergreenAffiliateCandidate(candidate) && start && start.getTime() <= Date.now()) {
     throw new Error('Affiliate event candidates must start in the future.');
   }
   const registrationDeadline = candidateRegistrationDeadline(candidate);
@@ -216,6 +237,8 @@ const candidatePersistenceData = (
     endsAt: parseDateOrNull(candidate.endsAt),
     timeZone: candidate.timeZone ?? null,
     scheduleText: candidate.scheduleText ?? null,
+    dateDisplayMode: normalizeDateDisplayMode(candidate.dateDisplayMode),
+    dateDisplayText: candidate.dateDisplayText ?? null,
     skillLevel: candidate.skillLevel ?? null,
     ageGroup: candidate.ageGroup ?? null,
     divisionText: candidate.divisionText ?? null,
@@ -234,6 +257,7 @@ const candidatePersistenceData = (
 export const listAffiliateSources = async () => {
   const { sources } = affiliatePrisma();
   return sources.findMany({
+    where: { status: 'ACTIVE' },
     orderBy: { name: 'asc' },
   });
 };
@@ -511,12 +535,15 @@ const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
     ageRange,
     participantAvailability,
     maxParticipants: participantAvailability.maxParticipants,
+    dateDisplayMode: normalizeDateDisplayMode(candidate.dateDisplayMode),
+    dateDisplayText: dateDisplayTextFromCandidate(candidate),
+    evergreen: isEvergreenAffiliateCandidate(candidate),
   };
 };
 
 const eventStartFromCandidate = (candidate: any): Date => {
   assertEventOrTeamCandidateImportable(candidate);
-  return candidateStartDate(candidate) as Date;
+  return candidateStartDate(candidate) ?? EVERGREEN_AFFILIATE_START_DATE;
 };
 
 const buildAffiliateEventDescription = (candidate: any): string | null => {
@@ -571,10 +598,16 @@ const buildAffiliateEventData = async (
   fallbackCoordinates?: unknown,
 ) => {
   const sportId = await resolveAffiliateSportId(candidate.sportName);
+  const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
+  const dateDisplayText = dateDisplayTextFromCandidate(candidate);
   const start = eventStartFromCandidate(candidate);
-  const end = candidate.endsAt instanceof Date
-    ? candidate.endsAt
-    : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null);
+  const end = dateDisplayMode === 'SCHEDULED'
+    ? (
+        candidate.endsAt instanceof Date
+          ? candidate.endsAt
+          : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
+      )
+    : null;
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
@@ -606,7 +639,9 @@ const buildAffiliateEventData = async (
     sourceId: candidate.id,
     sourceUrl: nullableString(candidate.sourceUrl),
     organizerName,
-    scheduleText: nullableString(candidate.scheduleText),
+    scheduleText: nullableString(candidate.scheduleText) ?? dateDisplayText,
+    dateDisplayMode,
+    dateDisplayText,
     priceText: nullableString(candidate.priceText),
     statusText: nullableString(candidate.statusText),
     winnerSetCount: null,
@@ -622,7 +657,7 @@ const buildAffiliateEventData = async (
     hostId: null,
     assistantHostIds: [],
     noFixedEndDateTime: true,
-    price: 0,
+    price: parsePriceCents(candidate.priceText) ?? 0,
     taxHandling: 'ORGANIZER_COLLECTS',
     organizerManualTaxRateBps: 0,
     singleDivision: !hasSourceDivision,

@@ -28,6 +28,22 @@ type LeaveEventOptions = {
   refundReason?: string;
 };
 
+export type EventRegistrationCheckoutTarget = {
+  registrantId: string;
+  registrantType: 'SELF' | 'CHILD';
+  parentId?: string | null;
+};
+
+export type DiscountPreview = {
+  code: string | null;
+  applied: boolean;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
+  discountId?: string | null;
+  discountCodeId?: string | null;
+};
+
 const isTeamRegistrationCheckoutTarget = (value: unknown): value is TeamRegistrationCheckoutTarget => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -46,6 +62,50 @@ const isTeamRegistrationCheckoutTarget = (value: unknown): value is TeamRegistra
 };
 
 class PaymentService {
+  async previewEventDiscount({
+    user,
+    event,
+    team,
+    selection,
+    occurrence,
+    answers,
+    discountCode,
+    eventRegistration,
+  }: {
+    user: UserData;
+    event: Event;
+    team?: Team;
+    selection?: DivisionRegistrationSelection;
+    occurrence?: WeeklyOccurrenceSelection;
+    answers?: RegistrationQuestionAnswerInput[];
+    discountCode?: string | null;
+    eventRegistration?: EventRegistrationCheckoutTarget;
+  }): Promise<DiscountPreview> {
+    const payloadEvent = buildPayload(event);
+    const payload = {
+      user,
+      event: payloadEvent,
+      team,
+      ...selection,
+      ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+      ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+      ...(answers ? { answers } : {}),
+      ...(discountCode ? { discountCode } : {}),
+      ...(eventRegistration ? { eventRegistration } : {}),
+    };
+
+    const result = await apiRequest<DiscountPreview & { error?: string }>('/api/billing/discount-preview', {
+      method: 'POST',
+      body: payload,
+    });
+
+    if (result && 'error' in result && result.error) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  }
+
   async updatePaymentIntentFeeForMethod(
     paymentIntent: string,
     paymentMethodType: string,
@@ -124,6 +184,7 @@ class PaymentService {
     occurrence?: WeeklyOccurrenceSelection,
     answers?: RegistrationQuestionAnswerInput[],
     discountCode?: string | null,
+    eventRegistration?: EventRegistrationCheckoutTarget,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -142,6 +203,7 @@ class PaymentService {
         ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
         ...(answers ? { answers } : {}),
         ...(discountCode ? { discountCode } : {}),
+        ...(eventRegistration ? { eventRegistration } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {

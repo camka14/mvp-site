@@ -4,14 +4,6 @@ import { render, screen } from '@testing-library/react';
 import PaymentModal from '../PaymentModal';
 import type { PaymentIntent } from '@/types';
 
-jest.mock('next/image', () => ({
-  __esModule: true,
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img {...props} alt={props.alt ?? ''} />
-  ),
-}));
-
 jest.mock('@stripe/stripe-js', () => ({
   loadStripe: jest.fn(() => Promise.resolve({})),
 }));
@@ -71,7 +63,7 @@ describe('PaymentModal', () => {
       },
     );
 
-    expect(screen.queryByText('Confirm Payment')).not.toBeInTheDocument();
+    expect(screen.queryByText('Payment')).not.toBeInTheDocument();
 
     rerender(
       <PaymentModal
@@ -88,7 +80,34 @@ describe('PaymentModal', () => {
       />,
     );
 
-    expect(await screen.findByText('Confirm Payment')).toBeInTheDocument();
-    expect(screen.getByText('Paid Event')).toBeInTheDocument();
+    expect(await screen.findByText('Payment')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-form')).toBeInTheDocument();
+    expect(screen.queryByText('Price Breakdown')).not.toBeInTheDocument();
+  });
+
+  it('opens directly to payment without a price breakdown step', async () => {
+    render(
+      <PaymentModal
+        isOpen
+        onClose={() => {}}
+        event={{
+          name: 'Paid Event',
+          location: 'New York, NY',
+          eventType: 'EVENT',
+          price: 1500,
+        }}
+        paymentData={paymentData}
+        onPaymentSuccess={() => {}}
+      />,
+      {
+        wrapper: ({ children }) => (
+          <MantineProvider>{children}</MantineProvider>
+        ),
+      },
+    );
+
+    expect(await screen.findByText('Payment')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-form')).toBeInTheDocument();
+    expect(screen.queryByText('Price Breakdown')).not.toBeInTheDocument();
   });
 });

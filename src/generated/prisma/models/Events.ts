@@ -100,6 +100,8 @@ export type EventsMinAggregateOutputType = {
   sourceUrl: string | null
   organizerName: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   priceText: string | null
   statusText: string | null
   winnerSetCount: number | null
@@ -171,6 +173,8 @@ export type EventsMaxAggregateOutputType = {
   sourceUrl: string | null
   organizerName: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   priceText: string | null
   statusText: string | null
   winnerSetCount: number | null
@@ -242,6 +246,8 @@ export type EventsCountAggregateOutputType = {
   sourceUrl: number
   organizerName: number
   scheduleText: number
+  dateDisplayMode: number
+  dateDisplayText: number
   priceText: number
   statusText: number
   winnerSetCount: number
@@ -385,6 +391,8 @@ export type EventsMinAggregateInputType = {
   sourceUrl?: true
   organizerName?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   priceText?: true
   statusText?: true
   winnerSetCount?: true
@@ -456,6 +464,8 @@ export type EventsMaxAggregateInputType = {
   sourceUrl?: true
   organizerName?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   priceText?: true
   statusText?: true
   winnerSetCount?: true
@@ -527,6 +537,8 @@ export type EventsCountAggregateInputType = {
   sourceUrl?: true
   organizerName?: true
   scheduleText?: true
+  dateDisplayMode?: true
+  dateDisplayText?: true
   priceText?: true
   statusText?: true
   winnerSetCount?: true
@@ -699,6 +711,8 @@ export type EventsGroupByOutputType = {
   sourceUrl: string | null
   organizerName: string | null
   scheduleText: string | null
+  dateDisplayMode: string | null
+  dateDisplayText: string | null
   priceText: string | null
   statusText: string | null
   winnerSetCount: number | null
@@ -807,6 +821,8 @@ export type EventsWhereInput = {
   sourceUrl?: Prisma.StringNullableFilter<"Events"> | string | null
   organizerName?: Prisma.StringNullableFilter<"Events"> | string | null
   scheduleText?: Prisma.StringNullableFilter<"Events"> | string | null
+  dateDisplayMode?: Prisma.StringNullableFilter<"Events"> | string | null
+  dateDisplayText?: Prisma.StringNullableFilter<"Events"> | string | null
   priceText?: Prisma.StringNullableFilter<"Events"> | string | null
   statusText?: Prisma.StringNullableFilter<"Events"> | string | null
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -892,6 +908,8 @@ export type EventsOrderByWithRelationInput = {
   sourceUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   organizerName?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleText?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrderInput | Prisma.SortOrder
   priceText?: Prisma.SortOrderInput | Prisma.SortOrder
   statusText?: Prisma.SortOrderInput | Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -980,6 +998,8 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   sourceUrl?: Prisma.StringNullableFilter<"Events"> | string | null
   organizerName?: Prisma.StringNullableFilter<"Events"> | string | null
   scheduleText?: Prisma.StringNullableFilter<"Events"> | string | null
+  dateDisplayMode?: Prisma.StringNullableFilter<"Events"> | string | null
+  dateDisplayText?: Prisma.StringNullableFilter<"Events"> | string | null
   priceText?: Prisma.StringNullableFilter<"Events"> | string | null
   statusText?: Prisma.StringNullableFilter<"Events"> | string | null
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -1065,6 +1085,8 @@ export type EventsOrderByWithAggregationInput = {
   sourceUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   organizerName?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleText?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrderInput | Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrderInput | Prisma.SortOrder
   priceText?: Prisma.SortOrderInput | Prisma.SortOrder
   statusText?: Prisma.SortOrderInput | Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1158,6 +1180,8 @@ export type EventsScalarWhereWithAggregatesInput = {
   sourceUrl?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   organizerName?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   scheduleText?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
+  dateDisplayMode?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
+  dateDisplayText?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   priceText?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   statusText?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   winnerSetCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
@@ -1243,6 +1267,8 @@ export type EventsCreateInput = {
   sourceUrl?: string | null
   organizerName?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   priceText?: string | null
   statusText?: string | null
   winnerSetCount?: number | null
@@ -1328,6 +1354,8 @@ export type EventsUncheckedCreateInput = {
   sourceUrl?: string | null
   organizerName?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   priceText?: string | null
   statusText?: string | null
   winnerSetCount?: number | null
@@ -1413,6 +1441,8 @@ export type EventsUpdateInput = {
   sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizerName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1498,6 +1528,8 @@ export type EventsUncheckedUpdateInput = {
   sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizerName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1583,6 +1615,8 @@ export type EventsCreateManyInput = {
   sourceUrl?: string | null
   organizerName?: string | null
   scheduleText?: string | null
+  dateDisplayMode?: string | null
+  dateDisplayText?: string | null
   priceText?: string | null
   statusText?: string | null
   winnerSetCount?: number | null
@@ -1668,6 +1702,8 @@ export type EventsUpdateManyMutationInput = {
   sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizerName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1753,6 +1789,8 @@ export type EventsUncheckedUpdateManyInput = {
   sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizerName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scheduleText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dateDisplayText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1838,6 +1876,8 @@ export type EventsCountOrderByAggregateInput = {
   sourceUrl?: Prisma.SortOrder
   organizerName?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   priceText?: Prisma.SortOrder
   statusText?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrder
@@ -1951,6 +1991,8 @@ export type EventsMaxOrderByAggregateInput = {
   sourceUrl?: Prisma.SortOrder
   organizerName?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   priceText?: Prisma.SortOrder
   statusText?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrder
@@ -2022,6 +2064,8 @@ export type EventsMinOrderByAggregateInput = {
   sourceUrl?: Prisma.SortOrder
   organizerName?: Prisma.SortOrder
   scheduleText?: Prisma.SortOrder
+  dateDisplayMode?: Prisma.SortOrder
+  dateDisplayText?: Prisma.SortOrder
   priceText?: Prisma.SortOrder
   statusText?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrder
@@ -2229,6 +2273,8 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   sourceUrl?: boolean
   organizerName?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   priceText?: boolean
   statusText?: boolean
   winnerSetCount?: boolean
@@ -2314,6 +2360,8 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   sourceUrl?: boolean
   organizerName?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   priceText?: boolean
   statusText?: boolean
   winnerSetCount?: boolean
@@ -2399,6 +2447,8 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   sourceUrl?: boolean
   organizerName?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   priceText?: boolean
   statusText?: boolean
   winnerSetCount?: boolean
@@ -2484,6 +2534,8 @@ export type EventsSelectScalar = {
   sourceUrl?: boolean
   organizerName?: boolean
   scheduleText?: boolean
+  dateDisplayMode?: boolean
+  dateDisplayText?: boolean
   priceText?: boolean
   statusText?: boolean
   winnerSetCount?: boolean
@@ -2551,7 +2603,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "registrationPaymentMode" | "manualPaymentLinks" | "manualPaymentInstructions" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "name" | "start" | "end" | "timeZone" | "description" | "affiliateUrl" | "sourceType" | "sourceId" | "sourceUrl" | "organizerName" | "scheduleText" | "dateDisplayMode" | "dateDisplayText" | "priceText" | "statusText" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "registrationPaymentMode" | "manualPaymentLinks" | "manualPaymentInstructions" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2574,6 +2626,8 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     sourceUrl: string | null
     organizerName: string | null
     scheduleText: string | null
+    dateDisplayMode: string | null
+    dateDisplayText: string | null
     priceText: string | null
     statusText: string | null
     winnerSetCount: number | null
@@ -3079,6 +3133,8 @@ export interface EventsFieldRefs {
   readonly sourceUrl: Prisma.FieldRef<"Events", 'String'>
   readonly organizerName: Prisma.FieldRef<"Events", 'String'>
   readonly scheduleText: Prisma.FieldRef<"Events", 'String'>
+  readonly dateDisplayMode: Prisma.FieldRef<"Events", 'String'>
+  readonly dateDisplayText: Prisma.FieldRef<"Events", 'String'>
   readonly priceText: Prisma.FieldRef<"Events", 'String'>
   readonly statusText: Prisma.FieldRef<"Events", 'String'>
   readonly winnerSetCount: Prisma.FieldRef<"Events", 'Int'>

@@ -17,7 +17,10 @@ import {
   findEventRegistration,
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
-import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
+import {
+  requireVerifiedEmailForEventRegistrationIfPaid,
+  resolveEventRegistrationPriceCents,
+} from '@/server/paidRegistrationGate';
 import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
@@ -104,6 +107,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   });
   if (emailVerificationRequired) {
     return emailVerificationRequired;
+  }
+  const priceCents = await resolveEventRegistrationPriceCents({
+    event,
+    selection: divisionSelection.selection,
+  });
+  if (priceCents > 0) {
+    return NextResponse.json(
+      { error: 'Paid child registrations must be completed through checkout.', requiresCheckout: true },
+      { status: 402 },
+    );
   }
   const eventAnswersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
     scopeType: 'EVENT',

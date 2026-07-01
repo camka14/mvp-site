@@ -38,6 +38,13 @@ export default function EventCard({
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
   const isAffiliateEvent = typeof event.affiliateUrl === 'string' && event.affiliateUrl.trim().length > 0;
+  const normalizedDateDisplayMode = typeof event.dateDisplayMode === 'string'
+    ? event.dateDisplayMode.trim().toUpperCase()
+    : 'SCHEDULED';
+  const isEvergreenProgram = normalizedDateDisplayMode === 'NO_FIXED_DATE' || normalizedDateDisplayMode === 'ONGOING';
+  const scheduleDisplayText = isEvergreenProgram
+    ? (event.dateDisplayText?.trim() || event.scheduleText?.trim() || 'No fixed start date')
+    : (isAffiliateEvent && event.scheduleText ? event.scheduleText : `${date} at ${time}`);
   const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
   const lifecycleBadge = useMemo(() => {
     if (normalizedState === 'PRIVATE') {
@@ -59,6 +66,14 @@ export default function EventCard({
     const normalizedEventType = typeof event.eventType === 'string'
       ? event.eventType.trim().toUpperCase()
       : '';
+
+    if (isEvergreenProgram) {
+      return {
+        label: 'Program',
+        className: 'discover-badge-event',
+        icon: '📌',
+      };
+    }
 
     if (normalizedEventType === 'TOURNAMENT') {
       return {
@@ -89,7 +104,7 @@ export default function EventCard({
       className: 'discover-badge-event',
       icon: '📅',
     };
-  }, [event.eventType]);
+  }, [event.eventType, isEvergreenProgram]);
 
   const getDistance = () => {
     if (!showDistance || !userLocation) return null;
@@ -271,7 +286,7 @@ export default function EventCard({
             <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4v10m4-10v10m-4 4h4M4 7h16a2 2 0 012 2v8a2 2 0 01-2-2V9a2 2 0 012-2z" />
             </svg>
-            {isAffiliateEvent && event.scheduleText ? event.scheduleText : `${date} at ${time}`}
+            {scheduleDisplayText}
           </div>
 
           <div className="flex items-center">

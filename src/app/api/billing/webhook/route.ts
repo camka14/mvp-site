@@ -246,6 +246,8 @@ const ensureEventRegistrationFromPurchase = async ({
   eventId,
   teamId,
   userId,
+  registrantType,
+  parentId,
   registrationId,
   occurrenceSlotId,
   occurrenceDate,
@@ -256,6 +258,8 @@ const ensureEventRegistrationFromPurchase = async ({
   eventId: string | null;
   teamId: string | null;
   userId: string | null;
+  registrantType?: string | null;
+  parentId?: string | null;
   registrationId: string | null;
   occurrenceSlotId: string | null;
   occurrenceDate: string | null;
@@ -377,10 +381,13 @@ const ensureEventRegistrationFromPurchase = async ({
         return { applied: false, reason: 'team_signup_event_requires_team' };
       }
 
+      const normalizedRegistrantType = String(registrantType ?? '').trim().toUpperCase() === 'CHILD'
+        ? 'CHILD'
+        : 'SELF';
       const participantUserId = userId as string;
       const expectedRegistrationId = buildEventRegistrationId({
         eventId,
-        registrantType: 'SELF',
+        registrantType: normalizedRegistrantType,
         registrantId: participantUserId,
         slotId: occurrenceSlotId,
         occurrenceDate,
@@ -403,7 +410,8 @@ const ensureEventRegistrationFromPurchase = async ({
             id: effectiveRegistrationId,
             eventId,
             registrantId: participantUserId,
-            registrantType: 'SELF',
+            parentId: normalizedRegistrantType === 'CHILD' ? parentId : null,
+            registrantType: normalizedRegistrantType,
             rosterRole: 'PARTICIPANT',
             status: targetStatus,
             slotId: occurrenceSlotId,
@@ -433,7 +441,7 @@ const ensureEventRegistrationFromPurchase = async ({
         where: {
           eventId,
           registrantId: participantUserId,
-          registrantType: { in: ['SELF', 'CHILD'] },
+          registrantType: normalizedRegistrantType,
           rosterRole: { in: ['WAITLIST', 'FREE_AGENT'] },
           status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
           slotId: occurrenceSlotId,
@@ -463,12 +471,14 @@ const ensureTeamRegistrationFromPurchase = async ({
   purchaseType,
   teamId,
   userId,
+  registrantType: purchaseRegistrantType,
   registrationId,
   now,
 }: {
   purchaseType: string | null;
   teamId: string | null;
   userId: string | null;
+  registrantType?: string | null;
   registrationId: string | null;
   now: Date;
 }): Promise<{ applied: boolean; reason?: string }> => {
@@ -489,6 +499,8 @@ const markEventRegistrationPaymentPendingFromPurchase = (params: {
   eventId: string | null;
   teamId: string | null;
   userId: string | null;
+  registrantType?: string | null;
+  parentId?: string | null;
   registrationId: string | null;
   occurrenceSlotId: string | null;
   occurrenceDate: string | null;
@@ -530,6 +542,7 @@ const cancelEventRegistrationFromFailedPayment = async ({
   eventId,
   teamId,
   userId,
+  registrantType: purchaseRegistrantType,
   registrationId,
   occurrenceSlotId,
   occurrenceDate,
@@ -539,6 +552,7 @@ const cancelEventRegistrationFromFailedPayment = async ({
   eventId: string | null;
   teamId: string | null;
   userId: string | null;
+  registrantType?: string | null;
   registrationId: string | null;
   occurrenceSlotId: string | null;
   occurrenceDate: string | null;
@@ -575,7 +589,11 @@ const cancelEventRegistrationFromFailedPayment = async ({
         return { applied: false, reason: 'event_not_found' };
       }
 
-      const registrantType = teamId ? 'TEAM' : 'SELF';
+      const registrantType = teamId
+        ? 'TEAM'
+        : String(purchaseRegistrantType ?? '').trim().toUpperCase() === 'CHILD'
+          ? 'CHILD'
+          : 'SELF';
       const registrantId = teamId ?? userId as string;
       if (registrantType === 'TEAM') {
         if (!event.teamSignup) {
@@ -1245,6 +1263,8 @@ const createInstantBillAndPayment = async ({
   eventId,
   organizationId,
   registrationId,
+  eventRegistrationRegistrantType,
+  eventRegistrationParentId,
   amountCents,
   totalChargeCents,
   metadata,
@@ -1259,6 +1279,8 @@ const createInstantBillAndPayment = async ({
   eventId: string | null;
   organizationId: string | null;
   registrationId: string | null;
+  eventRegistrationRegistrantType?: string | null;
+  eventRegistrationParentId?: string | null;
   amountCents: number | null;
   totalChargeCents: number | null;
   metadata: Record<string, unknown>;
@@ -1411,6 +1433,8 @@ const createInstantBillAndPayment = async ({
     const purchaseMetadata = {
       purchaseType: normalizedPurchaseType || null,
       userId,
+      eventRegistrationRegistrantType,
+      eventRegistrationParentId,
       teamId,
       eventId: normalizedPurchaseType === 'rental' ? null : eventId,
       organizationId,
@@ -1759,6 +1783,12 @@ export async function POST(req: NextRequest) {
   const purchaseType = toStringOrNull(metadata.purchase_type ?? metadata.purchaseType ?? null);
   const userId = toStringOrNull(metadata.user_id ?? metadata.userId ?? null);
   const teamId = toStringOrNull(metadata.team_id ?? metadata.teamId ?? null);
+  const eventRegistrationRegistrantType = toStringOrNull(
+    metadata.event_registration_registrant_type ?? metadata.eventRegistrationRegistrantType ?? null,
+  );
+  const eventRegistrationParentId = toStringOrNull(
+    metadata.event_registration_parent_id ?? metadata.eventRegistrationParentId ?? null,
+  );
   const eventId = toStringOrNull(metadata.event_id ?? metadata.eventId ?? null);
   const registrationId = toStringOrNull(metadata.registration_id ?? metadata.registrationId ?? null);
   const occurrenceSlotId = toStringOrNull(
@@ -1808,6 +1838,8 @@ export async function POST(req: NextRequest) {
           eventId,
           organizationId,
           registrationId,
+          eventRegistrationRegistrantType,
+          eventRegistrationParentId,
           amountCents,
           totalChargeCents,
           metadata,
@@ -1824,6 +1856,8 @@ export async function POST(req: NextRequest) {
         eventId,
         teamId,
         userId,
+        registrantType: eventRegistrationRegistrantType,
+        parentId: eventRegistrationParentId,
         registrationId,
         occurrenceSlotId,
         occurrenceDate,
@@ -1899,6 +1933,8 @@ export async function POST(req: NextRequest) {
           eventId,
           organizationId,
           registrationId,
+          eventRegistrationRegistrantType,
+          eventRegistrationParentId,
           amountCents,
           totalChargeCents,
           metadata,
@@ -2043,6 +2079,10 @@ export async function POST(req: NextRequest) {
           const billEventId = toStringOrNull(billPurchaseMetadata?.eventId) ?? eventId;
           const billTeamId = toStringOrNull(billPurchaseMetadata?.teamId) ?? teamId;
           const billUserId = toStringOrNull(billPurchaseMetadata?.userId) ?? userId;
+          const billRegistrantType = toStringOrNull(billPurchaseMetadata?.eventRegistrationRegistrantType)
+            ?? eventRegistrationRegistrantType;
+          const billParentId = toStringOrNull(billPurchaseMetadata?.eventRegistrationParentId)
+            ?? eventRegistrationParentId;
           const billRegistrationId = toStringOrNull(billPurchaseMetadata?.registrationId) ?? registrationId;
           const billOccurrenceSlotId = toStringOrNull(billPurchaseMetadata?.occurrenceSlotId) ?? occurrenceSlotId;
           const billOccurrenceDate = toStringOrNull(billPurchaseMetadata?.occurrenceDate) ?? occurrenceDate;
@@ -2052,6 +2092,8 @@ export async function POST(req: NextRequest) {
             eventId: billEventId,
             teamId: billTeamId,
             userId: billUserId,
+            registrantType: billRegistrantType,
+            parentId: billParentId,
             registrationId: billRegistrationId,
             occurrenceSlotId: billOccurrenceSlotId,
             occurrenceDate: billOccurrenceDate,
@@ -2109,6 +2151,8 @@ export async function POST(req: NextRequest) {
         eventId,
         organizationId,
         registrationId,
+        eventRegistrationRegistrantType,
+        eventRegistrationParentId,
         amountCents,
         totalChargeCents,
         metadata,
@@ -2142,6 +2186,8 @@ export async function POST(req: NextRequest) {
       eventId,
       teamId,
       userId,
+      registrantType: eventRegistrationRegistrantType,
+      parentId: eventRegistrationParentId,
       registrationId,
       occurrenceSlotId,
       occurrenceDate,

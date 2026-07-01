@@ -225,6 +225,63 @@ describe('affiliate import service', () => {
     expect(prismaMock.events.create).not.toHaveBeenCalled();
   });
 
+  it('reclassifies no-fixed-date program candidates into evergreen affiliate events', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_1',
+      sourceId: 'source_1',
+      listingKind: 'TEAM',
+      title: 'Indoor Soccer Friendly Match',
+      sportName: 'Indoor Soccer',
+      venueName: 'Troutdale Indoor Sports',
+      city: 'Troutdale, OR',
+      scheduleText: 'Friendly games available. Call for availability.',
+      dateDisplayMode: 'NO_FIXED_DATE',
+      dateDisplayText: 'Call for availability',
+      priceText: '$75 per game',
+      officialActionUrl: 'https://example.com/friendly-games',
+      sourceUrl: 'https://example.com/source',
+      status: 'DISCOVERED',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'owner_1' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_soccer' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+
+    const result = await reclassifyAffiliateCandidate('candidate_1', 'EVENT');
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Indoor Soccer Friendly Match',
+        start: new Date('2099-12-31T12:00:00.000Z'),
+        end: null,
+        scheduleText: 'Friendly games available. Call for availability.',
+        dateDisplayMode: 'NO_FIXED_DATE',
+        dateDisplayText: 'Call for availability',
+        price: 7500,
+        priceText: '$75 per game',
+        affiliateUrl: 'https://example.com/friendly-games',
+        eventType: 'EVENT',
+      }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_1' },
+      data: expect.objectContaining({
+        listingKind: 'EVENT',
+        publishedEventId: expect.any(String),
+        publishedTeamId: null,
+        publishedFacilityId: null,
+      }),
+    });
+    expect(result.candidate.listingKind).toBe('EVENT');
+  });
+
   it('publishes event candidates as real hostless affiliate events', async () => {
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.387, 45.539]);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({

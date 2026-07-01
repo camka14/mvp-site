@@ -187,6 +187,29 @@ describe('POST /api/events/search', () => {
     ]);
   });
 
+  it('excludes no-fixed-date affiliate programs when explicit date filters are applied', async () => {
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { dateFrom: '2026-07-01T00:00:00.000Z' },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(200);
+    const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
+    expect(searchWhere.AND).toEqual(expect.arrayContaining([
+      {
+        OR: [
+          { dateDisplayMode: null },
+          { dateDisplayMode: 'SCHEDULED' },
+        ],
+      },
+    ]));
+  });
+
   it('filters external-registration events by their behavioral type', async () => {
     const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
       method: 'POST',

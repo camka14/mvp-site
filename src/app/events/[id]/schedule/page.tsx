@@ -5222,7 +5222,7 @@ function EventScheduleContent() {
   }, []);
 
   if (authLoading || !eventId) {
-    return <Loading fullScreen text="Loading schedule..." />;
+    return <Loading fullScreen text="Opening event..." />;
   }
 
   if (loading) {
@@ -5893,7 +5893,7 @@ function EventScheduleContent() {
 
 export default function EventSchedulePage() {
   return (
-    <Suspense fallback={<Loading text="Loading schedule..." />}>
+    <Suspense fallback={<Loading text="Opening event..." />}>
       <EventScheduleContent />
     </Suspense>
   );

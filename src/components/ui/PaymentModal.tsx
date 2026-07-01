@@ -1,10 +1,8 @@
 // components/PaymentModal.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
-import { BillingAddress, Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
-import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { BillingAddress, Event, PaymentIntent } from '@/types';
 import { isStripePaymentIntentClientSecret } from '@/lib/stripeClientSecret';
 import { getPaymentModalCopy } from '@/components/ui/paymentModalCopy';
 import { billingAddressService } from '@/lib/billingAddressService';
@@ -31,21 +29,6 @@ const getStripePromise = (publishableKey: string): ReturnType<typeof loadStripe>
     stripePromiseByKey.set(publishableKey, next);
     return next;
 };
-
-const normalizeCents = (value: unknown): number => (
-    typeof value === 'number' && Number.isFinite(value)
-        ? Math.max(0, Math.round(value))
-        : 0
-);
-
-const getVisibleTaxAmount = (feeBreakdown: PaymentIntent['feeBreakdown'] | null): number | null => {
-    const taxAmount = normalizeCents(feeBreakdown?.taxAmount);
-    return taxAmount > 0 ? taxAmount : null;
-};
-
-const getVisibleTotalCharge = (feeBreakdown: PaymentIntent['feeBreakdown'] | null): number => (
-    normalizeCents(feeBreakdown?.eventPrice) + (getVisibleTaxAmount(feeBreakdown) ?? 0)
-);
 
 export type PaymentEventSummary = Partial<Event> & {
     name: string;
@@ -74,7 +57,7 @@ export default function PaymentModal({
     onPaymentPending,
 }: PaymentModalProps) {
     const [error, setError] = useState<string | null>(null);
-    const [view, setView] = useState<'confirm' | 'payment' | 'success' | 'pending'>('confirm');
+    const [view, setView] = useState<'payment' | 'success' | 'pending'>('payment');
     const [reloadingEvent, setReloadingEvent] = useState(false);
     const [billingAddress, setBillingAddress] = useState<BillingAddress | null>(null);
     const [billingEmail, setBillingEmail] = useState<string | null>(null);
@@ -84,13 +67,9 @@ export default function PaymentModal({
     const purchaseType = activePaymentData?.feeBreakdown?.purchaseType;
     const copy = getPaymentModalCopy(purchaseType);
     const eventName = event.name ?? 'Event';
-    const eventLocation = event.location ?? '';
-    const eventTypeLabel = purchaseType === 'event' || !purchaseType
-        ? formatEnumDisplayLabel(event.eventType, 'Event')
-        : copy.summaryTypeLabel;
 
     const resetModal = () => {
-        setView('confirm');
+        setView('payment');
         setError(null);
         setReloadingEvent(false);
     };
@@ -129,13 +108,11 @@ export default function PaymentModal({
         }
     };
 
-    const modalTitle = view === 'confirm'
-        ? 'Confirm Payment'
-        : view === 'payment'
-            ? 'Payment'
-            : view === 'pending'
-                ? 'Payment Pending'
-                : 'Payment Complete';
+    const modalTitle = view === 'payment'
+        ? 'Payment'
+        : view === 'pending'
+            ? 'Payment Pending'
+            : 'Payment Complete';
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -147,6 +124,7 @@ export default function PaymentModal({
     useEffect(() => {
         if (isOpen) {
             setActivePaymentData(paymentData);
+            setView('payment');
         }
     }, [isOpen, paymentData]);
 
@@ -178,8 +156,6 @@ export default function PaymentModal({
     const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
     const publishableKey = activePaymentData?.publishableKey || envPublishableKey;
     const feeBreakdown = activePaymentData?.feeBreakdown ?? null;
-    const visibleTaxAmount = getVisibleTaxAmount(feeBreakdown);
-    const totalCharge = getVisibleTotalCharge(feeBreakdown);
 
     const stripePromise = useMemo(() => (
         publishableKey
@@ -234,66 +210,7 @@ export default function PaymentModal({
                 <Alert color="red" variant="light" mb="md">{error}</Alert>
             )}
 
-            {/* Confirmation View */}
-            {view === 'confirm' ? (
-                <div className="space-y-6">
-                    {/* Event Details */}
-                    <div className="flex items-center space-x-4">
-                        {event.imageId && (
-                            <Image
-                                src={getEventImageUrl({ imageId: event.imageId, width: 80, height: 80 })}
-                                alt={eventName}
-                                width={64}
-                                height={64}
-                                unoptimized
-                                className="w-16 h-16 rounded-lg object-cover"
-                            />
-                        )}
-                        <div>
-                            <h4 className="font-semibold text-lg">{eventName}</h4>
-                            <p className="text-gray-600">{eventLocation}</p>
-                            <p className="text-sm text-gray-500">{eventTypeLabel}</p>
-                        </div>
-                    </div>
-
-                    {/* Price Breakdown */}
-                    {feeBreakdown ? (
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                            <h5 className="font-medium mb-3 text-gray-900">Price Breakdown</h5>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Price:</span>
-                                    <span className="font-medium">{formatPrice(feeBreakdown.eventPrice)}</span>
-                                </div>
-                                {visibleTaxAmount !== null ? (
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Tax:</span>
-                                        <span className="font-medium">{formatPrice(visibleTaxAmount)}</span>
-                                    </div>
-                                ) : null}
-                                <div className="border-t pt-2 flex justify-between font-semibold text-base">
-                                    <span>Total:</span>
-                                    <span>{formatPrice(totalCharge)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <Alert color="yellow" variant="light">Price details are unavailable. Continue to complete payment.</Alert>
-                    )}
-
-                    {!hasValidClientSecret && (
-                        <Alert color="red" variant="light">
-                            Checkout could not be initialized. Please close this dialog and try again.
-                        </Alert>
-                    )}
-
-                    {/* Action Buttons */}
-                    <Group grow>
-                        <Button variant="default" onClick={onClose}>Cancel</Button>
-                        <Button onClick={() => setView('payment')} disabled={!hasValidClientSecret}>Continue to Payment</Button>
-                    </Group>
-                </div>
-            ) : view === 'payment' ? (
+            {view === 'payment' ? (
                 /* Payment Form - Only show when we have payment intent */
                 hasValidClientSecret && feeBreakdown ? (
                     <Elements

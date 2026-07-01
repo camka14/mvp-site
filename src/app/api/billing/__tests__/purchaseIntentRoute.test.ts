@@ -18,6 +18,9 @@ const prismaMock = {
   authUser: {
     findUnique: jest.fn(),
   },
+  userData: {
+    findUnique: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
   },
@@ -110,6 +113,7 @@ describe('POST /api/billing/purchase-intent', () => {
     }));
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    prismaMock.userData.findUnique.mockResolvedValue({ dateOfBirth: new Date('1990-01-01T00:00:00.000Z') });
     prismaMock.products.findUnique.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue({ id: 'team_1' });
     prismaMock.divisions.findMany.mockResolvedValue([]);
@@ -147,6 +151,9 @@ describe('POST /api/billing/purchase-intent', () => {
         $queryRaw: prismaMock.$queryRaw,
         teams: {
           findUnique: prismaMock.teams.findUnique,
+        },
+        userData: {
+          findUnique: prismaMock.userData.findUnique,
         },
         divisions: {
           findFirst: prismaMock.divisions.findFirst,
@@ -278,6 +285,37 @@ describe('POST /api/billing/purchase-intent', () => {
       code: 'EMAIL_VERIFICATION_REQUIRED',
       error: 'Verify your email before registering for paid events or teams.',
     }));
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
+  });
+
+  it('blocks paid event checkout when the registrant is outside event age limits', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        minAge: null,
+        maxAge: 12,
+        sportId: null,
+        registrationByDivisionType: false,
+        divisions: [],
+        maxParticipants: null,
+        teamSignup: false,
+        eventType: 'EVENT',
+        includePlayoffs: null,
+        parentEvent: null,
+        timeSlotIds: [],
+      },
+    ]);
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(String(data.error ?? '')).toContain('limited to ages');
     expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
     expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
@@ -1001,6 +1039,9 @@ describe('POST /api/billing/purchase-intent', () => {
         teams: {
           findUnique: prismaMock.teams.findUnique,
         },
+        userData: {
+          findUnique: prismaMock.userData.findUnique,
+        },
         divisions: {
           findFirst: prismaMock.divisions.findFirst,
         },
@@ -1195,6 +1236,9 @@ describe('POST /api/billing/purchase-intent', () => {
         $queryRaw: prismaMock.$queryRaw,
         teams: {
           findUnique: prismaMock.teams.findUnique,
+        },
+        userData: {
+          findUnique: prismaMock.userData.findUnique,
         },
         divisions: {
           findFirst: prismaMock.divisions.findFirst,

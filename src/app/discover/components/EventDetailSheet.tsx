@@ -2,10 +2,19 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
-import { QrCode } from 'lucide-react';
+import {
+    CalendarDays,
+    ChevronDown,
+    ChevronUp,
+    MapPin,
+    QrCode,
+    ShieldCheck,
+    Users,
+} from 'lucide-react';
 import {
     BillingAddress,
     Event,
+    Match,
     UserData,
     Team,
     TimeSlot,
@@ -29,7 +38,8 @@ import { ApiError, authService } from '@/lib/auth';
 import { eventService, type EventParticipantRegistrationEntry, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
-import { paymentService } from '@/lib/paymentService';
+import { paymentService, type DiscountPreview, type EventRegistrationCheckoutTarget } from '@/lib/paymentService';
+import { billingAddressService } from '@/lib/billingAddressService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
 import { createId } from '@/lib/id';
@@ -120,10 +130,21 @@ type PaymentPlanPreviewState = {
 type PendingEventCheckoutState = {
     event: Event;
     team?: Team;
+    eventRegistration?: EventRegistrationCheckoutTarget;
     selection?: DivisionRegistrationSelection;
     answers?: RegistrationQuestionAnswerInput[];
     discountCode?: string | null;
 };
+
+const hasCompleteBillingAddress = (billingAddress?: BillingAddress | null): billingAddress is BillingAddress => (
+    Boolean(
+        billingAddress?.line1?.trim()
+        && billingAddress.city?.trim()
+        && billingAddress.state?.trim()
+        && billingAddress.postalCode?.trim()
+        && billingAddress.countryCode?.trim(),
+    )
+);
 
 const MANUAL_PAYMENT_PROVIDER_LOGOS: Partial<Record<string, string>> = {
     CASH_APP: '/payment-providers/cash-app-pay.svg',
@@ -1308,6 +1329,220 @@ function ReadOnlyDetailsGrid({ items }: { items: ReadOnlyDetailField[] }) {
     );
 }
 
+function PublicEventSection({
+    eyebrow,
+    title,
+    children,
+    className = '',
+}: {
+    eyebrow: string;
+    title: string;
+    children: React.ReactNode;
+    className?: string;
+}) {
+    return (
+        <section className={`border-b border-slate-200 py-7 first:pt-0 last:border-b-0 last:pb-0 ${className}`}>
+            <div className="mb-5">
+                <Text size="xs" c="dimmed" tt="uppercase" fw={800} className="tracking-normal">
+                    {eyebrow}
+                </Text>
+                <h2 className="mt-1 text-xl font-bold leading-tight text-slate-950">
+                    {title}
+                </h2>
+            </div>
+            {children}
+        </section>
+    );
+}
+
+function PublicEventMetaPill({
+    label,
+    value,
+}: {
+    label: string;
+    value: string;
+}) {
+    if (!value.trim()) {
+        return null;
+    }
+
+    return (
+        <div className="border-t border-slate-200 py-3 first:border-t-0 first:pt-0">
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700} className="tracking-normal">
+                {label}
+            </Text>
+            <Text size="sm" fw={700} className="mt-1 text-slate-950">
+                {value}
+            </Text>
+        </div>
+    );
+}
+
+const getPublicDivisionGenderLabel = (gender: EventDivisionOption['gender']): string => {
+    if (gender === 'M') return "Men's";
+    if (gender === 'F') return "Women's";
+    return 'Coed';
+};
+
+const stripDivisionGenderPrefix = (value: string): string => (
+    value
+        .replace(/^(mens|men'?s|womens|women'?s|coed|co-ed)\s+/i, '')
+        .trim()
+        || value
+);
+
+const stripDefaultAgePrefix = (value: string): string => (
+    value
+        .replace(/^open\s+/i, '')
+        .trim()
+        || value
+);
+
+const stripDefaultSkillAgeSuffix = (value: string): string => (
+    value
+        .replace(/\s+18\+$/i, '')
+        .trim()
+        || value
+);
+
+const getPublicDivisionAgeSkillParts = (division: EventDivisionOption): { ageLabel: string; skillLabel: string } => {
+    const compositeMatch = division.divisionTypeId.match(/^skill_(.+)_age_([a-z0-9_]+)$/);
+    const skillDivisionTypeId = compositeMatch
+        ? compositeMatch[1]
+        : division.ratingType === 'SKILL'
+            ? division.divisionTypeId
+            : 'open';
+    const ageDivisionTypeId = compositeMatch
+        ? compositeMatch[2]
+        : division.ratingType === 'AGE'
+            ? division.divisionTypeId
+            : '18plus';
+    const sportInput = division.sportId;
+    const ageLabel = stripDefaultAgePrefix(stripDivisionGenderPrefix(deriveDivisionTypeDisplayName({
+        sportInput,
+        gender: 'C',
+        ratingType: 'AGE',
+        divisionTypeId: ageDivisionTypeId,
+    })));
+    const skillLabel = stripDefaultSkillAgeSuffix(stripDivisionGenderPrefix(deriveDivisionTypeDisplayName({
+        sportInput,
+        gender: 'C',
+        ratingType: 'SKILL',
+        divisionTypeId: skillDivisionTypeId,
+    })));
+    return {
+        ageLabel,
+        skillLabel,
+    };
+};
+
+type PublicDivisionSkillGroup = {
+    key: string;
+    label: string;
+    options: EventDivisionOption[];
+};
+
+type PublicDivisionAgeGroup = {
+    key: string;
+    label: string;
+    skillGroups: PublicDivisionSkillGroup[];
+};
+
+type PublicDivisionGenderGroup = {
+    key: string;
+    label: string;
+    ageGroups: PublicDivisionAgeGroup[];
+};
+
+const buildPublicDivisionGroups = (divisionOptions: EventDivisionOption[]): PublicDivisionGenderGroup[] => {
+    const genderGroups: PublicDivisionGenderGroup[] = [];
+    const genderIndex = new Map<string, PublicDivisionGenderGroup>();
+
+    divisionOptions.forEach((division) => {
+        const genderKey = division.gender;
+        let genderGroup = genderIndex.get(genderKey);
+        if (!genderGroup) {
+            genderGroup = {
+                key: genderKey,
+                label: getPublicDivisionGenderLabel(division.gender),
+                ageGroups: [],
+            };
+            genderIndex.set(genderKey, genderGroup);
+            genderGroups.push(genderGroup);
+        }
+
+        const { ageLabel, skillLabel } = getPublicDivisionAgeSkillParts(division);
+        const ageKey = ageLabel.toLowerCase();
+        let ageGroup = genderGroup.ageGroups.find((group) => group.key === ageKey);
+        if (!ageGroup) {
+            ageGroup = {
+                key: ageKey,
+                label: ageLabel,
+                skillGroups: [],
+            };
+            genderGroup.ageGroups.push(ageGroup);
+        }
+
+        const skillKey = skillLabel.toLowerCase();
+        let skillGroup = ageGroup.skillGroups.find((group) => group.key === skillKey);
+        if (!skillGroup) {
+            skillGroup = {
+                key: skillKey,
+                label: skillLabel,
+                options: [],
+            };
+            ageGroup.skillGroups.push(skillGroup);
+        }
+        skillGroup.options.push(division);
+    });
+
+    return genderGroups;
+};
+
+const isActiveFamilyChild = (child: FamilyChild): boolean => {
+    const normalizedLinkStatus = typeof child.linkStatus === 'string'
+        ? child.linkStatus.trim().toLowerCase()
+        : 'active';
+    return normalizedLinkStatus === 'active';
+};
+
+const isDivisionOptionEligibleForRegistrant = ({
+    division,
+    dateOfBirth,
+    eventStartDate,
+    eventMinAge,
+    eventMaxAge,
+}: {
+    division: EventDivisionOption;
+    dateOfBirth: Date | null;
+    eventStartDate: Date | null;
+    eventMinAge?: number;
+    eventMaxAge?: number;
+}): boolean => {
+    if (!dateOfBirth) {
+        return true;
+    }
+
+    const ageAtEvent = calculateAgeOnDate(dateOfBirth, eventStartDate ?? new Date());
+    if (!Number.isFinite(ageAtEvent)) {
+        return false;
+    }
+
+    const hasEventAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
+    if (hasEventAgeLimits && !isAgeWithinRange(ageAtEvent, eventMinAge, eventMaxAge)) {
+        return false;
+    }
+
+    const divisionEligibility = evaluateDivisionAgeEligibility({
+        dateOfBirth,
+        divisionTypeId: division.divisionTypeId,
+        sportInput: division.sportId ?? undefined,
+        referenceDate: eventStartDate ?? undefined,
+    });
+
+    return !(divisionEligibility.applies && divisionEligibility.eligible === false);
+};
+
 export default function EventDetailSheet({
     event,
     isOpen,
@@ -1341,8 +1576,11 @@ export default function EventDetailSheet({
     const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
     const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
     const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
-    const [showDiscountCodeModal, setShowDiscountCodeModal] = useState(false);
+    const [showCheckoutPreviewModal, setShowCheckoutPreviewModal] = useState(false);
     const [discountCode, setDiscountCode] = useState('');
+    const [discountPreview, setDiscountPreview] = useState<DiscountPreview | null>(null);
+    const [discountPreviewLoading, setDiscountPreviewLoading] = useState(false);
+    const [discountPreviewError, setDiscountPreviewError] = useState<string | null>(null);
     const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
     const [showSignModal, setShowSignModal] = useState(false);
@@ -1366,7 +1604,6 @@ export default function EventDetailSheet({
     const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
-    const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
     const [showRegistrationQuestionsModal, setShowRegistrationQuestionsModal] = useState(false);
     const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
     const [registrationQuestionAnswers, setRegistrationQuestionAnswers] = useState<Record<string, string>>({});
@@ -1385,10 +1622,17 @@ export default function EventDetailSheet({
     const [hostUser, setHostUser] = useState<UserData | null>(null);
     const eventRef = React.useRef<Event | null>(event);
     const loadedEventDetailsKeyRef = useRef<string | null>(null);
+    const joinCardAnchorRef = useRef<HTMLDivElement | null>(null);
+    const joinCardRef = useRef<HTMLDivElement | null>(null);
+    const [joinCardDocked, setJoinCardDocked] = useState(false);
+    const [joinCardHeight, setJoinCardHeight] = useState(0);
+    const [joinCardLeft, setJoinCardLeft] = useState(0);
+    const [joinCardWidth, setJoinCardWidth] = useState(0);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
+    const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
@@ -1564,21 +1808,55 @@ export default function EventDetailSheet({
     }, [eventRegistrationProgressKey]);
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
-        () => getEventImageFallbackUrl({ event: currentEvent, width: 800, height: 200 }),
+        () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
         [currentEvent],
     );
     const eventImageUrl = React.useMemo(
         () => getEventImageUrl({
             imageId: currentEvent?.imageId,
-            width: 800,
+            width: 1200,
+            height: 675,
             placeholderUrl: eventImageFallbackUrl,
         }),
         [currentEvent?.imageId, eventImageFallbackUrl],
     );
+    const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
+    const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
+    const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
+    const eventStartDate = effectiveEventStartDate;
+    const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
+    const joinClosedMessage = isWeeklyParentEvent && selectedWeeklyOccurrenceOption
+        ? 'This weekly session has already started. Joining is closed.'
+        : 'This event has already started. Joining is closed.';
+    const userDob = parseDateValue(user?.dateOfBirth ?? null);
+    const selectedChildForDivisionFilter = React.useMemo(() => {
+        if (currentEvent?.teamSignup || !selectedChildId) {
+            return null;
+        }
+        return children.find((child) => child.userId === selectedChildId && isActiveFamilyChild(child)) ?? null;
+    }, [children, currentEvent?.teamSignup, selectedChildId]);
+    const selectedChildDobForDivisionFilter = parseDateValue(selectedChildForDivisionFilter?.dateOfBirth ?? null);
+    const divisionRegistrantDob = selectedChildDobForDivisionFilter ?? userDob;
     const registrationByDivisionType = Boolean(currentEvent?.registrationByDivisionType);
-    const divisionOptions = React.useMemo(
+    const allDivisionOptions = React.useMemo(
         () => buildDivisionOptionsForEvent(currentEvent),
         [currentEvent],
+    );
+    const divisionOptions = React.useMemo(
+        () => allDivisionOptions.filter((division) => (
+            isDivisionOptionEligibleForRegistrant({
+                division,
+                dateOfBirth: divisionRegistrantDob,
+                eventStartDate,
+                eventMinAge,
+                eventMaxAge,
+            })
+        )),
+        [allDivisionOptions, divisionRegistrantDob, eventMaxAge, eventMinAge, eventStartDate],
+    );
+    const publicDivisionGroups = React.useMemo(
+        () => buildPublicDivisionGroups(divisionOptions),
+        [divisionOptions],
     );
     const divisionDisplayNameIndex = React.useMemo(
         () => buildDivisionDisplayNameIndex(currentEvent?.divisionDetails),
@@ -1586,7 +1864,7 @@ export default function EventDetailSheet({
     );
     const eventDivisionLabels = React.useMemo(() => {
         const nameById = new Map<string, string>();
-        divisionOptions.forEach((option) => {
+        allDivisionOptions.forEach((option) => {
             const normalizedId = normalizeDivisionKey(option.id);
             if (normalizedId && !nameById.has(normalizedId)) {
                 nameById.set(normalizedId, option.name);
@@ -1643,19 +1921,7 @@ export default function EventDetailSheet({
         });
 
         return labels;
-    }, [currentEvent?.divisions, currentEvent?.sport, currentEvent?.sportId, divisionOptions]);
-    const divisionTypeOptions = React.useMemo(() => {
-        const grouped = new Map<string, EventDivisionOption>();
-        divisionOptions.forEach((option) => {
-            if (!grouped.has(option.divisionTypeKey)) {
-                grouped.set(option.divisionTypeKey, option);
-            }
-        });
-        return Array.from(grouped.values()).map((option) => ({
-            value: option.divisionTypeKey,
-            label: option.divisionTypeName,
-        }));
-    }, [divisionOptions]);
+    }, [currentEvent?.divisions, currentEvent?.sport, currentEvent?.sportId, allDivisionOptions]);
     const selectedDivisionOption = React.useMemo(() => {
         if (!divisionOptions.length) {
             return null;
@@ -1669,6 +1935,19 @@ export default function EventDetailSheet({
         }
         return divisionOptions.find((option) => option.id === selectedDivisionId) ?? divisionOptions[0];
     }, [divisionOptions, registrationByDivisionType, selectedDivisionId, selectedDivisionTypeKey]);
+    const handlePublicDivisionSelect = (division: EventDivisionOption) => {
+        if (registrationByDivisionType) {
+            setSelectedDivisionTypeKey(division.divisionTypeKey);
+            saveEventRegistrationProgress({
+                selectedDivisionTypeKey: division.divisionTypeKey,
+            });
+            return;
+        }
+        setSelectedDivisionId(division.id);
+        saveEventRegistrationProgress({
+            selectedDivisionId: division.id,
+        });
+    };
     const divisionSelectionPayload = React.useMemo<DivisionSelectionPayload>(() => {
         if (!selectedDivisionOption) {
             return {};
@@ -1696,14 +1975,18 @@ export default function EventDetailSheet({
             : divisionSelectionPayload
     ), [divisionSelectionPayload, selectedWeeklyOccurrence]);
     const isDivisionSelectionMissing = React.useMemo(() => {
-        if (!divisionOptions.length) {
+        if (!allDivisionOptions.length) {
             return false;
+        }
+        if (!divisionOptions.length) {
+            return true;
         }
         if (registrationByDivisionType) {
             return !(selectedDivisionTypeKey || selectedDivisionOption?.divisionTypeKey);
         }
         return !(selectedDivisionId || selectedDivisionOption?.id);
     }, [
+        allDivisionOptions.length,
         divisionOptions.length,
         registrationByDivisionType,
         selectedDivisionId,
@@ -1844,15 +2127,6 @@ export default function EventDetailSheet({
         selectedDivisionBilling.installmentDueDates,
         selectedDivisionBilling.installmentDueRelativeDays,
     ]);
-    const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
-    const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
-    const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
-    const eventStartDate = effectiveEventStartDate;
-    const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
-    const joinClosedMessage = isWeeklyParentEvent && selectedWeeklyOccurrenceOption
-        ? 'This weekly session has already started. Joining is closed.'
-        : 'This event has already started. Joining is closed.';
-    const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
     const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
     const isMinor = typeof userAge === 'number' && Number.isFinite(userAge) && userAge < 18;
@@ -1901,6 +2175,49 @@ export default function EventDetailSheet({
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
     const todayForDob = new Date();
     const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
+
+    useEffect(() => {
+        if (!isActive || !renderInline) {
+            setJoinCardDocked(false);
+            return undefined;
+        }
+
+        const updateJoinCardDock = () => {
+            const anchor = joinCardAnchorRef.current;
+            const card = joinCardRef.current;
+            if (!anchor || !card || window.innerWidth < 1024) {
+                setJoinCardDocked(false);
+                return;
+            }
+
+            const anchorRect = anchor.getBoundingClientRect();
+            const cardRect = card.getBoundingClientRect();
+            const measuredHeight = cardRect.height || joinCardHeight;
+            const holdingBottomGap = 96;
+            const holdingTop = Math.max(24, window.innerHeight - measuredHeight - holdingBottomGap);
+
+            setJoinCardHeight(measuredHeight);
+            setJoinCardLeft(anchorRect.left);
+            setJoinCardWidth(anchorRect.width);
+            setJoinCardDocked(anchorRect.top <= holdingTop);
+        };
+
+        updateJoinCardDock();
+        window.addEventListener('scroll', updateJoinCardDock, { passive: true });
+        window.addEventListener('resize', updateJoinCardDock);
+
+        let resizeObserver: ResizeObserver | null = null;
+        if (typeof ResizeObserver !== 'undefined' && joinCardRef.current) {
+            resizeObserver = new ResizeObserver(updateJoinCardDock);
+            resizeObserver.observe(joinCardRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('scroll', updateJoinCardDock);
+            window.removeEventListener('resize', updateJoinCardDock);
+            resizeObserver?.disconnect();
+        };
+    }, [isActive, joinCardHeight, renderInline]);
 
     const resetAuthModalFeedback = useCallback(() => {
         setAuthModalError('');
@@ -2428,7 +2745,6 @@ export default function EventDetailSheet({
             setPendingSignedDocumentId(null);
             setPendingSignatureOperationId(null);
             setShowPasswordModal(false);
-            setShowJoinChoiceModal(false);
             setShowCapacityBreakdown(false);
             setPassword('');
             setPasswordError(null);
@@ -2701,6 +3017,7 @@ export default function EventDetailSheet({
     const startEventCheckout = useCallback(async ({
         event: checkoutEvent,
         team,
+        eventRegistration,
         selection,
         answers,
         discountCode: checkoutDiscountCode,
@@ -2724,6 +3041,7 @@ export default function EventDetailSheet({
                 selectedWeeklyOccurrence,
                 answers,
                 (checkoutDiscountCode ?? discountCode).trim() || null,
+                eventRegistration,
             );
             const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
             setRegistrationHoldExpiresAt(holdExpiresAt);
@@ -2743,7 +3061,9 @@ export default function EventDetailSheet({
             setShowPaymentModal(true);
             setPendingEventCheckout(null);
             setShowBillingAddressModal(false);
-            setShowDiscountCodeModal(false);
+            setShowCheckoutPreviewModal(false);
+            setDiscountPreview(null);
+            setDiscountPreviewError(null);
         } catch (error) {
             if (
                 isApiRequestError(error)
@@ -2753,13 +3073,15 @@ export default function EventDetailSheet({
                 && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
             ) {
                 setPendingEventCheckout({
-                event: checkoutEvent,
-                team,
-                selection,
-                answers,
-                discountCode: checkoutDiscountCode ?? discountCode,
-            });
+                    event: checkoutEvent,
+                    team,
+                    eventRegistration,
+                    selection,
+                    answers,
+                    discountCode: checkoutDiscountCode ?? discountCode,
+                });
                 setShowBillingAddressModal(true);
+                setShowCheckoutPreviewModal(false);
                 return;
             }
             throw error;
@@ -2775,6 +3097,62 @@ export default function EventDetailSheet({
         user,
     ]);
 
+    const prepareEventCheckout = useCallback(async (checkout: PendingEventCheckoutState) => {
+        setPendingEventCheckout(checkout);
+        setDiscountCode(checkout.discountCode?.trim() ?? '');
+        setDiscountPreview(null);
+        setDiscountPreviewError(null);
+        setJoinError(null);
+
+        try {
+            const profile = await billingAddressService.getBillingAddressProfile();
+            if (!hasCompleteBillingAddress(profile.billingAddress)) {
+                setShowCheckoutPreviewModal(false);
+                setShowBillingAddressModal(true);
+                return;
+            }
+            setShowBillingAddressModal(false);
+            setShowCheckoutPreviewModal(true);
+        } catch (error) {
+            setShowCheckoutPreviewModal(false);
+            setShowBillingAddressModal(true);
+        }
+    }, []);
+
+    const handleApplyDiscountPreview = useCallback(async () => {
+        if (!pendingEventCheckout || !user) {
+            return;
+        }
+        const normalizedCode = discountCode.trim();
+        if (!normalizedCode) {
+            setDiscountPreview(null);
+            setDiscountPreviewError(null);
+            return;
+        }
+
+        setDiscountPreviewLoading(true);
+        setDiscountPreviewError(null);
+        try {
+            const preview = await paymentService.previewEventDiscount({
+                user,
+                event: pendingEventCheckout.event,
+                team: pendingEventCheckout.team,
+                selection: pendingEventCheckout.selection,
+                occurrence: selectedWeeklyOccurrence,
+                answers: pendingEventCheckout.answers,
+                discountCode: normalizedCode,
+                eventRegistration: pendingEventCheckout.eventRegistration,
+            });
+            setDiscountPreview(preview);
+            setDiscountCode(preview.code ?? normalizedCode);
+        } catch (error) {
+            setDiscountPreview(null);
+            setDiscountPreviewError(error instanceof Error ? error.message : 'Unable to apply discount code.');
+        } finally {
+            setDiscountPreviewLoading(false);
+        }
+    }, [discountCode, pendingEventCheckout, selectedWeeklyOccurrence, user]);
+
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
             return true;
@@ -2782,6 +3160,47 @@ export default function EventDetailSheet({
         setJoinError(message);
         return false;
     }, [weeklySelectionRequired]);
+
+    const completeChildRegistration = useCallback(async (
+        childId: string,
+        selection: DivisionSelectionPayload = {},
+        answers?: RegistrationQuestionAnswerInput[],
+    ) => {
+        if (!currentEvent || !user) {
+            throw new Error('Event is not loaded.');
+        }
+
+        const childPriceCents = normalizePriceCents(selectedDivisionBilling.priceCents);
+        if (childPriceCents > 0) {
+            if (currentEvent.registrationPaymentMode === 'MANUAL') {
+                throw new Error('Child registration requires payment. Manual child payment checkout is not available yet.');
+            }
+            if (selectedDivisionBilling.allowPaymentPlans) {
+                throw new Error('Child registration requires payment. Payment plans for child registration are not available yet.');
+            }
+            await prepareEventCheckout({
+                event: checkoutEvent ?? currentEvent,
+                selection,
+                answers,
+                eventRegistration: {
+                    registrantId: childId,
+                    registrantType: 'CHILD',
+                    parentId: user.$id,
+                },
+            });
+            return;
+        }
+
+        await registerChildForEvent(childId, selection, answers);
+    }, [
+        checkoutEvent,
+        currentEvent,
+        registerChildForEvent,
+        selectedDivisionBilling.allowPaymentPlans,
+        selectedDivisionBilling.priceCents,
+            prepareEventCheckout,
+            user,
+        ]);
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
@@ -2802,7 +3221,7 @@ export default function EventDetailSheet({
             if (!intent.childId) {
                 throw new Error('Select a child to register.');
             }
-            await registerChildForEvent(intent.childId, selection, intent.answers);
+            await completeChildRegistration(intent.childId, selection, intent.answers);
             return;
         }
         if (intent.mode === 'child_free_agent') {
@@ -3014,16 +3433,16 @@ export default function EventDetailSheet({
                 navigateToPublicEventCompletion();
             }
         } else {
-            setPendingEventCheckout({
+            await prepareEventCheckout({
                 event: checkoutEvent ?? currentEvent,
                 team: resolvedTeam,
                 selection,
                 answers: intent.answers,
             });
-            setShowDiscountCodeModal(true);
         }
     }, [
         checkoutEvent,
+        completeChildRegistration,
         createBillForOwner,
         currentEvent,
         ensureWeeklyOccurrenceSelected,
@@ -3033,13 +3452,12 @@ export default function EventDetailSheet({
         navigateToPublicEventCompletion,
         players.length,
         registrationByDivisionType,
-        registerChildForEvent,
         resolvedDivisionSelectionPayload,
         selectedDivisionBilling.allowPaymentPlans,
         selectedDivisionAtCapacity,
         selectedTeamId,
         selectedWeeklyOccurrence,
-        startEventCheckout,
+        prepareEventCheckout,
         teams.length,
         user,
         userTeams,
@@ -3641,7 +4059,7 @@ export default function EventDetailSheet({
             if (signingStarted) {
                 return;
             }
-            await registerChildForEvent(selectedChildId, resolvedDivisionSelectionPayload, childIntent.answers);
+            await finalizeJoin(childIntent);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
         }
@@ -3665,7 +4083,7 @@ export default function EventDetailSheet({
     }, [currentEvent?.$id, router, selectedFreeAgentActionUser]);
 
     // Update the join event handlers
-    const handleJoinEvent = async (selection?: 'self' | 'child', skipPaymentPlanPreview = false) => {
+    const handleJoinEvent = async (skipPaymentPlanPreview = false) => {
         if (!user || !currentEvent) return;
         if (eventHasStarted) {
             setJoinError(joinClosedMessage);
@@ -3674,16 +4092,6 @@ export default function EventDetailSheet({
         if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining.')) {
             return;
         }
-        if (!selection && canRegisterChild && hasActiveChildren) {
-            setShowJoinChoiceModal(true);
-            return;
-        }
-        if (selection === 'child') {
-            setShowJoinChoiceModal(false);
-            await handleRegisterChild();
-            return;
-        }
-        setShowJoinChoiceModal(false);
         if (isDivisionSelectionMissing) {
             setJoinError(
                 registrationByDivisionType
@@ -3920,7 +4328,7 @@ export default function EventDetailSheet({
             return;
         }
 
-        void handleJoinEvent('self', true);
+        void handleJoinEvent(true);
     };
 
     const handleWithdrawTeam = async () => {
@@ -4081,6 +4489,13 @@ export default function EventDetailSheet({
     const { date, time } = getEventDateTime(currentEvent);
     const affiliateActionUrl = typeof currentEvent.affiliateUrl === 'string' ? currentEvent.affiliateUrl.trim() : '';
     const isAffiliateEvent = affiliateActionUrl.length > 0;
+    const normalizedDateDisplayMode = typeof currentEvent.dateDisplayMode === 'string'
+        ? currentEvent.dateDisplayMode.trim().toUpperCase()
+        : 'SCHEDULED';
+    const isEvergreenProgram = normalizedDateDisplayMode === 'NO_FIXED_DATE' || normalizedDateDisplayMode === 'ONGOING';
+    const eventScheduleDisplayText = isEvergreenProgram
+        ? (currentEvent.dateDisplayText?.trim() || currentEvent.scheduleText?.trim() || 'No fixed start date')
+        : `${date} at ${time}`;
     const isTeamSignup = currentEvent.teamSignup;
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const startDateValue = parseDateValue(currentEvent.start ?? null);
@@ -4165,13 +4580,24 @@ export default function EventDetailSheet({
         }
         return divisionEligibility.eligible !== false;
     };
-    const activeChildren = children.filter((child) => {
-        const normalizedLinkStatus = typeof child.linkStatus === 'string'
-            ? child.linkStatus.trim().toLowerCase()
-            : 'active';
-        return normalizedLinkStatus === 'active';
-    });
+    const activeChildren = children.filter(isActiveFamilyChild);
     const hasActiveChildren = activeChildren.length > 0;
+    const hasLinkedChildRefundTarget = activeChildren.some((child) => {
+        const childId = normalizeUserId(child.userId);
+        if (!childId) {
+            return false;
+        }
+        return normalizedParticipantUserIds.includes(childId)
+            || normalizedWaitlistIdSet.has(childId)
+            || normalizedFreeAgentIdSet.has(childId)
+            || teams.some((team) => (team.playerIds || []).includes(childId));
+    });
+    const hasRefundTarget = Boolean(user && (
+        isUserRegistered
+        || isUserWaitlisted
+        || isUserFreeAgent
+        || hasLinkedChildRefundTarget
+    ));
     const shouldShowChildRegistrationPanel = canRegisterChild
         && (childrenLoading || Boolean(childrenError) || hasActiveChildren);
     const childOptions = activeChildren.map((child) => {
@@ -4182,12 +4608,25 @@ export default function EventDetailSheet({
             ? `${childAgeAtEvent}y at event`
             : 'age unknown';
         const eligible = isChildEligible(child);
+        const childId = normalizeUserId(child.userId);
+        const hasExistingEventState = Boolean(
+            childId
+            && (
+                normalizedParticipantUserIds.includes(childId)
+                || normalizedWaitlistIdSet.has(childId)
+                || normalizedFreeAgentIdSet.has(childId)
+                || teams.some((team) => (team.playerIds || []).includes(childId))
+            ),
+        );
         return {
             value: child.userId,
-            label: `${name} (${ageLabel})${eligible ? '' : ' - not eligible'}`,
-            disabled: !eligible,
+            label: `${name} (${ageLabel})`,
+            visible: eligible || hasExistingEventState,
         };
-    });
+    }).filter((option) => option.visible).map((option) => ({
+        value: option.value,
+        label: option.label,
+    }));
     const selectedChild = activeChildren.find((child) => child.userId === selectedChildId);
     const selectedChildEligible = selectedChild ? isChildEligible(selectedChild) : false;
     const selectedChildHasEmail = selectedChild
@@ -4224,9 +4663,23 @@ export default function EventDetailSheet({
     const eventPriceSummary = isAffiliateEvent && typeof currentEvent.priceText === 'string' && currentEvent.priceText.trim().length > 0
         ? currentEvent.priceText.trim()
         : `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
-    const maxParticipantsLabel = isTeamSignup ? 'Max teams' : 'Max players';
+    const usesManualRegistrationPayments = currentEvent.registrationPaymentMode === 'MANUAL'
+        || (currentEvent.manualPaymentLinks ?? []).length > 0
+        || Boolean(currentEvent.manualPaymentInstructions?.trim());
+    const showSecurePaymentNote = !isAffiliateEvent
+        && !usesManualRegistrationPayments
+        && normalizePriceCents(selectedDivisionBilling.priceCents) > 0;
+    const showPoweredByBracketIqNote = !isAffiliateEvent;
     const registrationCutoffSummary = formatRegistrationCutoffSummary(currentEvent.registrationCutoffHours);
     const refundSummary = formatRefundSummary(currentEvent.cancellationRefundHours);
+    const eventTypeLabel = isEvergreenProgram
+        ? 'Program'
+        : formatEnumDisplayLabel(currentEvent.eventType, 'Event');
+    const registrationTypeLabel = isTeamSignup ? 'Team registration' : 'Individual registration';
+    const spotsSummary = participantCapacity > 0
+        ? `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`
+        : 'Open capacity';
+    const eventLocationSummary = currentEvent.location || 'Location coming soon';
     const officialPositionsSummary = uniqueNonEmptyStrings(
         (currentEvent.officialPositions ?? [])
             .slice()
@@ -4278,63 +4731,6 @@ export default function EventDetailSheet({
         }
         return 0;
     })();
-    const scheduleDetailRows: ReadOnlyDetailField[] = (() => {
-        const rows: ReadOnlyDetailField[] = [
-            { label: 'Field count', value: String(readOnlyFieldCount) },
-            { label: 'Weekly timeslots', value: String(currentEvent.timeSlots?.length ?? 0) },
-        ];
-
-        if (currentEvent.eventType === 'LEAGUE') {
-            rows.push({ label: 'Games per opponent', value: String(currentEvent.gamesPerOpponent ?? 1) });
-            if (currentEvent.usesSets) {
-                rows.push({ label: 'Sets per match', value: String(currentEvent.setsPerMatch ?? 1) });
-                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
-                if (Array.isArray(currentEvent.pointsToVictory) && currentEvent.pointsToVictory.length > 0) {
-                    rows.push({ label: 'Points to victory', value: currentEvent.pointsToVictory.join(', ') });
-                }
-            } else {
-                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
-            }
-            rows.push({ label: 'Rest time', value: `${currentEvent.restTimeMinutes ?? 0} minutes` });
-            if (currentEvent.includePlayoffs) {
-                rows.push({
-                    label: 'Playoffs',
-                    value: currentEvent.singleDivision
-                        ? `${Math.max(2, currentEvent.playoffTeamCount ?? currentEvent.maxParticipants)} teams`
-                        : 'Configured per division',
-                });
-            }
-        }
-
-        if (currentEvent.eventType === 'TOURNAMENT') {
-            if (currentEvent.usesSets) {
-                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
-            } else {
-                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
-            }
-            rows.push({
-                label: 'Bracket',
-                value: currentEvent.doubleElimination ? 'Double elimination' : 'Single elimination',
-            });
-            if (typeof currentEvent.winnerSetCount === 'number') {
-                rows.push({ label: 'Winner set count', value: String(currentEvent.winnerSetCount) });
-            }
-            if (Array.isArray(currentEvent.winnerBracketPointsToVictory) && currentEvent.winnerBracketPointsToVictory.length > 0) {
-                rows.push({
-                    label: currentEvent.doubleElimination ? 'Winner points' : 'Bracket set points',
-                    value: currentEvent.winnerBracketPointsToVictory.join(', '),
-                });
-            }
-            if (currentEvent.doubleElimination && typeof currentEvent.loserSetCount === 'number') {
-                rows.push({ label: 'Loser set count', value: String(currentEvent.loserSetCount) });
-            }
-            if (currentEvent.doubleElimination && Array.isArray(currentEvent.loserBracketPointsToVictory) && currentEvent.loserBracketPointsToVictory.length > 0) {
-                rows.push({ label: 'Loser points', value: currentEvent.loserBracketPointsToVictory.join(', ') });
-            }
-        }
-
-        return rows;
-    })();
     const scheduleFieldNamesById = new Map((currentEvent.fields ?? []).map((field) => [field.$id, field]));
     const fallbackDivisionIds = Array.isArray(currentEvent.divisions)
         ? currentEvent.divisions
@@ -4342,6 +4738,135 @@ export default function EventDetailSheet({
             .filter((entry): entry is string => Boolean(entry))
         : [];
     const scheduleTimeslotGroups = buildScheduleTimeslotGroups(currentEvent.timeSlots ?? []);
+    const teamNameById = new Map(teams.map((team) => [team.$id, team.name || 'Team']));
+    const selectedDivisionScheduleAliases = new Set<string>([
+        ...getNormalizedDivisionAliases(selectedDivisionOption?.id),
+        ...getNormalizedDivisionAliases(selectedDivisionOption?.key),
+        ...getNormalizedDivisionAliases(selectedDivisionOption?.divisionTypeKey),
+    ]);
+    const matchesSelectedScheduleDivision = (value: unknown): boolean => {
+        if (selectedDivisionScheduleAliases.size === 0) {
+            return false;
+        }
+        const aliases = new Set<string>();
+        if (value && typeof value === 'object') {
+            const row = value as { id?: unknown; $id?: unknown; key?: unknown; name?: unknown };
+            [row.id, row.$id, row.key, row.name].forEach((entry) => {
+                getNormalizedDivisionAliases(entry).forEach((alias) => aliases.add(alias));
+            });
+        } else {
+            getNormalizedDivisionAliases(value).forEach((alias) => aliases.add(alias));
+        }
+        return Array.from(aliases).some((alias) => selectedDivisionScheduleAliases.has(alias));
+    };
+    const getMatchTeamLabel = (match: Match, side: 'team1' | 'team2'): string => {
+        const hydratedTeam = match[side];
+        if (hydratedTeam && typeof hydratedTeam === 'object' && typeof hydratedTeam.name === 'string' && hydratedTeam.name.trim().length > 0) {
+            return hydratedTeam.name.trim();
+        }
+        const teamId = side === 'team1' ? match.team1Id : match.team2Id;
+        if (teamId && teamNameById.has(teamId)) {
+            return teamNameById.get(teamId) ?? 'Team';
+        }
+        const seed = side === 'team1' ? match.team1Seed : match.team2Seed;
+        return typeof seed === 'number' ? `Seed ${seed}` : 'TBD';
+    };
+    const schedulePreviewItems = (() => {
+        const nowMs = Date.now();
+        const allMatchRows = (currentEvent.matches ?? [])
+            .map((match) => {
+                const start = parseDateValue(match.start ?? null);
+                if (!start) {
+                    return null;
+                }
+                const fieldLabel = match.field
+                    ? getFieldDisplayName(match.field, match.fieldId ?? undefined)
+                    : match.fieldId
+                        ? getFieldDisplayName({ $id: match.fieldId, name: scheduleFieldNamesById.get(match.fieldId)?.name ?? '' }, match.fieldId)
+                        : 'Field TBD';
+                return {
+                    id: match.$id,
+                    startMs: start.getTime(),
+                    dateKey: start.toDateString(),
+                    dateLabel: formatDisplayDate(start, { year: '2-digit' }),
+                    dayLabel: start.toLocaleDateString(undefined, { weekday: 'short' }),
+                    timeLabel: formatDisplayTime(start),
+                    title: `${getMatchTeamLabel(match, 'team1')} vs ${getMatchTeamLabel(match, 'team2')}`,
+                    meta: fieldLabel,
+                    matchesSelectedDivision: matchesSelectedScheduleDivision(match.division),
+                };
+            })
+            .filter((row): row is NonNullable<typeof row> => row !== null)
+            .sort((left, right) => left.startMs - right.startMs);
+        const selectedDivisionMatchRows = allMatchRows.filter((row) => row.matchesSelectedDivision);
+        const matchRows = selectedDivisionMatchRows.length > 0 ? selectedDivisionMatchRows : allMatchRows;
+        const preferredMatches = matchRows.filter((row) => row.startMs >= nowMs);
+        const selectedMatches = (preferredMatches.length > 0 ? preferredMatches : matchRows).slice(0, 4);
+        if (selectedMatches.length > 0) {
+            return selectedMatches;
+        }
+
+        const timeslotRows = scheduleTimeslotGroups
+            .flatMap(([dayOfWeek, slots]) => slots.map((slot) => {
+                const slotDivisionIds = Array.isArray(slot.divisions) && slot.divisions.length
+                    ? slot.divisions
+                    : [];
+                const fieldNames = uniqueNonEmptyStrings(
+                    (
+                        Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+                            ? slot.scheduledFieldIds
+                            : typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
+                                ? [slot.scheduledFieldId]
+                                : []
+                    ).map((fieldId: string) => {
+                        const resolved = scheduleFieldNamesById.get(fieldId);
+                        return getFieldDisplayName(
+                            { $id: fieldId, name: resolved?.name ?? '' },
+                            fieldId,
+                        );
+                    }),
+                );
+                const divisionNames = uniqueNonEmptyStrings(
+                    (
+                        slotDivisionIds.length
+                            ? slotDivisionIds
+                            : fallbackDivisionIds
+                    ).map((divisionId: string) => resolveDivisionDisplayName({
+                        division: divisionId,
+                        divisionNameIndex: divisionDisplayNameIndex,
+                        sportInput: sportLabel,
+                    }) ?? divisionId),
+                );
+                const dayLabel = getDayOfWeekLabel(dayOfWeek);
+                return {
+                    id: slot.$id,
+                    startMs: typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : Number.MAX_SAFE_INTEGER,
+                    dateKey: dayLabel,
+                    dateLabel: dayLabel,
+                    dayLabel: 'Weekly',
+                    timeLabel: formatSlotTimeRange(slot.startTimeMinutes, slot.endTimeMinutes),
+                    title: formatReadOnlyValueList(fieldNames, 'Fields TBD'),
+                    meta: formatReadOnlyValueList(divisionNames, 'All divisions'),
+                    matchesSelectedDivision: slotDivisionIds.some((divisionId) => matchesSelectedScheduleDivision(divisionId)),
+                };
+            }))
+            .sort((left, right) => left.startMs - right.startMs);
+        const selectedDivisionTimeslotRows = timeslotRows.filter((row) => row.matchesSelectedDivision);
+        return (selectedDivisionTimeslotRows.length > 0 ? selectedDivisionTimeslotRows : timeslotRows)
+            .slice(0, 4);
+    })();
+    const scheduleDateChips = Array.from(
+        schedulePreviewItems.reduce((entries, item) => {
+            if (!entries.has(item.dateKey)) {
+                entries.set(item.dateKey, {
+                    key: item.dateKey,
+                    dayLabel: item.dayLabel,
+                    dateLabel: item.dateLabel,
+                });
+            }
+            return entries;
+        }, new Map<string, { key: string; dayLabel: string; dateLabel: string }>()),
+    ).map(([, value]) => value).slice(0, 5);
     const supportsScheduleDetails = currentEvent.eventType === 'LEAGUE'
         || currentEvent.eventType === 'TOURNAMENT'
         || currentEvent.eventType === 'WEEKLY_EVENT'
@@ -4386,6 +4911,16 @@ export default function EventDetailSheet({
     );
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
     const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
+    const publicRegistrationStatusLabel = eventHasStarted
+        ? 'Registration closed'
+        : joinAtCapacity
+            ? 'Waitlist available'
+            : 'Registration is open';
+    const publicRegistrationStatusClassName = eventHasStarted
+        ? 'border-slate-200 bg-slate-100 text-slate-700'
+        : joinAtCapacity
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-900';
     const showSelfWaitlistActions = !currentUserPaymentFailed && (joinAtCapacity || isUserWaitlisted);
     const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
     const showTeamWaitlistActions = !selectedTeamPaymentFailed && !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
@@ -4518,8 +5053,16 @@ export default function EventDetailSheet({
         </Paper>
     ) : null;
 
+    const joinCardFrameClassName = renderInline
+        ? `fixed inset-x-0 bottom-0 z-50 max-h-[82vh] overflow-y-auto px-4 pb-4 pt-3 lg:inset-auto lg:p-0 ${
+            joinCardDocked
+                ? 'lg:fixed lg:bottom-24 lg:z-30 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto'
+                : 'lg:static lg:max-h-none lg:overflow-visible'
+        }`
+        : undefined;
+
     const content = (
-        <div className="space-y-6">
+        <div className={`space-y-6 ${renderInline ? 'pb-24 lg:pb-0' : ''}`}>
             {!renderInline && (
                 <div
                     style={{
@@ -4545,314 +5088,123 @@ export default function EventDetailSheet({
                 </div>
             )}
             
-            <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
-                {/* Optional hero banner */}
-                <div className="relative">
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="relative min-h-[340px] overflow-hidden bg-slate-950 sm:min-h-[420px]">
                     <Image
                         src={eventImageUrl}
                         alt={currentEvent.name}
                         fill
                         unoptimized
-                        sizes="(max-width: 768px) 100vw, 800px"
-                        className="w-full h-48 object-cover"
+                        sizes="(max-width: 768px) 100vw, 1200px"
+                        className="object-cover"
                         onError={(e) => {
                             e.currentTarget.src = eventImageFallbackUrl;
                         }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-
-                    {/* Event Info Overlay */}
-                    <div className="absolute bottom-4 left-6 text-white">
-                        <div className="flex items-center space-x-4 text-sm">
-                            <div className="flex items-center">
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
-                                {date} at {time}
-                            </div>
-                            <div className="flex items-center">
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                {currentEvent.location}
-                            </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-slate-950/5" />
+                    <div className="absolute inset-x-0 bottom-0 p-5 text-white sm:p-8">
+                        <div className="mb-5 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-slate-950 shadow-sm">
+                                {eventTypeLabel}
+                            </span>
+                            {sportLabel ? (
+                                <span className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+                                    {sportLabel}
+                                </span>
+                            ) : null}
+                            <span className="rounded-full border border-emerald-200/50 bg-emerald-400/20 px-3 py-1 text-xs font-semibold text-emerald-50 backdrop-blur">
+                                {registrationTypeLabel}
+                            </span>
+                        </div>
+                        <div className="max-w-4xl">
+                            <h1 className="text-3xl font-bold leading-tight tracking-normal sm:text-5xl">
+                                {currentEvent.name}
+                            </h1>
+                            <Text className="mt-3 max-w-2xl text-base leading-7 text-slate-100 sm:text-lg">
+                                {hostedByLabel} · {eventLocationSummary}
+                            </Text>
+                        </div>
+                        <div className="mt-6 flex flex-wrap gap-3 text-sm text-slate-100">
+                            <span className="inline-flex items-center gap-2 rounded-md bg-white/12 px-3 py-2 backdrop-blur">
+                                <CalendarDays size={16} />
+                                {eventScheduleDisplayText}
+                            </span>
+                            <span className="inline-flex items-center gap-2 rounded-md bg-white/12 px-3 py-2 backdrop-blur">
+                                <MapPin size={16} />
+                                {eventLocationSummary}
+                            </span>
+                            <span className="inline-flex items-center gap-2 rounded-md bg-white/12 px-3 py-2 backdrop-blur">
+                                <Users size={16} />
+                                {spotsSummary}
+                            </span>
                         </div>
                     </div>
-
                 </div>
 
                 {/* Content */}
-                <div className="p-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-white p-5 sm:p-7">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
                         {/* Main Content */}
-                        <div className="lg:col-span-2 space-y-6">
+                        <div className="space-y-6">
                             {renderInline ? (
                                 <>
-                                    <div>
-                                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Details</h2>
-                                        <div className="space-y-4">
-                                            <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                <div>
-                                                    <Text size="sm" c="dimmed">Hosted by</Text>
-                                                    <Text fw={700}>{hostedByLabel}</Text>
-                                                    {hostedByHandle && (
-                                                        <Text size="sm" c="dimmed">{hostedByHandle}</Text>
-                                                    )}
-                                                </div>
-                                                <ReadOnlyDetailsGrid
-                                                    items={[
-                                                        {
-                                                            label: sharesSingleDayWindow ? 'Start Date & Time' : 'Start Date',
-                                                            value: startDateValue
-                                                                ? (
-                                                                    sharesSingleDayWindow
-                                                                        ? formatDisplayDateTime(startDateValue)
-                                                                        : formatDisplayDate(startDateValue)
-                                                                )
-                                                                : '',
-                                                        },
-                                                        {
-                                                            label: sharesSingleDayWindow ? 'End Time' : 'End Date',
-                                                            value: endDateValue
-                                                                ? (
-                                                                    sharesSingleDayWindow
-                                                                        ? formatDisplayTime(endDateValue)
-                                                                        : formatDisplayDate(endDateValue)
-                                                                )
-                                                                : '',
-                                                        },
-                                                        { label: 'Location', value: currentEvent.location || 'Location coming soon' },
-                                                        { label: 'Type', value: formatEnumDisplayLabel(currentEvent.eventType, 'Event') },
-                                                        { label: 'Sport', value: sportLabel },
-                                                        { label: 'Registration', value: isTeamSignup ? 'Team' : 'Individual' },
-                                                        ...(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number'
-                                                            ? [{ label: 'Age Range', value: formatAgeRange(eventMinAge, eventMaxAge) }]
-                                                            : []),
-                                                    ]}
-                                                />
-                                                <div>
-                                                    <Text size="sm" c="dimmed">About</Text>
-                                                    <Text>
-                                                        {currentEvent.description?.trim() || 'No description provided yet.'}
-                                                    </Text>
-                                                </div>
-                                            </Paper>
-
-                                            <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                <Text fw={700}>Event Details</Text>
-                                                <ReadOnlyDetailsGrid
-                                                    items={[
-                                                        { label: 'Entry fee', value: eventPriceSummary },
-                                                        { label: maxParticipantsLabel, value: formatNotSpecifiedValue(currentEvent.maxParticipants) },
-                                                        { label: 'Team size', value: String(currentEvent.teamSizeLimit) },
-                                                        { label: 'Registration closes', value: registrationCutoffSummary },
-                                                        { label: 'Refunds', value: refundSummary },
-                                                        { label: 'Waitlist', value: String(normalizedWaitlistIds.length) },
-                                                    ]}
-                                                />
-                                            </Paper>
-
-                                            {divisionOptions.length > 0 && (
-                                                <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                    <Text fw={700}>Divisions ({divisionOptions.length})</Text>
-                                                    <div className="space-y-3">
-                                                        {divisionOptions.map((division) => {
-                                                            const priceCents = normalizePriceCents(
-                                                                typeof division.priceCents === 'number'
-                                                                    ? division.priceCents
-                                                                    : currentEvent.price,
-                                                            );
-                                                            const maxDivisionParticipants = currentEvent.singleDivision
-                                                                ? currentEvent.maxParticipants
-                                                                : (
-                                                                    Number.isFinite(Number(division.maxParticipants))
-                                                                        ? Math.trunc(Number(division.maxParticipants))
-                                                                        : null
-                                                                );
-                                                            const paymentPlanCount = Math.max(
-                                                                typeof division.installmentCount === 'number' ? division.installmentCount : 0,
-                                                                Array.isArray(division.installmentAmounts) ? division.installmentAmounts.length : 0,
-                                                                Array.isArray(division.installmentDueDates) ? division.installmentDueDates.length : 0,
-                                                            );
-                                                            const playoffTeams = currentEvent.eventType === 'LEAGUE'
-                                                                && currentEvent.includePlayoffs
-                                                                && !currentEvent.singleDivision
-                                                                && typeof division.playoffTeamCount === 'number'
-                                                                ? Math.max(2, Math.trunc(division.playoffTeamCount))
-                                                                : null;
-
-                                                            return (
-                                                                <div key={division.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
-                                                                    <Text fw={700}>{division.name}</Text>
-                                                                    <ReadOnlyDetailsGrid
-                                                                        items={[
-                                                                            {
-                                                                                label: 'Format',
-                                                                                value: division.divisionTypeName,
-                                                                            },
-                                                                            ...(division.ageCutoffLabel
-                                                                                ? [{ label: 'Age cutoff', value: division.ageCutoffLabel }]
-                                                                                : []),
-                                                                            {
-                                                                                label: 'Price',
-                                                                                value: formatPrice(priceCents),
-                                                                            },
-                                                                            {
-                                                                                label: isTeamSignup ? 'Max teams' : 'Max participants',
-                                                                                value: formatNotSpecifiedValue(maxDivisionParticipants),
-                                                                            },
-                                                                            ...(division.allowPaymentPlans && paymentPlanCount > 0
-                                                                                ? [{ label: 'Payment plan', value: `${paymentPlanCount} installments` }]
-                                                                                : []),
-                                                                            ...(playoffTeams !== null
-                                                                                ? [{ label: 'Playoff teams', value: String(playoffTeams) }]
-                                                                                : []),
-                                                                        ]}
-                                                                    />
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </Paper>
-                                            )}
-
-                                            {canViewStaffSection && (
-                                                <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                    <Text fw={700}>Staff</Text>
-                                                    <ReadOnlyDetailsGrid
-                                                        items={[
-                                                            { label: 'Primary host', value: hostedByLabel },
-                                                            { label: 'Assistant host count', value: String(assistantHostNames.length) },
-                                                            {
-                                                                label: 'Assistant hosts',
-                                                                value: formatReadOnlyValueList(assistantHostNames, 'No assistant hosts assigned'),
-                                                            },
-                                                            { label: 'Official count', value: String(officialNames.length) },
-                                                            {
-                                                                label: 'Officials',
-                                                                value: formatReadOnlyValueList(officialNames, 'No officials assigned'),
-                                                            },
-                                                            {
-                                                                label: 'Staffing mode',
-                                                                value: formatOfficialSchedulingModeLabel(currentEvent.officialSchedulingMode),
-                                                            },
-                                                            { label: 'Official positions', value: officialPositionsSummary },
-                                                            ...(currentEvent.doTeamsOfficiate === true
-                                                                ? [{ label: 'Teams provide officials', value: 'Yes' }]
-                                                                : []),
-                                                            ...(currentEvent.doTeamsOfficiate === true
-                                                                ? [{ label: 'Team officials may swap', value: currentEvent.teamOfficialsMaySwap === true ? 'Yes' : 'No' }]
-                                                                : []),
-                                                        ]}
-                                                    />
-                                                </Paper>
-                                            )}
-
-                                            {currentEvent.eventType === 'LEAGUE' && (
-                                                <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                    <Text fw={700}>League Scoring Rules</Text>
-                                                    <ReadOnlyDetailsGrid
-                                                        items={[
-                                                            {
-                                                                label: 'Scoring profile',
-                                                                value: sportLabel || 'Default',
-                                                            },
-                                                        ]}
-                                                    />
-                                                </Paper>
-                                            )}
-
-                                            {supportsScheduleDetails && (
-                                                <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                    <Text fw={700}>Schedule</Text>
-                                                    <ReadOnlyDetailsGrid items={scheduleDetailRows} />
-                                                    <div className="space-y-3">
-                                                        <Text size="sm" c="dimmed">Weekly timeslots</Text>
-                                                        {scheduleTimeslotGroups.length === 0 ? (
-                                                            <Text size="sm" c="dimmed">No weekly timeslots configured.</Text>
-                                                        ) : (
-                                                            <div className="space-y-4">
-                                                                {scheduleTimeslotGroups.map(([dayOfWeek, slots]) => (
-                                                                    <div key={`timeslot-day-${dayOfWeek}`} className="space-y-2">
-                                                                        <Text fw={700}>{`${getDayOfWeekLabel(dayOfWeek)} (${slots.length})`}</Text>
-                                                                        <div className="space-y-2">
-                                                                            {slots.map((slot) => {
-                                                                                const fieldNames = uniqueNonEmptyStrings(
-                                                                                    (
-                                                                                        Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
-                                                                                            ? slot.scheduledFieldIds
-                                                                                            : typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
-                                                                                                ? [slot.scheduledFieldId]
-                                                                                                : []
-                                                                                    ).map((fieldId: string) => {
-                                                                                        const resolved = scheduleFieldNamesById.get(fieldId);
-                                                                                        return getFieldDisplayName(
-                                                                                            {
-                                                                                                $id: fieldId,
-                                                                                                name: resolved?.name ?? '',
-                                                                                            },
-                                                                                            fieldId,
-                                                                                        );
-                                                                                    }),
-                                                                                );
-                                                                                const divisionNames = uniqueNonEmptyStrings(
-                                                                                    (
-                                                                                        Array.isArray(slot.divisions) && slot.divisions.length
-                                                                                            ? slot.divisions
-                                                                                            : fallbackDivisionIds
-                                                                                    ).map((divisionId: string) => resolveDivisionDisplayName({
-                                                                                        division: divisionId,
-                                                                                        divisionNameIndex: divisionDisplayNameIndex,
-                                                                                        sportInput: sportLabel,
-                                                                                    }) ?? divisionId),
-                                                                                );
-
-                                                                                return (
-                                                                                    <div key={slot.$id} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
-                                                                                        <Text fw={700}>
-                                                                                            {formatSlotTimeRange(slot.startTimeMinutes, slot.endTimeMinutes)}
-                                                                                        </Text>
-                                                                                        <ReadOnlyDetailsGrid
-                                                                                            items={[
-                                                                                                { label: 'Day', value: getDayOfWeekLabel(dayOfWeek) },
-                                                                                                {
-                                                                                                    label: `Fields (${fieldNames.length})`,
-                                                                                                    value: formatReadOnlyValueList(fieldNames, 'Not assigned'),
-                                                                                                },
-                                                                                                {
-                                                                                                    label: `Divisions (${divisionNames.length})`,
-                                                                                                    value: formatReadOnlyValueList(divisionNames, 'Not assigned'),
-                                                                                                },
-                                                                                            ]}
-                                                                                        />
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
+                                    <div className="space-y-5">
+                                        <PublicEventSection eyebrow="Overview" title="About this event">
+                                            <div className="space-y-5">
+                                                <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div>
+                                                        <Text size="sm" c="dimmed">Hosted by</Text>
+                                                        <Text fw={800} className="text-slate-950">{hostedByLabel}</Text>
+                                                        {hostedByHandle && (
+                                                            <Text size="sm" c="dimmed">{hostedByHandle}</Text>
                                                         )}
                                                     </div>
-                                                </Paper>
-                                            )}
+                                                    <div className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 ${publicRegistrationStatusClassName}`}>
+                                                        <ShieldCheck size={16} />
+                                                        <Text size="sm" fw={700}>{publicRegistrationStatusLabel}</Text>
+                                                    </div>
+                                                </div>
+                                                <Text className="text-base leading-7 text-slate-700">
+                                                    {currentEvent.description?.trim() || 'No description provided yet.'}
+                                                </Text>
+                                            </div>
+                                        </PublicEventSection>
 
-                                            {googleMapsLink && mapEmbedSrc && (
-                                                <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                    <Text fw={700}>Map</Text>
-                                                    <ReadOnlyDetailsGrid
-                                                        items={[
-                                                            { label: 'Location', value: currentEvent.location || 'Location coming soon' },
-                                                            ...(eventAddress
-                                                                ? [{ label: 'Address', value: eventAddress }]
-                                                                : []),
-                                                            ...(!eventAddress && hasValidCoords
-                                                                ? [{ label: 'Coordinates', value: `${mapLat.toFixed(4)}, ${mapLng.toFixed(4)}` }]
-                                                                : []),
-                                                        ]}
+                                        <PublicEventSection eyebrow="Location" title="Where and when">
+                                            <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
+                                                <div className="space-y-3">
+                                                    <PublicEventMetaPill
+                                                        label={isEvergreenProgram ? 'Schedule' : (sharesSingleDayWindow ? 'Starts' : 'Start date')}
+                                                        value={isEvergreenProgram
+                                                            ? eventScheduleDisplayText
+                                                            : (startDateValue
+                                                                ? (sharesSingleDayWindow ? formatDisplayDateTime(startDateValue) : formatDisplayDate(startDateValue))
+                                                                : '')}
                                                     />
-                                                    <div>
+                                                    {!isEvergreenProgram && (
+                                                        <PublicEventMetaPill
+                                                            label={sharesSingleDayWindow ? 'Ends' : 'End date'}
+                                                            value={endDateValue
+                                                                ? (sharesSingleDayWindow ? formatDisplayTime(endDateValue) : formatDisplayDate(endDateValue))
+                                                                : ''}
+                                                        />
+                                                    )}
+                                                    <PublicEventMetaPill label="Location" value={eventLocationSummary} />
+                                                    {eventAddress && (
+                                                        <PublicEventMetaPill label="Address" value={eventAddress} />
+                                                    )}
+                                                </div>
+                                                {googleMapsLink && mapEmbedSrc ? (
+                                                    <div className="space-y-3">
+                                                        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100" style={{ aspectRatio: '4 / 3' }}>
+                                                            <iframe
+                                                                title="Event location preview"
+                                                                src={mapEmbedSrc}
+                                                                className="h-full w-full"
+                                                                loading="lazy"
+                                                                allowFullScreen
+                                                            />
+                                                        </div>
                                                         <Button
                                                             component="a"
                                                             href={googleMapsLink}
@@ -4860,22 +5212,218 @@ export default function EventDetailSheet({
                                                             rel="noreferrer"
                                                             variant="light"
                                                             size="sm"
+                                                            leftSection={<MapPin size={16} />}
                                                         >
                                                             Open in Google Maps
                                                         </Button>
                                                     </div>
-                                                    <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
-                                                        <iframe
-                                                            title="Event location preview"
-                                                            src={mapEmbedSrc}
-                                                            className="w-full h-full"
-                                                            loading="lazy"
-                                                            allowFullScreen
-                                                        />
-                                                    </div>
-                                                </Paper>
-                                            )}
-                                        </div>
+                                                ) : null}
+                                            </div>
+                                        </PublicEventSection>
+
+                                        {(allDivisionOptions.length > 0 || supportsScheduleDetails) && (
+                                            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:items-start">
+                                                {allDivisionOptions.length > 0 && (
+                                                    <PublicEventSection eyebrow="Choices" title={`Divisions (${divisionOptions.length})`} className="xl:h-full">
+                                                        {divisionOptions.length === 0 ? (
+                                                            <Alert color="yellow" variant="light">
+                                                                No divisions are available for the selected registrant&apos;s age.
+                                                            </Alert>
+                                                        ) : (
+                                                        <div className="divide-y divide-slate-200">
+                                                            {publicDivisionGroups.map((genderGroup) => {
+                                                                const genderDivisionCount = genderGroup.ageGroups.reduce((count, ageGroup) => (
+                                                                    count + ageGroup.skillGroups.reduce((skillCount, skillGroup) => skillCount + skillGroup.options.length, 0)
+                                                                ), 0);
+                                                                const genderHasSelected = genderGroup.ageGroups.some((ageGroup) => (
+                                                                    ageGroup.skillGroups.some((skillGroup) => (
+                                                                        skillGroup.options.some((division) => (
+                                                                            registrationByDivisionType
+                                                                                ? selectedDivisionOption?.divisionTypeKey === division.divisionTypeKey
+                                                                                : selectedDivisionOption?.id === division.id
+                                                                        ))
+                                                                    ))
+                                                                ));
+                                                                return (
+                                                                    <details
+                                                                        key={genderGroup.key}
+                                                                        className="group py-1"
+                                                                        open={genderHasSelected || publicDivisionGroups.length === 1}
+                                                                    >
+                                                                        <summary className="cursor-pointer py-2 text-base font-bold text-slate-950 marker:text-slate-400">
+                                                                            <span className="ml-1 inline-flex w-[calc(100%-1rem)] items-center justify-between gap-3 align-middle">
+                                                                                <span>{genderGroup.label}</span>
+                                                                                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">
+                                                                                    {genderDivisionCount}
+                                                                                </span>
+                                                                            </span>
+                                                                        </summary>
+                                                                        <div className="pb-2 pl-3">
+                                                                            {genderGroup.ageGroups.map((ageGroup) => {
+                                                                                const ageDivisionCount = ageGroup.skillGroups.reduce((count, skillGroup) => count + skillGroup.options.length, 0);
+                                                                                const ageHasSelected = ageGroup.skillGroups.some((skillGroup) => (
+                                                                                    skillGroup.options.some((division) => (
+                                                                                        registrationByDivisionType
+                                                                                            ? selectedDivisionOption?.divisionTypeKey === division.divisionTypeKey
+                                                                                            : selectedDivisionOption?.id === division.id
+                                                                                    ))
+                                                                                ));
+                                                                                return (
+                                                                                    <details
+                                                                                        key={ageGroup.key}
+                                                                                        className="border-t border-slate-100 py-1"
+                                                                                        open={ageHasSelected || genderGroup.ageGroups.length === 1}
+                                                                                    >
+                                                                                        <summary className="cursor-pointer py-1.5 text-sm font-bold text-slate-800 marker:text-slate-400">
+                                                                                            <span className="ml-1 inline-flex w-[calc(100%-1rem)] items-center justify-between gap-3 align-middle">
+                                                                                                <span>{ageGroup.label}</span>
+                                                                                                <span className="text-xs font-bold text-slate-500">
+                                                                                                    {ageDivisionCount}
+                                                                                                </span>
+                                                                                            </span>
+                                                                                        </summary>
+                                                                                        <div className="pb-2 pl-3">
+                                                                                            {ageGroup.skillGroups.map((skillGroup) => {
+                                                                                                const skillHasSelected = skillGroup.options.some((division) => (
+                                                                                                    registrationByDivisionType
+                                                                                                        ? selectedDivisionOption?.divisionTypeKey === division.divisionTypeKey
+                                                                                                        : selectedDivisionOption?.id === division.id
+                                                                                                ));
+                                                                                                return (
+                                                                                                    <details
+                                                                                                        key={skillGroup.key}
+                                                                                                        className="border-t border-slate-100 py-1"
+                                                                                                        open={skillHasSelected || ageGroup.skillGroups.length === 1}
+                                                                                                    >
+                                                                                                        <summary className="cursor-pointer py-1.5 text-sm font-bold text-slate-700 marker:text-slate-400">
+                                                                                                            <span className="ml-1 inline-flex w-[calc(100%-1rem)] items-center justify-between gap-3 align-middle">
+                                                                                                                <span>{skillGroup.label}</span>
+                                                                                                                <span className="text-xs font-bold text-slate-500">
+                                                                                                                    {skillGroup.options.length}
+                                                                                                                </span>
+                                                                                                            </span>
+                                                                                                        </summary>
+                                                                                                        <div className="grid grid-cols-1 gap-2 pb-2 pl-3">
+                                                                                                            {skillGroup.options.map((division) => {
+                                                                                                                const isSelected = registrationByDivisionType
+                                                                                                                    ? selectedDivisionOption?.divisionTypeKey === division.divisionTypeKey
+                                                                                                                    : selectedDivisionOption?.id === division.id;
+                                                                                                                const displaySkillLabel = skillGroup.options.length > 1
+                                                                                                                    ? division.name
+                                                                                                                    : skillGroup.label;
+                                                                                                                return (
+                                                                                                                    <button
+                                                                                                                        key={division.id}
+                                                                                                                        type="button"
+                                                                                                                        aria-pressed={isSelected}
+                                                                                                                        onClick={() => handlePublicDivisionSelect(division)}
+                                                                                                                        className={`rounded-md border px-3 py-2.5 text-left transition ${
+                                                                                                                            isSelected
+                                                                                                                                ? 'border-emerald-500 bg-emerald-50 text-emerald-950 shadow-sm'
+                                                                                                                                : 'border-slate-200 bg-white text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/50'
+                                                                                                                        }`}
+                                                                                                                    >
+                                                                                                                        <div className="flex items-center justify-between gap-3">
+                                                                                                                            <div>
+                                                                                                                                <Text fw={800}>{displaySkillLabel}</Text>
+                                                                                                                                <Text size="xs" c={isSelected ? 'green' : 'dimmed'}>
+                                                                                                                                    {division.name}
+                                                                                                                                </Text>
+                                                                                                                            </div>
+                                                                                                                            {isSelected && (
+                                                                                                                                <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">
+                                                                                                                                    Current
+                                                                                                                                </span>
+                                                                                                                            )}
+                                                                                                                        </div>
+                                                                                                                        {division.ageCutoffLabel && (
+                                                                                                                            <Text size="xs" c="dimmed" className="mt-2">
+                                                                                                                                {division.ageCutoffLabel}
+                                                                                                                            </Text>
+                                                                                                                        )}
+                                                                                                                    </button>
+                                                                                                                );
+                                                                                                            })}
+                                                                                                        </div>
+                                                                                                    </details>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    </details>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </details>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        )}
+                                                    </PublicEventSection>
+                                                )}
+
+                                                {supportsScheduleDetails && (
+                                                    <PublicEventSection eyebrow="Timeline" title="Schedule" className="xl:h-full">
+                                                        <div className="space-y-5">
+                                                            {scheduleDateChips.length > 0 && (
+                                                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                                                    {scheduleDateChips.map((chip) => (
+                                                                        <div
+                                                                            key={chip.key}
+                                                                            className="min-w-[76px] rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-emerald-950"
+                                                                        >
+                                                                            <Text size="xs" fw={800} tt="uppercase" className="tracking-normal">
+                                                                                {chip.dayLabel}
+                                                                            </Text>
+                                                                            <Text size="sm" fw={800}>{chip.dateLabel}</Text>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            <div className="divide-y divide-slate-200">
+                                                                {schedulePreviewItems.length === 0 ? (
+                                                                    <Text size="sm" c="dimmed">
+                                                                        No schedule preview is available yet.
+                                                                    </Text>
+                                                                ) : schedulePreviewItems.map((item) => (
+                                                                    <div key={item.id} className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0">
+                                                                        <div>
+                                                                            <Text size="sm" fw={800} className="text-slate-950">{item.timeLabel}</Text>
+                                                                            <Text size="xs" c="dimmed">{item.dateLabel}</Text>
+                                                                        </div>
+                                                                        <div className="min-w-0">
+                                                                            <Text fw={800} className="truncate text-slate-950">{item.title}</Text>
+                                                                            <Text size="sm" c="dimmed" className="truncate">{item.meta}</Text>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </PublicEventSection>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {(currentEvent.eventType === 'LEAGUE' || canViewStaffSection) && (
+                                            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                                {currentEvent.eventType === 'LEAGUE' && (
+                                                    <PublicEventSection eyebrow="Format" title="League Scoring Rules" className="h-full">
+                                                        <PublicEventMetaPill label="Scoring profile" value={sportLabel || 'Default'} />
+                                                    </PublicEventSection>
+                                                )}
+
+                                                {canViewStaffSection && (
+                                                    <PublicEventSection eyebrow="Operations" title="Staff" className="h-full">
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            <PublicEventMetaPill label="Primary host" value={hostedByLabel} />
+                                                            <PublicEventMetaPill label="Assistant hosts" value={formatReadOnlyValueList(assistantHostNames, 'No assistant hosts assigned')} />
+                                                            <PublicEventMetaPill label="Officials" value={formatReadOnlyValueList(officialNames, 'No officials assigned')} />
+                                                            <PublicEventMetaPill label="Staffing mode" value={formatOfficialSchedulingModeLabel(currentEvent.officialSchedulingMode)} />
+                                                            <PublicEventMetaPill label="Official positions" value={officialPositionsSummary} />
+                                                        </div>
+                                                    </PublicEventSection>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </>
                             ) : (
@@ -5036,13 +5584,13 @@ export default function EventDetailSheet({
                         </div>
 
                         {/* Sidebar */}
-                        <div className="space-y-6">
+                        <div className="space-y-6 lg:self-start">
                             {showParticipantsSection && (
                                 <>
                             {/* Participants */}
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
+                            <h3 className="mb-4 text-lg font-semibold text-slate-950">Participants</h3>
 
-                            <Paper withBorder p="md" radius="md" className="space-y-3">
+                            <Paper withBorder p="md" radius="md" className="space-y-3 border-slate-200 bg-white shadow-sm">
                                 <Group justify="space-between" align="flex-start" gap="xs">
                                     <div>
                                         <Text size="xs" c="dimmed">{isTeamSignup ? 'Teams' : 'Spots'}</Text>
@@ -5180,8 +5728,50 @@ export default function EventDetailSheet({
                             )}
 
                             {/* Join Options (includes total participants) */}
-                            <Paper withBorder p="md" radius="md">
-                                {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
+                            <div
+                                ref={joinCardAnchorRef}
+                                style={joinCardDocked ? { height: joinCardHeight } : undefined}
+                            >
+                                <div
+                                    ref={joinCardRef}
+                                    className={joinCardFrameClassName}
+                                    style={joinCardDocked
+                                        ? {
+                                            left: joinCardLeft,
+                                            width: joinCardWidth || undefined,
+                                        }
+                                        : undefined}
+                                >
+                            <Paper
+                                withBorder
+                                p="lg"
+                                radius="md"
+                                className="rounded-t-xl border-slate-200 bg-white shadow-2xl lg:rounded-md lg:shadow-xl"
+                            >
+                                {renderInline && (
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 text-left lg:hidden"
+                                        onClick={() => setMobileJoinExpanded((expanded) => !expanded)}
+                                        aria-expanded={mobileJoinExpanded}
+                                    >
+                                        <span>
+                                            <Text fw={800} className="text-slate-950">
+                                                {registrationTypeLabel}
+                                            </Text>
+                                            <Text size="xs" c="dimmed">
+                                                {selectedDivisionOption?.name
+                                                    ? `${selectedDivisionOption.name} · ${formatPrice(selectedDivisionBilling.priceCents)}`
+                                                    : eventPriceSummary}
+                                            </Text>
+                                        </span>
+                                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                                            {mobileJoinExpanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                                        </span>
+                                    </button>
+                                )}
+                                <div className={`${!renderInline || mobileJoinExpanded ? 'block' : 'hidden'} lg:block ${renderInline ? 'mt-4 border-t border-slate-200 pt-4 lg:mt-0 lg:border-t-0 lg:pt-0' : ''}`}>
+	                                {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
                                 {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
                                 {isAffiliateEvent && (
                                     <Stack gap="xs">
@@ -5287,50 +5877,40 @@ export default function EventDetailSheet({
                                         </Text>
                                     </Alert>
                                 )}
-                                {divisionOptions.length > 0 && (
-                                    <Paper withBorder p="sm" radius="md" mb="sm" className="space-y-2">
-                                        <Text size="sm" fw={600}>
-                                            {registrationByDivisionType ? 'Division Type' : 'Division'}
-                                        </Text>
-                                        <MantineSelect
-                                            placeholder={registrationByDivisionType ? 'Select a division type' : 'Select a division'}
-                                            data={registrationByDivisionType
-                                                ? divisionTypeOptions
-                                                : divisionOptions.map((option) => ({
-                                                    value: option.id,
-                                                    label: option.name,
-                                                }))}
-                                            value={registrationByDivisionType
-                                                ? (selectedDivisionTypeKey || null)
-                                                : (selectedDivisionId || null)}
-                                            onChange={(value) => {
-                                                if (registrationByDivisionType) {
-                                                    const nextValue = value || '';
-                                                    setSelectedDivisionTypeKey(nextValue);
-                                                    saveEventRegistrationProgress({
-                                                        selectedDivisionTypeKey: nextValue || null,
-                                                    });
-                                                    return;
-                                                }
-                                                const nextValue = value || '';
-                                                setSelectedDivisionId(nextValue);
-                                                saveEventRegistrationProgress({
-                                                    selectedDivisionId: nextValue || null,
-                                                });
-                                            }}
-                                            comboboxProps={sharedComboboxProps}
-                                        />
-                                        {registrationByDivisionType && selectedDivisionOption && (
-                                            <Text size="xs" c="dimmed">
-                                                Auto-assigned division: {selectedDivisionOption.name}
+                                {divisionOptions.length > 0 && selectedDivisionOption && (
+                                    <div className="mb-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <Text size="xs" c="dimmed" fw={800} tt="uppercase" className="tracking-normal">
+                                                    Selected division
+                                                </Text>
+                                                <Text size="sm" fw={800} className="text-slate-950">
+                                                    {selectedDivisionOption.name}
+                                                </Text>
+                                                <Text size="xs" c="dimmed">
+                                                    {selectedDivisionOption.divisionTypeName}
+                                                </Text>
+                                            </div>
+                                            <Text size="sm" fw={800} className="text-emerald-700">
+                                                {formatPrice(selectedDivisionBilling.priceCents)}
                                             </Text>
-                                        )}
-                                        {!hasAgeLimits && selectedDivisionOption?.ageCutoffLabel && (
-                                            <Text size="xs" c="dimmed">
-                                                {selectedDivisionOption.ageCutoffLabel}
-                                            </Text>
-                                        )}
-                                    </Paper>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 border-t border-slate-200 pt-3 text-xs sm:grid-cols-2">
+                                            <div>
+                                                <Text size="xs" c="dimmed">Registration closes</Text>
+                                                <Text size="xs" fw={700}>{registrationCutoffSummary}</Text>
+                                            </div>
+                                            <div>
+                                                <Text size="xs" c="dimmed">Refunds</Text>
+                                                <Text size="xs" fw={700}>{refundSummary}</Text>
+                                            </div>
+                                            {!hasAgeLimits && selectedDivisionOption.ageCutoffLabel && (
+                                                <div className="sm:col-span-2">
+                                                    <Text size="xs" c="dimmed">{selectedDivisionOption.ageCutoffLabel}</Text>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
                                 {isDivisionSelectionMissing && (
                                     <Alert color="yellow" variant="light" mb="sm">
@@ -5555,11 +6135,13 @@ export default function EventDetailSheet({
                                                                                 ? 'Already in Event'
                                                                                 : confirmingPurchase
                                                                                 ? 'Confirming purchase...'
-                                                                                : joining
-                                                                                    ? 'Joining...'
-                                                                                    : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
-                                                                                        ? (selectedTeamPaymentFailed ? 'Complete payment' : `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`)
-                                                                                        : 'Join Event'}
+	                                                                                : joining
+	                                                                                    ? 'Joining...'
+	                                                                                    : !selectedTeamId
+	                                                                                        ? 'Choose a team'
+	                                                                                    : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
+	                                                                                        ? (selectedTeamPaymentFailed ? 'Complete payment' : `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`)
+	                                                                                        : 'Join Event'}
                                                                         </Button>
                                                                     )}
                                                                     {selectedTeamIsRegistered && (
@@ -5710,17 +6292,37 @@ export default function EventDetailSheet({
                                                             Select a weekly session to see registration options.
                                     </Alert>
                                 )) : null}
+                                {hasRefundTarget && (
+                                    <div className="mt-5 border-t border-slate-200 pt-4">
+                                        <RefundSection
+                                            event={currentEvent}
+                                            userRegistered={!!isUserRegistered}
+                                            linkedChildren={activeChildren}
+                                            selectedOccurrence={selectedWeeklyOccurrence ?? null}
+                                            effectiveStart={eventStartDate}
+                                            onRefundSuccess={loadEventDetails}
+                                        />
+                                    </div>
+                                )}
+                                {(showSecurePaymentNote || showPoweredByBracketIqNote) && (
+                                    <div className="mt-5 space-y-2 border-t border-slate-200 pt-4">
+                                        {showSecurePaymentNote && (
+                                            <div className="flex items-center gap-2 text-emerald-800">
+                                                <ShieldCheck size={15} />
+                                                <Text size="xs" fw={700}>Secure payments</Text>
+                                            </div>
+                                        )}
+                                        {showPoweredByBracketIqNote && (
+                                            <Text size="xs" c="dimmed">
+                                                Powered by BracketIQ
+                                            </Text>
+                                        )}
+                                    </div>
+                                )}
+                                </div>
                             </Paper>
-
-                            {/* Refund Options */}
-                            <RefundSection
-                                event={currentEvent}
-                                userRegistered={!!isUserRegistered}
-                                linkedChildren={activeChildren}
-                                selectedOccurrence={selectedWeeklyOccurrence ?? null}
-                                effectiveStart={eventStartDate}
-                                onRefundSuccess={loadEventDetails}
-                            />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -6042,37 +6644,6 @@ export default function EventDetailSheet({
             </Modal>
 
             <Modal
-                opened={showJoinChoiceModal}
-                onClose={() => setShowJoinChoiceModal(false)}
-                centered
-                title="Join for yourself or child?"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <Stack gap="sm">
-                    <Text size="sm" c="dimmed">
-                        You have linked child profiles. Do you want to join this event yourself, or register a child instead?
-                    </Text>
-                    <Group justify="flex-end">
-                        <Button
-                            variant="default"
-                            onClick={() => {
-                                void handleJoinEvent('child');
-                            }}
-                        >
-                            Register Child
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                void handleJoinEvent('self');
-                            }}
-                        >
-                            Join Myself
-                        </Button>
-                    </Group>
-                </Stack>
-            </Modal>
-
-            <Modal
                 opened={showRegistrationQuestionsModal}
                 onClose={() => {
                     setShowRegistrationQuestionsModal(false);
@@ -6308,38 +6879,100 @@ export default function EventDetailSheet({
             </Modal>
 
             <Modal
-                opened={showDiscountCodeModal && Boolean(pendingEventCheckout)}
+                opened={showCheckoutPreviewModal && Boolean(pendingEventCheckout)}
                 onClose={() => {
-                    setShowDiscountCodeModal(false);
+                    setShowCheckoutPreviewModal(false);
                     setPendingEventCheckout(null);
+                    setDiscountPreview(null);
+                    setDiscountPreviewError(null);
                 }}
                 centered
-                title="Apply discount code"
+                title="Checkout preview"
                 zIndex={SIGN_MODAL_Z_INDEX}
             >
                 <Stack gap="sm">
+                    {(() => {
+                        const normalizedCode = discountCode.trim();
+                        const appliedCode = discountPreview?.code?.trim() ?? '';
+                        const canContinueWithDiscount = !normalizedCode
+                            || normalizedCode.toUpperCase() === appliedCode.toUpperCase();
+                        return (
+                            <>
                     <Text size="sm" c="dimmed">
-                        Registration is {formatPrice(normalizePriceCents(selectedDivisionBilling.priceCents))} before any discount.
+                        Review the registration price before checkout. Add a discount code here if you have one.
                     </Text>
+                    <Paper withBorder radius="md" p="sm" className="space-y-2">
+                        <Group justify="space-between">
+                            <Text size="sm" c="dimmed">Original price</Text>
+                            <Text size="sm" fw={700}>
+                                {formatPrice(discountPreview?.originalAmountCents ?? normalizePriceCents(selectedDivisionBilling.priceCents))}
+                            </Text>
+                        </Group>
+                        {discountPreview ? (
+                            <Group justify="space-between">
+                                <Text size="sm" c="dimmed">Discount</Text>
+                                <Text size="sm" fw={700} c="green">
+                                    -{formatPrice(discountPreview.discountAmountCents)}
+                                </Text>
+                            </Group>
+                        ) : null}
+                        <Group justify="space-between">
+                            <Text size="sm" fw={800}>New price</Text>
+                            <Text size="lg" fw={900}>
+                                {formatPrice(discountPreview?.discountedAmountCents ?? normalizePriceCents(selectedDivisionBilling.priceCents))}
+                            </Text>
+                        </Group>
+                    </Paper>
                     <TextInput
                         label="Discount code"
                         placeholder="Enter code"
                         value={discountCode}
-                        onChange={(event) => setDiscountCode(event.currentTarget.value)}
+                        onChange={(event) => {
+                            setDiscountCode(event.currentTarget.value);
+                            setDiscountPreview(null);
+                            setDiscountPreviewError(null);
+                        }}
                     />
+                    {discountPreviewError ? (
+                        <Alert color="red" variant="light">
+                            {discountPreviewError}
+                        </Alert>
+                    ) : null}
                     {joinError ? (
                         <Alert color="red" variant="light">
                             {joinError}
                         </Alert>
                     ) : null}
                     <Group justify="flex-end">
-                        <Button variant="default" onClick={() => setDiscountCode('')}>
+                        <Button
+                            variant="default"
+                            onClick={() => {
+                                setDiscountCode('');
+                                setDiscountPreview(null);
+                                setDiscountPreviewError(null);
+                            }}
+                        >
                             Clear
                         </Button>
                         <Button
+                            variant="light"
+                            loading={discountPreviewLoading}
+                            disabled={!discountCode.trim()}
+                            onClick={() => { void handleApplyDiscountPreview(); }}
+                        >
+                            Apply
+                        </Button>
+                        <Button
                             loading={joining}
+                            disabled={!canContinueWithDiscount}
                             onClick={async () => {
                                 if (!pendingEventCheckout) {
+                                    return;
+                                }
+                                const normalizedCode = discountCode.trim();
+                                const appliedCode = discountPreview?.code?.trim() ?? '';
+                                if (normalizedCode && normalizedCode.toUpperCase() !== appliedCode.toUpperCase()) {
+                                    setDiscountPreviewError('Apply the discount code before continuing to payment.');
                                     return;
                                 }
                                 setJoining(true);
@@ -6347,7 +6980,7 @@ export default function EventDetailSheet({
                                 try {
                                     await startEventCheckout({
                                         ...pendingEventCheckout,
-                                        discountCode,
+                                        discountCode: normalizedCode || null,
                                     });
                                 } catch (error) {
                                     setJoinError(error instanceof Error ? error.message : 'Unable to start checkout.');
@@ -6356,9 +6989,12 @@ export default function EventDetailSheet({
                                 }
                             }}
                         >
-                            Continue to payment
+                            Checkout
                         </Button>
                     </Group>
+                            </>
+                        );
+                    })()}
                 </Stack>
             </Modal>
 
@@ -6366,6 +7002,7 @@ export default function EventDetailSheet({
                 opened={showBillingAddressModal}
                 onClose={() => {
                     setShowBillingAddressModal(false);
+                    setShowCheckoutPreviewModal(false);
                     setPendingEventCheckout(null);
                 }}
                 onSaved={async (billingAddress) => {
@@ -6373,10 +7010,8 @@ export default function EventDetailSheet({
                         setShowBillingAddressModal(false);
                         return;
                     }
-                    await startEventCheckout({
-                        ...pendingEventCheckout,
-                        billingAddress,
-                    });
+                    setShowBillingAddressModal(false);
+                    setShowCheckoutPreviewModal(true);
                 }}
             />
 

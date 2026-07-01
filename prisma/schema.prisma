@@ -1567,6 +1567,8 @@ model AffiliateImportCandidates {
   endsAt                   DateTime?
   timeZone                 String?
   scheduleText             String?
+  dateDisplayMode          String?
+  dateDisplayText          String?
   skillLevel               String?
   ageGroup                 String?
   divisionText             String?
@@ -1866,6 +1868,8 @@ model Events {
   sourceUrl                     String?
   organizerName                 String?
   scheduleText                  String?
+  dateDisplayMode               String?                          @default("SCHEDULED")
+  dateDisplayText               String?
   priceText                     String?
   statusText                    String?
   winnerSetCount                Int?
@@ -1937,6 +1941,7 @@ model Events {
   @@index([sportId])
   @@index([parentEvent])
   @@index([sourceType, sourceId])
+  @@index([dateDisplayMode])
   @@index([archivedAt])
   @@index([organizationId, archivedAt])
 }

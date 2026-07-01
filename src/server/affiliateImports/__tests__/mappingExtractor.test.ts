@@ -87,6 +87,51 @@ describe('extractAffiliateCandidatesFromPage', () => {
     });
   });
 
+  it('emits approved manual summary candidates when configured', () => {
+    const manualMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/programs',
+      itemSelector: 'body',
+      fields: {
+        title: { selector: 'body' },
+        officialActionUrl: { selector: 'body' },
+      },
+      manualCandidates: [
+        {
+          title: 'Indoor Soccer Friendly Match',
+          officialActionUrl: '/friendly-games',
+          sourceUrl: 'https://example.com/programs',
+          sportName: 'Indoor Soccer',
+          formatLabel: 'Friendly match',
+          scheduleText: 'Friendly games available. Call for availability.',
+          dateDisplayMode: 'NO_FIXED_DATE',
+          dateDisplayText: 'Call for availability',
+          priceText: '$75 per game',
+        },
+      ],
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(page, manualMapping);
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        listingKind: 'EVENT',
+        title: 'Indoor Soccer Friendly Match',
+        officialActionUrl: 'https://example.com/friendly-games',
+        sourceUrl: 'https://example.com/programs',
+        sportName: 'Indoor Soccer',
+        formatLabel: 'Friendly match',
+        scheduleText: 'Friendly games available. Call for availability.',
+        dateDisplayMode: 'NO_FIXED_DATE',
+        dateDisplayText: 'Call for availability',
+        priceText: '$75 per game',
+        rawPayload: expect.objectContaining({
+          manualSummaryCandidate: true,
+        }),
+      }),
+    ]);
+  });
+
   it('parses explicit and compact date ranges', () => {
     const rangePage: ScrapedPage = {
       ...page,

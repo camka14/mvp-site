@@ -831,6 +831,8 @@ export interface Event {
   sourceUrl?: string | null;
   organizerName?: string | null;
   scheduleText?: string | null;
+  dateDisplayMode?: 'SCHEDULED' | 'NO_FIXED_DATE' | 'ONGOING' | string | null;
+  dateDisplayText?: string | null;
   priceText?: string | null;
   statusText?: string | null;
   tags?: EventTag[];

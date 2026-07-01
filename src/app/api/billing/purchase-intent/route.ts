@@ -35,7 +35,10 @@ import {
   getCheckoutTaxCalculationIdFromMetadata,
   getCheckoutTaxCategoryFromMetadata,
 } from '@/lib/stripeCheckoutReuse';
-import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import {
+  resolveEventDivisionSelection,
+  validateRegistrantAgeForSelection,
+} from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
   extractRentalCheckoutWindow,
   releaseRentalCheckoutLocks,
@@ -125,6 +128,12 @@ type TeamRegistrationCheckoutTarget = {
   consentStatus: string | null;
 };
 
+type EventRegistrationCheckoutTarget = {
+  registrantId: string | null;
+  registrantType: 'SELF' | 'CHILD';
+  parentId: string | null;
+};
+
 const parseTeamRegistrationCheckoutTarget = (params: {
   teamRegistration: unknown;
   fallbackTeamId: string | null;
@@ -155,6 +164,26 @@ const parseTeamRegistrationCheckoutTarget = (params: {
     rosterRole,
     consentDocumentId: normalizeString(row?.consentDocumentId),
     consentStatus: normalizeString(row?.consentStatus),
+  };
+};
+
+const parseEventRegistrationCheckoutTarget = (params: {
+  eventRegistration: unknown;
+  fallbackUserId: string | null;
+  fallbackParentId: string | null;
+}): EventRegistrationCheckoutTarget => {
+  const row = params.eventRegistration && typeof params.eventRegistration === 'object'
+    ? params.eventRegistration as Record<string, unknown>
+    : null;
+  const registrantType = String(row?.registrantType ?? '').trim().toUpperCase() === 'CHILD' ? 'CHILD' : 'SELF';
+  return {
+    registrantId: normalizeString(
+      row?.registrantId
+        ?? row?.userId
+        ?? row?.childId,
+    ) ?? params.fallbackUserId,
+    registrantType,
+    parentId: normalizeString(row?.parentId) ?? (registrantType === 'CHILD' ? params.fallbackParentId : null),
   };
 };
 
@@ -266,6 +295,8 @@ const reserveEventRegistrationSlot = async ({
   eventId,
   teamId,
   userId,
+  parentId,
+  registrantType,
   actorUserId,
   actorIsAdmin,
   divisionSelectionInput,
@@ -277,6 +308,8 @@ const reserveEventRegistrationSlot = async ({
   eventId: string | null;
   teamId: string | null;
   userId: string | null;
+  parentId?: string | null;
+  registrantType?: 'SELF' | 'CHILD';
   actorUserId: string;
   actorIsAdmin?: boolean;
   divisionSelectionInput: RegistrationDivisionSelectionInput;
@@ -295,6 +328,13 @@ const reserveEventRegistrationSlot = async ({
   }
   if (!teamId && !userId) {
     return { ok: false, status: 400, error: 'User or team id is required for event checkout.' };
+  }
+  const eventRegistrantType = !teamId && registrantType === 'CHILD' ? 'CHILD' : 'SELF';
+  const eventParentId = eventRegistrantType === 'CHILD'
+    ? normalizeString(parentId) ?? actorUserId
+    : null;
+  if (eventRegistrantType === 'CHILD' && !eventParentId) {
+    return { ok: false, status: 400, error: 'Parent id is required for child checkout.' };
   }
 
   const cutoff = new Date(now.getTime() - STARTED_REGISTRATION_TTL_MS);
@@ -400,18 +440,19 @@ const reserveEventRegistrationSlot = async ({
       divisionTypeId: normalizeString(divisionSelectionInput.divisionTypeId ?? null),
       divisionTypeKey: normalizeString(divisionSelectionInput.divisionTypeKey ?? null),
     };
+    const registrationEventContext = {
+      id: event.id,
+      start: normalizedEventStart,
+      minAge: event.minAge ?? null,
+      maxAge: event.maxAge ?? null,
+      sportId: event.sportId ?? null,
+      registrationByDivisionType: event.registrationByDivisionType ?? null,
+      divisions: normalizeStringList((event as any).divisions),
+      eventType: event.eventType ?? null,
+      includePlayoffs: event.includePlayoffs ?? null,
+    };
     const divisionSelectionResult = await resolveEventDivisionSelection({
-      event: {
-        id: event.id,
-        start: normalizedEventStart,
-        minAge: event.minAge ?? null,
-        maxAge: event.maxAge ?? null,
-        sportId: event.sportId ?? null,
-        registrationByDivisionType: event.registrationByDivisionType ?? null,
-        divisions: normalizeStringList((event as any).divisions),
-        eventType: event.eventType ?? null,
-        includePlayoffs: event.includePlayoffs ?? null,
-      },
+      event: registrationEventContext,
       input: selectionInput,
     });
     if (!divisionSelectionResult.ok) {
@@ -469,12 +510,54 @@ const reserveEventRegistrationSlot = async ({
       if (!participantTeamId) {
         return { ok: false, status: 404, error: 'Team not found.' };
       }
+    } else if (eventRegistrantType === 'CHILD') {
+      if (!userId) {
+        return { ok: false, status: 400, error: 'Child id is required for child checkout.' };
+      }
+      const linkedParentId = eventParentId;
+      if (!linkedParentId) {
+        return { ok: false, status: 400, error: 'Parent id is required for child checkout.' };
+      }
+      const canRegisterChild = actorIsAdmin || eventParentId === actorUserId;
+      if (!canRegisterChild) {
+        return { ok: false, status: 403, error: 'Only the linked parent can register this child.' };
+      }
+      const link = await tx.parentChildLinks.findFirst({
+        where: { parentId: linkedParentId, childId: userId, status: 'ACTIVE' as any },
+        select: { id: true },
+      });
+      if (!link) {
+        return { ok: false, status: 403, error: 'Parent/child link not found.' };
+      }
+    }
+
+    if (!participantTeamId && userId) {
+      const registrant = await tx.userData.findUnique({
+        where: { id: userId },
+        select: { dateOfBirth: true },
+      });
+      if (!registrant) {
+        return { ok: false, status: 404, error: 'Registrant profile not found.' };
+      }
+      const ageCheck = validateRegistrantAgeForSelection({
+        dateOfBirth: registrant.dateOfBirth,
+        event: registrationEventContext,
+        selection: divisionSelection,
+      });
+      if (ageCheck.error === 'Invalid date of birth') {
+        return { ok: false, status: 400, error: ageCheck.error };
+      }
+      if (ageCheck.error) {
+        return { ok: false, status: 403, error: ageCheck.error };
+      }
     }
 
     const participantId = participantTeamId ?? (userId as string);
+    const participantRegistrantType = participantTeamId ? 'TEAM' : eventRegistrantType;
+    const participantParentId = participantTeamId ? parentTeamId : eventParentId;
     const registrationId = buildEventRegistrationId({
       eventId,
-      registrantType: participantTeamId ? 'TEAM' : 'SELF',
+      registrantType: participantRegistrantType,
       registrantId: participantId,
       slotId: occurrence?.slotId ?? null,
       occurrenceDate: occurrence?.occurrenceDate ?? null,
@@ -560,9 +643,9 @@ const reserveEventRegistrationSlot = async ({
           id: registrationId,
           eventId,
           registrantId: participantId,
-          parentId: parentTeamId,
+          parentId: participantParentId,
           eventTeamId: participantTeamId,
-          registrantType: participantTeamId ? 'TEAM' : 'SELF',
+          registrantType: participantRegistrantType,
           rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
           slotId: occurrence?.slotId ?? null,
@@ -588,9 +671,9 @@ const reserveEventRegistrationSlot = async ({
         where: { id: registrationId },
         data: {
           registrantId: participantId,
-          parentId: parentTeamId,
+          parentId: participantParentId,
           eventTeamId: participantTeamId,
-          registrantType: participantTeamId ? 'TEAM' : 'SELF',
+          registrantType: participantRegistrantType,
           rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
           slotId: occurrence?.slotId ?? null,
@@ -611,8 +694,8 @@ const reserveEventRegistrationSlot = async ({
         subjectType: 'EVENT_REGISTRATION',
         subjectId: registrationId,
         responderUserId: actorUserId,
-        registrantUserId: userId ?? actorUserId,
-        registrantType: participantTeamId ? 'TEAM' : 'SELF',
+        registrantUserId: participantId,
+        registrantType: participantRegistrantType,
         answersSnapshot,
         client: tx,
       });
@@ -837,6 +920,11 @@ export async function POST(req: NextRequest) {
     teamRegistration: payload.teamRegistration,
     fallbackTeamId: requestedPurchaseType === 'team_registration' ? directTeamId : null,
     fallbackUserId: userId ?? session.userId,
+  });
+  const eventRegistrationTarget = parseEventRegistrationCheckoutTarget({
+    eventRegistration: payloadRow.eventRegistration,
+    fallbackUserId: userId ?? session.userId,
+    fallbackParentId: session.userId,
   });
   const teamId = teamCheckoutTarget.teamId ?? directTeamId;
   let checkoutTeamId = teamId;
@@ -1254,6 +1342,8 @@ export async function POST(req: NextRequest) {
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
   const checkoutUserId = resolvedPurchase.purchaseType === 'team_registration'
     ? (teamCheckoutTarget.registrantId ?? userId ?? session.userId)
+    : resolvedPurchase.purchaseType === 'event'
+      ? (eventRegistrationTarget.registrantId ?? userId ?? session.userId)
     : (userId ?? session.userId);
   let reservedRegistrationId: string | null = null;
   let reservedRegistrationHoldExpiresAt: Date | null = null;
@@ -1264,6 +1354,8 @@ export async function POST(req: NextRequest) {
       eventId,
       teamId,
       userId: checkoutUserId,
+      parentId: eventRegistrationTarget.parentId,
+      registrantType: eventRegistrationTarget.registrantType,
       actorUserId,
       actorIsAdmin: Boolean(session.isAdmin),
       divisionSelectionInput,
@@ -1463,6 +1555,8 @@ export async function POST(req: NextRequest) {
       appendMetadata(metadata, 'rental_host_template_ids', hostRequiredTemplateIds.join(','));
     }
     appendMetadata(metadata, 'registration_id', reservedRegistrationId);
+    appendMetadata(metadata, 'event_registration_registrant_type', eventRegistrationTarget.registrantType);
+    appendMetadata(metadata, 'event_registration_parent_id', eventRegistrationTarget.parentId);
     appendMetadata(metadata, 'team_registration_registrant_type', teamCheckoutTarget.registrantType);
     appendMetadata(metadata, 'team_registration_parent_id', teamCheckoutTarget.parentId);
     appendMetadata(metadata, 'team_registration_roster_role', teamCheckoutTarget.rosterRole);
