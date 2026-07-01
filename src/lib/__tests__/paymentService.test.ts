@@ -1,4 +1,8 @@
-import { paymentService } from '@/lib/paymentService';
+import {
+  isStripeConnectMfaRequiredError,
+  paymentService,
+  StripeConnectMfaRequiredError,
+} from '@/lib/paymentService';
 import { apiRequest } from '@/lib/apiClient';
 import type { Event, Product, Team, UserData } from '@/types';
 import { buildEvent } from '../../../test/factories';
@@ -120,6 +124,52 @@ describe('paymentService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('connectStripeAccount', () => {
+    it('preserves the MFA setup requirement from the API error payload', async () => {
+      const apiError = Object.assign(new Error('Set up an authenticator app before creating a Stripe account.'), {
+        data: {
+          error: 'Set up an authenticator app before creating a Stripe account.',
+          code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
+          mfaSetupPath: '/profile?tab=security&mfa=stripe-connect',
+        },
+        status: 403,
+      });
+      apiRequestMock.mockRejectedValue(apiError);
+
+      let thrown: unknown;
+      try {
+        await paymentService.connectStripeAccount({
+          user: { $id: 'user_1' } as UserData,
+          refreshUrl: 'http://localhost/profile?stripe=refresh',
+          returnUrl: 'http://localhost/profile?stripe=return',
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(StripeConnectMfaRequiredError);
+      expect(isStripeConnectMfaRequiredError(thrown)).toBe(true);
+      expect(thrown).toMatchObject({
+        code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
+        message: 'Set up an authenticator app before creating a Stripe account.',
+        mfaSetupPath: '/profile?tab=security&mfa=stripe-connect',
+      });
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps generic connect failures as plain errors', async () => {
+      apiRequestMock.mockRejectedValue(new Error('Stripe onboarding failed'));
+
+      await expect(paymentService.connectStripeAccount({
+        user: { $id: 'user_1' } as UserData,
+        refreshUrl: 'http://localhost/profile?stripe=refresh',
+        returnUrl: 'http://localhost/profile?stripe=return',
+      })).rejects.toThrow('Stripe onboarding failed');
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
     });
   });
 

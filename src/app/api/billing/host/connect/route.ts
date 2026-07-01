@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         {
           error: 'Set up an authenticator app before creating a Stripe account.',
           code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
-          mfaSetupPath: '/profile?tab=security',
+          mfaSetupPath: '/profile?tab=security&mfa=stripe-connect',
         },
         { status: 403 },
       );

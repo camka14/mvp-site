@@ -211,7 +211,7 @@ describe('POST /api/billing/host/connect', () => {
     expect(payload).toEqual({
       error: 'Set up an authenticator app before creating a Stripe account.',
       code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
-      mfaSetupPath: '/profile?tab=security',
+      mfaSetupPath: '/profile?tab=security&mfa=stripe-connect',
     });
     expect(isTotpMfaEnabledForUserMock).toHaveBeenCalledWith('user_1');
     expect(prismaMock.userData.update).not.toHaveBeenCalled();

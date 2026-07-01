@@ -23,6 +23,69 @@ type StripeOnboardingLinkResult = {
   expiresAt?: number;
 };
 
+const STRIPE_CONNECT_MFA_REQUIRED_CODE = 'MFA_REQUIRED_FOR_STRIPE_CONNECT';
+
+type ApiErrorPayload = {
+  error?: string;
+  code?: string;
+  mfaSetupPath?: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null
+);
+
+const getApiErrorPayload = (error: unknown): ApiErrorPayload | null => {
+  if (!isRecord(error) || !('data' in error)) {
+    return null;
+  }
+
+  const data = error.data;
+  if (!isRecord(data)) {
+    return null;
+  }
+
+  return {
+    error: typeof data.error === 'string' ? data.error : undefined,
+    code: typeof data.code === 'string' ? data.code : undefined,
+    mfaSetupPath: typeof data.mfaSetupPath === 'string' ? data.mfaSetupPath : undefined,
+  };
+};
+
+export class StripeConnectMfaRequiredError extends Error {
+  code = STRIPE_CONNECT_MFA_REQUIRED_CODE;
+  mfaSetupPath: string;
+
+  constructor(message: string, mfaSetupPath = '/profile?tab=security&mfa=stripe-connect') {
+    super(message);
+    this.name = 'StripeConnectMfaRequiredError';
+    this.mfaSetupPath = mfaSetupPath;
+  }
+}
+
+export const isStripeConnectMfaRequiredError = (
+  error: unknown,
+): error is StripeConnectMfaRequiredError => (
+  error instanceof StripeConnectMfaRequiredError
+  || (
+    isRecord(error)
+    && error.code === STRIPE_CONNECT_MFA_REQUIRED_CODE
+    && typeof error.mfaSetupPath === 'string'
+  )
+);
+
+const toStripeConnectMfaRequiredError = (error: unknown): StripeConnectMfaRequiredError | null => {
+  const payload = getApiErrorPayload(error);
+  if (payload?.code !== STRIPE_CONNECT_MFA_REQUIRED_CODE) {
+    return null;
+  }
+
+  return new StripeConnectMfaRequiredError(
+    payload.error ?? 'Set up an authenticator app before creating a Stripe account.',
+    payload.mfaSetupPath,
+  );
+};
+
 type LeaveEventOptions = {
   refundMode?: 'auto' | 'request';
   refundReason?: string;
@@ -549,6 +612,11 @@ class PaymentService {
 
       return result;
     } catch (error) {
+      const mfaRequiredError = toStripeConnectMfaRequiredError(error);
+      if (mfaRequiredError) {
+        throw mfaRequiredError;
+      }
+
       console.error('Failed to connect Stripe account:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to connect Stripe account');
     }

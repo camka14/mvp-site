@@ -25,7 +25,7 @@ import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import HostPriceInput from '@/components/ui/HostPriceInput';
-import { paymentService } from '@/lib/paymentService';
+import { isStripeConnectMfaRequiredError, paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { productService } from '@/lib/productService';
@@ -2266,6 +2266,15 @@ function OrganizationDetailContent() {
         notifications.show({ color: 'red', message: 'Stripe onboarding did not return a link. Try again later.' });
       }
     } catch (error) {
+      if (isStripeConnectMfaRequiredError(error)) {
+        notifications.show({
+          color: 'yellow',
+          message: 'Set up an authenticator app, then return to connect Stripe.',
+        });
+        router.push(error.mfaSetupPath);
+        return;
+      }
+
       console.error('Failed to connect Stripe account', error);
       const message =
         error instanceof Error && error.message
@@ -2275,7 +2284,7 @@ function OrganizationDetailContent() {
     } finally {
       setConnectingStripe(false);
     }
-  }, [org, isOwner, requiresStripeVerificationEmail, stripeEmail]);
+  }, [org, isOwner, requiresStripeVerificationEmail, router, stripeEmail]);
 
   const handleManageStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;

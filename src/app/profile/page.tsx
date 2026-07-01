@@ -86,7 +86,7 @@ import {
   FileInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { paymentService } from "@/lib/paymentService";
+import { isStripeConnectMfaRequiredError, paymentService } from "@/lib/paymentService";
 import { eventService } from "@/lib/eventService";
 import { billService } from "@/lib/billService";
 import { teamService } from "@/lib/teamService";
@@ -223,6 +223,7 @@ type TotpMfaStatus = {
 
 const PROFILE_BILLING_VISIBLE_ITEM_COUNT = 5;
 const PROFILE_BILLING_LIST_GAP = 12;
+const STRIPE_CONNECT_MFA_REASON = "stripe-connect";
 
 const PROFILE_REFUND_REQUEST_TABS: Array<{
   description: string;
@@ -430,13 +431,30 @@ function ProfilePageContent() {
   const [notificationSettingsError, setNotificationSettingsError] = useState<
     string | null
   >(null);
+  const stripeConnectMfaNoticeRequested =
+    searchParams.get("mfa") === STRIPE_CONNECT_MFA_REASON;
+  const stripeConnectMfaNotificationShownRef = useRef(false);
 
   useEffect(() => {
     if (searchParams.get("tab") === "security") {
       setIsEditing(true);
       setEditTab("security");
+      if (stripeConnectMfaNoticeRequested) {
+        setShowTotpMfaSection(true);
+      }
     }
-  }, [searchParams]);
+
+    if (
+      stripeConnectMfaNoticeRequested &&
+      !stripeConnectMfaNotificationShownRef.current
+    ) {
+      stripeConnectMfaNotificationShownRef.current = true;
+      notifications.show({
+        color: "yellow",
+        message: "Enable 2FA with an authenticator app before creating a Stripe account.",
+      });
+    }
+  }, [searchParams, stripeConnectMfaNoticeRequested]);
 
   // Profile form data
   const [profileData, setProfileData] = useState({
@@ -1440,16 +1458,19 @@ function ProfilePageContent() {
         });
       }
     } catch (err) {
+      if (isStripeConnectMfaRequiredError(err)) {
+        setIsEditing(true);
+        setEditTab("security");
+        setShowTotpMfaSection(true);
+        notifications.show({ color: "yellow", message: err.message });
+        return;
+      }
+
       console.error("Failed to connect Stripe account:", err);
       const message =
         err instanceof Error && err.message
           ? err.message
           : "Unable to start Stripe onboarding right now.";
-      if (message.toLowerCase().includes("authenticator app")) {
-        setIsEditing(true);
-        setEditTab("security");
-        setShowTotpMfaSection(true);
-      }
       notifications.show({ color: "red", message });
     } finally {
       setConnectingStripe(false);
@@ -4987,6 +5008,12 @@ function ProfilePageContent() {
                   : "Set up app"}
             </Button>
           </Group>
+
+          {stripeConnectMfaNoticeRequested && !totpMfaStatus?.authenticatorEnabled ? (
+            <Alert color="yellow" mb="sm" variant="light">
+              Enable 2FA with an authenticator app before creating a Stripe account. After verification, return to the organization and connect Stripe again.
+            </Alert>
+          ) : null}
 
           {totpMfaError ? (
             <Alert color="red" mb="sm">

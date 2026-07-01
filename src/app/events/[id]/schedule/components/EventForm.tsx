@@ -8,7 +8,7 @@ import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Paper, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
-import { paymentService } from '@/lib/paymentService';
+import { isStripeConnectMfaRequiredError, paymentService } from '@/lib/paymentService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
@@ -3267,6 +3267,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 window.location.href = result.onboardingUrl;
             }
         } catch (error) {
+            if (isStripeConnectMfaRequiredError(error)) {
+                window.location.href = error.mfaSetupPath;
+                return;
+            }
             console.error('Failed to connect Stripe account:', error);
         } finally {
             setConnectingStripe(false);
