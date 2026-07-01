@@ -71,6 +71,7 @@ import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organization
 import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import DiscountManager from '@/components/discounts/DiscountManager';
 import { describeDeleteOutcome } from '@/lib/deleteOutcome';
+import { resolveOrganizationEventCreationState } from './organizationEventCreation';
 
 export default function OrganizationDetailPage() {
   return (
@@ -84,7 +85,6 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_EVENTS_LIMIT = 18;
 const CUSTOMER_PAGE_SIZE = 25;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
-const ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT = 'Create a field for this organization before creating an event.';
 const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
 const ORG_EVENT_TYPE_OPTIONS = [...ORG_HOSTED_EVENT_TYPE_OPTIONS, 'RENTAL'] as const;
 const PRODUCT_PERIOD_OPTIONS: Array<{ label: string; value: Product['period'] }> = [
@@ -834,10 +834,13 @@ function OrganizationDetailContent() {
     ),
     [org?.fields],
   );
-  const canCreateOrganizationEvents = canManageEvents && organizationFieldCount > 0;
-  const createEventHelperText = canManageEvents && organizationFieldCount === 0
-    ? ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT
-    : null;
+  const {
+    canCreateOrganizationEvents,
+    createEventHelperText,
+  } = resolveOrganizationEventCreationState({
+    canManageEvents,
+    organizationFieldCount,
+  });
   const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
   const hasVisibleTeams = useMemo(
     () => Array.isArray(org?.teams) && org.teams.length > 0,
