@@ -1185,7 +1185,7 @@ export const reclassifyAffiliateCandidate = async (
   listingKind: unknown,
 ) => {
   const nextKind = normalizeListingKind(listingKind);
-  const { candidates, sources } = affiliatePrisma();
+  const { candidates, divisions, events, teams, facilities, sources } = affiliatePrisma();
   const candidate = await candidates.findUnique({ where: { id: candidateId } });
   if (!candidate) {
     throw new Error('Affiliate import candidate not found.');
@@ -1199,11 +1199,33 @@ export const reclassifyAffiliateCandidate = async (
     ...candidate,
     listingKind: nextKind,
   };
+  const deleteReplacedTargets = async () => {
+    if (nextKind !== 'EVENT') {
+      const eventId = nullableString(candidate.publishedEventId);
+      if (eventId) {
+        await divisions.deleteMany({ where: { eventId } });
+        await events.deleteMany({ where: { id: eventId } });
+      }
+    }
+    if (nextKind !== 'TEAM') {
+      const teamId = nullableString(candidate.publishedTeamId);
+      if (teamId) {
+        await teams.deleteMany({ where: { id: teamId } });
+      }
+    }
+    if (nextKind !== 'RENTAL') {
+      const facilityId = nullableString(candidate.publishedFacilityId);
+      if (facilityId) {
+        await facilities.deleteMany({ where: { id: facilityId } });
+      }
+    }
+  };
 
   if (nextKind === 'EVENT') {
     const event = await upsertAffiliateEventForCandidate(nextCandidate, source, {
       state: candidate.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED',
     });
+    await deleteReplacedTargets();
     const updatedCandidate = await candidates.update({
       where: { id: candidateId },
       data: {
@@ -1220,6 +1242,7 @@ export const reclassifyAffiliateCandidate = async (
     const team = await upsertAffiliateTeamForCandidate(nextCandidate, source, {
       visibility: candidate.status === 'PUBLISHED' ? 'PUBLIC' : 'ADMIN_ONLY',
     });
+    await deleteReplacedTargets();
     const updatedCandidate = await candidates.update({
       where: { id: candidateId },
       data: {
@@ -1235,6 +1258,7 @@ export const reclassifyAffiliateCandidate = async (
   const facility = await upsertAffiliateFacilityForCandidate(nextCandidate, source, {
     status: candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
   });
+  await deleteReplacedTargets();
   const updatedCandidate = await candidates.update({
     where: { id: candidateId },
     data: {

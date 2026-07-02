@@ -43,6 +43,7 @@ const affiliateDateDisplayModeSchema = z.enum(['SCHEDULED', 'NO_FIXED_DATE', 'ON
 const optionalNullableStringSchema = z.string().nullable().optional();
 
 const affiliateManualCandidateSchema = z.object({
+  listingKind: z.enum(['EVENT', 'RENTAL', 'TEAM']).optional(),
   title: z.string().trim().min(1),
   officialActionUrl: z.string().trim().url(),
   sourceUrl: z.string().trim().url().nullable().optional(),

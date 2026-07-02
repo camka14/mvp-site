@@ -323,7 +323,7 @@ export const extractAffiliateCandidatesFromPage = (
   if (mapping.manualCandidates?.length) {
     return mapping.manualCandidates.map((manualCandidate, index) => {
       const candidate: AffiliateCandidateInput = {
-        listingKind: mapping.kind,
+        listingKind: manualCandidate.listingKind ?? mapping.kind,
         title: manualCandidate.title,
         officialActionUrl: toAbsoluteUrl(manualCandidate.officialActionUrl, baseUrl),
         sourceUrl: toAbsoluteUrl(manualCandidate.sourceUrl ?? manualCandidate.officialActionUrl, baseUrl),

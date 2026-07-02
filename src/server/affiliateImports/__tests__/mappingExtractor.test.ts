@@ -108,6 +108,16 @@ describe('extractAffiliateCandidatesFromPage', () => {
           dateDisplayText: 'Call for availability',
           priceText: '$75 per game',
         },
+        {
+          listingKind: 'RENTAL',
+          title: 'Field and Court Rentals',
+          officialActionUrl: '/bookings',
+          sourceUrl: 'https://example.com/programs',
+          venueName: 'Indoor Sports Center',
+          scheduleText: 'Use the official booking calendar for current availability.',
+          dateDisplayMode: 'ONGOING',
+          dateDisplayText: 'Ongoing rental availability',
+        },
       ],
     };
 
@@ -128,6 +138,15 @@ describe('extractAffiliateCandidatesFromPage', () => {
         rawPayload: expect.objectContaining({
           manualSummaryCandidate: true,
         }),
+      }),
+      expect.objectContaining({
+        listingKind: 'RENTAL',
+        title: 'Field and Court Rentals',
+        officialActionUrl: 'https://example.com/bookings',
+        sourceUrl: 'https://example.com/programs',
+        venueName: 'Indoor Sports Center',
+        dateDisplayMode: 'ONGOING',
+        dateDisplayText: 'Ongoing rental availability',
       }),
     ]);
   });

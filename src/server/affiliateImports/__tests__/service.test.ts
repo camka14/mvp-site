@@ -204,6 +204,7 @@ describe('affiliate import service', () => {
         priceText: '$75 per game',
       },
       {
+        listingKind: 'RENTAL' as const,
         title: 'Troutdale Indoor Sports Field and Court Rentals',
         officialActionUrl: 'https://nattyhatty.com/114/bookings',
         sourceUrl: 'https://nattyhatty.com/114/bookings',
@@ -261,6 +262,7 @@ describe('affiliate import service', () => {
     prismaMock.events.findUnique.mockResolvedValue(null);
     prismaMock.events.findFirst.mockResolvedValue(null);
     prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.facilities.upsert.mockImplementation(async ({ create }) => ({ ...create }));
     prismaMock.sports.findFirst.mockImplementation(async ({ where }) => ({
       id: String(where.name.equals).toLowerCase().includes('basketball') ? 'sport_basketball' : 'sport_indoor_soccer',
     }));
@@ -286,7 +288,8 @@ describe('affiliate import service', () => {
       }),
     }));
     expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledTimes(5);
-    expect(prismaMock.events.create).toHaveBeenCalledTimes(5);
+    expect(prismaMock.events.create).toHaveBeenCalledTimes(4);
+    expect(prismaMock.facilities.upsert).toHaveBeenCalledTimes(1);
     expect(prismaMock.events.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'Troutdale Indoor Sports Adult Soccer Leagues',
@@ -310,6 +313,24 @@ describe('affiliate import service', () => {
     expect(prismaMock.events.create).not.toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'Troutdale Indoor Sports Programs',
+      }),
+    });
+    expect(prismaMock.facilities.upsert).toHaveBeenCalledWith({
+      where: { id: 'affiliate_facility_troutdale_indoor_sports_programs_troutdale_indoor_sports_field_and_court_rentals' },
+      create: expect.objectContaining({
+        id: 'affiliate_facility_troutdale_indoor_sports_programs_troutdale_indoor_sports_field_and_court_rentals',
+        organizationId: 'org_troutdale',
+        name: 'Troutdale Indoor Sports Field and Court Rentals',
+        location: 'Troutdale Indoor Sports',
+        address: '1255 NE 8th St, Gresham, OR 97030',
+        affiliateUrl: 'https://nattyhatty.com/114/bookings',
+        status: 'DRAFT',
+      }),
+      update: expect.objectContaining({
+        organizationId: 'org_troutdale',
+        name: 'Troutdale Indoor Sports Field and Court Rentals',
+        affiliateUrl: 'https://nattyhatty.com/114/bookings',
+        status: 'DRAFT',
       }),
     });
   });
@@ -359,6 +380,8 @@ describe('affiliate import service', () => {
         publishedFacilityId: null,
       }),
     });
+    expect(prismaMock.divisions.deleteMany).toHaveBeenCalledWith({ where: { eventId: 'event_1' } });
+    expect(prismaMock.events.deleteMany).toHaveBeenCalledWith({ where: { id: 'event_1' } });
     expect(result.candidate.listingKind).toBe('TEAM');
   });
 
