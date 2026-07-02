@@ -134,7 +134,10 @@ const loadEventOrganizationsById = async (
     select: {
       id: true,
       name: true,
+      website: true,
       logoId: true,
+      publicSlug: true,
+      publicPageEnabled: true,
     },
   });
   return new Map(organizations.map((organization) => [organization.id, organization]));

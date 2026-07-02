@@ -74,7 +74,7 @@ describe('EventCard affiliate schedule display', () => {
     expect(screen.getByText('07/02/2026 at 08:05 PM')).toBeInTheDocument();
     expect(screen.queryByText(/duplicate scraped text/i)).not.toBeInTheDocument();
     expect(screen.getByText('Beaverton Hoop YMCA')).toBeInTheDocument();
-    expect(screen.getByText('Source: Rose City Volleyball')).toBeInTheDocument();
+    expect(screen.getByText('Hosted by Rose City Volleyball')).toBeInTheDocument();
   });
 
   it('keeps no-fixed-date affiliate programs on their display text', () => {
@@ -89,5 +89,47 @@ describe('EventCard affiliate schedule display', () => {
 
     expect(screen.getByText('Open registration')).toBeInTheDocument();
     expect(screen.queryByText('07/02/2026 at 08:05 PM')).not.toBeInTheDocument();
+  });
+
+  it('links affiliate organization hosts to the source website', () => {
+    renderWithMantine(
+      <EventCard
+        event={createEvent({
+          organizationId: 'org_1',
+          organization: {
+            $id: 'org_1',
+            name: 'Rose City Volleyball',
+            website: 'https://rosecityvolleyball.com',
+          } as any,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Hosted by Rose City Volleyball' })).toHaveAttribute(
+      'href',
+      'https://rosecityvolleyball.com',
+    );
+  });
+
+  it('links BracketIQ organization hosts to their public organization page', () => {
+    renderWithMantine(
+      <EventCard
+        event={createEvent({
+          affiliateUrl: null,
+          organizerName: null,
+          organizationId: 'org_1',
+          organization: {
+            $id: 'org_1',
+            name: 'River City Sports Club',
+            publicSlug: 'river-city-sports',
+          } as any,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Hosted by River City Sports Club' })).toHaveAttribute(
+      'href',
+      '/o/river-city-sports',
+    );
   });
 });

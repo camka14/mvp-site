@@ -213,6 +213,7 @@ describe('EventDetailSheet details layout', () => {
       organization: {
         $id: 'affiliate_org_portland_metro_softball_association',
         name: 'Portland Metro Softball Association',
+        website: 'https://www.portlandsoftball.com',
         ownerId: 'owner_1',
       } as any,
       affiliateUrl: 'https://www.portlandsoftball.com/current-programs',
@@ -242,6 +243,10 @@ describe('EventDetailSheet details layout', () => {
 
     expect(screen.queryByText('Portland Metro Softball Association · Portland Metro Softball Association')).not.toBeInTheDocument();
     expect(screen.getAllByText('Portland Metro Softball Association').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /portland metro softball association/i })).toHaveAttribute(
+      'href',
+      'https://www.portlandsoftball.com',
+    );
   });
 
   it('shows an inline auth modal for guests instead of redirecting away from event details', async () => {
