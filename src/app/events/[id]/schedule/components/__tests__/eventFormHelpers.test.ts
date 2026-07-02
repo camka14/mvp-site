@@ -371,11 +371,11 @@ describe('affiliate event form helpers', () => {
     expect(draft).toMatchObject({
       eventType: 'EVENT',
       affiliateUrl: 'https://partner.example/events/camp',
-      price: 4500,
+      price: 9900,
       allowPaymentPlans: false,
       allowTeamSplitDefault: false,
       teamSignup: false,
-      singleDivision: true,
+      singleDivision: false,
       splitLeaguePlayoffDivisions: false,
       registrationByDivisionType: false,
       divisions: ['stale_division'],
@@ -395,8 +395,75 @@ describe('affiliate event form helpers', () => {
     expect(draft.divisionDetails).toEqual([
       expect.objectContaining({
         id: 'stale_division',
-        price: 4500,
-        maxParticipants: 24,
+        price: 9900,
+        maxParticipants: 99,
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentAmounts: [],
+        installmentDueDates: [],
+      }),
+    ]);
+    expect(draft.price).toBe(9900);
+  });
+
+  it('keeps affiliate division prices even when the single-division switch is enabled', () => {
+    const source = makeAffiliateEventFormValues({
+      singleDivision: true,
+      price: 4500,
+      maxParticipants: 24,
+      divisionDetails: [
+        makeDivisionDetail({
+          id: 'single_affiliate_division',
+          price: 15800,
+          maxParticipants: 99,
+          allowPaymentPlans: true,
+          installmentCount: 1,
+          installmentAmounts: [15800],
+          installmentDueDates: ['2026-06-30T10:00'],
+        }),
+      ],
+      divisions: ['single_affiliate_division'],
+    });
+
+    const draft = buildEventDraft({
+      activeEditingEvent: null,
+      currentUser: { $id: 'user_1' } as any,
+      fieldCount: 0,
+      fields: [],
+      fieldsReferencedInSlots: [],
+      hasImmutableTimeSlots: false,
+      hasRestrictedImmutableFields: false,
+      hasStripeAccount: false,
+      immutableFields: [],
+      immutableTimeSlots: [],
+      isEditMode: false,
+      isOrganizationHostedEvent: true,
+      isOrganizationManagedEvent: true,
+      joinAsParticipant: false,
+      organizationHostedEventId: 'org_1',
+      organizationOfficialsById: new Map(),
+      previousEventFieldLocation: '',
+      rentalLockedSlotsForDraft: [],
+      resolvedOrganization: {
+        $id: 'org_1',
+        ownerId: 'user_1',
+        staffMembers: [],
+        staffInvites: [],
+      } as any,
+      selectedRentedFieldIds: [],
+      shouldManageLocalFields: false,
+      shouldProvisionFields: false,
+      source: source as any,
+      sportsById: new Map(),
+    });
+
+    expect(draft.singleDivision).toBe(true);
+    expect(draft.price).toBe(15800);
+    expect(draft.divisionDetails).toEqual([
+      expect.objectContaining({
+        id: 'single_affiliate_division',
+        price: 15800,
+        maxParticipants: 99,
         allowPaymentPlans: false,
         installmentCount: 0,
         installmentAmounts: [],

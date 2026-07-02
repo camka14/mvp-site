@@ -280,7 +280,9 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         joinAsParticipant: z.boolean(),
     })
     .superRefine((values, ctx) => {
-        if (values.singleDivision && values.maxParticipants == null) {
+        const isAffiliateEvent = Boolean(values.isAffiliateEvent || hasAffiliateUrl(values.affiliateUrl));
+
+        if (!isAffiliateEvent && values.singleDivision && values.maxParticipants == null) {
             ctx.addIssue({
                 code: 'custom',
                 message: values.teamSignup ? 'Max teams is required' : 'Max participants is required',
@@ -319,8 +321,6 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 path: ['divisionDetails'],
             });
         }
-
-        const isAffiliateEvent = Boolean(values.isAffiliateEvent || hasAffiliateUrl(values.affiliateUrl));
 
         if (!isAffiliateEvent && supportsScheduleSlotsForEvent(values.eventType, values.parentEvent) && !values.noFixedEndDateTime) {
             const parsedStart = parseLocalDateTime(values.start);

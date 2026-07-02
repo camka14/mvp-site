@@ -35,7 +35,11 @@ type DivisionSummaryListProps = {
     leaguePlayoffTeamCount?: number | null;
     disabled: boolean;
     playoffDivisionCapacityWarnings: string[];
+    useDivisionPriceForSingleDivision?: boolean;
+    useDivisionCapacityForSingleDivision?: boolean;
     hidePricingAndCapacity?: boolean;
+    hideCapacity?: boolean;
+    hidePaymentPlanDetails?: boolean;
     hideOperationalDetails?: boolean;
     derivePoolTeamCount: (maxTeams?: number | null, poolCount?: number | null) => number | undefined;
     buildTournamentConfig: (source?: Partial<TournamentConfig>) => TournamentConfig;
@@ -61,7 +65,11 @@ export const DivisionSummaryList = ({
     leaguePlayoffTeamCount,
     disabled,
     playoffDivisionCapacityWarnings,
+    useDivisionPriceForSingleDivision = false,
+    useDivisionCapacityForSingleDivision = false,
     hidePricingAndCapacity = false,
+    hideCapacity = false,
+    hidePaymentPlanDetails = false,
     hideOperationalDetails = false,
     derivePoolTeamCount,
     buildTournamentConfig,
@@ -83,10 +91,10 @@ export const DivisionSummaryList = ({
             ) : (
                 <ResponsiveCardGrid maxCardWidth={300}>
                     {divisionDetails.map((detail) => {
-                        const effectiveDivisionPrice = singleDivision
+                        const effectiveDivisionPrice = singleDivision && !useDivisionPriceForSingleDivision
                             ? Math.max(0, eventPrice || 0)
                             : Math.max(0, detail.price || 0);
-                        const effectiveDivisionCapacity = singleDivision
+                        const effectiveDivisionCapacity = singleDivision && !useDivisionCapacityForSingleDivision
                             ? Math.max(2, Math.trunc(eventMaxParticipants || 2))
                             : Math.max(2, Math.trunc(detail.maxParticipants || eventMaxParticipants || 2));
                         const effectiveDivisionPlayoffTeamCount = eventType === 'TOURNAMENT'
@@ -152,13 +160,20 @@ export const DivisionSummaryList = ({
                                         {!hidePricingAndCapacity ? (
                                             <>
                                                 <Text size="xs" c="dimmed">
-                                                    {`Price: ${formatPrice(effectiveDivisionPrice)} • ${teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
+                                                    {[
+                                                        `Price: ${formatPrice(effectiveDivisionPrice)}`,
+                                                        hideCapacity
+                                                            ? null
+                                                            : `${teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`,
+                                                    ].filter(Boolean).join(' • ')}
                                                 </Text>
-                                                <Text size="xs" c="dimmed">
-                                                    {effectiveDivisionAllowPaymentPlans
-                                                        ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
-                                                        : 'Payment plan: disabled'}
-                                                </Text>
+                                                {!hidePaymentPlanDetails ? (
+                                                    <Text size="xs" c="dimmed">
+                                                        {effectiveDivisionAllowPaymentPlans
+                                                            ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
+                                                            : 'Payment plan: disabled'}
+                                                    </Text>
+                                                ) : null}
                                             </>
                                         ) : null}
                                         {!hideOperationalDetails && eventType === 'LEAGUE' && includePlayoffs ? (

@@ -9,6 +9,7 @@ type DivisionModeControlsProps = {
     control: Control<EventFormValues>;
     supportsEditableTeamSignup: boolean;
     showsFixedTeamEventToggle: boolean;
+    singleDivisionOnly?: boolean;
     eventType: Event['eventType'];
     singleDivision: boolean;
     leagueIncludesPlayoffs: boolean;
@@ -21,6 +22,7 @@ export const DivisionModeControls = ({
     control,
     supportsEditableTeamSignup,
     showsFixedTeamEventToggle,
+    singleDivisionOnly = false,
     eventType,
     singleDivision,
     leagueIncludesPlayoffs,
@@ -28,43 +30,49 @@ export const DivisionModeControls = ({
     hasExternalRentalField,
     isImmutableField,
 }: DivisionModeControlsProps) => {
+    const singleDivisionSwitch = (
+        <Controller
+            name="singleDivision"
+            control={control}
+            render={({ field }) => (
+                <Switch
+                    label="Single Division (all skill levels play together)"
+                    checked={field.value}
+                    disabled={isImmutableField('singleDivision')}
+                    onChange={(event) => {
+                        if (isImmutableField('singleDivision')) return;
+                        field.onChange(event?.currentTarget?.checked ?? field.value);
+                    }}
+                />
+            )}
+        />
+    );
+
     const modeSwitches = (
         <>
-            <Controller
-                name="singleDivision"
-                control={control}
-                render={({ field }) => (
-                    <Switch
-                        label="Single Division (all skill levels play together)"
-                        checked={field.value}
-                        disabled={isImmutableField('singleDivision')}
-                        onChange={(event) => {
-                            if (isImmutableField('singleDivision')) return;
-                            field.onChange(event?.currentTarget?.checked ?? field.value);
-                        }}
-                    />
-                )}
-            />
-            <Controller
-                name="registrationByDivisionType"
-                control={control}
-                render={({ field }) => (
-                    <Switch
-                        label="Register by Division Type"
-                        description="When enabled, users pick a division type and are auto-assigned to one matching division."
-                        checked={field.value}
-                        disabled={isImmutableField('registrationByDivisionType')}
-                        onChange={(event) => {
-                            if (isImmutableField('registrationByDivisionType')) return;
-                            field.onChange(event?.currentTarget?.checked ?? field.value);
-                        }}
-                    />
-                )}
-            />
+            {singleDivisionSwitch}
+            {!singleDivisionOnly ? (
+                <Controller
+                    name="registrationByDivisionType"
+                    control={control}
+                    render={({ field }) => (
+                        <Switch
+                            label="Register by Division Type"
+                            description="When enabled, users pick a division type and are auto-assigned to one matching division."
+                            checked={field.value}
+                            disabled={isImmutableField('registrationByDivisionType')}
+                            onChange={(event) => {
+                                if (isImmutableField('registrationByDivisionType')) return;
+                                field.onChange(event?.currentTarget?.checked ?? field.value);
+                            }}
+                        />
+                    )}
+                />
+            ) : null}
         </>
     );
 
-    if (supportsEditableTeamSignup) {
+    if (supportsEditableTeamSignup || singleDivisionOnly) {
         return (
             <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3" data-testid="division-mode-switches">
                 {modeSwitches}
@@ -79,7 +87,7 @@ export const DivisionModeControls = ({
     return (
         <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-2" data-testid="division-mode-switches">
             {modeSwitches}
-            {eventType === 'LEAGUE' ? (
+            {!singleDivisionOnly && eventType === 'LEAGUE' ? (
                 <Controller
                     name="splitLeaguePlayoffDivisions"
                     control={control}
@@ -108,10 +116,12 @@ export const DivisionModeControls = ({
                     )}
                 />
             ) : null}
-            <Text size="sm" c="dimmed">
-                Leagues and tournaments are always team events. When single division is enabled,
-                each timeslot is automatically assigned all selected divisions.
-            </Text>
+            {!singleDivisionOnly ? (
+                <Text size="sm" c="dimmed">
+                    Leagues and tournaments are always team events. When single division is enabled,
+                    each timeslot is automatically assigned all selected divisions.
+                </Text>
+            ) : null}
         </div>
     );
 };

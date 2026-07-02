@@ -1559,13 +1559,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', skillDivisionTypeId);
         const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', ageDivisionTypeId);
         const name = divisionEditor.name.trim();
-        const rawNormalizedDivisionPrice = eventData.singleDivision
+        const usesEventLevelDivisionDefaults = eventData.singleDivision && !isAffiliateEvent;
+        const rawNormalizedDivisionPrice = usesEventLevelDivisionDefaults
             ? Math.max(0, eventData.price || 0)
             : Math.max(0, divisionEditor.price || 0);
-        const rawDivisionMaxParticipants = eventData.singleDivision
+        const rawDivisionMaxParticipants = usesEventLevelDivisionDefaults
             ? eventData.maxParticipants
             : divisionEditor.maxParticipants;
-        const isDivisionMaxParticipantsMissing = !eventData.singleDivision
+        const isDivisionMaxParticipantsMissing = (!eventData.singleDivision || isAffiliateEvent)
             && typeof rawDivisionMaxParticipants !== 'number';
         const normalizedDivisionMaxParticipants = typeof rawDivisionMaxParticipants === 'number'
             ? Math.max(0, Math.trunc(rawDivisionMaxParticipants))
@@ -1597,26 +1598,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedDivisionPoolTeamCount = eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs
             ? derivePoolTeamCount(normalizedDivisionMaxParticipants, normalizedDivisionPoolCount)
             : undefined;
-        const normalizedDivisionAllowPaymentPlans = eventData.singleDivision
+        const normalizedDivisionAllowPaymentPlans = !isAffiliateEvent && eventData.singleDivision
             ? Boolean(eventData.allowPaymentPlans)
-            : Boolean(divisionEditor.allowPaymentPlans);
+            : !isAffiliateEvent && Boolean(divisionEditor.allowPaymentPlans);
         const normalizedDivisionInstallmentAmounts = normalizedDivisionAllowPaymentPlans
-            ? (eventData.singleDivision
+            ? (usesEventLevelDivisionDefaults
                 ? normalizeInstallmentAmounts(eventData.installmentAmounts)
                 : normalizeInstallmentAmounts(divisionEditor.installmentAmounts))
             : [];
         const normalizedDivisionInstallmentDueDates = normalizedDivisionAllowPaymentPlans
-            ? (eventData.singleDivision
+            ? (usesEventLevelDivisionDefaults
                 ? [...(eventData.installmentDueDates || [])]
                 : [...(divisionEditor.installmentDueDates || [])])
             : [];
         const normalizedDivisionInstallmentDueRelativeDays = normalizedDivisionAllowPaymentPlans
-            ? (eventData.singleDivision
+            ? (usesEventLevelDivisionDefaults
                 ? normalizeInstallmentRelativeDays(eventData.installmentDueRelativeDays)
                 : normalizeInstallmentRelativeDays(divisionEditor.installmentDueRelativeDays))
             : [];
         const normalizedDivisionInstallmentCount = normalizedDivisionAllowPaymentPlans
-            ? (eventData.singleDivision
+            ? (usesEventLevelDivisionDefaults
                 ? (eventData.installmentCount || normalizedDivisionInstallmentAmounts.length || 0)
                 : (divisionEditor.installmentCount || normalizedDivisionInstallmentAmounts.length || 0))
             : 0;
@@ -1650,7 +1651,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }));
             return;
         }
-        if (!eventData.singleDivision && normalizedDivisionMaxParticipants < 2) {
+        if ((!eventData.singleDivision || isAffiliateEvent) && normalizedDivisionMaxParticipants < 2) {
             setDivisionEditor((prev) => ({
                 ...prev,
                 error: eventData.teamSignup
@@ -1941,6 +1942,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         createNextPlayoffDivision,
         getDivisionTypeNameForEditor,
         getValues,
+        isAffiliateEvent,
         resetDivisionEditor,
         setLeagueData,
         setValue,
@@ -3422,7 +3424,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setValue('teamSignup', false, { shouldDirty: true, shouldValidate: true });
-        setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
         setValue('registrationByDivisionType', false, { shouldDirty: true, shouldValidate: true });
         setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
         setValue('allowPaymentPlans', false, { shouldDirty: true, shouldValidate: true });
@@ -3759,7 +3760,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             automaticRefundsAvailable={automaticRefundsAvailable}
                             todaysDate={todaysDate}
                             maxStandardNumber={MAX_STANDARD_NUMBER}
-                            maxPriceCents={MAX_PRICE_CENTS}
                             maxResourceNameLength={MAX_MEDIUM_TEXT_LENGTH}
                             selectStyles={alignedDetailsFieldStyles}
                             numberInputStyles={alignedDetailsFieldStyles}
@@ -4072,19 +4072,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-division-settings')}
                         >
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
-                                {!isAffiliateEvent ? (
-                                    <DivisionModeControls
-                                        control={control}
-                                        supportsEditableTeamSignup={supportsEditableTeamSignup}
-                                        showsFixedTeamEventToggle={showsFixedTeamEventToggle}
-                                        eventType={eventData.eventType}
-                                        singleDivision={eventData.singleDivision}
-                                        leagueIncludesPlayoffs={Boolean(leagueData.includePlayoffs)}
-                                        splitLeaguePlayoffDivisionsLocked={splitLeaguePlayoffDivisionsLocked}
-                                        hasExternalRentalField={hasExternalRentalField}
-                                        isImmutableField={isImmutableField}
-                                    />
-                                ) : null}
+                                <DivisionModeControls
+                                    control={control}
+                                    supportsEditableTeamSignup={supportsEditableTeamSignup}
+                                    showsFixedTeamEventToggle={showsFixedTeamEventToggle}
+                                    singleDivisionOnly={isAffiliateEvent}
+                                    eventType={eventData.eventType}
+                                    singleDivision={eventData.singleDivision}
+                                    leagueIncludesPlayoffs={Boolean(leagueData.includePlayoffs)}
+                                    splitLeaguePlayoffDivisionsLocked={splitLeaguePlayoffDivisionsLocked}
+                                    hasExternalRentalField={hasExternalRentalField}
+                                    isImmutableField={isImmutableField}
+                                />
                                 {!isAffiliateEvent && eventData.singleDivision ? (
                                     <SingleDivisionDefaultsPanel
                                         control={control}
@@ -4147,7 +4146,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         eventData={isAffiliateEvent ? {
                                             ...eventData,
                                             teamSignup: false,
-                                            singleDivision: true,
                                             allowPaymentPlans: false,
                                         } : eventData}
                                         leagueData={leagueData}
@@ -4160,7 +4158,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         maxPriceCents={MAX_PRICE_CENTS}
                                         maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
                                         numberInputStyles={alignedDetailsFieldStyles}
-                                        hideCapacityAndPrice={isAffiliateEvent}
+                                        simplePriceInput={isAffiliateEvent}
+                                        showCapacityForSingleDivision={isAffiliateEvent}
+                                        showPriceForSingleDivision={isAffiliateEvent}
                                         showPaymentPlanControls={!isAffiliateEvent}
                                         showOperationalControls={!isAffiliateEvent}
                                         showSingleDivisionNotice={!isAffiliateEvent}
@@ -4260,7 +4260,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             <DivisionSummaryList
                                                 divisionDetails={eventData.divisionDetails || []}
                                                 playoffDivisionDetails={[]}
-                                                singleDivision
+                                                singleDivision={eventData.singleDivision}
                                                 teamSignup={false}
                                                 eventType={eventData.eventType}
                                                 includePlayoffs={false}
@@ -4273,7 +4273,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 leaguePlayoffTeamCount={undefined}
                                                 disabled={isImmutableField('divisions')}
                                                 playoffDivisionCapacityWarnings={[]}
-                                                hidePricingAndCapacity
+                                                useDivisionPriceForSingleDivision
+                                                useDivisionCapacityForSingleDivision
+                                                hidePaymentPlanDetails
                                                 hideOperationalDetails
                                                 derivePoolTeamCount={derivePoolTeamCount}
                                                 buildTournamentConfig={buildTournamentConfig}

@@ -42,7 +42,11 @@ type DivisionEditorLeaguePanelProps = {
     maxPriceCents: number;
     maxMediumTextLength: number;
     numberInputStyles?: ComponentProps<typeof DivisionEditorLeagueConfigControls>['numberInputStyles'];
-    hideCapacityAndPrice?: boolean;
+    hideCapacity?: boolean;
+    hidePrice?: boolean;
+    simplePriceInput?: boolean;
+    showCapacityForSingleDivision?: boolean;
+    showPriceForSingleDivision?: boolean;
     showPaymentPlanControls?: boolean;
     showOperationalControls?: boolean;
     showSingleDivisionNotice?: boolean;
@@ -78,7 +82,11 @@ export const DivisionEditorLeaguePanel = ({
     maxPriceCents,
     maxMediumTextLength,
     numberInputStyles,
-    hideCapacityAndPrice = false,
+    hideCapacity = false,
+    hidePrice = false,
+    simplePriceInput = false,
+    showCapacityForSingleDivision = false,
+    showPriceForSingleDivision = false,
     showPaymentPlanControls = true,
     showOperationalControls = true,
     showSingleDivisionNotice = true,
@@ -122,7 +130,11 @@ export const DivisionEditorLeaguePanel = ({
                 maxPriceCents={maxPriceCents}
                 maxMediumTextLength={maxMediumTextLength}
                 divisionMaxParticipantsWarning={divisionMaxParticipantsWarning}
-                hideCapacityAndPrice={hideCapacityAndPrice}
+                hideCapacity={hideCapacity}
+                hidePrice={hidePrice}
+                simplePriceInput={simplePriceInput}
+                showCapacityForSingleDivision={showCapacityForSingleDivision}
+                showPriceForSingleDivision={showPriceForSingleDivision}
                 genderOptions={genderOptions}
                 skillDivisionTypeOptions={skillDivisionTypeOptions}
                 ageDivisionTypeOptions={ageDivisionTypeOptions}

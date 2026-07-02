@@ -7,7 +7,6 @@ import {
     Text,
 } from '@mantine/core';
 
-import CentsInput from '@/components/ui/CentsInput';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
 import type { Event } from '@/types';
 
@@ -30,7 +29,6 @@ type EventDetailsLocationControlsProps = {
     multiSelectStyles?: ComponentProps<typeof MantineMultiSelect>['styles'];
     numberInputStyles?: ComponentProps<typeof NumberInput>['styles'];
     maxStandardNumber: number;
-    maxPriceCents: number;
     normalizeNumberValue: (value: unknown) => number | undefined;
     minAge?: unknown;
     maxAge?: unknown;
@@ -59,7 +57,6 @@ export const EventDetailsLocationControls = ({
     multiSelectStyles,
     numberInputStyles,
     maxStandardNumber,
-    maxPriceCents,
     normalizeNumberValue,
     minAge,
     maxAge,
@@ -151,52 +148,32 @@ export const EventDetailsLocationControls = ({
                     </div>
                 ) : null}
                 {showAffiliateListingControls ? (
-                    <>
-                        <div>
-                            <Controller
-                                name="maxParticipants"
-                                control={control}
-                                render={({ field, fieldState }) => (
-                                    <NumberInput
-                                        label="Max Participants"
-                                        min={2}
-                                        max={maxStandardNumber}
-                                        value={field.value ?? ''}
-                                        w="100%"
-                                        styles={numberInputStyles}
-                                        clampBehavior="blur"
-                                        disabled={isImmutableField('maxParticipants')}
-                                        onChange={(value) => {
-                                            if (isImmutableField('maxParticipants')) return;
-                                            const numeric = typeof value === 'number' && Number.isFinite(value)
-                                                ? Math.trunc(value)
-                                                : null;
-                                            field.onChange(numeric);
-                                        }}
-                                        error={fieldState.error?.message as string | undefined}
-                                    />
-                                )}
-                            />
-                        </div>
-                        <div>
-                            <Controller
-                                name="price"
-                                control={control}
-                                render={({ field }) => (
-                                    <CentsInput
-                                        label="Price"
-                                        maxCents={maxPriceCents}
-                                        value={field.value}
-                                        disabled={isImmutableField('price')}
-                                        onChange={(nextValue) => {
-                                            if (isImmutableField('price')) return;
-                                            field.onChange(nextValue);
-                                        }}
-                                    />
-                                )}
-                            />
-                        </div>
-                    </>
+                    <div>
+                        <Controller
+                            name="maxParticipants"
+                            control={control}
+                            render={({ field, fieldState }) => (
+                                <NumberInput
+                                    label="Max Participants"
+                                    min={2}
+                                    max={maxStandardNumber}
+                                    value={field.value ?? ''}
+                                    w="100%"
+                                    styles={numberInputStyles}
+                                    clampBehavior="blur"
+                                    disabled={isImmutableField('maxParticipants')}
+                                    onChange={(value) => {
+                                        if (isImmutableField('maxParticipants')) return;
+                                        const numeric = typeof value === 'number' && Number.isFinite(value)
+                                            ? Math.trunc(value)
+                                            : null;
+                                        field.onChange(numeric);
+                                    }}
+                                    error={fieldState.error?.message as string | undefined}
+                                />
+                            )}
+                        />
+                    </div>
                 ) : null}
                 <div>
                     <Controller

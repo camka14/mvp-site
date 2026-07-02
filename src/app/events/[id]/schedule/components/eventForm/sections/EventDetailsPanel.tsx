@@ -32,7 +32,6 @@ type EventDetailsPanelProps = {
     automaticRefundsAvailable: boolean;
     todaysDate: Date;
     maxStandardNumber: number;
-    maxPriceCents: number;
     maxResourceNameLength: number;
     selectStyles?: ComponentProps<typeof EventDetailsTypeControls>['selectStyles'];
     numberInputStyles?: ComponentProps<typeof EventDetailsTypeControls>['numberInputStyles'];
@@ -88,7 +87,6 @@ export const EventDetailsPanel = ({
     automaticRefundsAvailable,
     todaysDate,
     maxStandardNumber,
-    maxPriceCents,
     maxResourceNameLength,
     selectStyles,
     numberInputStyles,
@@ -188,7 +186,6 @@ export const EventDetailsPanel = ({
             multiSelectStyles={multiSelectStyles}
             numberInputStyles={numberInputStyles}
             maxStandardNumber={maxStandardNumber}
-            maxPriceCents={maxPriceCents}
             normalizeNumberValue={normalizeNumberValue}
             minAge={eventData.minAge}
             maxAge={eventData.maxAge}

@@ -179,8 +179,8 @@ jest.mock('@/app/discover/components/LeagueScoringConfigPanel', () => {
   return MockLeagueScoringConfigPanel;
 });
 jest.mock('@/components/ui/CentsInput', () => {
-  function MockCentsInput() {
-    return <div data-testid="cents-input" />;
+  function MockCentsInput({ label = 'Price' }: { label?: string }) {
+    return <div aria-label={label} data-testid="cents-input" />;
   }
   MockCentsInput.displayName = 'MockCentsInput';
   return MockCentsInput;
@@ -1953,7 +1953,7 @@ describe('EventForm dirty state', () => {
     expect(within(locationMapColumn).queryByRole('button', { name: /show map|hide map/i })).not.toBeInTheDocument();
   });
 
-  it('puts affiliate capacity and price in Event Details while keeping divisions metadata-only', async () => {
+  it('keeps affiliate capacity in Event Details while pricing affiliate divisions in the division editor', async () => {
     const onDirtyStateChange = jest.fn();
     const baseDivision = buildEvent().divisionDetails[0];
 
@@ -1990,22 +1990,26 @@ describe('EventForm dirty state', () => {
     const divisionSettingsSection = document.getElementById('section-division-settings-content');
     const mapSideControls = screen.getByTestId('event-details-map-side-controls');
     const maxParticipantsInput = screen.getByLabelText('Max Participants');
-    const priceInput = within(mapSideControls).getByTestId('cents-input');
+    const divisionModeSwitches = screen.getByTestId('division-mode-switches');
+    const divisionPriceInput = within(divisionSettingsSection as HTMLElement).getByLabelText('Division price');
 
     expect(eventDetailsSection).not.toBeNull();
     expect(divisionSettingsSection).not.toBeNull();
     expect(mapSideControls).toContainElement(maxParticipantsInput);
-    expect(mapSideControls).toContainElement(priceInput);
+    expect(within(mapSideControls).queryByTestId('cents-input')).not.toBeInTheDocument();
+    expect(divisionModeSwitches).toContainElement(screen.getByText('Single Division (all skill levels play together)'));
+    expect(divisionModeSwitches).not.toContainElement(screen.queryByText('Register by Division Type'));
+    expect(divisionSettingsSection).toContainElement(divisionPriceInput);
     expect(screen.getByText('New Division')).toBeInTheDocument();
     expect(screen.getByLabelText('Gender')).toBeInTheDocument();
     expect(screen.getByLabelText('Skill Division')).toBeInTheDocument();
     expect(screen.getByLabelText('Age Division')).toBeInTheDocument();
+    expect(screen.getByLabelText('Division Max Participants')).toBeInTheDocument();
     expect(screen.getByText('Open Division')).toBeInTheDocument();
     expect(screen.queryByText('Capacity & Price')).not.toBeInTheDocument();
     expect(screen.queryByText('Listing Capacity')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Division Max/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Payment Plans')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Price:/)).not.toBeInTheDocument();
+    expect(screen.getByText('Price: $99.00 • Max participants: 99')).toBeInTheDocument();
     expect(screen.queryByText(/Payment plan:/)).not.toBeInTheDocument();
   });
 

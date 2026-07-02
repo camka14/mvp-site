@@ -6,6 +6,7 @@ import {
     TextInput,
 } from '@mantine/core';
 
+import CentsInput from '@/components/ui/CentsInput';
 import HostPriceInput from '@/components/ui/HostPriceInput';
 import type { Event } from '@/types';
 
@@ -29,7 +30,11 @@ type DivisionEditorCoreControlsProps = {
     maxPriceCents: number;
     maxMediumTextLength: number;
     divisionMaxParticipantsWarning?: string | null;
-    hideCapacityAndPrice?: boolean;
+    hideCapacity?: boolean;
+    hidePrice?: boolean;
+    simplePriceInput?: boolean;
+    showCapacityForSingleDivision?: boolean;
+    showPriceForSingleDivision?: boolean;
     genderOptions: ComponentProps<typeof MantineSelect>['data'];
     skillDivisionTypeOptions: ComponentProps<typeof MantineSelect>['data'];
     ageDivisionTypeOptions: ComponentProps<typeof MantineSelect>['data'];
@@ -60,7 +65,11 @@ export const DivisionEditorCoreControls = ({
     maxPriceCents,
     maxMediumTextLength,
     divisionMaxParticipantsWarning,
-    hideCapacityAndPrice = false,
+    hideCapacity = false,
+    hidePrice = false,
+    simplePriceInput = false,
+    showCapacityForSingleDivision = false,
+    showPriceForSingleDivision = false,
     genderOptions,
     skillDivisionTypeOptions,
     ageDivisionTypeOptions,
@@ -120,7 +129,10 @@ export const DivisionEditorCoreControls = ({
             disabled={divisionsImmutable || !divisionEditorReady}
             onChange={(event) => onNameChange(event.currentTarget.value)}
         />
-        <AnimatedLayoutSection in={!hideCapacityAndPrice && !singleDivision} className="md:col-span-3">
+        <AnimatedLayoutSection
+            in={!hideCapacity && (!singleDivision || showCapacityForSingleDivision)}
+            className="md:col-span-3"
+        >
             <NumberInput
                 label={teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
                 min={0}
@@ -144,24 +156,39 @@ export const DivisionEditorCoreControls = ({
             ) : null}
         </AnimatedLayoutSection>
         <AnimatedLayoutSection
-            in={!hideCapacityAndPrice && !singleDivision && !allowPaymentPlans}
+            in={!hidePrice && (!singleDivision || showPriceForSingleDivision) && !allowPaymentPlans}
             className="md:col-span-3 md:col-start-1"
         >
             <div>
-                <HostPriceInput
-                    hostLabel="Host take-home"
-                    totalLabel="Division price"
-                    eventType={eventType}
-                    maxCents={maxPriceCents}
-                    value={price}
-                    disabled={divisionsImmutable || !divisionEditorReady || !hasStripeAccount}
-                    onChange={(nextValue) => {
-                        if (divisionsImmutable || !divisionEditorReady || !hasStripeAccount) {
-                            return;
-                        }
-                        onPriceChange(nextValue);
-                    }}
-                />
+                {simplePriceInput ? (
+                    <CentsInput
+                        label="Division price"
+                        maxCents={maxPriceCents}
+                        value={price}
+                        disabled={divisionsImmutable || !divisionEditorReady}
+                        onChange={(nextValue) => {
+                            if (divisionsImmutable || !divisionEditorReady) {
+                                return;
+                            }
+                            onPriceChange(nextValue);
+                        }}
+                    />
+                ) : (
+                    <HostPriceInput
+                        hostLabel="Host take-home"
+                        totalLabel="Division price"
+                        eventType={eventType}
+                        maxCents={maxPriceCents}
+                        value={price}
+                        disabled={divisionsImmutable || !divisionEditorReady || !hasStripeAccount}
+                        onChange={(nextValue) => {
+                            if (divisionsImmutable || !divisionEditorReady || !hasStripeAccount) {
+                                return;
+                            }
+                            onPriceChange(nextValue);
+                        }}
+                    />
+                )}
             </div>
         </AnimatedLayoutSection>
     </>
