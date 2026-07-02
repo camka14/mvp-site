@@ -862,6 +862,7 @@ const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Prom
         startTimeMinutes: true,
         endTimeMinutes: true,
         startDate: true,
+        timeZone: true,
         repeating: true,
         endDate: true,
         scheduledFieldId: true,
@@ -3549,6 +3550,15 @@ export const deleteMatchesByEvent = async (
 };
 
 export const saveEventSchedule = async (event: League | Tournament, client: PrismaLike = prisma) => {
+  if (!event.noFixedEndDateTime) {
+    await client.events.update({
+      where: { id: event.id },
+      data: {
+        updatedAt: new Date(),
+      },
+    });
+    return;
+  }
   await client.events.update({
     where: { id: event.id },
     data: {

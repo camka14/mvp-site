@@ -83,6 +83,21 @@ type BuildEventDraftInput = {
     sportsById: Map<string, Sport>;
 };
 
+const minutesFromDate = (value: Date): number => value.getHours() * 60 + value.getMinutes();
+
+const withMinutesOnDate = (date: Date, minutes: number): Date => {
+    const normalizedMinutes = Math.max(0, Math.trunc(minutes));
+    return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        Math.floor(normalizedMinutes / 60),
+        normalizedMinutes % 60,
+        0,
+        0,
+    );
+};
+
 export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
     const {
         activeEditingEvent,
@@ -906,14 +921,14 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                         : (typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes)
                             ? Number(slot.startTimeMinutes)
                             : explicitStart
-                                ? explicitStart.getHours() * 60 + explicitStart.getMinutes()
+                                ? minutesFromDate(explicitStart)
                                 : Number(slot.startTimeMinutes));
                     const endTimeMinutes = repeating
                         ? Number(slot.endTimeMinutes)
                         : (typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes)
                             ? Number(slot.endTimeMinutes)
                             : explicitEnd
-                                ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
+                                ? minutesFromDate(explicitEnd)
                                 : Number(slot.endTimeMinutes));
                     const serialized: TimeSlot = {
                         $id: slotId,
@@ -945,10 +960,16 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
 
                     if (!repeating) {
                         if (explicitStart) {
-                            serialized.startDate = formatLocalDateTime(explicitStart);
+                            const normalizedSlotStart = Number.isFinite(startTimeMinutes)
+                                ? withMinutesOnDate(explicitStart, startTimeMinutes)
+                                : explicitStart;
+                            serialized.startDate = formatLocalDateTime(normalizedSlotStart);
                         }
                         if (explicitEnd) {
-                            serialized.endDate = formatLocalDateTime(explicitEnd);
+                            const normalizedSlotEnd = Number.isFinite(endTimeMinutes)
+                                ? withMinutesOnDate(explicitEnd, endTimeMinutes)
+                                : explicitEnd;
+                            serialized.endDate = formatLocalDateTime(normalizedSlotEnd);
                         }
                     } else {
                         const slotStartDateOverride = normalizeSlotBoundaryOverrideForForm(
@@ -989,6 +1010,25 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
 
             if (slotDocuments.length) {
                 draft.timeSlots = slotDocuments;
+                const explicitSlotWindows = slotDocuments
+                    .filter((slot) => slot.repeating === false)
+                    .map((slot) => ({
+                        start: parseLocalDateTime(slot.startDate ?? null),
+                        end: parseLocalDateTime(slot.endDate ?? null),
+                    }))
+                    .filter((window): window is { start: Date; end: Date } => (
+                        Boolean(window.start && window.end && window.end.getTime() > window.start.getTime())
+                    ));
+                if (explicitSlotWindows.length) {
+                    const earliestStart = explicitSlotWindows.reduce((earliest, window) => (
+                        window.start.getTime() < earliest.getTime() ? window.start : earliest
+                    ), explicitSlotWindows[0].start);
+                    const latestEnd = explicitSlotWindows.reduce((latest, window) => (
+                        window.end.getTime() > latest.getTime() ? window.end : latest
+                    ), explicitSlotWindows[0].end);
+                    draft.start = formatLocalDateTime(earliestStart);
+                    draft.end = formatLocalDateTime(latestEnd);
+                }
                 const slotIds = slotDocuments
                     .map((slot) => (typeof slot.$id === 'string' ? slot.$id : null))
                     .filter((id): id is string => Boolean(id));

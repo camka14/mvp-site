@@ -1,4 +1,5 @@
 import { dateWithMinutesInTimeZone, Schedule } from './Schedule';
+import { ensureEventWindowCoversExplicitTimeSlots } from './scheduleEvent';
 import { normalizeTimeZone } from '@/lib/dateUtils';
 import {
   Division,
@@ -737,6 +738,7 @@ export const rescheduleEventMatchesPreservingLocks = (
   }
 
   ensureSplitPlayoffTimeSlotCoverage(event);
+  ensureEventWindowCoversExplicitTimeSlots(event);
   const schedulingDivisions = schedulingDivisionsForEvent(event);
   const openEndedSchedule = isOpenEndedSchedule(event);
   const rescheduleEndTime = resolveRescheduleEndTime(event);

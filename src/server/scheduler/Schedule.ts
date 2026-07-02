@@ -44,6 +44,42 @@ export const dateWithMinutesInTimeZone = (
   );
 };
 
+const parseSlotDate = (value: unknown): Date | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+export const explicitTimeSlotWindow = (slot: any): [Date, Date] | null => {
+  const explicitStart = parseSlotDate(slot?.startDate);
+  const explicitEnd = parseSlotDate(slot?.endDate);
+  if (!explicitStart) {
+    return null;
+  }
+  const startMinutesRaw = slot.startTimeMinutes ?? slot.start_time_minutes;
+  const endMinutesRaw = slot.endTimeMinutes ?? slot.end_time_minutes;
+  const startMinutes = Number(startMinutesRaw);
+  const endMinutes = Number(endMinutesRaw);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
+    return explicitEnd && explicitEnd.getTime() > explicitStart.getTime()
+      ? [explicitStart, explicitEnd]
+      : null;
+  }
+  const slotTimeZone = normalizeTimeZone(slot.timeZone ?? slot.time_zone, 'UTC');
+  const start = dateWithMinutesInTimeZone(explicitStart, startMinutes, slotTimeZone);
+  const endBaseDate = endMinutes > startMinutes ? explicitStart : (explicitEnd ?? explicitStart);
+  const end = dateWithMinutesInTimeZone(endBaseDate, endMinutes, slotTimeZone);
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    return null;
+  }
+  return [start, end];
+};
+
 const isLockedEvent = (event: SchedulableEvent): boolean => {
   return (event as { locked?: boolean }).locked === true;
 };
@@ -498,32 +534,8 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     };
 
     if (slot?.repeating === false) {
-      const explicitStart = parseDate(slot.startDate);
-      const explicitEnd = parseDate(slot.endDate);
-      if (!explicitStart) {
-        return [];
-      }
-      const startMinutesRaw = slot.startTimeMinutes ?? slot.start_time_minutes;
-      const endMinutesRaw = slot.endTimeMinutes ?? slot.end_time_minutes;
-      const startMinutes = Number(startMinutesRaw);
-      const endMinutes = Number(endMinutesRaw);
-      if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
-        if (explicitEnd && explicitEnd.getTime() > explicitStart.getTime()) {
-          return [[explicitStart, explicitEnd]];
-        }
-        return [];
-      }
-      const slotTimeZone = normalizeTimeZone(slot.timeZone ?? slot.time_zone, 'UTC');
-      const start = dateWithMinutesInTimeZone(explicitStart, startMinutes, slotTimeZone);
-      const endBaseDate = endMinutes > startMinutes ? explicitStart : (explicitEnd ?? explicitStart);
-      const end = dateWithMinutesInTimeZone(endBaseDate, endMinutes, slotTimeZone);
-      if (!start || !end) {
-        return [];
-      }
-      if (end.getTime() <= start.getTime()) {
-        return [];
-      }
-      return [[start, end]];
+      const window = explicitTimeSlotWindow(slot);
+      return window ? [window] : [];
     }
 
     const normalizedDays: number[] = Array.from(

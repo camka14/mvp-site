@@ -4,7 +4,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {},
 }));
 
-import { assertNoEventFieldSchedulingConflicts, loadEventWithRelations } from '@/server/repositories/events';
+import { assertNoEventFieldSchedulingConflicts, loadEventWithRelations, saveEventSchedule } from '@/server/repositories/events';
 
 type LoadClient = {
   events: {
@@ -106,6 +106,81 @@ const createClient = (eventOverrides: Record<string, unknown> = {}): LoadClient 
 };
 
 describe('loadEventWithRelations field conflict hydration', () => {
+  it('does not persist scheduler-mutated end dates for fixed-end events', async () => {
+    const client = {
+      events: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    await saveEventSchedule({
+      id: 'event_fixed',
+      end: new Date('2026-07-12T03:00:00.000Z'),
+      noFixedEndDateTime: false,
+    } as any, client as any);
+
+    expect(client.events.update).toHaveBeenCalledWith({
+      where: { id: 'event_fixed' },
+      data: {
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('persists scheduler end dates for open-ended events', async () => {
+    const client = {
+      events: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const end = new Date('2026-07-12T03:00:00.000Z');
+
+    await saveEventSchedule({
+      id: 'event_open',
+      end,
+      noFixedEndDateTime: true,
+    } as any, client as any);
+
+    expect(client.events.update).toHaveBeenCalledWith({
+      where: { id: 'event_open' },
+      data: {
+        end,
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('hydrates event time slot time zones for scheduler rebuilds', async () => {
+    const client = createClient({
+      timeSlotIds: ['slot_event_1'],
+    });
+    client.timeSlots.findMany.mockResolvedValue([
+      {
+        id: 'slot_event_1',
+        dayOfWeek: 5,
+        daysOfWeek: [5],
+        startTimeMinutes: 780,
+        endTimeMinutes: 1140,
+        startDate: new Date('2026-07-11T20:00:00.000Z'),
+        endDate: new Date('2026-07-12T02:00:00.000Z'),
+        timeZone: 'America/Los_Angeles',
+        repeating: false,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+      },
+    ]);
+
+    const loaded = await loadEventWithRelations('event_sched', client as any);
+
+    expect(client.timeSlots.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        timeZone: true,
+      }),
+    }));
+    expect(loaded.timeSlots).toHaveLength(1);
+    expect(loaded.timeSlots[0].timeZone).toBe('America/Los_Angeles');
+  });
+
   it('hydrates field blocking windows from external regular events and matches', async () => {
     const client = createClient();
 

@@ -1,4 +1,5 @@
 import { EventBuilder } from './EventBuilder';
+import { explicitTimeSlotWindow } from './Schedule';
 import { Division, League, Match, Tournament, TIMES, MINUTE_MS, SchedulerContext, Team } from './types';
 
 export type ScheduleRequest = {
@@ -389,6 +390,33 @@ const hasExtendableRecurringSlots = (event: League | Tournament): boolean => {
   return event.timeSlots.some((slot) => isExtendableRecurringSlot(slot));
 };
 
+export const ensureEventWindowCoversExplicitTimeSlots = (event: League | Tournament): void => {
+  const windows = event.timeSlots
+    .filter((slot) => slot.repeating === false)
+    .map((slot) => explicitTimeSlotWindow(slot))
+    .filter((window): window is [Date, Date] => window !== null);
+  if (!windows.length) {
+    return;
+  }
+  const earliestStart = windows.reduce((earliest, [start]) => (
+    start.getTime() < earliest.getTime() ? start : earliest
+  ), windows[0][0]);
+  const latestEnd = windows.reduce((latest, [, end]) => (
+    end.getTime() > latest.getTime() ? end : latest
+  ), windows[0][1]);
+
+  const eventEndsBeforeSlots = event.end.getTime() < earliestStart.getTime();
+  const eventStartsAfterSlots = event.start.getTime() > latestEnd.getTime();
+  if (eventEndsBeforeSlots || eventStartsAfterSlots) {
+    event.start = earliestStart;
+    event.end = latestEnd;
+    return;
+  }
+  if (event.end.getTime() < latestEnd.getTime()) {
+    event.end = latestEnd;
+  }
+};
+
 const isScheduleOverrunError = (message: string): boolean => {
   const normalized = message.toLowerCase();
   return normalized.includes(SCHEDULE_OVERRUN_DETAIL.toLowerCase())
@@ -408,6 +436,7 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
   }
 
   const openEndedSchedule = isOpenEndedSchedule(event);
+  ensureEventWindowCoversExplicitTimeSlots(event);
   if (!openEndedSchedule && event.end.getTime() <= event.start.getTime()) {
     throw new ScheduleError('End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.');
   }

@@ -225,6 +225,55 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches[0].end.toISOString()).toBe('2026-07-11T20:20:00.000Z');
   });
 
+  it('expands a stale fixed event window to cover explicit non-repeating slots', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const nonRepeatingSlot = new TimeSlot({
+      id: 'slot_after_event_window',
+      dayOfWeek: 5,
+      daysOfWeek: [5],
+      startDate: new Date('2026-07-11T16:00:00.000Z'),
+      endDate: new Date('2026-07-11T19:00:00.000Z'),
+      repeating: false,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 12 * 60,
+      field: field.id,
+      fieldIds: [field.id],
+      divisions: [division],
+      timeZone: 'America/Los_Angeles',
+    });
+
+    const tournament = new Tournament({
+      id: 'tournament_stale_event_window',
+      name: 'Stale Event Window Tournament',
+      start: new Date('2026-07-10T11:00:00.000Z'),
+      end: new Date('2026-07-10T22:00:00.000Z'),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      divisions: [division],
+      fields: { [field.id]: field },
+      timeSlots: [nonRepeatingSlot],
+      doTeamsOfficiate: false,
+      noFixedEndDateTime: false,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: true,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+
+    expect(scheduled.event.start.toISOString()).toBe('2026-07-11T16:00:00.000Z');
+    expect(scheduled.event.end.toISOString()).toBe('2026-07-11T19:00:00.000Z');
+    expect(scheduled.matches.length).toBeGreaterThan(0);
+    expect(scheduled.matches[0].start.toISOString()).toBe('2026-07-11T16:00:00.000Z');
+  });
+
   it('lets generated pool divisions inherit bracket time slots and use pool division schedule config', () => {
     const bracketDivision = new Division(
       'tournament_bracket_open',
