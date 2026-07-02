@@ -25,7 +25,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const message = error instanceof Error ? error.message : 'Failed to publish affiliate discovery.';
     const status = message.includes('not found')
       ? 404
-      : message.includes('must be linked') || message.includes('organization')
+      : message.includes('must be linked')
+        || message.includes('organization')
+        || message.includes('must include')
+        || message.includes('must start')
+        || message.includes('deadline has passed')
         ? 409
         : 500;
     if (status === 500) {

@@ -43,6 +43,7 @@ type AdminAffiliateCandidateRow = {
   venueName?: string | null;
   startsAt?: string | null;
   scheduleText?: string | null;
+  dateDisplayMode?: string | null;
   priceText?: string | null;
   officialActionUrl: string;
   sourceUrl: string;
@@ -72,6 +73,12 @@ type LastScrapeResult = {
   updatedCandidateCount: number;
   rejectedCount: number;
   rejectionSummary: Record<string, number>;
+};
+
+type ActionMessage = {
+  color: 'blue' | 'yellow' | 'red' | 'teal';
+  title: string;
+  body: string;
 };
 
 type AdminAffiliateImportsPanelProps = {
@@ -138,6 +145,40 @@ const normalizeListingKindValue = (value: unknown): string => {
     : 'EVENT';
 };
 
+const normalizeDateDisplayModeValue = (value: unknown): string => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return normalized || 'SCHEDULED';
+};
+
+const isPastStartCandidate = (candidate: AdminAffiliateCandidateRow, now: number = Date.now()): boolean => {
+  const kind = normalizeListingKindValue(candidate.listingKind);
+  const dateDisplayMode = candidate.dateDisplayMode ?? candidate.rawPayload?.dateDisplayMode;
+  if (kind !== 'EVENT' || normalizeDateDisplayModeValue(dateDisplayMode) !== 'SCHEDULED') {
+    return false;
+  }
+  if (!candidate.startsAt) {
+    return false;
+  }
+  const parsed = new Date(candidate.startsAt);
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() <= now;
+};
+
+const isSkippablePublishError = (message: string): boolean => (
+  message.includes('must start in the future')
+  || message.includes('registration deadline has passed')
+);
+
+const publishedTargetLink = (candidate: AdminAffiliateCandidateRow): { href: string; label: string } | null => {
+  const kind = normalizeListingKindValue(candidate.listingKind);
+  if (kind === 'EVENT' && candidate.publishedEventId) {
+    return { href: `/events/${encodeURIComponent(candidate.publishedEventId)}`, label: 'View Event' };
+  }
+  if (kind === 'TEAM' && candidate.publishedTeamId) {
+    return { href: `/teams/${encodeURIComponent(candidate.publishedTeamId)}`, label: 'View Team' };
+  }
+  return null;
+};
+
 const scrapeResultMessage = (result: LastScrapeResult): string => {
   const hasDetailedCandidateCounts = result.createdCandidateCount + result.updatedCandidateCount > 0
     || result.candidateCount === 0;
@@ -174,6 +215,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<AdminAffiliateCandidateRow | null>(null);
   const [lastScrapeResult, setLastScrapeResult] = useState<LastScrapeResult | null>(null);
+  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
 
   const sourceNameById = useMemo(() => (
     new Map(sources.map((source) => [source.$id, source.name]))
@@ -194,6 +236,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const allCandidatesSelected = candidates.length > 0 && selectedCandidateIds.length === candidates.length;
   const someCandidatesSelected = selectedCandidateIds.length > 0 && selectedCandidateIds.length < candidates.length;
   const candidateActionInProgress = bulkPublishing || bulkDeleting || Boolean(classifyingCandidateId);
+  const selectedCandidateTargetLink = selectedCandidate ? publishedTargetLink(selectedCandidate) : null;
 
   const sourceNeedsOrganization = (source: AdminAffiliateSourceRow): boolean => (
     String(source.targetKind ?? '').toUpperCase() !== 'RENTAL'
@@ -323,19 +366,52 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
 
     setBulkPublishing(true);
     setError(null);
+    setActionMessage(null);
     try {
+      let publishedCount = 0;
+      const skippedTitles: string[] = [];
+      const failedMessages: string[] = [];
+
       for (const candidate of publishableSelectedCandidates) {
+        if (isPastStartCandidate(candidate)) {
+          skippedTitles.push(candidate.title);
+          continue;
+        }
+
         const res = await fetch(`/api/admin/affiliate-discoveries/${encodeURIComponent(candidate.$id)}/publish`, {
           method: 'POST',
           credentials: 'include',
         });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(payload?.error || `Failed to publish "${candidate.title}".`);
+          const message = payload?.error || `Failed to publish "${candidate.title}".`;
+          if (typeof message === 'string' && isSkippablePublishError(message)) {
+            skippedTitles.push(candidate.title);
+            continue;
+          }
+          failedMessages.push(`"${candidate.title}": ${message}`);
+          continue;
         }
+        publishedCount += 1;
       }
+
       setSelectedCandidateIds([]);
       await loadData();
+      if (failedMessages.length) {
+        setError(`Published ${publishedCount}. Failed ${failedMessages.length}: ${failedMessages.join(' • ')}`);
+      } else if (skippedTitles.length) {
+        setActionMessage({
+          color: publishedCount > 0 ? 'yellow' : 'red',
+          title: publishedCount > 0 ? 'Some candidates were skipped' : 'No candidates were published',
+          body: `${publishedCount} published. ${skippedTitles.length} skipped because they are no longer publishable: ${skippedTitles.join(', ')}`,
+        });
+      } else {
+        setActionMessage({
+          color: 'teal',
+          title: 'Candidates published',
+          body: `${publishedCount} candidate${publishedCount === 1 ? '' : 's'} published.`,
+        });
+      }
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : 'Failed to publish selected affiliate discoveries.');
     } finally {
@@ -442,6 +518,12 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
           title={`Last scrape: ${lastScrapeResult.sourceName}`}
         >
           {scrapeResultMessage(lastScrapeResult)}
+        </Alert>
+      ) : null}
+
+      {actionMessage ? (
+        <Alert color={actionMessage.color} title={actionMessage.title}>
+          {actionMessage.body}
         </Alert>
       ) : null}
 
@@ -569,123 +651,156 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
           </Group>
         </Group>
 
-        <Table striped highlightOnHover withTableBorder withColumnBorders>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w={48}>
-                <Checkbox
-                  aria-label="Select all candidates"
-                  checked={allCandidatesSelected}
-                  indeterminate={someCandidatesSelected}
-                  disabled={!candidates.length || candidateActionInProgress}
-                  onChange={(event) => toggleAllCandidateSelection(event.currentTarget.checked)}
-                />
-              </Table.Th>
-              <Table.Th>Candidate</Table.Th>
-              <Table.Th>Source</Table.Th>
-              <Table.Th>Kind</Table.Th>
-              <Table.Th>Schedule</Table.Th>
-              <Table.Th>Price</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {candidates.map((candidate) => (
-              <Table.Tr key={candidate.$id}>
-                <Table.Td>
-                  <Checkbox
-                    aria-label={`Select ${candidate.title}`}
-                    checked={selectedCandidateIdSet.has(candidate.$id)}
-                    disabled={candidateActionInProgress}
-                    onChange={(event) => toggleCandidateSelection(candidate.$id, event.currentTarget.checked)}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Text fw={600}>{candidate.title}</Text>
-                  <Text size="xs" c="dimmed">{[candidate.venueName, candidate.city].filter(Boolean).join(', ') || 'Not specified'}</Text>
-                </Table.Td>
-                <Table.Td>{sourceNameById.get(candidate.sourceId) ?? candidate.sourceId}</Table.Td>
-                <Table.Td>
-                  <Select
-                    aria-label={`Classify ${candidate.title}`}
-                    data={listingKindOptions}
-                    value={normalizeListingKindValue(candidate.listingKind)}
-                    size="xs"
-                    w={110}
-                    allowDeselect={false}
-                    disabled={candidateActionInProgress || publishingCandidateId === candidate.$id || deletingCandidateId === candidate.$id}
-                    comboboxProps={{ withinPortal: true }}
-                    onChange={(value) => {
-                      void reclassifyCandidate(candidate, value);
-                    }}
-                  />
-                </Table.Td>
-                <Table.Td>{candidate.scheduleText || formatDateTime(candidate.startsAt)}</Table.Td>
-                <Table.Td>{formatOptionalText(candidate.priceText)}</Table.Td>
-                <Table.Td>
-                  <Badge color={candidate.status === 'PUBLISHED' ? 'teal' : 'blue'} variant="light">
-                    {candidate.status}
-                  </Badge>
-                  {publishedTargetLabel(candidate) ? (
-                    <Text size="xs" c="dimmed">{publishedTargetLabel(candidate)}</Text>
-                  ) : null}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <Button size="xs" variant="default" onClick={() => setSelectedCandidate(candidate)}>
-                      View
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      leftSection={<ExternalLink size={14} />}
-                      onClick={() => openExternal(candidate.officialActionUrl)}
-                    >
-                      Link
-                    </Button>
-                    <Button
-                      size="xs"
-                      color="teal"
-                      leftSection={<UploadCloud size={14} />}
-                      disabled={(candidate.status === 'PUBLISHED' && hasPublishedTarget(candidate)) || deletingCandidateId === candidate.$id || candidateActionInProgress}
-                      loading={publishingCandidateId === candidate.$id}
-                      onClick={() => {
-                        void publishCandidate(candidate.$id);
-                      }}
-                    >
-                      Publish
-                    </Button>
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="subtle"
-                      leftSection={<Trash2 size={14} />}
-                      disabled={publishingCandidateId === candidate.$id || candidateActionInProgress}
-                      loading={deletingCandidateId === candidate.$id}
-                      onClick={() => {
-                        void deleteCandidate(candidate);
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-            {!candidates.length && !loading ? (
+        <ScrollArea type="auto">
+          <Table striped highlightOnHover withTableBorder withColumnBorders miw={1488} style={{ tableLayout: 'fixed' }}>
+            <Table.Thead>
               <Table.Tr>
-                <Table.Td colSpan={8}>
-                  <Text size="sm" c="dimmed">
-                    {candidateStatusView === 'PUBLISHED'
-                      ? 'No published affiliate candidates yet.'
-                      : 'No discovered affiliate candidates yet.'}
-                  </Text>
-                </Table.Td>
+                <Table.Th w={48}>
+                  <Checkbox
+                    aria-label="Select all candidates"
+                    checked={allCandidatesSelected}
+                    indeterminate={someCandidatesSelected}
+                    disabled={!candidates.length || candidateActionInProgress}
+                    onChange={(event) => toggleAllCandidateSelection(event.currentTarget.checked)}
+                  />
+                </Table.Th>
+                <Table.Th w={320}>Candidate</Table.Th>
+                <Table.Th w={160}>Source</Table.Th>
+                <Table.Th w={130}>Kind</Table.Th>
+                <Table.Th w={300}>Schedule</Table.Th>
+                <Table.Th w={110}>Price</Table.Th>
+                <Table.Th w={160}>Status</Table.Th>
+                <Table.Th w={260}>Actions</Table.Th>
               </Table.Tr>
-            ) : null}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {candidates.map((candidate) => {
+                const pastStart = isPastStartCandidate(candidate);
+                const targetLink = publishedTargetLink(candidate);
+                return (
+                  <Table.Tr
+                    key={candidate.$id}
+                    bg={pastStart ? 'yellow.0' : undefined}
+                    style={pastStart ? { boxShadow: 'inset 3px 0 0 var(--mantine-color-yellow-6)' } : undefined}
+                  >
+                    <Table.Td w={48}>
+                      <Checkbox
+                        aria-label={`Select ${candidate.title}`}
+                        checked={selectedCandidateIdSet.has(candidate.$id)}
+                        disabled={candidateActionInProgress}
+                        onChange={(event) => toggleCandidateSelection(candidate.$id, event.currentTarget.checked)}
+                      />
+                    </Table.Td>
+                    <Table.Td w={320}>
+                      <Text fw={600} lineClamp={2}>{candidate.title}</Text>
+                      <Text size="xs" c="dimmed">{[candidate.venueName, candidate.city].filter(Boolean).join(', ') || 'Not specified'}</Text>
+                    </Table.Td>
+                    <Table.Td w={160}>
+                      <Text size="sm" lineClamp={3}>{sourceNameById.get(candidate.sourceId) ?? candidate.sourceId}</Text>
+                    </Table.Td>
+                    <Table.Td w={130}>
+                      <Select
+                        aria-label={`Classify ${candidate.title}`}
+                        data={listingKindOptions}
+                        value={normalizeListingKindValue(candidate.listingKind)}
+                        size="xs"
+                        w={110}
+                        allowDeselect={false}
+                        disabled={candidateActionInProgress || publishingCandidateId === candidate.$id || deletingCandidateId === candidate.$id}
+                        comboboxProps={{ withinPortal: true }}
+                        onChange={(value) => {
+                          void reclassifyCandidate(candidate, value);
+                        }}
+                      />
+                    </Table.Td>
+                    <Table.Td w={300}>
+                      <Text size="sm" lineClamp={3}>{candidate.scheduleText || formatDateTime(candidate.startsAt)}</Text>
+                    </Table.Td>
+                    <Table.Td w={110}>
+                      <Text size="sm" fw={600}>{formatOptionalText(candidate.priceText)}</Text>
+                    </Table.Td>
+                    <Table.Td w={160}>
+                      <Stack gap={4}>
+                        <Badge color={candidate.status === 'PUBLISHED' ? 'teal' : pastStart ? 'yellow' : 'blue'} variant="light">
+                          {candidate.status}
+                        </Badge>
+                        {pastStart ? (
+                          <Badge color="yellow" variant="filled">Past start</Badge>
+                        ) : null}
+                        {publishedTargetLabel(candidate) ? (
+                          <Text size="xs" c="dimmed">{publishedTargetLabel(candidate)}</Text>
+                        ) : null}
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td w={260}>
+                      <Group gap="xs" align="center">
+                        <Button size="xs" variant="default" onClick={() => setSelectedCandidate(candidate)}>
+                          View
+                        </Button>
+                        {targetLink ? (
+                          <Button
+                            component="a"
+                            href={targetLink.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            size="xs"
+                            variant="default"
+                          >
+                            {targetLink.label}
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="xs"
+                          variant="light"
+                          leftSection={<ExternalLink size={14} />}
+                          onClick={() => openExternal(candidate.officialActionUrl)}
+                        >
+                          Link
+                        </Button>
+                        <Button
+                          size="xs"
+                          color="teal"
+                          leftSection={<UploadCloud size={14} />}
+                          disabled={pastStart || (candidate.status === 'PUBLISHED' && hasPublishedTarget(candidate)) || deletingCandidateId === candidate.$id || candidateActionInProgress}
+                          loading={publishingCandidateId === candidate.$id}
+                          onClick={() => {
+                            void publishCandidate(candidate.$id);
+                          }}
+                        >
+                          Publish
+                        </Button>
+                        <Button
+                          size="xs"
+                          color="red"
+                          variant="subtle"
+                          leftSection={<Trash2 size={14} />}
+                          disabled={publishingCandidateId === candidate.$id || candidateActionInProgress}
+                          loading={deletingCandidateId === candidate.$id}
+                          onClick={() => {
+                            void deleteCandidate(candidate);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+              {!candidates.length && !loading ? (
+                <Table.Tr>
+                  <Table.Td colSpan={8}>
+                    <Text size="sm" c="dimmed">
+                      {candidateStatusView === 'PUBLISHED'
+                        ? 'No published affiliate candidates yet.'
+                        : 'No discovered affiliate candidates yet.'}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ) : null}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
       </Paper>
 
       <Modal
@@ -714,6 +829,18 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
             </Group>
             <Text size="sm"><strong>Official link:</strong> {selectedCandidate.officialActionUrl}</Text>
             <Text size="sm"><strong>Source:</strong> {selectedCandidate.sourceUrl}</Text>
+            {selectedCandidateTargetLink ? (
+              <Button
+                component="a"
+                href={selectedCandidateTargetLink.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="light"
+                leftSection={<ExternalLink size={14} />}
+              >
+                {selectedCandidateTargetLink.label}
+              </Button>
+            ) : null}
             <ScrollArea h={360} type="auto">
               <pre className="whitespace-pre-wrap rounded border bg-gray-50 p-3 text-xs">
                 {stringifyCandidateForReview(selectedCandidate)}
