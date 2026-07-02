@@ -190,7 +190,6 @@ export const EventDetailsPanel = ({
             templateOptions={templateOptions}
             comboboxProps={comboboxProps}
             multiSelectStyles={multiSelectStyles}
-            numberInputStyles={numberInputStyles}
             maxStandardNumber={maxStandardNumber}
             normalizeNumberValue={normalizeNumberValue}
             minAge={eventData.minAge}
