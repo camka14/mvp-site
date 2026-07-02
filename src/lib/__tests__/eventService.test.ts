@@ -626,6 +626,13 @@ describe('eventService', () => {
         },
       ],
       requiredTemplateIds: ['template_event_1'],
+      sourceUrl: 'https://source.example/events/evt_1',
+      organizerName: 'External Organizer',
+      scheduleText: 'Schedule posted by organizer',
+      dateDisplayMode: 'SCHEDULED',
+      dateDisplayText: 'Jan 1',
+      priceText: '$20',
+      statusText: 'Open',
       waitList: ['user_wait_legacy'],
       freeAgents: ['user_free_legacy'],
       attendees: 8,
@@ -695,6 +702,13 @@ describe('eventService', () => {
     expect((options?.body as any)?.event?.leagueScoringConfig?.$id).toBeUndefined();
     expect((options?.body as any)?.event?.fields?.[0]?.matches).toBeUndefined();
     expect((options?.body as any)?.event?.timeSlots?.[0]?.event).toBeUndefined();
+    expect((options?.body as any)?.event?.sourceUrl).toBeUndefined();
+    expect((options?.body as any)?.event?.organizerName).toBeUndefined();
+    expect((options?.body as any)?.event?.scheduleText).toBeUndefined();
+    expect((options?.body as any)?.event?.dateDisplayMode).toBeUndefined();
+    expect((options?.body as any)?.event?.dateDisplayText).toBeUndefined();
+    expect((options?.body as any)?.event?.priceText).toBeUndefined();
+    expect((options?.body as any)?.event?.statusText).toBeUndefined();
     expect((options?.body as any)?.event?.waitList).toBeUndefined();
     expect((options?.body as any)?.event?.freeAgents).toBeUndefined();
     expect((options?.body as any)?.event?.attendees).toBeUndefined();
