@@ -27,7 +27,6 @@ type EventDetailsLocationControlsProps = {
     templateOptions: Array<{ value: string; label: string }>;
     comboboxProps?: ComponentProps<typeof MantineMultiSelect>['comboboxProps'];
     multiSelectStyles?: ComponentProps<typeof MantineMultiSelect>['styles'];
-    numberInputStyles?: ComponentProps<typeof NumberInput>['styles'];
     maxStandardNumber: number;
     normalizeNumberValue: (value: unknown) => number | undefined;
     minAge?: unknown;
@@ -55,7 +54,6 @@ export const EventDetailsLocationControls = ({
     templateOptions,
     comboboxProps,
     multiSelectStyles,
-    numberInputStyles,
     maxStandardNumber,
     normalizeNumberValue,
     minAge,
@@ -159,7 +157,6 @@ export const EventDetailsLocationControls = ({
                                     max={maxStandardNumber}
                                     value={field.value ?? ''}
                                     w="100%"
-                                    styles={numberInputStyles}
                                     clampBehavior="blur"
                                     disabled={isImmutableField('maxParticipants')}
                                     onChange={(value) => {
@@ -186,7 +183,6 @@ export const EventDetailsLocationControls = ({
                                 max={maxStandardNumber}
                                 value={normalizeNumberValue(field.value) ?? ''}
                                 w="100%"
-                                styles={numberInputStyles}
                                 clampBehavior="strict"
                                 disabled={isImmutableField('minAge')}
                                 onChange={(val) => {
@@ -210,7 +206,6 @@ export const EventDetailsLocationControls = ({
                                 max={maxStandardNumber}
                                 value={normalizeNumberValue(field.value) ?? ''}
                                 w="100%"
-                                styles={numberInputStyles}
                                 clampBehavior="strict"
                                 disabled={isImmutableField('maxAge')}
                                 onChange={(val) => {
