@@ -228,7 +228,7 @@ export default function EventCard({
       className={`card discover-event-card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-all duration-200 group h-full flex flex-col border border-slate-200/80`}
       onClick={onClick}
     >
-      <div className="relative h-44 overflow-hidden border-b border-slate-200">
+      <div className="mvp-image-background relative h-44 overflow-hidden border-b border-slate-200">
         {actions && (
           <div className="absolute right-3 top-3 z-10">
             {actions}

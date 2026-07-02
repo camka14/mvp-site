@@ -1149,6 +1149,12 @@ const uniqueNonEmptyStrings = (values: Array<string | null | undefined>): string
     return Array.from(new Set(normalizedValues));
 };
 
+const normalizeComparableLabel = (value: string | null | undefined): string => (
+    typeof value === 'string'
+        ? value.trim().replace(/\s+/g, ' ').toLowerCase()
+        : ''
+);
+
 const formatReadOnlyValueList = (
     values: Array<string | null | undefined>,
     emptyText: string = 'None',
@@ -4680,6 +4686,10 @@ export default function EventDetailSheet({
         ? `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`
         : 'Open capacity';
     const eventLocationSummary = currentEvent.location || 'Location coming soon';
+    const shouldShowHostedByHeroLabel = Boolean(
+        hostedByLabel
+        && normalizeComparableLabel(hostedByLabel) !== normalizeComparableLabel(eventLocationSummary)
+    );
     const officialPositionsSummary = uniqueNonEmptyStrings(
         (currentEvent.officialPositions ?? [])
             .slice()
@@ -5089,7 +5099,7 @@ export default function EventDetailSheet({
             )}
             
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="relative min-h-[340px] overflow-hidden bg-slate-950 sm:min-h-[420px]">
+                <div className="mvp-image-background relative min-h-[340px] overflow-hidden sm:min-h-[420px]">
                     <Image
                         src={eventImageUrl}
                         alt={currentEvent.name}
@@ -5120,9 +5130,11 @@ export default function EventDetailSheet({
                             <h1 className="text-3xl font-bold leading-tight tracking-normal sm:text-5xl">
                                 {currentEvent.name}
                             </h1>
-                            <Text className="mt-3 max-w-2xl text-base leading-7 text-slate-100 sm:text-lg">
-                                {hostedByLabel} · {eventLocationSummary}
-                            </Text>
+                            {shouldShowHostedByHeroLabel ? (
+                                <Text className="mt-3 max-w-2xl text-base leading-7 text-slate-100 sm:text-lg">
+                                    {hostedByLabel}
+                                </Text>
+                            ) : null}
                         </div>
                         <div className="mt-6 flex flex-wrap gap-3 text-sm text-slate-100">
                             <span className="inline-flex items-center gap-2 rounded-md bg-white/12 px-3 py-2 backdrop-blur">
@@ -5836,7 +5848,7 @@ export default function EventDetailSheet({
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3">
-                                                                <div className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
+                                                                <div className="mvp-image-background relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
                                                                     <Image
                                                                         src={eventImageUrl}
                                                                         alt={currentEvent.name}

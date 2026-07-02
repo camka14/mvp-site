@@ -378,7 +378,7 @@ function MapEntityMarker({
         <div
           className="discover-map-marker"
           style={{
-            background: imageUrl ? '#ffffff' : markerStyle.color,
+            background: imageUrl ? 'var(--background)' : markerStyle.color,
             borderColor: markerStyle.color,
           }}
           title={title}

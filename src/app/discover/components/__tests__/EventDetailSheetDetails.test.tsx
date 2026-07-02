@@ -198,6 +198,52 @@ describe('EventDetailSheet details layout', () => {
     expect(screen.getByText('Schedule')).toBeInTheDocument();
   });
 
+  it('does not repeat matching host and location labels in the hero subtitle', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      $id: 'affiliate_event_duplicate_labels',
+      name: 'Saving 2nd Base - Fall 2026',
+      eventType: 'TOURNAMENT',
+      teamSignup: false,
+      start: futureStart,
+      price: 0,
+      maxParticipants: 0,
+      location: 'Portland Metro Softball Association',
+      organizationId: 'affiliate_org_portland_metro_softball_association',
+      organization: {
+        $id: 'affiliate_org_portland_metro_softball_association',
+        name: 'Portland Metro Softball Association',
+        ownerId: 'owner_1',
+      } as any,
+      affiliateUrl: 'https://www.portlandsoftball.com/current-programs',
+      divisions: [],
+      divisionDetails: [],
+    });
+    const user = buildUser({
+      $id: 'user_duplicate_labels',
+      dateOfBirth: '1990-01-01',
+    });
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser: { $id: user.$id, email: 'user@example.com' } });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Saving 2nd Base - Fall 2026')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Portland Metro Softball Association · Portland Metro Softball Association')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Portland Metro Softball Association').length).toBeGreaterThan(0);
+  });
+
   it('shows an inline auth modal for guests instead of redirecting away from event details', async () => {
     const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const event = buildEvent({
