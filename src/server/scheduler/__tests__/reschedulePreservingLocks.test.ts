@@ -252,24 +252,27 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       playerIds: [],
     });
 
-    const slotStart = new Date('2026-03-08T16:00:00.000Z');
-    const slotEnd = new Date('2026-03-09T02:00:00.000Z');
+    const intendedSlotStart = new Date('2026-07-11T20:00:00.000Z');
+    const intendedSlotEnd = new Date('2026-07-12T02:00:00.000Z');
+    const slotStart = new Date('2026-07-12T03:00:00.000Z');
+    const slotEnd = new Date('2026-07-12T09:00:00.000Z');
     const mirroredSlot = new TimeSlot({
       id: 'slot_non_repeating',
-      dayOfWeek: 6,
-      daysOfWeek: [6],
+      dayOfWeek: 5,
+      daysOfWeek: [5],
       startDate: slotStart,
       endDate: slotEnd,
       repeating: false,
-      startTimeMinutes: 9 * 60,
+      startTimeMinutes: 13 * 60,
       endTimeMinutes: 19 * 60,
       field: field.id,
       fieldIds: [field.id],
       divisions: [division],
+      timeZone: 'America/Los_Angeles',
     });
     field.rentalSlots = [mirroredSlot];
 
-    const unscheduledStart = new Date('2026-03-08T16:18:00.000Z');
+    const unscheduledStart = new Date('2026-07-11T08:18:00.000Z');
     const matchOne = createMatch({
       id: 'nr_match_1',
       matchId: 1,
@@ -297,7 +300,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       id: 'event_non_repeating',
       name: 'Non-Repeating League',
       description: '',
-      start: slotStart,
+      start: new Date('2026-07-11T08:00:00.000Z'),
       end: unscheduledStart,
       location: '',
       organizationId: null,
@@ -342,8 +345,8 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(result.matches).toHaveLength(2);
     expect(result.matches.every((match) => match.field?.id === field.id)).toBe(true);
     expect(result.matches.every((match) => match.end.getTime() - match.start.getTime() >= 5 * MINUTE_MS)).toBe(true);
-    expect(result.matches.every((match) => match.start.getTime() >= slotStart.getTime())).toBe(true);
-    expect(result.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
+    expect(result.matches.every((match) => match.start.getTime() >= intendedSlotStart.getTime())).toBe(true);
+    expect(result.matches.every((match) => match.end.getTime() <= intendedSlotEnd.getTime())).toBe(true);
   });
 
   it('does not warn when a locked match is within a secondary day in daysOfWeek', () => {

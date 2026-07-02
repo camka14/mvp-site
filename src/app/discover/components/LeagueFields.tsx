@@ -18,7 +18,7 @@ import {
   Title,
   TextInput,
 } from '@mantine/core';
-import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
+import { DatePickerInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -52,40 +52,6 @@ const DAYS_OF_WEEK = [
   { value: '6', label: 'Sunday' },
 ];
 
-const minutesToTimeValue = (minutes: number): string => {
-  const normalized = Math.max(0, Math.floor(minutes));
-  const hours = Math.floor(normalized / 60) % 24;
-  const mins = normalized % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-};
-
-const parseTimeValue = (value: string): number | undefined => {
-  if (!value || typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
-  if (!match) {
-    return undefined;
-  }
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (
-    Number.isNaN(hours)
-    || Number.isNaN(minutes)
-    || hours < 0
-    || hours > 23
-    || minutes < 0
-    || minutes > 59
-  ) {
-    return undefined;
-  }
-
-  return hours * 60 + minutes;
-};
-
 const formatClockTime = (date: Date): string => new Intl.DateTimeFormat('en-US', {
   hour: 'numeric',
   minute: '2-digit',
@@ -98,6 +64,55 @@ const formatMinutesLabel = (minutes: number): string => {
   date.setMinutes(normalized);
   return formatClockTime(date);
 };
+
+const MAX_TIME_SELECT_MINUTES = 24 * 60;
+
+const TIME_SELECT_OPTIONS = Array.from({ length: MAX_TIME_SELECT_MINUTES / 5 + 1 }, (_, index) => {
+  const minutes = index * 5;
+  return {
+    value: String(minutes),
+    label: minutes === MAX_TIME_SELECT_MINUTES ? '12:00 AM (next day)' : formatMinutesLabel(minutes),
+  };
+});
+
+const normalizeTimeSelectValue = (value: number | undefined): string | null => (
+  typeof value === 'number' && Number.isFinite(value)
+    ? String(Math.max(0, Math.min(MAX_TIME_SELECT_MINUTES, Math.trunc(value))))
+    : null
+);
+
+type TimeOfDaySelectProps = {
+  label: string;
+  value?: number;
+  onChange: (minutes: number | undefined) => void;
+  disabled?: boolean;
+  error?: string;
+};
+
+const TimeOfDaySelect = ({
+  label,
+  value,
+  onChange,
+  disabled,
+  error,
+}: TimeOfDaySelectProps) => (
+  <MantineSelect
+    label={label}
+    withAsterisk
+    placeholder="Select time"
+    data={TIME_SELECT_OPTIONS}
+    value={normalizeTimeSelectValue(value)}
+    onChange={(nextValue) => {
+      const parsed = typeof nextValue === 'string' ? Number(nextValue) : Number.NaN;
+      onChange(Number.isFinite(parsed) ? parsed : undefined);
+    }}
+    searchable
+    comboboxProps={DROPDOWN_PROPS}
+    disabled={disabled}
+    error={error}
+    maw={220}
+  />
+);
 
 const formatDateTimeLabel = (date: Date): string => `${formatDisplayDate(date)} ${formatClockTime(date)}`;
 
@@ -1404,68 +1419,72 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           />
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
-                            <TimeInput
+                            <TimeOfDaySelect
                               label="Start Time"
-                              withAsterisk
-                              withSeconds={false}
-                              value={typeof slot.startTimeMinutes === 'number' ? minutesToTimeValue(slot.startTimeMinutes) : ''}
-                              onChange={(value) => onUpdateSlot(index, {
-                                startTimeMinutes: parseTimeValue(value.currentTarget.value),
-                              })}
+                              value={slot.startTimeMinutes}
+                              onChange={(minutes) => onUpdateSlot(index, { startTimeMinutes: minutes })}
                               disabled={slotTimingReadOnly}
                               error={startMissing && !slotTimingReadOnly ? 'Select a start time' : undefined}
-                              maw={220}
                             />
 
-                            <TimeInput
+                            <TimeOfDaySelect
                               label="End Time"
-                              withAsterisk
-                              withSeconds={false}
-                              value={typeof slot.endTimeMinutes === 'number' ? minutesToTimeValue(slot.endTimeMinutes) : ''}
-                              onChange={(value) => onUpdateSlot(index, {
-                                endTimeMinutes: parseTimeValue(value.currentTarget.value),
-                              })}
+                              value={slot.endTimeMinutes}
+                              onChange={(minutes) => onUpdateSlot(index, { endTimeMinutes: minutes })}
                               disabled={slotTimingReadOnly}
                               error={endMissing && !slotTimingReadOnly ? 'Select an end time' : undefined}
-                              maw={220}
                             />
                           </div>
                         </>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
-                          <DateTimePicker
-                            label="Start Date & Time"
+                          <DatePickerInput
+                            label="Start Date"
                             withAsterisk
-                            placeholder="Select start"
+                            placeholder="Select start date"
                             value={slotStartDate}
                             onChange={(value) => onUpdateSlot(index, {
                               startDate: value ? formatLocalDateTime(value) : undefined,
                             })}
                             minDate={parsedEventStartDate ?? undefined}
-                            valueFormat="MM/DD/YYYY hh:mm A"
+                            valueFormat="MM/DD/YYYY"
                             clearable={!slotTimingReadOnly}
                             disabled={slotTimingReadOnly}
-                            error={explicitStartMissing && !slotTimingReadOnly ? 'Select a start date/time' : undefined}
+                            error={explicitStartMissing && !slotTimingReadOnly ? 'Select a start date' : undefined}
                             maw={260}
                           />
-                          <DateTimePicker
-                            label="End Date & Time"
+                          <TimeOfDaySelect
+                            label="Start Time"
+                            value={slot.startTimeMinutes}
+                            onChange={(minutes) => onUpdateSlot(index, { startTimeMinutes: minutes })}
+                            disabled={slotTimingReadOnly}
+                            error={startMissing && !slotTimingReadOnly ? 'Select a start time' : undefined}
+                          />
+                          <DatePickerInput
+                            label="End Date"
                             withAsterisk
-                            placeholder="Select end"
+                            placeholder="Select end date"
                             value={slotEndDate}
                             onChange={(value) => onUpdateSlot(index, {
                               endDate: value ? formatLocalDateTime(value) : undefined,
                             })}
                             minDate={slotStartDate ?? parsedEventStartDate ?? undefined}
-                            valueFormat="MM/DD/YYYY hh:mm A"
+                            valueFormat="MM/DD/YYYY"
                             clearable={!slotTimingReadOnly}
                             disabled={slotTimingReadOnly}
                             error={
                               explicitEndMissing && !slotTimingReadOnly
-                                ? 'Select an end date/time'
+                                ? 'Select an end date'
                                 : (explicitRangeInvalid && !slotTimingReadOnly ? 'End date/time must be after start date/time' : undefined)
                             }
                             maw={260}
+                          />
+                          <TimeOfDaySelect
+                            label="End Time"
+                            value={slot.endTimeMinutes}
+                            onChange={(minutes) => onUpdateSlot(index, { endTimeMinutes: minutes })}
+                            disabled={slotTimingReadOnly}
+                            error={endMissing && !slotTimingReadOnly ? 'Select an end time' : undefined}
                           />
                         </div>
                       )}

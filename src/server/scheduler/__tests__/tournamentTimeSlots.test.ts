@@ -175,6 +175,56 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
   });
 
+  it('uses non-repeating slot minutes in the slot timezone when explicit boundaries are shifted', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const shiftedStart = new Date('2026-07-12T03:00:00.000Z');
+    const shiftedEnd = new Date('2026-07-12T09:00:00.000Z');
+    const nonRepeatingSlot = new TimeSlot({
+      id: 'slot_shifted_non_repeating',
+      dayOfWeek: 5,
+      daysOfWeek: [5],
+      startDate: shiftedStart,
+      endDate: shiftedEnd,
+      repeating: false,
+      startTimeMinutes: 13 * 60,
+      endTimeMinutes: 19 * 60,
+      field: field.id,
+      fieldIds: [field.id],
+      divisions: [division],
+      timeZone: 'America/Los_Angeles',
+    });
+
+    const tournament = new Tournament({
+      id: 'tournament_shifted_non_repeating_slots',
+      name: 'Shifted Non-Repeating Tournament',
+      start: new Date('2026-07-11T08:00:00.000Z'),
+      end: new Date('2026-07-12T10:00:00.000Z'),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      divisions: [division],
+      fields: { [field.id]: field },
+      timeSlots: [nonRepeatingSlot],
+      doTeamsOfficiate: false,
+      noFixedEndDateTime: false,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: true,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+
+    expect(scheduled.matches.length).toBeGreaterThan(0);
+    expect(scheduled.matches[0].start.toISOString()).toBe('2026-07-11T20:00:00.000Z');
+    expect(scheduled.matches[0].end.toISOString()).toBe('2026-07-11T20:20:00.000Z');
+  });
+
   it('lets generated pool divisions inherit bracket time slots and use pool division schedule config', () => {
     const bracketDivision = new Division(
       'tournament_bracket_open',

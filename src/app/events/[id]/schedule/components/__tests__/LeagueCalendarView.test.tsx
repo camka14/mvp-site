@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import type { Match } from '@/types';
 import LeagueCalendarView from '../LeagueCalendarView';
@@ -147,5 +147,40 @@ describe('LeagueCalendarView time handling', () => {
 
     expect(screen.getByText('Winner of match #11')).toBeInTheDocument();
     expect(screen.getByText('2nd place (Open)')).toBeInTheDocument();
+  });
+
+  it('orders by-field calendar columns alphanumerically by field name', () => {
+    render(
+      <LeagueCalendarView
+        matches={[]}
+        teams={emptyTeams}
+        fields={[
+          { $id: 'field_5', name: 'Field 5' },
+          { $id: 'field_12', name: 'Field 12' },
+          { $id: 'field_2', name: 'Field 2' },
+          { $id: 'field_1', name: 'Field 1' },
+          { $id: 'field_10', name: 'Field 10' },
+        ] as any}
+        officials={emptyOfficials}
+        childUserIds={emptyChildUserIds}
+        viewerTeamIds={emptyViewerTeamIds}
+        highlightDivisionKeys={emptyHighlightDivisionKeys}
+        conflictMatchIdsById={emptyConflictMatchIdsById}
+        date={new Date(2026, 2, 1)}
+        view="day"
+        eventTimeZone="UTC"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'By Field' }));
+
+    const lastProps = mockCalendarProps[mockCalendarProps.length - 1];
+    expect(lastProps.resources.map((resource: any) => resource.resourceTitle)).toEqual([
+      'Field 1',
+      'Field 2',
+      'Field 5',
+      'Field 10',
+      'Field 12',
+    ]);
   });
 });

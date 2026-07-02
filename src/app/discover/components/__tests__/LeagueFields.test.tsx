@@ -57,7 +57,8 @@ describe('LeagueFields', () => {
     );
 
     const startTimeInput = getLabeledInput(/Start Time/i);
-    fireEvent.change(startTimeInput, { target: { value: '10:15' } });
+    fireEvent.click(startTimeInput);
+    fireEvent.click(screen.getAllByText('10:15 AM')[0]);
 
     expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ startTimeMinutes: 615 }));
   });

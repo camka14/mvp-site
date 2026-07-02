@@ -289,6 +289,21 @@ const createSlotForm = createLeagueSlotForm;
 
 export type { EventFormHandle, EventFormProps, RentalPurchaseContext } from './eventForm/types';
 
+const minutesFromDate = (value: Date): number => value.getHours() * 60 + value.getMinutes();
+
+const withMinutesOnDate = (date: Date, minutes: number): Date => {
+    const normalized = Math.max(0, Math.trunc(minutes));
+    return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        Math.floor(normalized / 60),
+        normalized % 60,
+        0,
+        0,
+    );
+};
+
 const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     isOpen,
     currentUser,
@@ -2657,32 +2672,42 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         } else {
             let slotStart = parseLocalDateTime(updated.startDate ?? null);
             let slotEnd = parseLocalDateTime(updated.endDate ?? null);
+            let startMinutes = Number.isFinite(updated.startTimeMinutes) ? Number(updated.startTimeMinutes) : null;
+            let endMinutes = Number.isFinite(updated.endTimeMinutes) ? Number(updated.endTimeMinutes) : null;
             if (!slotStart) {
                 const fallbackEventStart = parseLocalDateTime(eventData.start ?? null);
                 if (fallbackEventStart) {
                     slotStart = fallbackEventStart;
                 }
             }
+            if (startMinutes === null && slotStart) {
+                startMinutes = minutesFromDate(slotStart);
+            }
             if (!slotEnd && slotStart) {
                 const fallbackEventEnd = parseLocalDateTime(eventData.end ?? null);
                 if (fallbackEventEnd && fallbackEventEnd.getTime() > slotStart.getTime()) {
                     slotEnd = fallbackEventEnd;
                 } else {
-                    const startMinutes = Number.isFinite(updated.startTimeMinutes) ? Number(updated.startTimeMinutes) : null;
-                    const endMinutes = Number.isFinite(updated.endTimeMinutes) ? Number(updated.endTimeMinutes) : null;
                     const durationMinutes = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
                         ? endMinutes - startMinutes
                         : 60;
                     slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
                 }
             }
+            if (!slotEnd && slotStart) {
+                slotEnd = new Date(slotStart);
+            }
+            if (endMinutes === null && slotEnd) {
+                endMinutes = minutesFromDate(slotEnd);
+            }
 
-            if (slotStart) {
-                const dayOfWeek = ((slotStart.getDay() + 6) % 7);
+            if (slotStart && startMinutes !== null) {
+                const normalizedStart = withMinutesOnDate(slotStart, startMinutes);
+                const dayOfWeek = ((normalizedStart.getDay() + 6) % 7);
                 updated.dayOfWeek = dayOfWeek as LeagueSlotForm['dayOfWeek'];
                 updated.daysOfWeek = [dayOfWeek] as LeagueSlotForm['daysOfWeek'];
-                updated.startDate = formatLocalDateTime(slotStart);
-                updated.startTimeMinutes = slotStart.getHours() * 60 + slotStart.getMinutes();
+                updated.startDate = formatLocalDateTime(normalizedStart);
+                updated.startTimeMinutes = startMinutes;
             } else {
                 updated.dayOfWeek = undefined;
                 updated.daysOfWeek = [];
@@ -2690,9 +2715,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 updated.startTimeMinutes = undefined;
             }
 
-            if (slotEnd) {
-                updated.endDate = formatLocalDateTime(slotEnd);
-                updated.endTimeMinutes = slotEnd.getHours() * 60 + slotEnd.getMinutes();
+            if (slotEnd && endMinutes !== null) {
+                const normalizedEnd = withMinutesOnDate(slotEnd, endMinutes);
+                updated.endDate = formatLocalDateTime(normalizedEnd);
+                updated.endTimeMinutes = endMinutes;
             } else {
                 updated.endDate = undefined;
                 updated.endTimeMinutes = undefined;

@@ -1,4 +1,9 @@
 import { Group, Participant, Resource, SchedulableEvent, Team, MINUTE_MS } from './types';
+import {
+  getDateTimePartsInTimeZone,
+  normalizeTimeZone,
+  zonedTimeToUtcDate,
+} from '@/lib/dateUtils';
 
 type SlotWindow = {
   start: Date;
@@ -10,6 +15,33 @@ const NOT_ENOUGH_TIME_ALLOTTED_MESSAGE = 'Not enough time is allotted in the con
 
 const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean => {
   return !(startA >= endB && endA > endB) && !(startA < startB && endA <= startB);
+};
+
+const pad2 = (value: number): string => String(value).padStart(2, '0');
+
+export const dateWithMinutesInTimeZone = (
+  value: Date,
+  minutes: number,
+  timeZone: string,
+): Date | null => {
+  const parts = getDateTimePartsInTimeZone(value, timeZone);
+  if (!parts) {
+    return null;
+  }
+  const normalizedMinutes = Math.max(0, Math.trunc(minutes));
+  const dayOffset = Math.floor(normalizedMinutes / (24 * 60));
+  const minuteOfDay = ((normalizedMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const dateAtNoon = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + dayOffset, 12, 0, 0));
+  const dateParts = getDateTimePartsInTimeZone(dateAtNoon, 'UTC');
+  if (!dateParts) {
+    return null;
+  }
+  const hours = Math.floor(minuteOfDay / 60);
+  const mins = minuteOfDay % 60;
+  return zonedTimeToUtcDate(
+    `${dateParts.year}-${pad2(dateParts.month)}-${pad2(dateParts.day)}T${pad2(hours)}:${pad2(mins)}:00`,
+    timeZone,
+  );
 };
 
 const isLockedEvent = (event: SchedulableEvent): boolean => {
@@ -468,9 +500,6 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     if (slot?.repeating === false) {
       const explicitStart = parseDate(slot.startDate);
       const explicitEnd = parseDate(slot.endDate);
-      if (explicitStart && explicitEnd && explicitEnd.getTime() > explicitStart.getTime()) {
-        return [[explicitStart, explicitEnd]];
-      }
       if (!explicitStart) {
         return [];
       }
@@ -479,12 +508,18 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       const startMinutes = Number(startMinutesRaw);
       const endMinutes = Number(endMinutesRaw);
       if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
+        if (explicitEnd && explicitEnd.getTime() > explicitStart.getTime()) {
+          return [[explicitStart, explicitEnd]];
+        }
         return [];
       }
-      const dayStart = new Date(explicitStart);
-      dayStart.setHours(0, 0, 0, 0);
-      const start = new Date(dayStart.getTime() + startMinutes * MINUTE_MS);
-      const end = new Date(dayStart.getTime() + endMinutes * MINUTE_MS);
+      const slotTimeZone = normalizeTimeZone(slot.timeZone ?? slot.time_zone, 'UTC');
+      const start = dateWithMinutesInTimeZone(explicitStart, startMinutes, slotTimeZone);
+      const endBaseDate = endMinutes > startMinutes ? explicitStart : (explicitEnd ?? explicitStart);
+      const end = dateWithMinutesInTimeZone(endBaseDate, endMinutes, slotTimeZone);
+      if (!start || !end) {
+        return [];
+      }
       if (end.getTime() <= start.getTime()) {
         return [];
       }

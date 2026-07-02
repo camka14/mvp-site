@@ -73,6 +73,11 @@ const CALENDAR_BOTTOM_GUTTER = 24;
 const AGENDA_MATCH_CARD_WIDTH = 420;
 const AGENDA_MATCH_CARD_HEIGHT = 124;
 
+const resourceTitleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+});
+
 const clampHour = (value: number): number => Math.max(0, Math.min(24, value));
 
 const ensureMinimumHourSpan = (range: [number, number]): [number, number] => {
@@ -146,6 +151,19 @@ const resolveMatchFieldLabel = (match: Match, fieldLookup: Map<string, Field>): 
     resolveFieldLabel(relationField) ??
     resolveFieldLabel(mappedField) ??
     'Field TBD'
+  );
+};
+
+const compareCalendarResources = (a: CalendarResource, b: CalendarResource): number => {
+  const aIsUnassigned = a.resourceId === UNASSIGNED_FIELD_RESOURCE_ID;
+  const bIsUnassigned = b.resourceId === UNASSIGNED_FIELD_RESOURCE_ID;
+  if (aIsUnassigned !== bIsUnassigned) {
+    return aIsUnassigned ? 1 : -1;
+  }
+
+  return (
+    resourceTitleCollator.compare(a.resourceTitle, b.resourceTitle)
+    || resourceTitleCollator.compare(a.resourceId, b.resourceId)
   );
 };
 
@@ -584,7 +602,7 @@ export function LeagueCalendarView({
       });
     });
 
-    return Array.from(resources.values());
+    return Array.from(resources.values()).sort(compareCalendarResources);
   }, [calendarEvents, fields]);
 
   const initialDate = useMemo(() => {

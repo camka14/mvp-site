@@ -865,6 +865,73 @@ describe('event form slot helpers', () => {
       eventEnd: undefined,
     });
   });
+
+  it('keeps explicit non-repeating slot minutes when building the event draft', () => {
+    const field = makeField({ $id: 'field_1', name: 'Field 1' });
+    const source = makeAffiliateEventFormValues({
+      isAffiliateEvent: false,
+      eventType: 'TOURNAMENT',
+      start: '2026-07-11T09:00',
+      end: '2026-07-11T19:00',
+      selectedFieldIds: ['field_1'],
+      fields: [field],
+      leagueSlots: [
+        {
+          key: 'slot_1',
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          divisions: ['open'],
+          dayOfWeek: 5,
+          daysOfWeek: [5],
+          startDate: '2026-07-11T15:00:00',
+          endDate: '2026-07-11T17:00:00',
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 12 * 60,
+          repeating: false,
+          conflicts: [],
+          checking: false,
+        },
+      ],
+    });
+
+    const draft = buildEventDraft({
+      activeEditingEvent: null,
+      currentUser: { $id: 'user_1' } as any,
+      fieldCount: 1,
+      fields: [field],
+      fieldsReferencedInSlots: [],
+      hasImmutableTimeSlots: false,
+      hasRestrictedImmutableFields: false,
+      hasStripeAccount: true,
+      immutableFields: [],
+      immutableTimeSlots: [],
+      isEditMode: false,
+      isOrganizationHostedEvent: true,
+      isOrganizationManagedEvent: true,
+      joinAsParticipant: false,
+      organizationHostedEventId: 'org_1',
+      organizationOfficialsById: new Map(),
+      previousEventFieldLocation: '',
+      rentalLockedSlotsForDraft: [],
+      resolvedOrganization: {
+        $id: 'org_1',
+        ownerId: 'user_1',
+        staffMembers: [],
+        staffInvites: [],
+      } as any,
+      selectedRentedFieldIds: [],
+      shouldManageLocalFields: false,
+      shouldProvisionFields: false,
+      source: source as any,
+      sportsById: new Map(),
+    });
+
+    expect(draft.timeSlots?.[0]).toEqual(expect.objectContaining({
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 12 * 60,
+    }));
+  });
 });
 
 describe('event form staff invite helpers', () => {

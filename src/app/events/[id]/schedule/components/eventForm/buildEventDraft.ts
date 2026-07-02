@@ -903,14 +903,18 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                         : [nonRepeatingDay];
                     const startTimeMinutes = repeating
                         ? Number(slot.startTimeMinutes)
-                        : (explicitStart
-                            ? explicitStart.getHours() * 60 + explicitStart.getMinutes()
-                            : Number(slot.startTimeMinutes));
+                        : (typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes)
+                            ? Number(slot.startTimeMinutes)
+                            : explicitStart
+                                ? explicitStart.getHours() * 60 + explicitStart.getMinutes()
+                                : Number(slot.startTimeMinutes));
                     const endTimeMinutes = repeating
                         ? Number(slot.endTimeMinutes)
-                        : (explicitEnd
-                            ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
-                            : Number(slot.endTimeMinutes));
+                        : (typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes)
+                            ? Number(slot.endTimeMinutes)
+                            : explicitEnd
+                                ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
+                                : Number(slot.endTimeMinutes));
                     const serialized: TimeSlot = {
                         $id: slotId,
                         dayOfWeek: normalizedDays[0] as TimeSlot['dayOfWeek'],

@@ -1,4 +1,5 @@
-import { Schedule } from './Schedule';
+import { dateWithMinutesInTimeZone, Schedule } from './Schedule';
+import { normalizeTimeZone } from '@/lib/dateUtils';
 import {
   Division,
   League,
@@ -448,6 +449,7 @@ const slotAllowsDateTime = (
     dayOfWeek: number;
     startTimeMinutes: number;
     endTimeMinutes: number;
+    timeZone?: string | null;
   },
   matchStart: Date,
   matchEnd: Date,
@@ -459,8 +461,15 @@ const slotAllowsDateTime = (
     if (!(slot.endDate instanceof Date) || Number.isNaN(slot.endDate.getTime())) {
       return false;
     }
-    return matchStart.getTime() >= slot.startDate.getTime()
-      && matchEnd.getTime() <= slot.endDate.getTime();
+    const slotTimeZone = normalizeTimeZone(slot.timeZone, 'UTC');
+    const slotStart = dateWithMinutesInTimeZone(slot.startDate, slot.startTimeMinutes, slotTimeZone);
+    const slotEndBase = slot.endTimeMinutes > slot.startTimeMinutes ? slot.startDate : slot.endDate;
+    const slotEnd = dateWithMinutesInTimeZone(slotEndBase, slot.endTimeMinutes, slotTimeZone);
+    if (!slotStart || !slotEnd || slotEnd.getTime() <= slotStart.getTime()) {
+      return false;
+    }
+    return matchStart.getTime() >= slotStart.getTime()
+      && matchEnd.getTime() <= slotEnd.getTime();
   }
   return slotAllowsDate(slot, matchStart) && slotAllowsTime(slot, matchStart, matchEnd);
 };
