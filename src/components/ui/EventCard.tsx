@@ -44,7 +44,7 @@ export default function EventCard({
   const isEvergreenProgram = normalizedDateDisplayMode === 'NO_FIXED_DATE' || normalizedDateDisplayMode === 'ONGOING';
   const scheduleDisplayText = isEvergreenProgram
     ? (event.dateDisplayText?.trim() || event.scheduleText?.trim() || 'No fixed start date')
-    : (isAffiliateEvent && event.scheduleText ? event.scheduleText : `${date} at ${time}`);
+    : `${date} at ${time}`;
   const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
   const lifecycleBadge = useMemo(() => {
     if (normalizedState === 'PRIVATE') {
