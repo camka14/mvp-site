@@ -12,6 +12,7 @@ type EventFormSectionNavigationItem = SectionNavigationItem & {
 type BuildEventFormSectionNavigationItemsOptions = {
     showMatchRulesSection: boolean;
     showStaffSection: boolean;
+    showManualPaymentsSection: boolean;
     scoringConfigSectionLabel: string;
     divisionSettingsSectionLabel?: string;
     showScoringConfigSection: boolean;
@@ -21,6 +22,7 @@ type BuildEventFormSectionNavigationItemsOptions = {
 export const buildEventFormSectionNavigationItems = ({
     showMatchRulesSection,
     showStaffSection,
+    showManualPaymentsSection,
     scoringConfigSectionLabel,
     divisionSettingsSectionLabel = 'Divisions',
     showScoringConfigSection,
@@ -28,6 +30,7 @@ export const buildEventFormSectionNavigationItems = ({
 }: BuildEventFormSectionNavigationItemsOptions): EventFormSectionNavigationItem[] => [
     { id: 'section-basic-information', label: 'Basic Information', visible: true },
     { id: 'section-event-details', label: 'Event Details', visible: true },
+    { id: 'section-manual-payments', label: 'Manual Payments', visible: showManualPaymentsSection },
     { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
     { id: 'section-officials', label: 'Staff', visible: showStaffSection },
     { id: 'section-division-settings', label: divisionSettingsSectionLabel, visible: true },

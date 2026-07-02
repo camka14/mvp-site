@@ -30,6 +30,7 @@ type EventDetailsPanelProps = {
     showsFixedTeamEventToggle: boolean;
     supportsNoFixedEndDateTime: boolean;
     automaticRefundsAvailable: boolean;
+    manualPaymentsEnabled: boolean;
     todaysDate: Date;
     maxStandardNumber: number;
     maxResourceNameLength: number;
@@ -48,6 +49,7 @@ type EventDetailsPanelProps = {
     onStartChange: (value: Date) => void;
     onEndChange: (value: Date) => void;
     onNoFixedEndDateTimeChange: (checked: boolean) => void;
+    onManualPaymentsChange: (checked: boolean) => void;
     coordinatesSelected: boolean;
     defaultCoordinates?: [number, number];
     onSelectedAddressChange: (coordinates: [number, number], address: string) => void;
@@ -85,6 +87,7 @@ export const EventDetailsPanel = ({
     showsFixedTeamEventToggle,
     supportsNoFixedEndDateTime,
     automaticRefundsAvailable,
+    manualPaymentsEnabled,
     todaysDate,
     maxStandardNumber,
     maxResourceNameLength,
@@ -103,6 +106,7 @@ export const EventDetailsPanel = ({
     onStartChange,
     onEndChange,
     onNoFixedEndDateTimeChange,
+    onManualPaymentsChange,
     coordinatesSelected,
     defaultCoordinates,
     onSelectedAddressChange,
@@ -158,6 +162,7 @@ export const EventDetailsPanel = ({
                 noFixedEndDateTime={Boolean(eventData.noFixedEndDateTime)}
                 supportsNoFixedEndDateTime={supportsNoFixedEndDateTime}
                 automaticRefundsAvailable={automaticRefundsAvailable}
+                manualPaymentsEnabled={manualPaymentsEnabled}
                 todaysDate={todaysDate}
                 maxStandardNumber={maxStandardNumber}
                 dateTimePickerStyles={dateTimePickerStyles}
@@ -167,6 +172,7 @@ export const EventDetailsPanel = ({
                 onStartChange={onStartChange}
                 onEndChange={onEndChange}
                 onNoFixedEndDateTimeChange={onNoFixedEndDateTimeChange}
+                onManualPaymentsChange={onManualPaymentsChange}
             />
         </div>
 

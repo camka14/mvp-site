@@ -16,6 +16,7 @@ type EventDetailsTimingControlsProps = {
     noFixedEndDateTime: boolean;
     supportsNoFixedEndDateTime: boolean;
     automaticRefundsAvailable: boolean;
+    manualPaymentsEnabled: boolean;
     todaysDate: Date;
     maxStandardNumber: number;
     dateTimePickerStyles?: ComponentProps<typeof DateTimePicker>['styles'];
@@ -25,6 +26,7 @@ type EventDetailsTimingControlsProps = {
     onStartChange: (value: Date) => void;
     onEndChange: (value: Date) => void;
     onNoFixedEndDateTimeChange: (checked: boolean) => void;
+    onManualPaymentsChange: (checked: boolean) => void;
 };
 
 export const EventDetailsTimingControls = ({
@@ -34,6 +36,7 @@ export const EventDetailsTimingControls = ({
     noFixedEndDateTime,
     supportsNoFixedEndDateTime,
     automaticRefundsAvailable,
+    manualPaymentsEnabled,
     todaysDate,
     maxStandardNumber,
     dateTimePickerStyles,
@@ -43,6 +46,7 @@ export const EventDetailsTimingControls = ({
     onStartChange,
     onEndChange,
     onNoFixedEndDateTimeChange,
+    onManualPaymentsChange,
 }: EventDetailsTimingControlsProps) => (
     <>
         <div className="md:col-span-2">
@@ -160,9 +164,11 @@ export const EventDetailsTimingControls = ({
                     const automaticRefundsChecked = field.value != null;
                     const automaticRefundsImmutable = isImmutableField('cancellationRefundHours');
                     const automaticRefundsInputDisabled = automaticRefundsImmutable
+                        || manualPaymentsEnabled
                         || !automaticRefundsAvailable
                         || !automaticRefundsChecked;
                     const automaticRefundsToggleDisabled = automaticRefundsImmutable
+                        || manualPaymentsEnabled
                         || !automaticRefundsAvailable;
 
                     return (
@@ -206,6 +212,26 @@ export const EventDetailsTimingControls = ({
                         </Stack>
                     );
                 }}
+            />
+        </div>
+        <div className="md:col-span-1">
+            <Controller
+                name="registrationPaymentMode"
+                control={control}
+                render={({ field }) => (
+                    <div className="flex h-full items-end pb-1">
+                        <Checkbox
+                            size="xs"
+                            label="Self manage payments"
+                            checked={(field.value ?? 'ONLINE') === 'MANUAL'}
+                            disabled={isImmutableField('registrationPaymentMode')}
+                            onChange={(event) => {
+                                if (isImmutableField('registrationPaymentMode')) return;
+                                onManualPaymentsChange(event.currentTarget.checked);
+                            }}
+                        />
+                    </div>
+                )}
             />
         </div>
     </>
