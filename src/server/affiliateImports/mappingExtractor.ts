@@ -123,14 +123,16 @@ const parseDateTimeValue = (value: string, referenceDate: Date): string => {
     }
   }
 
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString();
-  }
-
-  const noYearDate = parseDateWithOptionalYear(trimmed, referenceDate);
-  if (noYearDate) {
-    return noYearDate.toISOString();
+  if (!/\b\d{4}\b/.test(trimmed)) {
+    const noYearDate = parseDateWithOptionalYear(trimmed, referenceDate);
+    if (noYearDate) {
+      return noYearDate.toISOString();
+    }
+  } else {
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
   }
 
   return trimmed;

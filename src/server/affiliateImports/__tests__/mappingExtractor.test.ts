@@ -60,6 +60,24 @@ describe('extractAffiliateCandidatesFromPage', () => {
     expect(candidates[0].startsAt).toBe('2026-07-11T01:00:00.000Z');
   });
 
+  it('uses the scrape year for no-year weekday dates', () => {
+    const noYearDatePage: ScrapedPage = {
+      ...page,
+      fetchedAt: '2026-07-02T18:00:00.000Z',
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/legacy">Legacy Tournament</a>
+          <span class="date">Sat, Jul 25</span>
+        </section>
+      `,
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(noYearDatePage, mapping);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].startsAt).toBe('2026-07-25T07:00:00.000Z');
+  });
+
   it('maps extracted values through a configured value map', () => {
     const valueMapMapping: AffiliateScrapeMapping = {
       kind: 'RENTAL',
