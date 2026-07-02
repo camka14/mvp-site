@@ -141,7 +141,7 @@ describe('eventService', () => {
   it('returns pagination metadata for event search pages with legacy response fallback', async () => {
     apiRequestMock.mockResolvedValueOnce({
       events: [{ ...baseEventRow }],
-      pagination: { hasMore: true, nextOffset: 1 },
+      pagination: { hasMore: true, nextOffset: 1, totalCount: 25 },
     });
 
     const page = await eventService.getEventsPage({
@@ -149,7 +149,7 @@ describe('eventService', () => {
     }, 18, 0);
 
     expect(page.events.map((event) => event.$id)).toEqual(['evt_1']);
-    expect(page.pagination).toEqual({ hasMore: true, nextOffset: 1 });
+    expect(page.pagination).toEqual({ hasMore: true, nextOffset: 1, totalCount: 25 });
 
     apiRequestMock.mockResolvedValueOnce({
       events: [
@@ -163,7 +163,7 @@ describe('eventService', () => {
     }, 2, 4);
 
     expect(legacyPage.events.map((event) => event.$id)).toEqual(['evt_2', 'evt_3']);
-    expect(legacyPage.pagination).toEqual({ hasMore: true, nextOffset: 6 });
+    expect(legacyPage.pagination).toEqual({ hasMore: true, nextOffset: 6, totalCount: 6 });
     expect(legacyPage.events[1]?.sport).toEqual(expect.objectContaining({
       $id: 'other',
       name: 'Other',

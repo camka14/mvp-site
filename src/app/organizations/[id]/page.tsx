@@ -3723,6 +3723,7 @@ function OrganizationDetailContent() {
                 defaultMaxDistance={ORG_EVENTS_DEFAULT_MAX_DISTANCE}
                 kmBetween={kmBetween}
                 events={eventsTabEvents}
+                totalEvents={eventsTabEvents.length}
                 isLoadingInitial={eventsTabLoadingInitial}
                 isLoadingMore={eventsTabLoadingMore}
                 hasMoreEvents={eventsTabHasMoreEvents}

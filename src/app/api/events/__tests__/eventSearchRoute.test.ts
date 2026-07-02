@@ -20,6 +20,7 @@ const prismaMock = {
   },
   events: {
     findMany: jest.fn(),
+    count: jest.fn(),
   },
   sports: {
     findMany: jest.fn(),
@@ -84,6 +85,7 @@ describe('POST /api/events/search', () => {
     prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.events.findMany.mockResolvedValue([]);
+    prismaMock.events.count.mockResolvedValue(0);
     prismaMock.sports.findMany.mockResolvedValue([]);
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.timeSlots.findMany.mockResolvedValue([]);
@@ -232,6 +234,7 @@ describe('POST /api/events/search', () => {
       eventRow('event_2'),
       eventRow('event_3'),
     ]);
+    prismaMock.events.count.mockResolvedValue(42);
 
     const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
       method: 'POST',
@@ -249,12 +252,15 @@ describe('POST /api/events/search', () => {
       take: 3,
       skip: 0,
     }));
+    expect(prismaMock.events.count).toHaveBeenCalledWith({
+      where: prismaMock.events.findMany.mock.calls[0][0].where,
+    });
     expect(withEventAttendeeCountsMock).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'event_1' }),
       expect.objectContaining({ id: 'event_2' }),
     ]);
     expect(json.events.map((event: any) => event.$id)).toEqual(['event_1', 'event_2']);
-    expect(json.pagination).toEqual({ hasMore: true, nextOffset: 2 });
+    expect(json.pagination).toEqual({ hasMore: true, nextOffset: 2, totalCount: 42 });
 
     jest.clearAllMocks();
     prismaMock.organizations.findMany.mockResolvedValue([]);
@@ -269,6 +275,7 @@ describe('POST /api/events/search', () => {
       eventRow('event_1'),
       eventRow('event_2'),
     ]);
+    prismaMock.events.count.mockResolvedValue(2);
 
     const endResponse = await searchEvents(new NextRequest('http://localhost/api/events/search', {
       method: 'POST',
@@ -283,6 +290,32 @@ describe('POST /api/events/search', () => {
 
     expect(endResponse.status).toBe(200);
     expect(endJson.events).toEqual([]);
-    expect(endJson.pagination).toEqual({ hasMore: false, nextOffset: 2 });
+    expect(endJson.pagination).toEqual({ hasMore: false, nextOffset: 2, totalCount: 2 });
+  });
+
+  it('counts distance-filtered results after applying the radius filter', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      { ...eventRow('near'), coordinates: [-122.6784, 45.5152] },
+      { ...eventRow('far'), coordinates: [-74.006, 40.7128] },
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {
+          userLocation: { lat: 45.5152, lng: -122.6784 },
+          maxDistance: 10,
+        },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.count).not.toHaveBeenCalled();
+    expect(json.events.map((event: any) => event.$id)).toEqual(['near']);
+    expect(json.pagination).toEqual({ hasMore: false, nextOffset: 1, totalCount: 1 });
   });
 });

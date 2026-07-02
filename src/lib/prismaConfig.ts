@@ -4,6 +4,12 @@ const parseTimeoutMs = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parsePositiveInteger = (value: string | undefined, fallback: number): number => {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const parseBoolean = (value: string | undefined): boolean | undefined => {
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
@@ -73,6 +79,7 @@ const getConnectionString = (env: NodeJS.ProcessEnv, hasInlineCaCert: boolean): 
 
 export type PrismaPgPoolConfig = {
   connectionString: string;
+  max: number;
   connectionTimeoutMillis: number;
   ssl?: {
     rejectUnauthorized: boolean;
@@ -84,11 +91,16 @@ export const resolvePrismaPgPoolConfig = (env: NodeJS.ProcessEnv = process.env):
   // Prevent requests from hanging indefinitely when the DB is unreachable.
   // Override via `PG_CONNECTION_TIMEOUT_MS` if you need a different value.
   const connectionTimeoutMillis = parseTimeoutMs(env.PG_CONNECTION_TIMEOUT_MS, 5_000);
+  // DigitalOcean's smallest managed Postgres plans reserve several of only 25
+  // connection slots. Keep each app replica's pool small so rolling deploys
+  // don't exhaust the database before traffic settles.
+  const max = parsePositiveInteger(env.PG_POOL_MAX, 3);
   const sslRejectUnauthorized = parseBoolean(env.PG_SSL_REJECT_UNAUTHORIZED);
   const caCertificate = getSslCaCertificate(env);
 
   const poolConfig: PrismaPgPoolConfig = {
     connectionString: getConnectionString(env, Boolean(caCertificate)),
+    max,
     connectionTimeoutMillis,
   };
 

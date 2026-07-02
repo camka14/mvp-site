@@ -215,6 +215,7 @@ type PaginatedEventsPage = {
   pagination: {
     hasMore: boolean;
     nextOffset: number;
+    totalCount: number;
   };
 };
 
@@ -3277,7 +3278,7 @@ class EventService {
       let pagePromise = pendingPaginatedEventsRequests.get(requestKey);
       if (!pagePromise) {
         pagePromise = (async () => {
-          const response = await apiRequest<{ events?: any[]; pagination?: { hasMore?: boolean; nextOffset?: number } }>(
+          const response = await apiRequest<{ events?: any[]; pagination?: { hasMore?: boolean; nextOffset?: number; totalCount?: number } }>(
             "/api/events/search",
             {
               method: "POST",
@@ -3317,6 +3318,9 @@ class EventService {
                 : rows.length === limit,
               nextOffset: typeof response.pagination?.nextOffset === 'number'
                 ? response.pagination.nextOffset
+                : offset + rows.length,
+              totalCount: typeof response.pagination?.totalCount === 'number'
+                ? response.pagination.totalCount
                 : offset + rows.length,
             },
           };

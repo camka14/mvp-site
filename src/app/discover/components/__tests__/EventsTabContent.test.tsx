@@ -48,6 +48,7 @@ describe('EventsTabContent', () => {
         defaultMaxDistance={50}
         kmBetween={jest.fn(() => 0)}
         events={[]}
+        totalEvents={null}
         isLoadingInitial={false}
         isLoadingMore={false}
         hasMoreEvents={false}
@@ -65,5 +66,79 @@ describe('EventsTabContent', () => {
     expect(
       screen.getByText('Create a field for this organization before creating an event.'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the server event total as available when distance filtering is inactive', () => {
+    renderWithMantine(
+      <EventsTabContent
+        location={null}
+        searchTerm=""
+        setSearchTerm={jest.fn()}
+        selectedEventTypes={['EVENT', 'TOURNAMENT']}
+        setSelectedEventTypes={jest.fn()}
+        eventTypeOptions={['EVENT', 'TOURNAMENT'] as const}
+        selectedSports={[]}
+        setSelectedSports={jest.fn()}
+        maxDistance={null}
+        setMaxDistance={jest.fn()}
+        selectedStartDate={null}
+        setSelectedStartDate={jest.fn()}
+        selectedEndDate={null}
+        setSelectedEndDate={jest.fn()}
+        sports={[]}
+        sportsLoading={false}
+        sportsError={null}
+        defaultMaxDistance={50}
+        kmBetween={jest.fn(() => 0)}
+        events={[]}
+        totalEvents={37}
+        isLoadingInitial={false}
+        isLoadingMore={false}
+        hasMoreEvents={false}
+        sentinelRef={createRef<HTMLDivElement>()}
+        eventsError={null}
+        onEventClick={jest.fn()}
+        onCreateEvent={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('37 events available.')).toBeInTheDocument();
+  });
+
+  it('shows the server event total as near you when distance filtering is active', () => {
+    renderWithMantine(
+      <EventsTabContent
+        location={{ lat: 45.5152, lng: -122.6784 }}
+        searchTerm=""
+        setSearchTerm={jest.fn()}
+        selectedEventTypes={['EVENT', 'TOURNAMENT']}
+        setSelectedEventTypes={jest.fn()}
+        eventTypeOptions={['EVENT', 'TOURNAMENT'] as const}
+        selectedSports={[]}
+        setSelectedSports={jest.fn()}
+        maxDistance={50}
+        setMaxDistance={jest.fn()}
+        selectedStartDate={null}
+        setSelectedStartDate={jest.fn()}
+        selectedEndDate={null}
+        setSelectedEndDate={jest.fn()}
+        sports={[]}
+        sportsLoading={false}
+        sportsError={null}
+        defaultMaxDistance={50}
+        kmBetween={jest.fn(() => 0)}
+        events={[]}
+        totalEvents={12}
+        isLoadingInitial={false}
+        isLoadingMore={false}
+        hasMoreEvents={false}
+        sentinelRef={createRef<HTMLDivElement>()}
+        eventsError={null}
+        onEventClick={jest.fn()}
+        onCreateEvent={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('12 events near you.')).toBeInTheDocument();
   });
 });

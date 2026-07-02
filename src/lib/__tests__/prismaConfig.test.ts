@@ -11,7 +11,26 @@ describe('resolvePrismaPgPoolConfig', () => {
     } as NodeJS.ProcessEnv);
 
     expect(config.connectionString).toBe(baseUrl);
+    expect(config.max).toBe(3);
     expect(config.ssl).toBeUndefined();
+  });
+
+  it('allows the Prisma pg pool limit to be overridden', () => {
+    const config = resolvePrismaPgPoolConfig({
+      DATABASE_URL: baseUrl,
+      PG_POOL_MAX: '7',
+    } as NodeJS.ProcessEnv);
+
+    expect(config.max).toBe(7);
+  });
+
+  it('falls back to the safe pool limit when the override is invalid', () => {
+    const config = resolvePrismaPgPoolConfig({
+      DATABASE_URL: baseUrl,
+      PG_POOL_MAX: '0',
+    } as NodeJS.ProcessEnv);
+
+    expect(config.max).toBe(3);
   });
 
   it('maps PG_SSL_REJECT_UNAUTHORIZED=true to sslmode=verify-full when CA is not provided', () => {

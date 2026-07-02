@@ -133,6 +133,7 @@ function DiscoverPageContent() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreEvents, setHasMoreEvents] = useState(true);
   const [eventOffset, setEventOffset] = useState(0);
+  const [eventTotalCount, setEventTotalCount] = useState<number | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const hasLoadedEventsRef = useRef(false);
   const latestFirstPageRequestRef = useRef(0);
@@ -401,6 +402,7 @@ function DiscoverPageContent() {
 
       setEvents(page.events.filter((event) => !hiddenEventIds.has(event.$id)));
       setEventOffset(page.pagination.nextOffset);
+      setEventTotalCount(page.pagination.totalCount);
       setHasMoreEvents(page.pagination.hasMore);
       hasLoadedEventsRef.current = true;
     } catch (error) {
@@ -443,6 +445,7 @@ function DiscoverPageContent() {
         });
       });
       setEventOffset(page.pagination.nextOffset);
+      setEventTotalCount(page.pagination.totalCount);
       setHasMoreEvents(page.pagination.hasMore && addedVisibleEventCount > 0);
     } catch (error) {
       console.error('Failed to load more events:', error);
@@ -899,6 +902,7 @@ function DiscoverPageContent() {
               defaultMaxDistance={DEFAULT_MAX_DISTANCE}
               kmBetween={kmBetween}
               events={events}
+              totalEvents={eventTotalCount}
               isLoadingInitial={isLoadingInitial}
               isLoadingMore={isLoadingMore}
               hasMoreEvents={hasMoreEvents}

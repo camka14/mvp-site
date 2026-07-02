@@ -51,6 +51,11 @@ const searchSchema = z.object({
   offset: z.number().int().optional(),
 }).partial();
 
+const emptyEventsResponse = (offset: number) => NextResponse.json(
+  { events: [], pagination: { hasMore: false, nextOffset: offset, totalCount: 0 } },
+  { status: 200 },
+);
+
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
   if (!Array.isArray((legacy as any).divisions)) {
@@ -436,7 +441,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingEventIds = uniqueStrings(matchingDivisionRows.map((row) => row.eventId));
       if (!matchingEventIds.length) {
-        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
+        return emptyEventsResponse(offset);
       }
       where.AND.push({ id: { in: matchingEventIds } });
     }
@@ -463,7 +468,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingTagIds = uniqueStrings(matchingTags.map((tag) => tag.id));
       if (!matchingTagIds.length) {
-        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
+        return emptyEventsResponse(offset);
       }
       const matchingAssignments = await prisma.eventTagAssignments.findMany({
         where: { tagId: { in: matchingTagIds } },
@@ -471,7 +476,7 @@ export async function POST(req: NextRequest) {
       });
       const matchingEventIds = uniqueStrings(matchingAssignments.map((assignment) => assignment.eventId));
       if (!matchingEventIds.length) {
-        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
+        return emptyEventsResponse(offset);
       }
       where.AND.push({ id: { in: matchingEventIds } });
     }
@@ -497,7 +502,7 @@ export async function POST(req: NextRequest) {
 
       const sportIds = matchingSports.map((sport) => sport.id);
       if (!sportIds.length) {
-        return NextResponse.json({ events: [], pagination: { hasMore: false, nextOffset: offset } }, { status: 200 });
+        return emptyEventsResponse(offset);
       }
       where.sportId = { in: sportIds };
     }
@@ -587,11 +592,26 @@ export async function POST(req: NextRequest) {
     : hasQuery
       ? Math.min(Math.max((offset + limit + 1) * 5, 50), 500)
       : offset + limit + 1;
-  let events = await prisma.events.findMany({
-    where,
-    orderBy: { start: 'asc' },
-    ...(hasDistanceFilter ? {} : { take: candidateTake, skip: 0 }),
-  });
+  let totalCount = 0;
+  let events: any[] = [];
+  if (hasDistanceFilter) {
+    events = await prisma.events.findMany({
+      where,
+      orderBy: { start: 'asc' },
+    });
+  } else {
+    const [eventRows, count] = await Promise.all([
+      prisma.events.findMany({
+        where,
+        orderBy: { start: 'asc' },
+        take: candidateTake,
+        skip: 0,
+      }),
+      prisma.events.count({ where }),
+    ]);
+    events = eventRows;
+    totalCount = count;
+  }
 
   if (userLocation && typeof filters.maxDistance === 'number') {
     const { lat, lng, long } = userLocation;
@@ -631,6 +651,9 @@ export async function POST(req: NextRequest) {
     : events.sort((left, right) => (
         getComparableTime((left as any).start) - getComparableTime((right as any).start)
       ));
+  if (hasDistanceFilter) {
+    totalCount = sortedCandidateEvents.length;
+  }
   const pageRows = sortedCandidateEvents.slice(offset, offset + limit + 1);
   const hasMore = pageRows.length > limit;
   const pageEvents = pageRows.slice(0, limit);
@@ -687,6 +710,7 @@ export async function POST(req: NextRequest) {
     pagination: {
       hasMore,
       nextOffset: offset + normalized.length,
+      totalCount,
     },
   }, { status: 200 });
 }

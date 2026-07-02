@@ -83,6 +83,7 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   defaultMaxDistance: number;
   kmBetween: (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => number;
   events: Event[];
+  totalEvents: number | null;
   isLoadingInitial: boolean;
   isLoadingMore: boolean;
   hasMoreEvents: boolean;
@@ -128,6 +129,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
     defaultMaxDistance,
     kmBetween,
     events,
+    totalEvents,
     isLoadingInitial,
     isLoadingMore,
     hasMoreEvents,
@@ -327,6 +329,8 @@ export default function EventsTabContent<TEventType extends string = Event['even
   }
 
   const activeFilterCount = activeFilters.length;
+  const eventReadoutCount = typeof totalEvents === 'number' ? totalEvents : sortedEvents.length;
+  const hasActiveDistanceFilter = Boolean(location && typeof maxDistance === 'number');
 
   const filterPanel = (
     <div className="space-y-6">
@@ -571,8 +575,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
         <div className="space-y-4">
           <Group justify="space-between" align="center" gap="sm" wrap="wrap">
             <Text size="sm" c="dimmed">
-              {sortedEvents.length} event{sortedEvents.length === 1 ? '' : 's'}
-              {location ? ' near you' : ''}.
+              {eventReadoutCount} event{eventReadoutCount === 1 ? '' : 's'} {hasActiveDistanceFilter ? 'near you' : 'available'}.
             </Text>
             <Select
               aria-label="Sort events"
