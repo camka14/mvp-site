@@ -4709,9 +4709,6 @@ export default function EventDetailSheet({
         ? eventAddress
         : (hasValidCoords ? `${mapLat},${mapLng}` : '');
     const encodedMapQuery = encodeURIComponent(mapQuery);
-    const googleMapsLink = mapQuery
-        ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
-        : null;
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
@@ -5287,7 +5284,7 @@ export default function EventDetailSheet({
                                                         <PublicEventMetaPill label="Address" value={eventAddress} />
                                                     )}
                                                 </div>
-                                                {googleMapsLink && mapEmbedSrc ? (
+                                                {mapEmbedSrc ? (
                                                     <div className="space-y-3">
                                                         <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100" style={{ aspectRatio: '4 / 3' }}>
                                                             <iframe
@@ -5298,17 +5295,6 @@ export default function EventDetailSheet({
                                                                 allowFullScreen
                                                             />
                                                         </div>
-                                                        <Button
-                                                            component="a"
-                                                            href={googleMapsLink}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            variant="light"
-                                                            size="sm"
-                                                            leftSection={<MapPin size={16} />}
-                                                        >
-                                                            Open in Google Maps
-                                                        </Button>
                                                     </div>
                                                 ) : null}
                                             </div>
@@ -5577,7 +5563,7 @@ export default function EventDetailSheet({
                                         <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
                                     </Paper>
 
-                                    {googleMapsLink && mapEmbedSrc && (
+                                    {mapEmbedSrc && (
                                         <Paper withBorder p="md" radius="md" className="space-y-3">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
@@ -5589,16 +5575,6 @@ export default function EventDetailSheet({
                                                         </Text>
                                                     )}
                                                 </div>
-                                                <Button
-                                                    component="a"
-                                                    href={googleMapsLink}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    variant="light"
-                                                    size="sm"
-                                                >
-                                                    Open in Google Maps
-                                                </Button>
                                             </div>
                                             <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
                                                 <iframe

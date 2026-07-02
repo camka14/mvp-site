@@ -27,7 +27,6 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  ExternalLink,
   ListChecks,
   MapPin,
   ShieldCheck,
@@ -2435,7 +2434,6 @@ export default function ScoreUpdateModal({
   const locationLabel = match.field?.location?.trim() || match.field?.name?.trim() || tournament.location?.trim() || '';
   const mapQuery = Number.isFinite(mapLat) && Number.isFinite(mapLng) ? `${mapLat},${mapLng}` : locationLabel;
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed` : null;
-  const googleMapsLink = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
   const canScore =
     canManage && matchStarted && activeSegment?.status !== "COMPLETE" && !matchComplete();
   const activeSegmentLabel = activeSegment
@@ -3386,19 +3384,6 @@ export default function ScoreUpdateModal({
             >
               {showFieldMap ? "Hide Field Location" : "View Field Location"}
             </Button>
-            {canManage && googleMapsLink && (
-              <Button
-                component="a"
-                href={googleMapsLink}
-                target="_blank"
-                rel="noreferrer"
-                variant="subtle"
-                size="xs"
-                leftSection={<ExternalLink size={14} />}
-              >
-                Open in Maps
-              </Button>
-            )}
           </Group>
         </Group>
         {!canManage && (
@@ -3427,19 +3412,6 @@ export default function ScoreUpdateModal({
               >
                 Match Details
               </Button>
-              {googleMapsLink && (
-                <Button
-                  component="a"
-                  href={googleMapsLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="default"
-                  size="xs"
-                  leftSection={<ExternalLink size={14} />}
-                >
-                  Open in Maps
-                </Button>
-              )}
             </Group>
             <Collapse in={showDetails}>{renderReadOnlyDetails()}</Collapse>
           </>
