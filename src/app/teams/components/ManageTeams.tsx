@@ -21,6 +21,17 @@ type ManageTeamsProps = {
 
 const TEAM_INVITE_TYPES = ['TEAM'] as const;
 
+const upsertTeamList = (teams: Team[], team: Team): Team[] => {
+  const teamId = team.$id;
+  if (!teamId) {
+    return teams;
+  }
+  const exists = teams.some((candidate) => candidate.$id === teamId);
+  return exists
+    ? teams.map((candidate) => candidate.$id === teamId ? team : candidate)
+    : [...teams, team];
+};
+
 export default function ManageTeams({ showNavigation = true, withContainer = true }: ManageTeamsProps = {}) {
   const content = <TeamsPageContent />;
 
@@ -41,7 +52,7 @@ export default function ManageTeams({ showNavigation = true, withContainer = tru
 }
 
 function TeamsPageContent() {
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { user, loading: authLoading, isAuthenticated, setUserTeams: setCachedUserTeams } = useApp();
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamInvitations, setTeamInvitations] = useState<Array<{ invite: Invite; team: Team | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +113,7 @@ function TeamsPageContent() {
       // Enrich with players so TeamCard can show member avatars
       const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
       setTeams(detailedTeams);
+      setCachedUserTeams(detailedTeams, user.$id);
 
       const invites = await userService.listInvites({ userId: user.$id, types: TEAM_INVITE_TYPES });
       const invitationPromises = invites
@@ -121,7 +133,7 @@ function TeamsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [setCachedUserTeams, user]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -371,7 +383,13 @@ function TeamsPageContent() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         currentUser={user as UserData}
-        onTeamCreated={(team) => setTeams(prev => [...prev, team])}
+        onTeamCreated={(team) => {
+          setTeams((previous) => {
+            const nextTeams = upsertTeamList(previous, team);
+            setCachedUserTeams(nextTeams, user.$id);
+            return nextTeams;
+          });
+        }}
       />
 
     </div>

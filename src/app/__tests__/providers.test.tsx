@@ -6,6 +6,7 @@ const isGuestMock = jest.fn();
 const setCurrentAuthUserMock = jest.fn();
 const setCurrentUserDataMock = jest.fn();
 const getAllSportsMock = jest.fn();
+const getTeamsByUserIdMock = jest.fn();
 
 jest.mock('@/lib/auth', () => ({
   authService: {
@@ -27,6 +28,12 @@ jest.mock('@/lib/userService', () => ({
 jest.mock('@/lib/sportsService', () => ({
   sportsService: {
     getAll: (...args: unknown[]) => getAllSportsMock(...args),
+  },
+}));
+
+jest.mock('@/lib/teamService', () => ({
+  teamService: {
+    getTeamsByUserId: (...args: unknown[]) => getTeamsByUserIdMock(...args),
   },
 }));
 
@@ -61,6 +68,7 @@ describe('Providers guest/auth state synchronization', () => {
     setCurrentAuthUserMock.mockReset();
     setCurrentUserDataMock.mockReset();
     getAllSportsMock.mockReset();
+    getTeamsByUserIdMock.mockReset();
 
     fetchSessionMock.mockResolvedValue({
       user: null,
@@ -72,6 +80,7 @@ describe('Providers guest/auth state synchronization', () => {
     });
     isGuestMock.mockReturnValue(true);
     getAllSportsMock.mockResolvedValue([]);
+    getTeamsByUserIdMock.mockResolvedValue([]);
   });
 
   it('clears guest mode when setAuthUser is called', async () => {

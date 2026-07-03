@@ -644,6 +644,57 @@ const normalizeUserId = (value: unknown): string | null => {
     return trimmed.length > 0 ? trimmed : null;
 };
 
+const getEventSportName = (event: Event | null | undefined): string => {
+    if (!event) {
+        return '';
+    }
+    const rawSport: unknown = (event as { sport?: unknown }).sport;
+    if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
+        return rawSport.trim();
+    }
+    if (
+        rawSport
+        && typeof rawSport === 'object'
+        && typeof (rawSport as { name?: unknown }).name === 'string'
+    ) {
+        return ((rawSport as { name?: string }).name ?? '').trim();
+    }
+    if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
+        return event.sportId.trim();
+    }
+    return '';
+};
+
+const teamIsManagedByUser = (team: Team, userId: string): boolean => {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!normalizedUserId) {
+        return false;
+    }
+    const assistantCoachIds = Array.isArray((team as { assistantCoachIds?: unknown }).assistantCoachIds)
+        ? ((team as { assistantCoachIds?: unknown }).assistantCoachIds as unknown[])
+        : [];
+    const coachIds = Array.isArray((team as { coachIds?: unknown }).coachIds)
+        ? ((team as { coachIds?: unknown }).coachIds as unknown[])
+        : [];
+    const staffIds = [...assistantCoachIds, ...coachIds]
+        .map((entry) => normalizeUserId(entry))
+        .filter((entry): entry is string => Boolean(entry));
+
+    return normalizeUserId(team.managerId) === normalizedUserId
+        || normalizeUserId(team.captainId) === normalizedUserId
+        || normalizeUserId(team.headCoachId) === normalizedUserId
+        || staffIds.includes(normalizedUserId);
+};
+
+const getManagedUserTeamsForEvent = (teams: Team[], event: Event | null | undefined, userId: string): Team[] => {
+    const targetSport = getEventSportName(event).toLowerCase();
+    return teams.filter((team) => {
+        const matchesSport = targetSport.length === 0
+            || (team.sport || '').trim().toLowerCase() === targetSport;
+        return matchesSport && teamIsManagedByUser(team, userId);
+    });
+};
+
 const collectUniqueUserIds = (value: unknown): string[] => {
     if (!Array.isArray(value)) {
         return [];
@@ -1598,7 +1649,13 @@ export default function EventDetailSheet({
     onWeeklyOccurrenceChange,
     publicCompletion,
 }: EventDetailSheetProps) {
-    const { user, authUser, refreshSession } = useApp();
+    const {
+        user,
+        authUser,
+        refreshSession,
+        userTeams: cachedUserTeams,
+        userTeamsLoading,
+    } = useApp();
     const router = useRouter();
     const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
     const [players, setPlayers] = useState<UserData[]>([]);
@@ -2404,64 +2461,10 @@ export default function EventDetailSheet({
             return;
         }
 
-        const teamIds = Array.isArray(user.teamIds) ? user.teamIds : [];
-        if (teamIds.length === 0) {
-            setUserTeams([]);
-            setIsLoadingTeams(false);
-            return;
-        }
-
-        setIsLoadingTeams(true);
-        let cancelled = false;
-        const loadTeams = async () => {
-            try {
-                const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
-                const targetSportName = (() => {
-                    const rawSport: unknown = (targetEvent as { sport?: unknown }).sport;
-                    if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
-                        return rawSport.trim();
-                    }
-                    if (
-                        rawSport
-                        && typeof rawSport === 'object'
-                        && typeof (rawSport as { name?: unknown }).name === 'string'
-                    ) {
-                        return ((rawSport as { name?: string }).name ?? '').trim();
-                    }
-                    if (typeof targetEvent.sportId === 'string' && targetEvent.sportId.trim().length > 0) {
-                        return targetEvent.sportId.trim();
-                    }
-                    return '';
-                })();
-                const normalizedTargetSport = targetSportName.toLowerCase();
-                const relevantTeams = normalizedTargetSport.length > 0
-                    ? userTeamsAll.filter(
-                        (team) => (team.sport || '').trim().toLowerCase() === normalizedTargetSport
-                    )
-                    : userTeamsAll;
-                const managerTeams = relevantTeams.filter((team) => normalizeUserId(team.managerId) === user.$id);
-                if (!cancelled) {
-                    setUserTeams(managerTeams);
-                }
-            } catch (error) {
-                console.error('Failed to load user teams:', error);
-                if (!cancelled) {
-                    setUserTeams([]);
-                }
-            } finally {
-                if (!cancelled) {
-                    setIsLoadingTeams(false);
-                }
-            }
-        };
-
-        loadTeams();
-
-        return () => {
-            cancelled = true;
-            setIsLoadingTeams(false);
-        };
-    }, [isActive, currentEvent, event, user]);
+        const managedTeams = getManagedUserTeamsForEvent(cachedUserTeams, targetEvent, user.$id);
+        setUserTeams(managedTeams);
+        setIsLoadingTeams(userTeamsLoading && managedTeams.length === 0);
+    }, [cachedUserTeams, currentEvent, event, isActive, user, userTeamsLoading]);
 
     useEffect(() => {
         if (!isActive || !user) {

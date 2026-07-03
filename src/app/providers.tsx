@@ -4,7 +4,9 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useState 
 import { authService, type RequiredProfileField } from '@/lib/auth';
 import { userService } from '@/lib/userService';
 import { sportsService } from '@/lib/sportsService';
-import { UserData } from '@/types';
+import { teamService } from '@/lib/teamService';
+import { userTeamsStorage } from '@/lib/userTeamsStorage';
+import { Team, UserData } from '@/types';
 
 interface UserAccount {
   $id: string;
@@ -21,6 +23,10 @@ interface AppContextType {
   loading: boolean;
   setUser: (user: UserData | null) => void;
   setAuthUser: (authUser: UserAccount | null) => void;
+  userTeams: Team[];
+  userTeamsLoading: boolean;
+  setUserTeams: (teams: Team[], userId?: string) => void;
+  refreshUserTeams: (userId?: string) => Promise<Team[]>;
   updateUser: (updates: Partial<UserData>) => Promise<UserData | null>;
   refreshUser: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -52,6 +58,8 @@ export function Providers({ children }: ProvidersProps) {
   const [authUser, setAuthUserState] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isGuest, setIsGuest] = useState<boolean>(false);
+  const [userTeams, setUserTeamsState] = useState<Team[]>([]);
+  const [userTeamsLoading, setUserTeamsLoading] = useState<boolean>(false);
   const [requiresProfileCompletion, setRequiresProfileCompletion] = useState<boolean>(false);
   const [missingProfileFields, setMissingProfileFields] = useState<RequiredProfileField[]>([]);
   const [requiresEmailVerification, setRequiresEmailVerification] = useState<boolean>(false);
@@ -78,6 +86,35 @@ export function Providers({ children }: ProvidersProps) {
       setRequiresEmailVerification(false);
     }
   }, []);
+
+  const setUserTeams = useCallback((teams: Team[], userId?: string) => {
+    const ownerUserId = userId ?? user?.$id;
+    setUserTeamsState(teams);
+    if (ownerUserId) {
+      userTeamsStorage.set(ownerUserId, teams);
+    }
+  }, [user?.$id]);
+
+  const refreshUserTeams = useCallback(async (userId?: string): Promise<Team[]> => {
+    const ownerUserId = userId ?? user?.$id;
+    if (!ownerUserId) {
+      setUserTeamsState([]);
+      return [];
+    }
+
+    setUserTeamsLoading(true);
+    try {
+      const teams = await teamService.getTeamsByUserId(ownerUserId);
+      setUserTeamsState(teams);
+      userTeamsStorage.set(ownerUserId, teams);
+      return teams;
+    } catch (error) {
+      console.warn('Failed to refresh user teams', error);
+      return userTeamsStorage.get(ownerUserId);
+    } finally {
+      setUserTeamsLoading(false);
+    }
+  }, [user?.$id]);
 
   const checkAuth = useCallback(async () => {
     setLoading(true);
@@ -150,6 +187,18 @@ export function Providers({ children }: ProvidersProps) {
     });
   }, [checkAuth]);
 
+  useEffect(() => {
+    const userId = user?.$id;
+    if (!userId || isGuest) {
+      setUserTeamsState([]);
+      setUserTeamsLoading(false);
+      return;
+    }
+
+    setUserTeamsState(userTeamsStorage.get(userId));
+    void refreshUserTeams(userId);
+  }, [isGuest, refreshUserTeams, user?.$id]);
+
   const refreshUser = async () => {
     if (!authUser) return;
     try {
@@ -185,6 +234,10 @@ export function Providers({ children }: ProvidersProps) {
       loading,
       setUser,
       setAuthUser,
+      userTeams,
+      userTeamsLoading,
+      setUserTeams,
+      refreshUserTeams,
       updateUser,
       refreshUser,
       refreshSession,
