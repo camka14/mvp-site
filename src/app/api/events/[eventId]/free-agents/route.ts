@@ -49,6 +49,63 @@ const canManageChildFreeAgent = async (params: {
   return Boolean(link);
 };
 
+const activeRegistrationStatuses = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED', 'PAYMENT_FAILED'] as const;
+
+const occurrenceWhere = (occurrence: { slotId: string; occurrenceDate: string } | null) => (
+  occurrence
+    ? {
+        slotId: occurrence.slotId,
+        occurrenceDate: occurrence.occurrenceDate,
+      }
+    : {
+        slotId: null,
+        occurrenceDate: null,
+      }
+);
+
+const cancelRegistrationsConflictingWithFreeAgent = async ({
+  eventId,
+  targetUserId,
+  actorUserId,
+  includeActorTeamHolds,
+  occurrence,
+}: {
+  eventId: string;
+  targetUserId: string;
+  actorUserId: string;
+  includeActorTeamHolds: boolean;
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+}) => {
+  const conflictingTargets: any[] = [
+    {
+      registrantType: { in: ['SELF', 'CHILD'] },
+      registrantId: targetUserId,
+    },
+  ];
+
+  if (includeActorTeamHolds) {
+    conflictingTargets.push({
+      registrantType: 'TEAM',
+      status: 'STARTED',
+      createdBy: actorUserId,
+    });
+  }
+
+  await prisma.eventRegistrations.updateMany({
+    where: {
+      eventId,
+      ...occurrenceWhere(occurrence),
+      status: { in: [...activeRegistrationStatuses] as any[] },
+      rosterRole: { in: ['PARTICIPANT', 'WAITLIST'] as any[] },
+      OR: conflictingTargets,
+    },
+    data: {
+      status: 'CANCELLED' as any,
+      updatedAt: new Date(),
+    },
+  });
+};
+
 async function updateFreeAgents(
   req: NextRequest,
   params: Promise<{ eventId: string }>,
@@ -187,6 +244,14 @@ async function updateFreeAgents(
       });
       warnings.push(...consentDispatch.errors);
     }
+
+    await cancelRegistrationsConflictingWithFreeAgent({
+      eventId,
+      targetUserId,
+      actorUserId: session.userId,
+      includeActorTeamHolds: targetUserId === session.userId,
+      occurrence: resolvedOccurrence,
+    });
 
     const registration = await upsertEventRegistration({
       eventId,

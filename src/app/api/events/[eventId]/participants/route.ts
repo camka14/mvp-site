@@ -75,6 +75,7 @@ const payloadSchema = z.object({
 }).strict();
 
 const PAID_ONLINE_CHECKOUT_REQUIRED_ERROR = 'Paid online registration must be completed through checkout.';
+const ACTIVE_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED', 'PAYMENT_FAILED'] as const;
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
@@ -620,6 +621,50 @@ const buildCheckoutRequiredResponse = () => NextResponse.json(
   },
   { status: 402 },
 );
+
+const buildOccurrenceWhere = (occurrence: { slotId: string; occurrenceDate: string } | null) => (
+  occurrence
+    ? {
+        slotId: occurrence.slotId,
+        occurrenceDate: occurrence.occurrenceDate,
+      }
+    : {
+        slotId: null,
+        occurrenceDate: null,
+      }
+);
+
+const cancelFreeAgentRegistrationsForUsers = async ({
+  client,
+  eventId,
+  userIds,
+  occurrence,
+}: {
+  client: PrismaLike;
+  eventId: string;
+  userIds: string[];
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+}) => {
+  const normalizedUserIds = ensureUnique(userIds.map((userId) => normalizeId(userId) ?? ''));
+  if (!normalizedUserIds.length) {
+    return;
+  }
+
+  await client.eventRegistrations.updateMany({
+    where: {
+      eventId,
+      ...buildOccurrenceWhere(occurrence),
+      registrantType: { in: ['SELF', 'CHILD'] as any[] },
+      registrantId: { in: normalizedUserIds },
+      rosterRole: 'FREE_AGENT' as any,
+      status: { in: [...ACTIVE_REGISTRATION_STATUSES] as any[] },
+    },
+    data: {
+      status: 'CANCELLED' as any,
+      updatedAt: new Date(),
+    },
+  });
+};
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -1633,6 +1678,15 @@ async function updateParticipants(
             } else {
               await syncDivisionTeamMembershipFromRegistrations(event, tx);
             }
+            await cancelFreeAgentRegistrationsForUsers({
+              client: tx,
+              eventId: event.id,
+              userIds: [
+                session.userId,
+                ...normalizeUserIdList(teamForRegistration?.playerIds),
+              ],
+              occurrence: resolvedOccurrence,
+            });
             const bill = !canManageCurrentEvent
               ? await createRegistrationBillForRegistration({
                 tx,

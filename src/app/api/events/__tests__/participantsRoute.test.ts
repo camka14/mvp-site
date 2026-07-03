@@ -1270,6 +1270,19 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       divisionTypeKey: 'c_skill_open',
     }));
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'event_1',
+        slotId: null,
+        occurrenceDate: null,
+        registrantType: { in: ['SELF', 'CHILD'] },
+        registrantId: { in: ['user_1', 'user_2'] },
+        rosterRole: 'FREE_AGENT',
+      }),
+      data: expect.objectContaining({
+        status: 'CANCELLED',
+      }),
+    }));
   });
 
   it('allows team registration and returns warning for under-13 players missing email', async () => {

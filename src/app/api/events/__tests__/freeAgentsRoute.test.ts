@@ -16,6 +16,9 @@ const prismaMock = {
   parentChildLinks: {
     findFirst: jest.fn(),
   },
+  eventRegistrations: {
+    updateMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -69,6 +72,7 @@ describe('event free-agent route', () => {
       dateOfBirth: new Date('1995-01-01T00:00:00.000Z'),
     });
     prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 0 });
     upsertEventRegistrationMock.mockResolvedValue({ id: 'registration_1' });
     deleteEventRegistrationMock.mockResolvedValue(undefined);
     buildEventParticipantSnapshotMock.mockResolvedValue({
@@ -151,6 +155,28 @@ describe('event free-agent route', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'event_1',
+        slotId: null,
+        occurrenceDate: null,
+        rosterRole: { in: ['PARTICIPANT', 'WAITLIST'] },
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            registrantType: { in: ['SELF', 'CHILD'] },
+            registrantId: 'user_1',
+          }),
+          expect.objectContaining({
+            registrantType: 'TEAM',
+            status: 'STARTED',
+            createdBy: 'user_1',
+          }),
+        ]),
+      }),
+      data: expect.objectContaining({
+        status: 'CANCELLED',
+      }),
+    }));
     expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'SELF',
