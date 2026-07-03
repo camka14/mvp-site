@@ -19,6 +19,15 @@ const teamServiceMock = jest.requireMock('@/lib/teamService').teamService as {
   createTeam: jest.Mock;
 };
 
+const selectSport = async (user: ReturnType<typeof userEvent.setup>, sport = 'Indoor Volleyball') => {
+  const sportInput = screen
+    .getAllByLabelText(/Sport/i)
+    .find((element) => element.tagName.toLowerCase() === 'input');
+  expect(sportInput).toBeDefined();
+  await user.click(sportInput as HTMLElement);
+  await user.click(await screen.findByText(sport));
+};
+
 describe('CreateTeamModal', () => {
   beforeEach(() => {
     teamServiceMock.createTeam.mockReset();
@@ -47,6 +56,7 @@ describe('CreateTeamModal', () => {
     expect(screen.getByText('Team size must be 2 or above.')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Team Name/i), 'Test team');
+    await selectSport(user);
     await user.click(screen.getByRole('button', { name: /Create Team/i }));
 
     expect(teamServiceMock.createTeam).not.toHaveBeenCalled();
@@ -72,6 +82,7 @@ describe('CreateTeamModal', () => {
     );
 
     await user.type(screen.getByLabelText(/Team Name/i), 'Test team');
+    await selectSport(user);
     const teamSizeInput = screen.getByLabelText(/Team Size/i);
     await user.clear(teamSizeInput);
     await user.type(teamSizeInput, '2');
@@ -106,6 +117,7 @@ describe('CreateTeamModal', () => {
     );
 
     await user.type(screen.getByLabelText(/Team Name/i), 'Partner team');
+    await selectSport(user);
     await user.click(screen.getByLabelText(/External team registration/i));
     await user.type(screen.getByLabelText(/Affiliate registration link/i), 'https://partner.example.com/signup');
     await user.click(screen.getByRole('button', { name: /Create Team/i }));
@@ -139,6 +151,7 @@ describe('CreateTeamModal', () => {
     );
 
     await user.type(screen.getByLabelText(/Team Name/i), 'Test team');
+    await selectSport(user);
     const teamSizeInput = screen.getByLabelText(/Team Size/i);
     await user.clear(teamSizeInput);
     await user.type(teamSizeInput, '3');

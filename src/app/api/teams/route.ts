@@ -49,7 +49,7 @@ const createSchema = z.object({
   id: z.string(),
   name: z.string().trim().min(1, 'Team name is required.'),
   division: z.string().optional(),
-  divisionTypeId: z.string().optional(),
+  divisionTypeId: z.string().nullable().optional(),
   sport: z.string().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
@@ -289,6 +289,9 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Invalid registration settings.';
     return NextResponse.json({ error: message }, { status: 400 });
   }
+  const shouldPersistDivision = registrationSettings.joinPolicy !== 'CLOSED';
+  const persistedDivision = shouldPersistDivision ? normalizedDivision : '';
+  const persistedDivisionTypeId = shouldPersistDivision ? divisionTypeId : null;
 
   const teamsDelegate = getTeamsDelegate(prisma);
   const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
@@ -307,8 +310,8 @@ export async function POST(req: NextRequest) {
         data: {
           id: data.id,
           name: normalizedTeamName,
-          division: normalizedDivision,
-          divisionTypeId,
+          division: persistedDivision,
+          divisionTypeId: persistedDivisionTypeId,
           sport: sportInput,
           teamSize: data.teamSize,
           profileImageId: data.profileImageId ?? null,
@@ -347,8 +350,8 @@ export async function POST(req: NextRequest) {
     const team = await createTeamWithCompatibility(teamsDelegate, {
       id: data.id,
       name: normalizedTeamName,
-      division: normalizedDivision,
-      divisionTypeId,
+      division: persistedDivision,
+      divisionTypeId: persistedDivisionTypeId,
       sport: sportInput,
       playerIds,
       captainId,

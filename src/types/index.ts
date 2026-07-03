@@ -771,7 +771,7 @@ export interface Team {
   $id: string;
   name: string;
   division: Division | string; // Can be expanded or just ID
-  divisionTypeId?: string;
+  divisionTypeId?: string | null;
   sport: string;
   playerIds: string[];
   captainId: string;

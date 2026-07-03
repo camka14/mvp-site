@@ -44,10 +44,11 @@ interface TeamDetailModalProps {
 type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
 const TEAM_ROLE_INVITE_TYPES = ['TEAM'] as const;
 const DIVISION_GENDER_OPTIONS = [
-    { value: 'M', label: 'Mens' },
-    { value: 'F', label: 'Womens' },
-    { value: 'C', label: 'CoEd' },
+    { value: 'M', label: "Men's" },
+    { value: 'F', label: "Women's" },
+    { value: 'C', label: 'Coed' },
 ] as const;
+type DivisionGenderInput = 'M' | 'F' | 'C' | '';
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
 const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 const EMPTY_FREE_AGENTS: UserData[] = [];
@@ -221,7 +222,7 @@ export default function TeamDetailModal({
     const [editingDetails, setEditingDetails] = useState(false);
     const [draftSport, setDraftSport] = useState(currentTeam.sport || '');
     const [draftDivision, setDraftDivision] = useState('');
-    const [draftDivisionGender, setDraftDivisionGender] = useState<'M' | 'F' | 'C'>('C');
+    const [draftDivisionGender, setDraftDivisionGender] = useState<DivisionGenderInput>('');
     const [draftSkillDivisionTypeId, setDraftSkillDivisionTypeId] = useState('open');
     const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState(DEFAULT_AGE_DIVISION_FALLBACK);
     const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
@@ -269,6 +270,7 @@ export default function TeamDetailModal({
     const effectiveJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
     const currentAffiliateUrl = typeof currentTeam.affiliateUrl === 'string' ? currentTeam.affiliateUrl.trim() : '';
     const draftRegistrationEnabled = draftJoinPolicy === 'OPEN_REGISTRATION' || draftJoinPolicy === 'REQUEST_TO_JOIN';
+    const draftShowDivisionFields = draftRegistrationEnabled && draftAffiliateUrl.trim().length === 0 && draftSport.trim().length > 0;
     const draftRequestOnly = draftJoinPolicy === 'REQUEST_TO_JOIN';
     const assistantCoachIds = useMemo(() => (
         Array.isArray(currentTeam.assistantCoachIds)
@@ -367,11 +369,14 @@ export default function TeamDetailModal({
         [divisionTypeOptions],
     );
     const resolveDraftDivisionDisplayName = useCallback((
-        gender: 'M' | 'F' | 'C',
+        gender: DivisionGenderInput,
         skillDivisionTypeId: string,
         ageDivisionTypeId: string,
         sportInput: string | null | undefined,
     ): string => {
+        if (!gender || !skillDivisionTypeId || !ageDivisionTypeId) {
+            return '';
+        }
         return buildDivisionName({
             gender,
             sportInput,
@@ -637,6 +642,8 @@ export default function TeamDetailModal({
 
     useEffect(() => {
         setDraftSport(currentTeam.sport || '');
+        const nextJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
+        const isJoinableTeam = nextJoinPolicy === 'OPEN_REGISTRATION' || nextJoinPolicy === 'REQUEST_TO_JOIN';
         const sportInput = currentTeam.sport || '';
         const inferred = inferDivisionDetails({
             identifier: (
@@ -645,7 +652,7 @@ export default function TeamDetailModal({
                     : null)
                 ?? (typeof currentTeam.division === 'string'
                     ? currentTeam.division
-                    : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'open'))
+                : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'open'))
             ),
             sportInput,
         });
@@ -656,12 +663,12 @@ export default function TeamDetailModal({
         const ageDivisionTypeId = composite?.ageDivisionTypeId
             ?? (inferred.ratingType === 'AGE' ? inferred.divisionTypeId : defaults.ageDivisionTypeId);
         const gender = inferred.gender;
-        setDraftDivisionGender(gender);
-        setDraftSkillDivisionTypeId(skillDivisionTypeId);
-        setDraftAgeDivisionTypeId(ageDivisionTypeId);
-        setDraftDivision(resolveDraftDivisionDisplayName(gender, skillDivisionTypeId, ageDivisionTypeId, sportInput));
+        setDraftDivisionGender(isJoinableTeam ? gender : '');
+        setDraftSkillDivisionTypeId(isJoinableTeam ? skillDivisionTypeId : '');
+        setDraftAgeDivisionTypeId(isJoinableTeam ? ageDivisionTypeId : '');
+        setDraftDivision(isJoinableTeam ? resolveDraftDivisionDisplayName(gender, skillDivisionTypeId, ageDivisionTypeId, sportInput) : '');
         setDraftTeamSize(currentTeam.teamSize || 0);
-        setDraftJoinPolicy(currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'));
+        setDraftJoinPolicy(nextJoinPolicy);
         setDraftRegistrationPriceDollars((Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0)) / 100));
         setDraftAffiliateUrl(currentTeam.affiliateUrl ?? '');
     }, [
@@ -785,13 +792,24 @@ export default function TeamDetailModal({
     }, [currentTeam.$id, currentTeam.playerRegistrations]);
 
     useEffect(() => {
-        const fallback = getDefaultDivisionTypeSelections(draftSport || currentTeam.sport || '');
+        if (!draftShowDivisionFields) {
+            if (draftDivisionGender) {
+                setDraftDivisionGender('');
+            }
+            if (draftSkillDivisionTypeId) {
+                setDraftSkillDivisionTypeId('');
+            }
+            if (draftAgeDivisionTypeId) {
+                setDraftAgeDivisionTypeId('');
+            }
+            return;
+        }
         const normalizedSkill = normalizeDivisionToken(draftSkillDivisionTypeId);
         const normalizedAge = normalizeDivisionToken(draftAgeDivisionTypeId);
-        const hasSkill = skillDivisionOptions.some((option) => option.value === normalizedSkill);
-        const hasAge = ageDivisionOptions.some((option) => option.value === normalizedAge);
-        const nextSkill = hasSkill ? normalizedSkill : fallback.skillDivisionTypeId;
-        const nextAge = hasAge ? normalizedAge : fallback.ageDivisionTypeId;
+        const hasSkill = normalizedSkill.length > 0 && skillDivisionOptions.some((option) => option.value === normalizedSkill);
+        const hasAge = normalizedAge.length > 0 && ageDivisionOptions.some((option) => option.value === normalizedAge);
+        const nextSkill = hasSkill ? normalizedSkill : '';
+        const nextAge = hasAge ? normalizedAge : '';
         if (nextSkill !== draftSkillDivisionTypeId) {
             setDraftSkillDivisionTypeId(nextSkill);
         }
@@ -802,12 +820,18 @@ export default function TeamDetailModal({
         ageDivisionOptions,
         currentTeam.sport,
         draftAgeDivisionTypeId,
+        draftDivisionGender,
+        draftShowDivisionFields,
         draftSkillDivisionTypeId,
         draftSport,
         skillDivisionOptions,
     ]);
 
     useEffect(() => {
+        if (!draftShowDivisionFields) {
+            setDraftDivision('');
+            return;
+        }
         setDraftDivision(
             resolveDraftDivisionDisplayName(
                 draftDivisionGender,
@@ -820,6 +844,7 @@ export default function TeamDetailModal({
         currentTeam.sport,
         draftAgeDivisionTypeId,
         draftDivisionGender,
+        draftShowDivisionFields,
         draftSkillDivisionTypeId,
         draftSport,
         resolveDraftDivisionDisplayName,
@@ -880,20 +905,26 @@ export default function TeamDetailModal({
 
     const handleSaveDetails = async () => {
         const nextSport = draftSport.trim();
-        const nextDivisionGender = draftDivisionGender;
-        const nextSkillDivisionTypeId = normalizeDivisionToken(draftSkillDivisionTypeId);
-        const nextAgeDivisionTypeId = normalizeDivisionToken(draftAgeDivisionTypeId);
-        const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
-        const nextDivision = buildDivisionName({
-            gender: nextDivisionGender,
-            sportInput: nextSport,
-            skillDivisionTypeId: nextSkillDivisionTypeId,
-            ageDivisionTypeId: nextAgeDivisionTypeId,
-        });
         const nextTeamSize = Number(draftTeamSize) || 0;
         const nextCaptainId = draftCaptainId.trim();
         const nextAffiliateUrl = draftAffiliateUrl.trim();
         const nextJoinPolicy = nextAffiliateUrl ? 'OPEN_REGISTRATION' : draftJoinPolicy;
+        const nextRegistrationEnabled = nextJoinPolicy === 'OPEN_REGISTRATION' || nextJoinPolicy === 'REQUEST_TO_JOIN';
+        const nextRequiresDivision = nextRegistrationEnabled && !nextAffiliateUrl;
+        const nextDivisionGender = draftDivisionGender;
+        const nextSkillDivisionTypeId = normalizeDivisionToken(draftSkillDivisionTypeId);
+        const nextAgeDivisionTypeId = normalizeDivisionToken(draftAgeDivisionTypeId);
+        const nextDivisionTypeId = nextRequiresDivision
+            ? buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId)
+            : null;
+        const nextDivision = nextRequiresDivision
+            ? buildDivisionName({
+                gender: nextDivisionGender || 'C',
+                sportInput: nextSport,
+                skillDivisionTypeId: nextSkillDivisionTypeId,
+                ageDivisionTypeId: nextAgeDivisionTypeId,
+            })
+            : '';
         const nextRegistrationPriceCents = nextJoinPolicy === 'REQUEST_TO_JOIN'
             ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
             : nextJoinPolicy === 'OPEN_REGISTRATION' && canChargeForTeamRegistration && !nextAffiliateUrl
@@ -904,12 +935,8 @@ export default function TeamDetailModal({
             setError('Sport is required.');
             return;
         }
-        if (!nextDivision) {
-            setError('Division is required.');
-            return;
-        }
-        if (!nextSkillDivisionTypeId || !nextAgeDivisionTypeId) {
-            setError('Select both skill and age divisions.');
+        if (nextRequiresDivision && (!nextDivisionGender || !nextSkillDivisionTypeId || !nextAgeDivisionTypeId || !nextDivision)) {
+            setError('Select gender, skill division, and age division.');
             return;
         }
         if (nextTeamSize < 1) {
@@ -1508,49 +1535,47 @@ export default function TeamDetailModal({
         >
             <Stack gap="md">
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                    <MantineSelect
-                        label="Sport"
-                        data={sportOptions}
-                        value={draftSport || null}
-                        onChange={(value) => setDraftSport(value || '')}
-                        searchable
-                        allowDeselect={false}
-                        nothingFoundMessage="No sports found"
-                    />
-                    <MantineSelect
-                        label="Division Gender"
-                        data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-                        value={draftDivisionGender}
-                        onChange={(value) => setDraftDivisionGender((value as 'M' | 'F' | 'C') || 'C')}
-                        allowDeselect={false}
-                    />
-                    <MantineSelect
-                        label="Skill Division"
-                        data={skillDivisionOptions}
-                        value={draftSkillDivisionTypeId}
-                        onChange={(value) => setDraftSkillDivisionTypeId(value || 'open')}
-                        searchable
-                        allowDeselect={false}
-                    />
-                    <MantineSelect
-                        label="Age Division"
-                        data={ageDivisionOptions}
-                        value={draftAgeDivisionTypeId}
-                        onChange={(value) => setDraftAgeDivisionTypeId(value || DEFAULT_AGE_DIVISION_FALLBACK)}
-                        searchable
-                        allowDeselect={false}
-                    />
-                    <TextInput
-                        label="Division Preview"
-                        value={draftDivision}
-                        readOnly
-                    />
                     <NumberInput
                         label="Team Size"
                         min={1}
                         value={draftTeamSize}
                         onChange={(value) => setDraftTeamSize(Number(value) || 1)}
                     />
+                    <MantineSelect
+                        label="Sport"
+                        data={sportOptions}
+                        value={draftSport || null}
+                        onChange={(value) => setDraftSport(value || '')}
+                        searchable
+                        clearable
+                        nothingFoundMessage="No sports found"
+                    />
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>Join mode</Text>
+                        <SegmentedControl
+                            fullWidth
+                            data={[
+                                { value: 'CLOSED', label: 'Closed' },
+                                { value: 'OPEN_REGISTRATION', label: 'Open' },
+                                { value: 'REQUEST_TO_JOIN', label: 'Request' },
+                            ]}
+                            value={draftJoinPolicy}
+                            onChange={(value) => {
+                                const nextPolicy = value as TeamJoinPolicy;
+                                setDraftJoinPolicy(nextPolicy);
+                                if (nextPolicy === 'CLOSED') {
+                                    setDraftAffiliateUrl('');
+                                }
+                            }}
+                        />
+                        <Text size="xs" c="dimmed" mt={4}>
+                            {draftRequestOnly
+                                ? 'Players submit a request and wait for manager approval.'
+                                : draftJoinPolicy === 'OPEN_REGISTRATION'
+                                    ? 'Players can join immediately from the team view.'
+                                    : 'Players cannot join from the team view.'}
+                        </Text>
+                    </div>
                     <MantineSelect
                         label="Team Captain"
                         placeholder={teamPlayers.length > 0 ? 'Select a captain' : 'No team players available'}
@@ -1563,61 +1588,77 @@ export default function TeamDetailModal({
                         disabled={teamPlayers.length === 0}
                         allowDeselect={false}
                     />
-                    <div>
-                        <Text size="sm" fw={500} mb={4}>Registration policy</Text>
-                        <SegmentedControl
-                            fullWidth
-                            data={[
-                                { value: 'CLOSED', label: 'Closed' },
-                                { value: 'OPEN_REGISTRATION', label: 'Open' },
-                                { value: 'REQUEST_TO_JOIN', label: 'Request' },
-                            ]}
-                            value={draftJoinPolicy}
-                            onChange={(value) => setDraftJoinPolicy(value as TeamJoinPolicy)}
-                        />
-                        <Text size="xs" c="dimmed" mt={4}>
-                            {draftRequestOnly
-                                ? 'Players submit a request and wait for manager approval.'
-                                : draftJoinPolicy === 'OPEN_REGISTRATION'
-                                    ? 'Players can join immediately from the team view.'
-                                    : 'Players cannot join from the team view.'}
-                        </Text>
-                    </div>
-                    <NumberInput
-                        label="Registration cost"
-                        description={
-                            draftAffiliateUrl.trim()
-                                ? 'Payments and registration happen on the linked site.'
-                                : draftRequestOnly
-                                    ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
-                                    : canChargeForTeamRegistration
-                                        ? 'Leave at $0 for free registration.'
-                                        : 'Connect Stripe to charge for registration. Free registration is still available.'
-                        }
-                        min={0}
-                        decimalScale={2}
-                        fixedDecimalScale
-                        prefix="$"
-                        value={draftRegistrationPriceDollars}
-                        onChange={(value) => {
-                            const numeric = typeof value === 'number' ? value : Number(value);
-                            setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
-                        }}
-                        disabled={Boolean(draftAffiliateUrl.trim()) || !draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
-                    />
-                    <TextInput
-                        label="Affiliate registration link"
-                        description="When present, search results send players to this external registration page."
-                        value={draftAffiliateUrl}
-                        onChange={(event) => {
-                            const value = event.currentTarget.value;
-                            setDraftAffiliateUrl(value);
-                            if (value.trim()) {
-                                setDraftJoinPolicy('OPEN_REGISTRATION');
-                            }
-                        }}
-                        placeholder="https://example.com/team-registration"
-                    />
+                    {draftRegistrationEnabled ? (
+                        <>
+                            {!draftAffiliateUrl.trim() ? (
+                                <NumberInput
+                                    label="Registration cost"
+                                    description={
+                                        draftRequestOnly
+                                            ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
+                                            : canChargeForTeamRegistration
+                                                ? 'Leave at $0 for free registration.'
+                                                : 'Connect Stripe to charge for registration. Free registration is still available.'
+                                    }
+                                    min={0}
+                                    decimalScale={2}
+                                    fixedDecimalScale
+                                    prefix="$"
+                                    value={draftRegistrationPriceDollars}
+                                    onChange={(value) => {
+                                        const numeric = typeof value === 'number' ? value : Number(value);
+                                        setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+                                    }}
+                                    disabled={draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration}
+                                />
+                            ) : null}
+                            <TextInput
+                                label="Affiliate registration link"
+                                description="When present, search results send players to this external registration page."
+                                value={draftAffiliateUrl}
+                                onChange={(event) => {
+                                    const value = event.currentTarget.value;
+                                    setDraftAffiliateUrl(value);
+                                    if (value.trim()) {
+                                        setDraftJoinPolicy('OPEN_REGISTRATION');
+                                    }
+                                }}
+                                placeholder="https://example.com/team-registration"
+                            />
+                        </>
+                    ) : null}
+                    {draftShowDivisionFields ? (
+                        <>
+                            <MantineSelect
+                                label="Gender"
+                                data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                value={draftDivisionGender || null}
+                                onChange={(value) => setDraftDivisionGender((value as DivisionGenderInput) || '')}
+                                clearable
+                            />
+                            <MantineSelect
+                                label="Skill Division"
+                                data={skillDivisionOptions}
+                                value={draftSkillDivisionTypeId || null}
+                                onChange={(value) => setDraftSkillDivisionTypeId(value || '')}
+                                searchable
+                                clearable
+                            />
+                            <MantineSelect
+                                label="Age Division"
+                                data={ageDivisionOptions}
+                                value={draftAgeDivisionTypeId || null}
+                                onChange={(value) => setDraftAgeDivisionTypeId(value || '')}
+                                searchable
+                                clearable
+                            />
+                            <TextInput
+                                label="Division Preview"
+                                value={draftDivision}
+                                readOnly
+                            />
+                        </>
+                    ) : null}
                 </SimpleGrid>
 
                 {draftRequestOnly && (

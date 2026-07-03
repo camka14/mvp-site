@@ -25,6 +25,7 @@ import {
 } from '@/server/teams/teamEventSnapshotSync';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 import {
+  TEAM_JOIN_POLICY_CLOSED,
   TEAM_JOIN_POLICY_OPEN_REGISTRATION,
   TEAM_JOIN_POLICY_REQUEST_TO_JOIN,
   inferTeamJoinPolicyFromOpenRegistration,
@@ -66,7 +67,7 @@ const playerRegistrationPatchSchema = z.object({
 const teamPatchSchema = z.object({
   name: z.string().trim().min(1, 'Team name cannot be blank.').optional(),
   division: z.string().optional(),
-  divisionTypeId: z.string().optional(),
+  divisionTypeId: z.string().nullable().optional(),
   sport: z.string().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
@@ -212,7 +213,7 @@ const arraysEqual = (a: string[], b: string[]): boolean => (
 type TeamState = {
   name: string;
   division: string;
-  divisionTypeId: string;
+  divisionTypeId: string | null;
   sport: string | null;
   playerIds: string[];
   captainId: string;
@@ -298,11 +299,14 @@ const buildTeamState = (
     : hasOwn(payload, 'registrationPriceCents')
       ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
       : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0)));
+  const shouldPersistDivision = effectiveJoinPolicy !== TEAM_JOIN_POLICY_CLOSED;
+  const persistedDivision = shouldPersistDivision ? normalizedDivision : '';
+  const persistedDivisionTypeId = shouldPersistDivision ? divisionTypeId : null;
 
   return {
     name: payload.name ?? resolvedExistingName,
-    division: normalizedDivision,
-    divisionTypeId,
+    division: persistedDivision,
+    divisionTypeId: persistedDivisionTypeId,
     sport: sportInput,
     playerIds,
     captainId,
@@ -338,10 +342,10 @@ const hasVersionedProfileChanges = (
         if (normalizeTeamNameOrFallback(existing.name, existing.id) !== next.name) return true;
         break;
       case 'division':
-        if ((normalizeText(existing.division) ?? 'Open') !== next.division) return true;
+        if ((normalizeText(existing.division) ?? '') !== next.division) return true;
         break;
       case 'divisionTypeId':
-        if ((normalizeDivisionIdToken(existing.divisionTypeId) ?? '') !== next.divisionTypeId) return true;
+        if ((normalizeDivisionIdToken(existing.divisionTypeId) ?? null) !== next.divisionTypeId) return true;
         break;
       case 'sport':
         if ((normalizeText(existing.sport) ?? null) !== next.sport) return true;
@@ -597,6 +601,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: message }, { status: 400 });
       }
     }
+    if (nextState.joinPolicy === TEAM_JOIN_POLICY_CLOSED) {
+      nextState.division = '';
+      nextState.divisionTypeId = null;
+      nextState.registrationPriceCents = 0;
+    }
     try {
       nextState.requiredTemplateIds = await resolveValidatedRequiredTemplateIds(
         normalizeText((existingCanonical as Record<string, any>).organizationId),
@@ -700,6 +709,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const message = error instanceof Error ? error.message : 'Invalid registration settings.';
       return NextResponse.json({ error: message }, { status: 400 });
     }
+  }
+  if (nextState.joinPolicy === TEAM_JOIN_POLICY_CLOSED) {
+    nextState.division = '';
+    nextState.divisionTypeId = null;
+    nextState.registrationPriceCents = 0;
   }
   try {
     nextState.requiredTemplateIds = await resolveValidatedRequiredTemplateIds(

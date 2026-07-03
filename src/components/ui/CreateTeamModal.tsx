@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Button, Group, TextInput, Select as MantineSelect, NumberInput, SimpleGrid, Checkbox, MultiSelect, Text } from '@mantine/core';
-import { Team, UserData, SPORTS_LIST } from '@/types';
+import { Team, UserData, SPORTS_LIST, type TeamJoinPolicy } from '@/types';
 import { apiRequest } from '@/lib/apiClient';
 import { teamService } from '@/lib/teamService';
 import {
@@ -20,16 +20,18 @@ interface CreateTeamModalProps {
 }
 
 const DIVISION_GENDER_OPTIONS = [
-  { value: 'M', label: 'Mens' },
-  { value: 'F', label: 'Womens' },
-  { value: 'C', label: 'CoEd' },
+  { value: 'M', label: "Men's" },
+  { value: 'F', label: "Women's" },
+  { value: 'C', label: 'Coed' },
 ] as const;
 
-const DEFAULT_SPORT = SPORTS_LIST.includes('Indoor Volleyball')
-  ? 'Indoor Volleyball'
-  : (SPORTS_LIST[0] ?? 'Other');
+const TEAM_JOIN_POLICY_OPTIONS: Array<{ value: TeamJoinPolicy; label: string }> = [
+  { value: 'CLOSED', label: 'Closed' },
+  { value: 'OPEN_REGISTRATION', label: 'Open registration' },
+  { value: 'REQUEST_TO_JOIN', label: 'Request to join' },
+];
+
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
-const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
   .trim()
@@ -37,31 +39,10 @@ const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
 
-const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined): {
-  skillDivisionTypeId: string;
-  ageDivisionTypeId: string;
-} => {
-  const options = getDivisionTypeOptionsForSport(sportInput);
-  const skill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
-    ?? options.find((option) => option.ratingType === 'SKILL');
-  let age: (typeof options)[number] | undefined;
-  for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
-    age = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
-    if (age) break;
-  }
-  if (!age) {
-    age = options.find((option) => option.ratingType === 'AGE');
-  }
-  return {
-    skillDivisionTypeId: skill?.id ?? 'open',
-    ageDivisionTypeId: age?.id ?? DEFAULT_AGE_DIVISION_FALLBACK,
-  };
-};
-
-const INITIAL_DIVISION_SELECTIONS = getDefaultDivisionTypeSelections(DEFAULT_SPORT);
 const TEAM_SIZE_WARNING = 'Team size must be 2 or above.';
 
 type TeamSizeInputValue = string | number;
+type DivisionGenderInput = 'M' | 'F' | 'C' | '';
 type UserDataWithApiId = UserData & { id?: unknown };
 
 const parseTeamSizeInput = (value: TeamSizeInputValue): number | null => {
@@ -99,15 +80,21 @@ const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTy
   return `skill_${normalizedSkill}_age_${normalizedAge}`;
 };
 
+const isJoinableTeamPolicy = (joinPolicy: TeamJoinPolicy): boolean => (
+  joinPolicy === 'OPEN_REGISTRATION' || joinPolicy === 'REQUEST_TO_JOIN'
+);
+
 export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCreated, organizationId }: CreateTeamModalProps) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTeamImageUrl, setSelectedTeamImageUrl] = useState('');
   const [name, setName] = useState('');
-  const [sport, setSport] = useState(DEFAULT_SPORT);
-  const [divisionGender, setDivisionGender] = useState<'M' | 'F' | 'C'>('C');
-  const [skillDivisionTypeId, setSkillDivisionTypeId] = useState('open');
-  const [ageDivisionTypeId, setAgeDivisionTypeId] = useState(INITIAL_DIVISION_SELECTIONS.ageDivisionTypeId);
+  const [sport, setSport] = useState('');
+  const [joinPolicy, setJoinPolicy] = useState<TeamJoinPolicy>('CLOSED');
+  const [registrationPriceDollars, setRegistrationPriceDollars] = useState<TeamSizeInputValue>(0);
+  const [divisionGender, setDivisionGender] = useState<DivisionGenderInput>('');
+  const [skillDivisionTypeId, setSkillDivisionTypeId] = useState('');
+  const [ageDivisionTypeId, setAgeDivisionTypeId] = useState('');
   const [divisionPreview, setDivisionPreview] = useState('');
   const [teamSize, setTeamSize] = useState<TeamSizeInputValue>(6);
   const [addSelfAsPlayer, setAddSelfAsPlayer] = useState(true);
@@ -130,6 +117,10 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const parsedTeamSize = useMemo(() => parseTeamSizeInput(teamSize), [teamSize]);
   const teamSizeWarning = parsedTeamSize === null || parsedTeamSize < 2 ? TEAM_SIZE_WARNING : null;
   const currentUserId = useMemo(() => getCurrentUserId(currentUser), [currentUser]);
+  const canChargeRegistration = Boolean(currentUser?.hasStripeAccount);
+  const effectiveJoinPolicy: TeamJoinPolicy = isAffiliateRegistration ? 'OPEN_REGISTRATION' : joinPolicy;
+  const registrationEnabled = isJoinableTeamPolicy(effectiveJoinPolicy);
+  const showDivisionFields = registrationEnabled && !isAffiliateRegistration && sport.trim().length > 0;
 
   const skillDivisionOptions = useMemo(
     () => divisionTypeOptions
@@ -199,29 +190,47 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   }, [isOpen, organizationId]);
 
   useEffect(() => {
-    const fallback = getDefaultDivisionTypeSelections(sport);
+    if (!registrationEnabled) {
+      setRegistrationPriceDollars(0);
+    }
+  }, [registrationEnabled]);
+
+  useEffect(() => {
+    if (!showDivisionFields) {
+      setDivisionGender('');
+      setSkillDivisionTypeId('');
+      setAgeDivisionTypeId('');
+      setDivisionPreview('');
+      return;
+    }
+
     const normalizedSkill = normalizeDivisionToken(skillDivisionTypeId);
     const normalizedAge = normalizeDivisionToken(ageDivisionTypeId);
-    const hasSkill = skillDivisionOptions.some((option) => option.value === normalizedSkill);
-    const hasAge = ageDivisionOptions.some((option) => option.value === normalizedAge);
+    const hasSkill = normalizedSkill.length > 0 && skillDivisionOptions.some((option) => option.value === normalizedSkill);
+    const hasAge = normalizedAge.length > 0 && ageDivisionOptions.some((option) => option.value === normalizedAge);
 
-    if (!hasSkill && fallback.skillDivisionTypeId !== skillDivisionTypeId) {
-      setSkillDivisionTypeId(fallback.skillDivisionTypeId);
+    if (skillDivisionTypeId && !hasSkill) {
+      setSkillDivisionTypeId('');
     }
-    if (!hasAge && fallback.ageDivisionTypeId !== ageDivisionTypeId) {
-      setAgeDivisionTypeId(fallback.ageDivisionTypeId);
+    if (ageDivisionTypeId && !hasAge) {
+      setAgeDivisionTypeId('');
     }
   }, [
     ageDivisionOptions,
     ageDivisionTypeId,
+    registrationEnabled,
+    showDivisionFields,
     skillDivisionOptions,
     skillDivisionTypeId,
-    sport,
   ]);
 
   useEffect(() => {
     const nextSkillDivisionTypeId = normalizeDivisionToken(skillDivisionTypeId);
     const nextAgeDivisionTypeId = normalizeDivisionToken(ageDivisionTypeId);
+    if (!showDivisionFields || !divisionGender || !nextSkillDivisionTypeId || !nextAgeDivisionTypeId) {
+      setDivisionPreview('');
+      return;
+    }
     setDivisionPreview(
       buildDivisionName({
         gender: divisionGender,
@@ -230,15 +239,16 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
         ageDivisionTypeId: nextAgeDivisionTypeId,
       }),
     );
-  }, [ageDivisionTypeId, divisionGender, skillDivisionTypeId, sport]);
+  }, [ageDivisionTypeId, divisionGender, showDivisionFields, skillDivisionTypeId, sport]);
 
   const resetForm = () => {
-    const defaults = getDefaultDivisionTypeSelections(DEFAULT_SPORT);
     setName('');
-    setSport(DEFAULT_SPORT);
-    setDivisionGender('C');
-    setSkillDivisionTypeId(defaults.skillDivisionTypeId);
-    setAgeDivisionTypeId(defaults.ageDivisionTypeId);
+    setSport('');
+    setJoinPolicy('CLOSED');
+    setRegistrationPriceDollars(0);
+    setDivisionGender('');
+    setSkillDivisionTypeId('');
+    setAgeDivisionTypeId('');
     setDivisionPreview('');
     setTeamSize(6);
     setAddSelfAsPlayer(true);
@@ -258,6 +268,17 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     const nextSkillDivisionTypeId = normalizeDivisionToken(skillDivisionTypeId);
     const nextAgeDivisionTypeId = normalizeDivisionToken(ageDivisionTypeId);
     const nextTeamSize = parseTeamSizeInput(teamSize);
+    const nextAffiliateUrl = affiliateUrl.trim();
+    const nextJoinPolicy: TeamJoinPolicy = isAffiliateRegistration ? 'OPEN_REGISTRATION' : joinPolicy;
+    const nextRegistrationEnabled = isJoinableTeamPolicy(nextJoinPolicy);
+    const nextRequiresDivision = nextRegistrationEnabled && !isAffiliateRegistration;
+    const nextRegistrationPriceCents = nextAffiliateUrl
+      ? 0
+      : nextJoinPolicy === 'REQUEST_TO_JOIN'
+        ? Math.max(0, Math.round((Number(registrationPriceDollars) || 0) * 100))
+        : nextJoinPolicy === 'OPEN_REGISTRATION' && canChargeRegistration
+          ? Math.max(0, Math.round((Number(registrationPriceDollars) || 0) * 100))
+          : 0;
 
     if (!trimmedName) {
       setError('Team name is required.');
@@ -267,8 +288,8 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
       setError('Sport is required.');
       return;
     }
-    if (!nextSkillDivisionTypeId || !nextAgeDivisionTypeId) {
-      setError('Select both skill and age divisions.');
+    if (nextRequiresDivision && (!divisionGender || !nextSkillDivisionTypeId || !nextAgeDivisionTypeId)) {
+      setError('Select gender, skill division, and age division.');
       return;
     }
     if (nextTeamSize === null || nextTeamSize < 2) {
@@ -279,19 +300,22 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
       setError('Sign in again before creating a team.');
       return;
     }
-    const nextAffiliateUrl = affiliateUrl.trim();
     if (isAffiliateRegistration && !nextAffiliateUrl) {
       setError('Affiliate registration link is required.');
       return;
     }
 
-    const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
-    const nextDivision = buildDivisionName({
-      gender: divisionGender,
-      sportInput: nextSport,
-      skillDivisionTypeId: nextSkillDivisionTypeId,
-      ageDivisionTypeId: nextAgeDivisionTypeId,
-    });
+    const nextDivisionTypeId = nextRequiresDivision
+      ? buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId)
+      : undefined;
+    const nextDivision = nextRequiresDivision
+      ? buildDivisionName({
+          gender: divisionGender || 'C',
+          sportInput: nextSport,
+          skillDivisionTypeId: nextSkillDivisionTypeId,
+          ageDivisionTypeId: nextAgeDivisionTypeId,
+        })
+      : '';
 
     setError(null);
     setCreating(true);
@@ -308,8 +332,9 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           addSelfAsPlayer,
           organizationId,
           affiliateUrl: isAffiliateRegistration ? nextAffiliateUrl : null,
-          joinPolicy: isAffiliateRegistration ? 'OPEN_REGISTRATION' : undefined,
-          openRegistration: isAffiliateRegistration,
+          joinPolicy: nextJoinPolicy,
+          openRegistration: nextJoinPolicy === 'OPEN_REGISTRATION',
+          registrationPriceCents: nextRegistrationPriceCents,
           requiredTemplateIds: organizationId ? selectedRequiredTemplateIds : [],
         },
       );
@@ -347,43 +372,6 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
         </div>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-          <MantineSelect
-            label="Sport"
-            data={sportOptions}
-            value={sport || null}
-            onChange={(value) => setSport(value || '')}
-            searchable
-            allowDeselect={false}
-            nothingFoundMessage="No sports found"
-          />
-          <MantineSelect
-            label="Division Gender"
-            data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-            value={divisionGender}
-            onChange={(value) => setDivisionGender((value as 'M' | 'F' | 'C') || 'C')}
-            allowDeselect={false}
-          />
-          <MantineSelect
-            label="Skill Division"
-            data={skillDivisionOptions}
-            value={skillDivisionTypeId}
-            onChange={(value) => setSkillDivisionTypeId(value || 'open')}
-            searchable
-            allowDeselect={false}
-          />
-          <MantineSelect
-            label="Age Division"
-            data={ageDivisionOptions}
-            value={ageDivisionTypeId}
-            onChange={(value) => setAgeDivisionTypeId(value || DEFAULT_AGE_DIVISION_FALLBACK)}
-            searchable
-            allowDeselect={false}
-          />
-          <TextInput
-            label="Division Preview"
-            value={divisionPreview}
-            readOnly
-          />
           <NumberInput
             label="Team Size"
             min={0}
@@ -392,7 +380,95 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
             onChange={(value) => setTeamSize(value)}
             error={teamSizeWarning}
           />
+          <MantineSelect
+            label="Sport"
+            data={sportOptions}
+            value={sport || null}
+            onChange={(value) => setSport(value || '')}
+            searchable
+            clearable
+            nothingFoundMessage="No sports found"
+          />
         </SimpleGrid>
+
+        <MantineSelect
+          label="Join mode"
+          data={TEAM_JOIN_POLICY_OPTIONS}
+          value={effectiveJoinPolicy}
+          onChange={(value) => {
+            const nextPolicy = (value || 'CLOSED') as TeamJoinPolicy;
+            setJoinPolicy(nextPolicy);
+            if (nextPolicy === 'CLOSED') {
+              setIsAffiliateRegistration(false);
+              setAffiliateUrl('');
+            }
+          }}
+          allowDeselect={false}
+          disabled={isAffiliateRegistration}
+        />
+        <Text size="xs" c="dimmed">
+          {effectiveJoinPolicy === 'OPEN_REGISTRATION'
+            ? 'Players can join this team without an invite.'
+            : effectiveJoinPolicy === 'REQUEST_TO_JOIN'
+              ? 'Players submit a request first. Managers approve before any bill is sent.'
+              : 'Players need an invite to join this team.'}
+        </Text>
+
+        {registrationEnabled && !isAffiliateRegistration ? (
+          <NumberInput
+            label="Registration price"
+            description={
+              effectiveJoinPolicy === 'REQUEST_TO_JOIN'
+                ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
+                : canChargeRegistration
+                  ? 'Leave at $0 for free registration.'
+                  : 'Connect Stripe to charge for open registration. Free registration is still available.'
+            }
+            min={0}
+            decimalScale={2}
+            fixedDecimalScale
+            prefix="$"
+            value={registrationPriceDollars}
+            onChange={(value) => {
+              const numeric = typeof value === 'number' ? value : Number(value);
+              setRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+            }}
+            disabled={effectiveJoinPolicy === 'OPEN_REGISTRATION' && !canChargeRegistration}
+          />
+        ) : null}
+
+        {showDivisionFields ? (
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+            <MantineSelect
+              label="Gender"
+              data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+              value={divisionGender || null}
+              onChange={(value) => setDivisionGender((value as DivisionGenderInput) || '')}
+              clearable
+            />
+            <MantineSelect
+              label="Skill Division"
+              data={skillDivisionOptions}
+              value={skillDivisionTypeId || null}
+              onChange={(value) => setSkillDivisionTypeId(value || '')}
+              searchable
+              clearable
+            />
+            <MantineSelect
+              label="Age Division"
+              data={ageDivisionOptions}
+              value={ageDivisionTypeId || null}
+              onChange={(value) => setAgeDivisionTypeId(value || '')}
+              searchable
+              clearable
+            />
+            <TextInput
+              label="Division Preview"
+              value={divisionPreview}
+              readOnly
+            />
+          </SimpleGrid>
+        ) : null}
 
         <Checkbox
           label="Add me as a player"
@@ -406,7 +482,14 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
             label="External team registration"
             description="Players will register through the linked site instead of BracketIQ."
             checked={isAffiliateRegistration}
-            onChange={(event) => setIsAffiliateRegistration(event.currentTarget.checked)}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setIsAffiliateRegistration(checked);
+              if (checked) {
+                setJoinPolicy('OPEN_REGISTRATION');
+                setRegistrationPriceDollars(0);
+              }
+            }}
           />
           {isAffiliateRegistration ? (
             <TextInput

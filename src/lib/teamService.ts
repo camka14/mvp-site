@@ -191,7 +191,7 @@ class TeamService {
         maxPlayers: number = 6,
         profileImageId?: string,
           options?: {
-              divisionTypeId?: string;
+              divisionTypeId?: string | null;
               addSelfAsPlayer?: boolean;
               organizationId?: string;
               joinPolicy?: TeamJoinPolicy;
@@ -383,7 +383,7 @@ class TeamService {
         const team: Team = {
             $id: teamId,
             name: row.name,
-            division: typeof row.division === 'string' ? row.division : (row.division?.name ?? 'Open'),
+            division: typeof row.division === 'string' ? row.division : (row.division?.name ?? ''),
             divisionTypeId:
                 typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
                     ? row.divisionTypeId
