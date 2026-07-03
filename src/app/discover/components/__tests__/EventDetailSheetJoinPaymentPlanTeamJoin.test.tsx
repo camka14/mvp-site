@@ -399,7 +399,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     const managedTeam = buildTeam({
       $id: 'team_1',
       name: 'Camka Team',
-      division: 'U17',
+      division: 'c_skill_open_age_18plus',
       sport: 'Volleyball',
       managerId: 'user_1',
     });
@@ -453,6 +453,8 @@ describe('EventDetailSheet payment-plan team join', () => {
     if (!teamOption) {
       throw new Error('Expected a combobox option for Camka Team.');
     }
+    expect(teamOption.textContent).toBe('Camka Team');
+    expect(teamOption.textContent).not.toContain('c_skill_open_age_18plus');
     fireEvent.click(teamOption);
 
     const disabledJoinButton = await screen.findByRole('button', { name: /Already in Event/i });

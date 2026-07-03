@@ -6137,7 +6137,7 @@ export default function EventDetailSheet({
                                                                         placeholder="Choose a team"
                                                                         data={userTeams.map(t => ({
                                                                             value: t.$id,
-                                                                            label: `${t.name || 'Team'} (${typeof t.division === 'string' ? t.division : (t.division as any)?.name || 'Division'})`
+                                                                            label: t.name || 'Team',
                                                                         }))}
                                                                         value={selectedTeamId}
                                                                         onChange={(value) => {
