@@ -93,20 +93,30 @@ const hasEventAgeLimits = (event: Pick<RegistrationEventContext, 'minAge' | 'max
   isFiniteNumber(event.minAge) || isFiniteNumber(event.maxAge)
 );
 
+const divisionIdentifierAliases = (value: unknown): Set<string> => {
+  const aliases = new Set<string>();
+  const normalized = normalizeKey(value);
+  if (normalized) {
+    aliases.add(normalized);
+  }
+  const token = extractDivisionTokenFromId(value);
+  if (token) {
+    aliases.add(token);
+  }
+  return aliases;
+};
+
 const matchesDivisionIdentifier = (option: EventDivisionOption, identifier: string): boolean => {
-  if (normalizeKey(option.id) === identifier) {
-    return true;
+  const inputAliases = divisionIdentifierAliases(identifier);
+  if (!inputAliases.size) {
+    return false;
   }
-  if (normalizeKey(option.key) === identifier) {
-    return true;
-  }
-  if (normalizeKey(option.divisionTypeKey) === identifier) {
-    return true;
-  }
-  if (extractDivisionTokenFromId(option.id) === identifier) {
-    return true;
-  }
-  return false;
+  const optionAliases = new Set<string>([
+    ...divisionIdentifierAliases(option.id),
+    ...divisionIdentifierAliases(option.key),
+    ...divisionIdentifierAliases(option.divisionTypeKey),
+  ]);
+  return Array.from(inputAliases).some((alias) => optionAliases.has(alias));
 };
 
 const pickPreferredOption = (options: EventDivisionOption[]): EventDivisionOption | null => {

@@ -915,6 +915,61 @@ describe('POST /api/billing/purchase-intent', () => {
     );
   });
 
+  it('accepts mobile-wrapped division ids and stores the canonical division id', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        minAge: null,
+        maxAge: null,
+        sportId: null,
+        registrationByDivisionType: false,
+        divisions: ['div_a'],
+        maxParticipants: 5,
+        teamSignup: false,
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        id: 'div_a',
+        key: 'div_a',
+        name: 'Division A',
+        sportId: null,
+        divisionTypeId: 'adult',
+        divisionTypeName: 'Adult',
+        ratingType: 'AGE',
+        gender: 'C',
+        ageCutoffDate: null,
+        ageCutoffLabel: null,
+        ageCutoffSource: null,
+      },
+    ]);
+    prismaMock.divisions.findFirst.mockResolvedValueOnce({
+      id: 'div_a',
+      maxParticipants: 5,
+    });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      divisionId: 'event_1__division__div_a',
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
+    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          divisionId: 'div_a',
+          registrantId: 'user_1',
+          registrantType: 'SELF',
+          status: 'STARTED',
+        }),
+      }),
+    );
+  });
+
   it('allows only one reservation when two users race for the final event slot', async () => {
     type RegistrationRow = {
       id: string;

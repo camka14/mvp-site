@@ -532,6 +532,50 @@ describe('POST /api/billing/webhook', () => {
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
   });
 
+  it('activates an existing paid team tournament reservation from the payment webhook', async () => {
+    prismaMock.billPayments.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_tournament_1' });
+    prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_tournament_1' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        eventType: 'TOURNAMENT',
+        teamSignup: true,
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'STARTED' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_tournament_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          team_id: 'event_team_1',
+          event_id: 'event_1',
+          registration_id: 'event_1__team__event_team_1',
+          amount_cents: '4500',
+        },
+        amount: 4700,
+        amountReceived: 4700,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__team__event_team_1' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+        }),
+      }),
+    );
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
+  });
+
   it('uses weekly bill occurrence fields when activating a paid existing bill registration', async () => {
     prismaMock.billPayments.findUnique.mockResolvedValueOnce({
       id: 'bill_payment_weekly_1',

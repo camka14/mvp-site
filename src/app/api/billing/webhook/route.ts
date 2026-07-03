@@ -302,10 +302,6 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'team_signup_disabled' };
         }
         const normalizedEventType = String(event.eventType ?? '').toUpperCase();
-        if (normalizedEventType === 'LEAGUE' || normalizedEventType === 'TOURNAMENT') {
-          return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
-        }
-
         const expectedRegistrationId = buildEventRegistrationId({
           eventId,
           registrantType: 'TEAM',
@@ -318,11 +314,16 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'registration_id_mismatch' };
         }
         const effectiveRegistrationId = normalizedRegistrationId ?? expectedRegistrationId;
+        const schedulableTeamEventRequiresReservation =
+          normalizedEventType === 'LEAGUE' || normalizedEventType === 'TOURNAMENT';
+        if (schedulableTeamEventRequiresReservation && !normalizedRegistrationId) {
+          return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
+        }
         const existingRegistration = await tx.eventRegistrations.findUnique({
           where: { id: effectiveRegistrationId },
           select: { status: true },
         });
-        if (!existingRegistration && normalizedRegistrationId) {
+        if (!existingRegistration && (normalizedRegistrationId || schedulableTeamEventRequiresReservation)) {
           return { applied: false, reason: 'reservation_missing' };
         }
 
