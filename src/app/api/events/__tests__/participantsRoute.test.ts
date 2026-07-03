@@ -419,6 +419,50 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
+  it('requires checkout for paid online team registrations without payment plans', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      price: 10000,
+      allowPaymentPlans: false,
+      registrationPaymentMode: 'ONLINE',
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        teamId: 'team_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(402);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'CHECKOUT_REQUIRED',
+      checkoutRequired: true,
+      error: 'Paid online registration must be completed through checkout.',
+    }));
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
+    expect(prismaMock.bills.create).not.toHaveBeenCalled();
+  });
+
   it('forbids team registration when session user is not the team manager', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'captain_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValueOnce({
@@ -608,6 +652,8 @@ describe('POST /api/events/[eventId]/participants', () => {
       installmentDueRelativeDays: [-1, 0],
     };
     prismaMock.divisions.findFirst
+      .mockResolvedValueOnce(paidDivision)
+      .mockResolvedValueOnce(paidDivision)
       .mockResolvedValueOnce(paidDivision)
       .mockResolvedValueOnce(paidDivision);
     prismaMock.bills.update.mockResolvedValueOnce({

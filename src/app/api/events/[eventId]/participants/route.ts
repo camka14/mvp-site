@@ -42,7 +42,10 @@ import {
   type RefundRequestRow,
   type StripeRefundAttempt,
 } from '@/server/refunds/refundExecution';
-import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
+import {
+  requireVerifiedEmailForEventRegistrationIfPaid,
+  resolveEventRegistrationPriceCents,
+} from '@/server/paidRegistrationGate';
 import {
   assignRegisteredTeamToTournamentPool,
   getTournamentPoolIdsForBracket,
@@ -70,6 +73,8 @@ const payloadSchema = z.object({
   refundReason: z.string().optional(),
   answers: z.any().optional(),
 }).strict();
+
+const PAID_ONLINE_CHECKOUT_REQUIRED_ERROR = 'Paid online registration must be completed through checkout.';
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
@@ -593,6 +598,28 @@ const createRegistrationBillForRegistration = async (
   }
   return createWeeklyPaymentPlanBillForRegistration(params);
 };
+
+const resolveDirectRegistrationPaymentPlanAllowed = async (
+  event: any,
+  divisionSelection: {
+    divisionId?: string | null;
+    divisionTypeId?: string | null;
+    divisionTypeKey?: string | null;
+  },
+): Promise<boolean> => {
+  const eventAllowsPaymentPlans = Boolean(event?.allowPaymentPlans);
+  const division = await resolveBillingDivision(prisma, event.id, divisionSelection);
+  return division?.allowPaymentPlans === true || eventAllowsPaymentPlans;
+};
+
+const buildCheckoutRequiredResponse = () => NextResponse.json(
+  {
+    error: PAID_ONLINE_CHECKOUT_REQUIRED_ERROR,
+    code: 'CHECKOUT_REQUIRED',
+    checkoutRequired: true,
+  },
+  { status: 402 },
+);
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -1247,6 +1274,7 @@ async function updateParticipants(
   const divisionSelection = mode === 'add' && divisionSelectionResult?.ok
     ? divisionSelectionResult.selection
     : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
+  let directOnlineCheckoutRequired = false;
   if (mode === 'add') {
     const emailVerificationRequired = await requireVerifiedEmailForEventRegistrationIfPaid({
       userId: session.userId,
@@ -1255,6 +1283,20 @@ async function updateParticipants(
     });
     if (emailVerificationRequired) {
       return emailVerificationRequired;
+    }
+    const registrationPriceCents = await resolveEventRegistrationPriceCents({
+      event,
+      selection: divisionSelection,
+    });
+    const paymentPlanAllowed = registrationPriceCents > 0
+      ? await resolveDirectRegistrationPaymentPlanAllowed(event, divisionSelection)
+      : false;
+    directOnlineCheckoutRequired = registrationPriceCents > 0
+      && !canManageCurrentEvent
+      && !isManualRegistrationPaymentMode(event.registrationPaymentMode)
+      && !paymentPlanAllowed;
+    if (directOnlineCheckoutRequired && userId) {
+      return buildCheckoutRequiredResponse();
     }
   }
   const eventAnswersSnapshot = mode === 'add'
@@ -1403,6 +1445,9 @@ async function updateParticipants(
         { error: 'Only the team manager can register or withdraw this team.' },
         { status: 403 },
       );
+    }
+    if (mode === 'add' && directOnlineCheckoutRequired) {
+      return buildCheckoutRequiredResponse();
     }
     teamRefundReason = (!isTeamManager && canManageCurrentEvent)
       ? 'team_unregistered_by_host'
