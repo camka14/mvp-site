@@ -2661,24 +2661,7 @@ describe('schedule routes', () => {
       }),
     );
     expect(prismaMock.events.update.mock.calls[0][0].data.teamIds).toBeUndefined();
-    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: `event_1__team__${createdTeamId}` },
-        create: expect.objectContaining({
-          eventId: 'event_1',
-          registrantId: createdTeamId,
-          registrantType: 'TEAM',
-          rosterRole: 'PARTICIPANT',
-          status: 'ACTIVE',
-          eventTeamId: createdTeamId,
-        }),
-        update: expect.objectContaining({
-          rosterRole: 'PARTICIPANT',
-          status: 'ACTIVE',
-          eventTeamId: createdTeamId,
-        }),
-      }),
-    );
+    expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
     expect(json.created?.new_1).toEqual(expect.any(String));
   });
 

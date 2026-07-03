@@ -1505,21 +1505,22 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       }, params.tx);
   }
 
-  if (params.upsertRegistration !== false && sourcePlaceholderEventTeamId) {
-    await upsertEventRegistration({
-      eventId: params.eventId,
-      registrantType: 'TEAM',
-      registrantId: sourcePlaceholderEventTeamId,
-      parentId: null,
-      rosterRole: 'PARTICIPANT',
-      status: 'ACTIVE',
-      eventTeamId: sourcePlaceholderEventTeamId,
-      divisionId: sourcePlaceholderDivisionId,
-      divisionTypeId: sourcePlaceholderDivisionTypeId,
-      divisionTypeKey: null,
-      createdBy: params.createdBy,
-      occurrence: params.occurrence,
-    }, params.tx);
+  if (params.upsertRegistration !== false && sourcePlaceholderEventTeamId && params.tx?.eventRegistrations?.updateMany) {
+    await params.tx.eventRegistrations.updateMany({
+      where: {
+        eventId: params.eventId,
+        registrantType: 'TEAM',
+        status: { in: ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES },
+        OR: [
+          { registrantId: sourcePlaceholderEventTeamId },
+          { eventTeamId: sourcePlaceholderEventTeamId },
+        ],
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: now,
+      },
+    });
   }
 
   if (params.upsertRegistration !== false && duplicateRegisteredEventTeams.length && params.tx?.eventRegistrations?.updateMany) {

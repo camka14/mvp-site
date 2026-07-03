@@ -236,13 +236,17 @@ export default function EventCard({
   );
 
   const attendeeCount = useMemo(() => {
+    if (Number.isFinite(event.participantCount)) {
+      return Math.max(0, Math.trunc(Number(event.participantCount)));
+    }
     if (Number.isFinite(event.attendees)) {
       return Math.max(0, Math.trunc(event.attendees));
     }
-    return event.teamSignup
-      ? (Array.isArray(event.teamIds) ? event.teamIds.length : 0)
-      : (Array.isArray(event.userIds) ? event.userIds.length : 0);
-  }, [event.attendees, event.teamIds, event.teamSignup, event.userIds]);
+    if (event.teamSignup) {
+      return 0;
+    }
+    return Array.isArray(event.userIds) ? event.userIds.length : 0;
+  }, [event.attendees, event.participantCount, event.teamSignup, event.userIds]);
 
   return (
     <div

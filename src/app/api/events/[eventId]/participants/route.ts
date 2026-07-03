@@ -767,7 +767,6 @@ const resetEventTeamSlotToPlaceholder = async (params: {
   const divisionTypeId = normalizeId(params.existingRegistration?.divisionTypeId)
     ?? normalizeId(params.eventTeam?.divisionTypeId)
     ?? normalizeId(params.team?.divisionTypeId);
-  const divisionTypeKey = normalizeId(params.existingRegistration?.divisionTypeKey);
   const teamSize = normalizeNonNegativeInt(params.event?.teamSizeLimit)
     ?? normalizeNonNegativeInt(params.eventTeam?.teamSize)
     ?? normalizeNonNegativeInt(params.team?.teamSize)
@@ -803,21 +802,6 @@ const resetEventTeamSlotToPlaceholder = async (params: {
       updatedAt: params.now,
     },
   });
-
-  await upsertEventRegistration({
-    eventId: params.event.id,
-    registrantType: 'TEAM',
-    registrantId: params.eventTeamId,
-    parentId: null,
-    rosterRole: 'PARTICIPANT',
-    status: 'ACTIVE',
-    eventTeamId: params.eventTeamId,
-    divisionId,
-    divisionTypeId,
-    divisionTypeKey,
-    createdBy: params.createdBy,
-    occurrence: params.occurrence,
-  }, params.tx);
 };
 const normalizeSportKey = (value: unknown): string => {
   if (typeof value !== 'string') {

@@ -153,9 +153,9 @@ const normalizeTeamIds = (value: unknown): string[] => {
   );
 };
 
-const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: unknown; userIds?: unknown }): number => {
+const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; userIds?: unknown }): number => {
   if (event.teamSignup) {
-    return normalizeTeamIds(event.teamIds).length;
+    return 0;
   }
   return (coerceArray(event.userIds) ?? []).length;
 };

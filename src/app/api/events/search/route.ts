@@ -302,9 +302,9 @@ const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) 
   return 2 * R * Math.asin(Math.sqrt(a));
 };
 
-const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: unknown; userIds?: unknown }): number => {
+const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; userIds?: unknown }): number => {
   if (event.teamSignup) {
-    return normalizeIds(event.teamIds).length;
+    return 0;
   }
   return normalizeIds(event.userIds).length;
 };

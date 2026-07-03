@@ -1584,14 +1584,13 @@ describe('DELETE /api/events/[eventId]/participants', () => {
         name: 'Place Holder 2',
       }),
     }));
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'slot_1',
       eventTeamId: 'slot_1',
       parentId: null,
       rosterRole: 'PARTICIPANT',
-      status: 'ACTIVE',
       divisionId: 'div_a',
       divisionTypeId: 'open',
     }), expect.anything());
@@ -1675,13 +1674,12 @@ describe('DELETE /api/events/[eventId]/participants', () => {
         managerId: '',
       }),
     }));
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'slot_1',
       eventTeamId: 'slot_1',
       parentId: null,
-      status: 'ACTIVE',
     }), expect.anything());
   });
 
