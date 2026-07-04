@@ -114,6 +114,8 @@ type TeamRegistrationSettingsSource = {
   requiredTemplateIds?: string[] | null;
 };
 
+const PLACEHOLDER_NAME_ORDINAL_REGEX = /^\s*place\s*holder\s+(\d+)\b/i;
+
 export const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -137,6 +139,25 @@ export const normalizeIdList = (value: unknown): string[] => (
       .filter((entry): entry is string => Boolean(entry)),
   ))
 );
+
+const normalizeSortNumber = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return numeric;
+};
+
+const placeholderClaimOrder = (row: EventTeamRow): number => {
+  const explicitSeed = normalizeSortNumber((row as EventTeamRow & { seed?: unknown }).seed);
+  if (explicitSeed !== null) {
+    return explicitSeed;
+  }
+
+  const match = String(row.name ?? '').match(PLACEHOLDER_NAME_ORDINAL_REGEX);
+  const ordinal = match ? normalizeSortNumber(match[1]) : null;
+  return ordinal ?? Number.MAX_SAFE_INTEGER;
+};
 
 const ACTIVE_TEAM_MEMBER_STATUSES = new Set(['ACTIVE', 'PENDING']);
 const INVITED_TEAM_MEMBER_STATUSES = new Set(['INVITED']);
@@ -1333,9 +1354,9 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       return false;
     })
     .sort((left: any, right: any) => {
-      const seedDelta = Number(left.seed ?? Number.MAX_SAFE_INTEGER) - Number(right.seed ?? Number.MAX_SAFE_INTEGER);
-      if (seedDelta !== 0) {
-        return seedDelta;
+      const claimOrderDelta = placeholderClaimOrder(left) - placeholderClaimOrder(right);
+      if (claimOrderDelta !== 0) {
+        return claimOrderDelta;
       }
       const leftCreatedAt = left.createdAt ? new Date(left.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
       const rightCreatedAt = right.createdAt ? new Date(right.createdAt).getTime() : Number.MAX_SAFE_INTEGER;

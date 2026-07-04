@@ -709,6 +709,98 @@ describe('claimOrCreateEventTeamSnapshot', () => {
     }), expect.anything());
   });
 
+  it('claims the lowest numbered placeholder when generated placeholders share timestamps', async () => {
+    const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
+      Promise.resolve({ id: where.id, ...data })
+    ));
+    const sharedCreatedAt = new Date('2026-01-01T00:00:00.000Z');
+    const findManyMock = jest.fn(({ where }: { where: Record<string, unknown> }) => {
+      if (where.kind === 'PLACEHOLDER') {
+        return Promise.resolve([
+          {
+            id: 'placeholder_seed_10',
+            eventId: 'event_1',
+            kind: 'PLACEHOLDER',
+            parentTeamId: null,
+            division: 'div_a',
+            divisionTypeId: 'open',
+            name: 'Place Holder 10',
+            createdAt: sharedCreatedAt,
+          },
+          {
+            id: 'placeholder_seed_2',
+            eventId: 'event_1',
+            kind: 'PLACEHOLDER',
+            parentTeamId: null,
+            division: 'div_a',
+            divisionTypeId: 'open',
+            name: 'Place Holder 2',
+            createdAt: sharedCreatedAt,
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const tx = {
+      teams: {
+        findMany: findManyMock,
+        update: updateMock,
+        create: jest.fn(),
+      },
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      eventTeamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+
+    await expect(claimOrCreateEventTeamSnapshot({
+      tx,
+      eventId: 'event_1',
+      canonicalTeamId: 'team_1',
+      createdBy: 'user_1',
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      canonicalTeam: {
+        id: 'team_1',
+        name: 'Canonical Team',
+        division: 'Open',
+        divisionTypeId: 'open',
+        wins: null,
+        losses: null,
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'volleyball',
+        captainId: '',
+        managerId: 'user_1',
+        headCoachId: null,
+        coachIds: [],
+        pending: [],
+        playerRegistrations: [],
+        staffAssignments: [],
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      id: 'placeholder_seed_2',
+      division: 'div_a',
+    }));
+
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'placeholder_seed_2' },
+      data: expect.objectContaining({
+        kind: 'REGISTERED',
+        parentTeamId: 'team_1',
+        division: 'div_a',
+      }),
+    }));
+    expect(tx.teams.create).not.toHaveBeenCalled();
+  });
+
   it('swaps an existing registered event team into a target placeholder slot', async () => {
     const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
       Promise.resolve({ id: where.id, ...data })

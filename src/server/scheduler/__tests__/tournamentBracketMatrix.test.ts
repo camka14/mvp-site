@@ -112,5 +112,61 @@ describe('tournament bracket matrix', () => {
       expect(uniqueDoubleMatchIds.size).toBe(doubleMatchIds.length);
     }
   });
-});
 
+  it('rebuilds a non-pool tournament with existing registered teams plus placeholder slots', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = {
+      team_registered: new Team({
+        id: 'team_registered',
+        captainId: 'captain_registered',
+        division,
+        name: 'Registered Team',
+        matches: [],
+      }),
+    };
+    const tournament = new Tournament({
+      id: 'matrix_tournament_registered_plus_placeholders',
+      name: 'Registered Plus Placeholders',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 0, 5, 22, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      registeredTeamIds: ['team_registered'],
+      divisions: [division],
+      fields: { [field.id]: field },
+      timeSlots: buildTimeSlots(),
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament, includePlaceholderTeams: true }, context);
+    const scheduledTeamIds = Object.keys(scheduled.event.teams);
+    const placeholderTeams = Object.values(scheduled.event.teams)
+      .filter((team) => team.captainId === '' && team.name.startsWith('Place Holder '));
+    const firstRoundMatches = scheduled.matches.filter((match) => (
+      !match.previousLeftMatch && !match.previousRightMatch
+    ));
+    const directlyAssignedTeamIds = firstRoundMatches.flatMap((match) => [
+      match.team1?.id,
+      match.team2?.id,
+    ]).filter((teamId): teamId is string => Boolean(teamId));
+
+    expect(scheduledTeamIds).toContain('team_registered');
+    expect(placeholderTeams.map((team) => team.name).sort()).toEqual([
+      'Place Holder 2',
+      'Place Holder 3',
+      'Place Holder 4',
+    ]);
+    expect(scheduled.matches).toHaveLength(3);
+    expect(firstRoundMatches).toHaveLength(2);
+    expect(new Set(directlyAssignedTeamIds)).toEqual(new Set(scheduledTeamIds));
+  });
+});
