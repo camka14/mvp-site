@@ -91,6 +91,22 @@ describe('EventCard affiliate schedule display', () => {
     expect(screen.queryByText('07/02/2026 at 08:05 PM')).not.toBeInTheDocument();
   });
 
+  it('shows missing affiliate prices as not specified instead of free', () => {
+    renderWithMantine(
+      <EventCard
+        event={createEvent({
+          price: 0,
+          priceText: null,
+          divisions: [],
+          divisionDetails: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Price not specified')).toBeInTheDocument();
+    expect(screen.queryByText('Free')).not.toBeInTheDocument();
+  });
+
   it('links affiliate organization hosts to the source website', () => {
     renderWithMantine(
       <EventCard

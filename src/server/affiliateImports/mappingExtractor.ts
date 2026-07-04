@@ -7,6 +7,7 @@ import type {
 } from './types';
 
 type ExtractedFieldName = keyof AffiliateScrapeMapping['fields'];
+export type ExtractedAffiliateFieldValues = Record<string, string | null>;
 
 const nullableFieldNames = [
   'organizerName',
@@ -96,6 +97,18 @@ const findTelerikPostBackUrl = (dom: Document, elementId: string, baseUrl: strin
 const parseDateTimeValue = (value: string, referenceDate: Date): string => {
   const trimmed = normalizeDateText(value);
   if (!trimmed) return '';
+
+  const numericDate = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/);
+  if (numericDate) {
+    const month = Number.parseInt(numericDate[1], 10);
+    const day = Number.parseInt(numericDate[2], 10);
+    const rawYear = Number.parseInt(numericDate[3], 10);
+    const year = numericDate[3].length === 2 ? 2000 + rawYear : rawYear;
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
 
   const explicitStart = trimmed.match(/^([A-Za-z]+\s+\d{1,2},\s*\d{4})\b/);
   if (explicitStart) {
@@ -402,4 +415,22 @@ export const extractAffiliateCandidatesFromPage = (
       return candidate;
     })
     .filter((candidate): candidate is AffiliateCandidateInput => Boolean(candidate));
+};
+
+export const extractAffiliateFieldValuesFromPage = (
+  page: ScrapedPage,
+  fields: Record<string, FieldMapping>,
+): ExtractedAffiliateFieldValues => {
+  const baseUrl = page.finalUrl || page.url;
+  const dom = new JSDOM(page.body, { url: baseUrl });
+  const referenceDate = new Date(page.fetchedAt);
+  const effectiveReferenceDate = Number.isNaN(referenceDate.getTime()) ? new Date() : referenceDate;
+  const root = dom.window.document.documentElement;
+  const fieldValues: ExtractedAffiliateFieldValues = {};
+
+  for (const [fieldName, fieldMapping] of Object.entries(fields)) {
+    fieldValues[fieldName] = extractFieldValue(root, fieldMapping, baseUrl, effectiveReferenceDate);
+  }
+
+  return fieldValues;
 };

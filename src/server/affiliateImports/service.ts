@@ -4,12 +4,13 @@ import {
   buildDivisionToken,
   deriveDivisionTypeDisplayName,
   type DivisionGender,
+  type DivisionRatingType,
 } from '@/lib/divisionTypes';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
-import { extractAffiliateCandidatesFromPage } from './mappingExtractor';
+import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
 import {
   inferAffiliateParticipantAvailability,
   parseAffiliateMaxParticipants,
@@ -73,6 +74,12 @@ const nullableString = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+const sleep = (milliseconds: number): Promise<void> => (
+  milliseconds > 0
+    ? new Promise((resolve) => setTimeout(resolve, milliseconds))
+    : Promise.resolve()
+);
 
 const AFFILIATE_DATE_DISPLAY_MODES = new Set(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
 const EVERGREEN_AFFILIATE_START_DATE = new Date('2099-12-31T12:00:00.000Z');
@@ -347,9 +354,18 @@ const rawExtractedCandidateFields = (candidate: any): Record<string, unknown> =>
     return {};
   }
   const extractedFields = (rawPayload as Record<string, unknown>).extractedFields;
-  return extractedFields && typeof extractedFields === 'object' && !Array.isArray(extractedFields)
-    ? extractedFields as Record<string, unknown>
-    : {};
+  const detailPage = (rawPayload as Record<string, unknown>).detailPage;
+  const detailFields = detailPage && typeof detailPage === 'object' && !Array.isArray(detailPage)
+    ? (detailPage as Record<string, unknown>).extractedFields
+    : null;
+  return {
+    ...(extractedFields && typeof extractedFields === 'object' && !Array.isArray(extractedFields)
+      ? extractedFields as Record<string, unknown>
+      : {}),
+    ...(detailFields && typeof detailFields === 'object' && !Array.isArray(detailFields)
+      ? detailFields as Record<string, unknown>
+      : {}),
+  };
 };
 
 const inferCandidateParticipantAvailability = (candidate: any) => (
@@ -362,9 +378,9 @@ const inferCandidateParticipantAvailability = (candidate: any) => (
 const parsePriceCents = (value: unknown): number | null => {
   const text = nullableString(value);
   if (!text) return null;
-  const match = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/);
+  const match = text.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/);
   if (!match) return null;
-  const amount = Number.parseFloat(match[1]);
+  const amount = Number.parseFloat(match[1].replace(/,/g, ''));
   if (!Number.isFinite(amount)) return null;
   return Math.max(0, Math.round(amount * 100));
 };
@@ -392,7 +408,7 @@ const inferAffiliateTeamSignup = (
   const text = affiliateCandidateText(candidate);
   const lower = text.toLowerCase();
 
-  if (/\b(?:individual|player|free[-\s]?agent)\s+registration\b|\bopen\s+(?:gym|play|court)\b|\bpick[-\s]?up\b|\bdrop[-\s]?in\b/.test(lower)) {
+  if (/\b(?:individual|player|free[-\s]?agent)\s+registration\b|\bindividual\s+type\s+price\b|\bregister\s+individually\b|\bno\s+team\s+required\b|\bopen\s+(?:gym|play|court)\b|\bpick[-\s]?up\b|\bdrop[-\s]?in\b/.test(lower)) {
     return false;
   }
 
@@ -458,6 +474,7 @@ const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge:
   }
 
   const overMatch = haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)?\b/i)
+    ?? haystack.match(/\bover\s*([1-9]\d?)\b/i)
     ?? haystack.match(/\b([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)\b/i);
   if (overMatch) {
     const minAge = Number.parseInt(overMatch[1], 10);
@@ -504,19 +521,20 @@ const buildAffiliateDivisionDetailFromLabel = (
   ]
     .map((value) => nullableString(value) ?? '')
     .join(' '));
+  const ratingType: DivisionRatingType = 'SKILL';
   const skillDivisionTypeId = inferSkillDivisionTypeId(sourceLabel);
   const divisionTypeId = ageRange.ageDivisionTypeId
     ? buildCompositeDivisionTypeId(skillDivisionTypeId, ageRange.ageDivisionTypeId)
     : skillDivisionTypeId;
   const key = buildDivisionToken({
     gender,
-    ratingType: 'SKILL',
+    ratingType,
     divisionTypeId,
   });
   const divisionTypeName = deriveDivisionTypeDisplayName({
     sportInput: sportId ?? nullableString(candidate.sportName),
     gender,
-    ratingType: 'SKILL',
+    ratingType,
     divisionTypeId,
   });
 
@@ -526,7 +544,7 @@ const buildAffiliateDivisionDetailFromLabel = (
     kind: 'LEAGUE',
     divisionTypeId,
     divisionTypeName,
-    ratingType: 'SKILL',
+    ratingType,
     gender,
     price: parsePriceCents(candidate.priceText),
     maxParticipants: inferCandidateParticipantAvailability(candidate).maxParticipants,
@@ -542,6 +560,75 @@ const buildAffiliateDivisionDetail = (candidate: any, sportId?: string | null) =
     ?? nullableString(candidate.skillLevel);
   if (!sourceLabel) return null;
   return buildAffiliateDivisionDetailFromLabel(sourceLabel, candidate, sportId);
+};
+
+const normalizeDivisionGenderValue = (value: unknown): DivisionGender | null => {
+  return value === 'M' || value === 'F' || value === 'C' ? value : null;
+};
+
+const normalizeDivisionRatingTypeValue = (value: unknown): DivisionRatingType | null => {
+  return value === 'AGE' || value === 'SKILL' ? value : null;
+};
+
+const normalizeSourceDivisionPrice = (value: unknown): number | null | undefined => {
+  if (value == null) return value === null ? null : undefined;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return undefined;
+  return Math.max(0, Math.round(numeric));
+};
+
+const normalizeSourceDivisionMaxParticipants = (value: unknown): number | null | undefined => {
+  if (value == null) return value === null ? null : undefined;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return undefined;
+  return Math.max(0, Math.trunc(numeric));
+};
+
+const sourceDivisionRowsFromCandidate = (candidate: any): Record<string, unknown>[] => {
+  const rows = rawExtractedCandidateFields(candidate).divisions;
+  return Array.isArray(rows)
+    ? rows.filter((row): row is Record<string, unknown> => (
+        row != null && typeof row === 'object' && !Array.isArray(row)
+      ))
+    : [];
+};
+
+const buildAffiliateDivisionDetailsFromSourceRows = (candidate: any, sportId?: string | null) => {
+  return sourceDivisionRowsFromCandidate(candidate)
+    .map((row) => {
+      const name = nullableString(row.name);
+      if (!name) return null;
+      const inferred = buildAffiliateDivisionDetailFromLabel(name, candidate, sportId);
+      const gender = normalizeDivisionGenderValue(row.gender) ?? inferred.gender;
+      const ratingType = normalizeDivisionRatingTypeValue(row.ratingType) ?? inferred.ratingType;
+      const divisionTypeId = nullableString(row.divisionTypeId) ?? inferred.divisionTypeId;
+      const key = nullableString(row.key)
+        ?? buildDivisionToken({
+          gender,
+          ratingType,
+          divisionTypeId,
+        });
+
+      return {
+        ...inferred,
+        key,
+        name,
+        gender,
+        ratingType,
+        divisionTypeId,
+        divisionTypeName: deriveDivisionTypeDisplayName({
+          sportInput: sportId ?? nullableString(candidate.sportName),
+          gender,
+          ratingType,
+          divisionTypeId,
+        }),
+        price: normalizeSourceDivisionPrice(row.priceCents),
+        maxParticipants: normalizeSourceDivisionMaxParticipants(row.maxParticipants),
+        ageCutoffLabel: nullableString(row.ageCutoffLabel) ?? inferred.ageCutoffLabel,
+        ageCutoffSource: nullableString(row.ageCutoffSource) ?? inferred.ageCutoffSource,
+      };
+    })
+    .filter((detail): detail is NonNullable<typeof detail> => detail !== null);
 };
 
 const inferSourceDivisionLabels = (candidate: any): string[] => {
@@ -580,6 +667,11 @@ const inferSourceDivisionLabels = (candidate: any): string[] => {
 };
 
 const buildAffiliateDivisionDetails = (candidate: any, sportId?: string | null) => {
+  const sourceDivisionDetails = buildAffiliateDivisionDetailsFromSourceRows(candidate, sportId);
+  if (sourceDivisionDetails.length > 0) {
+    return sourceDivisionDetails;
+  }
+
   const details = inferSourceDivisionLabels(candidate)
     .map((label) => buildAffiliateDivisionDetailFromLabel(label, candidate, sportId));
   const byKey = new Map<string, NonNullable<ReturnType<typeof buildAffiliateDivisionDetailFromLabel>>>();
@@ -614,8 +706,23 @@ const buildAffiliateEventDescription = (candidate: any): string | null => {
 };
 
 const inferAffiliateEventType = (candidate: any): 'EVENT' | 'WEEKLY_EVENT' | 'LEAGUE' | 'TOURNAMENT' => {
+  const sourceFormat = nullableString(candidate.formatLabel ?? candidate.formatName)?.toLowerCase() ?? '';
+  if (/\btournament\b/.test(sourceFormat)) {
+    return 'TOURNAMENT';
+  }
+  if (/\bleague\b/.test(sourceFormat)) {
+    return 'LEAGUE';
+  }
+  if (/\bweekly\b/.test(sourceFormat)) {
+    return 'WEEKLY_EVENT';
+  }
+  if (/\b(?:camp|class|clinic|pickup|pick[-\s]?up|open\s+(?:gym|play|court))\b/.test(sourceFormat)) {
+    return 'EVENT';
+  }
+
   const haystack = [
     candidate.title,
+    candidate.formatLabel,
     candidate.formatName,
     candidate.scheduleText,
     candidate.description,
@@ -778,7 +885,7 @@ const loadSourceOrganization = async (source: { organizationId?: string | null }
   const { organizations } = affiliatePrisma();
   const organization = await organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, coordinates: true },
   });
   if (!organization) {
     throw new Error('Affiliate source organization was not found.');
@@ -891,7 +998,7 @@ const upsertAffiliateFacilityForCandidate = async (
   source: AffiliateScrapeSourceRow,
   options: { status?: string | null } = {},
 ) => {
-  await assertSourceOrganization(source);
+  const organization = await loadSourceOrganization(source);
   const { facilities } = affiliatePrisma();
   const facilityId = nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
   const name = nullableString(candidate.title)
@@ -901,12 +1008,16 @@ const upsertAffiliateFacilityForCandidate = async (
     ?? nullableString(candidate.city)
     ?? nullableString(candidate.address)
     ?? name;
+  const address = nullableString(candidate.address);
+  const geocodeAddress = address ?? location;
+  const coordinates = await geocodeAddressToCoordinates(geocodeAddress)
+    ?? normalizePersistedCoordinates(organization.coordinates);
   const data = {
     organizationId: nullableString(source.organizationId),
     name,
     location,
-    address: nullableString(candidate.address),
-    coordinates: null,
+    address,
+    coordinates,
     operatingHours: null,
     timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
     status: nullableString(options.status) ?? (candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT'),
@@ -1025,6 +1136,78 @@ const resolveActiveMapping = async (
   };
 };
 
+const enrichCandidatesWithDetailPages = async (
+  candidates: AffiliateCandidateInput[],
+  mapping: AffiliateScrapeMapping,
+  client: ScrapePageClient,
+): Promise<AffiliateCandidateInput[]> => {
+  if (!mapping.detailPage) {
+    return candidates;
+  }
+
+  const delayMs = mapping.detailPage.requestDelayMs ?? 0;
+  const enriched: AffiliateCandidateInput[] = [];
+  let fetchedDetailCount = 0;
+
+  for (const candidate of candidates) {
+    const detailUrl = nullableString(candidate[mapping.detailPage.urlField]);
+    if (!detailUrl) {
+      enriched.push(candidate);
+      continue;
+    }
+
+    if (fetchedDetailCount > 0) {
+      await sleep(delayMs);
+    }
+
+    try {
+      const detailPage = await client.fetchPage({
+        url: detailUrl,
+        renderJavascript: mapping.detailPage.renderJavascript,
+        waitMs: mapping.detailPage.waitMs,
+      });
+      fetchedDetailCount += 1;
+      const detailValues = extractAffiliateFieldValuesFromPage(detailPage, mapping.detailPage.fields);
+      const warnings = [...(candidate.warnings ?? [])];
+      const nextCandidate: AffiliateCandidateInput = {
+        ...candidate,
+        rawPayload: {
+          ...(candidate.rawPayload ?? {}),
+          detailPage: {
+            url: detailUrl,
+            finalUrl: detailPage.finalUrl,
+            statusCode: detailPage.statusCode,
+            extractedFields: detailValues,
+          },
+        },
+      };
+
+      Object.entries(mapping.detailPage.fields).forEach(([fieldName, fieldMapping]) => {
+        const value = nullableString(detailValues[fieldName]);
+        if (!value) {
+          if (fieldMapping.required) {
+            warnings.push(`Missing required detail field: ${fieldName}`);
+          }
+          return;
+        }
+        (nextCandidate as Record<string, unknown>)[fieldName] = value;
+      });
+      nextCandidate.warnings = warnings;
+      enriched.push(nextCandidate);
+    } catch (error) {
+      enriched.push({
+        ...candidate,
+        warnings: [
+          ...(candidate.warnings ?? []),
+          `Detail page fetch failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+        ],
+      });
+    }
+  }
+
+  return enriched;
+};
+
 export const runAffiliateSourceScrape = async (
   sourceId: string,
   params: { requestedByUserId?: string | null; client?: ScrapePageClient } = {},
@@ -1057,7 +1240,8 @@ export const runAffiliateSourceScrape = async (
       renderJavascript: mapping.renderJavascript,
       waitMs: mapping.waitMs,
     });
-    const extractedCandidates = extractAffiliateCandidatesFromPage(page, mapping);
+    const extractedListCandidates = extractAffiliateCandidatesFromPage(page, mapping);
+    const extractedCandidates = await enrichCandidatesWithDetailPages(extractedListCandidates, mapping, client);
     const now = new Date();
     const rejectedCandidates: Array<{ title: string; reasons: string[] }> = [];
     const importableCandidates = extractedCandidates.filter((candidate) => {

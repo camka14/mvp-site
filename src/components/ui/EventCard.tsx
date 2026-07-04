@@ -234,6 +234,9 @@ export default function EventCard({
     () => resolveEventParticipantCapacity(event),
     [event],
   );
+  const priceDisplay = isAffiliateEvent
+    ? (event.priceText?.trim() || 'Price not specified')
+    : formatEventDivisionPriceRange(event);
 
   const attendeeCount = useMemo(() => {
     if (Number.isFinite(event.participantCount)) {
@@ -387,7 +390,7 @@ export default function EventCard({
         <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-slate-900">
-              {isAffiliateEvent && event.priceText ? event.priceText : formatEventDivisionPriceRange(event)}
+              {priceDisplay}
             </span>
             {!isAffiliateEvent && (
               <>

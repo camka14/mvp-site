@@ -134,7 +134,7 @@ describe('EventDetailSheet details layout', () => {
     });
   });
 
-  it('omits duplicated division settings while keeping divisions and schedule visible', async () => {
+  it('omits duplicated division settings while keeping start date visible', async () => {
     const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -190,12 +190,11 @@ describe('EventDetailSheet details layout', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Schedule')).toBeInTheDocument();
+      expect(screen.getByText('Start date')).toBeInTheDocument();
     });
 
     expect(screen.queryByText('Division Settings')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Divisions (2)').length).toBeGreaterThan(0);
-    expect(screen.getByText('Schedule')).toBeInTheDocument();
+    expect(screen.getByText('Start date')).toBeInTheDocument();
   });
 
   it('does not repeat matching host and location labels in the hero subtitle', async () => {
@@ -247,6 +246,54 @@ describe('EventDetailSheet details layout', () => {
       'href',
       'https://www.portlandsoftball.com',
     );
+  });
+
+  it('shows missing affiliate prices as not specified in event details', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      $id: 'affiliate_event_missing_price',
+      name: 'Cascade Athletic Clubs Gresham Tennis Doubles Flights',
+      eventType: 'EVENT',
+      teamSignup: false,
+      start: futureStart,
+      price: 0,
+      priceText: null,
+      maxParticipants: null,
+      location: 'Cascade Athletic Clubs Gresham',
+      organizationId: 'affiliate_org_cascade_athletic_clubs_gresham',
+      organization: {
+        $id: 'affiliate_org_cascade_athletic_clubs_gresham',
+        name: 'Cascade Athletic Clubs Gresham',
+        website: 'https://cascadeac.com/gresham/sports-programs/tennis/',
+        ownerId: 'owner_1',
+      } as any,
+      affiliateUrl: 'https://docs.google.com/forms/d/1Fhl7Jzd1YURHpZpVt3nhEmEEFpGqrvZSyjLihd6tqrE/viewform?edit_requested=true',
+      divisions: [],
+      divisionDetails: [],
+    });
+    const user = buildUser({
+      $id: 'user_missing_price',
+      dateOfBirth: '1990-01-01',
+    });
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser: { $id: user.$id, email: 'user@example.com' } });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Cascade Athletic Clubs Gresham Tennis Doubles Flights')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText('Price not specified').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Free / player')).not.toBeInTheDocument();
   });
 
   it('shows an inline auth modal for guests instead of redirecting away from event details', async () => {

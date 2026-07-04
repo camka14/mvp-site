@@ -686,9 +686,10 @@ const teamIsManagedByUser = (team: Team, userId: string): boolean => {
         || staffIds.includes(normalizedUserId);
 };
 
-const getManagedUserTeamsForEvent = (teams: Team[], event: Event | null | undefined, userId: string): Team[] => {
+const getManagedUserTeamsForEvent = (teams: Team[] | null | undefined, event: Event | null | undefined, userId: string): Team[] => {
     const targetSport = getEventSportName(event).toLowerCase();
-    return teams.filter((team) => {
+    const teamList = Array.isArray(teams) ? teams : [];
+    return teamList.filter((team) => {
         const matchesSport = targetSport.length === 0
             || (team.sport || '').trim().toLowerCase() === targetSport;
         return matchesSport && teamIsManagedByUser(team, userId);
@@ -4723,8 +4724,9 @@ export default function EventDetailSheet({
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
-    const eventPriceSummary = isAffiliateEvent && typeof currentEvent.priceText === 'string' && currentEvent.priceText.trim().length > 0
-        ? currentEvent.priceText.trim()
+    const affiliatePriceText = typeof currentEvent.priceText === 'string' ? currentEvent.priceText.trim() : '';
+    const eventPriceSummary = isAffiliateEvent
+        ? (affiliatePriceText || 'Price not specified')
         : `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
     const usesManualRegistrationPayments = currentEvent.registrationPaymentMode === 'MANUAL'
         || (currentEvent.manualPaymentLinks ?? []).length > 0

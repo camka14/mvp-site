@@ -335,6 +335,119 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('uses explicit manual candidate divisions when creating affiliate events', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_gpsd',
+      name: 'Greater Portland Soccer District',
+      sourceKey: 'gpsd-adult-soccer-seasons',
+      activeMappingId: 'mapping_gpsd',
+      listUrl: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
+      organizationId: 'org_gpsd',
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_gpsd',
+      sourceId: 'source_gpsd',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
+        itemSelector: 'body',
+        fields: {
+          title: {
+            selector: 'body',
+            mode: 'literal',
+            value: 'GPSD Fall Adult Outdoor Soccer League',
+          },
+          officialActionUrl: {
+            selector: 'body',
+            mode: 'literal',
+            value: 'https://www.gpsdsoccer.com/team-mgmt/',
+          },
+        },
+        manualCandidates: [
+          {
+            title: 'GPSD Fall Adult Outdoor Soccer League',
+            officialActionUrl: 'https://www.gpsdsoccer.com/team-mgmt/',
+            sourceUrl: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
+            sportName: 'Soccer',
+            dateDisplayMode: 'NO_FIXED_DATE',
+            dateDisplayText: 'Seasonal registration',
+            priceText: 'From $1,695 per team',
+            divisions: [
+              {
+                name: 'Open',
+                gender: 'C',
+                ratingType: 'AGE',
+                divisionTypeId: '18plus',
+                priceCents: 229500,
+              },
+              {
+                name: 'Over 65',
+                gender: 'C',
+                ratingType: 'AGE',
+                divisionTypeId: '65plus',
+                priceCents: 169500,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_gpsd', ownerId: 'owner_1' });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_1' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_soccer' });
+
+    await runAffiliateSourceScrape('source_gpsd', {
+      client: {
+        fetchPage: async () => ({
+          url: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
+          finalUrl: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
+          statusCode: 200,
+          fetchedAt: '2026-07-04T12:00:00.000Z',
+          body: '<html><body>GPSD seasons</body></html>',
+        }),
+      },
+    });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'GPSD Fall Adult Outdoor Soccer League',
+        price: 169500,
+        singleDivision: false,
+        registrationByDivisionType: true,
+        dateDisplayMode: 'NO_FIXED_DATE',
+      }),
+    });
+    expect(prismaMock.divisions.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        name: 'Open',
+        price: 229500,
+        divisionTypeId: '18plus',
+        ratingType: 'AGE',
+        gender: 'C',
+      }),
+    }));
+    expect(prismaMock.divisions.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        name: 'Over 65',
+        price: 169500,
+        divisionTypeId: '65plus',
+        ratingType: 'AGE',
+        gender: 'C',
+      }),
+    }));
+  });
+
   it('reclassifies a scraped candidate and creates the matching target draft', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
@@ -860,6 +973,193 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('merges configured detail-page fields into scraped candidates before persistence', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      activeMappingId: 'mapping_1',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_1',
+      sourceId: 'source_1',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://example.com/events',
+        itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: {
+            selector: '.register',
+            mode: 'attribute',
+            attribute: 'href',
+            transform: 'absoluteUrl',
+          },
+          sourceUrl: {
+            selector: '.title',
+            mode: 'attribute',
+            attribute: 'href',
+            transform: 'absoluteUrl',
+          },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+        },
+        detailPage: {
+          urlField: 'sourceUrl',
+          requestDelayMs: 0,
+          fields: {
+            description: { selector: '.description' },
+            priceText: { selector: '.price', transform: 'priceText' },
+            maxParticipantsText: { selector: '.capacity' },
+          },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_1' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    const client = {
+      fetchPage: jest.fn(async ({ url }: { url: string }) => {
+        if (url === 'https://example.com/events/future') {
+          return {
+            url,
+            finalUrl: url,
+            statusCode: 200,
+            fetchedAt: '2026-06-26T00:00:00.000Z',
+            body: `
+              <article>
+                <div class="description">Organizer-provided league details.</div>
+                <div class="price">$120.00 per team</div>
+                <div class="capacity">16 Teams</div>
+              </article>
+            `,
+          };
+        }
+        return {
+          url: 'https://example.com/events',
+          finalUrl: 'https://example.com/events',
+          statusCode: 200,
+          fetchedAt: '2026-06-26T00:00:00.000Z',
+          body: `
+            <div class="event">
+              <a class="title" href="/events/future">Future league</a>
+              <span class="start">2099-01-01T18:00:00.000Z</span>
+              <a class="register" href="/register/future">Register</a>
+            </div>
+          `,
+        };
+      }),
+    };
+
+    await runAffiliateSourceScrape('source_1', { client });
+
+    expect(client.fetchPage).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://example.com/events' }));
+    expect(client.fetchPage).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://example.com/events/future' }));
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: 'Future league',
+        description: 'Organizer-provided league details.',
+        priceText: '$120.00 per team',
+        rawPayload: expect.objectContaining({
+          detailPage: expect.objectContaining({
+            extractedFields: expect.objectContaining({
+              maxParticipantsText: '16 Teams',
+            }),
+          }),
+        }),
+      }),
+    });
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        description: 'Organizer-provided league details.',
+        price: 12000,
+        maxParticipants: 16,
+      }),
+    });
+  });
+
+  it('keeps source-labeled class rows as individual affiliate events', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      activeMappingId: 'mapping_1',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_1',
+      sourceId: 'source_1',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://example.com/events',
+        itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: {
+            selector: '.register',
+            mode: 'attribute',
+            attribute: 'href',
+            transform: 'absoluteUrl',
+          },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+          formatLabel: { selector: ':scope', mode: 'literal', value: 'class' },
+          priceText: { selector: '.price' },
+          description: { selector: '.description' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_1' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    const client = {
+      fetchPage: jest.fn(async () => ({
+        url: 'https://example.com/events',
+        finalUrl: 'https://example.com/events',
+        statusCode: 200,
+        fetchedAt: '2026-06-26T00:00:00.000Z',
+        body: `
+          <div class="event">
+            <span class="title">Summer Skillz</span>
+            <span class="start">2099-07-06T18:00:00.000Z</span>
+            <span class="price">Individual Type Price $80.00</span>
+            <p class="description">Skill development with league-style games.</p>
+            <a class="register" href="/register/skillz">Register</a>
+          </div>
+        `,
+      })),
+    };
+
+    await runAffiliateSourceScrape('source_1', { client });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Summer Skillz',
+        eventType: 'EVENT',
+        teamSignup: false,
+        teamSizeLimit: 1,
+        price: 8000,
+      }),
+    });
+  });
+
   it('skips scraped event candidates after a source registration deadline has passed', async () => {
     prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
       id: 'source_1',
@@ -1270,6 +1570,7 @@ describe('affiliate import service', () => {
     prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
     prismaMock.facilities.upsert.mockImplementation(async ({ create }) => ({ ...create }));
     prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6507, 45.5312]);
 
     const client = {
       fetchPage: jest.fn(async () => ({
@@ -1291,12 +1592,14 @@ describe('affiliate import service', () => {
         name: 'RCF East: Portland court rentals',
         location: 'RCF East: Portland',
         address: '5010 NE Oregon St, Portland, OR 97213',
+        coordinates: [-122.6507, 45.5312],
         affiliateUrl: 'https://rosecityfutsal.ezfacility.com/Sessions',
         status: 'DRAFT',
       }),
       update: expect.objectContaining({
         organizationId: 'org_rose_city',
         name: 'RCF East: Portland court rentals',
+        coordinates: [-122.6507, 45.5312],
         affiliateUrl: 'https://rosecityfutsal.ezfacility.com/Sessions',
         status: 'DRAFT',
       }),
@@ -1304,6 +1607,89 @@ describe('affiliate import service', () => {
     expect(prismaMock.affiliateImportCandidates.update).toHaveBeenLastCalledWith({
       where: { id: 'generated_2' },
       data: { publishedFacilityId: 'affiliate_facility_rose_city_futsal_court_rentals_rcf_east_portland_court_rentals' },
+    });
+  });
+
+  it('falls back to the source organization coordinates for affiliate rental facilities', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rentals',
+      name: 'Cascade Athletic Clubs Gresham Rentals',
+      sourceKey: 'cascade-athletic-clubs-gresham-rentals',
+      activeMappingId: 'mapping_rentals',
+      listUrl: 'https://cascadeac.com/gresham/sports-programs/pickleball/',
+      organizationId: 'org_cascade',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_cascade',
+      ownerId: 'owner_1',
+      coordinates: [-122.4650436, 45.5047844],
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_rentals',
+      sourceId: 'source_rentals',
+      mapping: {
+        kind: 'RENTAL',
+        listUrl: 'https://cascadeac.com/gresham/sports-programs/pickleball/',
+        itemSelector: 'h4',
+        fields: {
+          title: {
+            selector: ':scope',
+            valueMap: { 'Pickleball Courts': 'Cascade Athletic Clubs Gresham Pickleball Courts' },
+          },
+          officialActionUrl: {
+            selector: ':scope',
+            mode: 'literal',
+            value: 'https://cascadeac.clubautomation.com/',
+            transform: 'absoluteUrl',
+          },
+          venueName: {
+            selector: ':scope',
+            mode: 'literal',
+            value: 'Cascade Athletic Clubs Gresham',
+          },
+          address: {
+            selector: ':scope',
+            mode: 'literal',
+            value: '19201 SE Division St, Gresham, OR 97030',
+          },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_rentals' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_rentals', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.facilities.upsert.mockImplementation(async ({ create }) => ({ ...create }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+
+    const client = {
+      fetchPage: jest.fn(async () => ({
+        url: 'https://cascadeac.com/gresham/sports-programs/pickleball/',
+        finalUrl: 'https://cascadeac.com/gresham/sports-programs/pickleball/',
+        statusCode: 200,
+        fetchedAt: '2026-07-04T00:00:00.000Z',
+        body: '<h4>Pickleball Courts</h4>',
+      })),
+    };
+
+    await runAffiliateSourceScrape('source_rentals', { client });
+
+    expect(prismaMock.facilities.upsert).toHaveBeenCalledWith({
+      where: { id: 'affiliate_facility_cascade_athletic_clubs_gresham_rentals_cascade_athletic_clubs_gresham_pickleball_courts' },
+      create: expect.objectContaining({
+        id: 'affiliate_facility_cascade_athletic_clubs_gresham_rentals_cascade_athletic_clubs_gresham_pickleball_courts',
+        organizationId: 'org_cascade',
+        name: 'Cascade Athletic Clubs Gresham Pickleball Courts',
+        address: '19201 SE Division St, Gresham, OR 97030',
+        coordinates: [-122.4650436, 45.5047844],
+        affiliateUrl: 'https://cascadeac.clubautomation.com/',
+      }),
+      update: expect.objectContaining({
+        coordinates: [-122.4650436, 45.5047844],
+        affiliateUrl: 'https://cascadeac.clubautomation.com/',
+      }),
     });
   });
 });

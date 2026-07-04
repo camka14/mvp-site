@@ -3,7 +3,10 @@ import type { AffiliateScrapeMapping, ScrapedPage } from '../types';
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
-const { extractAffiliateCandidatesFromPage } = require('../mappingExtractor') as typeof import('../mappingExtractor');
+const {
+  extractAffiliateCandidatesFromPage,
+  extractAffiliateFieldValuesFromPage,
+} = require('../mappingExtractor') as typeof import('../mappingExtractor');
 
 describe('extractAffiliateCandidatesFromPage', () => {
   const page: ScrapedPage = {
@@ -78,6 +81,23 @@ describe('extractAffiliateCandidatesFromPage', () => {
     expect(candidates[0].startsAt).toBe('2026-07-25T07:00:00.000Z');
   });
 
+  it('normalizes numeric month/day/two-digit-year dates', () => {
+    const numericDatePage: ScrapedPage = {
+      ...page,
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/numeric">Numeric Date Tournament</a>
+          <span class="date">7/25/26 - 7/26/26</span>
+        </section>
+      `,
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(numericDatePage, mapping);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].startsAt).toBe('2026-07-25T07:00:00.000Z');
+  });
+
   it('maps extracted values through a configured value map', () => {
     const valueMapMapping: AffiliateScrapeMapping = {
       kind: 'RENTAL',
@@ -102,6 +122,41 @@ describe('extractAffiliateCandidatesFromPage', () => {
     expect(candidates[0]).toMatchObject({
       title: 'Summer League',
       officialActionUrl: 'https://example.com/facilities/summer-league-calendar',
+    });
+  });
+
+  it('extracts configured fields from a detail page', () => {
+    const detailPage: ScrapedPage = {
+      url: 'https://example.com/events/summer-league',
+      finalUrl: 'https://example.com/events/summer-league',
+      statusCode: 200,
+      fetchedAt: '2026-06-25T20:00:00.000Z',
+      body: `
+        <main>
+          <section class="summary">
+            <p>Summer league details from the organizer.</p>
+          </section>
+          <a class="register" href="/register/summer-league">Register now</a>
+          <div class="pricing">Team price $120.00</div>
+        </main>
+      `,
+    };
+
+    const fields = extractAffiliateFieldValuesFromPage(detailPage, {
+      description: { selector: '.summary', mode: 'text' },
+      officialActionUrl: {
+        selector: '.register',
+        mode: 'attribute',
+        attribute: 'href',
+        transform: 'absoluteUrl',
+      },
+      priceText: { selector: '.pricing', mode: 'text', transform: 'priceText' },
+    });
+
+    expect(fields).toEqual({
+      description: 'Summer league details from the organizer.',
+      officialActionUrl: 'https://example.com/register/summer-league',
+      priceText: 'Team price $120.00',
     });
   });
 

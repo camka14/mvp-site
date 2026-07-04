@@ -42,6 +42,18 @@ const affiliateDateDisplayModeSchema = z.enum(['SCHEDULED', 'NO_FIXED_DATE', 'ON
 
 const optionalNullableStringSchema = z.string().nullable().optional();
 
+const affiliateManualDivisionSchema = z.object({
+  name: z.string().trim().min(1),
+  key: z.string().trim().min(1).optional(),
+  gender: z.enum(['M', 'F', 'C']).optional(),
+  ratingType: z.enum(['AGE', 'SKILL']).optional(),
+  divisionTypeId: z.string().trim().min(1).optional(),
+  priceCents: z.number().int().min(0).nullable().optional(),
+  maxParticipants: z.number().int().min(0).nullable().optional(),
+  ageCutoffLabel: optionalNullableStringSchema,
+  ageCutoffSource: optionalNullableStringSchema,
+});
+
 const affiliateManualCandidateSchema = z.object({
   listingKind: z.enum(['EVENT', 'RENTAL', 'TEAM']).optional(),
   title: z.string().trim().min(1),
@@ -70,6 +82,7 @@ const affiliateManualCandidateSchema = z.object({
   statusText: optionalNullableStringSchema,
   registrationDeadlineText: optionalNullableStringSchema,
   description: optionalNullableStringSchema,
+  divisions: z.array(affiliateManualDivisionSchema).optional(),
   warnings: z.array(z.string()).optional(),
 });
 
@@ -111,6 +124,9 @@ export const affiliateScrapeMappingSchema = z.object({
   detailPage: z.object({
     urlField: z.enum(['officialActionUrl', 'sourceUrl']),
     fields: z.record(z.string(), fieldMappingSchema),
+    renderJavascript: z.boolean().optional(),
+    waitMs: z.number().int().min(0).max(30_000).optional(),
+    requestDelayMs: z.number().int().min(0).max(30_000).optional(),
   }).optional(),
   dedupe: z.object({
     fields: z.array(z.string().min(1)).min(1),
