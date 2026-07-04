@@ -38,6 +38,7 @@ const mapping: AffiliateScrapeMapping = {
     title: {
       selector: ':scope',
       mode: 'text',
+      excludeSelectors: ['.ext'],
       valueMap: {
         "Men's 18+": "Lake Oswego Summer Adult Basketball League - Men's 18+",
         "Men's 30+": "Lake Oswego Summer Adult Basketball League - Men's 30+",
@@ -102,10 +103,12 @@ const mapping: AffiliateScrapeMapping = {
     ageGroup: {
       selector: ':scope',
       mode: 'text',
+      excludeSelectors: ['.ext'],
     },
     divisionText: {
       selector: ':scope',
       mode: 'text',
+      excludeSelectors: ['.ext'],
     },
     participantOptionsText: {
       selector: ':scope',
