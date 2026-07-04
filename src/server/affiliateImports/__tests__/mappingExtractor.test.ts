@@ -270,6 +270,72 @@ describe('extractAffiliateCandidatesFromPage', () => {
     ]);
   });
 
+  it('parses ampersand, abbreviated month, and cross-month tournament ranges', () => {
+    const rangePage: ScrapedPage = {
+      ...page,
+      body: `
+        <ul>
+          <li><a href="/beaverton-4v4">Beaverton 4v4 Tournament June 13 & 14, 2026</a></li>
+          <li><a href="/mt-hood">Mt Hood Challenge July 31 – August 9, 2026</a></li>
+          <li><a href="/cherry-city">Cherry City Cup Sept 4 – 6, 2026</a></li>
+        </ul>
+      `,
+    };
+    const rangeMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: 'a',
+      itemTextIncludes: ['2026'],
+      fields: {
+        title: {
+          selector: ':scope',
+          mode: 'text',
+          regex: '^(.+?)\\s+(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec))',
+          required: true,
+        },
+        officialActionUrl: {
+          selector: ':scope',
+          mode: 'attribute',
+          attribute: 'href',
+          transform: 'absoluteUrl',
+          required: true,
+        },
+        startsAt: {
+          selector: ':scope',
+          mode: 'text',
+          regex: '((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z]*\\.?\\s+\\d{1,2}.*?\\b20\\d{2}\\b)',
+          transform: 'dateTime',
+        },
+        endsAt: {
+          selector: ':scope',
+          mode: 'text',
+          regex: '((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z]*\\.?\\s+\\d{1,2}.*?\\b20\\d{2}\\b)',
+          transform: 'dateRangeEnd',
+        },
+      },
+    };
+
+    const candidates = extractAffiliateCandidatesFromPage(rangePage, rangeMapping);
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        title: 'Beaverton 4v4 Tournament',
+        startsAt: '2026-06-13T07:00:00.000Z',
+        endsAt: '2026-06-14T07:00:00.000Z',
+      }),
+      expect.objectContaining({
+        title: 'Mt Hood Challenge',
+        startsAt: '2026-07-31T07:00:00.000Z',
+        endsAt: '2026-08-09T07:00:00.000Z',
+      }),
+      expect.objectContaining({
+        title: 'Cherry City Cup',
+        startsAt: '2026-09-04T07:00:00.000Z',
+        endsAt: '2026-09-06T07:00:00.000Z',
+      }),
+    ]);
+  });
+
   it('filters registration cards and parses ordinal date ranges without a year', () => {
     const registrationPage: ScrapedPage = {
       ...page,

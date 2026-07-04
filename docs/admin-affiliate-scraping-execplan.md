@@ -37,6 +37,8 @@ The first visible outcome is an admin-only import surface where an admin chooses
 - [x] (2026-06-26 18:25Z) Added source-derived division creation for affiliate event imports when a scraper mapping captures a division or level.
 - [x] (2026-06-26 18:25Z) Added registration-deadline filtering so event/team imports skip source registrations that are already closed.
 - [x] (2026-06-30 15:00Z) Added evergreen affiliate program support for sources that describe stable programs but do not expose reliable dated event rows. Candidate mappings can now set `dateDisplayMode` and `dateDisplayText`, and manual-summary mappings can emit curated no-fixed-date candidates after a source page is fetched.
+- [x] (2026-07-04 17:25Z) Added the Oregon Youth Soccer sanctioned tournaments source as a directory-style scraper-backed mapping. The OYSA source creates candidates from official sanctioned tournament links and treats host tournament sites as the authority for registration, fees, venues, and detailed divisions.
+- [x] (2026-07-04 18:05Z) Added Portland Youth Soccer Association as a separate direct source from OYSA. The PYSA source uses manual-summary candidates for Fall 2026 league, Fall Shootout, and Spring 2027 league because the Sports Connect pages expose dates, fees, and division tables across static pages rather than repeated event cards.
 - [ ] Publish flow end to end with manually inspected ScrapingDog output.
 - [ ] Make affiliate/external registration orthogonal to event behavior so manually created and scraped affiliate events can also use `WEEKLY_EVENT`.
 - [ ] Update public event/rental UI so affiliate listings replace internal join or booking controls with a clear external link.

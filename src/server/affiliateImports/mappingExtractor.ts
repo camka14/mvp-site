@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import type {
   AffiliateCandidateInput,
   AffiliateScrapeMapping,
@@ -35,6 +35,13 @@ const nullableFieldNames = [
   'description',
 ] as const;
 
+const createDom = (html: string, url: string): JSDOM => (
+  new JSDOM(html, {
+    url,
+    virtualConsole: new VirtualConsole(),
+  })
+);
+
 const normalizeWhitespace = (value: string): string => (
   value.replace(/\s+/g, ' ').trim()
 );
@@ -42,6 +49,9 @@ const normalizeWhitespace = (value: string): string => (
 const normalizeDateText = (value: string): string => (
   normalizeWhitespace(value)
     .replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
+    .replace(/\bSept\.?\b/gi, 'September')
+    .replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.\b/gi, '$1')
+    .replace(/\s+(?:&|and)\s+/gi, ' – ')
     .replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+/gi, '')
 );
 
@@ -123,6 +133,14 @@ const parseDateTimeValue = (value: string, referenceDate: Date): string => {
     const compactStartDate = new Date(`${compactRangeStart[1]} ${compactRangeStart[2]}, ${compactRangeStart[3]}`);
     if (!Number.isNaN(compactStartDate.getTime())) {
       return compactStartDate.toISOString();
+    }
+  }
+
+  const crossMonthRangeStart = trimmed.match(/^([A-Za-z]+)\s+(\d{1,2})\s*[-–]\s*[A-Za-z]+\s+\d{1,2},\s*(\d{4})\b/);
+  if (crossMonthRangeStart) {
+    const crossMonthStartDate = new Date(`${crossMonthRangeStart[1]} ${crossMonthRangeStart[2]}, ${crossMonthRangeStart[3]}`);
+    if (!Number.isNaN(crossMonthStartDate.getTime())) {
+      return crossMonthStartDate.toISOString();
     }
   }
 
@@ -361,7 +379,7 @@ export const extractAffiliateCandidatesFromPage = (
     });
   }
 
-  const dom = new JSDOM(page.body, { url: page.finalUrl || page.url });
+  const dom = createDom(page.body, page.finalUrl || page.url);
   const referenceDate = new Date(page.fetchedAt);
   const effectiveReferenceDate = Number.isNaN(referenceDate.getTime()) ? new Date() : referenceDate;
   const requiredIncludes = (mapping.itemTextIncludes ?? []).map((value) => normalizeWhitespace(value).toLowerCase());
@@ -422,7 +440,7 @@ export const extractAffiliateFieldValuesFromPage = (
   fields: Record<string, FieldMapping>,
 ): ExtractedAffiliateFieldValues => {
   const baseUrl = page.finalUrl || page.url;
-  const dom = new JSDOM(page.body, { url: baseUrl });
+  const dom = createDom(page.body, baseUrl);
   const referenceDate = new Date(page.fetchedAt);
   const effectiveReferenceDate = Number.isNaN(referenceDate.getTime()) ? new Date() : referenceDate;
   const root = dom.window.document.documentElement;
