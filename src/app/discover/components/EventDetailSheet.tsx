@@ -1432,21 +1432,29 @@ function PublicEventSection({
     children,
     className = '',
 }: {
-    eyebrow: string;
-    title: string;
+    eyebrow?: string;
+    title?: string;
     children: React.ReactNode;
     className?: string;
 }) {
+    const hasHeader = Boolean(eyebrow || title);
+
     return (
         <section className={`border-b border-slate-200 py-7 first:pt-0 last:border-b-0 last:pb-0 ${className}`}>
-            <div className="mb-5">
-                <Text size="xs" c="dimmed" tt="uppercase" fw={800} className="tracking-normal">
-                    {eyebrow}
-                </Text>
-                <h2 className="mt-1 text-xl font-bold leading-tight text-slate-950">
-                    {title}
-                </h2>
-            </div>
+            {hasHeader && (
+                <div className="mb-5">
+                    {eyebrow && (
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={800} className="tracking-normal">
+                            {eyebrow}
+                        </Text>
+                    )}
+                    {title && (
+                        <h2 className={`${eyebrow ? 'mt-1' : ''} text-xl font-bold leading-tight text-slate-950`}>
+                            {title}
+                        </h2>
+                    )}
+                </div>
+            )}
             {children}
         </section>
     );
@@ -5210,7 +5218,7 @@ export default function EventDetailSheet({
                             {renderInline ? (
                                 <>
                                     <div className="space-y-5">
-                                        <PublicEventSection eyebrow="Overview" title="About this event">
+                                        <PublicEventSection title="About this event">
                                             <div className="space-y-5">
                                                 <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
                                                     <div className="min-w-0 flex-1">
@@ -5263,7 +5271,7 @@ export default function EventDetailSheet({
                                             </div>
                                         </PublicEventSection>
 
-                                        <PublicEventSection eyebrow="Location" title="Where and when">
+                                        <PublicEventSection>
                                             <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
                                                 <div className="space-y-3">
                                                     <PublicEventMetaPill
@@ -5306,7 +5314,7 @@ export default function EventDetailSheet({
                                         {(allDivisionOptions.length > 0 || supportsScheduleDetails) && (
                                             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:items-start">
                                                 {allDivisionOptions.length > 0 && (
-                                                    <PublicEventSection eyebrow="Choices" title={`Divisions (${divisionOptions.length})`} className="xl:h-full">
+                                                    <PublicEventSection title="Choices" className="xl:h-full">
                                                         {divisionOptions.length === 0 ? (
                                                             <Alert color="yellow" variant="light">
                                                                 No divisions are available for the selected registrant&apos;s age.
@@ -5444,7 +5452,7 @@ export default function EventDetailSheet({
                                                 )}
 
                                                 {supportsScheduleDetails && (
-                                                    <PublicEventSection eyebrow="Timeline" title="Schedule" className="xl:h-full">
+                                                    <PublicEventSection title="Timeline" className="xl:h-full">
                                                         <div className="space-y-5">
                                                             {scheduleDateChips.length > 0 && (
                                                                 <div className="flex gap-2 overflow-x-auto pb-1">
