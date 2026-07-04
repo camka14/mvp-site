@@ -275,6 +275,55 @@ describe('/api/invites', () => {
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
   });
 
+  it('does not send delivery again when a TEAM user-id invite already exists', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'player@example.com',
+      passwordHash: 'hash',
+      lastLogin: new Date('2026-01-01T00:00:00.000Z'),
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const existingInvite = {
+      id: 'invite_existing_team',
+      type: 'TEAM',
+      email: 'player@example.com',
+      status: 'PENDING',
+      eventId: null,
+      organizationId: null,
+      teamId: 'team_1',
+      userId: 'user_existing',
+      createdBy: 'captain_1',
+      firstName: null,
+      lastName: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.findFirst.mockResolvedValue(existingInvite);
+    prismaMock.invites.update.mockResolvedValue(existingInvite);
+    sendInviteEmailsMock.mockResolvedValue([]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{ type: 'TEAM', teamId: 'team_1', userId: 'user_existing' }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites[0].$id).toBe('invite_existing_team');
+    expect(prismaMock.invites.create).not.toHaveBeenCalled();
+    expect(prismaMock.invites.update).toHaveBeenCalledWith({
+      where: { id: 'invite_existing_team' },
+      data: expect.objectContaining({
+        email: 'player@example.com',
+        status: 'PENDING',
+      }),
+    });
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
+  });
+
   it('uses forwarded request origin when sending EVENT invite emails', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
     ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: false });
@@ -592,6 +641,7 @@ describe('/api/invites', () => {
         staffTypes: ['HOST'],
       }),
     });
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
   });
 
   it('silently skips STAFF invite entries by userId when no email can be resolved', async () => {

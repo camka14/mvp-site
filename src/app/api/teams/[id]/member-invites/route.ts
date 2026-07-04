@@ -282,6 +282,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           userId,
         },
       });
+      const wasCreated = !existingInvite;
       const invite = existingInvite
         ? await tx.invites.update({
           where: { id: existingInvite.id },
@@ -311,7 +312,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
 
       const shouldSendEmail = resolvedUser.isUserIdInvite || resolvedUser.shouldSendEmail;
-      inviteForEmail = shouldSendEmail ? invite : null;
+      inviteForEmail = wasCreated && shouldSendEmail ? invite : null;
 
       await rollbackTeamInviteEventSyncs(tx, invite, 'CANCELLED', now);
 

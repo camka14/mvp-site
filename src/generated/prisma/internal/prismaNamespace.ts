@@ -6880,6 +6880,7 @@ export const InvitesScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  sentAt: 'sentAt',
   type: 'type',
   email: 'email',
   status: 'status',

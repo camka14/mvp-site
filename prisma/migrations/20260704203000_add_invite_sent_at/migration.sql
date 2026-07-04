@@ -1,0 +1,1 @@
+ALTER TABLE "Invites" ADD COLUMN "sentAt" TIMESTAMP(3);

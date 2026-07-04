@@ -695,6 +695,7 @@ model Invites {
   id             String    @id
   createdAt      DateTime?
   updatedAt      DateTime?
+  sentAt         DateTime?
   type           String
   email          String
   status         String?

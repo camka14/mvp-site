@@ -66,7 +66,15 @@ describe('sendInviteEmails', () => {
     expect(invites).toEqual([expect.objectContaining({
       id: 'invite_1',
       status: 'PENDING',
+      sentAt: expect.any(Date),
     })]);
+    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'invite_1' },
+      data: expect.objectContaining({
+        sentAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    }));
   });
 
   it('falls back to email when a user-id invite has no push targets', async () => {
@@ -95,7 +103,15 @@ describe('sendInviteEmails', () => {
     expect(invites).toEqual([expect.objectContaining({
       id: 'invite_2',
       status: 'PENDING',
+      sentAt: expect.any(Date),
     })]);
+    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'invite_2' },
+      data: expect.objectContaining({
+        sentAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    }));
   });
 
   it('marks invite as FAILED when email fallback fails', async () => {
@@ -128,6 +144,7 @@ describe('sendInviteEmails', () => {
       where: { id: 'invite_3' },
       data: expect.objectContaining({ status: 'FAILED' }),
     }));
+    expect(prismaMock.invites.update.mock.calls[0][0].data).not.toHaveProperty('sentAt');
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });

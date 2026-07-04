@@ -420,6 +420,7 @@ export async function POST(req: NextRequest) {
               userId: inviteUserId,
             },
           });
+          const wasCreated = !existingInvite;
           const record = existingInvite
             ? await tx.invites.update({
               where: { id: existingInvite.id },
@@ -451,7 +452,7 @@ export async function POST(req: NextRequest) {
               },
             });
           createdRecords.push(record);
-          if (isUserIdInvite || resolvedUser.shouldSendEmail) {
+          if (wasCreated && (isUserIdInvite || resolvedUser.shouldSendEmail)) {
             toEmailRecords.push(record);
           }
           continue;
@@ -479,6 +480,7 @@ export async function POST(req: NextRequest) {
               userId: inviteUserId,
             },
           });
+          const wasCreated = !existingInvite;
           const record = existingInvite
             ? await tx.invites.update({
               where: { id: existingInvite.id },
@@ -507,7 +509,7 @@ export async function POST(req: NextRequest) {
               },
             });
           createdRecords.push(record);
-          if (isUserIdInvite || resolvedUser.shouldSendEmail) {
+          if (wasCreated && (isUserIdInvite || resolvedUser.shouldSendEmail)) {
             toEmailRecords.push(record);
           }
           continue;
@@ -524,6 +526,7 @@ export async function POST(req: NextRequest) {
             userId: inviteUserId,
           },
         });
+        const wasCreated = !existingInvite;
         const record = existingInvite
           ? await tx.invites.update({
             where: { id: existingInvite.id },
@@ -554,7 +557,7 @@ export async function POST(req: NextRequest) {
             },
           });
         createdRecords.push(record);
-        if (isUserIdInvite || resolvedUser.shouldSendEmail) {
+        if (wasCreated && (isUserIdInvite || resolvedUser.shouldSendEmail)) {
           toEmailRecords.push(record);
         }
       }
@@ -567,7 +570,9 @@ export async function POST(req: NextRequest) {
     const emailedById = new Map(emailedInvites.map((invite) => [invite.id, invite]));
     const mergedInvites = created.map((invite) => {
       const emailed = emailedById.get(invite.id);
-      return emailed ? { ...invite, status: emailed.status ?? invite.status } : invite;
+      return emailed
+        ? { ...invite, status: emailed.status ?? invite.status, sentAt: emailed.sentAt ?? invite.sentAt }
+        : invite;
     });
 
     return NextResponse.json({ invites: mergedInvites.map((invite) => mapInviteRecord(invite)) }, { status: 201 });

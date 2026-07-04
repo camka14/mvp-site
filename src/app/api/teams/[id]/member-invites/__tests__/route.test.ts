@@ -191,6 +191,49 @@ describe('/api/teams/[id]/member-invites POST', () => {
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([expect.objectContaining({ id: 'invite_1' })], 'http://localhost');
   });
 
+  it('updates an existing canonical player invite without sending delivery again', async () => {
+    const existingInvite = {
+      id: 'invite_existing',
+      type: 'TEAM',
+      email: 'free@example.com',
+      status: 'PENDING',
+      teamId: 'team_1',
+      userId: 'free_1',
+      createdBy: 'manager_1',
+      firstName: null,
+      lastName: null,
+      createdAt: new Date('2026-04-29T18:00:00.000Z'),
+      updatedAt: new Date('2026-04-29T18:00:00.000Z'),
+    };
+    txMock.invites.findFirst.mockResolvedValue(existingInvite);
+    txMock.invites.update.mockResolvedValue(existingInvite);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/teams/team_1/member-invites', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: 'free_1',
+          role: 'player',
+        }),
+      }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(payload.ok).toBe(true);
+    expect(payload.invite.id).toBe('invite_existing');
+    expect(txMock.invites.create).not.toHaveBeenCalled();
+    expect(txMock.invites.update).toHaveBeenCalledWith({
+      where: { id: 'invite_existing' },
+      data: expect.objectContaining({
+        email: 'free@example.com',
+        status: 'PENDING',
+      }),
+    });
+    expect(sendInviteEmailsMock).not.toHaveBeenCalled();
+  });
+
   it('rejects player invites when team registrations already fill the team', async () => {
     txMock.canonicalTeams.findUnique.mockResolvedValue({
       id: 'team_1',

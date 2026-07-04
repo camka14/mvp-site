@@ -15,6 +15,13 @@ interface InviteRecord {
   firstName?: string | null;
   lastName?: string | null;
   status?: string | null;
+  sentAt?: Date | string | null;
+}
+
+interface InviteDeliveryResult {
+  id: string;
+  status?: string | null;
+  sentAt?: Date | null;
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,7 +69,7 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
   const organizationNames = new Map(organizations.map((org) => [org.id, org.name]));
   const teamNames = new Map(teams.map((team) => [team.id, team.name]));
 
-  const results = await Promise.all(invites.map(async (invite) => {
+  const results: InviteDeliveryResult[] = await Promise.all(invites.map(async (invite) => {
     const email = normalizeEmail(invite.email);
     const hasValidEmail = Boolean(email && EMAIL_REGEX.test(email));
 
@@ -91,11 +98,18 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         title: content.subject,
         body: 'You have a new invitation in BracketIQ. Open the app to review it.',
         data: {
+          notificationType: 'invitations',
+          deepLink: 'mvp://profile/invites',
           inviteId: invite.id,
           inviteType: invite.type ?? '',
+          email,
+          status: invite.status ?? 'PENDING',
+          userId: inviteUserId,
           eventId: invite.eventId ?? '',
           organizationId: invite.organizationId ?? '',
           teamId: invite.teamId ?? '',
+          firstName: invite.firstName ?? '',
+          lastName: invite.lastName ?? '',
         },
       }).catch((error) => {
         console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
@@ -114,7 +128,11 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
       // 1) If the user has push targets, rely on push delivery.
       // 2) If they have no push targets, fall back to email (when available).
       if (pushResult.reason !== 'no_tokens') {
-        return { id: invite.id, status: invite.status ?? 'PENDING' };
+        return {
+          id: invite.id,
+          status: invite.status ?? 'PENDING',
+          sentAt: pushResult.attempted && pushResult.successCount > 0 ? new Date() : null,
+        };
       }
     }
 
@@ -132,30 +150,52 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         text: content.text,
         html: content.html,
       });
-      return { id: invite.id, status: invite.status ?? 'PENDING' };
+      return { id: invite.id, status: invite.status ?? 'PENDING', sentAt: new Date() };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Failed to send invite email', { inviteId: invite.id, error: message });
       return { id: invite.id, status: 'FAILED' };
     }
   }));
-  const statusMap = new Map(results.map((update) => [update.id, update.status]));
-  const nextInvites = invites.map((invite) => ({ ...invite, status: statusMap.get(invite.id) ?? invite.status }));
+  const resultMap = new Map(results.map((update) => [update.id, update]));
+  const nextInvites = invites.map((invite) => {
+    const result = resultMap.get(invite.id);
+    return {
+      ...invite,
+      status: result?.status ?? invite.status,
+      sentAt: result?.sentAt ?? invite.sentAt,
+    };
+  });
 
   const failedInviteIds = nextInvites
     .filter((invite) => String(invite.status ?? '').toUpperCase() === 'FAILED')
     .map((invite) => invite.id);
-  if (failedInviteIds.length) {
+  const sentAtUpdates = results
+    .filter((result): result is InviteDeliveryResult & { sentAt: Date } => result.sentAt instanceof Date)
+    .map((result) => ({ id: result.id, sentAt: result.sentAt }));
+  if (failedInviteIds.length || sentAtUpdates.length) {
+    const updatedAt = new Date();
     await Promise.all(
-      failedInviteIds.map((inviteId) => prisma.invites.update({
-        where: { id: inviteId },
-        data: {
-          status: 'FAILED',
-          updatedAt: new Date(),
-        },
-      }).catch((error) => {
-        console.warn('Failed to persist FAILED invite status after email send error', { inviteId, error });
-      })),
+      [
+        ...sentAtUpdates.map((update) => prisma.invites.update({
+          where: { id: update.id },
+          data: {
+            sentAt: update.sentAt,
+            updatedAt,
+          },
+        }).catch((error) => {
+          console.warn('Failed to persist invite sent timestamp after delivery', { inviteId: update.id, error });
+        })),
+        ...failedInviteIds.map((inviteId) => prisma.invites.update({
+          where: { id: inviteId },
+          data: {
+            status: 'FAILED',
+            updatedAt,
+          },
+        }).catch((error) => {
+          console.warn('Failed to persist FAILED invite status after email send error', { inviteId, error });
+        })),
+      ],
     );
   }
 
