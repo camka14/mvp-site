@@ -30,110 +30,79 @@ const LOGO_SOURCE_URL = 'https://www.ci.oswego.or.us/sites/default/files/LOPR-Lo
 
 const leagueDescription = 'Lake Oswego Parks & Recreation runs a Summer 2026 adult basketball league on Sundays, July 12 through September 13, at Lake Oswego Recreation and Aquatics Center. The league includes six games plus a season tournament with officials provided. Team managers create teams through LOPR, and approved roster players sign up using the team name and password.';
 
+const baseLeagueCandidate = {
+  sourceUrl: LIST_URL,
+  organizerName: 'Lake Oswego Parks & Recreation',
+  sportName: 'Basketball',
+  formatLabel: 'League',
+  city: 'Lake Oswego, OR',
+  venueName: 'Lake Oswego Recreation and Aquatics Center',
+  address: '17525 Stafford Rd, Lake Oswego, OR 97034',
+  startsAt: '2026-07-12T12:00:00-07:00',
+  endsAt: '2026-09-13T20:00:00-07:00',
+  scheduleText: 'July 12 - Sept 13, 2026 | Sundays, 12-8 p.m. | 6 games plus season tournament | Officials provided',
+  participantOptionsText: 'Team manager setup with approved roster-player registration and individual player payment through LOPR.',
+  priceText: 'Regular per-player fee: $101 residents, $123 non-residents. Early bird fees before the team deadline were $86 resident and $108 non-resident.',
+  statusText: 'Registration is open. Team registration closed June 24, 2026, and additional players may be added throughout the season.',
+  description: leagueDescription,
+  timeZone: 'America/Los_Angeles',
+};
+
 const mapping: AffiliateScrapeMapping = {
   kind: 'EVENT',
   listUrl: LIST_URL,
-  itemSelector: '.field-name-body .field-item a[href*="activecommunities.com/lakeoswegoparks/activity/search/detail"]',
+  itemSelector: 'body',
   fields: {
     title: {
-      selector: ':scope',
-      mode: 'text',
-      excludeSelectors: ['.ext'],
-      valueMap: {
-        "Men's 18+": "Lake Oswego Summer Adult Basketball League - Men's 18+",
-        "Men's 30+": "Lake Oswego Summer Adult Basketball League - Men's 30+",
-      },
+      selector: 'body',
+      mode: 'literal',
+      value: 'Lake Oswego Summer Adult Basketball League',
     },
     officialActionUrl: {
-      selector: ':scope',
-      mode: 'attribute',
-      attribute: 'href',
-      transform: 'absoluteUrl',
-    },
-    sourceUrl: {
-      selector: ':scope',
+      selector: 'body',
       mode: 'literal',
       value: LIST_URL,
-    },
-    organizerName: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Lake Oswego Parks & Recreation',
-    },
-    sportName: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Basketball',
-    },
-    formatLabel: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'League',
-    },
-    city: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Lake Oswego, OR',
-    },
-    venueName: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Lake Oswego Recreation and Aquatics Center',
-    },
-    address: {
-      selector: ':scope',
-      mode: 'literal',
-      value: '17525 Stafford Rd, Lake Oswego, OR 97034',
-    },
-    startsAt: {
-      selector: ':scope',
-      mode: 'literal',
-      value: '2026-07-12T12:00:00-07:00',
-    },
-    endsAt: {
-      selector: ':scope',
-      mode: 'literal',
-      value: '2026-09-13T20:00:00-07:00',
-    },
-    scheduleText: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'July 12 - Sept 13, 2026 | Sundays, 12-8 p.m. | 6 games plus season tournament | Officials provided',
-    },
-    ageGroup: {
-      selector: ':scope',
-      mode: 'text',
-      excludeSelectors: ['.ext'],
-    },
-    divisionText: {
-      selector: ':scope',
-      mode: 'text',
-      excludeSelectors: ['.ext'],
-    },
-    participantOptionsText: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Team signup with approved roster-player add-ons through LOPR.',
-    },
-    priceText: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Regular per-player fee: $101 residents, $123 non-residents. Early bird fees before the team deadline were $86 resident and $108 non-resident.',
-    },
-    statusText: {
-      selector: ':scope',
-      mode: 'literal',
-      value: 'Registration is open. Team registration closed June 24, 2026, and additional players may be added throughout the season.',
-    },
-    description: {
-      selector: ':scope',
-      mode: 'literal',
-      value: leagueDescription,
     },
   },
   dedupe: {
     fields: ['officialActionUrl', 'title', 'startsAt'],
   },
+  manualCandidates: [
+    {
+      ...baseLeagueCandidate,
+      title: "Lake Oswego Summer Adult Basketball League - Men's 18+",
+      officialActionUrl: 'https://anc.apm.activecommunities.com/lakeoswegoparks/activity/search/detail/26641?onlineSiteId=0&locale=en-US&from_original_cui=true',
+      ageGroup: 'Men 18+',
+      divisionText: "Men's 18+",
+      divisions: [
+        {
+          name: "Men's 18+",
+          gender: 'M',
+          ratingType: 'AGE',
+          divisionTypeId: '18plus',
+          ageCutoffLabel: '18+',
+          ageCutoffSource: 'City of Lake Oswego division registration link',
+        },
+      ],
+    },
+    {
+      ...baseLeagueCandidate,
+      title: "Lake Oswego Summer Adult Basketball League - Men's 30+",
+      officialActionUrl: 'https://anc.apm.activecommunities.com/lakeoswegoparks/activity/search/detail/26642?onlineSiteId=0&locale=en-US&from_original_cui=true',
+      ageGroup: 'Men 30+',
+      divisionText: "Men's 30+",
+      divisions: [
+        {
+          name: "Men's 30+",
+          gender: 'M',
+          ratingType: 'AGE',
+          divisionTypeId: '30plus',
+          ageCutoffLabel: '30+',
+          ageCutoffSource: 'City of Lake Oswego division registration link',
+        },
+      ],
+    },
+  ],
 };
 
 const requireOwner = async () => {
