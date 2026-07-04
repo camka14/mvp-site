@@ -473,9 +473,10 @@ const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge:
     return { minAge: null, maxAge, ageDivisionTypeId: `u${maxAge}` };
   }
 
-  const overMatch = haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)?\b/i)
-    ?? haystack.match(/\bover\s*([1-9]\d?)\b/i)
-    ?? haystack.match(/\b([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)\b/i);
+  const overMatch = haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i)
+    ?? haystack.match(/\bover\s*([1-9]\d?)(?!\d)/i)
+    ?? haystack.match(/\b([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i)
+    ?? haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\b/i);
   if (overMatch) {
     const minAge = Number.parseInt(overMatch[1], 10);
     return { minAge, maxAge: null, ageDivisionTypeId: `${minAge}plus` };
@@ -500,8 +501,8 @@ const inferSkillDivisionTypeId = (value: unknown): string => {
   const raw = nullableString(value) ?? '';
   const withoutGender = raw
     .replace(/\b(?:men|women)(?:['’]s)?\b|\b(?:mens|womens|coed|co-ed|mixed|male|female|boys?|girls?)\b/gi, ' ')
-    .replace(/\b(?:ages?|adult)\s*[1-9]\d?\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)?\b/gi, ' ')
-    .replace(/\b[1-9]\d?\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)\b/gi, ' ')
+    .replace(/\b(?:ages?|adult)\s*[1-9]\d?\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)?(?!\w)/gi, ' ')
+    .replace(/\b[1-9]\d?\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/gi, ' ')
     .replace(/\bU\s*[1-9]\d?\b/gi, ' ')
     .replace(/\b[1-9]\d?\s*U\b/gi, ' ');
   return slugToken(withoutGender) || 'open';

@@ -765,6 +765,71 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('treats x-plus division labels as age divisions', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_lake_oswego_30',
+      sourceId: 'source_lake_oswego',
+      listingKind: 'EVENT',
+      title: "Lake Oswego Summer Adult Basketball League - Men's 30+",
+      organizerName: 'Lake Oswego Parks & Recreation',
+      sportName: 'Basketball',
+      venueName: 'Lake Oswego Recreation and Aquatics Center',
+      city: 'Lake Oswego, OR',
+      address: '17525 Stafford Rd, Lake Oswego, OR 97034',
+      startsAt: new Date('2099-07-12T19:00:00.000Z'),
+      endsAt: new Date('2099-09-14T03:00:00.000Z'),
+      divisionText: "Men's 30+",
+      ageGroup: "Men's 30+",
+      priceText: '$101 resident regular per-player fee',
+      officialActionUrl: 'https://anc.apm.activecommunities.com/lakeoswegoparks/activity/search/detail/26642',
+      sourceUrl: 'https://www.ci.oswego.or.us/parksrec/adult-basketball-league-0',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_lake_oswego',
+      name: 'Lake Oswego Adult Basketball',
+      organizationId: 'org_lake_oswego',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_lake_oswego' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_basketball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_lake_oswego_30' });
+
+    await publishAffiliateCandidate('candidate_lake_oswego_30', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        minAge: 30,
+        maxAge: null,
+      }),
+    });
+    expect(prismaMock.divisions.upsert).toHaveBeenCalledWith({
+      where: { id: expect.stringContaining('30plus') },
+      create: expect.objectContaining({
+        eventId: 'generated_1',
+        organizationId: 'org_lake_oswego',
+        sportId: 'sport_basketball',
+        name: "Men's 30+",
+        key: expect.stringContaining('30plus'),
+        divisionTypeId: expect.stringContaining('30plus'),
+        gender: 'M',
+        price: 10100,
+        maxParticipants: null,
+        ageCutoffLabel: "Men's 30+",
+      }),
+      update: expect.objectContaining({
+        name: "Men's 30+",
+        key: expect.stringContaining('30plus'),
+        divisionTypeId: expect.stringContaining('30plus'),
+        gender: 'M',
+        price: 10100,
+        maxParticipants: null,
+      }),
+    });
+  });
+
   it('requires event sources to be linked to an organization before publishing', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
