@@ -653,6 +653,69 @@ describe('affiliate import service', () => {
     }));
   });
 
+  it('reuses an existing affiliate event occurrence when a later scrape candidate is published', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue([-122.539, 45.387]);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_duplicate',
+      sourceId: 'source_1',
+      listingKind: 'EVENT',
+      title: 'Sunday Open Gym',
+      organizerName: 'Rose City Volleyball',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Columbia Christian School',
+      city: 'Portland',
+      address: '205 NE 92nd Avenue Portland',
+      startsAt: new Date('2099-07-05T21:00:00.000Z'),
+      endsAt: null,
+      scheduleText: 'Sunday, 2:00 PM.',
+      priceText: '$11.00',
+      officialActionUrl: 'https://example.com/open-gym',
+      sourceUrl: 'https://example.com/source',
+      description: 'Traditional open gym.',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city_volleyball',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city_volleyball' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'existing_event',
+        state: 'PUBLISHED',
+        sourceId: 'candidate_original',
+        coordinates: [-122.539, 45.387],
+      });
+    prismaMock.events.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_duplicate' });
+
+    const event = await publishAffiliateCandidate('candidate_duplicate', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).toHaveBeenCalledWith({
+      where: { id: 'existing_event' },
+      data: expect.objectContaining({
+        sourceId: 'candidate_original',
+        name: 'Sunday Open Gym',
+        affiliateUrl: 'https://example.com/open-gym',
+        price: 1100,
+        state: 'PUBLISHED',
+      }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_duplicate' },
+      data: {
+        status: 'PUBLISHED',
+        publishedEventId: 'existing_event',
+      },
+    });
+    expect(event).toEqual(expect.objectContaining({ id: 'existing_event' }));
+  });
+
   it('uses only the scraped source blurb as the event description', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_blurb',

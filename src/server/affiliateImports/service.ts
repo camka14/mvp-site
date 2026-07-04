@@ -1132,6 +1132,36 @@ const upsertAffiliateEventForCandidate = async (
   }
 
   const createData = await buildAffiliateEventData(candidate, source, options.state ?? 'UNPUBLISHED');
+  const existingByOccurrence = createData.affiliateUrl
+    ? await events.findFirst({
+        where: {
+          sourceType: 'AFFILIATE_IMPORT',
+          sourceId: { not: candidate.id },
+          organizationId: createData.organizationId,
+          affiliateUrl: createData.affiliateUrl,
+          name: createData.name,
+          start: createData.start,
+          eventType: createData.eventType,
+          archivedAt: null,
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+    : null;
+  if (existingByOccurrence) {
+    const updateData = {
+      ...createData,
+      state: options.state ?? existingByOccurrence.state ?? createData.state,
+      sourceId: existingByOccurrence.sourceId ?? createData.sourceId,
+    };
+    delete (updateData as any).createdAt;
+    const event = await events.update({
+      where: { id: existingByOccurrence.id },
+      data: updateData,
+    });
+    await syncSourceDivisions(event);
+    return event;
+  }
+
   const event = await events.create({
     data: {
       id: createId(),
