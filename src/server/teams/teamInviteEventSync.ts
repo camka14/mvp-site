@@ -32,6 +32,19 @@ type TeamInviteEventSyncRow = {
   status?: string | null;
 };
 
+type AcceptTeamInviteEventSyncOptions = {
+  propagateToLinkedEventTeams?: boolean;
+};
+
+type LinkedEventTeamRow = {
+  id: string;
+  eventId: string | null;
+  playerIds?: unknown;
+  pending?: unknown;
+  division?: string | null;
+  divisionTypeId?: string | null;
+};
+
 const getTeamInviteEventSyncsDelegate = (client: PrismaLike) => client?.teamInviteEventSyncs ?? null;
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
@@ -251,27 +264,243 @@ export const loadEventRegistrationSnapshot = async (
   return serializeEventRegistrationSnapshot(fallbackRow);
 };
 
-export const acceptTeamInviteEventSyncs = async (
+const loadLinkedFutureEventTeams = async (
+  tx: PrismaLike,
+  canonicalTeamId: string,
+  now: Date,
+): Promise<LinkedEventTeamRow[]> => {
+  const eventTeamsDelegate = getEventTeamsDelegate(tx);
+  if (!eventTeamsDelegate?.findMany || !tx?.events?.findMany) {
+    return [];
+  }
+
+  const rows = await eventTeamsDelegate.findMany({
+    where: {
+      parentTeamId: canonicalTeamId,
+      eventId: { not: null },
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      eventId: true,
+      playerIds: true,
+      pending: true,
+      division: true,
+      divisionTypeId: true,
+    },
+  }) as LinkedEventTeamRow[];
+
+  const eventIds = normalizeIdList(rows.map((row) => row.eventId));
+  if (!eventIds.length) {
+    return [];
+  }
+
+  const futureEvents = await tx.events.findMany({
+    where: {
+      id: { in: eventIds },
+      NOT: { end: { lt: now } },
+    },
+    select: { id: true },
+  }) as Array<{ id: string }>;
+  const futureEventIds = new Set(futureEvents.map((event) => event.id));
+
+  return rows.filter((row) => {
+    const eventId = normalizeId(row.eventId);
+    return Boolean(eventId && futureEventIds.has(eventId));
+  });
+};
+
+const findSourceTeamRegistrationId = async (
+  tx: PrismaLike,
+  canonicalTeamId: string,
+  userId: string,
+): Promise<string | null> => {
+  const row = await tx?.teamRegistrations?.findUnique?.({
+    where: {
+      teamId_userId: {
+        teamId: canonicalTeamId,
+        userId,
+      },
+    },
+    select: { id: true },
+  });
+  return normalizeId(row?.id);
+};
+
+const upsertAcceptedPlayerEventRegistration = async (
+  tx: PrismaLike,
+  params: {
+    canonicalTeamId: string;
+    eventId: string;
+    eventTeamId: string;
+    userId: string;
+    sourceTeamRegistrationId: string | null;
+    divisionId: string | null;
+    divisionTypeId: string | null;
+    actorUserId: string;
+    now: Date;
+  },
+): Promise<string> => {
+  const previousRegistrationSnapshot = await loadEventRegistrationSnapshot(tx, params.eventId, params.userId);
+  const snapshot = toSnapshotRecord(previousRegistrationSnapshot);
+  const registrationId = normalizeId(snapshot?.id) ?? buildEventRegistrationId({
+    eventId: params.eventId,
+    registrantType: 'SELF',
+    registrantId: params.userId,
+  });
+  const divisionTypeId = normalizeId(params.divisionTypeId);
+
+  await tx?.eventRegistrations?.upsert?.({
+    where: { id: registrationId },
+    create: {
+      id: registrationId,
+      createdAt: toDate(snapshot?.createdAt, params.now),
+      updatedAt: params.now,
+      eventId: params.eventId,
+      registrantId: params.userId,
+      parentId: params.canonicalTeamId,
+      registrantType: 'SELF',
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+      eventTeamId: params.eventTeamId,
+      sourceTeamRegistrationId: normalizeId(params.sourceTeamRegistrationId),
+      slotId: normalizeId(snapshot?.slotId),
+      occurrenceDate: normalizeId(snapshot?.occurrenceDate),
+      ageAtEvent: typeof snapshot?.ageAtEvent === 'number' ? snapshot.ageAtEvent : null,
+      divisionId: normalizeId(params.divisionId),
+      divisionTypeId,
+      divisionTypeKey: divisionTypeId?.toLowerCase() ?? null,
+      jerseyNumber: normalizeId(snapshot?.jerseyNumber),
+      position: normalizeId(snapshot?.position),
+      isCaptain: Boolean(snapshot?.isCaptain),
+      consentDocumentId: normalizeId(snapshot?.consentDocumentId),
+      consentStatus: normalizeId(snapshot?.consentStatus),
+      createdBy: normalizeId(snapshot?.createdBy) ?? params.actorUserId,
+    },
+    update: {
+      parentId: params.canonicalTeamId,
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+      eventTeamId: params.eventTeamId,
+      sourceTeamRegistrationId: normalizeId(params.sourceTeamRegistrationId),
+      divisionId: normalizeId(params.divisionId),
+      divisionTypeId,
+      divisionTypeKey: divisionTypeId?.toLowerCase() ?? null,
+      updatedAt: params.now,
+    },
+  });
+
+  return registrationId;
+};
+
+const propagateAcceptedPlayerToLinkedEventTeams = async (
   tx: PrismaLike,
   invite: TeamInviteLike,
   now: Date,
 ) => {
-  const delegate = getTeamInviteEventSyncsDelegate(tx);
-  if (!delegate?.findMany || !delegate?.updateMany || !invite.id) {
+  const canonicalTeamId = normalizeId(invite.teamId);
+  const userId = normalizeId(invite.userId);
+  if (!canonicalTeamId || !userId) {
     return;
   }
 
-  const rows = await delegate.findMany({
-    where: {
-      inviteId: invite.id,
-      status: 'PENDING',
-    },
-    orderBy: [
-      { createdAt: 'asc' },
-      { id: 'asc' },
-    ],
-  }) as TeamInviteEventSyncRow[];
+  const linkedEventTeams = await loadLinkedFutureEventTeams(tx, canonicalTeamId, now);
+  if (!linkedEventTeams.length) {
+    return;
+  }
+
+  const eventTeamsDelegate = getEventTeamsDelegate(tx);
+  const sourceTeamRegistrationId = await findSourceTeamRegistrationId(tx, canonicalTeamId, userId);
+  const actorUserId = normalizeId(invite.createdBy) ?? userId;
+
+  await Promise.all(linkedEventTeams.map(async (eventTeam) => {
+    const eventId = normalizeId(eventTeam.eventId);
+    if (!eventId) {
+      return;
+    }
+
+    const playerIds = normalizeIdList(eventTeam.playerIds);
+    const pending = normalizeIdList(eventTeam.pending);
+    const eventTeamHadUser = playerIds.includes(userId);
+
+    await eventTeamsDelegate?.update?.({
+      where: { id: eventTeam.id },
+      data: {
+        playerIds: eventTeamHadUser ? playerIds : uniqueStrings([...playerIds, userId]),
+        pending: pending.filter((pendingUserId) => pendingUserId !== userId),
+        updatedAt: now,
+      },
+    });
+
+    if (!eventTeamHadUser) {
+      await syncNewCanonicalPlayerIntoMatchRosters(tx, {
+        eventId,
+        eventTeamId: eventTeam.id,
+        userId,
+        actorUserId,
+        now,
+      });
+    }
+
+    await upsertAcceptedPlayerEventRegistration(tx, {
+      canonicalTeamId,
+      eventId,
+      eventTeamId: eventTeam.id,
+      userId,
+      sourceTeamRegistrationId,
+      divisionId: normalizeId(eventTeam.division),
+      divisionTypeId: normalizeId(eventTeam.divisionTypeId),
+      actorUserId,
+      now,
+    });
+    await refreshEventTeamRegistrationReferences(tx, eventTeam.id, now);
+  }));
+};
+
+export const acceptTeamInviteEventSyncs = async (
+  tx: PrismaLike,
+  invite: TeamInviteLike,
+  now: Date,
+  options: AcceptTeamInviteEventSyncOptions = {},
+) => {
+  const delegate = getTeamInviteEventSyncsDelegate(tx);
+  if (!invite.id) {
+    return;
+  }
+
+  const rows = delegate?.findMany
+    ? await delegate.findMany({
+      where: {
+        inviteId: invite.id,
+        status: 'PENDING',
+      },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+    }) as TeamInviteEventSyncRow[]
+    : [];
+  if (options.propagateToLinkedEventTeams) {
+    await propagateAcceptedPlayerToLinkedEventTeams(tx, invite, now);
+    if (rows.length && delegate?.updateMany) {
+      await delegate.updateMany({
+        where: {
+          inviteId: invite.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'ACCEPTED',
+          updatedAt: now,
+        },
+      });
+    }
+    return;
+  }
+
   if (!rows.length) {
+    return;
+  }
+  if (!delegate?.updateMany) {
     return;
   }
 

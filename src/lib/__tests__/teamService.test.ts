@@ -495,7 +495,6 @@ describe('teamService', () => {
           body: {
             userId: 'user_2',
             role: 'player',
-            eventTeamIds: [],
           },
         }),
       );

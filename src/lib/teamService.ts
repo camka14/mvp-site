@@ -33,9 +33,6 @@ export type TeamInviteFreeAgentContext = {
     freeAgentEventsByUserId: Record<string, string[]>;
     freeAgentEventTeamIdsByUserId: Record<string, string[]>;
 };
-export type TeamInviteOptions = {
-    eventTeamIds?: string[];
-};
 export type TeamRegistrationConsent = {
     documentId?: string | null;
     status?: string | null;
@@ -253,7 +250,6 @@ class TeamService {
         team: Team,
         user: UserData,
         inviteType: TeamInviteRoleType,
-        options: TeamInviteOptions = {},
     ): Promise<boolean> {
         try {
             if (inviteType === 'player') {
@@ -286,7 +282,6 @@ class TeamService {
                 body: {
                     userId: user.$id,
                     role: inviteType,
-                    eventTeamIds: options.eventTeamIds ?? [],
                 },
             });
             return true;
@@ -300,7 +295,6 @@ class TeamService {
         team: Team,
         email: string,
         inviteType: TeamInviteRoleType,
-        options: TeamInviteOptions = {},
     ): Promise<boolean> {
         try {
             await apiRequest(`/api/teams/${encodeURIComponent(team.$id)}/member-invites`, {
@@ -308,7 +302,6 @@ class TeamService {
                 body: {
                     email: email.trim().toLowerCase(),
                     role: inviteType,
-                    eventTeamIds: options.eventTeamIds ?? [],
                 },
             });
             return true;

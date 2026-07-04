@@ -113,7 +113,9 @@ describe('team invite event-team sync lifecycle routes', () => {
 
     expect(response.status).toBe(200);
     expect(syncCanonicalTeamRosterMock).toHaveBeenCalled();
-    expect(acceptTeamInviteEventSyncsMock).toHaveBeenCalledWith(txMock, invite, expect.any(Date));
+    expect(acceptTeamInviteEventSyncsMock).toHaveBeenCalledWith(txMock, invite, expect.any(Date), {
+      propagateToLinkedEventTeams: true,
+    });
     expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
   });
 

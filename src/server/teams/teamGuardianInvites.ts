@@ -264,7 +264,9 @@ export const acceptTeamInviteWithGuardianRules = async ({
     await syncTeamChatInTx(tx, auth.teamId, {
       previousMemberIds,
     });
-    await acceptTeamInviteEventSyncs(tx, invite, now);
+    await acceptTeamInviteEventSyncs(tx, invite, now, {
+      propagateToLinkedEventTeams: txIsPlayerInvite,
+    });
 
     await tx.invites.delete({ where: { id: invite.id } });
     return true;

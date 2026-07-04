@@ -9,16 +9,13 @@ import { getRequestOrigin } from '@/lib/requestOrigin';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { canManageOrganization } from '@/server/accessControl';
-import { upsertEventRegistration } from '@/server/events/eventRegistrations';
 import {
-  getEventTeamsDelegate,
   loadCanonicalTeamById,
   normalizeId,
   normalizeIdList,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
 import {
-  loadEventRegistrationSnapshot,
   rollbackTeamInviteEventSyncs,
 } from '@/server/teams/teamInviteEventSync';
 
@@ -30,7 +27,6 @@ const memberInviteSchema = z.object({
   userId: z.string().optional(),
   email: z.string().optional(),
   role: z.enum(['player', 'team_manager', 'team_head_coach', 'team_assistant_coach']).default('player'),
-  eventTeamIds: z.array(z.string()).optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
 }).passthrough();
@@ -170,23 +166,6 @@ const resolveInviteUser = async (
   };
 };
 
-const findSourceTeamRegistrationId = async (
-  tx: any,
-  canonicalTeamId: string,
-  userId: string,
-): Promise<string | null> => {
-  const row = await tx.teamRegistrations?.findUnique?.({
-    where: {
-      teamId_userId: {
-        teamId: canonicalTeamId,
-        userId,
-      },
-    },
-    select: { id: true },
-  });
-  return normalizeId(row?.id);
-};
-
 const getPlayerCapacityUserIds = (team: Record<string, any>): Set<string> => {
   const ids = new Set<string>();
   const registrations = Array.isArray(team.playerRegistrations) ? team.playerRegistrations : [];
@@ -219,57 +198,6 @@ const assertPlayerInviteCapacity = (team: Record<string, any>, userId: string) =
   if (!capacityUserIds.has(userId) && capacityUserIds.size >= teamSize) {
     throw new Error('Team is full. Player invite was not sent.');
   }
-};
-
-const loadSelectedFutureEventTeams = async (
-  tx: any,
-  canonicalTeamId: string,
-  eventTeamIds: string[],
-  now: Date,
-) => {
-  const selectedIds = normalizeIdList(eventTeamIds);
-  if (!selectedIds.length) {
-    return [];
-  }
-
-  const eventTeamsDelegate = getEventTeamsDelegate(tx);
-  const rows = await eventTeamsDelegate?.findMany?.({
-    where: {
-      id: { in: selectedIds },
-      parentTeamId: canonicalTeamId,
-      eventId: { not: null },
-    },
-    select: {
-      id: true,
-      eventId: true,
-      playerIds: true,
-      pending: true,
-      division: true,
-      divisionTypeId: true,
-      playerRegistrationIds: true,
-    },
-  }) ?? [];
-
-  const eventIds = normalizeIdList(rows.map((row: any) => row.eventId));
-  const futureEvents = eventIds.length
-    ? await tx.events.findMany({
-      where: {
-        id: { in: eventIds },
-        NOT: { end: { lt: now } },
-      },
-      select: { id: true },
-    })
-    : [];
-  const futureEventIds = new Set(futureEvents.map((event: { id: string }) => event.id));
-  const futureRows = rows.filter((row: any) => futureEventIds.has(row.eventId));
-
-  if (futureRows.length !== selectedIds.length) {
-    const foundIds = new Set(futureRows.map((row: any) => row.id));
-    const missingIds = selectedIds.filter((eventTeamId) => !foundIds.has(eventTeamId));
-    throw new Error(`Invalid event team selection: ${missingIds.join(', ')}`);
-  }
-
-  return futureRows;
 };
 
 const updateStaffInviteAssignment = async (
@@ -400,93 +328,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           now,
         }, tx);
 
-        const sourceTeamRegistrationId = await findSourceTeamRegistrationId(tx, canonicalTeamId, userId);
-        const selectedEventTeams = await loadSelectedFutureEventTeams(
-          tx,
-          canonicalTeamId,
-          parsed.data.eventTeamIds ?? [],
-          now,
-        );
-        const syncDelegate = (tx as any).teamInviteEventSyncs;
-        if (selectedEventTeams.length && !syncDelegate?.upsert) {
-          throw new Error('Invite event-team sync storage is unavailable. Regenerate Prisma client.');
-        }
-        await Promise.all(selectedEventTeams.map(async (eventTeam: any) => {
-          const eventTeamHadUser = normalizeIdList(eventTeam.playerIds).includes(userId);
-          const eventTeamHadPendingUser = normalizeIdList(eventTeam.pending).includes(userId);
-          const previousRegistrationSnapshot = await loadEventRegistrationSnapshot(tx, eventTeam.eventId, userId);
-          const previousRegistrationId = previousRegistrationSnapshot && typeof previousRegistrationSnapshot === 'object' && !Array.isArray(previousRegistrationSnapshot)
-            ? normalizeId((previousRegistrationSnapshot as Record<string, unknown>).id)
-            : null;
-          await getEventTeamsDelegate(tx)?.update?.({
-            where: { id: eventTeam.id },
-            data: {
-              pending: eventTeamHadUser
-                ? normalizeIdList(eventTeam.pending)
-                : uniqueStrings([...normalizeIdList(eventTeam.pending), userId]),
-              updatedAt: now,
-            },
-          });
-          const registration = await upsertEventRegistration({
-            eventId: eventTeam.eventId,
-            registrantType: 'SELF',
-            registrantId: userId,
-            registrationId: previousRegistrationId,
-            parentId: canonicalTeamId,
-            rosterRole: 'PARTICIPANT',
-            status: 'STARTED',
-            eventTeamId: eventTeam.id,
-            sourceTeamRegistrationId,
-            divisionId: normalizeId(eventTeam.division),
-            divisionTypeId: normalizeId(eventTeam.divisionTypeId),
-            divisionTypeKey: normalizeId(eventTeam.divisionTypeId)?.toLowerCase() ?? null,
-            createdBy: session.userId,
-          }, tx);
-          await getEventTeamsDelegate(tx)?.update?.({
-            where: { id: eventTeam.id },
-            data: {
-              playerRegistrationIds: uniqueStrings([
-                ...normalizeIdList((eventTeam as any).playerRegistrationIds),
-                registration.id,
-              ]),
-              updatedAt: now,
-            },
-          });
-          await syncDelegate.upsert({
-            where: {
-              inviteId_eventTeamId_userId: {
-                inviteId: invite.id,
-                eventTeamId: eventTeam.id,
-                userId,
-              },
-            },
-            create: {
-              id: crypto.randomUUID(),
-              inviteId: invite.id,
-              canonicalTeamId,
-              eventId: eventTeam.eventId,
-              eventTeamId: eventTeam.id,
-              userId,
-              previousRegistrationSnapshot,
-              eventTeamHadUser,
-              eventTeamHadPendingUser,
-              sourceTeamRegistrationId,
-              status: 'PENDING',
-              createdAt: now,
-              updatedAt: now,
-            },
-            update: {
-              canonicalTeamId,
-              eventId: eventTeam.eventId,
-              previousRegistrationSnapshot,
-              eventTeamHadUser,
-              eventTeamHadPendingUser,
-              sourceTeamRegistrationId,
-              status: 'PENDING',
-              updatedAt: now,
-            },
-          });
-        }));
       } else {
         await updateStaffInviteAssignment(tx, parsed.data.role, canonicalTeamId, userId, session.userId, now);
       }
@@ -494,16 +335,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return {
         invite,
         team: await loadCanonicalTeamById(canonicalTeamId, tx),
-        eventSyncs: await (tx as any).teamInviteEventSyncs?.findMany?.({
-          where: {
-            inviteId: invite.id,
-            status: 'PENDING',
-          },
-          orderBy: [
-            { createdAt: 'asc' },
-            { id: 'asc' },
-          ],
-        }) ?? [],
       };
     });
 
@@ -516,7 +347,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ok: true,
       invite: mapInviteRecord(result.invite),
       team: result.team,
-      eventSyncs: result.eventSyncs,
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create member invite';
@@ -524,13 +354,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? 403
       : message === 'Team not found'
         ? 404
-        : message.startsWith('Invalid event team selection')
-          ? 400
-          : message === 'User is already on this team'
+        : message === 'User is already on this team'
+          ? 409
+          : message === 'Team is full. Player invite was not sent.'
             ? 409
-            : message === 'Team is full. Player invite was not sent.'
-              ? 409
-              : 400;
+            : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

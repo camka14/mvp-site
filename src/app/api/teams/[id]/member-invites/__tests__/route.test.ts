@@ -157,7 +157,7 @@ describe('/api/teams/[id]/member-invites POST', () => {
     txMock.teamInviteEventSyncs.upsert.mockResolvedValue({});
   });
 
-  it('creates a player invite and reserves selected future event teams as pending', async () => {
+  it('creates a canonical player invite without reserving selected event teams', async () => {
     const response = await POST(
       new NextRequest('http://localhost/api/teams/team_1/member-invites', {
         method: 'POST',
@@ -183,41 +183,11 @@ describe('/api/teams/[id]/member-invites POST', () => {
         status: 'INVITED',
       }),
     }));
-    expect(txMock.teams.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'event_team_1' },
-      data: expect.objectContaining({
-        pending: ['free_1'],
-      }),
-    }));
-    expect(txMock.eventRegistrations.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'legacy_free_agent_registration' },
-      create: expect.objectContaining({
-        id: 'legacy_free_agent_registration',
-        eventId: 'event_1',
-        registrantId: 'free_1',
-        rosterRole: 'PARTICIPANT',
-        status: 'STARTED',
-        eventTeamId: 'event_team_1',
-        sourceTeamRegistrationId: 'team_1__free_1',
-      }),
-      update: expect.objectContaining({
-        rosterRole: 'PARTICIPANT',
-        status: 'STARTED',
-        eventTeamId: 'event_team_1',
-      }),
-    }));
-    expect(txMock.teamInviteEventSyncs.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: expect.objectContaining({
-        inviteId: 'invite_1',
-        canonicalTeamId: 'team_1',
-        eventId: 'event_1',
-        eventTeamId: 'event_team_1',
-        userId: 'free_1',
-        eventTeamHadUser: false,
-        eventTeamHadPendingUser: false,
-        status: 'PENDING',
-      }),
-    }));
+    expect(txMock.teams.findMany).not.toHaveBeenCalled();
+    expect(txMock.teams.update).not.toHaveBeenCalled();
+    expect(txMock.eventRegistrations.upsert).not.toHaveBeenCalled();
+    expect(txMock.teamInviteEventSyncs.upsert).not.toHaveBeenCalled();
+    expect(payload.eventSyncs).toBeUndefined();
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([expect.objectContaining({ id: 'invite_1' })], 'http://localhost');
   });
 
@@ -261,7 +231,6 @@ describe('/api/teams/[id]/member-invites POST', () => {
         body: JSON.stringify({
           userId: 'free_1',
           role: 'player',
-          eventTeamIds: [],
         }),
       }),
       { params: Promise.resolve({ id: 'team_1' }) },

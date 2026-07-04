@@ -705,7 +705,7 @@ describe('TeamDetailModal', () => {
     expect(teamServiceMock.registerSelfForTeam.mock.calls.some(([teamId]) => teamId === 'event_team_1')).toBe(false);
   });
 
-  it('sends source event teams immediately when inviting a free agent', async () => {
+  it('sends canonical team invites when inviting a free agent', async () => {
     const manager = buildUser({
       $id: 'manager_1',
       firstName: 'Morgan',
@@ -773,7 +773,6 @@ describe('TeamDetailModal', () => {
         team,
         freeAgent,
         'player',
-        { eventTeamIds: ['event_team_1'] },
       );
     });
     expect(screen.getByRole('dialog', { name: /invite to test team/i })).toBeInTheDocument();

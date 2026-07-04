@@ -5,7 +5,6 @@ import {
   Alert,
   Avatar,
   Button,
-  Checkbox,
   Group,
   Modal,
   Paper,
@@ -27,7 +26,6 @@ import {
 } from '@/types';
 import {
   teamService,
-  type TeamInviteEventTeamOption,
   type TeamInviteFreeAgentContext,
   type TeamInviteRoleType,
 } from '@/lib/teamService';
@@ -115,7 +113,6 @@ export default function InvitePlayersModal({
   const [searchResults, setSearchResults] = useState<UserData[]>([]);
   const [searching, setSearching] = useState(false);
   const [emailInviteInput, setEmailInviteInput] = useState('');
-  const [selectedInviteEventTeamIds, setSelectedInviteEventTeamIds] = useState<string[]>([]);
   const [invitingUserKeys, setInvitingUserKeys] = useState<Set<string>>(new Set());
   const [invitingByEmail, setInvitingByEmail] = useState(false);
   const [localInvitedPlayerIds, setLocalInvitedPlayerIds] = useState<Set<string>>(new Set());
@@ -164,14 +161,13 @@ export default function InvitePlayersModal({
     ? `This team already has ${playerInviteCapacityCount} of ${playerInviteLimit} player slots filled. Remove a player or pending invite, or increase team size before inviting another player.`
     : '';
 
-  const inviteEventTeamOptions = useMemo(() => freeAgentContext.eventTeams, [freeAgentContext.eventTeams]);
   const inviteEventNameById = useMemo(() => {
     const entries = new Map<string, string>();
-    inviteEventTeamOptions.forEach((option) => {
+    freeAgentContext.eventTeams.forEach((option) => {
       entries.set(option.eventId, option.eventName);
     });
     return entries;
-  }, [inviteEventTeamOptions]);
+  }, [freeAgentContext.eventTeams]);
 
   const getFreeAgentEventNames = useCallback((userId: string): string[] => (
     (freeAgentContext.freeAgentEventsByUserId[userId] ?? [])
@@ -320,7 +316,6 @@ export default function InvitePlayersModal({
       setSearchQuery('');
       setSearchResults([]);
       setEmailInviteInput('');
-      setSelectedInviteEventTeamIds([]);
       setInvitingUserKeys(new Set());
       setInvitingByEmail(false);
     }
@@ -336,13 +331,6 @@ export default function InvitePlayersModal({
       next.delete(key);
       return next;
     });
-  };
-
-  const getEventTeamIdsForUser = (userId: string): string[] => {
-    if (selectedInviteRole !== 'player') {
-      return [];
-    }
-    return freeAgentContext.freeAgentEventTeamIdsByUserId[userId] ?? [];
   };
 
   const handleInviteUser = async (targetUser: UserData) => {
@@ -367,9 +355,7 @@ export default function InvitePlayersModal({
         return;
       }
 
-      const success = await teamService.inviteUserToTeamRole(team, invitee, selectedInviteRole, {
-        eventTeamIds: getEventTeamIdsForUser(invitee.$id),
-      });
+      const success = await teamService.inviteUserToTeamRole(team, invitee, selectedInviteRole);
       if (!success) {
         notifications.show({ color: 'red', message: 'Failed to send invite.' });
         return;
@@ -407,9 +393,7 @@ export default function InvitePlayersModal({
 
     setInvitingByEmail(true);
     try {
-      const success = await teamService.inviteEmailToTeamRole(team, normalizedInviteEmail, selectedInviteRole, {
-        eventTeamIds: selectedInviteRole === 'player' ? selectedInviteEventTeamIds : [],
-      });
+      const success = await teamService.inviteEmailToTeamRole(team, normalizedInviteEmail, selectedInviteRole);
       if (!success) {
         notifications.show({ color: 'red', message: 'Failed to send invite.' });
         return;
@@ -428,7 +412,6 @@ export default function InvitePlayersModal({
 
       notifications.show({ color: 'green', message: `${selectedRoleLabel} invite sent to ${normalizedInviteEmail}.` });
       setEmailInviteInput('');
-      setSelectedInviteEventTeamIds([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send invite.';
       notifications.show({ color: 'red', message });
@@ -437,41 +420,14 @@ export default function InvitePlayersModal({
     }
   };
 
-  const renderEventTeamCheckboxes = () => {
-    if (selectedInviteRole !== 'player' || inviteEventTeamOptions.length === 0) {
-      return null;
-    }
-
-    return (
-      <div className="mt-3 border-t pt-3">
-        <Text fw={500} size="sm" mb={6}>Update your team in upcoming events</Text>
-        <Checkbox.Group
-          value={selectedInviteEventTeamIds}
-          onChange={setSelectedInviteEventTeamIds}
-        >
-          <div className="space-y-2">
-            {inviteEventTeamOptions.map((option: TeamInviteEventTeamOption) => (
-              <Checkbox
-                key={option.eventTeamId}
-                value={option.eventTeamId}
-                label={`${option.eventName} - ${option.teamName}`}
-              />
-            ))}
-          </div>
-        </Checkbox.Group>
-      </div>
-    );
-  };
-
   const renderInviteUserRow = (invitee: UserData, sourceLabel?: string) => {
     const key = inviteKey(selectedInviteRole, invitee.$id);
     const eventNames = selectedInviteRole === 'player' ? getFreeAgentEventNames(invitee.$id) : [];
-    const eventTeamIds = getEventTeamIdsForUser(invitee.$id);
     const canInvite = canInviteUserForRole(invitee.$id, selectedInviteRole);
     const isInviting = invitingUserKeys.has(key);
 
     return (
-      <Paper key={invitee.$id} withBorder radius="md" p="sm" bg={eventTeamIds.length > 0 ? 'blue.0' : undefined}>
+      <Paper key={invitee.$id} withBorder radius="md" p="sm" bg={eventNames.length > 0 ? 'blue.0' : undefined}>
         <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
             <Avatar
@@ -638,7 +594,6 @@ export default function InvitePlayersModal({
 
         {inviteMode === 'email' ? (
           <div className="mt-1">
-            {renderEventTeamCheckboxes()}
             <Group justify="flex-end" mt="sm">
               <Button
                 onClick={() => { void handleInviteByEmail(); }}
