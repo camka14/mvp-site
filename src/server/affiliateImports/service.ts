@@ -369,6 +369,69 @@ const parsePriceCents = (value: unknown): number | null => {
   return Math.max(0, Math.round(amount * 100));
 };
 
+const affiliateCandidateText = (candidate: any): string => (
+  [
+    candidate.title,
+    candidate.description,
+    candidate.priceText,
+    candidate.participantOptionsText,
+    candidate.divisionText,
+    candidate.skillLevel,
+    candidate.sportName,
+    rawExtractedCandidateFields(candidate).priceText,
+    rawExtractedCandidateFields(candidate).participantOptionsText,
+  ]
+    .map((value) => nullableString(value) ?? '')
+    .join(' ')
+);
+
+const inferAffiliateTeamSignup = (
+  candidate: any,
+  eventType: 'EVENT' | 'WEEKLY_EVENT' | 'LEAGUE' | 'TOURNAMENT',
+): boolean => {
+  const text = affiliateCandidateText(candidate);
+  const lower = text.toLowerCase();
+
+  if (/\b(?:individual|player|free[-\s]?agent)\s+registration\b|\bopen\s+(?:gym|play|court)\b|\bpick[-\s]?up\b|\bdrop[-\s]?in\b/.test(lower)) {
+    return false;
+  }
+
+  if (/\$\s*[0-9]+(?:\.[0-9]{1,2})?\s*\/\s*team\b|\bper\s+team\b|\bteam\s+(?:entry|registration|fee|price|cost)\b|\bregister\s+a\s+(?:full\s+)?team\b/.test(lower)) {
+    return true;
+  }
+
+  if (/\bsoftball\b|\bbaseball\b/.test(lower)) {
+    return eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+  }
+
+  return eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+};
+
+const inferAffiliateTeamSizeLimit = (
+  candidate: any,
+  teamSignup: boolean,
+): number => {
+  if (!teamSignup) return 1;
+
+  const text = affiliateCandidateText(candidate).toLowerCase();
+  const explicitTeamSize = text.match(/\bteams?\s+of\s+([1-9]\d?)\b/)
+    ?? text.match(/\b([1-9]\d?)\s*(?:person|player)\s+teams?\b/);
+  if (explicitTeamSize) {
+    const parsed = Number.parseInt(explicitTeamSize[1], 10);
+    if (Number.isFinite(parsed) && parsed > 1) {
+      return parsed;
+    }
+  }
+
+  if (/\bquads?\b/.test(text)) return 4;
+  if (/\bdoubles?\b|\b2s\b/.test(text)) return 2;
+  if (/\bsoftball\b|\bbaseball\b/.test(text)) return 10;
+  if (/\bbasketball\b/.test(text)) return 5;
+  if (/\bsoccer\b|\bfutsal\b/.test(text)) return 20;
+  if (/\bvolleyball\b/.test(text)) return 2;
+  return 20;
+};
+
 const slugToken = (value: string): string => (
   value
     .trim()
@@ -612,7 +675,8 @@ const buildAffiliateEventData = async (
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
   const hasSourceDivision = buildAffiliateDivisionDetails(candidate, sportId).length > 0;
-  const teamSignup = /\badult\s+league\s+team\b|\bteam\s+registration\b/i.test(nullableString(candidate.title) ?? '');
+  const eventType = inferAffiliateEventType(candidate);
+  const teamSignup = inferAffiliateTeamSignup(candidate, eventType);
   const location = nullableString(candidate.venueName)
     ?? nullableString(candidate.city)
     ?? nullableString(candidate.address)
@@ -650,7 +714,7 @@ const buildAffiliateEventData = async (
     location,
     address,
     rating: null,
-    teamSizeLimit: teamSignup ? 20 : 1,
+    teamSizeLimit: inferAffiliateTeamSizeLimit(candidate, teamSignup),
     maxParticipants,
     minAge: ageRange.minAge,
     maxAge: ageRange.maxAge,
@@ -689,7 +753,7 @@ const buildAffiliateEventData = async (
     organizationId: nullableString(source.organizationId),
     parentEvent: null,
     autoCancellation: null,
-    eventType: inferAffiliateEventType(candidate),
+    eventType,
     officialSchedulingMode: 'OFF',
     doTeamsOfficiate: false,
     teamOfficialsMaySwap: false,

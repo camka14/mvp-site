@@ -1032,6 +1032,81 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('treats softball tournament imports as team registrations', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_softball',
+      name: 'Portland Metro Softball Association',
+      sourceKey: 'portland-softball-current-programs',
+      activeMappingId: 'mapping_softball',
+      listUrl: 'https://www.portlandsoftball.com/current-programs',
+      organizationId: 'affiliate_org_portland_metro_softball_association',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'affiliate_org_portland_metro_softball_association',
+      ownerId: 'owner_1',
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_softball',
+      sourceId: 'source_softball',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://www.portlandsoftball.com/current-programs',
+        itemSelector: '.program',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: { selector: '.info', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl', required: true },
+          sportName: { selector: ':scope', mode: 'literal', value: 'Softball' },
+          priceText: { selector: '.price' },
+          description: { selector: '.description' },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_softball' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_softball', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_softball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    const client = {
+      fetchPage: jest.fn(async () => ({
+        url: 'https://www.portlandsoftball.com/current-programs',
+        finalUrl: 'https://www.portlandsoftball.com/current-programs',
+        statusCode: 200,
+        fetchedAt: '2026-06-26T00:00:00.000Z',
+        body: `
+          <section class="program">
+            <h2 class="title">Saving 2nd Base - Fall 2026</h2>
+            <p class="description">Coed softball tournament with Men, Women, and Coed divisions.</p>
+            <span class="price">$400.00</span>
+            <time class="start">2099-09-11T17:00:00.000Z</time>
+            <a class="info" href="/current-programs/more-info">More Info</a>
+          </section>
+        `,
+      })),
+    };
+
+    const result = await runAffiliateSourceScrape('source_softball', { client });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Saving 2nd Base - Fall 2026',
+        eventType: 'TOURNAMENT',
+        sportId: 'sport_softball',
+        priceText: '$400.00',
+        teamSignup: true,
+        teamSizeLimit: 10,
+        affiliateUrl: 'https://www.portlandsoftball.com/current-programs/more-info',
+      }),
+    });
+  });
+
   it('creates admin-only canonical teams for scraped team candidates', async () => {
     prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
       id: 'source_teams',
