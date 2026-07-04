@@ -368,7 +368,7 @@ describe('affiliate import service', () => {
             title: 'GPSD Fall Adult Outdoor Soccer League',
             officialActionUrl: 'https://www.gpsdsoccer.com/team-mgmt/',
             sourceUrl: 'https://www.gpsdsoccer.com/about/gpsd-seasons',
-            sportName: 'Soccer',
+            sportName: 'Grass Soccer',
             dateDisplayMode: 'NO_FIXED_DATE',
             dateDisplayText: 'Seasonal registration',
             priceText: 'From $1,695 per team',

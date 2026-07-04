@@ -13,30 +13,44 @@ const LOGO_FILE_ID = 'affiliate_file_gpsd_logo';
 const LOGO_PATH = 'affiliate_org_gpsd-gpsd-logo-upscaled.png';
 const SOURCE_ID = 'affiliate_source_gpsd_adult_soccer_seasons';
 const SOURCE_KEY = 'gpsd-adult-soccer-seasons';
-const MAPPING_ID = 'affiliate_mapping_gpsd_adult_soccer_seasons_v2';
+const MAPPING_ID = 'affiliate_mapping_gpsd_adult_soccer_seasons_v3';
 const LIST_URL = 'https://www.gpsdsoccer.com/about/gpsd-seasons';
 const LEGACY_GENERIC_TITLE = 'GPSD Adult Outdoor Soccer Leagues';
 
-const gpsdDivisions = [
+const buildGpsdDivisions = (
+  divisions: Array<{ name: string; divisionTypeId: string; priceCents: number }>,
+  sourceLabel: string,
+) => divisions.map((division) => ({
+  ...division,
+  gender: 'C' as const,
+  ratingType: 'AGE' as const,
+  ageCutoffLabel: division.name === 'Open' ? 'Adult 18+' : `${division.name.replace('Over ', '')}+`,
+  ageCutoffSource: sourceLabel,
+}));
+
+const gpsdSpringFallDivisions = buildGpsdDivisions([
   { name: 'Open', divisionTypeId: '18plus', priceCents: 229500 },
   { name: 'Over 30', divisionTypeId: '30plus', priceCents: 224500 },
   { name: 'Over 40', divisionTypeId: '40plus', priceCents: 224500 },
   { name: 'Over 50', divisionTypeId: '50plus', priceCents: 204500 },
   { name: 'Over 58', divisionTypeId: '58plus', priceCents: 204500 },
   { name: 'Over 65', divisionTypeId: '65plus', priceCents: 169500 },
-].map((division) => ({
-  ...division,
-  gender: 'C' as const,
-  ratingType: 'AGE' as const,
-  ageCutoffLabel: division.name === 'Open' ? 'Adult 18+' : `${division.name.replace('Over ', '')}+`,
-  ageCutoffSource: 'Latest published GPSD registration fee table',
-}));
+], 'Latest published GPSD Spring/Fall registration fee table');
+
+const gpsdWinterDivisions = buildGpsdDivisions([
+  { name: 'Open', divisionTypeId: '18plus', priceCents: 105000 },
+  { name: 'Over 30', divisionTypeId: '30plus', priceCents: 100000 },
+  { name: 'Over 40', divisionTypeId: '40plus', priceCents: 95000 },
+  { name: 'Over 58', divisionTypeId: '58plus', priceCents: 90000 },
+  { name: 'Over 60', divisionTypeId: '60plus', priceCents: 90000 },
+  { name: 'Over 65', divisionTypeId: '65plus', priceCents: 60000 },
+], 'Latest published GPSD Winter registration fee table');
 
 const baseSeasonCandidate = {
   officialActionUrl: LIST_URL,
   sourceUrl: LIST_URL,
   organizerName: 'Greater Portland Soccer District',
-  sportName: 'Soccer',
+  sportName: 'Grass Soccer',
   city: 'Portland, OR',
   venueName: 'Portland metro area',
   address: 'Portland, OR',
@@ -44,8 +58,6 @@ const baseSeasonCandidate = {
   dateDisplayMode: 'NO_FIXED_DATE' as const,
   ageGroup: 'Adult 18+',
   participantOptionsText: 'Team registration',
-  priceText: 'From $1,695 per team; division-specific fees go up to $2,295.',
-  divisions: gpsdDivisions,
   warnings: [
     'Stored as an evergreen/manual season listing because the current GPSD dated registration pages are stale or already past-dated as of 2026-07-04.',
   ],
@@ -58,8 +70,10 @@ const gpsdSeasonCandidates = [
     formatLabel: 'Winter outdoor soccer league',
     scheduleText: 'GPSD describes winter as a 5-game adult outdoor soccer season with no championships. The season usually starts around the first or second weekend of January and ends in late February, with registration opening around early November and closing around early December of the previous year.',
     dateDisplayText: 'Winter seasonal registration',
+    priceText: 'From $600 per team; division-specific winter fees go up to $1,050.',
+    divisions: gpsdWinterDivisions,
     statusText: 'Evergreen winter league listing; confirm current registration on the official GPSD site.',
-    description: 'Greater Portland Soccer District runs a recurring winter adult outdoor soccer league season in the Portland metro area. GPSD describes winter as a 5-game season with no championships, typically starting around the first or second weekend of January and ending in late February. Teams select an age bracket during registration and request a division.',
+    description: 'Greater Portland Soccer District runs a recurring winter adult grass soccer league season in the Portland metro area. GPSD describes winter as a 5-game season with no championships, typically starting around the first or second weekend of January and ending in late February. Teams select an age bracket during registration and request a division.',
   },
   {
     ...baseSeasonCandidate,
@@ -67,8 +81,10 @@ const gpsdSeasonCandidates = [
     formatLabel: 'Spring outdoor soccer league',
     scheduleText: 'GPSD describes spring as a 10-game adult outdoor soccer season plus championship games. The season usually starts around the first or second weekend of March and ends around the last weekend of June, with registration opening around mid-December and closing around late January.',
     dateDisplayText: 'Spring seasonal registration',
+    priceText: 'From $1,695 per team; division-specific spring fees go up to $2,295.',
+    divisions: gpsdSpringFallDivisions,
     statusText: 'Evergreen spring league listing; confirm current registration on the official GPSD site.',
-    description: 'Greater Portland Soccer District runs a recurring spring adult outdoor soccer league season in the Portland metro area. GPSD describes spring as a 10-game season plus championship games, typically running from March through late June. Teams select an age bracket during registration and request a division.',
+    description: 'Greater Portland Soccer District runs a recurring spring adult grass soccer league season in the Portland metro area. GPSD describes spring as a 10-game season plus championship games, typically running from March through late June. Teams select an age bracket during registration and request a division.',
   },
   {
     ...baseSeasonCandidate,
@@ -76,8 +92,10 @@ const gpsdSeasonCandidates = [
     formatLabel: 'Fall outdoor soccer league',
     scheduleText: 'GPSD describes fall as a 10-game adult outdoor soccer season plus championship games. The season usually starts the second weekend of September after Labor Day and ends the first weekend of December, with registration opening around mid-June and closing around late July.',
     dateDisplayText: 'Fall seasonal registration',
+    priceText: 'From $1,695 per team; division-specific fall fees go up to $2,295 before any posted late fee.',
+    divisions: gpsdSpringFallDivisions,
     statusText: 'Evergreen fall league listing; confirm current registration on the official GPSD site.',
-    description: 'Greater Portland Soccer District runs a recurring fall adult outdoor soccer league season in the Portland metro area. GPSD describes fall as a 10-game season plus championship games, typically starting after Labor Day and ending in early December. Teams select an age bracket during registration and request a division.',
+    description: 'Greater Portland Soccer District runs a recurring fall adult grass soccer league season in the Portland metro area. GPSD describes fall as a 10-game season plus championship games, typically starting after Labor Day and ending in early December. Teams select an age bracket during registration and request a division.',
   },
 ];
 
@@ -165,7 +183,7 @@ const upsertOrganization = async (ownerId: string) => {
       logoId: LOGO_FILE_ID,
       ownerId,
       website: 'https://www.gpsdsoccer.com/',
-      sports: ['Soccer'],
+      sports: ['Grass Soccer'],
       status: 'UNLISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
@@ -188,7 +206,7 @@ const upsertOrganization = async (ownerId: string) => {
       logoId: LOGO_FILE_ID,
       ownerId,
       website: 'https://www.gpsdsoccer.com/',
-      sports: ['Soccer'],
+      sports: ['Grass Soccer'],
       status: 'UNLISTED',
       coordinates: [-122.6784, 45.5152],
       operatesAthleticFacility: false,
@@ -246,23 +264,23 @@ const upsertSourceAndMapping = async () => {
     where: {
       sourceId_version: {
         sourceId: SOURCE_ID,
-        version: 2,
+        version: 3,
       },
     },
     create: {
       id: MAPPING_ID,
       sourceId: SOURCE_ID,
-      version: 2,
+      version: 3,
       isActive: true,
       mapping,
       createdByUserId: null,
-      notes: 'Manual evergreen mapping for GPSD adult soccer seasons with season-labeled winter, spring, and fall candidates, explicit source divisions, and latest published team fees.',
+      notes: 'Manual evergreen mapping for GPSD adult grass soccer seasons with season-labeled winter, spring, and fall candidates, explicit source divisions, and season-specific latest published team fees.',
       validatedAt: new Date(),
     },
     update: {
       isActive: true,
       mapping,
-      notes: 'Manual evergreen mapping for GPSD adult soccer seasons with season-labeled winter, spring, and fall candidates, explicit source divisions, and latest published team fees.',
+      notes: 'Manual evergreen mapping for GPSD adult grass soccer seasons with season-labeled winter, spring, and fall candidates, explicit source divisions, and season-specific latest published team fees.',
       validatedAt: new Date(),
     },
   });
