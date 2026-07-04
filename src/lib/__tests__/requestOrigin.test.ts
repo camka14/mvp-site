@@ -48,6 +48,16 @@ describe('getRequestOrigin', () => {
     expect(getRequestOrigin(req)).toBe('http://localhost:3010');
   });
 
+  it('allows Android emulator host-loopback origins when no canonical origin is configured', () => {
+    const req = new NextRequest('http://10.0.2.2:3000/api/teams/team-1/member-invites', {
+      headers: {
+        host: '10.0.2.2:3000',
+      },
+    });
+
+    expect(getRequestOrigin(req)).toBe('http://10.0.2.2:3000');
+  });
+
   it('rejects non-local request-derived origins when no canonical origin is configured', () => {
     const req = new NextRequest('https://api.bracket-iq.com/api/auth/google/start', {
       headers: {
