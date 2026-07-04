@@ -233,6 +233,60 @@ describe('file routes', () => {
       expect(metadata.height).toBe(8);
     });
 
+    it('trims transparent padding before resizing when requested', async () => {
+      const inputBuffer = await sharp({
+        create: {
+          width: 20,
+          height: 20,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([
+          {
+            input: await sharp({
+              create: {
+                width: 20,
+                height: 4,
+                channels: 4,
+                background: '#ff0000',
+              },
+            })
+              .png()
+              .toBuffer(),
+            left: 0,
+            top: 8,
+          },
+        ])
+        .png()
+        .toBuffer();
+
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'file_trimmed',
+        path: 'path/file.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'file.png',
+      });
+
+      const storageProvider = {
+        getObjectStream: jest.fn().mockResolvedValue({
+          stream: Readable.from([inputBuffer]),
+          contentType: 'image/png',
+        }),
+      };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      const request = new NextRequest('http://localhost/api/files/file_trimmed/preview?w=10&trim=true');
+      const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'file_trimmed' }) });
+      const outputBuffer = Buffer.from(await res.arrayBuffer());
+      const metadata = await sharp(outputBuffer).metadata();
+
+      expect(res.status).toBe(200);
+      expect(metadata.width).toBe(10);
+      expect(metadata.height).toBe(2);
+    });
+
     it('serves SVG previews as the original vector even when dimensions are requested', async () => {
       const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10"/></svg>';
 

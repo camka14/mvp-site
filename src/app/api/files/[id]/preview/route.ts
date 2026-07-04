@@ -35,6 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const width = parseDimension(req.nextUrl.searchParams.get('w'));
     const height = parseDimension(req.nextUrl.searchParams.get('h'));
+    const trim = req.nextUrl.searchParams.get('trim') === 'true';
 
     const storage = getStorageProvider();
     let streamResult;
@@ -74,7 +75,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       resizeOptions.position = 'center';
     }
 
-    const output = await sharp(data).resize(resizeOptions).toBuffer();
+    let pipeline = sharp(data);
+    if (trim) {
+      pipeline = pipeline.trim();
+    }
+
+    const output = await pipeline.resize(resizeOptions).toBuffer();
 
     return new NextResponse(new Uint8Array(output), {
       status: 200,
