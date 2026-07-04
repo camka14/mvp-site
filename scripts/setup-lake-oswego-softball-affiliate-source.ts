@@ -21,33 +21,53 @@ const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_lake_oswego_parks_recreation';
 const LOGO_FILE_ID = 'affiliate_file_lake_oswego_parks_recreation_logo';
 const LOGO_PATH = 'affiliate_org_lake_oswego_parks_recreation-lopr-logo-upscaled.png';
-const SOURCE_ID = 'affiliate_source_lake_oswego_adult_basketball';
-const SOURCE_KEY = 'lake-oswego-adult-basketball';
-const MAPPING_ID = 'affiliate_mapping_lake_oswego_adult_basketball_v1';
-const LIST_URL = 'https://www.ci.oswego.or.us/parksrec/adult-basketball-league-0';
+const SOURCE_ID = 'affiliate_source_lake_oswego_adult_slow_pitch_softball';
+const SOURCE_KEY = 'lake-oswego-adult-slow-pitch-softball';
+const MAPPING_ID = 'affiliate_mapping_lake_oswego_adult_slow_pitch_softball_v1';
+const LIST_URL = 'https://www.ci.oswego.or.us/parksrec/adult-summer-slow-pitch-softball';
 const BASE_URL = 'https://www.ci.oswego.or.us/parksrec';
+const CURRENT_PROGRAMS_URL = 'https://oswegosoftball.com/current-programs';
+const REGISTRATION_URL = 'https://www.oswegosoftball.com/sites/OswegoSoftball/program/110687/Lake-Oswego-Softball';
 const LOGO_SOURCE_URL = 'https://www.ci.oswego.or.us/sites/default/files/LOPR-Logo-Color-RGB.png';
 const ORG_SPORTS = ['Basketball', 'Softball'];
 
-const leagueDescription = 'Lake Oswego Parks & Recreation runs a Summer 2026 adult basketball league on Sundays, July 12 through September 13, at Lake Oswego Recreation and Aquatics Center. The league includes six games plus a season tournament with officials provided. Team managers create teams through LOPR, and approved roster players sign up using the team name and password.';
+const softballDescription = 'Lake Oswego Parks & Recreation and Lake Oswego Softball describe this as a recreational adult summer slow-pitch league. Senior teams play Mondays, men\'s upper, lower, and mid divisions play Tuesday through Thursday, and coed teams play Fridays. Men\'s divisions play doubleheaders; coed and senior divisions play single games. The regular season runs seven weeks, followed by double-elimination division tournaments in August.';
 
-const baseLeagueCandidate = {
-  sourceUrl: LIST_URL,
-  organizerName: 'Lake Oswego Parks & Recreation',
-  sportName: 'Basketball',
-  formatLabel: 'League',
-  city: 'Lake Oswego, OR',
-  venueName: 'Lake Oswego Recreation and Aquatics Center',
-  address: '17525 Stafford Rd, Lake Oswego, OR 97034',
-  startsAt: '2026-07-12T12:00:00-07:00',
-  endsAt: '2026-09-13T20:00:00-07:00',
-  scheduleText: 'July 12 - Sept 13, 2026 | Sundays, 12-8 p.m. | 6 games plus season tournament | Officials provided',
-  participantOptionsText: 'Team manager setup with approved roster-player signup and roster payment through LOPR.',
-  priceText: 'Regular per-player fee: $101 residents, $123 non-residents. Early bird fees before the team deadline were $86 resident and $108 non-resident.',
-  statusText: 'Registration is open. Team registration closed June 24, 2026, and additional players may be added throughout the season.',
-  description: leagueDescription,
-  timeZone: 'America/Los_Angeles',
-};
+const buildSoftballDivision = (
+  name: string,
+  key: string,
+  gender: 'M' | 'C',
+  divisionTypeId: string,
+  priceCents: number,
+  ageCutoffSource = 'City of Lake Oswego adult softball page and Lake Oswego Softball provider page',
+) => ({
+  name,
+  key,
+  gender,
+  ratingType: 'SKILL' as const,
+  divisionTypeId,
+  priceCents,
+  maxParticipants: 6,
+  ageCutoffLabel: 'Adult 18+',
+  ageCutoffSource,
+});
+
+const softballDivisions = [
+  buildSoftballDivision(
+    'Senior League',
+    'c_skill_senior_age_18plus',
+    'C',
+    'skill_senior_age_18plus',
+    100000,
+    'Source labels this as adult Senior League but does not publish a numeric senior age cutoff.',
+  ),
+  buildSoftballDivision("Men's Upper Level", 'm_skill_upper_age_18plus', 'M', 'skill_upper_age_18plus', 100000),
+  buildSoftballDivision("Men's Mid Level", 'm_skill_mid_age_18plus', 'M', 'skill_mid_age_18plus', 100000),
+  buildSoftballDivision("Men's Lower Level", 'm_skill_lower_age_18plus', 'M', 'skill_lower_age_18plus', 100000),
+  buildSoftballDivision('Coed Upper Level', 'c_skill_upper_age_18plus', 'C', 'skill_upper_age_18plus', 57500),
+  buildSoftballDivision('Coed Mid Level', 'c_skill_mid_age_18plus', 'C', 'skill_mid_age_18plus', 57500),
+  buildSoftballDivision('Coed Lower Level', 'c_skill_lower_age_18plus', 'C', 'skill_lower_age_18plus', 57500),
+];
 
 const mapping: AffiliateScrapeMapping = {
   kind: 'EVENT',
@@ -57,52 +77,41 @@ const mapping: AffiliateScrapeMapping = {
     title: {
       selector: 'body',
       mode: 'literal',
-      value: 'Lake Oswego Summer Adult Basketball League',
+      value: 'Lake Oswego Adult Slow-Pitch Softball League',
     },
     officialActionUrl: {
       selector: 'body',
       mode: 'literal',
-      value: LIST_URL,
+      value: REGISTRATION_URL,
     },
   },
   dedupe: {
-    fields: ['officialActionUrl', 'title', 'startsAt'],
+    fields: ['officialActionUrl', 'title', 'dateDisplayMode'],
   },
   manualCandidates: [
     {
-      ...baseLeagueCandidate,
-      title: "Lake Oswego Summer Adult Basketball League - Men's 18+",
-      officialActionUrl: 'https://anc.apm.activecommunities.com/lakeoswegoparks/activity/search/detail/26641?onlineSiteId=0&locale=en-US&from_original_cui=true',
-      ageGroup: 'Men 18+',
-      divisionText: "Men's 18+",
-      divisions: [
-        {
-          name: "Men's 18+",
-          gender: 'M',
-          ratingType: 'AGE',
-          divisionTypeId: '18plus',
-          priceCents: 10100,
-          ageCutoffLabel: '18+',
-          ageCutoffSource: 'City of Lake Oswego division registration link',
-        },
-      ],
-    },
-    {
-      ...baseLeagueCandidate,
-      title: "Lake Oswego Summer Adult Basketball League - Men's 30+",
-      officialActionUrl: 'https://anc.apm.activecommunities.com/lakeoswegoparks/activity/search/detail/26642?onlineSiteId=0&locale=en-US&from_original_cui=true',
-      ageGroup: 'Men 30+',
-      divisionText: "Men's 30+",
-      divisions: [
-        {
-          name: "Men's 30+",
-          gender: 'M',
-          ratingType: 'AGE',
-          divisionTypeId: '30plus',
-          priceCents: 10100,
-          ageCutoffLabel: '30+',
-          ageCutoffSource: 'City of Lake Oswego division registration link',
-        },
+      title: 'Lake Oswego Adult Slow-Pitch Softball League',
+      officialActionUrl: REGISTRATION_URL,
+      sourceUrl: LIST_URL,
+      organizerName: 'Lake Oswego Parks & Recreation',
+      sportName: 'Softball',
+      formatLabel: 'Adult slow-pitch softball league',
+      city: 'Lake Oswego, OR',
+      venueName: 'Lake Oswego softball fields',
+      address: 'Lake Oswego, OR',
+      timeZone: 'America/Los_Angeles',
+      scheduleText: 'Annual summer program. Senior League plays Mondays; men\'s upper, lower, and mid divisions play Tuesday through Thursday; coed upper, mid, and lower divisions play Fridays. Men\'s divisions play doubleheaders, while coed and senior divisions play single games.',
+      dateDisplayMode: 'NO_FIXED_DATE',
+      dateDisplayText: 'Annual summer league; 2026 registration closed',
+      ageGroup: 'Adult 18+',
+      participantOptionsText: 'Team registration through the official Lake Oswego softball site.',
+      priceText: 'Team registration cost: $575-$1,000.',
+      statusText: '2026 registration is closed. Confirm next season on the official registration site.',
+      description: softballDescription,
+      divisions: softballDivisions,
+      warnings: [
+        'Stored as an evergreen/manual program listing because the official 2026 registration window closed May 18, 2026 and the published season already started.',
+        'Division prices come from the official Lake Oswego Softball More Info offering table: Senior and Men divisions are $1,000; Coed divisions are $575.',
       ],
     },
   ],
@@ -209,7 +218,7 @@ const upsertSourceAndMapping = async () => {
     where: { id: SOURCE_ID },
     create: {
       id: SOURCE_ID,
-      name: 'Lake Oswego Adult Basketball',
+      name: 'Lake Oswego Adult Slow-Pitch Softball',
       sourceKey: SOURCE_KEY,
       organizationId: ORG_ID,
       baseUrl: BASE_URL,
@@ -217,28 +226,32 @@ const upsertSourceAndMapping = async () => {
       targetKind: 'EVENT',
       status: 'ACTIVE',
       activeMappingId: MAPPING_ID,
-      notes: 'City-hosted adult basketball league source. The City page owns the season, divisions, fees, venue, and registration copy; ActiveCommunities detail URLs are stored as affiliate action links.',
+      notes: 'City-hosted adult slow-pitch softball source. The 2026 registration is closed, so the active mapping emits one evergreen annual program candidate with source-derived schedule, divisions, six-slot division caps, and team cost range.',
       metadata: {
         inspectedAt: '2026-07-04',
-        platform: 'City of Lake Oswego with ActiveCommunities registration links',
+        platform: 'City of Lake Oswego page with Lake Oswego Softball registration provider link',
+        currentProgramsUrl: CURRENT_PROGRAMS_URL,
+        officialRegistrationUrl: REGISTRATION_URL,
         logoSourceUrl: LOGO_SOURCE_URL,
-        venueCoordinatesSource: 'Bing Maps link on source page',
+        provider: 'Lake Oswego Softball / TeamSideline-powered site',
       },
     },
     update: {
-      name: 'Lake Oswego Adult Basketball',
+      name: 'Lake Oswego Adult Slow-Pitch Softball',
       organizationId: ORG_ID,
       baseUrl: BASE_URL,
       listUrl: LIST_URL,
       targetKind: 'EVENT',
       status: 'ACTIVE',
       activeMappingId: MAPPING_ID,
-      notes: 'City-hosted adult basketball league source. The City page owns the season, divisions, fees, venue, and registration copy; ActiveCommunities detail URLs are stored as affiliate action links.',
+      notes: 'City-hosted adult slow-pitch softball source. The 2026 registration is closed, so the active mapping emits one evergreen annual program candidate with source-derived schedule, divisions, six-slot division caps, and team cost range.',
       metadata: {
         inspectedAt: '2026-07-04',
-        platform: 'City of Lake Oswego with ActiveCommunities registration links',
+        platform: 'City of Lake Oswego page with Lake Oswego Softball registration provider link',
+        currentProgramsUrl: CURRENT_PROGRAMS_URL,
+        officialRegistrationUrl: REGISTRATION_URL,
         logoSourceUrl: LOGO_SOURCE_URL,
-        venueCoordinatesSource: 'Bing Maps link on source page',
+        provider: 'Lake Oswego Softball / TeamSideline-powered site',
       },
     },
   });
@@ -262,13 +275,13 @@ const upsertSourceAndMapping = async () => {
       isActive: true,
       mapping,
       createdByUserId: null,
-      notes: 'Selector mapping for the two City of Lake Oswego adult basketball division registration links, with source-derived shared league details and fees.',
+      notes: 'Manual evergreen mapping for Lake Oswego adult slow-pitch softball with source-derived annual league summary, divisions, six-slot division caps, and offering-table team prices.',
       validatedAt: new Date(),
     },
     update: {
       isActive: true,
       mapping,
-      notes: 'Selector mapping for the two City of Lake Oswego adult basketball division registration links, with source-derived shared league details and fees.',
+      notes: 'Manual evergreen mapping for Lake Oswego adult slow-pitch softball with source-derived annual league summary, divisions, six-slot division caps, and offering-table team prices.',
       validatedAt: new Date(),
     },
   });
@@ -287,7 +300,7 @@ const main = async () => {
   await upsertOrganization(owner.id);
   await upsertSourceAndMapping();
 
-  console.log(`Lake Oswego affiliate source ready: ${SOURCE_KEY}`);
+  console.log(`Lake Oswego softball affiliate source ready: ${SOURCE_KEY}`);
   if (shouldScrape) {
     const result = await runAffiliateSourceScrape(SOURCE_ID);
     console.log(`Scrape run ${result.run.id}: ${result.candidates.length} candidate(s) saved.`);
@@ -298,7 +311,7 @@ const main = async () => {
 
 main()
   .catch((error) => {
-    console.error('[setup-lake-oswego-affiliate-source] failed', error);
+    console.error('[setup-lake-oswego-softball-affiliate-source] failed', error);
     process.exitCode = 1;
   })
   .finally(async () => {

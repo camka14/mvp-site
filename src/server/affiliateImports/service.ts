@@ -439,9 +439,9 @@ const inferAffiliateTeamSizeLimit = (
     }
   }
 
+  if (/\bsoftball\b|\bbaseball\b/.test(text)) return 10;
   if (/\bquads?\b/.test(text)) return 4;
   if (/\bdoubles?\b|\b2s\b/.test(text)) return 2;
-  if (/\bsoftball\b|\bbaseball\b/.test(text)) return 10;
   if (/\bbasketball\b/.test(text)) return 5;
   if (/\bsoccer\b|\bfutsal\b/.test(text)) return 20;
   if (/\bvolleyball\b/.test(text)) return 2;
@@ -467,6 +467,32 @@ const inferDivisionGender = (value: unknown): DivisionGender => {
 
 const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge: number | null; ageDivisionTypeId: string | null } => {
   const haystack = nullableString(value) ?? '';
+  const uRangeMatch = haystack.match(/\bU\s*([1-9]\d?)\s*(?:-|–|to)\s*U?\s*([1-9]\d?)\b/i);
+  if (uRangeMatch) {
+    const minAge = Number.parseInt(uRangeMatch[1], 10);
+    const maxAge = Number.parseInt(uRangeMatch[2], 10);
+    if (Number.isFinite(minAge) && Number.isFinite(maxAge)) {
+      return {
+        minAge: Math.min(minAge, maxAge),
+        maxAge: Math.max(minAge, maxAge),
+        ageDivisionTypeId: `u${Math.max(minAge, maxAge)}`,
+      };
+    }
+  }
+
+  const ageRangeMatch = haystack.match(/\bages?\s*([1-9]\d?)\s*(?:-|–|to)\s*([1-9]\d?)\b/i);
+  if (ageRangeMatch) {
+    const minAge = Number.parseInt(ageRangeMatch[1], 10);
+    const maxAge = Number.parseInt(ageRangeMatch[2], 10);
+    if (Number.isFinite(minAge) && Number.isFinite(maxAge)) {
+      return {
+        minAge: Math.min(minAge, maxAge),
+        maxAge: Math.max(minAge, maxAge),
+        ageDivisionTypeId: `u${Math.max(minAge, maxAge)}`,
+      };
+    }
+  }
+
   const upperMatch = haystack.match(/\bU\s*([1-9]\d?)\b/i) ?? haystack.match(/\b([1-9]\d?)\s*U\b/i);
   if (upperMatch) {
     const maxAge = Number.parseInt(upperMatch[1], 10);

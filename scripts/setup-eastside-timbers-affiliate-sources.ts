@@ -55,7 +55,7 @@ const literalFields = {
 
 const baseEventCandidate = {
   organizerName: 'Eastside Timbers',
-  sportName: 'Soccer',
+  sportName: 'Grass Soccer',
   city: 'Portland, OR',
   timeZone: 'America/Los_Angeles',
 } as const;
@@ -69,6 +69,7 @@ const opfVenue = {
   venueName: 'Oregon Premier Futsal',
   address: '12402 SE Jennifer St, Unit 190, Clackamas, OR 97015',
   city: 'Clackamas, OR',
+  sportName: 'Indoor Soccer',
 } as const;
 
 const buildMapping = (
@@ -245,7 +246,7 @@ const sourceDefinitions: SourceDefinition[] = [
       },
       {
         ...baseEventCandidate,
-        sportName: 'Multi-sport',
+        sportName: 'Other',
         title: 'Fun Multi-Sport Camp at Happy Valley Park',
         officialActionUrl: PLAYMETRICS_MULTI_SPORT_CAMP_URL,
         sourceUrl: `${BASE_URL}etcamps`,
@@ -301,7 +302,7 @@ const sourceDefinitions: SourceDefinition[] = [
       {
         ...baseEventCandidate,
         ...opfVenue,
-        sportName: 'Multi-sport',
+        sportName: 'Other',
         title: 'All-Sports & Crafts Camp: Ages 5-8',
         officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196365-summer-all-sports-and-crafts-camp-ages-5-8',
         sourceUrl: `${BASE_URL}indoorcamps`,
@@ -318,7 +319,7 @@ const sourceDefinitions: SourceDefinition[] = [
       {
         ...baseEventCandidate,
         ...opfVenue,
-        sportName: 'Multi-sport',
+        sportName: 'Other',
         title: 'All-Sports & Crafts Camp: Ages 9-12 Session 1',
         officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196375-summer-all-sports-and-crafts-camp-ages-9-12',
         sourceUrl: `${BASE_URL}indoorcamps`,
@@ -335,7 +336,7 @@ const sourceDefinitions: SourceDefinition[] = [
       {
         ...baseEventCandidate,
         ...opfVenue,
-        sportName: 'Multi-sport',
+        sportName: 'Other',
         title: 'All-Sports & Crafts Camp: Ages 9-12 Session 2',
         officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196384-summer-all-sports-and-crafts-camp-ages-9-12',
         sourceUrl: `${BASE_URL}indoorcamps`,
@@ -369,7 +370,7 @@ const sourceDefinitions: SourceDefinition[] = [
         startsAt: '2026-07-13T18:00:00-07:00',
         endsAt: '2026-09-28T19:00:00-07:00',
         scheduleText: 'Mondays, July 13-September 28, 2026, 6:00-7:00 PM. No class July 20 or September 7.',
-        ageGroup: 'U8-High School',
+        ageGroup: 'Ages 8-18 (U8 through high school)',
         maxParticipantsText: '12 players',
         participantOptionsText: 'Player registration',
         priceText: '$150 for 10 lessons',
@@ -438,7 +439,7 @@ const sourceDefinitions: SourceDefinition[] = [
       {
         ...opfVenue,
         organizerName: 'Eastside Timbers',
-        sportName: 'Fitness',
+        sportName: 'Other',
         title: 'Qi-Gong Classes at Oregon Premier Futsal',
         officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196283-qi-gong',
         sourceUrl: `${BASE_URL}opfcommunity`,
@@ -520,7 +521,7 @@ const upsertOrganization = async (ownerId: string) => {
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
-      sports: ['Soccer', 'Futsal', 'Multi-sport', 'Fitness'],
+      sports: ['Grass Soccer', 'Indoor Soccer', 'Other'],
       status: 'UNLISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
@@ -543,7 +544,7 @@ const upsertOrganization = async (ownerId: string) => {
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
-      sports: ['Soccer', 'Futsal', 'Multi-sport', 'Fitness'],
+      sports: ['Grass Soccer', 'Indoor Soccer', 'Other'],
       status: 'UNLISTED',
       coordinates,
       operatesAthleticFacility: true,

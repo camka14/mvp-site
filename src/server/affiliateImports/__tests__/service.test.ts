@@ -830,6 +830,48 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('parses source age ranges into min and max ages', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_eastside_camp',
+      sourceId: 'source_eastside',
+      listingKind: 'EVENT',
+      title: 'All-Sports & Crafts Camp: Ages 5-8',
+      organizerName: 'Eastside Timbers',
+      sportName: 'Other',
+      venueName: 'Oregon Premier Futsal',
+      city: 'Clackamas, OR',
+      address: '12402 SE Jennifer St, Unit 190, Clackamas, OR 97015',
+      startsAt: new Date('2099-07-06T16:00:00.000Z'),
+      endsAt: new Date('2099-07-10T19:00:00.000Z'),
+      ageGroup: 'Ages 5-8',
+      priceText: '$100',
+      officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196365',
+      sourceUrl: 'https://www.eastsidetimbers.com/indoorcamps',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_eastside',
+      name: 'Eastside Indoor Camps at OPF',
+      organizationId: 'org_eastside',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_eastside' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'Other' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_eastside_camp' });
+
+    await publishAffiliateCandidate('candidate_eastside_camp', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sportId: 'Other',
+        minAge: 5,
+        maxAge: 8,
+      }),
+    });
+  });
+
   it('requires event sources to be linked to an organization before publishing', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
@@ -1447,7 +1489,7 @@ describe('affiliate import service', () => {
         body: `
           <section class="program">
             <h2 class="title">Saving 2nd Base - Fall 2026</h2>
-            <p class="description">Coed softball tournament with Men, Women, and Coed divisions.</p>
+            <p class="description">Coed softball tournament with Men, Women, and Coed divisions, doubleheaders, and a double-elimination playoff.</p>
             <span class="price">$400.00</span>
             <time class="start">2099-09-11T17:00:00.000Z</time>
             <a class="info" href="/current-programs/more-info">More Info</a>
