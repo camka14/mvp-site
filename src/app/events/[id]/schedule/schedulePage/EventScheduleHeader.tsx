@@ -168,196 +168,204 @@ export default function EventScheduleHeader({
   onActionErrorClose,
 }: EventScheduleHeaderProps) {
   const showActions = showReportAction || showNotificationAction || showEditAction || showQrCodeAction || showEditingActions || showMoreActions;
+  const showActionButtons = showReportAction || showEditAction || showQrCodeAction || showEditingActions || showMoreActions;
 
   return (
     <>
-      <Group justify="space-between" align="flex-start">
-        <Group gap="xs" align="center">
-          <Title order={2} mb="xs">{eventName}</Title>
-          {selectedOccurrenceLabel && (
-            <Badge
-              variant="light"
-              color="red"
-              rightSection={(
-                <ActionIcon
-                  variant="transparent"
-                  color="red"
-                  size="xs"
-                  aria-label="Clear selected session"
-                  onClick={onClearSelectedOccurrence}
-                >
-                  ×
-                </ActionIcon>
-              )}
-            >
-              {selectedOccurrenceLabel}
-            </Badge>
-          )}
-          {showNotificationAction && (
-            <ActionIcon
-              variant="subtle"
-              size="lg"
-              onClick={onOpenNotification}
-              aria-label="Send notification"
-              title="Send notification"
-            >
-              <Megaphone size={18} />
-            </ActionIcon>
-          )}
-        </Group>
-
-        {showActions && (
-          <Group gap="sm" wrap="wrap">
-            {showReportAction && (
-              <Button
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1 basis-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <Title order={2} mb={0} className="min-w-0 max-w-full break-words">{eventName}</Title>
+            {selectedOccurrenceLabel && (
+              <Badge
                 variant="light"
                 color="red"
-                onClick={onReportEvent}
-                loading={reportingEvent}
+                rightSection={(
+                  <ActionIcon
+                    variant="transparent"
+                    color="red"
+                    size="xs"
+                    aria-label="Clear selected session"
+                    onClick={onClearSelectedOccurrence}
+                  >
+                    ×
+                  </ActionIcon>
+                )}
               >
-                Report Event
-              </Button>
+                {selectedOccurrenceLabel}
+              </Badge>
             )}
-            {showEditAction && (
-              <Button onClick={onEnterEditMode} disabled={hasNetworkActionInFlight}>
-                Manage
-              </Button>
-            )}
-            {showQrCodeAction && (
-              <Button
-                variant="default"
-                leftSection={<QrCode size={16} />}
-                onClick={onOpenQrCode}
+          </div>
+        </div>
+
+        {showActions && (
+          <div className="ml-auto flex shrink-0 flex-wrap items-start justify-end gap-2">
+            {showNotificationAction && (
+              <ActionIcon
+                variant="subtle"
+                size="lg"
+                onClick={onOpenNotification}
+                aria-label="Send notification"
+                title="Send notification"
               >
-                QR Code
-              </Button>
+                <Megaphone size={18} />
+              </ActionIcon>
             )}
-            {showEditingActions && (
-              <>
-                <EventSchedulePendingChangesPopover
-                  opened={pendingChangesOpen}
-                  changes={pendingSaveChanges}
-                  onOpenedChange={onPendingChangesOpenChange}
-                />
-                {showDiscardChanges && (
+
+            {showActionButtons && (
+              <Group gap="sm" wrap="wrap" justify="flex-end">
+                {showReportAction && (
+                  <Button
+                    variant="light"
+                    color="red"
+                    onClick={onReportEvent}
+                    loading={reportingEvent}
+                  >
+                    Report Event
+                  </Button>
+                )}
+                {showEditAction && (
+                  <Button onClick={onEnterEditMode} disabled={hasNetworkActionInFlight}>
+                    Manage
+                  </Button>
+                )}
+                {showQrCodeAction && (
                   <Button
                     variant="default"
-                    onClick={onDiscardChanges}
-                    disabled={hasNetworkActionInFlight}
+                    leftSection={<QrCode size={16} />}
+                    onClick={onOpenQrCode}
                   >
-                    Discard Changes
+                    QR Code
                   </Button>
                 )}
-                {showLifecycleStatusSelect && (
-                  <Select
-                    data={EVENT_LIFECYCLE_OPTIONS}
-                    value={selectedLifecycleStatus ?? activeLifecycleStatus}
-                    onChange={onLifecycleStatusChange}
-                    allowDeselect={false}
-                    w={160}
-                    disabled={hasNetworkActionInFlight}
-                  />
+                {showEditingActions && (
+                  <>
+                    <EventSchedulePendingChangesPopover
+                      opened={pendingChangesOpen}
+                      changes={pendingSaveChanges}
+                      onOpenedChange={onPendingChangesOpenChange}
+                    />
+                    {showDiscardChanges && (
+                      <Button
+                        variant="default"
+                        onClick={onDiscardChanges}
+                        disabled={hasNetworkActionInFlight}
+                      >
+                        Discard Changes
+                      </Button>
+                    )}
+                    {showLifecycleStatusSelect && (
+                      <Select
+                        data={EVENT_LIFECYCLE_OPTIONS}
+                        value={selectedLifecycleStatus ?? activeLifecycleStatus}
+                        onChange={onLifecycleStatusChange}
+                        allowDeselect={false}
+                        w={160}
+                        disabled={hasNetworkActionInFlight}
+                      />
+                    )}
+                    {showSaveAction && (
+                      <Button
+                        color="green"
+                        onClick={onSave}
+                        loading={publishing}
+                        disabled={
+                          (hasNetworkActionInFlight && !publishing)
+                          || (!isCreateMode && !hasPendingUnsavedChanges)
+                          || hasSplitDivisionUnassignedTeams
+                        }
+                      >
+                        {isCreateMode ? createButtonLabel : 'Save'}
+                      </Button>
+                    )}
+                  </>
                 )}
-                {showSaveAction && (
-                  <Button
-                    color="green"
-                    onClick={onSave}
-                    loading={publishing}
-                    disabled={
-                      (hasNetworkActionInFlight && !publishing)
-                      || (!isCreateMode && !hasPendingUnsavedChanges)
-                      || hasSplitDivisionUnassignedTeams
-                    }
-                  >
-                    {isCreateMode ? createButtonLabel : 'Save'}
-                  </Button>
+                {showMoreActions && (
+                  <Menu shadow="md" width={280} position="bottom-end">
+                    <Menu.Target>
+                      <Button variant="default">More</Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {showRescheduleAction && (
+                        <Menu.Item
+                          onClick={onRescheduleMatches}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRescheduleActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRescheduleActionInFlight ? 'Rescheduling...' : 'Reschedule'}
+                        </Menu.Item>
+                      )}
+                      {showBuildBracketsAction && (
+                        <Menu.Item
+                          color="orange"
+                          onClick={onBuildBrackets}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRebuildActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRebuildActionInFlight ? 'Rebuilding...' : 'Rebuild'}
+                        </Menu.Item>
+                      )}
+                      {showRebuildWithoutPlaceholdersAction && (
+                        <Menu.Item
+                          color="orange"
+                          onClick={onRebuildWithoutPlaceholders}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRebuildWithoutPlaceholdersActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRebuildWithoutPlaceholdersActionInFlight
+                            ? 'Rebuilding without placeholders...'
+                            : 'Rebuild Without Placeholders'}
+                        </Menu.Item>
+                      )}
+                      {showCancelAction && (
+                        <Menu.Item
+                          color="red"
+                          onClick={onCancel}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Cancelling...' : cancelButtonLabel}
+                        </Menu.Item>
+                      )}
+                      {showDeleteTemplateAction && (
+                        <Menu.Item
+                          color="red"
+                          onClick={onDeleteTemplate}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Deleting...' : 'Delete'}
+                        </Menu.Item>
+                      )}
+                      {showDeleteEventAction && (
+                        <Menu.Item
+                          color="red"
+                          onClick={onDeleteEvent}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Deleting...' : 'Delete Event'}
+                        </Menu.Item>
+                      )}
+                      {showCreateTemplateAction && (
+                        <Menu.Item
+                          onClick={onCreateTemplate}
+                          disabled={hasNetworkActionInFlight && !creatingTemplate}
+                        >
+                          {creatingTemplate ? 'Creating Template...' : 'Create Template'}
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
                 )}
-              </>
+              </Group>
             )}
-            {showMoreActions && (
-              <Menu shadow="md" width={280} position="bottom-end">
-                <Menu.Target>
-                  <Button variant="default">More</Button>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  {showRescheduleAction && (
-                    <Menu.Item
-                      onClick={onRescheduleMatches}
-                      disabled={
-                        (hasNetworkActionInFlight && !isRescheduleActionInFlight)
-                        || hasSplitDivisionUnassignedTeams
-                      }
-                    >
-                      {isRescheduleActionInFlight ? 'Rescheduling...' : 'Reschedule'}
-                    </Menu.Item>
-                  )}
-                  {showBuildBracketsAction && (
-                    <Menu.Item
-                      color="orange"
-                      onClick={onBuildBrackets}
-                      disabled={
-                        (hasNetworkActionInFlight && !isRebuildActionInFlight)
-                        || hasSplitDivisionUnassignedTeams
-                      }
-                    >
-                      {isRebuildActionInFlight ? 'Rebuilding...' : 'Rebuild'}
-                    </Menu.Item>
-                  )}
-                  {showRebuildWithoutPlaceholdersAction && (
-                    <Menu.Item
-                      color="orange"
-                      onClick={onRebuildWithoutPlaceholders}
-                      disabled={
-                        (hasNetworkActionInFlight && !isRebuildWithoutPlaceholdersActionInFlight)
-                        || hasSplitDivisionUnassignedTeams
-                      }
-                    >
-                      {isRebuildWithoutPlaceholdersActionInFlight
-                        ? 'Rebuilding without placeholders...'
-                        : 'Rebuild Without Placeholders'}
-                    </Menu.Item>
-                  )}
-                  {showCancelAction && (
-                    <Menu.Item
-                      color="red"
-                      onClick={onCancel}
-                      disabled={hasNetworkActionInFlight && !cancelling}
-                    >
-                      {cancelling ? 'Cancelling...' : cancelButtonLabel}
-                    </Menu.Item>
-                  )}
-                  {showDeleteTemplateAction && (
-                    <Menu.Item
-                      color="red"
-                      onClick={onDeleteTemplate}
-                      disabled={hasNetworkActionInFlight && !cancelling}
-                    >
-                      {cancelling ? 'Deleting...' : 'Delete'}
-                    </Menu.Item>
-                  )}
-                  {showDeleteEventAction && (
-                    <Menu.Item
-                      color="red"
-                      onClick={onDeleteEvent}
-                      disabled={hasNetworkActionInFlight && !cancelling}
-                    >
-                      {cancelling ? 'Deleting...' : 'Delete Event'}
-                    </Menu.Item>
-                  )}
-                  {showCreateTemplateAction && (
-                    <Menu.Item
-                      onClick={onCreateTemplate}
-                      disabled={hasNetworkActionInFlight && !creatingTemplate}
-                    >
-                      {creatingTemplate ? 'Creating Template...' : 'Create Template'}
-                    </Menu.Item>
-                  )}
-                </Menu.Dropdown>
-              </Menu>
-            )}
-          </Group>
+          </div>
         )}
-      </Group>
+      </div>
 
       {showQrCodeAction && (
         <EventQrCodeModal

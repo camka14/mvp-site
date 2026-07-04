@@ -26,7 +26,6 @@ type EventDetailsLocationControlsProps = {
     templateOrganizationId?: string | null;
     templateOptions: Array<{ value: string; label: string }>;
     comboboxProps?: ComponentProps<typeof MantineMultiSelect>['comboboxProps'];
-    multiSelectStyles?: ComponentProps<typeof MantineMultiSelect>['styles'];
     maxStandardNumber: number;
     normalizeNumberValue: (value: unknown) => number | undefined;
     minAge?: unknown;
@@ -53,7 +52,6 @@ export const EventDetailsLocationControls = ({
     templateOrganizationId,
     templateOptions,
     comboboxProps,
-    multiSelectStyles,
     maxStandardNumber,
     normalizeNumberValue,
     minAge,
@@ -121,7 +119,6 @@ export const EventDetailsLocationControls = ({
                                     data={templateOptions}
                                     value={field.value ?? []}
                                     w="100%"
-                                    styles={multiSelectStyles}
                                     disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
                                     comboboxProps={comboboxProps}
                                     onChange={(vals) => {

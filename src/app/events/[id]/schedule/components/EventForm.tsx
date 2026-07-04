@@ -3780,7 +3780,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             selectStyles={alignedDetailsFieldStyles}
                             numberInputStyles={alignedDetailsFieldStyles}
                             dateTimePickerStyles={alignedDetailsFieldStyles}
-                            multiSelectStyles={alignedDetailsFieldStyles}
                             popoverProps={sharedPopoverProps}
                             comboboxProps={sharedComboboxProps}
                             isImmutableField={isImmutableField}

@@ -199,39 +199,37 @@ export const EventDetailsTimingControls = ({
                                 }}
                                 error={fieldState.error?.message as string | undefined}
                             />
-                            <Checkbox
-                                size="xs"
-                                label="Automatic Refunds"
-                                checked={automaticRefundsChecked}
-                                disabled={automaticRefundsToggleDisabled}
-                                onChange={(event) => {
-                                    if (automaticRefundsToggleDisabled) return;
-                                    field.onChange(event.currentTarget.checked ? field.value ?? 0 : null);
-                                }}
-                            />
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                <Checkbox
+                                    size="xs"
+                                    label="Automatic Refunds"
+                                    checked={automaticRefundsChecked}
+                                    disabled={automaticRefundsToggleDisabled}
+                                    onChange={(event) => {
+                                        if (automaticRefundsToggleDisabled) return;
+                                        field.onChange(event.currentTarget.checked ? field.value ?? 0 : null);
+                                    }}
+                                />
+                                <Controller
+                                    name="registrationPaymentMode"
+                                    control={control}
+                                    render={({ field: paymentModeField }) => (
+                                        <Checkbox
+                                            size="xs"
+                                            label="Self manage payments"
+                                            checked={(paymentModeField.value ?? 'ONLINE') === 'MANUAL'}
+                                            disabled={isImmutableField('registrationPaymentMode')}
+                                            onChange={(event) => {
+                                                if (isImmutableField('registrationPaymentMode')) return;
+                                                onManualPaymentsChange(event.currentTarget.checked);
+                                            }}
+                                        />
+                                    )}
+                                />
+                            </div>
                         </Stack>
                     );
                 }}
-            />
-        </div>
-        <div className="md:col-span-1">
-            <Controller
-                name="registrationPaymentMode"
-                control={control}
-                render={({ field }) => (
-                    <div className="flex h-full items-end pb-1">
-                        <Checkbox
-                            size="xs"
-                            label="Self manage payments"
-                            checked={(field.value ?? 'ONLINE') === 'MANUAL'}
-                            disabled={isImmutableField('registrationPaymentMode')}
-                            onChange={(event) => {
-                                if (isImmutableField('registrationPaymentMode')) return;
-                                onManualPaymentsChange(event.currentTarget.checked);
-                            }}
-                        />
-                    </div>
-                )}
             />
         </div>
     </>

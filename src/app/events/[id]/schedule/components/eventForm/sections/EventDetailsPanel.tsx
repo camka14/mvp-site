@@ -37,7 +37,6 @@ type EventDetailsPanelProps = {
     selectStyles?: ComponentProps<typeof EventDetailsTypeControls>['selectStyles'];
     numberInputStyles?: ComponentProps<typeof EventDetailsTypeControls>['numberInputStyles'];
     dateTimePickerStyles?: ComponentProps<typeof EventDetailsTimingControls>['dateTimePickerStyles'];
-    multiSelectStyles?: ComponentProps<typeof EventDetailsLocationControls>['multiSelectStyles'];
     popoverProps?: ComponentProps<typeof EventDetailsTimingControls>['popoverProps'];
     comboboxProps?: ComponentProps<typeof EventDetailsTypeControls>['comboboxProps'];
     isImmutableField: (key: keyof Event) => boolean;
@@ -94,7 +93,6 @@ export const EventDetailsPanel = ({
     selectStyles,
     numberInputStyles,
     dateTimePickerStyles,
-    multiSelectStyles,
     popoverProps,
     comboboxProps,
     isImmutableField,
@@ -189,7 +187,6 @@ export const EventDetailsPanel = ({
             templateOrganizationId={templateOrganizationId}
             templateOptions={templateOptions}
             comboboxProps={comboboxProps}
-            multiSelectStyles={multiSelectStyles}
             maxStandardNumber={maxStandardNumber}
             normalizeNumberValue={normalizeNumberValue}
             minAge={eventData.minAge}
