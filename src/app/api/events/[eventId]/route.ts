@@ -19,6 +19,7 @@ import {
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInputInTimeZone, resolveTimeZone } from '@/server/timeZones';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext, type LeagueDivisionConfig } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
@@ -767,6 +768,10 @@ const normalizeInstallmentDateList = (value: unknown): string[] => {
     .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
     .map((entry) => entry.toISOString());
 };
+
+const parseEventPatchDateInput = (value: unknown, timeZone: string): Date | null => (
+  parseDateInputInTimeZone(value, timeZone) ?? parseDateInput(value)
+);
 
 const normalizeInstallmentRelativeDayList = (value: unknown): number[] => {
   if (!Array.isArray(value)) {
@@ -1904,12 +1909,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const incomingDivisionFieldMap = hasDivisionFieldMapInput
         ? coerceDivisionFieldMap(payload.divisionFieldIds)
         : {};
+      const patchTimeZone = resolveTimeZone(payload.timeZone, (existing as any).timeZone ?? 'UTC');
+      const nextStartForNormalization = Object.prototype.hasOwnProperty.call(payload, 'start')
+        ? parseEventPatchDateInput(payload.start, patchTimeZone)
+        : existing.start;
       const incomingDivisionDetails = hasDivisionDetailsInput
         ? normalizeDivisionDetailsInput(
           payload.divisionDetails,
           eventId,
           (payload.sportId ?? existing.sportId ?? null) as string | null,
-          parseDateInput(payload.start) ?? existing.start,
+          nextStartForNormalization ?? existing.start,
           'LEAGUE',
         )
         : [];
@@ -1918,7 +1927,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             payload.playoffDivisionDetails,
             eventId,
             (payload.sportId ?? existing.sportId ?? null) as string | null,
-            parseDateInput(payload.start) ?? existing.start,
+            nextStartForNormalization ?? existing.start,
             'PLAYOFF',
           )
         : [];
@@ -1962,12 +1971,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       if (payload.start) {
-        const parsedStart = parseDateInput(payload.start);
+        const parsedStart = parseEventPatchDateInput(payload.start, patchTimeZone);
         if (parsedStart) payload.start = parsedStart;
       }
 
       if (payload.end) {
-        const parsedEnd = parseDateInput(payload.end);
+        const parsedEnd = parseEventPatchDateInput(payload.end, patchTimeZone);
         if (parsedEnd) payload.end = parsedEnd;
       }
 

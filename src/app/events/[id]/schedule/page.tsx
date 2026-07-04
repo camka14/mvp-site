@@ -178,6 +178,58 @@ import useEventMatchOperations from './schedulePage/useEventMatchOperations';
 import useEventMatchRealtime from './schedulePage/useEventMatchRealtime';
 import useMatchConflictAlerts from './schedulePage/useMatchConflictAlerts';
 
+const normalizeEventFieldIdsForSave = (event: Partial<Event> | null | undefined): string[] => {
+  const explicitFieldIds = Array.isArray(event?.fieldIds)
+    ? event.fieldIds
+        .map((fieldId) => normalizeIdToken(fieldId))
+        .filter((fieldId): fieldId is string => Boolean(fieldId))
+    : [];
+  if (explicitFieldIds.length) {
+    return Array.from(new Set(explicitFieldIds));
+  }
+
+  if (!Array.isArray(event?.fields)) {
+    return [];
+  }
+
+  return Array.from(new Set(
+    event.fields
+      .map((field) => normalizeIdToken(field?.$id ?? (field as Field & { id?: string })?.id))
+      .filter((fieldId): fieldId is string => Boolean(fieldId)),
+  ));
+};
+
+const getMatchFieldIdForSave = (match: Match): string | null => (
+  normalizeIdToken(match.fieldId)
+  ?? normalizeIdToken(match.field?.$id ?? (match.field as Field & { id?: string } | undefined)?.id)
+);
+
+const collectRemovedFieldIdsForSave = (
+  previousEvent: Partial<Event> | null | undefined,
+  nextEvent: Partial<Event> | null | undefined,
+): string[] => {
+  const previousFieldIds = normalizeEventFieldIdsForSave(previousEvent);
+  if (!previousFieldIds.length) {
+    return [];
+  }
+  const nextFieldIdSet = new Set(normalizeEventFieldIdsForSave(nextEvent));
+  return previousFieldIds.filter((fieldId) => !nextFieldIdSet.has(fieldId));
+};
+
+const draftMatchesReferenceRemovedFields = (
+  matches: Match[],
+  removedFieldIds: string[],
+): boolean => {
+  if (!removedFieldIds.length || !matches.length) {
+    return false;
+  }
+  const removedFieldIdSet = new Set(removedFieldIds);
+  return matches.some((match) => {
+    const fieldId = getMatchFieldIdForSave(match);
+    return Boolean(fieldId && removedFieldIdSet.has(fieldId));
+  });
+};
+
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
@@ -4456,6 +4508,9 @@ function EventScheduleContent() {
           delete (nextEvent as Partial<Event>).attendees;
         }
 
+        const removedFieldIds = collectRemovedFieldIdsForSave(activeEvent, nextEvent);
+        const skipDraftMatchPersistenceForRemovedFields = draftMatchesReferenceRemovedFields(nextMatches, removedFieldIds);
+
         const isTemplateDraft = typeof nextEvent.state === 'string'
           && nextEvent.state.toUpperCase() === 'TEMPLATE';
         if (isTemplateDraft) {
@@ -4476,7 +4531,9 @@ function EventScheduleContent() {
           });
         }
 
-        const shouldPersistDraftMatches = !isBuildBracketAction && !isRebuildWithoutPlaceholdersAction;
+        const shouldPersistDraftMatches = !isBuildBracketAction
+          && !isRebuildWithoutPlaceholdersAction
+          && !skipDraftMatchPersistenceForRemovedFields;
         if (updatedEvent.$id && shouldPersistDraftMatches && nextMatches.length > 0) {
           const validation = validateDraftMatchGraph(nextMatches);
           if (!validation.ok) {
@@ -4626,7 +4683,10 @@ function EventScheduleContent() {
           }
         }
 
-        if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
+        if (
+          !skipDraftMatchPersistenceForRemovedFields
+          && (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0)
+        ) {
           updatedEvent.matches = nextMatches;
         }
 

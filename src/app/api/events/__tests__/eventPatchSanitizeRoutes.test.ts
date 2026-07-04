@@ -329,6 +329,72 @@ describe('event PATCH route', () => {
     );
   });
 
+  it('stores offset-less event start and end in the event timezone on PATCH', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const existingStart = new Date('2026-07-11T16:00:00.000Z');
+    const existingEnd = new Date('2026-07-12T03:00:00.000Z');
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'TOURNAMENT',
+        noFixedEndDateTime: false,
+        timeZone: 'UTC',
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+        start: existingStart,
+        end: existingEnd,
+        singleDivision: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'TOURNAMENT',
+        noFixedEndDateTime: false,
+        timeZone: 'America/Los_Angeles',
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+        start: existingStart,
+        end: existingEnd,
+        singleDivision: true,
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: false,
+      timeZone: 'America/Los_Angeles',
+      divisions: ['open'],
+      fieldIds: ['field_1'],
+      timeSlotIds: [],
+      start: existingStart,
+      end: existingEnd,
+      singleDivision: true,
+    });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          eventType: 'TOURNAMENT',
+          noFixedEndDateTime: false,
+          timeZone: 'America/Los_Angeles',
+          start: '2026-07-11T09:00:00',
+          end: '2026-07-11T20:00:00',
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const updateArg = prismaMock.events.update.mock.calls[0][0];
+    expect(updateArg.data.start).toEqual(new Date('2026-07-11T16:00:00.000Z'));
+    expect(updateArg.data.end).toEqual(new Date('2026-07-12T03:00:00.000Z'));
+    expect(updateArg.data.timeZone).toBe('America/Los_Angeles');
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+  });
+
   it('restricts org event host and official assignments to organization hosts/officials', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     organizationsMock.findUnique.mockResolvedValueOnce({

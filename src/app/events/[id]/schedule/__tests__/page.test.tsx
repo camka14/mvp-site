@@ -1062,6 +1062,125 @@ describe('League schedule page', () => {
     });
   });
 
+  it('skips stale match persistence after removing fields deletes their matches', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+
+    const fieldOne = {
+      id: 'field_1',
+      $id: 'field_1',
+      name: 'Field 1',
+      location: 'Park',
+      lat: 0,
+      long: 0,
+    };
+    const fieldTwo = {
+      id: 'field_2',
+      $id: 'field_2',
+      name: 'Field 2',
+      location: 'Park',
+      lat: 0,
+      long: 0,
+    };
+    const baseMatches = buildApiEvent().matches ?? [];
+    const keptMatch = {
+      ...baseMatches[0],
+      id: 'match_1',
+      $id: 'match_1',
+      fieldId: 'field_1',
+      field: fieldOne,
+    };
+    const removedFieldMatch = {
+      ...baseMatches[0],
+      id: 'match_2',
+      $id: 'match_2',
+      fieldId: 'field_2',
+      field: fieldTwo,
+    };
+    const eventBeforeSave = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+      name: 'Field Reduction Tournament',
+      eventType: 'TOURNAMENT',
+      state: 'PUBLISHED',
+      organizationId: 'org_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      fieldIds: ['field_1', 'field_2'],
+      fields: [fieldOne, fieldTwo],
+      matches: [keptMatch, removedFieldMatch],
+    });
+    let persistedEvent = eventBeforeSave;
+    let persistedMatches = [keptMatch, removedFieldMatch];
+
+    const eventWithoutMatches = (event: Record<string, any>) => {
+      const responseEvent = { ...event };
+      delete responseEvent.matches;
+      return responseEvent;
+    };
+
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event: eventWithoutMatches(persistedEvent) });
+      }
+      if (path === '/api/events/event_1/matches' && options?.method === 'PATCH') {
+        return Promise.reject(Object.assign(new Error('Request failed'), { status: 404 }));
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: persistedMatches });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockImplementation(async () => eventWithoutMatches(persistedEvent));
+    (eventService.getEventById as jest.Mock).mockImplementation(async () => eventWithoutMatches(persistedEvent));
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) => {
+      persistedEvent = {
+        ...eventBeforeSave,
+        ...payload,
+        fieldIds: ['field_1'],
+        fields: [fieldOne],
+      };
+      persistedMatches = [keptMatch];
+      return Promise.resolve(eventWithoutMatches(persistedEvent));
+    });
+
+    mockEventFormDraft = {
+      ...eventBeforeSave,
+      fieldIds: ['field_1'],
+      fields: [fieldOne],
+    };
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(mockCommitDirtyBaseline).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      apiRequestMock.mock.calls.some(([path, options]) => (
+        path === '/api/events/event_1/matches'
+        && (options as { method?: string } | undefined)?.method === 'PATCH'
+      )),
+    ).toBe(false);
+    expect(screen.queryByText(/Failed to save tournament changes/i)).not.toBeInTheDocument();
+  });
+
   it('updates tracked changes when a form value changes', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
