@@ -925,6 +925,7 @@ type SyncCanonicalTeamRosterInput = {
   assistantCoachIds: string[];
   actingUserId?: string | null;
   now?: Date;
+  cleanupRemovedPendingInvites?: boolean;
 };
 
 type ExistingPendingTeamInviteRecord = {
@@ -936,6 +937,28 @@ type ExistingPendingTeamInviteRecord = {
   lastName?: string | null;
 };
 
+export type CreatedPendingTeamInviteRecord = {
+  id: string;
+  email?: string | null;
+  userId?: string | null;
+  type?: string | null;
+  eventId?: string | null;
+  organizationId?: string | null;
+  teamId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  status?: string | null;
+  sentAt?: Date | string | null;
+};
+
+export type SyncCanonicalTeamRosterResult = {
+  createdPendingInvites: CreatedPendingTeamInviteRecord[];
+};
+
+const emptySyncCanonicalTeamRosterResult = (): SyncCanonicalTeamRosterResult => ({
+  createdPendingInvites: [],
+});
+
 const ensurePendingTeamInviteRecords = async (
   tx: PrismaLike,
   input: {
@@ -944,16 +967,16 @@ const ensurePendingTeamInviteRecords = async (
     actingUserId?: string | null;
     now: Date;
   },
-): Promise<void> => {
+): Promise<CreatedPendingTeamInviteRecord[]> => {
   const invitesDelegate = tx?.invites;
   if (!invitesDelegate?.findMany || !invitesDelegate?.create) {
-    return;
+    return [];
   }
 
   const teamId = normalizeId(input.teamId);
   const pendingPlayerIds = normalizeIdList(input.pendingPlayerIds);
   if (!teamId || !pendingPlayerIds.length) {
-    return;
+    return [];
   }
 
   const existingInvites = await invitesDelegate.findMany({
@@ -985,7 +1008,7 @@ const ensurePendingTeamInviteRecords = async (
   ]);
 
   if (!userIdsToHydrate.length) {
-    return;
+    return [];
   }
 
   const [authUsers, sensitiveRows, profiles] = await Promise.all([
@@ -1016,6 +1039,7 @@ const ensurePendingTeamInviteRecords = async (
   const authEmailByUserId = new Map(authUsers.map((row) => [row.id, normalizeId(row.email)]));
   const sensitiveEmailByUserId = new Map(sensitiveRows.map((row) => [row.userId, normalizeId(row.email)]));
   const profileByUserId = new Map(profiles.map((row) => [row.id, row]));
+  const createdInvites: CreatedPendingTeamInviteRecord[] = [];
 
   await Promise.all(userIdsToHydrate.map(async (userId) => {
     const existingInvite = existingByUserId.get(userId);
@@ -1046,7 +1070,7 @@ const ensurePendingTeamInviteRecords = async (
       return;
     }
 
-    await invitesDelegate.create({
+    const createdInvite = await invitesDelegate.create({
       data: {
         id: randomUUID(),
         type: 'TEAM',
@@ -1060,18 +1084,24 @@ const ensurePendingTeamInviteRecords = async (
         createdAt: input.now,
         updatedAt: input.now,
       },
-    });
+    }) as CreatedPendingTeamInviteRecord;
+    createdInvites.push(createdInvite);
   }));
+
+  return createdInvites;
 };
 
-export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInput, tx: PrismaLike) => {
+export const syncCanonicalTeamRoster = async (
+  input: SyncCanonicalTeamRosterInput,
+  tx: PrismaLike,
+): Promise<SyncCanonicalTeamRosterResult> => {
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(tx);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(tx);
   if (!teamRegistrationsDelegate?.findMany || !teamRegistrationsDelegate?.upsert || !teamRegistrationsDelegate?.updateMany) {
-    return;
+    return emptySyncCanonicalTeamRosterResult();
   }
   if (!teamStaffAssignmentsDelegate?.findMany || !teamStaffAssignmentsDelegate?.upsert || !teamStaffAssignmentsDelegate?.updateMany) {
-    return;
+    return emptySyncCanonicalTeamRosterResult();
   }
 
   const now = input.now ?? new Date();
@@ -1157,12 +1187,27 @@ export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInpu
     },
   })));
 
-  await ensurePendingTeamInviteRecords(tx, {
+  const createdPendingInvites = await ensurePendingTeamInviteRecords(tx, {
     teamId: input.teamId,
     pendingPlayerIds,
     actingUserId: input.actingUserId,
     now,
   });
+
+  const removedPendingPlayerUserIds = existingPlayerRegistrations
+    .filter((row) => isInvitedRegistration(row))
+    .map((row) => row.userId)
+    .filter((userId) => !pendingPlayerIds.includes(userId));
+  if (input.cleanupRemovedPendingInvites !== false && removedPendingPlayerUserIds.length && tx?.invites?.deleteMany) {
+    await tx.invites.deleteMany({
+      where: {
+        type: 'TEAM',
+        teamId: input.teamId,
+        status: 'PENDING',
+        userId: { in: removedPendingPlayerUserIds },
+      },
+    });
+  }
 
   const removedPlayerUserIds = existingPlayerRegistrations
     .map((row) => row.userId)
@@ -1220,6 +1265,7 @@ export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInpu
     })));
   }
 
+  return { createdPendingInvites };
 };
 
 export const canManageCanonicalTeam = async (params: {

@@ -659,5 +659,6 @@ export const removeCanonicalPendingInvitee = async (
     assistantCoachIds: normalizeIdList((team as any).coachIds),
     actingUserId,
     now,
+    cleanupRemovedPendingInvites: false,
   }, tx);
 };

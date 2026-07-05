@@ -114,6 +114,7 @@ const syncTeamChatInTxMock = jest.fn();
 const getTeamChatBaseMemberIdsMock = jest.fn();
 const hasOrgPermissionMock = jest.fn();
 const evaluateRazumlyAdminAccessMock = jest.fn();
+const sendInviteEmailsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
@@ -123,6 +124,8 @@ jest.mock('@/lib/permissions', () => ({
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
+jest.mock('@/lib/requestOrigin', () => ({ getRequestOrigin: () => 'http://localhost' }));
+jest.mock('@/server/inviteEmails', () => ({ sendInviteEmails: (...args: any[]) => sendInviteEmailsMock(...args) }));
 jest.mock('@/server/teams/teamMembership', () => ({
   applyCanonicalTeamRegistrationMetadata: (...args: any[]) => applyCanonicalTeamRegistrationMetadataMock(...args),
   canManageCanonicalTeam: (...args: any[]) => canManageCanonicalTeamMock(...args),
@@ -169,6 +172,7 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     hasOrgPermissionMock.mockResolvedValue(false);
     evaluateRazumlyAdminAccessMock.mockResolvedValue({ allowed: false, email: null, verified: false });
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
+    sendInviteEmailsMock.mockResolvedValue([]);
     applyCanonicalTeamRegistrationMetadataMock.mockResolvedValue(undefined);
     syncCanonicalTeamFutureEventSnapshotsMock.mockResolvedValue([]);
     syncTeamChatInTxMock.mockResolvedValue(undefined);
@@ -568,5 +572,27 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       now: expect.any(Date),
     });
     expect(teamUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('sends newly created pending invite rows after a canonical roster patch commits', async () => {
+    const createdInvite = {
+      id: 'invite_1',
+      type: 'TEAM',
+      email: 'invitee@test.com',
+      status: 'PENDING',
+      teamId: 'team_1',
+      userId: 'user_3',
+    };
+    syncCanonicalTeamRosterMock.mockResolvedValueOnce({
+      createdPendingInvites: [createdInvite],
+    });
+
+    const response = await PATCH(
+      patchJson({ team: { pending: ['user_3'] } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
   });
 });

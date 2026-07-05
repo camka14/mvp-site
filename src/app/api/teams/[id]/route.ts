@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { sendInviteEmails } from '@/server/inviteEmails';
 import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
@@ -18,6 +20,7 @@ import {
   isAdminOnlyCanonicalTeam,
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
+  type CreatedPendingTeamInviteRecord,
 } from '@/server/teams/teamMembership';
 import {
   findFutureRegisteredTeamRefs,
@@ -616,6 +619,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: message }, { status: 400 });
     }
     const shouldSyncDerivedTeams = hasVersionedProfileChanges(payload, existingCanonical as Record<string, any>, nextState);
+    let createdPendingInvites: CreatedPendingTeamInviteRecord[] = [];
     const updated = await prisma.$transaction(async (tx) => {
       await tx.canonicalTeams.update({
         where: { id },
@@ -634,7 +638,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updatedAt: now,
         },
       });
-      await syncCanonicalTeamRoster({
+      const rosterSyncResult = await syncCanonicalTeamRoster({
         teamId: id,
         captainId: nextState.captainId,
         playerIds: nextState.playerIds,
@@ -645,6 +649,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actingUserId: session.userId,
         now,
       }, tx);
+      createdPendingInvites = rosterSyncResult?.createdPendingInvites ?? [];
       await applyCanonicalTeamRegistrationMetadata({
         client: tx,
         teamId: id,
@@ -664,6 +669,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       await syncTeamChatInTx(tx, id, { previousMemberIds });
     });
+    if (createdPendingInvites.length) {
+      await sendInviteEmails(createdPendingInvites, getRequestOrigin(req));
+    }
     const refreshed = await loadCanonicalTeamById(id, prisma);
     return NextResponse.json(withTeamRoleAliases((refreshed ?? updated) as any), { status: 200 });
   }

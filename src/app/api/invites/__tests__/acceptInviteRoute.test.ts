@@ -30,6 +30,7 @@ jest.mock('@/server/teamChatSync', () => ({
   syncTeamChatInTx: (...args: unknown[]) => syncTeamChatInTxMock(...args),
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
+  getEventTeamsDelegate: (client: any) => client?.teams ?? null,
   loadCanonicalTeamById: (...args: unknown[]) => loadCanonicalTeamByIdMock(...args),
   normalizeId: (value: unknown) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : null),
   normalizeIdList: (value: unknown) => (

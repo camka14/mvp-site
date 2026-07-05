@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { sendInviteEmails } from '@/server/inviteEmails';
 import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
@@ -18,6 +20,7 @@ import {
   normalizeId,
   normalizeIdList,
   syncCanonicalTeamRoster,
+  type CreatedPendingTeamInviteRecord,
 } from '@/server/teams/teamMembership';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 import { inferTeamJoinPolicyFromOpenRegistration } from '@/server/teams/teamJoinPolicy';
@@ -302,6 +305,7 @@ export async function POST(req: NextRequest) {
   }
 
   let responseTeam: Record<string, any> | null = null;
+  let createdPendingInvites: CreatedPendingTeamInviteRecord[] = [];
 
   if (canonicalTeamsDelegate?.create && teamRegistrationsDelegate?.upsert && teamStaffAssignmentsDelegate?.upsert) {
     const now = new Date();
@@ -327,7 +331,7 @@ export async function POST(req: NextRequest) {
           updatedAt: now,
         },
       });
-      await syncCanonicalTeamRoster({
+      const rosterSyncResult = await syncCanonicalTeamRoster({
         teamId: data.id,
         captainId,
         playerIds,
@@ -338,6 +342,7 @@ export async function POST(req: NextRequest) {
         actingUserId: session.userId,
         now,
       }, tx);
+      createdPendingInvites = rosterSyncResult?.createdPendingInvites ?? [];
       await applyCanonicalTeamRegistrationMetadata({
         client: tx,
         teamId: data.id,
@@ -346,6 +351,9 @@ export async function POST(req: NextRequest) {
       });
     });
     responseTeam = await loadCanonicalTeamById(data.id, prisma) as Record<string, any> | null;
+    if (createdPendingInvites.length) {
+      await sendInviteEmails(createdPendingInvites, getRequestOrigin(req));
+    }
   } else {
     const team = await createTeamWithCompatibility(teamsDelegate, {
       id: data.id,

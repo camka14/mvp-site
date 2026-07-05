@@ -244,6 +244,7 @@ export const acceptTeamInviteWithGuardianRules = async ({
         assistantCoachIds: Array.isArray((txTeam as any).coachIds) ? (txTeam as any).coachIds : [],
         actingUserId: session.userId,
         now,
+        cleanupRemovedPendingInvites: false,
       }, tx);
 
       if (auth.actingParentId) {
@@ -268,7 +269,11 @@ export const acceptTeamInviteWithGuardianRules = async ({
       propagateToLinkedEventTeams: txIsPlayerInvite,
     });
 
-    await tx.invites.delete({ where: { id: invite.id } });
+    if (tx.invites?.deleteMany) {
+      await tx.invites.deleteMany({ where: { id: invite.id } });
+    } else {
+      await tx.invites.delete({ where: { id: invite.id } });
+    }
     return true;
   });
 

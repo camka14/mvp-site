@@ -88,7 +88,17 @@ describe('syncCanonicalTeamRoster', () => {
     const teamStaffAssignmentsUpsertMock = jest.fn().mockResolvedValue({});
     const teamStaffAssignmentsUpdateManyMock = jest.fn().mockResolvedValue({ count: 0 });
     const invitesFindManyMock = jest.fn().mockResolvedValue([]);
-    const invitesCreateMock = jest.fn().mockResolvedValue({});
+    const createdInvite = {
+      id: 'invite_1',
+      type: 'TEAM',
+      email: 'pending.player@example.com',
+      status: 'PENDING',
+      teamId: 'team_1',
+      userId: 'player_2',
+      firstName: 'Pending',
+      lastName: 'Player',
+    };
+    const invitesCreateMock = jest.fn().mockResolvedValue(createdInvite);
     const authUserFindManyMock = jest.fn().mockResolvedValue([
       { id: 'player_2', email: 'pending.player@example.com' },
     ]);
@@ -97,7 +107,7 @@ describe('syncCanonicalTeamRoster', () => {
       { id: 'player_2', firstName: ' Pending ', lastName: ' Player ' },
     ]);
 
-    await syncCanonicalTeamRoster({
+    const result = await syncCanonicalTeamRoster({
       teamId: 'team_1',
       captainId: 'captain_1',
       playerIds: ['captain_1'],
@@ -133,6 +143,7 @@ describe('syncCanonicalTeamRoster', () => {
       },
     });
 
+    expect(result.createdPendingInvites).toEqual([createdInvite]);
     expect(teamRegistrationsUpsertMock).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         teamId_userId: {
@@ -184,7 +195,7 @@ describe('syncCanonicalTeamRoster', () => {
     const invitesCreateMock = jest.fn().mockResolvedValue({});
     const authUserFindManyMock = jest.fn().mockResolvedValue([]);
 
-    await syncCanonicalTeamRoster({
+    const result = await syncCanonicalTeamRoster({
       teamId: 'team_1',
       captainId: 'captain_1',
       playerIds: ['captain_1'],
@@ -223,6 +234,54 @@ describe('syncCanonicalTeamRoster', () => {
 
     expect(invitesCreateMock).not.toHaveBeenCalled();
     expect(authUserFindManyMock).not.toHaveBeenCalled();
+    expect(result.createdPendingInvites).toEqual([]);
+  });
+
+  it('deletes pending invite rows when invited players are removed from the pending roster', async () => {
+    const invitesDeleteManyMock = jest.fn().mockResolvedValue({ count: 1 });
+
+    const result = await syncCanonicalTeamRoster({
+      teamId: 'team_1',
+      captainId: 'captain_1',
+      playerIds: ['captain_1'],
+      pendingPlayerIds: [],
+      managerId: 'captain_1',
+      headCoachId: null,
+      assistantCoachIds: [],
+      actingUserId: 'manager_1',
+      now: new Date('2026-07-05T13:57:18.241Z'),
+    }, {
+      teamRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            teamId: 'team_1',
+            userId: 'player_2',
+            status: 'INVITED',
+            isCaptain: false,
+          },
+        ]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      teamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      invites: {
+        deleteMany: invitesDeleteManyMock,
+      },
+    });
+
+    expect(invitesDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        type: 'TEAM',
+        teamId: 'team_1',
+        status: 'PENDING',
+        userId: { in: ['player_2'] },
+      },
+    });
+    expect(result.createdPendingInvites).toEqual([]);
   });
 });
 
