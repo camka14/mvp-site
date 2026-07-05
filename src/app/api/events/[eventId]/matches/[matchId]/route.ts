@@ -40,6 +40,7 @@ import {
   resolveMatchSetPointTargets,
   type MatchPolicyOverrideInput,
 } from '@/server/matches/matchPolicy';
+import { parseMatchInstantInput } from '@/server/matches/instantPayloads';
 import {
   assertLegacySetScoreUpdateAllowed,
   assertSetSegmentOperationsAllowed,
@@ -253,9 +254,9 @@ const parseNullableDate = (value: string | null | undefined): Date | null | unde
   if (value === null || value.trim().length === 0) {
     return null;
   }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Response('Invalid date value', { status: 400 });
+  const parsed = parseMatchInstantInput(value);
+  if (!parsed) {
+    throw new Response('Invalid date value; expected an ISO instant with timezone offset.', { status: 400 });
   }
   return parsed;
 };

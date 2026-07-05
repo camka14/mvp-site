@@ -5,7 +5,7 @@ import { ActionIcon, Alert, Badge, Button, Checkbox, Group, Modal, NumberInput, 
 import { DateTimePicker } from '@mantine/dates';
 import { Trash2, X } from 'lucide-react';
 
-import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
@@ -1379,8 +1379,8 @@ export default function MatchEditModal({
 
     const updated: Match = {
       ...match,
-      start: startValue ? formatLocalDateTime(startValue) : null,
-      end: endValue ? formatLocalDateTime(endValue) : null,
+      start: startValue ? startValue.toISOString() : null,
+      end: endValue ? endValue.toISOString() : null,
       ...actualMatchTimePayload(actualStartValue, actualEndValue),
       locked,
       losersBracket,

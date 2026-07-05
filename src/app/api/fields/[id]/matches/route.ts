@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/legacyFormat';
+import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   );
 
   if (!eventIds.length) {
-    return NextResponse.json({ matches: withLegacyList(matches) }, { status: 200 });
+    return NextResponse.json({ matches: serializeMatchRecordsLegacy(matches) }, { status: 200 });
   }
 
   const visibleEvents = await prisma.events.findMany({
@@ -107,5 +108,5 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return !eventId || visibleEventIds.has(eventId);
   });
 
-  return NextResponse.json({ matches: withLegacyList(filteredMatches) }, { status: 200 });
+  return NextResponse.json({ matches: serializeMatchRecordsLegacy(filteredMatches) }, { status: 200 });
 }

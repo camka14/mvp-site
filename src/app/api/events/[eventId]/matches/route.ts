@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
+import { parseMatchInstantInput } from '@/server/matches/instantPayloads';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, sideFrom } from '@/server/scheduler/types';
@@ -154,9 +154,9 @@ const parseNullableDateInput = (value: unknown, label: string): Date | null => {
   if (value == null) {
     return null;
   }
-  const parsed = parseDateInput(value);
+  const parsed = parseMatchInstantInput(value);
   if (!parsed) {
-    throw new Response(`Invalid ${label} value.`, { status: 400 });
+    throw new Response(`Invalid ${label} value; expected an ISO instant with timezone offset.`, { status: 400 });
   }
   return parsed;
 };
@@ -553,8 +553,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const creationContext = entry.creationContext ?? 'bracket';
         if (creationContext === 'schedule') {
           const hasField = normalizeOptionalString(entry.fieldId) !== null;
-          const start = parseDateInput(entry.start);
-          const end = parseDateInput(entry.end);
+          const start = parseMatchInstantInput(entry.start);
+          const end = parseMatchInstantInput(entry.end);
           if (!hasField || !start || !end) {
             throw new Response(`Schedule create ${entry.clientId} requires field, start, and end.`, { status: 400 });
           }
@@ -596,13 +596,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           ? deriveLegacyOfficialIdFromAssignments(normalizedOfficialAssignments)
           : normalizeOptionalString(entry.officialId);
 
-        const parsedStart = parseDateInput(entry.start);
-        const parsedEnd = parseDateInput(entry.end);
+        const parsedStart = parseMatchInstantInput(entry.start);
+        const parsedEnd = parseMatchInstantInput(entry.end);
         if (hasOwn(entry, 'start') && entry.start != null && !parsedStart) {
-          throw new Response(`Invalid start value for create ${entry.clientId}.`, { status: 400 });
+          throw new Response(`Invalid start value for create ${entry.clientId}; expected an ISO instant with timezone offset.`, { status: 400 });
         }
         if (hasOwn(entry, 'end') && entry.end != null && !parsedEnd) {
-          throw new Response(`Invalid end value for create ${entry.clientId}.`, { status: 400 });
+          throw new Response(`Invalid end value for create ${entry.clientId}; expected an ISO instant with timezone offset.`, { status: 400 });
         }
 
         const createPlaceholder = isTournament && (entry.autoPlaceholderTeam ?? true);
@@ -760,9 +760,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           if (entry.start == null) {
             (target as unknown as { start: Date | null }).start = null;
           } else {
-            const parsedStart = parseDateInput(entry.start);
+            const parsedStart = parseMatchInstantInput(entry.start);
             if (!parsedStart) {
-              throw new Response(`Invalid start value for match ${matchId}.`, { status: 400 });
+              throw new Response(`Invalid start value for match ${matchId}; expected an ISO instant with timezone offset.`, { status: 400 });
             }
             target.start = parsedStart;
           }
@@ -772,9 +772,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           if (entry.end == null) {
             (target as unknown as { end: Date | null }).end = null;
           } else {
-            const parsedEnd = parseDateInput(entry.end);
+            const parsedEnd = parseMatchInstantInput(entry.end);
             if (!parsedEnd) {
-              throw new Response(`Invalid end value for match ${matchId}.`, { status: 400 });
+              throw new Response(`Invalid end value for match ${matchId}; expected an ISO instant with timezone offset.`, { status: 400 });
             }
             target.end = parsedEnd;
           }

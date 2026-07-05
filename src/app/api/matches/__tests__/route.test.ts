@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const matchesFindManyMock = jest.fn();
 const eventsFindManyMock = jest.fn();
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
+const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 const parseDateInputMock = jest.fn((value: string | null) => (value ? new Date(value) : null));
 
 jest.mock('@/lib/prisma', () => ({
@@ -20,6 +21,7 @@ jest.mock('@/lib/prisma', () => ({
 
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
+  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
   parseDateInput: (value: string | null) => parseDateInputMock(value),
 }));
 
@@ -32,8 +34,20 @@ describe('/api/matches GET', () => {
 
   it('returns matches for eventIds with optional field/range filters and hides template events', async () => {
     matchesFindManyMock.mockResolvedValue([
-      { id: 'm1', eventId: 'event_1', fieldId: 'field_1' },
-      { id: 'm2', eventId: 'event_2', fieldId: 'field_1' },
+      {
+        id: 'm1',
+        eventId: 'event_1',
+        fieldId: 'field_1',
+        start: new Date('2026-03-01T10:00:00.000Z'),
+        end: new Date('2026-03-01T11:00:00.000Z'),
+      },
+      {
+        id: 'm2',
+        eventId: 'event_2',
+        fieldId: 'field_1',
+        start: new Date('2026-03-01T12:00:00.000Z'),
+        end: new Date('2026-03-01T13:00:00.000Z'),
+      },
     ]);
     eventsFindManyMock.mockResolvedValue([{ id: 'event_1' }]);
 
@@ -52,7 +66,14 @@ describe('/api/matches GET', () => {
       },
       select: { id: true },
     });
-    expect(json.matches).toEqual([{ id: 'm1', eventId: 'event_1', fieldId: 'field_1', $id: 'm1' }]);
+    expect(json.matches).toEqual([expect.objectContaining({
+      id: 'm1',
+      eventId: 'event_1',
+      fieldId: 'field_1',
+      $id: 'm1',
+      start: '2026-03-01T10:00:00.000Z',
+      end: '2026-03-01T11:00:00.000Z',
+    })]);
   });
 
   it('returns 400 when eventIds are missing', async () => {

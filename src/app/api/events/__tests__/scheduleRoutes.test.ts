@@ -1121,6 +1121,48 @@ describe('schedule routes', () => {
     expect(savedMatch.actualEnd).toEqual(new Date('2026-04-19T11:00:00.000Z'));
   });
 
+  it('rejects offset-less match lifecycle datetimes', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          actualStart: null,
+          actualEnd: null,
+        },
+      },
+      teams: {},
+      officials: [],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        lifecycle: {
+          actualStart: '2026-04-19T10:00:00',
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.text()).resolves.toContain('expected an ISO instant with timezone offset');
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
   it('allows an assigned official to start a match with an actual start time', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -2480,6 +2522,51 @@ describe('schedule routes', () => {
         matchIds: ['match_1'],
       }),
     }));
+  });
+
+  it('rejects offset-less bulk match datetime updates', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          matchId: 7,
+          start: new Date('2026-05-02T10:00:00.000Z'),
+          end: new Date('2026-05-02T11:00:00.000Z'),
+        },
+      },
+      teams: {},
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [
+          {
+            id: 'match_1',
+            start: '2026-05-02T12:00:00',
+            end: '2026-05-02T13:00:00',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.text()).resolves.toContain('expected an ISO instant with timezone offset');
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('locks bulk-updated matches immediately when official check-in is saved', async () => {

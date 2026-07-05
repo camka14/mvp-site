@@ -58,6 +58,7 @@ jest.mock('@/server/legacyFormat', () => ({
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   },
   withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
+  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
 jest.mock('@/server/events/eventRegistrations', () => ({
   withDerivedEventParticipantIds: (...args: any[]) => withDerivedEventParticipantIdsMock(...args),
@@ -154,6 +155,10 @@ describe('GET /api/teams/[id]/schedule', () => {
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
     expect(json.matches).toHaveLength(1);
+    expect(json.matches[0]).toEqual(expect.objectContaining({
+      start: '2026-03-01T10:00:00.000Z',
+      end: '2026-03-01T11:00:00.000Z',
+    }));
     expect(json.fields).toHaveLength(1);
     expect(json.teams).toEqual(expect.arrayContaining([
       expect.objectContaining({ $id: 'canonical_team_1', name: 'Summit United' }),

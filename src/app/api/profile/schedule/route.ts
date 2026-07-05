@@ -5,6 +5,7 @@ import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
+import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,7 +173,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     events: withLegacyList(eventDtos),
-    matches: withLegacyList(matches),
+    matches: serializeMatchRecordsLegacy(matches),
     fields: withLegacyList(fields),
     teams: withLegacyList(teams as Record<string, any>[]),
   });

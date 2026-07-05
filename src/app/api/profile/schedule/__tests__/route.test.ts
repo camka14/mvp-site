@@ -37,6 +37,7 @@ jest.mock('@/server/legacyFormat', () => ({
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   },
   withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
+  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
 
 import { GET } from '@/app/api/profile/schedule/route';
@@ -116,6 +117,10 @@ describe('GET /api/profile/schedule', () => {
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
     expect(json.matches).toHaveLength(1);
+    expect(json.matches[0]).toEqual(expect.objectContaining({
+      start: '2026-03-01T10:00:00.000Z',
+      end: '2026-03-01T11:00:00.000Z',
+    }));
     expect(json.fields).toHaveLength(1);
     expect(json.teams).toHaveLength(2);
 

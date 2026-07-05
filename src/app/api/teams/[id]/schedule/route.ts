@@ -7,6 +7,7 @@ import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
 import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
+import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
 import {
   getEventTeamsDelegate,
   isAdminOnlyCanonicalTeam,
@@ -267,7 +268,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json({
     events: withLegacyList(eventDtos),
-    matches: withLegacyList(matches),
+    matches: serializeMatchRecordsLegacy(matches),
     fields: withLegacyList(fields),
     teams: withLegacyList(teams),
   });
