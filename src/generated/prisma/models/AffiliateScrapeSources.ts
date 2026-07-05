@@ -20,8 +20,18 @@ export type AffiliateScrapeSourcesModel = runtime.Types.Result.DefaultSelection<
 
 export type AggregateAffiliateScrapeSources = {
   _count: AffiliateScrapeSourcesCountAggregateOutputType | null
+  _avg: AffiliateScrapeSourcesAvgAggregateOutputType | null
+  _sum: AffiliateScrapeSourcesSumAggregateOutputType | null
   _min: AffiliateScrapeSourcesMinAggregateOutputType | null
   _max: AffiliateScrapeSourcesMaxAggregateOutputType | null
+}
+
+export type AffiliateScrapeSourcesAvgAggregateOutputType = {
+  scrapeIntervalMinutes: number | null
+}
+
+export type AffiliateScrapeSourcesSumAggregateOutputType = {
+  scrapeIntervalMinutes: number | null
 }
 
 export type AffiliateScrapeSourcesMinAggregateOutputType = {
@@ -38,6 +48,8 @@ export type AffiliateScrapeSourcesMinAggregateOutputType = {
   activeMappingId: string | null
   lastScrapeRunId: string | null
   lastScrapedAt: Date | null
+  autoScrapeEnabled: boolean | null
+  scrapeIntervalMinutes: number | null
   notes: string | null
 }
 
@@ -55,6 +67,8 @@ export type AffiliateScrapeSourcesMaxAggregateOutputType = {
   activeMappingId: string | null
   lastScrapeRunId: string | null
   lastScrapedAt: Date | null
+  autoScrapeEnabled: boolean | null
+  scrapeIntervalMinutes: number | null
   notes: string | null
 }
 
@@ -72,11 +86,21 @@ export type AffiliateScrapeSourcesCountAggregateOutputType = {
   activeMappingId: number
   lastScrapeRunId: number
   lastScrapedAt: number
+  autoScrapeEnabled: number
+  scrapeIntervalMinutes: number
   notes: number
   metadata: number
   _all: number
 }
 
+
+export type AffiliateScrapeSourcesAvgAggregateInputType = {
+  scrapeIntervalMinutes?: true
+}
+
+export type AffiliateScrapeSourcesSumAggregateInputType = {
+  scrapeIntervalMinutes?: true
+}
 
 export type AffiliateScrapeSourcesMinAggregateInputType = {
   id?: true
@@ -92,6 +116,8 @@ export type AffiliateScrapeSourcesMinAggregateInputType = {
   activeMappingId?: true
   lastScrapeRunId?: true
   lastScrapedAt?: true
+  autoScrapeEnabled?: true
+  scrapeIntervalMinutes?: true
   notes?: true
 }
 
@@ -109,6 +135,8 @@ export type AffiliateScrapeSourcesMaxAggregateInputType = {
   activeMappingId?: true
   lastScrapeRunId?: true
   lastScrapedAt?: true
+  autoScrapeEnabled?: true
+  scrapeIntervalMinutes?: true
   notes?: true
 }
 
@@ -126,6 +154,8 @@ export type AffiliateScrapeSourcesCountAggregateInputType = {
   activeMappingId?: true
   lastScrapeRunId?: true
   lastScrapedAt?: true
+  autoScrapeEnabled?: true
+  scrapeIntervalMinutes?: true
   notes?: true
   metadata?: true
   _all?: true
@@ -169,6 +199,18 @@ export type AffiliateScrapeSourcesAggregateArgs<ExtArgs extends runtime.Types.Ex
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+  **/
+  _avg?: AffiliateScrapeSourcesAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+  **/
+  _sum?: AffiliateScrapeSourcesSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
   **/
   _min?: AffiliateScrapeSourcesMinAggregateInputType
@@ -199,6 +241,8 @@ export type AffiliateScrapeSourcesGroupByArgs<ExtArgs extends runtime.Types.Exte
   take?: number
   skip?: number
   _count?: AffiliateScrapeSourcesCountAggregateInputType | true
+  _avg?: AffiliateScrapeSourcesAvgAggregateInputType
+  _sum?: AffiliateScrapeSourcesSumAggregateInputType
   _min?: AffiliateScrapeSourcesMinAggregateInputType
   _max?: AffiliateScrapeSourcesMaxAggregateInputType
 }
@@ -217,9 +261,13 @@ export type AffiliateScrapeSourcesGroupByOutputType = {
   activeMappingId: string | null
   lastScrapeRunId: string | null
   lastScrapedAt: Date | null
+  autoScrapeEnabled: boolean
+  scrapeIntervalMinutes: number
   notes: string | null
   metadata: runtime.JsonValue | null
   _count: AffiliateScrapeSourcesCountAggregateOutputType | null
+  _avg: AffiliateScrapeSourcesAvgAggregateOutputType | null
+  _sum: AffiliateScrapeSourcesSumAggregateOutputType | null
   _min: AffiliateScrapeSourcesMinAggregateOutputType | null
   _max: AffiliateScrapeSourcesMaxAggregateOutputType | null
 }
@@ -256,6 +304,8 @@ export type AffiliateScrapeSourcesWhereInput = {
   activeMappingId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   lastScrapeRunId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   lastScrapedAt?: Prisma.DateTimeNullableFilter<"AffiliateScrapeSources"> | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFilter<"AffiliateScrapeSources"> | boolean
+  scrapeIntervalMinutes?: Prisma.IntFilter<"AffiliateScrapeSources"> | number
   notes?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   metadata?: Prisma.JsonNullableFilter<"AffiliateScrapeSources">
 }
@@ -274,6 +324,8 @@ export type AffiliateScrapeSourcesOrderByWithRelationInput = {
   activeMappingId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastScrapeRunId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastScrapedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  autoScrapeEnabled?: Prisma.SortOrder
+  scrapeIntervalMinutes?: Prisma.SortOrder
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
 }
@@ -295,6 +347,8 @@ export type AffiliateScrapeSourcesWhereUniqueInput = Prisma.AtLeast<{
   activeMappingId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   lastScrapeRunId?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   lastScrapedAt?: Prisma.DateTimeNullableFilter<"AffiliateScrapeSources"> | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFilter<"AffiliateScrapeSources"> | boolean
+  scrapeIntervalMinutes?: Prisma.IntFilter<"AffiliateScrapeSources"> | number
   notes?: Prisma.StringNullableFilter<"AffiliateScrapeSources"> | string | null
   metadata?: Prisma.JsonNullableFilter<"AffiliateScrapeSources">
 }, "id" | "sourceKey">
@@ -313,11 +367,15 @@ export type AffiliateScrapeSourcesOrderByWithAggregationInput = {
   activeMappingId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastScrapeRunId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastScrapedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  autoScrapeEnabled?: Prisma.SortOrder
+  scrapeIntervalMinutes?: Prisma.SortOrder
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.AffiliateScrapeSourcesCountOrderByAggregateInput
+  _avg?: Prisma.AffiliateScrapeSourcesAvgOrderByAggregateInput
   _max?: Prisma.AffiliateScrapeSourcesMaxOrderByAggregateInput
   _min?: Prisma.AffiliateScrapeSourcesMinOrderByAggregateInput
+  _sum?: Prisma.AffiliateScrapeSourcesSumOrderByAggregateInput
 }
 
 export type AffiliateScrapeSourcesScalarWhereWithAggregatesInput = {
@@ -337,6 +395,8 @@ export type AffiliateScrapeSourcesScalarWhereWithAggregatesInput = {
   activeMappingId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateScrapeSources"> | string | null
   lastScrapeRunId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateScrapeSources"> | string | null
   lastScrapedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AffiliateScrapeSources"> | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolWithAggregatesFilter<"AffiliateScrapeSources"> | boolean
+  scrapeIntervalMinutes?: Prisma.IntWithAggregatesFilter<"AffiliateScrapeSources"> | number
   notes?: Prisma.StringNullableWithAggregatesFilter<"AffiliateScrapeSources"> | string | null
   metadata?: Prisma.JsonNullableWithAggregatesFilter<"AffiliateScrapeSources">
 }
@@ -355,6 +415,8 @@ export type AffiliateScrapeSourcesCreateInput = {
   activeMappingId?: string | null
   lastScrapeRunId?: string | null
   lastScrapedAt?: Date | string | null
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: number
   notes?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -373,6 +435,8 @@ export type AffiliateScrapeSourcesUncheckedCreateInput = {
   activeMappingId?: string | null
   lastScrapeRunId?: string | null
   lastScrapedAt?: Date | string | null
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: number
   notes?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -391,6 +455,8 @@ export type AffiliateScrapeSourcesUpdateInput = {
   activeMappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapeRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  scrapeIntervalMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -409,6 +475,8 @@ export type AffiliateScrapeSourcesUncheckedUpdateInput = {
   activeMappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapeRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  scrapeIntervalMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -427,6 +495,8 @@ export type AffiliateScrapeSourcesCreateManyInput = {
   activeMappingId?: string | null
   lastScrapeRunId?: string | null
   lastScrapedAt?: Date | string | null
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: number
   notes?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -445,6 +515,8 @@ export type AffiliateScrapeSourcesUpdateManyMutationInput = {
   activeMappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapeRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  scrapeIntervalMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -463,6 +535,8 @@ export type AffiliateScrapeSourcesUncheckedUpdateManyInput = {
   activeMappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapeRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastScrapedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  autoScrapeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  scrapeIntervalMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -481,8 +555,14 @@ export type AffiliateScrapeSourcesCountOrderByAggregateInput = {
   activeMappingId?: Prisma.SortOrder
   lastScrapeRunId?: Prisma.SortOrder
   lastScrapedAt?: Prisma.SortOrder
+  autoScrapeEnabled?: Prisma.SortOrder
+  scrapeIntervalMinutes?: Prisma.SortOrder
   notes?: Prisma.SortOrder
   metadata?: Prisma.SortOrder
+}
+
+export type AffiliateScrapeSourcesAvgOrderByAggregateInput = {
+  scrapeIntervalMinutes?: Prisma.SortOrder
 }
 
 export type AffiliateScrapeSourcesMaxOrderByAggregateInput = {
@@ -499,6 +579,8 @@ export type AffiliateScrapeSourcesMaxOrderByAggregateInput = {
   activeMappingId?: Prisma.SortOrder
   lastScrapeRunId?: Prisma.SortOrder
   lastScrapedAt?: Prisma.SortOrder
+  autoScrapeEnabled?: Prisma.SortOrder
+  scrapeIntervalMinutes?: Prisma.SortOrder
   notes?: Prisma.SortOrder
 }
 
@@ -516,7 +598,13 @@ export type AffiliateScrapeSourcesMinOrderByAggregateInput = {
   activeMappingId?: Prisma.SortOrder
   lastScrapeRunId?: Prisma.SortOrder
   lastScrapedAt?: Prisma.SortOrder
+  autoScrapeEnabled?: Prisma.SortOrder
+  scrapeIntervalMinutes?: Prisma.SortOrder
   notes?: Prisma.SortOrder
+}
+
+export type AffiliateScrapeSourcesSumOrderByAggregateInput = {
+  scrapeIntervalMinutes?: Prisma.SortOrder
 }
 
 
@@ -535,6 +623,8 @@ export type AffiliateScrapeSourcesSelect<ExtArgs extends runtime.Types.Extension
   activeMappingId?: boolean
   lastScrapeRunId?: boolean
   lastScrapedAt?: boolean
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: boolean
   notes?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateScrapeSources"]>
@@ -553,6 +643,8 @@ export type AffiliateScrapeSourcesSelectCreateManyAndReturn<ExtArgs extends runt
   activeMappingId?: boolean
   lastScrapeRunId?: boolean
   lastScrapedAt?: boolean
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: boolean
   notes?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateScrapeSources"]>
@@ -571,6 +663,8 @@ export type AffiliateScrapeSourcesSelectUpdateManyAndReturn<ExtArgs extends runt
   activeMappingId?: boolean
   lastScrapeRunId?: boolean
   lastScrapedAt?: boolean
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: boolean
   notes?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateScrapeSources"]>
@@ -589,11 +683,13 @@ export type AffiliateScrapeSourcesSelectScalar = {
   activeMappingId?: boolean
   lastScrapeRunId?: boolean
   lastScrapedAt?: boolean
+  autoScrapeEnabled?: boolean
+  scrapeIntervalMinutes?: boolean
   notes?: boolean
   metadata?: boolean
 }
 
-export type AffiliateScrapeSourcesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "sourceKey" | "organizationId" | "baseUrl" | "listUrl" | "targetKind" | "status" | "activeMappingId" | "lastScrapeRunId" | "lastScrapedAt" | "notes" | "metadata", ExtArgs["result"]["affiliateScrapeSources"]>
+export type AffiliateScrapeSourcesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "sourceKey" | "organizationId" | "baseUrl" | "listUrl" | "targetKind" | "status" | "activeMappingId" | "lastScrapeRunId" | "lastScrapedAt" | "autoScrapeEnabled" | "scrapeIntervalMinutes" | "notes" | "metadata", ExtArgs["result"]["affiliateScrapeSources"]>
 
 export type $AffiliateScrapeSourcesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateScrapeSources"
@@ -612,6 +708,8 @@ export type $AffiliateScrapeSourcesPayload<ExtArgs extends runtime.Types.Extensi
     activeMappingId: string | null
     lastScrapeRunId: string | null
     lastScrapedAt: Date | null
+    autoScrapeEnabled: boolean
+    scrapeIntervalMinutes: number
     notes: string | null
     metadata: runtime.JsonValue | null
   }, ExtArgs["result"]["affiliateScrapeSources"]>
@@ -1050,6 +1148,8 @@ export interface AffiliateScrapeSourcesFieldRefs {
   readonly activeMappingId: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly lastScrapeRunId: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly lastScrapedAt: Prisma.FieldRef<"AffiliateScrapeSources", 'DateTime'>
+  readonly autoScrapeEnabled: Prisma.FieldRef<"AffiliateScrapeSources", 'Boolean'>
+  readonly scrapeIntervalMinutes: Prisma.FieldRef<"AffiliateScrapeSources", 'Int'>
   readonly notes: Prisma.FieldRef<"AffiliateScrapeSources", 'String'>
   readonly metadata: Prisma.FieldRef<"AffiliateScrapeSources", 'Json'>
 }

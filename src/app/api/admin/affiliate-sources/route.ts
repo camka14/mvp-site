@@ -16,6 +16,8 @@ const createSourceSchema = z.object({
   organizationId: z.string().trim().min(1).nullable().optional(),
   baseUrl: z.string().trim().url().nullable().optional(),
   status: z.string().trim().min(1).optional(),
+  autoScrapeEnabled: z.boolean().optional(),
+  scrapeIntervalMinutes: z.number().int().min(60).optional(),
   notes: z.string().trim().max(4000).nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   mapping: affiliateScrapeMappingSchema.optional(),

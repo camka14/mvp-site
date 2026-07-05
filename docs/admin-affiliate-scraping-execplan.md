@@ -39,6 +39,7 @@ The first visible outcome is an admin-only import surface where an admin chooses
 - [x] (2026-06-30 15:00Z) Added evergreen affiliate program support for sources that describe stable programs but do not expose reliable dated event rows. Candidate mappings can now set `dateDisplayMode` and `dateDisplayText`, and manual-summary mappings can emit curated no-fixed-date candidates after a source page is fetched.
 - [x] (2026-07-04 17:25Z) Added the Oregon Youth Soccer sanctioned tournaments source as a directory-style scraper-backed mapping. The OYSA source creates candidates from official sanctioned tournament links and treats host tournament sites as the authority for registration, fees, venues, and detailed divisions.
 - [x] (2026-07-04 18:05Z) Added Portland Youth Soccer Association as a separate direct source from OYSA. The PYSA source uses manual-summary candidates for Fall 2026 league, Fall Shootout, and Spring 2027 league because the Sports Connect pages expose dates, fees, and division tables across static pages rather than repeated event cards.
+- [x] (2026-07-04 19:00Z) Added scheduled scrape metadata to affiliate sources, a DigitalOcean-compatible due-runner command, and an idempotent cadence configuration script for known active sources.
 - [ ] Publish flow end to end with manually inspected ScrapingDog output.
 - [ ] Make affiliate/external registration orthogonal to event behavior so manually created and scraped affiliate events can also use `WEEKLY_EVENT`.
 - [ ] Update public event/rental UI so affiliate listings replace internal join or booking controls with a clear external link.
@@ -63,6 +64,8 @@ The first visible outcome is an admin-only import surface where an admin chooses
   Evidence: `src/lib/locationService.ts` reads `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` and its Places methods require `window`, while scraper runs execute in server code.
 - Observation: `Events.eventType` already supports `AFFILIATE`, but `Events.hostId` is currently required.
   Evidence: `prisma/schema.prisma` has `AFFILIATE` in `EventsEventTypeEnum`, while `model Events` defines `hostId String`.
+- Observation: DigitalOcean App Platform scheduled jobs can run a command in the app environment on a cron expression, so the scraper does not need a public endpoint for automation.
+  Evidence: The scheduled runner is exposed as `npm run affiliate:scrape:due`, which can run inside the same deployed app environment that already has the database, ScrapingDog, and email environment variables.
 
 ## Decision Log
 
@@ -115,6 +118,14 @@ The first visible outcome is an admin-only import surface where an admin chooses
   Steps: First inspect the official page with ScrapingDog and, when useful, a rendered browser screenshot. If repeated cards include official action URLs plus future start dates or date ranges, build a normal selector mapping. If the page only describes ongoing programs, seasons, friendly games, rentals, tournaments, or categories without reliable current dated rows, or if the page contains stale/old event rows that cannot be separated safely from active opportunities, create a manual-summary mapping and record why the site was classified as evergreen. Preserve official prices by setting both `priceText` and numeric `Events.price` from the source when a price is specified. If neither pattern is trustworthy, leave the source in research or blocked status instead of creating misleading listings.
   Date/Author: 2026-06-30 / Codex
 
+- Decision: Run automated affiliate scraping through a scheduled job that refreshes candidates but never publishes them.
+  Rationale: Scraping is useful for keeping the admin review queue current, but source content can still be stale, closed, or parsed incorrectly. The scheduled job should call the same scraper used by the admin "Scrape" button, isolate failures per source, and send Samuel a summary email with items needing approval. Publishing remains a manual admin action.
+  Date/Author: 2026-07-04 / Codex
+
+- Decision: Store scrape cadence per source as minutes, with an explicit enable flag.
+  Rationale: Different sources change at different rates. High-change open-play/signup pages should run daily, active seasonal program pages should run weekly, and evergreen/static rental or summary sources should run monthly. A boolean enable flag keeps newly added sources manual until their mapping and compliance review are complete.
+  Date/Author: 2026-07-04 / Codex
+
 ## Outcomes & Retrospective
 
 Initial planning is complete. The remaining implementation should start with the data model and public UI semantics before any scraper calls are wired, because publishing scraped listings needs a durable way to distinguish BracketIQ-owned registration from affiliate link-out listings.
@@ -161,6 +172,8 @@ Next update public UI semantics. Any published affiliate event or rental must vi
 
 Then add admin APIs. Add endpoints under `src/app/api/admin/affiliate-sources` for listing and manually creating/updating scrape sources, `src/app/api/admin/affiliate-sources/[id]/scrape` for running a scrape, `src/app/api/admin/affiliate-discoveries` for listing candidates, `src/app/api/admin/affiliate-discoveries/[id]` for full candidate detail, and `src/app/api/admin/affiliate-discoveries/[id]/publish` for publishing. Every route must call `requireRazumlyAdmin`. Publishing an event candidate should create or update an `Events` row; publishing should fail with a clear admin-facing error when the source does not have a private organization association.
 
+Add scheduled scraping after the manual scrape flow is working. `AffiliateScrapeSources` stores `autoScrapeEnabled` and `scrapeIntervalMinutes`. The command `npm run affiliate:scrape:due` loads enabled active sources with an active mapping, checks their latest scrape run start time against the interval, acquires a Postgres advisory lock so two scheduled jobs cannot run together, and calls `runAffiliateSourceScrape` for each due source. The job continues after individual source failures, records those failures in its email summary, and sends one email to `samuel.r@razumly.com` or `AFFILIATE_SCRAPE_SUMMARY_EMAIL_TO` if that environment variable is set. The DigitalOcean App Platform scheduled job should run this command daily; source intervals decide which rows are actually scraped.
+
 Then add the admin UI. Add an `affiliateImports` tab to `AdminDashboardClient`. The first version should show configured sources, status, last run time, last candidate count, and a "Scrape" button. After a run returns, show discovered candidates in a table or dense card list with title, kind, source, date/range, city, venue, sport, price/status, confidence, duplicate status, and actions to view detail or publish. Candidate detail should show the normalized fields, source URL, official action URL, raw extracted snippets, and warnings.
 
 Then add the scraping layer. Create a server-only adapter for ScrapingDog that accepts a URL and source options and returns fetched content plus metadata. Keep the API key in a non-public environment variable such as `SCRAPINGDOG_API_KEY`; never use `NEXT_PUBLIC_`. Add a generic mapping extractor that reads a source's active mapping, uses `jsdom` or JSON traversal to find repeated items, applies field mappings, validates required fields, normalizes prices, dates, sports, cities, URLs, and dedupe keys, then returns candidates and warnings.
@@ -204,7 +217,19 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`.
        npm test -- --runInBand <focused test file>
        npx tsc --noEmit
 
-9. Before committing implementation work, run:
+9. Configure scheduled scraping cadence for local or live rows after the scheduling migration is applied:
+
+       npm run affiliate:scrape:schedules
+
+   Preview which sources are due without scraping or emailing:
+
+       npm run affiliate:scrape:due:dry-run
+
+   Run the same command DigitalOcean should execute:
+
+       npm run affiliate:scrape:due
+
+10. Before committing implementation work, run:
 
        git diff --check
 
@@ -225,6 +250,8 @@ Do not run scraper requests in tests against live third-party sites. Use recorde
 Scrape runs must be safe to repeat. A repeated scrape of the same source URL with the same active mapping should update or supersede candidates by dedupe key instead of creating unbounded duplicates. Publishing the same event candidate twice should return the existing published event or a clear "already published" response. If a future scrape rediscovers a previously published event, it should update the candidate and optionally refresh safe event fields without overwriting admin-managed state unexpectedly.
 
 If a scraper fails, persist the scrape run with failure status, error message, started time, and finished time. Do not delete prior successful candidates. If ScrapingDog is unavailable or the API key is missing, the admin UI should show a clear source-level error and leave existing published listings unchanged.
+
+Scheduled scrape failures should be isolated to the source that failed. The scheduled job should continue to the next due source, include the failure in the summary email, and exit successfully unless the whole job cannot start or the database is unavailable. This keeps one broken website from blocking the rest of the approval queue.
 
 If a published affiliate event or rental is later found to be wrong or stale, admins need a way to unpublish it without deleting the scrape history. For affiliate events, this should update the real `Events.state` rather than deleting the event or the candidate. Add unpublish/archive behavior before allowing broad source coverage.
 
@@ -353,3 +380,5 @@ Revision note: First implementation slice added Prisma persistence, ScrapingDog/
 Revision note: Troutdale Indoor Sports Rentals added as the second retained source. The generic rendered HTML mapping covers stable rental resources; individual Natty Hatty booking slots should be handled by a future JSON/API extractor.
 
 Revision note: Troutdale Indoor Sports event pages added as page-level affiliate program mappings for adult soccer, youth soccer, and men's basketball leagues. They should not be treated as date-specific event rows until the source exposes current sessions.
+
+Revision note: Added scheduled affiliate scraping. The new job keeps publishing manual by refreshing due candidates only, uses source-level intervals for daily/weekly/monthly cadence, and sends one approval summary email after a scheduled run.

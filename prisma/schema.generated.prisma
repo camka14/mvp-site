@@ -697,10 +697,13 @@ model AffiliateScrapeSources {
   activeMappingId String?
   lastScrapeRunId String?
   lastScrapedAt   DateTime?
+  autoScrapeEnabled Boolean @default(false)
+  scrapeIntervalMinutes Int @default(1440)
   notes           String?
   metadata        Json?
 
   @@index([status])
+  @@index([autoScrapeEnabled, status])
   @@index([targetKind, status])
 }
 

@@ -20,6 +20,18 @@ Before scraping a website for the first time, manually create a private BracketI
 
 For field or court rentals, do not promise real-time availability unless the official source publicly exposes it. List the facility, rental type, rough price if public, booking process, and link to the official booking page.
 
+## Scheduled Scrape Cadence
+
+Each source can opt into automated scraping with `AffiliateScrapeSources.autoScrapeEnabled` and `scrapeIntervalMinutes`. New sources should stay manual until their mapping, logo/source organization, and compliance notes have been checked at least once. The DigitalOcean scheduled job should run daily, but the per-source interval decides whether a source is due.
+
+Use these default categories:
+
+- Daily (`1440` minutes): high-change signup inventory where cards represent near-term sessions, roster spots, waitlists, or prices that can change quickly. Current daily sources are `portland-basketball-pick-to-play`, `portland-ultimate-events`, and `rose-city-volleyball-signups`.
+- Weekly (`10080` minutes): active seasonal event/program sources, tournament directories, and registration catalogs that can add or remove rows during a season but are not day-to-day open-play inventory. Current weekly sources are `eastside-opf-community-programs`, `eastside-opf-indoor-camps`, `eastside-opf-programs`, `eastside-timbers-edge`, `eastside-timbers-recreation`, `eastside-timbers-summer-camps`, `lake-oswego-adult-basketball`, `nuws-fall-2026-registration`, `nwibl-adult-baseball-registration`, `oregon-youth-soccer-sanctioned-tournaments`, `portland-softball-current-programs`, `portland-youth-soccer-association-programs`, `rose-city-futsal-adult-leagues`, `rose-city-futsal-community-teams`, and `sfva-volleyball-tournaments`.
+- Monthly (`43200` minutes): evergreen program summaries, static facility/rental pages, municipal rental inventory, and sources that do not publish real-time availability. Current monthly sources are `cascade-athletic-clubs-gresham-sports-programs`, `city-gresham-sports-field-rentals`, `eastside-timbers-field-rentals`, `gpsd-adult-soccer-seasons`, `lake-oswego-adult-slow-pitch-softball`, `rose-city-futsal-court-rentals`, and `troutdale-indoor-sports-programs`.
+
+Replacement or blocked sources should keep `autoScrapeEnabled = false`.
+
 ## Priority P0 Sources
 
 | Source | Target kind | Initial priority | URL | Target data | Status | Notes |

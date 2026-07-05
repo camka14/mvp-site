@@ -7643,6 +7643,8 @@ export const AffiliateScrapeSourcesScalarFieldEnum = {
   activeMappingId: 'activeMappingId',
   lastScrapeRunId: 'lastScrapeRunId',
   lastScrapedAt: 'lastScrapedAt',
+  autoScrapeEnabled: 'autoScrapeEnabled',
+  scrapeIntervalMinutes: 'scrapeIntervalMinutes',
   notes: 'notes',
   metadata: 'metadata'
 } as const

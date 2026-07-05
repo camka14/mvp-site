@@ -31,6 +31,8 @@ type AdminAffiliateSourceRow = {
   activeMappingId?: string | null;
   lastScrapeRunId?: string | null;
   lastScrapedAt?: string | null;
+  autoScrapeEnabled?: boolean | null;
+  scrapeIntervalMinutes?: number | null;
 };
 
 type AdminAffiliateCandidateRow = {
@@ -97,6 +99,28 @@ const formatOptionalText = (value?: string | null): string => {
   if (typeof value !== 'string') return 'Not specified';
   const trimmed = value.trim();
   return trimmed.length ? trimmed : 'Not specified';
+};
+
+const formatScrapeInterval = (enabled?: boolean | null, minutes?: number | null): string => {
+  if (!enabled) return 'Manual';
+  if (!Number.isFinite(minutes) || !minutes) return 'Scheduled';
+  if (minutes % 43200 === 0) {
+    const months = minutes / 43200;
+    return months === 1 ? 'Monthly' : `Every ${months} months`;
+  }
+  if (minutes % 10080 === 0) {
+    const weeks = minutes / 10080;
+    return weeks === 1 ? 'Weekly' : `Every ${weeks} weeks`;
+  }
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return days === 1 ? 'Daily' : `Every ${days} days`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return hours === 1 ? 'Hourly' : `Every ${hours} hours`;
+  }
+  return `Every ${minutes} min`;
 };
 
 const stringifyCandidateForReview = (candidate: AdminAffiliateCandidateRow): string => (
@@ -543,6 +567,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
               <Table.Th>Kind</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Mapping</Table.Th>
+              <Table.Th>Schedule</Table.Th>
               <Table.Th>Last scraped</Table.Th>
               <Table.Th>Actions</Table.Th>
             </Table.Tr>
@@ -566,6 +591,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                   </Group>
                 </Table.Td>
                 <Table.Td>{source.activeMappingId ? 'Active' : 'Missing'}</Table.Td>
+                <Table.Td>{formatScrapeInterval(source.autoScrapeEnabled, source.scrapeIntervalMinutes)}</Table.Td>
                 <Table.Td>{formatDateTime(source.lastScrapedAt)}</Table.Td>
                 <Table.Td>
                   <Group gap="xs">
@@ -595,7 +621,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
             ))}
             {!sources.length && !loading ? (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Text size="sm" c="dimmed">No affiliate sources configured.</Text>
                 </Table.Td>
               </Table.Tr>

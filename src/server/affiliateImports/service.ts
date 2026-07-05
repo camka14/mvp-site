@@ -32,6 +32,8 @@ type AffiliateSourceCreateInput = {
   organizationId?: string | null;
   baseUrl?: string | null;
   status?: string;
+  autoScrapeEnabled?: boolean;
+  scrapeIntervalMinutes?: number;
   notes?: string | null;
   metadata?: Record<string, unknown> | null;
   mapping?: AffiliateScrapeMapping;
@@ -282,6 +284,12 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
       listUrl: input.listUrl.trim(),
       targetKind: normalizeStatus(input.targetKind, 'EVENT'),
       status: normalizeStatus(input.status, 'ACTIVE'),
+      autoScrapeEnabled: input.autoScrapeEnabled === true,
+      scrapeIntervalMinutes: typeof input.scrapeIntervalMinutes === 'number'
+        && Number.isInteger(input.scrapeIntervalMinutes)
+        && input.scrapeIntervalMinutes >= 60
+        ? input.scrapeIntervalMinutes
+        : 1440,
       notes: nullableString(input.notes),
       metadata: input.metadata ?? null,
     },
