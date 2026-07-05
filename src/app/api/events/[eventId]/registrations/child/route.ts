@@ -27,6 +27,7 @@ import {
   resolveWeeklyOccurrence,
   WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
 } from '@/server/events/weeklyOccurrences';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -276,6 +277,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       userId: childId,
     },
   });
+  if (registration.status === 'ACTIVE') {
+    await sendEventRegistrationHostNotification({
+      eventId,
+      registrationId: registration.id,
+    });
+  }
 
   return NextResponse.json({
     registration: withLegacyFields(registration),

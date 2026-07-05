@@ -24,6 +24,7 @@ import {
   upsertRegistrationQuestionResponse,
 } from '@/server/registrationQuestions';
 import { requireVerifiedEmailForEventRegistrationIfPaid } from '@/server/paidRegistrationGate';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -354,6 +355,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       userId: session.userId,
     },
   });
+  if (registration.status === 'ACTIVE' && existingRegistration?.status !== 'ACTIVE') {
+    await sendEventRegistrationHostNotification({
+      eventId,
+      registrationId: registration.id,
+    });
+  }
 
   return NextResponse.json({
     registration: withLegacyFields(registration),

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { normalizeRequiredSignerType } from '@/lib/templateSignerTypes';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 const normalizeText = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -37,6 +38,7 @@ export const syncChildRegistrationConsentStatus = async (params: {
     select: {
       id: true,
       parentId: true,
+      status: true,
     },
   });
   if (!registration?.parentId) {
@@ -64,6 +66,12 @@ export const syncChildRegistrationConsentStatus = async (params: {
         updatedAt: new Date(),
       },
     });
+    if (registration.status !== 'ACTIVE') {
+      await sendEventRegistrationHostNotification({
+        eventId,
+        registrationId: registration.id,
+      });
+    }
     return;
   }
 
@@ -112,6 +120,12 @@ export const syncChildRegistrationConsentStatus = async (params: {
         updatedAt: new Date(),
       },
     });
+    if (registration.status !== 'ACTIVE') {
+      await sendEventRegistrationHostNotification({
+        eventId,
+        registrationId: registration.id,
+      });
+    }
     return;
   }
 
@@ -218,4 +232,10 @@ export const syncChildRegistrationConsentStatus = async (params: {
       updatedAt: new Date(),
     },
   });
+  if (consentComplete && registration.status !== 'ACTIVE') {
+    await sendEventRegistrationHostNotification({
+      eventId,
+      registrationId: registration.id,
+    });
+  }
 };

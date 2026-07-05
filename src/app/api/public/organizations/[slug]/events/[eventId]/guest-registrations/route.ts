@@ -47,6 +47,7 @@ import {
   loadAndBuildRegistrationAnswerSnapshot,
   upsertRegistrationQuestionResponse,
 } from '@/server/registrationQuestions';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -1128,6 +1129,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const refreshedRegistration = await (prisma as any).eventRegistrations.findUnique({
       where: { id: result.registration.id },
     }) ?? result.registration;
+    if (String(refreshedRegistration.status ?? '').toUpperCase() === 'ACTIVE') {
+      await sendEventRegistrationHostNotification({
+        eventId: event.id,
+        registrationId: refreshedRegistration.id,
+      });
+    }
     const primaryConsent = documentDispatches.find((dispatch) => dispatch.registrationId === result.registration.id)?.consent
       ?? result.consent
       ?? null;

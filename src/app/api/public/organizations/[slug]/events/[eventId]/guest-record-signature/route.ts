@@ -15,6 +15,7 @@ import {
   normalizeRequiredTemplateIds,
   verifyGuestRegistrationToken,
 } from '@/server/publicGuestRegistration';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -245,14 +246,21 @@ const promoteGuestRegistrationIfComplete = async (params: {
     },
     client: prisma,
   });
+  const nextStatus = priceCents > 0 ? (params.registration.status ?? 'STARTED') : 'ACTIVE';
   await (prisma as any).eventRegistrations.update({
     where: { id: params.registration.id },
     data: {
-      status: priceCents > 0 ? (params.registration.status ?? 'STARTED') : 'ACTIVE',
+      status: nextStatus,
       consentStatus: 'completed',
       updatedAt: new Date(),
     },
   });
+  if (nextStatus === 'ACTIVE' && String(params.registration.status ?? '').toUpperCase() !== 'ACTIVE') {
+    await sendEventRegistrationHostNotification({
+      eventId: params.event.id,
+      registrationId: params.registration.id,
+    });
+  }
 };
 
 export async function POST(req: NextRequest, context: RouteContext) {

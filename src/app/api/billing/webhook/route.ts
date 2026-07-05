@@ -22,6 +22,7 @@ import {
   cancelPendingTeamRegistration,
   markTeamRegistrationPaymentPending,
 } from '@/server/teams/teamOpenRegistration';
+import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -265,7 +266,7 @@ const ensureEventRegistrationFromPurchase = async ({
   occurrenceDate: string | null;
   now: Date;
   targetStatus?: 'ACTIVE' | 'PENDING';
-}): Promise<{ applied: boolean; reason?: string }> => {
+}): Promise<{ applied: boolean; reason?: string; registrationId?: string; activated?: boolean }> => {
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   if (normalizedPurchaseType !== 'event') {
     return { applied: false, reason: 'not_event_purchase' };
@@ -327,6 +328,7 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'reservation_missing' };
         }
 
+        let activated = false;
         if (!existingRegistration) {
           await tx.eventRegistrations.create({
             data: {
@@ -347,6 +349,7 @@ const ensureEventRegistrationFromPurchase = async ({
               updatedAt: now,
             },
           });
+          activated = targetStatus === 'ACTIVE';
         } else if (
           existingRegistration.status !== targetStatus
           && !(targetStatus === 'PENDING' && existingRegistration.status === 'ACTIVE')
@@ -358,6 +361,7 @@ const ensureEventRegistrationFromPurchase = async ({
               updatedAt: now,
             },
           });
+          activated = targetStatus === 'ACTIVE';
         }
         await tx.eventRegistrations.updateMany({
           where: {
@@ -375,7 +379,7 @@ const ensureEventRegistrationFromPurchase = async ({
           },
         });
 
-        return { applied: true };
+        return { applied: true, registrationId: effectiveRegistrationId, activated };
       }
 
       if (event.teamSignup) {
@@ -405,6 +409,7 @@ const ensureEventRegistrationFromPurchase = async ({
       if (!existingRegistration && normalizedRegistrationId) {
         return { applied: false, reason: 'reservation_missing' };
       }
+      let activated = false;
       if (!existingRegistration) {
         await tx.eventRegistrations.create({
           data: {
@@ -426,6 +431,7 @@ const ensureEventRegistrationFromPurchase = async ({
             updatedAt: now,
           },
         });
+        activated = targetStatus === 'ACTIVE';
       } else if (
         existingRegistration.status !== targetStatus
         && !(targetStatus === 'PENDING' && existingRegistration.status === 'ACTIVE')
@@ -437,6 +443,7 @@ const ensureEventRegistrationFromPurchase = async ({
             updatedAt: now,
           },
         });
+        activated = targetStatus === 'ACTIVE';
       }
       await tx.eventRegistrations.updateMany({
         where: {
@@ -454,7 +461,7 @@ const ensureEventRegistrationFromPurchase = async ({
         },
       });
 
-      return { applied: true };
+      return { applied: true, registrationId: effectiveRegistrationId, activated };
     });
   } catch (error) {
     console.error('Failed to apply webhook event registration', {
@@ -2118,6 +2125,12 @@ export async function POST(req: NextRequest) {
               reason: registrationResult.reason,
             });
           }
+          if (registrationResult.activated && billEventId && registrationResult.registrationId) {
+            await sendEventRegistrationHostNotification({
+              eventId: billEventId,
+              registrationId: registrationResult.registrationId,
+            });
+          }
 
           const teamRegistrationResult = billPurchaseType === 'team_registration'
             ? await activateFailedTeamRegistration({
@@ -2204,6 +2217,12 @@ export async function POST(req: NextRequest) {
       console.warn('Stripe webhook skipped event registration sync.', {
         ...receiptLogContext,
         reason: registrationResult.reason,
+      });
+    }
+    if (registrationResult.activated && eventId && registrationResult.registrationId) {
+      await sendEventRegistrationHostNotification({
+        eventId,
+        registrationId: registrationResult.registrationId,
       });
     }
 
