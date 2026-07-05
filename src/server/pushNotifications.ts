@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { NotificationType } from '@/lib/notificationSettings';
 import { filterUserIdsForNotificationChannel } from '@/server/notificationPreferences';
@@ -159,7 +158,7 @@ export const unregisterPushDeviceTarget = async ({
 
     await prisma.$executeRaw`
       DELETE FROM "PushDeviceTarget"
-      WHERE "userId" IN (${Prisma.join(normalizedUserIds)})
+      WHERE "userId" = ANY(${normalizedUserIds}::text[])
       AND "pushTarget" = ${normalizedPushTarget}
     `;
     return;
@@ -167,7 +166,7 @@ export const unregisterPushDeviceTarget = async ({
 
   await prisma.$executeRaw`
     DELETE FROM "PushDeviceTarget"
-    WHERE "userId" IN (${Prisma.join(normalizedUserIds)})
+    WHERE "userId" = ANY(${normalizedUserIds}::text[])
   `;
 };
 
@@ -178,7 +177,7 @@ const getPushTokensForUsers = async (userIds: string[]): Promise<string[]> => {
   const rows = await prisma.$queryRaw<Pick<PushDeviceTargetRow, 'pushToken'>[]>`
     SELECT DISTINCT "pushToken"
     FROM "PushDeviceTarget"
-    WHERE "userId" IN (${Prisma.join(normalizedUserIds)})
+    WHERE "userId" = ANY(${normalizedUserIds}::text[])
       AND "pushToken" IS NOT NULL
   `;
 
@@ -191,7 +190,7 @@ const prunePushTokens = async (tokens: string[]): Promise<number> => {
 
   await prisma.$executeRaw`
     DELETE FROM "PushDeviceTarget"
-    WHERE "pushToken" IN (${Prisma.join(normalizedTokens)})
+    WHERE "pushToken" = ANY(${normalizedTokens}::text[])
   `;
   return normalizedTokens.length;
 };

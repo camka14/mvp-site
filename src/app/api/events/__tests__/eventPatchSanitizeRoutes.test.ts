@@ -1031,8 +1031,8 @@ describe('event PATCH route', () => {
       patchRequest('http://localhost/api/events/event_1', {
         event: {
           fields: [
-            { $id: 'field_keep', name: 'Field Keep' },
-            { $id: 'field_new', name: 'Field New' },
+            { id: 'field_keep', $id: 'field_keep', name: 'Field Keep' },
+            { id: 'field_new', $id: 'field_new', name: 'Field New' },
           ],
           timeSlots: [
             {
@@ -1220,7 +1220,7 @@ describe('event PATCH route', () => {
         event: {
           fieldIds: ['field_owned'],
           fields: [
-            { $id: 'field_owned', name: 'Facility Court', organizationId: null },
+            { id: 'field_owned', $id: 'field_owned', name: 'Facility Court', organizationId: null },
           ],
         },
       }),

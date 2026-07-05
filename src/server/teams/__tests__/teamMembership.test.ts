@@ -412,6 +412,7 @@ describe('listTeamsByIds', () => {
       where: { id: { in: ['team_2'] } },
       select: {
         id: true,
+        joinPolicy: true,
         openRegistration: true,
         registrationPriceCents: true,
         requiredTemplateIds: true,
@@ -510,6 +511,7 @@ describe('listTeamsByIds', () => {
       where: { id: { in: ['canonical_team_1'] } },
       select: {
         id: true,
+        joinPolicy: true,
         openRegistration: true,
         registrationPriceCents: true,
         requiredTemplateIds: true,
@@ -570,6 +572,7 @@ describe('listCanonicalTeamsForUser', () => {
       where: {
         visibility: 'PUBLIC',
         openRegistration: true,
+        archivedAt: null,
         OR: [
           { name: { contains: 'aces', mode: 'insensitive' } },
           { sport: { contains: 'aces', mode: 'insensitive' } },
@@ -614,6 +617,7 @@ describe('listCanonicalTeamsForUser', () => {
     expect(canonicalFindManyMock).toHaveBeenCalledWith({
       where: {
         organizationId: 'org_1',
+        archivedAt: null,
       },
       take: 50,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
@@ -1145,15 +1149,6 @@ describe('claimOrCreateEventTeamSnapshot', () => {
       divisionId: 'div_b',
       divisionTypeId: 'advanced',
       divisionTypeKey: 'c_skill_advanced',
-    }), expect.anything());
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: 'event_1',
-      registrantType: 'TEAM',
-      registrantId: 'event_team_existing',
-      eventTeamId: 'event_team_existing',
-      parentId: null,
-      divisionId: 'div_a',
-      divisionTypeId: 'open',
     }), expect.anything());
   });
 

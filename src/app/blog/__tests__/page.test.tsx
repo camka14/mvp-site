@@ -27,8 +27,8 @@ describe('BlogIndexPage', () => {
     expect(screen.queryByRole('link', { name: 'Resources' })).not.toBeInTheDocument();
 
     expect(screen.getByRole('heading', { name: /articles for hosting better recreational sports events/i })).toBeInTheDocument();
-    expect(screen.getByText(/sport-specific hosting articles are coming soon/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /go to guides/i })).toHaveAttribute('href', '/guides');
+    expect(screen.getByText(/the blog is for sport logistics, event operations, and practical hosting ideas/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /browse bracketiq guides/i })).toHaveAttribute('href', '/guides');
     expect(screen.queryByRole('link', { name: /^open guide$/i })).not.toBeInTheDocument();
   });
 });

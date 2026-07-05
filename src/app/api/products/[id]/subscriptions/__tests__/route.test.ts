@@ -44,6 +44,9 @@ const normalizeProductTaxCategoryMock = jest.fn();
 const syncPlatformProductCatalogMock = jest.fn();
 const upsertStripeSubscriptionMirrorMock = jest.fn();
 const resolveDiscountApplicationMock = jest.fn();
+const reserveDiscountApplicationMock = jest.fn();
+const attachDiscountCodeReservationPaymentIntentMock = jest.fn();
+const releaseDiscountCodeReservationMock = jest.fn();
 
 class mockDiscountCodeError extends Error {
   status: number;
@@ -92,7 +95,10 @@ jest.mock('@/lib/stripeSubscriptions', () => ({
 }));
 
 jest.mock('@/server/discounts/discountCodeResolver', () => ({
+  attachDiscountCodeReservationPaymentIntent: (...args: unknown[]) => attachDiscountCodeReservationPaymentIntentMock(...args),
   DiscountCodeError: mockDiscountCodeError,
+  releaseDiscountCodeReservation: (...args: unknown[]) => releaseDiscountCodeReservationMock(...args),
+  reserveDiscountApplication: (...args: unknown[]) => reserveDiscountApplicationMock(...args),
   resolveDiscountApplication: (...args: unknown[]) => resolveDiscountApplicationMock(...args),
 }));
 
@@ -198,6 +204,12 @@ describe('POST /api/products/[id]/subscriptions', () => {
       amountCents: 2500,
       discount: null,
     });
+    reserveDiscountApplicationMock.mockResolvedValue({
+      amountCents: 2500,
+      discount: null,
+    });
+    attachDiscountCodeReservationPaymentIntentMock.mockResolvedValue(undefined);
+    releaseDiscountCodeReservationMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -341,6 +353,17 @@ describe('POST /api/products/[id]/subscriptions', () => {
         code: 'SAVE10',
         discountId: 'discount_1',
         discountCodeId: 'code_1',
+        originalAmountCents: 2500,
+        discountedAmountCents: 1500,
+      },
+    });
+    reserveDiscountApplicationMock.mockResolvedValueOnce({
+      amountCents: 1500,
+      discount: {
+        code: 'SAVE10',
+        discountId: 'discount_1',
+        discountCodeId: 'code_1',
+        reservationId: 'reservation_1',
         originalAmountCents: 2500,
         discountedAmountCents: 1500,
       },

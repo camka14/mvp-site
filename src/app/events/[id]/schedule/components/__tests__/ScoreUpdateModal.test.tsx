@@ -25,6 +25,7 @@ const buildMatch = (overrides: Partial<Match> = {}): Match => ({
   matchId: 1,
   start: '2026-03-01T10:00:00.000Z',
   end: '2026-03-01T11:00:00.000Z',
+  actualStart: '2026-03-01T10:00:00.000Z',
   team1Points: [0, 0, 0],
   team2Points: [0, 0, 0],
   setResults: [0, 0, 0],
@@ -1462,6 +1463,7 @@ describe('ScoreUpdateModal', () => {
           setResults: [0, 0],
           matchRulesSnapshot: rules,
           segments: buildSegments(),
+          actualStart: null,
           resultStatus: 'OFFICIAL',
           statusReason: null,
           incidents: [],
@@ -1479,10 +1481,7 @@ describe('ScoreUpdateModal', () => {
     expect(screen.queryByText('Lifecycle')).not.toBeInTheDocument();
     expect(screen.queryByText('No status reason')).not.toBeInTheDocument();
     const startMatchButton = await screen.findByRole('button', { name: 'Start Match' });
-    const confirmButton = screen.getByRole('button', { name: /Confirm/ });
-    expect(
-      startMatchButton.compareDocumentPosition(confirmButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Confirm/ })).not.toBeInTheDocument();
 
     fireEvent.click(startMatchButton);
 

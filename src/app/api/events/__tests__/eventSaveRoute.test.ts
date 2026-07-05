@@ -30,6 +30,7 @@ const notifySocialAudienceOfEventCreationMock = jest.fn();
 const sendAdminEventCreatedNotificationMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn(() => false);
 const isLeaguePlayoffTeamCountValidationErrorMock = jest.fn(() => false);
+const isRentalBookingReservationErrorMock = jest.fn(() => false);
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -41,6 +42,7 @@ jest.mock('@/server/repositories/events', () => ({
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
   isEventFieldConflictError: (...args: any[]) => isEventFieldConflictErrorMock(...args),
   isLeaguePlayoffTeamCountValidationError: (...args: any[]) => isLeaguePlayoffTeamCountValidationErrorMock(...args),
+  isRentalBookingReservationError: (...args: any[]) => isRentalBookingReservationErrorMock(...args),
 }));
 jest.mock('@/server/eventCreationNotifications', () => ({
   notifySocialAudienceOfEventCreation: (...args: any[]) => notifySocialAudienceOfEventCreationMock(...args),
@@ -67,6 +69,7 @@ describe('event save route', () => {
     notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
     isEventFieldConflictErrorMock.mockReturnValue(false);
     isLeaguePlayoffTeamCountValidationErrorMock.mockReturnValue(false);
+    isRentalBookingReservationErrorMock.mockReturnValue(false);
     prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
   });

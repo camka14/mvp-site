@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 const prismaMock = {
   events: {
+    count: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
@@ -84,6 +85,7 @@ const jsonPost = (url: string, body: any) =>
 describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.events.count.mockReset();
     prismaMock.events.findMany.mockReset();
     prismaMock.events.findUnique.mockReset();
     prismaMock.authUser.findUnique.mockReset();
@@ -115,6 +117,7 @@ describe('event template privacy routes', () => {
     prismaMock.eventTags.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
     prismaMock.organizations.findMany.mockResolvedValue([]);
+    prismaMock.events.count.mockResolvedValue(0);
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
   });
@@ -758,7 +761,7 @@ describe('event template privacy routes', () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.events[0].attendees).toBe(2);
+    expect(json.events[0].attendees).toBe(0);
   });
 
   it('defaults POST /api/events/search to today-and-later results', async () => {

@@ -67,12 +67,23 @@ const sendAdminEventCreatedNotificationMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
 
+const mockNormalizeStartedMatches = (event: any) => {
+  if (event?.matches && typeof event.matches === 'object') {
+    Object.values(event.matches).forEach((match: any) => {
+      if (match && typeof match.actualStart === 'undefined') {
+        match.actualStart = '2026-04-19T10:00:00.000Z';
+      }
+    });
+  }
+  return event;
+};
+
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
 jest.mock('@/server/repositories/events', () => ({
-  loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
-  loadEventForMatchMutation: (...args: any[]) => loadEventWithRelationsMock(...args),
+  loadEventWithRelations: async (...args: any[]) => mockNormalizeStartedMatches(await loadEventWithRelationsMock(...args)),
+  loadEventForMatchMutation: async (...args: any[]) => mockNormalizeStartedMatches(await loadEventWithRelationsMock(...args)),
   persistScheduledRosterTeams: (...args: any[]) => persistScheduledRosterTeamsMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
@@ -972,6 +983,7 @@ describe('schedule routes', () => {
       matches: {
         match_1: {
           id: 'match_1',
+          actualStart: '2026-04-19T10:00:00.000Z',
           team1,
           team2,
           teamOfficial: team2,

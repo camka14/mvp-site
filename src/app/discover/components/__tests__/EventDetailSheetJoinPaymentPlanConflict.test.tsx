@@ -63,6 +63,12 @@ jest.mock('@/lib/billService', () => ({
   },
 }));
 
+jest.mock('@/lib/billingAddressService', () => ({
+  billingAddressService: {
+    getBillingAddressProfile: jest.fn(),
+  },
+}));
+
 jest.mock('@/lib/boldsignService', () => ({
   boldsignService: {
     createSignLinks: jest.fn(),
@@ -97,6 +103,7 @@ jest.mock('@/components/ui/UserCard', () => () => null);
 import EventDetailSheet from '../EventDetailSheet';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
+import { billingAddressService } from '@/lib/billingAddressService';
 import { boldsignService } from '@/lib/boldsignService';
 import { billService } from '@/lib/billService';
 import { eventService } from '@/lib/eventService';
@@ -105,10 +112,24 @@ import { paymentService } from '@/lib/paymentService';
 import { registrationService } from '@/lib/registrationService';
 import { userService } from '@/lib/userService';
 
+const completeBillingAddressProfile = {
+  email: 'user@example.com',
+  billingAddress: {
+    name: 'Test User',
+    line1: '123 Court St',
+    line2: '',
+    city: 'Portland',
+    state: 'OR',
+    postalCode: '97201',
+    countryCode: 'US',
+  },
+};
+
 describe('EventDetailSheet payment-plan join conflicts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+    (billingAddressService.getBillingAddressProfile as jest.Mock).mockResolvedValue(completeBillingAddressProfile);
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       participants: {
         teamIds: [],
@@ -155,7 +176,7 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({ user, authUser, isAuthenticated: true, isGuest: false, loading: false });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -212,7 +233,7 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({ user, authUser, isAuthenticated: true, isGuest: false, loading: false });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -260,7 +281,7 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({ user, authUser, isAuthenticated: true, isGuest: false, loading: false });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -276,6 +297,7 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: /Join Event/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Checkout$/i }));
 
     await waitFor(() => {
       expect(paymentService.createPaymentIntent).toHaveBeenCalledWith(
@@ -287,6 +309,8 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
         expect.objectContaining({ divisionId: 'open' }),
         undefined,
         undefined,
+        undefined,
+        null,
         undefined,
       );
     });

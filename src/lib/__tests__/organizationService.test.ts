@@ -49,13 +49,22 @@ describe('organizationService', () => {
   });
 
   it('loads organization products by organization id even when productIds are empty', async () => {
-    apiRequestMock
-      .mockResolvedValueOnce({
+    apiRequestMock.mockImplementation(async (url) => {
+      if (url === '/api/organizations/org_1') {
+        return {
         $id: 'org_1',
         name: 'Test Org',
         productIds: [],
-      })
-      .mockResolvedValueOnce({ events: [] });
+        };
+      }
+      if (String(url).startsWith('/api/events?')) {
+        return { events: [] };
+      }
+      if (String(url).startsWith('/api/facilities?')) {
+        return { facilities: [] };
+      }
+      return {};
+    });
     listFieldsMock.mockResolvedValue([]);
     listProductsMock.mockResolvedValue([
       {

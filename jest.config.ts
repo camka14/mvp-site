@@ -5,6 +5,7 @@ const config: Config = {
   testEnvironment: 'jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '\\.(css|less|sass|scss)$': '<rootDir>/test/mocks/styleMock.ts',
     '^react-timezone-select$': '<rootDir>/test/mocks/react-timezone-select.tsx',
   },
   setupFilesAfterEnv: ['<rootDir>/test/setupTests.ts'],

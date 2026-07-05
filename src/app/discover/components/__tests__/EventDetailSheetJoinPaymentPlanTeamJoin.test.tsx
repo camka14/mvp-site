@@ -61,6 +61,12 @@ jest.mock('@/lib/billService', () => ({
   },
 }));
 
+jest.mock('@/lib/billingAddressService', () => ({
+  billingAddressService: {
+    getBillingAddressProfile: jest.fn(),
+  },
+}));
+
 jest.mock('@/lib/boldsignService', () => ({
   boldsignService: {
     createSignLinks: jest.fn(),
@@ -107,6 +113,7 @@ jest.mock('@/components/ui/UserCard', () => () => null);
 
 import EventDetailSheet from '../EventDetailSheet';
 import { useApp } from '@/app/providers';
+import { billingAddressService } from '@/lib/billingAddressService';
 import { billService } from '@/lib/billService';
 import { eventService } from '@/lib/eventService';
 import { familyService } from '@/lib/familyService';
@@ -114,10 +121,38 @@ import { paymentService } from '@/lib/paymentService';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 
+const completeBillingAddressProfile = {
+  email: 'user@example.com',
+  billingAddress: {
+    name: 'Test User',
+    line1: '123 Court St',
+    line2: '',
+    city: 'Portland',
+    state: 'OR',
+    postalCode: '97201',
+    countryCode: 'US',
+  },
+};
+
+async function findDivisionButton(name: RegExp) {
+  try {
+    const buttons = await screen.findAllByRole('button', { name });
+    expect(buttons.length).toBeGreaterThan(0);
+    return buttons[0];
+  } catch (error) {
+    const buttonLabels = screen
+      .queryAllByRole('button', { hidden: true })
+      .map((button) => button.textContent?.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    throw new Error(`Unable to find division button ${name}. Available buttons: ${buttonLabels.join(' | ')}`);
+  }
+}
+
 describe('EventDetailSheet payment-plan team join', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+    (billingAddressService.getBillingAddressProfile as jest.Mock).mockResolvedValue(completeBillingAddressProfile);
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       participants: {
         teamIds: [],
@@ -191,7 +226,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     const user = buildUser({ $id: 'user_pool', dateOfBirth: '1990-01-01', teamIds: [] });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({ user, authUser, isAuthenticated: true, isGuest: false, loading: false });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -201,14 +236,9 @@ describe('EventDetailSheet payment-plan team join', () => {
       <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
     );
 
-    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
-    fireEvent.click(divisionSelect);
-
-    await waitFor(() => {
-      const options = Array.from(document.querySelectorAll('[data-combobox-option]'));
-      expect(options.some((element) => (element.textContent ?? '').trim() === 'CoEd Open 18+')).toBe(true);
-      expect(options.some((element) => /Pool A|Pool B/i.test(element.textContent ?? ''))).toBe(false);
-    });
+    expect(await screen.findAllByRole('button', { name: /CoEd Open 18\+/i })).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Pool A/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pool B/i })).not.toBeInTheDocument();
   });
 
   it('lists league divisions, not playoff divisions, for league playoff registration', async () => {
@@ -245,7 +275,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     const user = buildUser({ $id: 'user_league', dateOfBirth: '1990-01-01', teamIds: [] });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({ user, authUser, isAuthenticated: true, isGuest: false, loading: false });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -255,19 +285,15 @@ describe('EventDetailSheet payment-plan team join', () => {
       <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
     );
 
-    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
-    fireEvent.click(divisionSelect);
-
-    await waitFor(() => {
-      const options = Array.from(document.querySelectorAll('[data-combobox-option]'));
-      expect(options.some((element) => (element.textContent ?? '').trim() === 'Open League')).toBe(true);
-      expect(options.some((element) => /Gold Playoff/i.test(element.textContent ?? ''))).toBe(false);
-    });
+    expect(await screen.findAllByRole('button', { name: /Open League/i })).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Gold Playoff/i })).not.toBeInTheDocument();
   });
 
   it('registers the team immediately, then creates the payment-plan bill', async () => {
     const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+    const openDivisionId = 'event_1__division__c_skill_open_age_18plus';
+    const premierDivisionId = 'event_1__division__c_skill_premier_age_18plus';
 
     const event = buildEvent({
       $id: 'event_1',
@@ -277,17 +303,17 @@ describe('EventDetailSheet payment-plan team join', () => {
       price: 2500,
       allowPaymentPlans: true,
       requiredTemplateIds: [],
-      divisions: ['u15', 'u17'],
+      divisions: [openDivisionId, premierDivisionId],
       divisionDetails: [
-        { id: 'u15', name: 'U15' },
-        { id: 'u17', name: 'U17' },
+        { id: openDivisionId, key: 'c_skill_open_age_18plus', name: 'Open 18+' },
+        { id: premierDivisionId, key: 'c_skill_premier_age_18plus', name: 'Premier 18+' },
       ] as any,
     });
 
     const team = buildTeam({
       $id: 'team_1',
       name: 'Camka Team',
-      division: 'U17',
+      division: 'Premier 18+',
       sport: 'Volleyball',
       managerId: 'user_1',
     });
@@ -299,7 +325,15 @@ describe('EventDetailSheet payment-plan team join', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser,
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      userTeams: [team],
+      userTeamsLoading: false,
+    });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -308,18 +342,10 @@ describe('EventDetailSheet payment-plan team join', () => {
     (billService.createBill as jest.Mock).mockResolvedValue({ bill: { id: 'bill_1' } });
 
     renderWithMantine(
-      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={false} />,
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
     );
 
-    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
-    fireEvent.click(divisionSelect);
-    const divisionOption = Array.from(document.querySelectorAll('[data-combobox-option]')).find((element) =>
-      (element.textContent ?? '').includes('U17'),
-    );
-    if (!divisionOption) {
-      throw new Error('Expected a combobox option for division U17.');
-    }
-    fireEvent.click(divisionOption);
+    fireEvent.click(await findDivisionButton(/Premier 18\+/i));
 
     const joinAsTeamButton = await screen.findByRole('button', { name: /View Team Options/i });
     fireEvent.click(joinAsTeamButton);
@@ -346,7 +372,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     expect(billService.createBill).toHaveBeenCalled();
 
     const joinSelectionArg = (paymentService.joinEvent as jest.Mock).mock.calls[0][3];
-    expect(joinSelectionArg).toEqual(expect.objectContaining({ divisionId: 'u17' }));
+    expect(joinSelectionArg).toEqual(expect.objectContaining({ divisionId: premierDivisionId }));
 
     const joinCallOrder = (paymentService.joinEvent as jest.Mock).mock.invocationCallOrder[0];
     const billCallOrder = (billService.createBill as jest.Mock).mock.invocationCallOrder[0];
@@ -365,7 +391,7 @@ describe('EventDetailSheet payment-plan team join', () => {
       user,
       expect.objectContaining({ $id: event.$id }),
       expect.objectContaining({ $id: team.$id }),
-      expect.objectContaining({ divisionId: 'u17' }),
+      expect.objectContaining({ divisionId: premierDivisionId }),
       5000,
       undefined,
       undefined,
@@ -411,7 +437,15 @@ describe('EventDetailSheet payment-plan team join', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser,
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      userTeams: [managedTeam],
+      userTeamsLoading: false,
+    });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -494,7 +528,15 @@ describe('EventDetailSheet payment-plan team join', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser,
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      userTeams: [team],
+      userTeamsLoading: false,
+    });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
@@ -509,15 +551,7 @@ describe('EventDetailSheet payment-plan team join', () => {
       <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
     );
 
-    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
-    fireEvent.click(divisionSelect);
-    const divisionOption = Array.from(document.querySelectorAll('[data-combobox-option]')).find((element) =>
-      (element.textContent ?? '').includes('Open'),
-    );
-    if (!divisionOption) {
-      throw new Error('Expected a combobox option for division Open.');
-    }
-    fireEvent.click(divisionOption);
+    fireEvent.click(await findDivisionButton(/Open/i));
 
     const joinAsTeamButton = await screen.findByRole('button', { name: /View Team Options/i });
     fireEvent.click(joinAsTeamButton);
@@ -533,6 +567,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     fireEvent.click(teamOption);
 
     fireEvent.click(screen.getByRole('button', { name: /Join for/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Checkout$/i }));
 
     await waitFor(() => {
       expect(paymentService.createPaymentIntent).toHaveBeenCalled();
@@ -590,7 +625,15 @@ describe('EventDetailSheet payment-plan team join', () => {
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
     let eventFetchCount = 0;
-    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser,
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      userTeams: [team],
+      userTeamsLoading: false,
+    });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockImplementation(async () => {
       eventFetchCount += 1;
@@ -617,15 +660,7 @@ describe('EventDetailSheet payment-plan team join', () => {
       <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
     );
 
-    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
-    fireEvent.click(divisionSelect);
-    const divisionOption = Array.from(document.querySelectorAll('[data-combobox-option]')).find((element) =>
-      (element.textContent ?? '').includes('Open'),
-    );
-    if (!divisionOption) {
-      throw new Error('Expected a combobox option for division Open.');
-    }
-    fireEvent.click(divisionOption);
+    fireEvent.click(await findDivisionButton(/Open/i));
 
     const joinAsTeamButton = await screen.findByRole('button', { name: /View Team Options/i });
     fireEvent.click(joinAsTeamButton);
@@ -643,6 +678,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     const baselineEventFetchCount = eventFetchCount;
 
     fireEvent.click(screen.getByRole('button', { name: /Join for/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Checkout$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Complete Mock Payment/i }));
 
     await waitFor(() => {

@@ -18,6 +18,9 @@ const prismaMock = {
   billPayments: {
     findMany: jest.fn(),
   },
+  billPaymentProofs: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -131,6 +134,7 @@ describe('GET /api/events/[eventId]/teams/[teamId]/billing', () => {
         updatedAt: new Date('2026-03-03T10:00:00.000Z'),
       },
     ]);
+    prismaMock.billPaymentProofs.findMany.mockResolvedValue([]);
   });
 
   it('returns billing totals with refundable calculations for team participants', async () => {

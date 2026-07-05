@@ -782,6 +782,7 @@ describe('League schedule page', () => {
       officialId: 'official_1',
       officialCheckedIn: true,
       officialIds: [{ positionId: 'official', slotIndex: 0, userId: 'official_1', checkedIn: true }],
+      actualStart: '2026-03-01T10:00:00.000Z',
       matchRulesSnapshot: rules,
       resolvedMatchRules: rules,
       team1Points: [1],
@@ -910,7 +911,7 @@ describe('League schedule page', () => {
         eventId: 'event_1',
         matchId: 'match_1',
         sequence: 1,
-        status: 'NOT_STARTED',
+        status: 'IN_PROGRESS',
         scores: { team_a: 0, team_b: 0 },
         winnerEventTeamId: null,
         metadata: null,
@@ -985,8 +986,7 @@ describe('League schedule page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
     expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save Incident' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to Match Log' }));
 
     await waitFor(() => {
       expect(apiRequestMock).toHaveBeenCalledWith(
@@ -4737,7 +4737,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
 
     expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Participants' })).toBeInTheDocument();
@@ -4776,7 +4776,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
 
     expect(await screen.findByRole('button', { name: /clear selection/i })).toBeInTheDocument();
     expect(screen.getAllByText((content) => content.includes(occurrenceDate)).length).toBeGreaterThan(0);
@@ -4842,7 +4842,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
 
     await waitFor(() => {
       expect(screen.getByTestId(`calendar-match-meta-weekly-occurrence:${slotId}:${occurrenceDate}`)).toHaveTextContent('Open|registered');
@@ -4927,7 +4927,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
     await waitFor(() => {
       expect(eventService.getEventParticipants).toHaveBeenCalledTimes(1);
     });
@@ -5084,7 +5084,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
     fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
 
     await waitFor(() => {
@@ -5130,7 +5130,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
 
     await waitFor(() => {
       expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(4);
@@ -5185,7 +5185,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    await screen.findByText('Weekly Parent Event');
+    await screen.findAllByText('Weekly Parent Event');
 
     expect(screen.getByText('No weekly sessions are available for this calendar range.')).toBeInTheDocument();
     expect(screen.getByTestId('league-calendar')).toBeInTheDocument();

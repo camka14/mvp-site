@@ -78,6 +78,7 @@ describe('/api/teams route', () => {
               { managerId: 'user_1' },
             ],
           },
+          { archivedAt: null },
         ],
       },
       take: 25,
@@ -104,6 +105,7 @@ describe('/api/teams route', () => {
               { managerId: 'user_1' },
             ],
           },
+          { archivedAt: null },
         ],
       },
       take: 25,
@@ -142,7 +144,7 @@ describe('/api/teams route', () => {
     });
     expect(hasOrgPermissionMock).toHaveBeenCalledWith(session, organization, 'teams.manage');
     expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
-      where: { organizationId: 'org_1' },
+      where: { organizationId: 'org_1', archivedAt: null },
       take: 200,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     }));
@@ -177,6 +179,7 @@ describe('/api/teams route', () => {
       where: {
         visibility: 'PUBLIC',
         organizationId: 'org_1',
+        archivedAt: null,
       },
       take: 200,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],

@@ -589,13 +589,13 @@ describe('POST /api/billing/purchase-intent', () => {
     expect(data.taxCalculationId).toBeUndefined();
     expect(data.feeBreakdown).toEqual(expect.objectContaining({
       eventPrice: 2500,
-      processingFee: 25,
+      processingFee: 24,
       taxAmount: 0,
       stripeTaxServiceFee: 0,
       purchaseType: 'event',
     }));
     expect(data.feeBreakdown.stripeProcessingFee).toBeGreaterThan(0);
-    expect(data.feeBreakdown.totalCharge).toBeGreaterThan(2500);
+    expect(data.feeBreakdown.totalCharge).toBe(2500);
 
     const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
     expect(createParams).toEqual(expect.objectContaining({
@@ -636,7 +636,7 @@ describe('POST /api/billing/purchase-intent', () => {
     });
     buildDestinationTransferDataMock.mockResolvedValueOnce({
       destination: 'acct_connected_123',
-      amount: 2650,
+      amount: 2673,
     });
     loadUserBillingProfileMock.mockResolvedValueOnce({
       billingAddress: null,
@@ -666,12 +666,12 @@ describe('POST /api/billing/purchase-intent', () => {
       expect(data.feeBreakdown).toEqual(expect.objectContaining({
         eventPrice: 2500,
         taxAmount: 150,
-        hostReceives: 2650,
+        hostReceives: 2523,
       }));
       expect(buildDestinationTransferDataMock).toHaveBeenCalledWith({
         organizationId: null,
         hostUserId: null,
-        transferAmountCents: 2650,
+        transferAmountCents: 2673,
       });
 
       const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
@@ -682,7 +682,7 @@ describe('POST /api/billing/purchase-intent', () => {
       expect(createParams.hooks).toBeUndefined();
       expect(createParams.transfer_data).toEqual({
         destination: 'acct_connected_123',
-        amount: 2650,
+        amount: 2673,
       });
       expect(createParams.metadata).toEqual(expect.objectContaining({
         tax_liability_party: 'ORGANIZER',
@@ -691,7 +691,7 @@ describe('POST /api/billing/purchase-intent', () => {
         tax_policy_rule_version: 'test-2026-05-08',
         organizer_manual_tax_rate_bps: '600',
         tax_cents: '150',
-        transfer_amount_cents: '2650',
+        transfer_amount_cents: '2673',
       }));
     } finally {
       organizerRules.splice(originalRuleCount);

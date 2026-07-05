@@ -11,6 +11,9 @@ const prismaMock = {
   authUser: {
     findUnique: jest.fn(),
   },
+  userData: {
+    findUnique: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
   },
@@ -67,6 +70,7 @@ jest.mock('@/app/api/events/[eventId]/registrationDivisionUtils', () => ({
     divisionTypeId: null,
     divisionTypeKey: null,
   } }),
+  validateRegistrantAgeForSelection: jest.fn().mockReturnValue({ ageAtEvent: 30 }),
 }));
 jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
   extractRentalCheckoutWindow: jest.fn(),
@@ -83,9 +87,13 @@ jest.mock('stripe', () => ({
 }));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
-import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import {
+  resolveEventDivisionSelection,
+  validateRegistrantAgeForSelection,
+} from '@/app/api/events/[eventId]/registrationDivisionUtils';
 
 const resolveEventDivisionSelectionMock = resolveEventDivisionSelection as jest.MockedFunction<typeof resolveEventDivisionSelection>;
+const validateRegistrantAgeForSelectionMock = validateRegistrantAgeForSelection as jest.MockedFunction<typeof validateRegistrantAgeForSelection>;
 
 const jsonPost = (body: unknown) =>
   new NextRequest('http://localhost/api/billing/purchase-intent', {
@@ -137,6 +145,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
         divisionTypeKey: null,
       },
     });
+    validateRegistrantAgeForSelectionMock.mockReturnValue({ ageAtEvent: 30 });
     calculateTaxQuoteMock.mockResolvedValue({
       subtotalCents: 2500,
       stripeFeeCents: 90,
@@ -159,6 +168,10 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
     });
 
     prismaMock.products.findUnique.mockResolvedValue(null);
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      dateOfBirth: null,
+    });
     prismaMock.teams.findUnique.mockResolvedValue({ id: 'team_1' });
     prismaMock.divisions.findFirst.mockResolvedValue(null);
     prismaMock.timeSlots.findUnique.mockResolvedValue({
@@ -193,6 +206,9 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
       $queryRaw: prismaMock.$queryRaw,
       teams: {
         findUnique: prismaMock.teams.findUnique,
+      },
+      userData: {
+        findUnique: prismaMock.userData.findUnique,
       },
       divisions: {
         findFirst: prismaMock.divisions.findFirst,

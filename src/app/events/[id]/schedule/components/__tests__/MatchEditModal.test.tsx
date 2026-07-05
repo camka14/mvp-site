@@ -68,12 +68,21 @@ describe('MatchEditModal', () => {
   } as Match;
 
   it('renders the score and incident operations inline for existing matches', () => {
+    const startedMatch = {
+      ...match,
+      actualStart: '2026-03-01T10:00:00.000Z',
+      segments: match.segments?.map((segment) => ({
+        ...segment,
+        status: 'IN_PROGRESS',
+      })),
+    } as Match;
+
     renderWithMantine(
       <MatchEditModal
         opened
-        match={match}
+        match={startedMatch}
         tournament={event}
-        teams={[match.team1, match.team2] as NonNullable<Event['teams']>}
+        teams={[startedMatch.team1, startedMatch.team2] as NonNullable<Event['teams']>}
         canManageOperations
         onClose={jest.fn()}
         onSave={jest.fn()}
@@ -168,6 +177,7 @@ describe('MatchEditModal', () => {
     const periodMatch = {
       ...match,
       status: 'SCHEDULED',
+      actualStart: '2026-03-01T10:00:00.000Z',
       matchRulesSnapshot: periodEvent.resolvedMatchRules,
       team1Points: [1, 0],
       team2Points: [0, 0],
