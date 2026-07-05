@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { upsertEventRegistration, type RegistrationLifecycleStatus } from '@/server/events/eventRegistrations';
 import {
@@ -925,6 +927,143 @@ type SyncCanonicalTeamRosterInput = {
   now?: Date;
 };
 
+type ExistingPendingTeamInviteRecord = {
+  id: string;
+  email?: string | null;
+  status?: string | null;
+  userId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+};
+
+const ensurePendingTeamInviteRecords = async (
+  tx: PrismaLike,
+  input: {
+    teamId: string;
+    pendingPlayerIds: string[];
+    actingUserId?: string | null;
+    now: Date;
+  },
+): Promise<void> => {
+  const invitesDelegate = tx?.invites;
+  if (!invitesDelegate?.findMany || !invitesDelegate?.create) {
+    return;
+  }
+
+  const teamId = normalizeId(input.teamId);
+  const pendingPlayerIds = normalizeIdList(input.pendingPlayerIds);
+  if (!teamId || !pendingPlayerIds.length) {
+    return;
+  }
+
+  const existingInvites = await invitesDelegate.findMany({
+    where: {
+      type: 'TEAM',
+      teamId,
+      userId: { in: pendingPlayerIds },
+    },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      userId: true,
+      firstName: true,
+      lastName: true,
+    },
+  }) as ExistingPendingTeamInviteRecord[];
+  const existingByUserId = new Map(existingInvites
+    .map((invite) => [normalizeId(invite.userId), invite] as const)
+    .filter((entry): entry is readonly [string, ExistingPendingTeamInviteRecord] => Boolean(entry[0])));
+
+  const nonPendingInviteUserIds = existingInvites
+    .filter((invite) => String(invite.status ?? '').toUpperCase() !== 'PENDING')
+    .map((invite) => normalizeId(invite.userId))
+    .filter((userId): userId is string => Boolean(userId));
+  const userIdsToHydrate = uniqueStrings([
+    ...pendingPlayerIds.filter((userId) => !existingByUserId.has(userId)),
+    ...nonPendingInviteUserIds,
+  ]);
+
+  if (!userIdsToHydrate.length) {
+    return;
+  }
+
+  const [authUsers, sensitiveRows, profiles] = await Promise.all([
+    tx?.authUser?.findMany
+      ? tx.authUser.findMany({
+        where: { id: { in: userIdsToHydrate } },
+        select: { id: true, email: true },
+      })
+      : Promise.resolve([]),
+    tx?.sensitiveUserData?.findMany
+      ? tx.sensitiveUserData.findMany({
+        where: { userId: { in: userIdsToHydrate } },
+        select: { userId: true, email: true },
+      })
+      : Promise.resolve([]),
+    tx?.userData?.findMany
+      ? tx.userData.findMany({
+        where: { id: { in: userIdsToHydrate } },
+        select: { id: true, firstName: true, lastName: true },
+      })
+      : Promise.resolve([]),
+  ]) as [
+    Array<{ id: string; email?: string | null }>,
+    Array<{ userId: string; email?: string | null }>,
+    Array<{ id: string; firstName?: string | null; lastName?: string | null }>,
+  ];
+
+  const authEmailByUserId = new Map(authUsers.map((row) => [row.id, normalizeId(row.email)]));
+  const sensitiveEmailByUserId = new Map(sensitiveRows.map((row) => [row.userId, normalizeId(row.email)]));
+  const profileByUserId = new Map(profiles.map((row) => [row.id, row]));
+
+  await Promise.all(userIdsToHydrate.map(async (userId) => {
+    const existingInvite = existingByUserId.get(userId);
+    const profile = profileByUserId.get(userId);
+    const email = authEmailByUserId.get(userId) ?? sensitiveEmailByUserId.get(userId);
+    if (!email) {
+      return;
+    }
+
+    if (existingInvite) {
+      if (String(existingInvite.status ?? '').toUpperCase() === 'PENDING') {
+        return;
+      }
+      if (!invitesDelegate.update) {
+        return;
+      }
+      await invitesDelegate.update({
+        where: { id: existingInvite.id },
+        data: {
+          email,
+          status: 'PENDING',
+          createdBy: normalizeId(input.actingUserId),
+          firstName: normalizeOptionalName(profile?.firstName) ?? existingInvite.firstName,
+          lastName: normalizeOptionalName(profile?.lastName) ?? existingInvite.lastName,
+          updatedAt: input.now,
+        },
+      });
+      return;
+    }
+
+    await invitesDelegate.create({
+      data: {
+        id: randomUUID(),
+        type: 'TEAM',
+        email,
+        status: 'PENDING',
+        teamId,
+        userId,
+        createdBy: normalizeId(input.actingUserId),
+        firstName: normalizeOptionalName(profile?.firstName),
+        lastName: normalizeOptionalName(profile?.lastName),
+        createdAt: input.now,
+        updatedAt: input.now,
+      },
+    });
+  }));
+};
+
 export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInput, tx: PrismaLike) => {
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(tx);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(tx);
@@ -1017,6 +1156,13 @@ export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInpu
       updatedAt: now,
     },
   })));
+
+  await ensurePendingTeamInviteRecords(tx, {
+    teamId: input.teamId,
+    pendingPlayerIds,
+    actingUserId: input.actingUserId,
+    now,
+  });
 
   const removedPlayerUserIds = existingPlayerRegistrations
     .map((row) => row.userId)

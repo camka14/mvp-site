@@ -13,6 +13,7 @@ import {
   listCanonicalTeamsForUser,
   listTeamsByIds,
   normalizeJerseyNumber,
+  syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
 
 describe('normalizeJerseyNumber', () => {
@@ -70,6 +71,158 @@ describe('applyCanonicalTeamRegistrationMetadata', () => {
         updatedAt: now,
       },
     });
+  });
+});
+
+describe('syncCanonicalTeamRoster', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('creates a pending team invite row when roster sync creates an invited registration', async () => {
+    const now = new Date('2026-07-05T13:57:18.241Z');
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamRegistrationsUpsertMock = jest.fn().mockResolvedValue({});
+    const teamRegistrationsUpdateManyMock = jest.fn().mockResolvedValue({ count: 0 });
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamStaffAssignmentsUpsertMock = jest.fn().mockResolvedValue({});
+    const teamStaffAssignmentsUpdateManyMock = jest.fn().mockResolvedValue({ count: 0 });
+    const invitesFindManyMock = jest.fn().mockResolvedValue([]);
+    const invitesCreateMock = jest.fn().mockResolvedValue({});
+    const authUserFindManyMock = jest.fn().mockResolvedValue([
+      { id: 'player_2', email: 'pending.player@example.com' },
+    ]);
+    const sensitiveUserDataFindManyMock = jest.fn().mockResolvedValue([]);
+    const userDataFindManyMock = jest.fn().mockResolvedValue([
+      { id: 'player_2', firstName: ' Pending ', lastName: ' Player ' },
+    ]);
+
+    await syncCanonicalTeamRoster({
+      teamId: 'team_1',
+      captainId: 'captain_1',
+      playerIds: ['captain_1'],
+      pendingPlayerIds: ['player_2'],
+      managerId: 'captain_1',
+      headCoachId: null,
+      assistantCoachIds: [],
+      actingUserId: 'manager_1',
+      now,
+    }, {
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+        upsert: teamRegistrationsUpsertMock,
+        updateMany: teamRegistrationsUpdateManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+        upsert: teamStaffAssignmentsUpsertMock,
+        updateMany: teamStaffAssignmentsUpdateManyMock,
+      },
+      invites: {
+        findMany: invitesFindManyMock,
+        create: invitesCreateMock,
+      },
+      authUser: {
+        findMany: authUserFindManyMock,
+      },
+      sensitiveUserData: {
+        findMany: sensitiveUserDataFindManyMock,
+      },
+      userData: {
+        findMany: userDataFindManyMock,
+      },
+    });
+
+    expect(teamRegistrationsUpsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        teamId_userId: {
+          teamId: 'team_1',
+          userId: 'player_2',
+        },
+      },
+      create: expect.objectContaining({
+        teamId: 'team_1',
+        userId: 'player_2',
+        status: 'INVITED',
+      }),
+      update: expect.objectContaining({
+        status: 'INVITED',
+      }),
+    }));
+    expect(invitesFindManyMock).toHaveBeenCalledWith({
+      where: {
+        type: 'TEAM',
+        teamId: 'team_1',
+        userId: { in: ['player_2'] },
+      },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        userId: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+    expect(invitesCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'TEAM',
+        email: 'pending.player@example.com',
+        status: 'PENDING',
+        teamId: 'team_1',
+        userId: 'player_2',
+        createdBy: 'manager_1',
+        firstName: 'Pending',
+        lastName: 'Player',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    });
+  });
+
+  it('does not create duplicate invite rows for already-pending team invites', async () => {
+    const invitesCreateMock = jest.fn().mockResolvedValue({});
+    const authUserFindManyMock = jest.fn().mockResolvedValue([]);
+
+    await syncCanonicalTeamRoster({
+      teamId: 'team_1',
+      captainId: 'captain_1',
+      playerIds: ['captain_1'],
+      pendingPlayerIds: ['player_2'],
+      managerId: 'captain_1',
+      headCoachId: null,
+      assistantCoachIds: [],
+      actingUserId: 'manager_1',
+      now: new Date('2026-07-05T13:57:18.241Z'),
+    }, {
+      teamRegistrations: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      teamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      invites: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'invite_1',
+            status: 'PENDING',
+            userId: 'player_2',
+            email: 'pending.player@example.com',
+          },
+        ]),
+        create: invitesCreateMock,
+      },
+      authUser: {
+        findMany: authUserFindManyMock,
+      },
+    });
+
+    expect(invitesCreateMock).not.toHaveBeenCalled();
+    expect(authUserFindManyMock).not.toHaveBeenCalled();
   });
 });
 
