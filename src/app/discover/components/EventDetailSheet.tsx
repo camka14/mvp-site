@@ -49,7 +49,7 @@ import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
-import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
@@ -4840,6 +4840,12 @@ export default function EventDetailSheet({
         const seed = side === 'team1' ? match.team1Seed : match.team2Seed;
         return typeof seed === 'number' ? `Seed ${seed}` : 'TBD';
     };
+    const eventDisplayTimeZone = normalizeTimeZone(currentEvent.timeZone);
+    const formatEventWeekday = (value: Date): string =>
+        new Intl.DateTimeFormat(undefined, {
+            weekday: 'short',
+            timeZone: eventDisplayTimeZone,
+        }).format(value);
     const schedulePreviewItems = (() => {
         const nowMs = Date.now();
         const allMatchRows = (currentEvent.matches ?? [])
@@ -4856,10 +4862,10 @@ export default function EventDetailSheet({
                 return {
                     id: match.$id,
                     startMs: start.getTime(),
-                    dateKey: start.toDateString(),
-                    dateLabel: formatDisplayDate(start, { year: '2-digit' }),
-                    dayLabel: start.toLocaleDateString(undefined, { weekday: 'short' }),
-                    timeLabel: formatDisplayTime(start),
+                    dateKey: formatDisplayDate(start, { year: '2-digit', timeZone: eventDisplayTimeZone }),
+                    dateLabel: formatDisplayDate(start, { year: '2-digit', timeZone: eventDisplayTimeZone }),
+                    dayLabel: formatEventWeekday(start),
+                    timeLabel: formatDisplayTime(start, { timeZone: eventDisplayTimeZone }),
                     title: `${getMatchTeamLabel(match, 'team1')} vs ${getMatchTeamLabel(match, 'team2')}`,
                     meta: fieldLabel,
                     matchesSelectedDivision: matchesSelectedScheduleDivision(match.division),
@@ -5281,14 +5287,18 @@ export default function EventDetailSheet({
                                                         value={isEvergreenProgram
                                                             ? eventScheduleDisplayText
                                                             : (startDateValue
-                                                                ? (sharesSingleDayWindow ? formatDisplayDateTime(startDateValue) : formatDisplayDate(startDateValue))
+                                                                ? (sharesSingleDayWindow
+                                                                    ? formatDisplayDateTime(startDateValue, { timeZone: eventDisplayTimeZone })
+                                                                    : formatDisplayDate(startDateValue, { timeZone: eventDisplayTimeZone }))
                                                                 : '')}
                                                     />
                                                     {!isEvergreenProgram && (
                                                         <PublicEventMetaPill
                                                             label={sharesSingleDayWindow ? 'Ends' : 'End date'}
                                                             value={endDateValue
-                                                                ? (sharesSingleDayWindow ? formatDisplayTime(endDateValue) : formatDisplayDate(endDateValue))
+                                                                ? (sharesSingleDayWindow
+                                                                    ? formatDisplayTime(endDateValue, { timeZone: eventDisplayTimeZone })
+                                                                    : formatDisplayDate(endDateValue, { timeZone: eventDisplayTimeZone }))
                                                                 : ''}
                                                         />
                                                     )}
