@@ -7,7 +7,7 @@ import {
 } from '@/lib/bracketViewCore';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
-import type { Event, EventState, Field, Match, Sport, Team, TimeSlot } from '@/types';
+import type { BillDiscountSummary, Event, EventState, Field, Match, Sport, Team, TimeSlot } from '@/types';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 import { MATCH_CONFLICT_RESOLUTION_MESSAGE } from '../lib/matchConflicts';
@@ -845,6 +845,10 @@ export type TeamBillingBillSnapshot = {
   ownerName: string;
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents?: number;
+  discountAmountCents?: number;
+  discountedAmountCents?: number;
+  discounts?: BillDiscountSummary[];
   refundedAmountCents: number;
   refundableAmountCents: number;
   status: string | null;

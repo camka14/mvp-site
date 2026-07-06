@@ -6,6 +6,8 @@ import {
   listOrganizationUsersScopeEvents,
   type OrganizationUsersScopeEvent,
 } from '@/server/organizationUsersAccess';
+import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
+import type { BillDiscountSummary } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,9 @@ type TeamRegistrationSummary = EventSummary & {
   billIds: string[];
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
 };
 
 type BillPaymentSummary = {
@@ -54,6 +59,10 @@ type BillSummary = {
   parentBillId?: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
+  discounts: BillDiscountSummary[];
   refundedAmountCents: number;
   refundableAmountCents: number;
   status?: string;
@@ -882,6 +891,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        ownerId: true,
 	        eventId: true,
 	        parentBillId: true,
+	        sourceType: true,
+	        sourceId: true,
 	        totalAmountCents: true,
 	        paidAmountCents: true,
 	        status: true,
@@ -915,6 +926,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        ownerId: true,
 	        eventId: true,
 	        parentBillId: true,
+	        sourceType: true,
+	        sourceId: true,
 	        totalAmountCents: true,
 	        paidAmountCents: true,
 	        status: true,
@@ -960,6 +973,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    }
 	    paymentsByBillId.set(payment.billId, [payment]);
 	  });
+	  const discountAmountsByBillId = await loadBillDiscountSummaries(
+	    prisma,
+	    allBills.map((bill) => ({
+	      ...bill,
+	      payments: paymentsByBillId.get(bill.id) ?? [],
+	    })),
+	  );
 	  const teamBillCanonicalTeamIdByBillId = new Map<string, string>();
 	  teamBills.forEach((bill) => {
 	    const ownerId = normalizeId(bill.ownerId);
@@ -975,6 +995,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	  });
 	  const billSummariesById = new Map<string, BillSummary>();
 	  allBills.forEach((bill) => {
+	    const discountAmounts = withBillDiscountAmounts(bill, discountAmountsByBillId);
 	    const payments = (paymentsByBillId.get(bill.id) ?? []).map((payment): BillPaymentSummary => {
 	      const refundedAmountCents = normalizeAmountCents(payment.refundedAmountCents);
 	      const amountCents = normalizeAmountCents(payment.amountCents);
@@ -1020,6 +1041,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	      parentBillId: bill.parentBillId ?? null,
 	      totalAmountCents: normalizeAmountCents(bill.totalAmountCents),
 	      paidAmountCents,
+	      originalAmountCents: discountAmounts.originalAmountCents,
+	      discountAmountCents: discountAmounts.discountAmountCents,
+	      discountedAmountCents: discountAmounts.discountedAmountCents,
+	      discounts: discountAmounts.discounts,
 	      refundedAmountCents,
 	      refundableAmountCents: Math.max(0, paidAmountCents - refundedAmountCents),
 	      status: normalizeStatus(bill.status) ?? undefined,
@@ -1161,6 +1186,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        ));
 	        const totalAmountCents = registrationBills.reduce((sum, bill) => sum + bill.totalAmountCents, 0);
 	        const paidAmountCents = registrationBills.reduce((sum, bill) => sum + bill.paidAmountCents, 0);
+	        const originalAmountCents = registrationBills.reduce((sum, bill) => sum + bill.originalAmountCents, 0);
+	        const discountAmountCents = registrationBills.reduce((sum, bill) => sum + bill.discountAmountCents, 0);
+	        const discountedAmountCents = registrationBills.reduce((sum, bill) => sum + bill.discountedAmountCents, 0);
 	        teamSummary.registrationsByEventTeamId.set(teamId, {
 	          eventId: event.id,
 	          eventName: event.name,
@@ -1176,6 +1204,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	          billIds: registrationBills.map((bill) => bill.billId),
 	          totalAmountCents,
 	          paidAmountCents,
+	          originalAmountCents,
+	          discountAmountCents,
+	          discountedAmountCents,
 	        });
 	      }
       const memberIds = teamMemberIdsByTeamId.get(teamId);

@@ -1,4 +1,5 @@
 import {
+  type BillDiscountSummary,
   type RegistrationQuestionAnswerSnapshotItem,
 } from '@/types';
 import {
@@ -38,6 +39,10 @@ export type TeamCompliancePaymentSummary = {
   billId: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
+  discounts: BillDiscountSummary[];
   status: string | null;
   isPaidInFull: boolean;
   manualPaymentProofStatus?: string | null;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
+import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
@@ -116,6 +117,8 @@ export async function GET(
         ownerType: true,
         ownerId: true,
         parentBillId: true,
+        sourceType: true,
+        sourceId: true,
         totalAmountCents: true,
         paidAmountCents: true,
         status: true,
@@ -184,6 +187,13 @@ export async function GET(
     });
 
     const ownerDisplayName = toDisplayName(user);
+    const discountAmountsByBillId = await loadBillDiscountSummaries(
+      prisma,
+      userBills.map((bill) => ({
+        ...bill,
+        payments: paymentsByBillId.get(bill.id) ?? [],
+      })),
+    );
     const bills = userBills.map((bill) => {
       const payments = (paymentsByBillId.get(bill.id) ?? []).map((payment) => {
         const refundedAmountCents = Math.max(0, Number(payment.refundedAmountCents ?? 0));
@@ -215,6 +225,7 @@ export async function GET(
 
       return {
         ...bill,
+        ...withBillDiscountAmounts(bill, discountAmountsByBillId),
         $id: bill.id,
         ownerName: ownerDisplayName,
         paidAmountCents,
@@ -316,6 +327,8 @@ export async function GET(
         id: true,
         ownerType: true,
         ownerId: true,
+        sourceType: true,
+        sourceId: true,
         totalAmountCents: true,
         paidAmountCents: true,
         status: true,
@@ -349,6 +362,8 @@ export async function GET(
         ownerType: true,
         ownerId: true,
         parentBillId: true,
+        sourceType: true,
+        sourceId: true,
         totalAmountCents: true,
         paidAmountCents: true,
         status: true,
@@ -421,6 +436,13 @@ export async function GET(
     }
   });
 
+  const discountAmountsByBillId = await loadBillDiscountSummaries(
+    prisma,
+    allBills.map((bill) => ({
+      ...bill,
+      payments: paymentsByBillId.get(bill.id) ?? [],
+    })),
+  );
   const bills = allBills.map((bill) => {
     const ownerName = bill.ownerType === 'TEAM'
       ? (teamOwnerIds.includes(bill.ownerId) ? (team.name || team.id) : bill.ownerId)
@@ -459,6 +481,7 @@ export async function GET(
 
     return {
       ...bill,
+      ...withBillDiscountAmounts(bill, discountAmountsByBillId),
       $id: bill.id,
       ownerName,
       paidAmountCents,

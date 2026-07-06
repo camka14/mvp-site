@@ -18,6 +18,7 @@ import {
 import { formatBillAmount } from '@/types';
 import type { Team } from '@/types';
 import HostPriceInput from '@/components/ui/HostPriceInput';
+import { formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 
 import type { TeamBillingSnapshot } from './helpers';
 
@@ -113,7 +114,7 @@ export function RefundTeamModal({
                             {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} {'\u2022'} {bill.ownerName}
                           </Text>
                           <Text size="xs" c="dimmed">
-                            {bill.status ?? 'OPEN'} {'\u2022'} Total {formatBillAmount(bill.totalAmountCents)}
+                            {bill.status ?? 'OPEN'} {'\u2022'} {formatBillPaidProgress(bill) ?? formatBillTotalBreakdown(bill)}
                           </Text>
                         </Stack>
                         <Text size="xs" c="dimmed">

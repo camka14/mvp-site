@@ -16,6 +16,7 @@ import {
   type TeamComplianceRequiredDocument,
   type TeamComplianceUserSummary,
 } from '@/lib/eventTeamCompliance';
+import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,10 @@ const toPaymentSummary = (bill: {
   id: string;
   totalAmountCents: number | null;
   paidAmountCents: number | null;
+  originalAmountCents?: number | null;
+  discountAmountCents?: number | null;
+  discountedAmountCents?: number | null;
+  discounts?: TeamCompliancePaymentSummary['discounts'];
   status: string | null;
   manualPaymentProofStatus?: string | null;
   manualPaymentProofCount?: number | null;
@@ -82,6 +87,10 @@ const toPaymentSummary = (bill: {
       billId: null,
       totalAmountCents: 0,
       paidAmountCents: 0,
+      originalAmountCents: 0,
+      discountAmountCents: 0,
+      discountedAmountCents: 0,
+      discounts: [],
       status: null,
       isPaidInFull: false,
       paymentPending,
@@ -93,15 +102,29 @@ const toPaymentSummary = (bill: {
   const paidAmountCents = Number.isFinite(bill.paidAmountCents)
     ? Number(bill.paidAmountCents)
     : Number(bill.paidAmountCents ?? 0);
+  const originalAmountCents = Number.isFinite(Number(bill.originalAmountCents))
+    ? Number(bill.originalAmountCents)
+    : totalAmountCents;
+  const discountAmountCents = Number.isFinite(Number(bill.discountAmountCents))
+    ? Number(bill.discountAmountCents)
+    : Math.max(0, originalAmountCents - totalAmountCents);
+  const discountedAmountCents = Number.isFinite(Number(bill.discountedAmountCents))
+    ? Number(bill.discountedAmountCents)
+    : Math.max(0, originalAmountCents - discountAmountCents);
   const normalizedStatus = bill.status ? String(bill.status).toUpperCase() : null;
-  const isPaidInFull = totalAmountCents > 0
-    && paidAmountCents >= totalAmountCents
+  const amountDueCents = discountedAmountCents > 0 ? discountedAmountCents : totalAmountCents;
+  const isPaidInFull = amountDueCents > 0
+    && paidAmountCents >= amountDueCents
     && (!normalizedStatus || normalizedStatus === 'PAID');
   return {
     hasBill: true,
     billId: bill.id,
     totalAmountCents,
     paidAmountCents,
+    originalAmountCents,
+    discountAmountCents,
+    discountedAmountCents,
+    discounts: Array.isArray(bill.discounts) ? bill.discounts : [],
     status: normalizedStatus,
     isPaidInFull,
     manualPaymentProofStatus: bill.manualPaymentProofStatus ?? null,
@@ -236,6 +259,8 @@ export async function GET(
         ownerId: true,
         totalAmountCents: true,
         paidAmountCents: true,
+        sourceType: true,
+        sourceId: true,
         status: true,
         parentBillId: true,
         createdAt: true,
@@ -264,6 +289,10 @@ export async function GET(
     const proofSummary = proofSummaryByBillId.get(bill.id);
     (bill as any).manualPaymentProofStatus = proofSummary?.status ?? null;
     (bill as any).manualPaymentProofCount = proofSummary?.count ?? 0;
+  });
+  const discountAmountsByBillId = await loadBillDiscountSummaries(prisma, userBills);
+  userBills.forEach((bill) => {
+    Object.assign(bill as any, withBillDiscountAmounts(bill, discountAmountsByBillId));
   });
 
   const latestRegistrationByUserId = new Map<

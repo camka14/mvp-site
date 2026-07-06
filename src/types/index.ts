@@ -2193,6 +2193,19 @@ export interface BillPayment {
   refundedAmountCents?: number;
 }
 
+export interface BillDiscountSummary {
+  id: string;
+  discountId: string;
+  discountCodeId: string;
+  code: string;
+  name?: string | null;
+  originalAmountCents: number;
+  discountedAmountCents: number;
+  discountAmountCents: number;
+  paymentIntentId?: string | null;
+  registrationId?: string | null;
+}
+
 export type BillLineItemType = 'EVENT' | 'FEE' | 'TAX' | 'PRODUCT' | 'RENTAL' | 'OTHER';
 
 export interface BillLineItem {
@@ -2218,6 +2231,10 @@ export interface Bill {
   sourceId?: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents?: number;
+  discountAmountCents?: number;
+  discountedAmountCents?: number;
+  discounts?: BillDiscountSummary[];
   nextPaymentDue?: string | null;
   nextPaymentAmountCents?: number | null;
   parentBillId?: string | null;

@@ -3,9 +3,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Loader, Stack, Collapse } from '@mantine/core';
-import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice, formatBillAmount } from '@/types';
+import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
 import type { RegistrationQuestionDraft, TeamJoinPolicy, TeamJoinRequest, TeamPlayerRegistration } from '@/types';
 import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
+import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
 import { teamService, type TeamInviteFreeAgentContext } from '@/lib/teamService';
@@ -151,21 +152,21 @@ const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payme
         return 'Payment failed';
     }
     if (payment.manualPaymentProofStatus === 'SUBMITTED') {
-        return `Payment proof submitted (${formatBillAmount(payment.totalAmountCents)})`;
+        return `Payment proof submitted (${formatBillTotalBreakdown(payment)})`;
     }
     if (payment.manualPaymentProofStatus === 'ACCEPTED') {
-        return `Payment proof accepted (${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)})`;
+        return `Payment proof accepted (${formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment)})`;
     }
     if (status === 'PENDING') {
-        return `Bill pending (${formatBillAmount(payment.totalAmountCents)})`;
+        return `Bill pending (${formatBillTotalBreakdown(payment)})`;
     }
     if (status === 'PROCESSING') {
-        return `Payment processing (${formatBillAmount(payment.totalAmountCents)})`;
+        return `Payment processing (${formatBillTotalBreakdown(payment)})`;
     }
     if (payment.isPaidInFull) {
-        return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
+        return formatBillPaidInFull(payment);
     }
-    return `${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
+    return formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment);
 };
 
 const documentComplianceLabel = (documents?: TeamComplianceUserSummary['documents']): string => {

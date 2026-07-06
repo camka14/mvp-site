@@ -11,7 +11,7 @@ import {
   Text,
 } from '@mantine/core';
 
-import { formatBillAmount } from '@/types';
+import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import type { TeamComplianceSummary } from '@/lib/eventTeamCompliance';
 
 type EventComplianceModalProps = {
@@ -35,23 +35,23 @@ function formatCompliancePaymentLabel(payment: TeamComplianceSummary['payment'])
     return 'Payment failed';
   }
   if (payment.manualPaymentProofStatus === 'SUBMITTED') {
-    return `Payment proof submitted (${formatBillAmount(payment.totalAmountCents)})`;
+    return `Payment proof submitted (${formatBillTotalBreakdown(payment)})`;
   }
   if (payment.manualPaymentProofStatus === 'ACCEPTED') {
-    return `Payment proof accepted (${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)})`;
+    return `Payment proof accepted (${formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment)})`;
   }
   if (status === 'PENDING') {
     const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
-    return `${prefix} pending (${formatBillAmount(payment.totalAmountCents)})`;
+    return `${prefix} pending (${formatBillTotalBreakdown(payment)})`;
   }
   if (status === 'PROCESSING') {
-    return `Payment processing (${formatBillAmount(payment.totalAmountCents)})`;
+    return `Payment processing (${formatBillTotalBreakdown(payment)})`;
   }
   if (payment.isPaidInFull) {
-    return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
+    return formatBillPaidInFull(payment);
   }
   const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
-  return `${prefix}: ${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
+  return `${prefix}: ${formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment)}`;
 }
 
 export default function EventComplianceModal({

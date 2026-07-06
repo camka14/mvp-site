@@ -63,6 +63,13 @@ import {
   isUserSocialInteractionRestricted,
 } from "@/types";
 import type { Subscription } from "@/types";
+import {
+  getBillDiscountAmountCents,
+  getBillDiscountLabel,
+  getBillDiscountedAmountCents,
+  getBillOriginalAmountCents,
+  getBillRemainingAmountCents,
+} from "@/lib/billDisplay";
 import Loading from "@/components/ui/Loading";
 import Navigation from "@/components/layout/Navigation";
 import {
@@ -2577,7 +2584,7 @@ function ProfilePageContent() {
     ? formatDisplayDate(user.$createdAt)
     : "Unknown";
   const pendingBillsCount = bills.filter((bill) => {
-    const remaining = Math.max(bill.totalAmountCents - bill.paidAmountCents, 0);
+    const remaining = getBillRemainingAmountCents(bill);
     const nextAmount =
       bill.nextPaymentAmountCents !== null &&
       bill.nextPaymentAmountCents !== undefined
@@ -4357,10 +4364,10 @@ function ProfilePageContent() {
                   const hasPaymentIssue = Boolean(
                     failedPayment || disputedPayment,
                   );
-                  const remaining = Math.max(
-                    bill.totalAmountCents - bill.paidAmountCents,
-                    0,
-                  );
+                  const originalAmountCents = getBillOriginalAmountCents(bill);
+                  const discountAmountCents = getBillDiscountAmountCents(bill);
+                  const discountedAmountCents = getBillDiscountedAmountCents(bill);
+                  const remaining = getBillRemainingAmountCents(bill);
                   const nextAmount =
                     processingPayment?.amountCents ??
                     (bill.nextPaymentAmountCents !== null &&
@@ -4457,15 +4464,25 @@ function ProfilePageContent() {
                           screenshot instead of paying through Stripe.
                         </Alert>
                       )}
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className={`mt-4 grid gap-3 ${discountAmountCents > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                           <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-                            Total
+                            {discountAmountCents > 0 ? "Original" : "Total"}
                           </Text>
                           <Text fw={700} mt={2}>
-                            {formatBillAmount(bill.totalAmountCents)}
+                            {formatBillAmount(discountAmountCents > 0 ? originalAmountCents : discountedAmountCents)}
                           </Text>
                         </div>
+                        {discountAmountCents > 0 && (
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                              {getBillDiscountLabel(bill)}
+                            </Text>
+                            <Text fw={700} mt={2}>
+                              -{formatBillAmount(discountAmountCents)}
+                            </Text>
+                          </div>
+                        )}
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                           <Text size="xs" tt="uppercase" fw={700} c="dimmed">
                             Paid
@@ -5452,11 +5469,7 @@ function ProfilePageContent() {
             eventType: "EVENT",
             price:
               payingBill?.nextPaymentAmountCents ??
-              Math.max(
-                (payingBill?.totalAmountCents || 0) -
-                  (payingBill?.paidAmountCents || 0),
-                0,
-              ),
+              (payingBill ? getBillRemainingAmountCents(payingBill) : 0),
           }}
           paymentData={billPaymentData}
           onPaymentSuccess={async () => {
@@ -5486,11 +5499,7 @@ function ProfilePageContent() {
                   Amount due:{" "}
                   {formatBillAmount(
                     manualProofBill.nextPaymentAmountCents ??
-                      Math.max(
-                        manualProofBill.totalAmountCents -
-                          manualProofBill.paidAmountCents,
-                        0,
-                      ),
+                      getBillRemainingAmountCents(manualProofBill),
                   )}
                 </Text>
               </div>

@@ -1,5 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
-import { Bill, BillLineItem, BillOwnerType, BillPayment, PaymentIntent, UserData } from '@/types';
+import { Bill, BillDiscountSummary, BillLineItem, BillOwnerType, BillPayment, PaymentIntent, UserData } from '@/types';
 
 class BillService {
     async listBills(ownerType: BillOwnerType, ownerId: string): Promise<Bill[]> {
@@ -212,6 +212,23 @@ class BillService {
                     };
                 })
             : [];
+        const discounts: BillDiscountSummary[] = Array.isArray(row.discounts)
+            ? row.discounts
+                .filter((discount: any) => discount && typeof discount === 'object')
+                .map((discount: any) => ({
+                    id: typeof discount.id === 'string' ? discount.id : '',
+                    discountId: typeof discount.discountId === 'string' ? discount.discountId : '',
+                    discountCodeId: typeof discount.discountCodeId === 'string' ? discount.discountCodeId : '',
+                    code: typeof discount.code === 'string' ? discount.code : '',
+                    name: typeof discount.name === 'string' ? discount.name : null,
+                    originalAmountCents: toNumber(discount.originalAmountCents),
+                    discountedAmountCents: toNumber(discount.discountedAmountCents),
+                    discountAmountCents: toNumber(discount.discountAmountCents),
+                    paymentIntentId: typeof discount.paymentIntentId === 'string' ? discount.paymentIntentId : null,
+                    registrationId: typeof discount.registrationId === 'string' ? discount.registrationId : null,
+                }))
+                .filter((discount: BillDiscountSummary) => discount.id.length > 0)
+            : [];
 
         return {
             $id: row.$id,
@@ -225,6 +242,9 @@ class BillService {
             sourceId: row.sourceId ?? null,
             totalAmountCents: toNumber(row.totalAmountCents),
             paidAmountCents: toNumber(row.paidAmountCents),
+            originalAmountCents: toNumber(row.originalAmountCents ?? row.totalAmountCents),
+            discountAmountCents: toNumber(row.discountAmountCents),
+            discountedAmountCents: toNumber(row.discountedAmountCents ?? row.totalAmountCents),
             nextPaymentDue: row.nextPaymentDue ?? null,
             nextPaymentAmountCents: toOptionalNumber(row.nextPaymentAmountCents),
             parentBillId: row.parentBillId ?? null,
@@ -233,6 +253,7 @@ class BillService {
             paymentPlanEnabled: Boolean(row.paymentPlanEnabled),
             createdBy: row.createdBy ?? null,
             lineItems,
+            discounts,
             payments,
         };
     }

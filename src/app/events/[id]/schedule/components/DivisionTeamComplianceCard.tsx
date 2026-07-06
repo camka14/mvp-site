@@ -1,6 +1,6 @@
 import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
 import type { Team } from '@/types';
-import { formatBillAmount } from '@/types';
+import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import type { TeamComplianceSummary } from '@/lib/eventTeamCompliance';
 
 type DivisionTeamComplianceCardProps = {
@@ -40,29 +40,29 @@ const getPaymentLabel = (
   }
   if (summary.payment.manualPaymentProofStatus === 'SUBMITTED') {
     return {
-      label: `Payment proof submitted (${formatBillAmount(summary.payment.totalAmountCents)})`,
+      label: `Payment proof submitted (${formatBillTotalBreakdown(summary.payment)})`,
       color: 'yellow',
     };
   }
   if (summary.payment.manualPaymentProofStatus === 'ACCEPTED') {
     return {
-      label: `Payment proof accepted (${formatBillAmount(summary.payment.paidAmountCents)} of ${formatBillAmount(summary.payment.totalAmountCents)})`,
+      label: `Payment proof accepted (${formatBillPaidProgress(summary.payment) ?? formatBillTotalBreakdown(summary.payment)})`,
       color: summary.payment.isPaidInFull ? 'green' : 'yellow',
     };
   }
   if (paymentStatus === 'PENDING') {
-    return { label: `Bill pending (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'yellow' };
+    return { label: `Bill pending (${formatBillTotalBreakdown(summary.payment)})`, color: 'yellow' };
   }
   if (paymentStatus === 'PROCESSING') {
-    return { label: `Payment processing (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'yellow' };
+    return { label: `Payment processing (${formatBillTotalBreakdown(summary.payment)})`, color: 'yellow' };
   }
 
   if (summary.payment.isPaidInFull) {
-    return { label: `Paid in full (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'green' };
+    return { label: formatBillPaidInFull(summary.payment), color: 'green' };
   }
 
   return {
-    label: `${formatBillAmount(summary.payment.paidAmountCents)} of ${formatBillAmount(summary.payment.totalAmountCents)} paid`,
+    label: formatBillPaidProgress(summary.payment) ?? formatBillTotalBreakdown(summary.payment),
     color: 'yellow',
   };
 };

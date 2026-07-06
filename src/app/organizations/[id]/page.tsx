@@ -13,8 +13,9 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { BillingAddress, Event, Organization, OrganizationRole, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
+import type { BillingAddress, BillDiscountSummary, Event, Organization, OrganizationRole, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
 import { formatPrice, getEventImageFallbackUrl, getEventImageUrl } from '@/types';
+import { formatBillPaidProgress } from '@/lib/billDisplay';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
 import { getStaffMemberTypesForOrganizationRole } from '@/lib/staff';
@@ -279,6 +280,9 @@ type OrganizationTeamRegistrationSummary = OrganizationUserEventSummary & {
   billIds: string[];
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
 };
 
 type OrganizationBillPaymentSummary = {
@@ -306,6 +310,10 @@ type OrganizationBillSummary = {
   parentBillId?: string | null;
   totalAmountCents: number;
   paidAmountCents: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  discountedAmountCents: number;
+  discounts: BillDiscountSummary[];
   refundedAmountCents: number;
   refundableAmountCents: number;
   status?: string;
@@ -511,6 +519,25 @@ const mapOrganizationBillRow = (row: Record<string, any>): OrganizationBillSumma
       isRefundable: Boolean(paymentRow?.isRefundable),
     }))
     .filter((payment) => Boolean(payment.paymentId));
+  const discountsRaw = Array.isArray(row?.discounts) ? row.discounts : [];
+  const discounts = discountsRaw
+    .filter((discountRow: Record<string, any>) => discountRow && typeof discountRow === 'object')
+    .map((discountRow: Record<string, any>): BillDiscountSummary => ({
+      id: String(discountRow?.id ?? ''),
+      discountId: String(discountRow?.discountId ?? ''),
+      discountCodeId: String(discountRow?.discountCodeId ?? ''),
+      code: String(discountRow?.code ?? ''),
+      name: typeof discountRow?.name === 'string' ? discountRow.name : null,
+      originalAmountCents: Number.isFinite(Number(discountRow?.originalAmountCents)) ? Math.max(0, Math.round(Number(discountRow.originalAmountCents))) : 0,
+      discountedAmountCents: Number.isFinite(Number(discountRow?.discountedAmountCents)) ? Math.max(0, Math.round(Number(discountRow.discountedAmountCents))) : 0,
+      discountAmountCents: Number.isFinite(Number(discountRow?.discountAmountCents)) ? Math.max(0, Math.round(Number(discountRow.discountAmountCents))) : 0,
+      paymentIntentId: typeof discountRow?.paymentIntentId === 'string' ? discountRow.paymentIntentId : null,
+      registrationId: typeof discountRow?.registrationId === 'string' ? discountRow.registrationId : null,
+    }))
+    .filter((discount) => Boolean(discount.id));
+  const totalAmountCents = Number.isFinite(Number(row?.totalAmountCents)) ? Math.max(0, Math.round(Number(row.totalAmountCents))) : 0;
+  const originalAmountCents = Number.isFinite(Number(row?.originalAmountCents)) ? Math.max(0, Math.round(Number(row.originalAmountCents))) : totalAmountCents;
+  const discountAmountCents = Number.isFinite(Number(row?.discountAmountCents)) ? Math.max(0, Math.round(Number(row.discountAmountCents))) : 0;
 
   return {
     billId: String(row?.billId ?? row?.id ?? ''),
@@ -520,8 +547,12 @@ const mapOrganizationBillRow = (row: Record<string, any>): OrganizationBillSumma
     eventId: typeof row?.eventId === 'string' ? row.eventId : null,
     eventName: typeof row?.eventName === 'string' ? row.eventName : undefined,
     parentBillId: typeof row?.parentBillId === 'string' ? row.parentBillId : null,
-    totalAmountCents: Number.isFinite(Number(row?.totalAmountCents)) ? Math.max(0, Math.round(Number(row.totalAmountCents))) : 0,
+    totalAmountCents,
     paidAmountCents: Number.isFinite(Number(row?.paidAmountCents)) ? Math.max(0, Math.round(Number(row.paidAmountCents))) : 0,
+    originalAmountCents,
+    discountAmountCents,
+    discountedAmountCents: Number.isFinite(Number(row?.discountedAmountCents)) ? Math.max(0, Math.round(Number(row.discountedAmountCents))) : Math.max(0, originalAmountCents - discountAmountCents),
+    discounts,
     refundedAmountCents: Number.isFinite(Number(row?.refundedAmountCents)) ? Math.max(0, Math.round(Number(row.refundedAmountCents))) : 0,
     refundableAmountCents: Number.isFinite(Number(row?.refundableAmountCents)) ? Math.max(0, Math.round(Number(row.refundableAmountCents))) : 0,
     status: typeof row?.status === 'string' ? row.status : undefined,
@@ -557,6 +588,9 @@ const mapOrganizationTeamCustomerRow = (row: Record<string, any>): OrganizationT
         : [],
       totalAmountCents: Number.isFinite(Number(registrationRow?.totalAmountCents)) ? Math.max(0, Math.round(Number(registrationRow.totalAmountCents))) : 0,
       paidAmountCents: Number.isFinite(Number(registrationRow?.paidAmountCents)) ? Math.max(0, Math.round(Number(registrationRow.paidAmountCents))) : 0,
+      originalAmountCents: Number.isFinite(Number(registrationRow?.originalAmountCents)) ? Math.max(0, Math.round(Number(registrationRow.originalAmountCents))) : 0,
+      discountAmountCents: Number.isFinite(Number(registrationRow?.discountAmountCents)) ? Math.max(0, Math.round(Number(registrationRow.discountAmountCents))) : 0,
+      discountedAmountCents: Number.isFinite(Number(registrationRow?.discountedAmountCents)) ? Math.max(0, Math.round(Number(registrationRow.discountedAmountCents))) : 0,
     }))
     .filter((registration) => Boolean(registration.eventTeamId));
 
@@ -646,12 +680,6 @@ const matchesCustomerSearch = (query: string, values: unknown[]): boolean => {
   }
   return values.some((value) => normalizeCustomerSearchValue(value).includes(query));
 };
-
-const formatPaidProgress = (paidAmountCents: number, totalAmountCents: number): string | null => (
-  totalAmountCents > 0
-    ? `${formatPrice(paidAmountCents)} paid of ${formatPrice(totalAmountCents)}`
-    : null
-);
 
 const getProfilePreviewUrl = (profileImageId?: string | null, size = 48): string | undefined => (
   profileImageId ? `/api/files/${profileImageId}/preview?w=${size}&h=${size}&fit=cover` : undefined
@@ -3158,7 +3186,7 @@ function OrganizationDetailContent() {
             formatCustomerMetaToken(bill.status) ?? 'Open',
             bill.paymentPlanEnabled ? 'Payment plan' : null,
           ].filter(Boolean);
-          const paymentSummary = formatPaidProgress(bill.paidAmountCents, bill.totalAmountCents);
+          const paymentSummary = formatBillPaidProgress(bill);
           const paymentLine = [
             paymentSummary,
             bill.refundedAmountCents > 0 ? `${formatPrice(bill.refundedAmountCents)} refunded` : null,

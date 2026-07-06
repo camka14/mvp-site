@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
+import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
 import {
   isWeeklyParentEvent,
   resolveWeeklyOccurrence,
@@ -102,8 +103,33 @@ export async function GET(req: NextRequest) {
     take: Number.isFinite(limit) ? limit : 100,
     orderBy: { createdAt: 'desc' },
   });
+  const billIds = bills.map((bill) => bill.id);
+  const billPayments = billIds.length
+    ? await prisma.billPayments.findMany({
+      where: { billId: { in: billIds } },
+      select: { billId: true, paymentIntentId: true },
+    })
+    : [];
+  const paymentsByBillId = new Map<string, typeof billPayments>();
+  billPayments.forEach((payment) => {
+    const existing = paymentsByBillId.get(payment.billId);
+    if (existing) {
+      existing.push(payment);
+      return;
+    }
+    paymentsByBillId.set(payment.billId, [payment]);
+  });
+  const discountAmountsByBillId = await loadBillDiscountSummaries(
+    prisma,
+    bills.map((bill) => ({
+      ...bill,
+      payments: paymentsByBillId.get(bill.id) ?? [],
+    })),
+  );
 
-  return NextResponse.json({ bills: withLegacyList(bills) }, { status: 200 });
+  return NextResponse.json({
+    bills: withLegacyList(bills.map((bill) => withBillDiscountAmounts(bill, discountAmountsByBillId))),
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
