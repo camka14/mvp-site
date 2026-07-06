@@ -140,6 +140,26 @@ const schedules: ScheduleConfig[] = [
     intervalMinutes: MONTH,
     reason: 'Manual evergreen program/rental summary from stable source pages.',
   },
+  {
+    sourceKey: 'the-courts-at-clear-creek-rentals',
+    intervalMinutes: MONTH,
+    reason: 'Static court and event rental overview with official Secure Booker link-out.',
+  },
+  {
+    sourceKey: 'the-plex-pdx-programs',
+    intervalMinutes: MONTH,
+    reason: 'Evergreen adult indoor-soccer league and field-rental summaries from static public pages.',
+  },
+  {
+    sourceKey: 'portland-parks-athletic-field-rentals',
+    intervalMinutes: MONTH,
+    reason: 'Municipal athletic-field permitting page without real-time field availability.',
+  },
+  {
+    sourceKey: 'portland-public-schools-facility-rentals',
+    intervalMinutes: MONTH,
+    reason: 'Districtwide Facilitron rental page; calendar/search availability paths are disallowed.',
+  },
 ];
 
 const main = async () => {
