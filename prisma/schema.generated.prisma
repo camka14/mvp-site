@@ -768,6 +768,7 @@ model AffiliateImportCandidates {
   endsAt                   DateTime?
   timeZone                 String?
   scheduleText             String?
+  dateDisplayMode          String?
   skillLevel               String?
   ageGroup                 String?
   divisionText             String?
@@ -780,12 +781,20 @@ model AffiliateImportCandidates {
   description              String?
   rawPayload               Json?
   warnings                 String[]  @default([])
+  publishedEventId         String?
+  publishedTeamId          String?
+  publishedFacilityId      String?
+  publishedOrganizationId  String?
 
   @@unique([sourceId, dedupeKey])
   @@index([runId])
   @@index([mappingId])
   @@index([listingKind, status])
   @@index([status])
+  @@index([publishedEventId])
+  @@index([publishedTeamId])
+  @@index([publishedFacilityId])
+  @@index([publishedOrganizationId])
 }
 
 model EventTags {

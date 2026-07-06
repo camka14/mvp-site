@@ -29,6 +29,7 @@ import {
     getEventImageFallbackUrl,
     getEventImageUrl,
     getOrganizationAvatarUrl,
+    formatAffiliateEventPriceRange,
     formatEventDivisionPriceRange,
     formatPrice,
     RegistrationQuestion,
@@ -4724,9 +4725,8 @@ export default function EventDetailSheet({
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
-    const affiliatePriceText = typeof currentEvent.priceText === 'string' ? currentEvent.priceText.trim() : '';
     const eventPriceSummary = isAffiliateEvent
-        ? (affiliatePriceText || 'Price not specified')
+        ? formatAffiliateEventPriceRange(currentEvent)
         : `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
     const usesManualRegistrationPayments = currentEvent.registrationPaymentMode === 'MANUAL'
         || (currentEvent.manualPaymentLinks ?? []).length > 0

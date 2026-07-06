@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM';
+export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB';
 export type AffiliateDateDisplayMode = 'SCHEDULED' | 'NO_FIXED_DATE' | 'ONGOING';
 
 export type ScrapedPage = {
@@ -55,7 +55,7 @@ const affiliateManualDivisionSchema = z.object({
 });
 
 const affiliateManualCandidateSchema = z.object({
-  listingKind: z.enum(['EVENT', 'RENTAL', 'TEAM']).optional(),
+  listingKind: z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB']).optional(),
   title: z.string().trim().min(1),
   officialActionUrl: z.string().trim().url(),
   sourceUrl: z.string().trim().url().nullable().optional(),
@@ -87,7 +87,7 @@ const affiliateManualCandidateSchema = z.object({
 });
 
 export const affiliateScrapeMappingSchema = z.object({
-  kind: z.enum(['EVENT', 'RENTAL', 'TEAM']),
+  kind: z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB']),
   listUrl: z.string().url(),
   renderJavascript: z.boolean().optional(),
   waitMs: z.number().int().min(0).max(30_000).optional(),

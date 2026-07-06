@@ -1287,7 +1287,8 @@ export const AffiliateImportCandidatesScalarFieldEnum = {
   warnings: 'warnings',
   publishedEventId: 'publishedEventId',
   publishedTeamId: 'publishedTeamId',
-  publishedFacilityId: 'publishedFacilityId'
+  publishedFacilityId: 'publishedFacilityId',
+  publishedOrganizationId: 'publishedOrganizationId'
 } as const
 
 export type AffiliateImportCandidatesScalarFieldEnum = (typeof AffiliateImportCandidatesScalarFieldEnum)[keyof typeof AffiliateImportCandidatesScalarFieldEnum]

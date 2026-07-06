@@ -60,6 +60,7 @@ export type AffiliateImportCandidatesMinAggregateOutputType = {
   publishedEventId: string | null
   publishedTeamId: string | null
   publishedFacilityId: string | null
+  publishedOrganizationId: string | null
 }
 
 export type AffiliateImportCandidatesMaxAggregateOutputType = {
@@ -98,6 +99,7 @@ export type AffiliateImportCandidatesMaxAggregateOutputType = {
   publishedEventId: string | null
   publishedTeamId: string | null
   publishedFacilityId: string | null
+  publishedOrganizationId: string | null
 }
 
 export type AffiliateImportCandidatesCountAggregateOutputType = {
@@ -138,6 +140,7 @@ export type AffiliateImportCandidatesCountAggregateOutputType = {
   publishedEventId: number
   publishedTeamId: number
   publishedFacilityId: number
+  publishedOrganizationId: number
   _all: number
 }
 
@@ -178,6 +181,7 @@ export type AffiliateImportCandidatesMinAggregateInputType = {
   publishedEventId?: true
   publishedTeamId?: true
   publishedFacilityId?: true
+  publishedOrganizationId?: true
 }
 
 export type AffiliateImportCandidatesMaxAggregateInputType = {
@@ -216,6 +220,7 @@ export type AffiliateImportCandidatesMaxAggregateInputType = {
   publishedEventId?: true
   publishedTeamId?: true
   publishedFacilityId?: true
+  publishedOrganizationId?: true
 }
 
 export type AffiliateImportCandidatesCountAggregateInputType = {
@@ -256,6 +261,7 @@ export type AffiliateImportCandidatesCountAggregateInputType = {
   publishedEventId?: true
   publishedTeamId?: true
   publishedFacilityId?: true
+  publishedOrganizationId?: true
   _all?: true
 }
 
@@ -369,6 +375,7 @@ export type AffiliateImportCandidatesGroupByOutputType = {
   publishedEventId: string | null
   publishedTeamId: string | null
   publishedFacilityId: string | null
+  publishedOrganizationId: string | null
   _count: AffiliateImportCandidatesCountAggregateOutputType | null
   _min: AffiliateImportCandidatesMinAggregateOutputType | null
   _max: AffiliateImportCandidatesMaxAggregateOutputType | null
@@ -430,6 +437,7 @@ export type AffiliateImportCandidatesWhereInput = {
   publishedEventId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   publishedTeamId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   publishedFacilityId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  publishedOrganizationId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
 }
 
 export type AffiliateImportCandidatesOrderByWithRelationInput = {
@@ -470,6 +478,7 @@ export type AffiliateImportCandidatesOrderByWithRelationInput = {
   publishedEventId?: Prisma.SortOrderInput | Prisma.SortOrder
   publishedTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   publishedFacilityId?: Prisma.SortOrderInput | Prisma.SortOrder
+  publishedOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type AffiliateImportCandidatesWhereUniqueInput = Prisma.AtLeast<{
@@ -514,6 +523,7 @@ export type AffiliateImportCandidatesWhereUniqueInput = Prisma.AtLeast<{
   publishedEventId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   publishedTeamId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
   publishedFacilityId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
+  publishedOrganizationId?: Prisma.StringNullableFilter<"AffiliateImportCandidates"> | string | null
 }, "id" | "sourceId_dedupeKey">
 
 export type AffiliateImportCandidatesOrderByWithAggregationInput = {
@@ -554,6 +564,7 @@ export type AffiliateImportCandidatesOrderByWithAggregationInput = {
   publishedEventId?: Prisma.SortOrderInput | Prisma.SortOrder
   publishedTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   publishedFacilityId?: Prisma.SortOrderInput | Prisma.SortOrder
+  publishedOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.AffiliateImportCandidatesCountOrderByAggregateInput
   _max?: Prisma.AffiliateImportCandidatesMaxOrderByAggregateInput
   _min?: Prisma.AffiliateImportCandidatesMinOrderByAggregateInput
@@ -600,6 +611,7 @@ export type AffiliateImportCandidatesScalarWhereWithAggregatesInput = {
   publishedEventId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   publishedTeamId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
   publishedFacilityId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
+  publishedOrganizationId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateImportCandidates"> | string | null
 }
 
 export type AffiliateImportCandidatesCreateInput = {
@@ -640,6 +652,7 @@ export type AffiliateImportCandidatesCreateInput = {
   publishedEventId?: string | null
   publishedTeamId?: string | null
   publishedFacilityId?: string | null
+  publishedOrganizationId?: string | null
 }
 
 export type AffiliateImportCandidatesUncheckedCreateInput = {
@@ -680,6 +693,7 @@ export type AffiliateImportCandidatesUncheckedCreateInput = {
   publishedEventId?: string | null
   publishedTeamId?: string | null
   publishedFacilityId?: string | null
+  publishedOrganizationId?: string | null
 }
 
 export type AffiliateImportCandidatesUpdateInput = {
@@ -720,6 +734,7 @@ export type AffiliateImportCandidatesUpdateInput = {
   publishedEventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedFacilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publishedOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AffiliateImportCandidatesUncheckedUpdateInput = {
@@ -760,6 +775,7 @@ export type AffiliateImportCandidatesUncheckedUpdateInput = {
   publishedEventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedFacilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publishedOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AffiliateImportCandidatesCreateManyInput = {
@@ -800,6 +816,7 @@ export type AffiliateImportCandidatesCreateManyInput = {
   publishedEventId?: string | null
   publishedTeamId?: string | null
   publishedFacilityId?: string | null
+  publishedOrganizationId?: string | null
 }
 
 export type AffiliateImportCandidatesUpdateManyMutationInput = {
@@ -840,6 +857,7 @@ export type AffiliateImportCandidatesUpdateManyMutationInput = {
   publishedEventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedFacilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publishedOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AffiliateImportCandidatesUncheckedUpdateManyInput = {
@@ -880,6 +898,7 @@ export type AffiliateImportCandidatesUncheckedUpdateManyInput = {
   publishedEventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   publishedFacilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publishedOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AffiliateImportCandidatesSourceIdDedupeKeyCompoundUniqueInput = {
@@ -925,6 +944,7 @@ export type AffiliateImportCandidatesCountOrderByAggregateInput = {
   publishedEventId?: Prisma.SortOrder
   publishedTeamId?: Prisma.SortOrder
   publishedFacilityId?: Prisma.SortOrder
+  publishedOrganizationId?: Prisma.SortOrder
 }
 
 export type AffiliateImportCandidatesMaxOrderByAggregateInput = {
@@ -963,6 +983,7 @@ export type AffiliateImportCandidatesMaxOrderByAggregateInput = {
   publishedEventId?: Prisma.SortOrder
   publishedTeamId?: Prisma.SortOrder
   publishedFacilityId?: Prisma.SortOrder
+  publishedOrganizationId?: Prisma.SortOrder
 }
 
 export type AffiliateImportCandidatesMinOrderByAggregateInput = {
@@ -1001,6 +1022,7 @@ export type AffiliateImportCandidatesMinOrderByAggregateInput = {
   publishedEventId?: Prisma.SortOrder
   publishedTeamId?: Prisma.SortOrder
   publishedFacilityId?: Prisma.SortOrder
+  publishedOrganizationId?: Prisma.SortOrder
 }
 
 export type AffiliateImportCandidatesCreatewarningsInput = {
@@ -1052,6 +1074,7 @@ export type AffiliateImportCandidatesSelect<ExtArgs extends runtime.Types.Extens
   publishedEventId?: boolean
   publishedTeamId?: boolean
   publishedFacilityId?: boolean
+  publishedOrganizationId?: boolean
 }, ExtArgs["result"]["affiliateImportCandidates"]>
 
 export type AffiliateImportCandidatesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1092,6 +1115,7 @@ export type AffiliateImportCandidatesSelectCreateManyAndReturn<ExtArgs extends r
   publishedEventId?: boolean
   publishedTeamId?: boolean
   publishedFacilityId?: boolean
+  publishedOrganizationId?: boolean
 }, ExtArgs["result"]["affiliateImportCandidates"]>
 
 export type AffiliateImportCandidatesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1132,6 +1156,7 @@ export type AffiliateImportCandidatesSelectUpdateManyAndReturn<ExtArgs extends r
   publishedEventId?: boolean
   publishedTeamId?: boolean
   publishedFacilityId?: boolean
+  publishedOrganizationId?: boolean
 }, ExtArgs["result"]["affiliateImportCandidates"]>
 
 export type AffiliateImportCandidatesSelectScalar = {
@@ -1172,9 +1197,10 @@ export type AffiliateImportCandidatesSelectScalar = {
   publishedEventId?: boolean
   publishedTeamId?: boolean
   publishedFacilityId?: boolean
+  publishedOrganizationId?: boolean
 }
 
-export type AffiliateImportCandidatesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "sourceId" | "runId" | "mappingId" | "listingKind" | "status" | "dedupeKey" | "title" | "organizerName" | "sportName" | "formatLabel" | "city" | "venueName" | "address" | "startsAt" | "endsAt" | "timeZone" | "scheduleText" | "dateDisplayMode" | "dateDisplayText" | "skillLevel" | "ageGroup" | "divisionText" | "participantOptionsText" | "priceText" | "statusText" | "registrationDeadlineText" | "officialActionUrl" | "sourceUrl" | "description" | "rawPayload" | "warnings" | "publishedEventId" | "publishedTeamId" | "publishedFacilityId", ExtArgs["result"]["affiliateImportCandidates"]>
+export type AffiliateImportCandidatesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "sourceId" | "runId" | "mappingId" | "listingKind" | "status" | "dedupeKey" | "title" | "organizerName" | "sportName" | "formatLabel" | "city" | "venueName" | "address" | "startsAt" | "endsAt" | "timeZone" | "scheduleText" | "dateDisplayMode" | "dateDisplayText" | "skillLevel" | "ageGroup" | "divisionText" | "participantOptionsText" | "priceText" | "statusText" | "registrationDeadlineText" | "officialActionUrl" | "sourceUrl" | "description" | "rawPayload" | "warnings" | "publishedEventId" | "publishedTeamId" | "publishedFacilityId" | "publishedOrganizationId", ExtArgs["result"]["affiliateImportCandidates"]>
 
 export type $AffiliateImportCandidatesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateImportCandidates"
@@ -1217,6 +1243,7 @@ export type $AffiliateImportCandidatesPayload<ExtArgs extends runtime.Types.Exte
     publishedEventId: string | null
     publishedTeamId: string | null
     publishedFacilityId: string | null
+    publishedOrganizationId: string | null
   }, ExtArgs["result"]["affiliateImportCandidates"]>
   composites: {}
 }
@@ -1677,6 +1704,7 @@ export interface AffiliateImportCandidatesFieldRefs {
   readonly publishedEventId: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly publishedTeamId: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
   readonly publishedFacilityId: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
+  readonly publishedOrganizationId: Prisma.FieldRef<"AffiliateImportCandidates", 'String'>
 }
 
 

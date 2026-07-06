@@ -19,6 +19,7 @@ import { scrapingDogClient } from './scrapingDogClient';
 import {
   type AffiliateDateDisplayMode,
   type AffiliateCandidateInput,
+  type AffiliateListingKind,
   type AffiliateScrapeMapping,
   parseAffiliateScrapeMapping,
   type ScrapePageClient,
@@ -164,14 +165,30 @@ const isImportableCandidate = (
   return candidateImportRejectionReasons(candidate, now).length === 0;
 };
 
+const isTryoutCandidate = (candidate: AffiliateCandidateInput): boolean => {
+  const haystack = [
+    candidate.title,
+    candidate.formatLabel,
+    candidate.scheduleText,
+    candidate.description,
+    candidate.statusText,
+    candidate.divisionText,
+  ]
+    .map((value) => nullableString(value)?.toLowerCase() ?? '')
+    .join(' ');
+  return /\btry[\s-]?outs?\b|\bevaluations?\b/.test(haystack);
+};
+
 const candidateImportRejectionReasons = (
   candidate: AffiliateCandidateInput,
   now: Date = new Date(),
 ): string[] => {
-  if (candidate.listingKind === 'RENTAL') return [];
+  if (candidate.listingKind === 'RENTAL' || candidate.listingKind === 'CLUB') return [];
   const reasons: string[] = [];
   const start = candidateStartDate(candidate);
-  if (!isEvergreenAffiliateCandidate(candidate) && (!start || start.getTime() <= now.getTime())) {
+  if (isEvergreenAffiliateCandidate(candidate) && isTryoutCandidate(candidate)) {
+    reasons.push('tryouts cannot be evergreen');
+  } else if (!isEvergreenAffiliateCandidate(candidate) && (!start || start.getTime() <= now.getTime())) {
     reasons.push(start ? 'start is not in the future' : 'missing source start date');
   }
   const registrationDeadline = candidateRegistrationDeadline(candidate);
@@ -183,6 +200,9 @@ const candidateImportRejectionReasons = (
 
 const assertEventOrTeamCandidateImportable = (candidate: any) => {
   const start = candidateStartDate(candidate);
+  if (isEvergreenAffiliateCandidate(candidate) && isTryoutCandidate(candidate)) {
+    throw new Error('Affiliate tryout candidates cannot be evergreen.');
+  }
   if (!isEvergreenAffiliateCandidate(candidate) && !start) {
     throw new Error('Affiliate event candidates must include a valid start date from the source.');
   }
@@ -320,12 +340,12 @@ const normalizeSourceType = (value: unknown): string | null => (
   nullableString(value)?.toUpperCase() ?? null
 );
 
-const normalizeListingKind = (value: unknown): 'EVENT' | 'TEAM' | 'RENTAL' => {
+const normalizeListingKind = (value: unknown): AffiliateListingKind => {
   const normalized = normalizeSourceType(value);
-  if (normalized === 'EVENT' || normalized === 'TEAM' || normalized === 'RENTAL') {
+  if (normalized === 'EVENT' || normalized === 'TEAM' || normalized === 'RENTAL' || normalized === 'CLUB') {
     return normalized;
   }
-  throw new Error('Affiliate listing kind must be EVENT, TEAM, or RENTAL.');
+  throw new Error('Affiliate listing kind must be EVENT, TEAM, RENTAL, or CLUB.');
 };
 
 const publishedEventIdFromCandidate = (candidate: any): string | null => (
@@ -334,6 +354,10 @@ const publishedEventIdFromCandidate = (candidate: any): string | null => (
 
 const publishedTeamIdFromCandidate = (candidate: any): string | null => (
   nullableString(candidate?.publishedTeamId)
+);
+
+const publishedOrganizationIdFromCandidate = (candidate: any): string | null => (
+  nullableString(candidate?.publishedOrganizationId)
 );
 
 const slugifyForId = (value: string): string => (
@@ -716,6 +740,117 @@ const buildAffiliateDivisionDetails = (candidate: any, sportId?: string | null) 
   return Array.from(byKey.values());
 };
 
+type AffiliatePriceRange = {
+  minPriceCents: number;
+  maxPriceCents: number;
+};
+
+const formatAffiliatePriceCents = (priceCents: number): string => (
+  priceCents <= 0 ? 'Free' : `$${(priceCents / 100).toFixed(2)}`
+);
+
+const formatAffiliatePriceRange = (range: AffiliatePriceRange): string => (
+  range.minPriceCents === range.maxPriceCents
+    ? formatAffiliatePriceCents(range.minPriceCents)
+    : `${formatAffiliatePriceCents(range.minPriceCents)} - ${formatAffiliatePriceCents(range.maxPriceCents)}`
+);
+
+const affiliatePriceRangeFromDivisionDetails = (
+  divisionDetails: Array<{ price?: number | null }>,
+): AffiliatePriceRange | null => {
+  const prices = divisionDetails
+    .map((divisionDetail) => (
+      typeof divisionDetail.price === 'number' && Number.isFinite(divisionDetail.price)
+        ? Math.max(0, Math.round(divisionDetail.price))
+        : null
+    ))
+    .filter((price): price is number => price !== null);
+
+  if (prices.length === 0) {
+    return null;
+  }
+
+  return {
+    minPriceCents: Math.min(...prices),
+    maxPriceCents: Math.max(...prices),
+  };
+};
+
+const parseAffiliateSourcePriceRange = (value: unknown): AffiliatePriceRange | null => {
+  const text = nullableString(value);
+  if (!text) return null;
+
+  const amountPattern = '([0-9][0-9,]*(?:\\.[0-9]{1,2})?)';
+  const rangePatterns = [
+    new RegExp(`\\$\\s*${amountPattern}\\s*(?:-|–|—|to|through)\\s*(?:\\$\\s*)?${amountPattern}`, 'i'),
+    new RegExp(`\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|range(?:s)?\\s+to)\\b[^$]*\\$\\s*${amountPattern}`, 'i'),
+    new RegExp(`\\b(?:from|start(?:s|ing)?\\s+at)\\b[^$]*\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|to)\\b[^$]*\\$\\s*${amountPattern}`, 'i'),
+  ];
+
+  for (const pattern of rangePatterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const left = Number.parseFloat(match[1].replace(/,/g, ''));
+    const right = Number.parseFloat(match[2].replace(/,/g, ''));
+    if (Number.isFinite(left) && Number.isFinite(right)) {
+      const leftCents = Math.max(0, Math.round(left * 100));
+      const rightCents = Math.max(0, Math.round(right * 100));
+      return {
+        minPriceCents: Math.min(leftCents, rightCents),
+        maxPriceCents: Math.max(leftCents, rightCents),
+      };
+    }
+  }
+
+  const priceCents = parsePriceCents(text);
+  if (priceCents !== null) {
+    return {
+      minPriceCents: priceCents,
+      maxPriceCents: priceCents,
+    };
+  }
+
+  if (/\bfree\b/i.test(text)) {
+    return {
+      minPriceCents: 0,
+      maxPriceCents: 0,
+    };
+  }
+
+  return null;
+};
+
+const isSimpleAffiliatePriceText = (sourcePriceText: string, displayPriceText: string | null): boolean => {
+  const normalize = (value: string) => value.trim().replace(/\.$/, '').toLowerCase();
+  const normalizedSource = normalize(sourcePriceText);
+  const normalizedDisplay = displayPriceText ? normalize(displayPriceText) : '';
+  if (normalizedDisplay && normalizedSource === normalizedDisplay) {
+    return true;
+  }
+
+  return /^\$?\s*\d[\d,]*(?:\.\d{1,2})?$/.test(sourcePriceText.trim())
+    || /^free$/i.test(sourcePriceText.trim());
+};
+
+const buildAffiliateEventPricing = (
+  candidate: any,
+  divisionDetails: Array<{ price?: number | null }>,
+) => {
+  const range = affiliatePriceRangeFromDivisionDetails(divisionDetails)
+    ?? parseAffiliateSourcePriceRange(candidate.priceText);
+  const displayText = range ? formatAffiliatePriceRange(range) : null;
+  const sourcePriceText = nullableString(candidate.priceText);
+  const detailsText = sourcePriceText && !isSimpleAffiliatePriceText(sourcePriceText, displayText)
+    ? sourcePriceText
+    : null;
+
+  return {
+    priceCents: range?.minPriceCents ?? null,
+    displayText,
+    detailsText,
+  };
+};
+
 const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
@@ -736,8 +871,20 @@ const eventStartFromCandidate = (candidate: any): Date => {
   return candidateStartDate(candidate) ?? EVERGREEN_AFFILIATE_START_DATE;
 };
 
-const buildAffiliateEventDescription = (candidate: any): string | null => {
-  return nullableString(candidate.description);
+const buildAffiliateEventDescription = (candidate: any, pricingDetailsText?: string | null): string | null => {
+  const description = nullableString(candidate.description);
+  const pricingDetails = nullableString(pricingDetailsText);
+  if (!pricingDetails) {
+    return description;
+  }
+
+  if (description && description.toLowerCase().includes(pricingDetails.toLowerCase())) {
+    return description;
+  }
+
+  return [description, `Pricing details: ${pricingDetails}`]
+    .filter((value): value is string => Boolean(value))
+    .join('\n\n');
 };
 
 const inferAffiliateEventType = (candidate: any): 'EVENT' | 'WEEKLY_EVENT' | 'LEAGUE' | 'TOURNAMENT' => {
@@ -816,7 +963,9 @@ const buildAffiliateEventData = async (
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
-  const hasSourceDivision = buildAffiliateDivisionDetails(candidate, sportId).length > 0;
+  const divisionDetails = buildAffiliateDivisionDetails(candidate, sportId);
+  const affiliatePricing = buildAffiliateEventPricing(candidate, divisionDetails);
+  const hasSourceDivision = divisionDetails.length > 0;
   const eventType = inferAffiliateEventType(candidate);
   const teamSignup = inferAffiliateTeamSignup(candidate, eventType);
   const location = nullableString(candidate.venueName)
@@ -839,7 +988,7 @@ const buildAffiliateEventData = async (
     start,
     end,
     timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
-    description: buildAffiliateEventDescription(candidate),
+    description: buildAffiliateEventDescription(candidate, affiliatePricing.detailsText),
     affiliateUrl: nullableString(candidate.officialActionUrl),
     sourceType: 'AFFILIATE_IMPORT',
     sourceId: candidate.id,
@@ -848,7 +997,7 @@ const buildAffiliateEventData = async (
     scheduleText: nullableString(candidate.scheduleText) ?? dateDisplayText,
     dateDisplayMode,
     dateDisplayText,
-    priceText: nullableString(candidate.priceText),
+    priceText: affiliatePricing.displayText,
     statusText: nullableString(candidate.statusText),
     winnerSetCount: null,
     loserSetCount: null,
@@ -863,7 +1012,7 @@ const buildAffiliateEventData = async (
     hostId: null,
     assistantHostIds: [],
     noFixedEndDateTime: true,
-    price: parsePriceCents(candidate.priceText) ?? 0,
+    price: affiliatePricing.priceCents ?? 0,
     taxHandling: 'ORGANIZER_COLLECTS',
     organizerManualTaxRateBps: 0,
     singleDivision: !hasSourceDivision,
@@ -1064,6 +1213,121 @@ const upsertAffiliateFacilityForCandidate = async (
     where: { id: facilityId },
     create: {
       id: facilityId,
+      ...data,
+    },
+    update: data,
+  });
+};
+
+const slugifyForPublicSlug = (value: string): string => (
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'club'
+);
+
+const affiliateOrganizationIdForCandidate = (candidate: any, source: AffiliateScrapeSourceRow): string => {
+  const sourceKey = nullableString(source.sourceKey) ?? nullableString(source.id) ?? 'source';
+  const title = nullableString(candidate.title) ?? nullableString(candidate.organizerName) ?? candidate.id;
+  return `affiliate_org_${slugifyForId(sourceKey)}_${slugifyForId(title)}`;
+};
+
+const nextAvailableOrganizationSlug = async (baseSlug: string, organizationId: string): Promise<string> => {
+  const { organizations } = affiliatePrisma();
+  const base = slugifyForPublicSlug(baseSlug);
+  for (let suffix = 0; suffix < 20; suffix += 1) {
+    const publicSlug = suffix === 0 ? base : `${base}-${suffix + 1}`;
+    const conflict = await organizations.findFirst({
+      where: {
+        publicSlug,
+        NOT: { id: organizationId },
+      },
+      select: { id: true },
+    });
+    if (!conflict) {
+      return publicSlug;
+    }
+  }
+  const shortHash = createHash('sha1').update(organizationId).digest('hex').slice(0, 8);
+  return `${base}-${shortHash}`;
+};
+
+const buildAffiliateOrganizationData = async (
+  candidate: any,
+  source: AffiliateScrapeSourceRow,
+  organizationId: string,
+  options: { status?: 'LISTED' | 'UNLISTED'; publicPageEnabled?: boolean } = {},
+) => {
+  const sourceOrganization = await loadSourceOrganization(source);
+  const ownerId = nullableString(sourceOrganization.ownerId);
+  if (!ownerId) {
+    throw new Error('Affiliate source organization must have an owner before club rows can be created.');
+  }
+  const name = nullableString(candidate.title)
+    ?? nullableString(candidate.organizerName)
+    ?? nullableString(source.name)
+    ?? 'Affiliate club';
+  const location = nullableString(candidate.venueName)
+    ?? nullableString(candidate.city)
+    ?? nullableString(candidate.address)
+    ?? null;
+  const address = nullableString(candidate.address);
+  const geocodeAddress = address ?? location;
+  const coordinates = geocodeAddress
+    ? await geocodeAddressToCoordinates(geocodeAddress)
+      ?? normalizePersistedCoordinates(sourceOrganization.coordinates)
+    : normalizePersistedCoordinates(sourceOrganization.coordinates);
+  const sportName = nullableString(candidate.sportName);
+  const description = nullableString(candidate.description)
+    ?? nullableString(candidate.scheduleText)
+    ?? nullableString(candidate.statusText)
+    ?? null;
+  const website = nullableString(candidate.officialActionUrl)
+    ?? nullableString(candidate.sourceUrl)
+    ?? nullableString(source.baseUrl);
+
+  return {
+    updatedAt: new Date(),
+    name,
+    ownerId,
+    location,
+    address,
+    description,
+    website,
+    sports: sportName ? [sportName] : [],
+    status: options.status ?? 'UNLISTED',
+    hasStripeAccount: false,
+    verificationStatus: 'UNVERIFIED',
+    verificationReviewStatus: 'NONE',
+    coordinates,
+    productIds: [],
+    publicSlug: await nextAvailableOrganizationSlug(name, organizationId),
+    publicPageEnabled: options.publicPageEnabled === true,
+    publicWidgetsEnabled: false,
+    publicHeadline: name,
+    publicIntroText: description,
+    operatesAthleticFacility: false,
+  };
+};
+
+const upsertAffiliateOrganizationForCandidate = async (
+  candidate: any,
+  source: AffiliateScrapeSourceRow,
+  options: { status?: 'LISTED' | 'UNLISTED'; publicPageEnabled?: boolean } = {},
+) => {
+  const { organizations } = affiliatePrisma();
+  const organizationId = publishedOrganizationIdFromCandidate(candidate)
+    ?? affiliateOrganizationIdForCandidate(candidate, source);
+  const data = await buildAffiliateOrganizationData(candidate, source, organizationId, options);
+
+  return organizations.upsert({
+    where: { id: organizationId },
+    create: {
+      id: organizationId,
+      createdAt: new Date(),
       ...data,
     },
     update: data,
@@ -1284,7 +1548,7 @@ export const runAffiliateSourceScrape = async (
   }
 
   const { row: mappingRow, mapping } = await resolveActiveMapping(source);
-  if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM') {
+  if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM' || mapping.kind === 'CLUB') {
     await assertSourceOrganization(source);
   }
   const run = await runs.create({
@@ -1353,6 +1617,7 @@ export const runAffiliateSourceScrape = async (
               publishedEventId: existing.publishedEventId ?? null,
               publishedTeamId: existing.publishedTeamId ?? null,
               publishedFacilityId: existing.publishedFacilityId ?? null,
+              publishedOrganizationId: existing.publishedOrganizationId ?? null,
               status: existing.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED',
             },
           })
@@ -1389,6 +1654,16 @@ export const runAffiliateSourceScrape = async (
           data: { publishedFacilityId: facility.id },
         });
         savedCandidates.push(savedWithFacility);
+      } else if (candidate.listingKind === 'CLUB') {
+        const organization = await upsertAffiliateOrganizationForCandidate(saved, source, {
+          status: saved.status === 'PUBLISHED' ? 'LISTED' : 'UNLISTED',
+          publicPageEnabled: saved.status === 'PUBLISHED',
+        });
+        const savedWithOrganization = await candidates.update({
+          where: { id: saved.id },
+          data: { publishedOrganizationId: organization.id },
+        });
+        savedCandidates.push(savedWithOrganization);
       } else {
         savedCandidates.push(saved);
       }
@@ -1466,12 +1741,22 @@ export const getAffiliateCandidate = async (candidateId: string) => {
   return candidates.findUnique({ where: { id: candidateId } });
 };
 
+const deleteImportedOrganizationTarget = async (candidate: any, source?: { organizationId?: string | null } | null) => {
+  const organizationId = nullableString(candidate?.publishedOrganizationId);
+  if (!organizationId || organizationId === nullableString(source?.organizationId)) {
+    return;
+  }
+  const { organizations } = affiliatePrisma();
+  await organizations.deleteMany({ where: { id: organizationId } });
+};
+
 export const deleteAffiliateCandidate = async (candidateId: string) => {
-  const { candidates, divisions, events, teams, facilities } = affiliatePrisma();
+  const { candidates, divisions, events, teams, facilities, sources } = affiliatePrisma();
   const candidate = await candidates.findUnique({ where: { id: candidateId } });
   if (!candidate) {
     throw new Error('Affiliate import candidate not found.');
   }
+  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
 
   const eventId = nullableString(candidate.publishedEventId);
   if (eventId) {
@@ -1489,6 +1774,7 @@ export const deleteAffiliateCandidate = async (candidateId: string) => {
     await facilities.deleteMany({ where: { id: facilityId } });
   }
 
+  await deleteImportedOrganizationTarget(candidate, source);
   await candidates.delete({ where: { id: candidateId } });
   return candidate;
 };
@@ -1532,6 +1818,9 @@ export const reclassifyAffiliateCandidate = async (
         await facilities.deleteMany({ where: { id: facilityId } });
       }
     }
+    if (nextKind !== 'CLUB') {
+      await deleteImportedOrganizationTarget(candidate, source);
+    }
   };
 
   if (nextKind === 'EVENT') {
@@ -1546,6 +1835,7 @@ export const reclassifyAffiliateCandidate = async (
         publishedEventId: event.id,
         publishedTeamId: null,
         publishedFacilityId: null,
+        publishedOrganizationId: null,
       },
     });
     return { candidate: updatedCandidate, target: event };
@@ -1563,13 +1853,33 @@ export const reclassifyAffiliateCandidate = async (
         publishedEventId: null,
         publishedTeamId: team.id,
         publishedFacilityId: null,
+        publishedOrganizationId: null,
       },
     });
     return { candidate: updatedCandidate, target: team };
   }
 
-  const facility = await upsertAffiliateFacilityForCandidate(nextCandidate, source, {
-    status: candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
+  if (nextKind === 'RENTAL') {
+    const facility = await upsertAffiliateFacilityForCandidate(nextCandidate, source, {
+      status: candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
+    });
+    await deleteReplacedTargets();
+    const updatedCandidate = await candidates.update({
+      where: { id: candidateId },
+      data: {
+        listingKind: nextKind,
+        publishedEventId: null,
+        publishedTeamId: null,
+        publishedFacilityId: facility.id,
+        publishedOrganizationId: null,
+      },
+    });
+    return { candidate: updatedCandidate, target: facility };
+  }
+
+  const organization = await upsertAffiliateOrganizationForCandidate(nextCandidate, source, {
+    status: candidate.status === 'PUBLISHED' ? 'LISTED' : 'UNLISTED',
+    publicPageEnabled: candidate.status === 'PUBLISHED',
   });
   await deleteReplacedTargets();
   const updatedCandidate = await candidates.update({
@@ -1578,10 +1888,11 @@ export const reclassifyAffiliateCandidate = async (
       listingKind: nextKind,
       publishedEventId: null,
       publishedTeamId: null,
-      publishedFacilityId: facility.id,
+      publishedFacilityId: null,
+      publishedOrganizationId: organization.id,
     },
   });
-  return { candidate: updatedCandidate, target: facility };
+  return { candidate: updatedCandidate, target: organization };
 };
 
 export const publishAffiliateCandidate = async (
@@ -1642,5 +1953,23 @@ export const publishAffiliateCandidate = async (
     return facility;
   }
 
-  throw new Error('Affiliate listing kind must be EVENT, TEAM, or RENTAL.');
+  if (normalizeSourceType(candidate.listingKind) === 'CLUB') {
+    if (!source) {
+      throw new Error('Affiliate scrape source not found.');
+    }
+    const organization = await upsertAffiliateOrganizationForCandidate(candidate, source, {
+      status: 'LISTED',
+      publicPageEnabled: true,
+    });
+    await candidates.update({
+      where: { id: candidateId },
+      data: {
+        status: 'PUBLISHED',
+        publishedOrganizationId: organization.id,
+      },
+    });
+    return organization;
+  }
+
+  throw new Error('Affiliate listing kind must be EVENT, TEAM, RENTAL, or CLUB.');
 };

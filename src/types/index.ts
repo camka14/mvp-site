@@ -2339,6 +2339,13 @@ export function formatPrice(price?: number) {
   return `$${(price / 100).toFixed(2)}`;
 }
 
+const formatPriceRange = (minPriceCents: number, maxPriceCents: number) => {
+  if (minPriceCents === maxPriceCents) {
+    return formatPrice(minPriceCents);
+  }
+  return `${formatPrice(minPriceCents)} - ${formatPrice(maxPriceCents)}`;
+};
+
 export function getEventDivisionPriceRange(
   event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
 ) {
@@ -2363,10 +2370,29 @@ export function formatEventDivisionPriceRange(
     return 'Price not set';
   }
   const { minPriceCents, maxPriceCents } = getEventDivisionPriceRange(event);
-  if (minPriceCents === maxPriceCents) {
-    return formatPrice(minPriceCents);
+  return formatPriceRange(minPriceCents, maxPriceCents);
+}
+
+export function formatAffiliateEventPriceRange(
+  event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
+) {
+  const hasDivisionEntries = Array.isArray(event?.divisions) && event.divisions.length > 0
+    || Array.isArray(event?.divisionDetails) && event.divisionDetails.length > 0;
+  const divisionPriceDisplay = formatEventDivisionPriceRange(event);
+  if (divisionPriceDisplay === 'Price not set') {
+    return 'Price not specified';
   }
-  return `${formatPrice(minPriceCents)} - ${formatPrice(maxPriceCents)}`;
+
+  const eventPrice = Number(event?.price);
+  if (
+    divisionPriceDisplay === 'Free'
+    && !hasDivisionEntries
+    && (!Number.isFinite(eventPrice) || eventPrice <= 0)
+  ) {
+    return 'Price not specified';
+  }
+
+  return divisionPriceDisplay;
 }
 
 export function formatBillAmount(amountCents: number) {

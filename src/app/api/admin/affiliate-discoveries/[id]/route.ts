@@ -87,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         || message.includes('must include')
         || message.includes('must start')
         || message.includes('deadline has passed')
+        || message.includes('cannot be evergreen')
         || message.includes('listing kind')
           ? 409
           : 500;

@@ -1634,6 +1634,7 @@ model AffiliateImportCandidates {
   publishedEventId         String?
   publishedTeamId          String?
   publishedFacilityId      String?
+  publishedOrganizationId  String?
 
   @@unique([sourceId, dedupeKey])
   @@index([runId])
@@ -1643,6 +1644,7 @@ model AffiliateImportCandidates {
   @@index([publishedEventId])
   @@index([publishedTeamId])
   @@index([publishedFacilityId])
+  @@index([publishedOrganizationId])
 }
 
 model EventTags {

@@ -22,6 +22,8 @@
     "affiliate:scrape:due": "tsx scripts/run-due-affiliate-scrapes.ts",
     "affiliate:scrape:due:dry-run": "tsx scripts/run-due-affiliate-scrapes.ts --dry-run --no-email",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
+    "affiliate:normalize-pricing": "tsx scripts/normalize-affiliate-event-pricing.ts",
+    "affiliate:normalize-pricing:dry-run": "tsx scripts/normalize-affiliate-event-pricing.ts --dry-run",
     "db:up": "docker compose --env-file .env.docker up -d db",
     "db:down": "docker compose --env-file .env.docker down",
     "db:ps": "docker compose --env-file .env.docker ps",

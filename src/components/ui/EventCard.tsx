@@ -3,6 +3,7 @@ import Image from 'next/image';
 import {
   Event,
   LocationCoordinates,
+  formatAffiliateEventPriceRange,
   formatEventDivisionPriceRange,
   getEventDateTime,
   getEventImageFallbackUrl,
@@ -235,7 +236,7 @@ export default function EventCard({
     [event],
   );
   const priceDisplay = isAffiliateEvent
-    ? (event.priceText?.trim() || 'Price not specified')
+    ? formatAffiliateEventPriceRange(event)
     : formatEventDivisionPriceRange(event);
 
   const attendeeCount = useMemo(() => {

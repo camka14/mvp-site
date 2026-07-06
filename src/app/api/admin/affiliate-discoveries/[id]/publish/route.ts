@@ -30,6 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         || message.includes('must include')
         || message.includes('must start')
         || message.includes('deadline has passed')
+        || message.includes('cannot be evergreen')
         ? 409
         : 500;
     if (status === 500) {

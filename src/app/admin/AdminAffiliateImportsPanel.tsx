@@ -52,6 +52,7 @@ type AdminAffiliateCandidateRow = {
   publishedEventId?: string | null;
   publishedTeamId?: string | null;
   publishedFacilityId?: string | null;
+  publishedOrganizationId?: string | null;
   warnings?: string[];
   rawPayload?: Record<string, unknown> | null;
 };
@@ -136,6 +137,7 @@ const hasPublishedTarget = (candidate: AdminAffiliateCandidateRow): boolean => {
   if (kind === 'EVENT') return Boolean(candidate.publishedEventId);
   if (kind === 'TEAM') return Boolean(candidate.publishedTeamId);
   if (kind === 'RENTAL') return Boolean(candidate.publishedFacilityId);
+  if (kind === 'CLUB') return Boolean(candidate.publishedOrganizationId);
   return false;
 };
 
@@ -144,6 +146,7 @@ const publishedTargetLabel = (candidate: AdminAffiliateCandidateRow): string | n
   if (kind === 'EVENT' && candidate.publishedEventId) return 'Event created';
   if (kind === 'TEAM' && candidate.publishedTeamId) return 'Team created';
   if (kind === 'RENTAL' && candidate.publishedFacilityId) return 'Facility created';
+  if (kind === 'CLUB' && candidate.publishedOrganizationId) return 'Org created';
   return null;
 };
 
@@ -155,6 +158,7 @@ const listingKindOptions = [
   { value: 'EVENT', label: 'Event' },
   { value: 'TEAM', label: 'Team' },
   { value: 'RENTAL', label: 'Rental' },
+  { value: 'CLUB', label: 'Club' },
 ];
 
 const candidateStatusViewOptions = [
@@ -164,7 +168,7 @@ const candidateStatusViewOptions = [
 
 const normalizeListingKindValue = (value: unknown): string => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  return normalized === 'EVENT' || normalized === 'TEAM' || normalized === 'RENTAL'
+  return normalized === 'EVENT' || normalized === 'TEAM' || normalized === 'RENTAL' || normalized === 'CLUB'
     ? normalized
     : 'EVENT';
 };
@@ -199,6 +203,9 @@ const publishedTargetLink = (candidate: AdminAffiliateCandidateRow): { href: str
   }
   if (kind === 'TEAM' && candidate.publishedTeamId) {
     return { href: `/teams/${encodeURIComponent(candidate.publishedTeamId)}`, label: 'View Team' };
+  }
+  if (kind === 'CLUB' && candidate.publishedOrganizationId) {
+    return { href: `/organizations/${encodeURIComponent(candidate.publishedOrganizationId)}`, label: 'View Org' };
   }
   return null;
 };
@@ -632,7 +639,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
 
       <Paper withBorder radius="md" p="md">
         <Group justify="space-between" mb="sm">
-          <Title order={3}>Discovered Events, Teams And Rentals</Title>
+          <Title order={3}>Discovered Events, Teams, Rentals And Clubs</Title>
           <Group gap="xs">
             <SegmentedControl
               size="xs"
