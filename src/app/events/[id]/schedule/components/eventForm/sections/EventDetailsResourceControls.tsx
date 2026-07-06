@@ -1,6 +1,6 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { Controller, type Control } from 'react-hook-form';
-import { Button, Collapse, Group, Text, TextInput, Title } from '@mantine/core';
+import { Button, Collapse, Text, TextInput, Title } from '@mantine/core';
 
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import type { Event, Field } from '@/types';
@@ -82,14 +82,14 @@ export const EventDetailsResourceControls = ({
 
             {shouldShowLocalFieldNames ? (
                 <div className={`${organizationResourceControl ? 'mt-4 ' : ''}rounded-lg border border-gray-200 bg-white p-4`}>
-                    <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap" className="min-w-0">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
                         <div className="min-w-0">
                             <Title order={6}>Custom Resources</Title>
                             <Text size="sm" c="dimmed">
                                 Add custom resources for this event and name each one below.
                             </Text>
                         </div>
-                        <Group gap="sm" align="flex-end" wrap="nowrap" className="shrink-0">
+                        <div className="flex shrink-0 flex-wrap items-end gap-3 md:justify-end">
                             {localFieldCreationControl ? (
                                 <div className="w-32">
                                     {localFieldCreationControl}
@@ -108,8 +108,8 @@ export const EventDetailsResourceControls = ({
                                     {fieldNamesCollapsed ? 'Expand' : 'Collapse'}
                                 </Button>
                             ) : null}
-                        </Group>
-                    </Group>
+                        </div>
+                    </div>
                     {shouldShowLocalFieldNameInputs ? (
                         <Collapse in={!fieldNamesCollapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
                             <div

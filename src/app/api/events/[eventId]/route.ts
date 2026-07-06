@@ -56,7 +56,7 @@ import {
   isTournamentPoolValidationError,
   isTournamentPoolPlayEnabled,
 } from '@/server/events/tournamentPools';
-import { getEventTagsForEventIds, syncEventTags } from '@/server/eventTags';
+import { getEventTagsForEventIds, syncEventTags, syncEventTypeTagsForEvent } from '@/server/eventTags';
 import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
@@ -2698,7 +2698,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         },
       );
       if (incomingTags !== undefined) {
-        await syncEventTags(eventId, incomingTags, tx);
+        await syncEventTags(eventId, incomingTags, tx, { eventType: data.eventType });
+      } else if (Object.prototype.hasOwnProperty.call(data, 'eventType')) {
+        await syncEventTypeTagsForEvent(eventId, data.eventType, tx);
       }
       const shouldFallbackAddressWrite = removedArguments.has('address')
         && Object.prototype.hasOwnProperty.call(data, 'address');

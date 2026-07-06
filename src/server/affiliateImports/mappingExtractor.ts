@@ -277,6 +277,19 @@ const applyValueMap = (value: string, mapping: FieldMapping): string => {
   return caseInsensitiveMatch?.[1] ?? mapping.fallbackValue ?? '';
 };
 
+const normalizePriceTextValue = (value: string): string => {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return '';
+  if (normalized.includes('$')) return normalized;
+
+  const numericAmount = normalized.match(/^([0-9][0-9,]*(?:\.[0-9]{1,2})?)$/);
+  if (!numericAmount) return normalized;
+
+  const amount = Number.parseFloat(numericAmount[1].replace(/,/g, ''));
+  if (!Number.isFinite(amount)) return normalized;
+  return `$${amount.toFixed(2)}`;
+};
+
 const cloneElementWithoutExcludedSelectors = (element: Element, mapping: FieldMapping): Element => {
   if (!mapping.excludeSelectors?.length) return element;
   const clone = element.cloneNode(true) as Element;
@@ -341,6 +354,8 @@ const extractFieldValue = (
     value = parseDateRangeEndValue(value, referenceDate);
   } else if (transform === 'previousDaySectionDateTime') {
     value = parsePreviousDaySectionDateTimeValue(element, value, referenceDate);
+  } else if (transform === 'priceText') {
+    value = normalizePriceTextValue(value);
   } else {
     value = normalizeWhitespace(value);
   }

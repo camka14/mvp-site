@@ -10,6 +10,18 @@ export type EventTagView = {
 type PrismaLike = typeof prisma;
 
 const MAX_EVENT_TAG_LENGTH = 40;
+const EVENT_TYPE_TAGS = {
+  LEAGUE: { name: 'League', slug: 'league' },
+  TOURNAMENT: { name: 'Tournament', slug: 'tournament' },
+} as const;
+const EVENT_TYPE_TAG_SLUGS: Set<string> = new Set(Object.values(EVENT_TYPE_TAGS).map((tag) => tag.slug));
+export const DEFAULT_EVENT_TAGS: EventTagView[] = [
+  { id: 'default_tryouts', name: 'Tryouts', slug: 'tryouts' },
+];
+
+type EventTypeTagOptions = {
+  eventType?: unknown;
+};
 
 export const normalizeEventTagName = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -55,6 +67,48 @@ export const normalizeEventTagInputs = (value: unknown): string[] => {
     seen.add(slug);
     return true;
   });
+};
+
+export const normalizeEventTypeTagInputs = (
+  value: unknown,
+  options: EventTypeTagOptions = {},
+): string[] => {
+  const normalizedEventType = typeof options.eventType === 'string'
+    ? options.eventType.trim().toUpperCase()
+    : '';
+  const requiredEventTypeTag = EVENT_TYPE_TAGS[normalizedEventType as keyof typeof EVENT_TYPE_TAGS];
+  const baseTagNames = normalizeEventTagInputs(value);
+  if (!normalizedEventType) {
+    return baseTagNames;
+  }
+  const tagNames = baseTagNames.filter((tagName) => !EVENT_TYPE_TAG_SLUGS.has(slugifyEventTagName(tagName)));
+  if (!requiredEventTypeTag) {
+    return tagNames;
+  }
+  return [...tagNames, requiredEventTypeTag.name];
+};
+
+export const mergeDefaultEventTags = (
+  tags: EventTagView[],
+  query: string = '',
+): EventTagView[] => {
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchesQuery = (tag: EventTagView) => (
+    !normalizedQuery
+    || tag.name.toLowerCase().includes(normalizedQuery)
+    || tag.slug.toLowerCase().includes(normalizedQuery)
+  );
+  const merged = new Map<string, EventTagView>();
+
+  [...tags, ...DEFAULT_EVENT_TAGS].forEach((tag) => {
+    const slug = tag.slug.trim().toLowerCase();
+    if (!slug || !matchesQuery(tag) || merged.has(slug)) {
+      return;
+    }
+    merged.set(slug, tag);
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
 };
 
 export const getEventTagsForEventIds = async (
@@ -114,8 +168,9 @@ export const syncEventTags = async (
   eventId: string,
   input: unknown,
   client: PrismaLike | any = prisma,
+  options: EventTypeTagOptions = {},
 ): Promise<EventTagView[]> => {
-  const tagNames = normalizeEventTagInputs(input);
+  const tagNames = normalizeEventTypeTagInputs(input, options);
   if (
     typeof client.eventTags?.upsert !== 'function'
     || typeof client.eventTagAssignments?.deleteMany !== 'function'
@@ -168,4 +223,13 @@ export const syncEventTags = async (
   });
 
   return tags;
+};
+
+export const syncEventTypeTagsForEvent = async (
+  eventId: string,
+  eventType: unknown,
+  client: PrismaLike | any = prisma,
+): Promise<EventTagView[]> => {
+  const existingTags = (await getEventTagsForEventIds([eventId], client)).get(eventId) ?? [];
+  return syncEventTags(eventId, existingTags, client, { eventType });
 };

@@ -468,6 +468,8 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
+    expect(screen.getByLabelText('Event Type')).not.toBeDisabled();
+
     let isValid: boolean | undefined;
     await act(async () => {
       isValid = await formRef.current?.validate();
@@ -3964,6 +3966,61 @@ describe('EventForm dirty state', () => {
       expect(formRef.current?.getDraft().fieldCount).toBe(1);
     },
   );
+
+  it('syncs league and tournament tags to the selected event type and keeps them locked', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const user = userEvent.setup();
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        tags: [],
+      },
+      null,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await user.selectOptions(screen.getByLabelText('Event Type'), 'LEAGUE');
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Event Type')).toHaveValue('LEAGUE');
+      expect(formRef.current?.getDraft().tags).toEqual([
+        { name: 'League', slug: 'league' },
+      ]);
+    });
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Add tag'), {
+      key: 'Backspace',
+      code: 'Backspace',
+    });
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft().tags).toEqual([
+        { name: 'League', slug: 'league' },
+      ]);
+    });
+
+    await user.selectOptions(screen.getByLabelText('Event Type'), 'TOURNAMENT');
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft().tags).toEqual([
+        { name: 'Tournament', slug: 'tournament' },
+      ]);
+    });
+
+    await user.selectOptions(screen.getByLabelText('Event Type'), 'EVENT');
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft().tags).toEqual([]);
+    });
+  });
 
   it('hydrates organization fields once during create mode without refetch looping', async () => {
     const onDirtyStateChange = jest.fn();

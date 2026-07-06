@@ -3,26 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Group, Pill, PillsInput, Popover, ScrollArea, Text } from '@mantine/core';
 import type { EventTag } from '@/types';
+import { getEventTagIdentity, slugifyEventTagName } from './eventTypeTags';
 
 type EventTagsInputProps = {
   value: EventTag[];
   disabled?: boolean;
   error?: string;
+  lockedTagSlugs?: string[];
   onChange: (value: EventTag[]) => void;
 };
 
 const normalizeTagName = (value: string): string => value.replace(/\s+/g, ' ').trim().slice(0, 40);
-const slugifyTagName = (value: string): string => (
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-);
+const tagIdentity = (tag: EventTag): string => getEventTagIdentity(tag);
 
-const tagIdentity = (tag: EventTag): string => tag.slug || slugifyTagName(tag.name);
-
-export function EventTagsInput({ value, disabled = false, error, onChange }: EventTagsInputProps) {
+export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs = [], onChange }: EventTagsInputProps) {
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState<EventTag[]>([]);
   const [opened, setOpened] = useState(false);
@@ -32,6 +26,10 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
   const selectedIdentities = useMemo(
     () => new Set(value.map(tagIdentity)),
     [value],
+  );
+  const lockedIdentities = useMemo(
+    () => new Set(lockedTagSlugs.map(slugifyEventTagName).filter(Boolean)),
+    [lockedTagSlugs],
   );
   const visibleOptions = useMemo(() => (
     options.filter((option) => !selectedIdentities.has(tagIdentity(option)))
@@ -68,7 +66,7 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
     if (!name) {
       return;
     }
-    const identity = tag.slug || slugifyTagName(name);
+    const identity = tag.slug ? slugifyEventTagName(tag.slug) : slugifyEventTagName(name);
     if (selectedIdentities.has(identity)) {
       setSearch('');
       return;
@@ -83,12 +81,15 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
     if (!normalizedSearch) {
       return;
     }
-    const typedIdentity = slugifyTagName(normalizedSearch);
+    const typedIdentity = slugifyEventTagName(normalizedSearch);
     const exactMatch = options.find((option) => tagIdentity(option) === typedIdentity);
     addTag(exactMatch ?? { name: normalizedSearch, slug: typedIdentity });
   };
 
   const removeTag = (identity: string) => {
+    if (lockedIdentities.has(identity)) {
+      return;
+    }
     onChange(value.filter((tag) => tagIdentity(tag) !== identity));
   };
 
@@ -119,7 +120,7 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
               return (
                 <Pill
                   key={identity}
-                  withRemoveButton={!disabled}
+                  withRemoveButton={!disabled && !lockedIdentities.has(identity)}
                   onRemove={() => removeTag(identity)}
                 >
                   {tag.name}
@@ -142,8 +143,13 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
                   addTypedTag();
                 }
                 if (event.key === 'Backspace' && !search && value.length > 0) {
-                  event.preventDefault();
-                  removeTag(tagIdentity(value[value.length - 1]));
+                  const lastRemovableTag = [...value]
+                    .reverse()
+                    .find((tag) => !lockedIdentities.has(tagIdentity(tag)));
+                  if (lastRemovableTag) {
+                    event.preventDefault();
+                    removeTag(tagIdentity(lastRemovableTag));
+                  }
                 }
               }}
             />
@@ -153,13 +159,13 @@ export function EventTagsInput({ value, disabled = false, error, onChange }: Eve
       <Popover.Dropdown p="xs">
         <ScrollArea.Autosize mah={220} type="auto">
           <Group gap="xs" align="center">
-            {normalizedSearch && !options.some((option) => tagIdentity(option) === slugifyTagName(normalizedSearch)) ? (
+            {normalizedSearch && !options.some((option) => tagIdentity(option) === slugifyEventTagName(normalizedSearch)) ? (
               <Button
                 type="button"
                 variant="light"
                 radius="xl"
                 size="compact-sm"
-                disabled={selectedIdentities.has(slugifyTagName(normalizedSearch))}
+                disabled={selectedIdentities.has(slugifyEventTagName(normalizedSearch))}
                 onClick={() => addTypedTag()}
               >
                 {normalizedSearch}

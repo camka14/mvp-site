@@ -150,6 +150,10 @@ import {
     sportRequiresSets,
 } from './eventForm/formOptions';
 import { buildEventFormDefaultValues } from './eventForm/defaultValues';
+import {
+    getLockedEventTypeTagSlugs,
+    syncEventTypeTagsForEventType,
+} from './eventForm/eventTypeTags';
 import { buildEventDraft } from './eventForm/buildEventDraft';
 import {
     applyImmutableEventDefaults,
@@ -526,6 +530,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const lockedEventTypeTagSlugs = useMemo(
+        () => getLockedEventTypeTagSlugs(eventData.eventType),
+        [eventData.eventType],
+    );
     const isAffiliateEvent = Boolean(eventData.isAffiliateEvent || hasAffiliateUrl(eventData.affiliateUrl));
     const pricingControlsEnabled = hasStripeAccount || eventData.registrationPaymentMode === 'MANUAL';
     const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
@@ -3582,7 +3590,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             max={12}
             value={fieldCount}
             w="100%"
-            styles={alignedDetailsFieldStyles}
             clampBehavior="blur"
             onChange={(value) => {
                 const parsed = typeof value === 'number' && Number.isFinite(value)
@@ -3753,6 +3760,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             sportOptions={sportOptions}
                             sportsById={sportsById}
                             sportsError={sportsError}
+                            lockedTagSlugs={lockedEventTypeTagSlugs}
                             comboboxProps={sharedComboboxProps}
                             maxEventNameLength={MAX_EVENT_NAME_LENGTH}
                             maxDescriptionLength={MAX_DESCRIPTION_LENGTH}
@@ -3788,23 +3796,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 clearErrors('leagueSlots');
                                 const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
                                 applyValue(nextType);
-                                if (nextType === 'LEAGUE' || nextType === 'TOURNAMENT') {
-                                    const tagName = nextType === 'LEAGUE' ? 'League' : 'Tournament';
-                                    const tagSlug = nextType === 'LEAGUE' ? 'league' : 'tournament';
-                                    const currentTags = Array.isArray(getValues('tags')) ? getValues('tags') : [];
-                                    const hasTag = currentTags.some((tag) => {
-                                        const normalizedName = typeof tag?.name === 'string' ? tag.name.trim().toLowerCase() : '';
-                                        const normalizedSlug = typeof tag?.slug === 'string' ? tag.slug.trim().toLowerCase() : '';
-                                        return normalizedName === tagName.toLowerCase() || normalizedSlug === tagSlug;
-                                    });
-                                    if (!hasTag) {
-                                        setValue(
-                                            'tags',
-                                            [...currentTags, { name: tagName, slug: tagSlug }],
-                                            { shouldDirty: true, shouldValidate: true },
-                                        );
-                                    }
-                                }
+                                setValue(
+                                    'tags',
+                                    syncEventTypeTagsForEventType(getValues('tags'), nextType),
+                                    { shouldDirty: true, shouldValidate: true },
+                                );
                                 if (enforcingTeamSettings) {
                                     setValue('teamSignup', true, { shouldDirty: true });
                                     setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });

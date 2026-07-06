@@ -27,6 +27,7 @@ type BasicInformationSectionProps = {
     sportOptions: Array<{ value: string; label: string }>;
     sportsById: Map<string, Sport>;
     sportsError?: unknown;
+    lockedTagSlugs?: string[];
     comboboxProps?: ComponentProps<typeof MantineSelect>['comboboxProps'];
     maxEventNameLength: number;
     maxDescriptionLength: number;
@@ -46,6 +47,7 @@ export const BasicInformationSection = ({
     sportOptions,
     sportsById,
     sportsError,
+    lockedTagSlugs,
     comboboxProps,
     maxEventNameLength,
     maxDescriptionLength,
@@ -125,6 +127,7 @@ export const BasicInformationSection = ({
                                 value={Array.isArray(field.value) ? field.value : []}
                                 disabled={isImmutableField('name')}
                                 error={fieldState.error?.message as string | undefined}
+                                lockedTagSlugs={lockedTagSlugs}
                                 onChange={(nextTags) => {
                                     setValue('tags', nextTags, { shouldDirty: true, shouldValidate: true });
                                 }}

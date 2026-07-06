@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import DiscoverMapModal from '../DiscoverMapModal';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
+import type { Event } from '@/types';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 
 const VANCOUVER_WA_CENTER = { lat: 45.6387, lng: -122.6615 };
@@ -64,7 +65,16 @@ jest.mock('@react-google-maps/api', () => {
       );
     },
     InfoWindowF: ({ children }: any) => React.createElement('div', null, children),
-    MarkerF: () => React.createElement('span', { 'data-testid': 'map-marker' }),
+    MarkerF: ({ onClick, title }: any) => React.createElement(
+      'button',
+      {
+        type: 'button',
+        'data-testid': 'map-marker',
+        onClick,
+        title,
+      },
+      title ?? 'Map marker',
+    ),
     OVERLAY_LAYER: 'overlayLayer',
     OverlayViewF: ({ children }: any) => React.createElement('div', null, children),
     useJsApiLoader: () => ({ isLoaded: true, loadError: null }),
@@ -97,6 +107,35 @@ const mockedOrganizationService = organizationService as jest.Mocked<typeof orga
 const kmBetween = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => (
   Math.hypot(a.lat - b.lat, a.lng - b.lng) * 111
 );
+
+const buildMapEvent = (overrides: Partial<Event> = {}): Event => ({
+  $id: 'event-1',
+  name: 'Riverside FC Pickup',
+  description: 'Open play for local teams.',
+  start: '2099-01-01T18:00:00.000Z',
+  end: null,
+  location: 'River City Sports Club',
+  coordinates: [VANCOUVER_WA_CENTER.lng, VANCOUVER_WA_CENTER.lat],
+  price: 0,
+  imageId: null,
+  hostId: null,
+  state: 'PUBLISHED',
+  maxParticipants: 24,
+  teamSizeLimit: 1,
+  teamSignup: false,
+  singleDivision: true,
+  waitListIds: [],
+  freeAgentIds: [],
+  cancellationRefundHours: null,
+  registrationCutoffHours: null,
+  seedColor: 0,
+  $createdAt: '2098-12-01T00:00:00.000Z',
+  $updatedAt: '2098-12-01T00:00:00.000Z',
+  eventType: 'EVENT',
+  sport: { $id: 'soccer', name: 'Soccer' } as Event['sport'],
+  divisions: [],
+  ...overrides,
+} as Event);
 
 const renderModal = (location = VANCOUVER_WA_CENTER) => renderWithMantine(
   <DiscoverMapModal
@@ -205,5 +244,37 @@ describe('DiscoverMapModal', () => {
     });
 
     expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+  });
+
+  it('groups touching event markers into a count marker', async () => {
+    mockedEventService.getEventsPaginated.mockResolvedValue([
+      buildMapEvent({
+        $id: 'riverside-pickup',
+        name: 'Riverside FC Pickup',
+        coordinates: [VANCOUVER_WA_CENTER.lng, VANCOUVER_WA_CENTER.lat],
+      }),
+      buildMapEvent({
+        $id: 'cascade-clinic',
+        name: 'Cascade Crew Clinic',
+        coordinates: [VANCOUVER_WA_CENTER.lng + 0.0001, VANCOUVER_WA_CENTER.lat + 0.0001],
+      }),
+      buildMapEvent({
+        $id: 'harbor-league',
+        name: 'Harbor Strikers League',
+        coordinates: [VANCOUVER_WA_CENTER.lng + 0.2, VANCOUVER_WA_CENTER.lat + 0.2],
+      }),
+    ]);
+
+    renderModal();
+
+    const clusterMarker = await screen.findByRole('button', { name: '2 events' });
+    expect(clusterMarker).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riverside FC Pickup' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Harbor Strikers League' })).toBeInTheDocument();
+
+    fireEvent.click(clusterMarker);
+
+    expect(await screen.findByText('Riverside FC Pickup')).toBeInTheDocument();
+    expect(screen.getByText('Cascade Crew Clinic')).toBeInTheDocument();
   });
 });

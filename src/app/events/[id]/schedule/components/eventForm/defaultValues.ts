@@ -21,6 +21,7 @@ import type {
 } from './formTypes';
 import { coordinatesAreSet } from './locationHelpers';
 import { mapEventToFormState } from './eventStateMapping';
+import { syncEventTypeTagsForEventType } from './eventTypeTags';
 import { normalizeInstallmentRelativeDays } from './paymentPlanHelpers';
 import {
     buildDefaultSlotForms,
@@ -106,6 +107,9 @@ export const buildEventFormDefaultValues = ({
     base.allowTemporaryMatchPlayers = base.allowMatchRosterEdits ? Boolean(base.allowTemporaryMatchPlayers) : false;
     if (!base.organizationId && resolvedOrganizationId) {
         base.organizationId = resolvedOrganizationId;
+    }
+    if (isCreateMode) {
+        base.tags = syncEventTypeTagsForEventType(base.tags, base.eventType);
     }
     const defaults = immutableDefaults ?? {};
     const {

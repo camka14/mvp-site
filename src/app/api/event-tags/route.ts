@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { mergeDefaultEventTags } from '@/server/eventTags';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +21,13 @@ export async function GET(req: NextRequest) {
     take: 50,
   });
 
+  const tagOptions = tags.map((tag) => ({
+    id: tag.id,
+    name: tag.name,
+    slug: tag.slug,
+  }));
+
   return NextResponse.json({
-    tags: tags.map((tag) => ({
-      id: tag.id,
-      name: tag.name,
-      slug: tag.slug,
-    })),
+    tags: mergeDefaultEventTags(tagOptions, query),
   });
 }

@@ -160,6 +160,34 @@ describe('extractAffiliateCandidatesFromPage', () => {
     });
   });
 
+  it('normalizes numeric-only price text when the priceText transform is configured', () => {
+    const candidates = extractAffiliateCandidatesFromPage({
+      ...page,
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/open-play">Open Play</a>
+          <span class="price">14</span>
+        </section>
+      `,
+    }, {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: '.event-card',
+      fields: {
+        title: { selector: '.event-title' },
+        officialActionUrl: {
+          selector: '.event-title',
+          mode: 'attribute',
+          attribute: 'href',
+          transform: 'absoluteUrl',
+        },
+        priceText: { selector: '.price', mode: 'text', transform: 'priceText' },
+      },
+    });
+
+    expect(candidates[0].priceText).toBe('$14.00');
+  });
+
   it('emits approved manual summary candidates when configured', () => {
     const manualMapping: AffiliateScrapeMapping = {
       kind: 'EVENT',
