@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -237,7 +237,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'PUBLISHED'>('DISCOVERED');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scrapingSourceId, setScrapingSourceId] = useState<string | null>(null);
+  const [scrapingSourceIds, setScrapingSourceIds] = useState<string[]>([]);
   const [publishingCandidateId, setPublishingCandidateId] = useState<string | null>(null);
   const [deletingCandidateId, setDeletingCandidateId] = useState<string | null>(null);
   const [classifyingCandidateId, setClassifyingCandidateId] = useState<string | null>(null);
@@ -247,10 +247,18 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const [selectedCandidate, setSelectedCandidate] = useState<AdminAffiliateCandidateRow | null>(null);
   const [lastScrapeResult, setLastScrapeResult] = useState<LastScrapeResult | null>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
+  const scrapeQueueRef = useRef<string[]>([]);
+  const scrapeRunningRef = useRef(false);
+  const scrapePendingIdsRef = useRef<Set<string>>(new Set());
+  const sourceNameByIdRef = useRef<Map<string, string>>(new Map());
 
   const sourceNameById = useMemo(() => (
     new Map(sources.map((source) => [source.$id, source.name]))
   ), [sources]);
+
+  useEffect(() => {
+    sourceNameByIdRef.current = sourceNameById;
+  }, [sourceNameById]);
 
   const selectedCandidateIdSet = useMemo(() => (
     new Set(selectedCandidateIds)
@@ -301,38 +309,61 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
     }
   }, [candidateStatusView]);
 
-  const scrapeSource = useCallback(async (sourceId: string) => {
-    setScrapingSourceId(sourceId);
-    setError(null);
+  const runQueuedScrapes = useCallback(async () => {
+    if (scrapeRunningRef.current) return;
+    scrapeRunningRef.current = true;
+
     try {
-      const res = await fetch(`/api/admin/affiliate-sources/${encodeURIComponent(sourceId)}/scrape`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(payload?.error || 'Failed to scrape affiliate source.');
+      while (scrapeQueueRef.current.length > 0) {
+        const sourceId = scrapeQueueRef.current.shift();
+        if (!sourceId) continue;
+        setError(null);
+
+        try {
+          const res = await fetch(`/api/admin/affiliate-sources/${encodeURIComponent(sourceId)}/scrape`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(payload?.error || 'Failed to scrape affiliate source.');
+          }
+          const run = payload?.run as AdminAffiliateScrapeRunRow | undefined;
+          const logs = run?.logs && typeof run.logs === 'object' ? run.logs : null;
+          setLastScrapeResult({
+            sourceName: sourceNameByIdRef.current.get(sourceId) ?? sourceId,
+            itemCount: numberFromUnknown(run?.itemCount),
+            candidateCount: numberFromUnknown(run?.candidateCount),
+            createdCandidateCount: numberFromUnknown(logs?.createdCandidateCount),
+            updatedCandidateCount: numberFromUnknown(logs?.updatedCandidateCount),
+            rejectedCount: numberFromUnknown(logs?.rejectedCount),
+            rejectionSummary: logs?.rejectionSummary && typeof logs.rejectionSummary === 'object'
+              ? logs.rejectionSummary
+              : {},
+          });
+          await loadData();
+        } catch (scrapeError) {
+          const sourceName = sourceNameByIdRef.current.get(sourceId) ?? sourceId;
+          const message = scrapeError instanceof Error ? scrapeError.message : 'Failed to scrape affiliate source.';
+          setError(`${sourceName}: ${message}`);
+        } finally {
+          scrapePendingIdsRef.current.delete(sourceId);
+          setScrapingSourceIds(Array.from(scrapePendingIdsRef.current));
+        }
       }
-      const run = payload?.run as AdminAffiliateScrapeRunRow | undefined;
-      const logs = run?.logs && typeof run.logs === 'object' ? run.logs : null;
-      setLastScrapeResult({
-        sourceName: sourceNameById.get(sourceId) ?? sourceId,
-        itemCount: numberFromUnknown(run?.itemCount),
-        candidateCount: numberFromUnknown(run?.candidateCount),
-        createdCandidateCount: numberFromUnknown(logs?.createdCandidateCount),
-        updatedCandidateCount: numberFromUnknown(logs?.updatedCandidateCount),
-        rejectedCount: numberFromUnknown(logs?.rejectedCount),
-        rejectionSummary: logs?.rejectionSummary && typeof logs.rejectionSummary === 'object'
-          ? logs.rejectionSummary
-          : {},
-      });
-      await loadData();
-    } catch (scrapeError) {
-      setError(scrapeError instanceof Error ? scrapeError.message : 'Failed to scrape affiliate source.');
     } finally {
-      setScrapingSourceId(null);
+      scrapeRunningRef.current = false;
     }
-  }, [loadData, sourceNameById]);
+  }, [loadData]);
+
+  const queueScrapeSource = useCallback((sourceId: string) => {
+    if (scrapePendingIdsRef.current.has(sourceId)) return;
+
+    scrapePendingIdsRef.current.add(sourceId);
+    scrapeQueueRef.current.push(sourceId);
+    setScrapingSourceIds(Array.from(scrapePendingIdsRef.current));
+    void runQueuedScrapes();
+  }, [runQueuedScrapes]);
 
   const publishCandidate = useCallback(async (candidateId: string) => {
     setPublishingCandidateId(candidateId);
@@ -606,10 +637,10 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                       size="xs"
                       variant="light"
                       leftSection={<Play size={14} />}
-                      disabled={!source.activeMappingId || sourceNeedsOrganization(source)}
-                      loading={scrapingSourceId === source.$id}
+                      disabled={!source.activeMappingId || sourceNeedsOrganization(source) || scrapingSourceIds.includes(source.$id)}
+                      loading={scrapingSourceIds.includes(source.$id)}
                       onClick={() => {
-                        void scrapeSource(source.$id);
+                        queueScrapeSource(source.$id);
                       }}
                     >
                       Scrape
