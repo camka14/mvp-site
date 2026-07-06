@@ -122,6 +122,25 @@ export const buildOrganizationCustomerPath = (
   `${buildOrganizationTabPath(organizationId, 'users')}/${customerType}/${encodeURIComponent(customerId)}`
 );
 
+export const buildOrganizationCustomerSelectionPath = (
+  organizationId: string,
+  customerType: OrganizationCustomerRouteType,
+  customerId: string,
+): string => {
+  const params = new URLSearchParams({ customerType, customerId });
+  return `${buildOrganizationTabPath(organizationId, 'users')}?${params.toString()}`;
+};
+
+type OrganizationBrowserHistory = Pick<History, 'pushState'>;
+
+export const pushOrganizationHistoryState = (
+  path: string,
+  history?: OrganizationBrowserHistory,
+): void => {
+  const browserHistory = history ?? (typeof window !== 'undefined' ? window.history : null);
+  browserHistory?.pushState(null, '', path);
+};
+
 type BuildOrganizationTabsParams = {
   viewerCanAccessUsers?: boolean;
   isOwner?: boolean;

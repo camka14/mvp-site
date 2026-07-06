@@ -1,8 +1,10 @@
 import {
   buildOrganizationCustomerPath,
+  buildOrganizationCustomerSelectionPath,
   buildOrganizationTabPath,
   buildOrganizationTabs,
   organizationTabFromPathSegment,
+  pushOrganizationHistoryState,
   resolveOrganizationRouteTab,
 } from '../organizationTabs';
 
@@ -126,6 +128,21 @@ describe('buildOrganizationTabs', () => {
   it('builds selected customer paths under the customers tab', () => {
     expect(buildOrganizationCustomerPath('org_1', 'users', 'user_1')).toBe('/organizations/org_1/customers/users/user_1');
     expect(buildOrganizationCustomerPath('org_1', 'teams', 'team_1')).toBe('/organizations/org_1/customers/teams/team_1');
+  });
+
+  it('builds in-page customer selection paths without changing route segments', () => {
+    expect(buildOrganizationCustomerSelectionPath('org_1', 'users', 'user_1')).toBe('/organizations/org_1/customers?customerType=users&customerId=user_1');
+    expect(buildOrganizationCustomerSelectionPath('org_1', 'teams', 'team_1')).toBe('/organizations/org_1/customers?customerType=teams&customerId=team_1');
+  });
+
+  it('updates browser history without starting an app route transition', () => {
+    const history = {
+      pushState: jest.fn(),
+    };
+
+    pushOrganizationHistoryState(buildOrganizationCustomerSelectionPath('org_1', 'users', 'user_1'), history);
+
+    expect(history.pushState).toHaveBeenCalledWith(null, '', '/organizations/org_1/customers?customerType=users&customerId=user_1');
   });
 
   it('resolves organization tab URLs without requiring a route transition', () => {

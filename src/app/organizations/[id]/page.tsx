@@ -60,8 +60,10 @@ import {
 } from '@/lib/organizationVerification';
 import {
   buildOrganizationCustomerPath,
+  buildOrganizationCustomerSelectionPath,
   buildOrganizationTabPath,
   buildOrganizationTabs,
+  pushOrganizationHistoryState,
   resolveOrganizationRouteTab,
   type OrganizationCustomerRouteType,
   type OrganizationTab,
@@ -730,16 +732,20 @@ function OrganizationDetailContent() {
   const routeCustomerId = Array.isArray(params?.customerId)
     ? params?.customerId[0]
     : (params?.customerId as string | undefined);
+  const queryCustomerType = searchParams?.get('customerType');
+  const queryCustomerId = searchParams?.get('customerId');
   const requestedTab = resolveOrganizationRouteTab({
     pathname,
     organizationId: id,
     queryTab: searchParams?.get('tab'),
   });
-  const requestedCustomerType: OrganizationCustomerRouteType | null = routeCustomerType === 'users' || routeCustomerType === 'teams'
-    ? routeCustomerType
+  const requestedCustomerTypeValue = routeCustomerType ?? queryCustomerType;
+  const requestedCustomerIdValue = routeCustomerId ?? queryCustomerId;
+  const requestedCustomerType: OrganizationCustomerRouteType | null = requestedCustomerTypeValue === 'users' || requestedCustomerTypeValue === 'teams'
+    ? requestedCustomerTypeValue
     : null;
-  const requestedCustomerId = typeof routeCustomerId === 'string' && routeCustomerId.trim()
-    ? routeCustomerId.trim()
+  const requestedCustomerId = typeof requestedCustomerIdValue === 'string' && requestedCustomerIdValue.trim()
+    ? requestedCustomerIdValue.trim()
     : null;
   const requestedCustomerKey = requestedCustomerType && requestedCustomerId
     ? `${requestedCustomerType}:${requestedCustomerId}`
@@ -2224,16 +2230,16 @@ function OrganizationDetailContent() {
     const nextTab = value as OrganizationTab;
     setActiveTab(nextTab);
     if (id) {
-      window.history.pushState(null, '', buildOrganizationTabPath(id, nextTab));
+      pushOrganizationHistoryState(buildOrganizationTabPath(id, nextTab));
     }
   }, [id]);
 
   const openOrganizationCustomer = useCallback((row: OrganizationCustomerRow) => {
     setSelectedCustomerKey(row.key);
     if (id) {
-      router.push(buildOrganizationCustomerPath(id, row.type, row.id));
+      pushOrganizationHistoryState(buildOrganizationCustomerSelectionPath(id, row.type, row.id));
     }
-  }, [id, router]);
+  }, [id]);
 
   const openOrganizationEvent = useCallback((eventId: string) => {
     const params = new URLSearchParams({ tab: 'details' });
