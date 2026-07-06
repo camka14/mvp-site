@@ -183,6 +183,43 @@ const buildEventTeamStaffAssignmentId = (eventTeamId: string, role: string, user
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 
+const deleteUnparentedPlaceholderEventTeamRegistrations = async (params: {
+  tx: PrismaLike;
+  eventId: string;
+  eventTeamIds: Array<string | null | undefined>;
+  now: Date;
+}) => {
+  const eventTeamIds = uniqueStrings(params.eventTeamIds.map((eventTeamId) => normalizeId(eventTeamId)));
+  if (!eventTeamIds.length) {
+    return;
+  }
+  const where = {
+    eventId: params.eventId,
+    registrantType: 'TEAM',
+    parentId: null,
+    OR: [
+      { registrantId: { in: eventTeamIds } },
+      { eventTeamId: { in: eventTeamIds } },
+    ],
+  };
+  if (typeof params.tx?.eventRegistrations?.deleteMany === 'function') {
+    await params.tx.eventRegistrations.deleteMany({ where });
+    return;
+  }
+  if (typeof params.tx?.eventRegistrations?.updateMany === 'function') {
+    await params.tx.eventRegistrations.updateMany({
+      where: {
+        ...where,
+        status: { in: ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES },
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: params.now,
+      },
+    });
+  }
+};
+
 const normalizeRegistrationPriceCents = (value: unknown): number => {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) {
@@ -1700,6 +1737,15 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
         },
       });
     })());
+
+  if (params.upsertRegistration === false && matchingPlaceholder) {
+    await deleteUnparentedPlaceholderEventTeamRegistrations({
+      tx: params.tx,
+      eventId: params.eventId,
+      eventTeamIds: [matchingPlaceholder.id],
+      now,
+    });
+  }
 
   if (params.upsertRegistration !== false) {
     await upsertEventRegistration({

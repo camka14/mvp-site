@@ -2174,7 +2174,7 @@ describe('upsertEventFromPayload', () => {
 });
 
 describe('persistScheduledRosterTeams', () => {
-  it('creates missing roster slot teams and syncs split-division teamIds', async () => {
+  it('creates missing roster slot teams without registering placeholder slots', async () => {
     const divisionA = buildEventDivisionId('event_1', 'a');
     const divisionB = buildEventDivisionId('event_1', 'b');
     const scheduled = {
@@ -2247,15 +2247,19 @@ describe('persistScheduledRosterTeams', () => {
         updatedAt: expect.any(Date),
       }),
     });
-    expect(client.eventRegistrations.upsert).toHaveBeenCalledTimes(2);
-    expect(client.eventRegistrations.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'event_1__team__slot_1' },
-      create: expect.objectContaining({
+    expect(client.eventRegistrations.upsert).not.toHaveBeenCalled();
+    expect(client.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
         eventId: 'event_1',
-        registrantId: 'slot_1',
         registrantType: 'TEAM',
         rosterRole: 'PARTICIPANT',
-        status: 'ACTIVE',
+        OR: [
+          { registrantId: { in: ['slot_1', 'slot_2'] } },
+          { eventTeamId: { in: ['slot_1', 'slot_2'] } },
+        ],
+      }),
+      data: expect.objectContaining({
+        status: 'CANCELLED',
       }),
     }));
     expect(client.teams.create).toHaveBeenCalledTimes(2);

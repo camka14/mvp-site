@@ -268,6 +268,7 @@ export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
     syncUsers: boolean;
     syncWaitList: boolean;
     syncFreeAgents: boolean;
+    placeholderTeamIds?: string[];
   },
 ): Promise<void> => {
   if (typeof (client as any).eventRegistrations?.upsert !== 'function') {
@@ -280,6 +281,29 @@ export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
   const userIds = normalizeTeamIdList(params.userIds);
   const waitListIds = normalizeTeamIdList(params.waitListIds);
   const freeAgentIds = normalizeTeamIdList(params.freeAgentIds);
+  const explicitPlaceholderTeamIds = new Set(normalizeTeamIdList(params.placeholderTeamIds ?? []));
+
+  const teamRows = teamIds.length && typeof (client as any).teams?.findMany === 'function'
+    ? await (client as any).teams.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, kind: true, captainId: true, name: true, parentTeamId: true },
+    })
+    : [];
+  const placeholderTeamIds = new Set(explicitPlaceholderTeamIds);
+  for (const row of teamRows as Array<{ id?: unknown; kind?: unknown; captainId?: unknown; name?: unknown; parentTeamId?: unknown }>) {
+    const id = normalizeEntityId(row.id);
+    if (!id) {
+      continue;
+    }
+    const kind = String(row.kind ?? '').trim().toUpperCase();
+    const captainId = String(row.captainId ?? '').trim();
+    const name = String(row.name ?? '').trim().toLowerCase();
+    const parentTeamId = normalizeEntityId(row.parentTeamId);
+    if (kind === 'PLACEHOLDER' || (!parentTeamId && !captainId && name.startsWith('place holder'))) {
+      placeholderTeamIds.add(id);
+    }
+  }
+  const activeTeamIds = teamIds.filter((teamId) => !placeholderTeamIds.has(teamId));
 
   const waitListTeamRows = waitListIds.length && typeof (client as any).teams?.findMany === 'function'
     ? await (client as any).teams.findMany({
@@ -329,6 +353,38 @@ export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
     });
   };
 
+  const deletePlaceholderRegistrations = async () => {
+    const ids = Array.from(placeholderTeamIds);
+    if (!ids.length) {
+      return;
+    }
+    const where = {
+      eventId: params.eventId,
+      registrantType: 'TEAM',
+      rosterRole: 'PARTICIPANT',
+      OR: [
+        { registrantId: { in: ids } },
+        { eventTeamId: { in: ids } },
+      ],
+    };
+    if (typeof (client as any).eventRegistrations?.deleteMany === 'function') {
+      await (client as any).eventRegistrations.deleteMany({ where });
+      return;
+    }
+    if (typeof (client as any).eventRegistrations?.updateMany === 'function') {
+      await (client as any).eventRegistrations.updateMany({
+        where: {
+          ...where,
+          status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
+        },
+        data: {
+          status: 'CANCELLED',
+          updatedAt: now,
+        },
+      });
+    }
+  };
+
   const cancelMissing = async (where: Record<string, unknown>, desiredIds: string[]) => {
     if (typeof (client as any).eventRegistrations?.updateMany !== 'function') {
       return;
@@ -351,7 +407,8 @@ export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
 
   if (params.syncTeams) {
     await cancelMissing({ registrantType: 'TEAM', rosterRole: 'PARTICIPANT' }, teamIds);
-    for (const registrantId of teamIds) {
+    await deletePlaceholderRegistrations();
+    for (const registrantId of activeTeamIds) {
       await upsertRegistration({ registrantType: 'TEAM', registrantId, rosterRole: 'PARTICIPANT' });
     }
   }
@@ -3330,6 +3387,12 @@ export const persistScheduledRosterTeams = async (
   client: PrismaLike = prisma,
 ): Promise<string[]> => {
   const rosterTeamIds = Object.keys(params.scheduled.teams ?? {});
+  const placeholderRosterTeamIds = rosterTeamIds.filter((teamId) => {
+    const team = params.scheduled.teams?.[teamId];
+    const captainId = String(team?.captainId ?? '').trim();
+    const playerIds = ensureStringArray(team?.playerIds);
+    return !captainId && playerIds.length === 0;
+  });
   const now = new Date();
   const shouldRemoveOmittedPlaceholderTeams = params.removeOmittedPlaceholderTeams !== false;
 
@@ -3398,6 +3461,7 @@ export const persistScheduledRosterTeams = async (
     syncUsers: false,
     syncWaitList: false,
     syncFreeAgents: false,
+    placeholderTeamIds: placeholderRosterTeamIds,
   });
 
   if (shouldRemoveOmittedPlaceholderTeams && typeof (client as any).teams?.deleteMany === 'function') {
@@ -4604,6 +4668,20 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
     : teams.map((team: any) => team.id).filter(Boolean);
+  const placeholderTeamIds = teams
+    .filter((team: any) => {
+      const id = normalizeEntityId(team?.id);
+      if (!id) {
+        return false;
+      }
+      const kind = String(team?.kind ?? '').trim().toUpperCase();
+      const captainId = String(team?.captainId ?? '').trim();
+      const parentTeamId = normalizeEntityId(team?.parentTeamId);
+      const name = String(team?.name ?? '').trim().toLowerCase();
+      return kind === 'PLACEHOLDER' || (!parentTeamId && !captainId && name.startsWith('place holder'));
+    })
+    .map((team: any) => team.id)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
   const derivedTimeSlotIds = canonicalTimeSlots.map((slot) => slot.id).filter(Boolean);
   const timeSlotIds = isAffiliateExternalEvent
     ? []
@@ -4953,6 +5031,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     syncUsers: Object.prototype.hasOwnProperty.call(payload, 'userIds'),
     syncWaitList: Object.prototype.hasOwnProperty.call(payload, 'waitListIds'),
     syncFreeAgents: Object.prototype.hasOwnProperty.call(payload, 'freeAgentIds'),
+    placeholderTeamIds,
   });
   if (isAffiliateExternalEvent || hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
     const eventOfficialsToPersist = isAffiliateExternalEvent ? [] : resolvedEventOfficials;

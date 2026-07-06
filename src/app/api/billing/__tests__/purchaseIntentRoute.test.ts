@@ -562,6 +562,73 @@ describe('POST /api/billing/purchase-intent', () => {
     }));
   });
 
+  it('reuses a cancelled placeholder registration row for paid canonical team checkout', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        minAge: null,
+        maxAge: null,
+        sportId: null,
+        registrationByDivisionType: false,
+        divisions: [],
+        maxParticipants: null,
+        teamSignup: true,
+        eventType: 'EVENT',
+        includePlayoffs: null,
+        parentEvent: null,
+        timeSlotIds: [],
+      },
+    ]);
+    prismaMock.teams.findUnique.mockResolvedValueOnce(null);
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'canonical_team_1',
+      $id: 'canonical_team_1',
+      name: 'Rain Team',
+      sport: null,
+      playerRegistrations: [],
+      staffAssignments: [],
+    });
+    claimOrCreateEventTeamSnapshotMock.mockResolvedValueOnce({ id: 'event_team_1' });
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({
+      id: 'event_1__team__event_team_1',
+      status: 'CANCELLED',
+      createdAt: new Date('2026-03-18T11:55:00.000Z'),
+      divisionId: null,
+      divisionTypeId: null,
+      divisionTypeKey: null,
+    });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: {
+        $id: 'event_1',
+        name: 'Paid Team Event',
+        price: 2500,
+        eventType: 'EVENT',
+        teamSignup: true,
+      },
+      team: { $id: 'canonical_team_1', name: 'Rain Team' },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__team__event_team_1' },
+        data: expect.objectContaining({
+          registrantId: 'event_team_1',
+          parentId: 'canonical_team_1',
+          eventTeamId: 'event_team_1',
+          registrantType: 'TEAM',
+          status: 'STARTED',
+        }),
+      }),
+    );
+  });
+
   it('skips Stripe Tax for zero-tax sports event jurisdictions and still charges customer fees', async () => {
     loadUserBillingProfileMock.mockResolvedValueOnce({
       billingAddress: null,
