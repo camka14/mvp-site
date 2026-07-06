@@ -66,6 +66,7 @@ type OrganizationFinanceSummary = {
   actualCostCents: number;
   actualProfitCents: number;
   futureCostCents: number;
+  potentialRevenueCents: number;
   projectedProfitCents: number;
   staffCostCents: number;
   customCostCents: number;
@@ -2764,7 +2765,7 @@ export default function OrganizationFinancePanel({
               label="Projected profit"
               value={finance.projectedProfitCents}
               tone={finance.futureCostCents > 0 ? 'orange' : projectedTone}
-              description={`${centsFromDollars(-finance.futureCostCents)} future costs included.`}
+              description={`${centsFromDollars(finance.potentialRevenueCents)} potential revenue, ${centsFromDollars(-finance.futureCostCents)} future costs.`}
             />
           </SimpleGrid>
 

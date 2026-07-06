@@ -1,3 +1,6 @@
+import { calculateIncludedFeesFromTotalPrice } from '@/lib/billingFees';
+import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
+
 export type FinanceBillOwnerType = 'USER' | 'TEAM' | string;
 export type FinanceWageType = 'HOURLY' | 'SALARY' | 'FLAT_PER_EVENT';
 export type FinanceLineItemClassification =
@@ -99,6 +102,32 @@ export type CustomFinanceLineItem = {
   serviceEndAt?: Date | string | null;
 };
 
+export type FinanceEventDivisionProjection = {
+  id?: string | null;
+  key?: string | null;
+  name?: string | null;
+  divisionTypeId?: string | null;
+  divisionTypeKey?: string | null;
+  price?: number | null;
+  maxParticipants?: number | null;
+};
+
+export type FinanceEventProjection = {
+  id: string;
+  name?: string | null;
+  start?: Date | string | null;
+  eventType?: string | null;
+  state?: string | null;
+  archivedAt?: Date | string | null;
+  teamSignup?: boolean | null;
+  priceCents?: number | null;
+  maxParticipants?: number | null;
+  singleDivision?: boolean | null;
+  confirmedParticipantCount?: number | null;
+  confirmedParticipantCountsByDivision?: Record<string, number> | Map<string, number>;
+  divisionDetails?: FinanceEventDivisionProjection[];
+};
+
 export type FinanceLineItem = {
   id: string;
   sourceType: string;
@@ -166,6 +195,7 @@ export type OrganizationFinanceSummary = {
   actualCostCents: number;
   actualProfitCents: number;
   futureCostCents: number;
+  potentialRevenueCents: number;
   projectedProfitCents: number;
   staffCostCents: number;
   customCostCents: number;
@@ -200,6 +230,14 @@ const normalizeSignedCents = (value: unknown): number => {
 const normalizeStatus = (value: unknown, fallback = 'ACTUAL'): string => {
   const normalized = String(value ?? '').trim().toUpperCase();
   return normalized || fallback;
+};
+
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length ? normalized : null;
 };
 
 const isPaidPayment = (payment: FinanceBillPayment): boolean => (
@@ -279,6 +317,17 @@ const firstPositiveInteger = (...values: Array<number | null | undefined>): numb
     }
   }
   return null;
+};
+
+const normalizeCount = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.trunc(value));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+  return 0;
 };
 
 const resolveLaborMinutes = (entry: FinanceLaborEntry): number | null => (
@@ -451,6 +500,136 @@ const buildFinanceLineItem = (item: Omit<FinanceLineItem, 'timing' | 'serviceSta
     }),
   };
 };
+
+const normalizeDivisionCountKey = (value: unknown): string | null => {
+  const normalized = normalizeId(value);
+  return normalized ? normalized.toLowerCase() : null;
+};
+
+const eventDivisionCountKeys = (division: FinanceEventDivisionProjection): string[] => (
+  Array.from(new Set([
+    division.id,
+    division.key,
+    division.name,
+    division.divisionTypeId,
+    division.divisionTypeKey,
+  ].map(normalizeDivisionCountKey).filter((value): value is string => Boolean(value))))
+);
+
+const normalizeDivisionCounts = (
+  counts: FinanceEventProjection['confirmedParticipantCountsByDivision'],
+): Map<string, number> => {
+  const normalized = new Map<string, number>();
+  const entries = counts instanceof Map ? [...counts.entries()] : Object.entries(counts ?? {});
+  entries.forEach(([key, value]) => {
+    const normalizedKey = normalizeDivisionCountKey(key);
+    if (!normalizedKey) {
+      return;
+    }
+    normalized.set(normalizedKey, normalizeCount(value));
+  });
+  return normalized;
+};
+
+const confirmedCountForDivision = (
+  counts: Map<string, number>,
+  division: FinanceEventDivisionProjection,
+): number => {
+  for (const key of eventDivisionCountKeys(division)) {
+    const count = counts.get(key);
+    if (typeof count === 'number') {
+      return count;
+    }
+  }
+  return 0;
+};
+
+const potentialRevenueLineItems = (
+  events: FinanceEventProjection[],
+  fromDate: Date | null,
+  toDateValue: Date | null,
+  asOf: Date,
+): {
+  lineItems: FinanceLineItem[];
+  potentialRevenueCents: number;
+} => events.reduce(
+  (result, event) => {
+    if (!event.id || !isWithinRange(event.start, fromDate, toDateValue)) {
+      return result;
+    }
+    if (toDate(event.archivedAt) || normalizeStatus(event.state, '') === 'TEMPLATE') {
+      return result;
+    }
+
+    const divisionDetails = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const projectedCapacity = resolveEventParticipantCapacity({
+      maxParticipants: event.maxParticipants ?? 0,
+      singleDivision: Boolean(event.singleDivision),
+      divisionDetails: divisionDetails as any,
+    });
+    if (projectedCapacity <= 0) {
+      return result;
+    }
+
+    const countsByDivision = normalizeDivisionCounts(event.confirmedParticipantCountsByDivision);
+    const eventPriceCents = normalizeCents(event.priceCents);
+    const projectionRows = divisionDetails.length
+      ? divisionDetails
+      : [{
+        id: event.id,
+        name: event.name ?? null,
+        price: eventPriceCents,
+        maxParticipants: projectedCapacity,
+      }];
+
+    projectionRows.forEach((division) => {
+      const capacity = normalizeCount(division.maxParticipants);
+      if (capacity <= 0) {
+        return;
+      }
+      const confirmedCount = divisionDetails.length
+        ? confirmedCountForDivision(countsByDivision, division)
+        : normalizeCount(event.confirmedParticipantCount);
+      const openSpots = Math.max(0, capacity - confirmedCount);
+      const priceCents = normalizeCents(division.price ?? eventPriceCents);
+      if (openSpots <= 0 || priceCents <= 0) {
+        return;
+      }
+      const hostReceivesCents = calculateIncludedFeesFromTotalPrice({
+        totalPriceCents: priceCents,
+        eventType: event.eventType,
+      }).hostReceivesCents;
+      const amountCents = openSpots * hostReceivesCents;
+      if (amountCents <= 0) {
+        return;
+      }
+      const divisionLabel = String(division.name ?? '').trim();
+      const eventName = String(event.name ?? '').trim();
+      result.potentialRevenueCents += amountCents;
+      result.lineItems.push(buildFinanceLineItem({
+        id: `potential:organization-event:${event.id}:${division.id ?? (divisionLabel || 'event')}`,
+        sourceType: 'event',
+        sourceId: event.id,
+        scope: 'ORGANIZATION',
+        label: divisionLabel ? `${divisionLabel} open registrations` : 'Potential open-spot revenue',
+        sourceName: eventName || null,
+        sourceEntityType: 'event',
+        sourceEntityId: event.id,
+        category: 'potential',
+        amountCents,
+        classification: 'potential_revenue',
+        status: 'PROJECTED',
+        quantity: openSpots,
+        unitLabel: event.teamSignup ? 'team registrations' : 'registrations',
+        isGenerated: true,
+        serviceStartAt: event.start,
+      }, asOf));
+    });
+
+    return result;
+  },
+  { lineItems: [] as FinanceLineItem[], potentialRevenueCents: 0 },
+);
 
 const customCostLineItem = (
   item: CustomFinanceLineItem,
@@ -833,6 +1012,7 @@ export const buildOrganizationFinanceSummary = ({
   bills = [],
   staffLabor = [],
   customLineItems = [],
+  eventProjections = [],
   from,
   to,
   asOf: asOfInput,
@@ -841,6 +1021,7 @@ export const buildOrganizationFinanceSummary = ({
   bills?: FinanceBill[];
   staffLabor?: FinanceLaborEntry[];
   customLineItems?: CustomFinanceLineItem[];
+  eventProjections?: FinanceEventProjection[];
   from?: Date | string | null;
   to?: Date | string | null;
   asOf?: Date | string | null;
@@ -972,6 +1153,9 @@ export const buildOrganizationFinanceSummary = ({
       }
     });
 
+  const potential = potentialRevenueLineItems(eventProjections, fromDate, toDateValue, asOf);
+  lineItems.push(...potential.lineItems);
+
   const actualRevenueCents = grossRevenueCents - refundCents - feeCents;
   const actualProfitCents = actualRevenueCents - actualCostCents;
   return {
@@ -983,7 +1167,8 @@ export const buildOrganizationFinanceSummary = ({
     actualCostCents,
     actualProfitCents,
     futureCostCents,
-    projectedProfitCents: actualProfitCents - futureCostCents,
+    potentialRevenueCents: potential.potentialRevenueCents,
+    projectedProfitCents: actualProfitCents + potential.potentialRevenueCents - futureCostCents,
     staffCostCents: labor.costCents,
     customCostCents,
     lineItems,

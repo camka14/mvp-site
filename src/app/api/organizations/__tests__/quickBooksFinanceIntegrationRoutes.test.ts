@@ -126,6 +126,7 @@ describe('QuickBooks organization finance integration routes', () => {
       actualCostCents: 2500,
       actualProfitCents: 7500,
       futureCostCents: 0,
+      potentialRevenueCents: 0,
       projectedProfitCents: 7500,
       staffCostCents: 0,
       customCostCents: 2500,

@@ -5,6 +5,7 @@ import {
   buildTeamFinanceSummary,
   type CustomFinanceLineItem,
   type EventFinanceSummary,
+  type FinanceEventProjection,
   type FinanceBill,
   type FinanceLaborEntry,
   type FinanceLaborRate,
@@ -28,6 +29,38 @@ const normalizeId = (value: unknown): string | null => {
 const normalizeIds = (values: unknown[]): string[] => (
   Array.from(new Set(values.map((value) => normalizeId(value)).filter((value): value is string => Boolean(value))))
 );
+
+const normalizeCountKey = (value: unknown): string | null => {
+  const normalized = normalizeId(value);
+  return normalized ? normalized.toLowerCase() : null;
+};
+
+const incrementCount = (counts: Map<string, number>, key: unknown) => {
+  const normalized = normalizeCountKey(key);
+  if (!normalized) {
+    return;
+  }
+  counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+};
+
+const countByEventAndDivision = (
+  rows: any[],
+  eventIdField: string,
+  divisionFields: string[],
+): Map<string, { total: number; byDivision: Map<string, number> }> => {
+  const countsByEvent = new Map<string, { total: number; byDivision: Map<string, number> }>();
+  rows.forEach((row) => {
+    const eventId = normalizeId(row[eventIdField]);
+    if (!eventId) {
+      return;
+    }
+    const current = countsByEvent.get(eventId) ?? { total: 0, byDivision: new Map<string, number>() };
+    current.total += 1;
+    divisionFields.forEach((field) => incrementCount(current.byDivision, row[field]));
+    countsByEvent.set(eventId, current);
+  });
+  return countsByEvent;
+};
 
 const normalizeCents = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -1094,11 +1127,22 @@ export const loadOrganizationFinanceSummary = async (
 
   const eventRows = await client.events.findMany({
     where: { organizationId },
-    select: { id: true },
+    select: {
+      id: true,
+      name: true,
+      start: true,
+      archivedAt: true,
+      state: true,
+      eventType: true,
+      price: true,
+      maxParticipants: true,
+      singleDivision: true,
+      teamSignup: true,
+    },
   });
   const eventIds = normalizeIds(eventRows.map((event: any) => event.id));
 
-  const [billRows, staffLabor, customRows] = await Promise.all([
+  const [billRows, staffLabor, customRows, divisionRows, eventTeamRows, registrationRows] = await Promise.all([
     client.bills.findMany({
       where: eventIds.length
         ? {
@@ -1118,7 +1162,101 @@ export const loadOrganizationFinanceSummary = async (
       },
       select: customLineItemSelect,
     }),
+    eventIds.length
+      ? client.divisions.findMany({
+        where: {
+          eventId: { in: eventIds },
+          OR: [
+            { kind: 'LEAGUE' },
+            { kind: null },
+          ],
+        },
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          eventId: true,
+          price: true,
+          maxParticipants: true,
+          divisionTypeId: true,
+        },
+        orderBy: [
+          { sortOrder: 'asc' },
+          { name: 'asc' },
+        ],
+      })
+      : Promise.resolve([]),
+    eventIds.length
+      ? client.teams.findMany({
+        where: {
+          eventId: { in: eventIds },
+          kind: 'REGISTERED',
+          archivedAt: null,
+        },
+        select: {
+          id: true,
+          eventId: true,
+          division: true,
+          divisionTypeId: true,
+        },
+      })
+      : Promise.resolve([]),
+    eventIds.length
+      ? client.eventRegistrations.findMany({
+        where: {
+          eventId: { in: eventIds },
+          rosterRole: 'PARTICIPANT',
+          status: { in: [...ACTIVE_PARTICIPANT_STATUSES] },
+        },
+        select: {
+          id: true,
+          eventId: true,
+          divisionId: true,
+          divisionTypeId: true,
+          divisionTypeKey: true,
+        },
+      })
+      : Promise.resolve([]),
   ]);
+
+  const divisionsByEventId = new Map<string, any[]>();
+  divisionRows.forEach((row: any) => {
+    const eventId = normalizeId(row.eventId);
+    if (!eventId) {
+      return;
+    }
+    divisionsByEventId.set(eventId, [...(divisionsByEventId.get(eventId) ?? []), row]);
+  });
+  const eventTeamCountsByEventId = countByEventAndDivision(eventTeamRows, 'eventId', ['division', 'divisionTypeId']);
+  const registrationCountsByEventId = countByEventAndDivision(registrationRows, 'eventId', ['divisionId', 'divisionTypeId', 'divisionTypeKey']);
+  const eventProjections: FinanceEventProjection[] = eventRows.map((event: any) => {
+    const eventId = normalizeId(event.id) ?? '';
+    const counts = event.teamSignup
+      ? eventTeamCountsByEventId.get(eventId)
+      : registrationCountsByEventId.get(eventId);
+    return {
+      id: eventId,
+      name: event.name,
+      start: event.start,
+      archivedAt: event.archivedAt,
+      state: event.state,
+      eventType: event.eventType,
+      teamSignup: event.teamSignup,
+      priceCents: event.price,
+      maxParticipants: event.maxParticipants,
+      singleDivision: event.singleDivision,
+      confirmedParticipantCount: counts?.total ?? 0,
+      confirmedParticipantCountsByDivision: counts?.byDivision ?? new Map<string, number>(),
+      divisionDetails: (divisionsByEventId.get(eventId) ?? []).map((division) => ({
+        id: division.id,
+        key: division.key,
+        name: division.name,
+        divisionTypeId: division.divisionTypeId,
+        price: division.price,
+        maxParticipants: division.maxParticipants,
+      })),
+    };
+  });
 
   const bills = await attachPayments(client, billRows);
   return buildOrganizationFinanceSummary({
@@ -1126,6 +1264,7 @@ export const loadOrganizationFinanceSummary = async (
     bills,
     staffLabor,
     customLineItems: customRows.map(toCustomLineItem),
+    eventProjections,
     from: options.from,
     to: options.to,
   });

@@ -64,6 +64,7 @@ describe('organization finance routes', () => {
     loadOrganizationFinanceSummaryMock.mockResolvedValue({
       organizationId: 'org_1',
       actualProfitCents: 12000,
+      potentialRevenueCents: 0,
       lineItems: [],
       warnings: [],
     });

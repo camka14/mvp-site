@@ -463,6 +463,7 @@ describe('buildOrganizationFinanceSummary', () => {
     expect(summary.staffCostCents).toBe(6000);
     expect(summary.customCostCents).toBe(2500);
     expect(summary.futureCostCents).toBe(4000);
+    expect(summary.potentialRevenueCents).toBe(0);
     expect(summary.actualProfitCents).toBe(15350);
     expect(summary.projectedProfitCents).toBe(11350);
     expect(summary.lineItems).toEqual(expect.arrayContaining([
@@ -493,5 +494,102 @@ describe('buildOrganizationFinanceSummary', () => {
         classification: 'custom_cost',
       }),
     ]));
+  });
+
+  it('adds fee-adjusted open team capacity to projected organization profit for events in range', () => {
+    const summary = buildOrganizationFinanceSummary({
+      organizationId: 'org_1',
+      asOf: '2026-07-06T12:00:00.000Z',
+      from: '2026-07-01T00:00:00.000Z',
+      to: '2026-07-31T23:59:59.999Z',
+      bills: [
+        {
+          id: 'bill_paid_team',
+          organizationId: 'org_1',
+          ownerType: 'TEAM',
+          ownerId: 'team_1',
+          eventId: 'event_1',
+          sourceName: 'Grass Tournament',
+          customerName: 'Harbor Strikers',
+          payments: [
+            {
+              id: 'payment_1',
+              amountCents: 10000,
+              status: 'PAID',
+              paidAt: '2026-07-02T12:00:00.000Z',
+              stripeProcessingFeeCents: 320,
+              stripeTaxServiceFeeCents: 96,
+            },
+          ],
+        },
+      ],
+      eventProjections: [
+        {
+          id: 'event_1',
+          name: 'Grass Tournament',
+          start: '2026-07-11T23:00:00.000Z',
+          eventType: 'TOURNAMENT',
+          state: 'PUBLISHED',
+          teamSignup: true,
+          priceCents: 10000,
+          maxParticipants: 16,
+          singleDivision: true,
+          confirmedParticipantCount: 5,
+          confirmedParticipantCountsByDivision: {
+            div_mens: 5,
+          },
+          divisionDetails: [
+            {
+              id: 'div_mens',
+              name: 'Mens A+',
+              price: 10000,
+              maxParticipants: 16,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(summary.actualProfitCents).toBe(9584);
+    expect(summary.potentialRevenueCents).toBe(105424);
+    expect(summary.projectedProfitCents).toBe(115008);
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'potential:organization-event:event_1:div_mens',
+        sourceName: 'Grass Tournament',
+        sourceEntityType: 'event',
+        sourceEntityId: 'event_1',
+        label: 'Mens A+ open registrations',
+        amountCents: 105424,
+        classification: 'potential_revenue',
+        quantity: 11,
+        unitLabel: 'team registrations',
+      }),
+    ]));
+  });
+
+  it('ignores projected event capacity outside the organization finance date range', () => {
+    const summary = buildOrganizationFinanceSummary({
+      organizationId: 'org_1',
+      from: '2026-07-01T00:00:00.000Z',
+      to: '2026-07-31T23:59:59.999Z',
+      eventProjections: [
+        {
+          id: 'event_later',
+          name: 'Fall Tournament',
+          start: '2026-09-01T12:00:00.000Z',
+          eventType: 'TOURNAMENT',
+          state: 'PUBLISHED',
+          teamSignup: true,
+          priceCents: 10000,
+          maxParticipants: 16,
+          singleDivision: true,
+          confirmedParticipantCount: 0,
+        },
+      ],
+    });
+
+    expect(summary.potentialRevenueCents).toBe(0);
+    expect(summary.projectedProfitCents).toBe(0);
   });
 });

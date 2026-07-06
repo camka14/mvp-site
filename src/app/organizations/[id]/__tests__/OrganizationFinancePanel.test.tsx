@@ -24,6 +24,7 @@ const financeResponse = {
     actualCostCents: 8500,
     actualProfitCents: 15350,
     futureCostCents: 4000,
+    potentialRevenueCents: 0,
     projectedProfitCents: 11350,
     staffCostCents: 6000,
     customCostCents: 2500,
