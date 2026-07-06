@@ -46,22 +46,22 @@ export default function HostPriceInput({
   const feeFormula = `${formatBillAmount(breakdown.hostReceivesCents)} + ${formatBillAmount(breakdown.processingFeeCents)} processing + ${formatBillAmount(breakdown.platformFeeCents)} platform = ${formatBillAmount(breakdown.totalPriceCents)}`;
 
   return (
-    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" verticalSpacing={4}>
-      <CentsInput
-        label={hostLabel}
-        maxCents={maxCents}
-        value={breakdown.hostReceivesCents}
-        onChange={(nextHostAmount) => {
-          const nextTotal = calculateInclusivePriceFromHostAmount({
-            hostAmountCents: nextHostAmount,
-            eventType,
-          }).totalPriceCents;
-          onChange(clampToMax(nextTotal, maxCents));
-        }}
-        disabled={disabled}
-        required={required}
-      />
-      <Stack gap={4}>
+    <Stack gap={4}>
+      <SimpleGrid cols={2} spacing="sm">
+        <CentsInput
+          label={hostLabel}
+          maxCents={maxCents}
+          value={breakdown.hostReceivesCents}
+          onChange={(nextHostAmount) => {
+            const nextTotal = calculateInclusivePriceFromHostAmount({
+              hostAmountCents: nextHostAmount,
+              eventType,
+            }).totalPriceCents;
+            onChange(clampToMax(nextTotal, maxCents));
+          }}
+          disabled={disabled}
+          required={required}
+        />
         <CentsInput
           label={totalLabel}
           maxCents={maxCents}
@@ -70,10 +70,10 @@ export default function HostPriceInput({
           disabled={disabled}
           required={required}
         />
-        <Text size="xs" c="dimmed">
-          {feeFormula}
-        </Text>
-      </Stack>
-    </SimpleGrid>
+      </SimpleGrid>
+      <Text size="xs" c="dimmed">
+        {feeFormula}
+      </Text>
+    </Stack>
   );
 }
