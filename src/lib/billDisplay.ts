@@ -86,9 +86,16 @@ export const formatBillTotalBreakdown = (bill: BillAmountDisplayFields): string 
   return `Total ${formatBillAmount(getBillDiscountedAmountCents(bill))}`;
 };
 
-export const formatBillPaidInFull = (bill: BillAmountDisplayFields): string => {
+export const formatBillPaidInFull = (_bill: BillAmountDisplayFields): string => {
+  return 'Paid in full';
+};
+
+export const formatBillPaidInFullSummary = (bill: BillAmountDisplayFields): string => {
   if (hasBillDiscount(bill)) {
-    return `Paid in full (${formatBillPaidProgress(bill)})`;
+    const progress = formatBillPaidProgress(bill);
+    return progress
+      ? `${formatBillPaidInFull(bill)} • ${progress}`
+      : formatBillPaidInFull(bill);
   }
-  return `Paid in full (${formatBillAmount(getBillDiscountedAmountCents(bill))})`;
+  return `${formatBillPaidInFull(bill)} • ${formatBillAmount(getBillDiscountedAmountCents(bill))}`;
 };

@@ -11,7 +11,7 @@ import {
   Text,
 } from '@mantine/core';
 
-import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
+import { formatBillPaidInFullSummary, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import type { TeamComplianceSummary } from '@/lib/eventTeamCompliance';
 
 type EventComplianceModalProps = {
@@ -48,7 +48,7 @@ function formatCompliancePaymentLabel(payment: TeamComplianceSummary['payment'])
     return `Payment processing (${formatBillTotalBreakdown(payment)})`;
   }
   if (payment.isPaidInFull) {
-    return formatBillPaidInFull(payment);
+    return formatBillPaidInFullSummary(payment);
   }
   const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
   return `${prefix}: ${formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment)}`;

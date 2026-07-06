@@ -6,7 +6,7 @@ import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Al
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
 import type { RegistrationQuestionDraft, TeamJoinPolicy, TeamJoinRequest, TeamPlayerRegistration } from '@/types';
 import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
-import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
+import { formatBillPaidInFullSummary, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
 import { teamService, type TeamInviteFreeAgentContext } from '@/lib/teamService';
@@ -164,7 +164,7 @@ const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payme
         return `Payment processing (${formatBillTotalBreakdown(payment)})`;
     }
     if (payment.isPaidInFull) {
-        return formatBillPaidInFull(payment);
+        return formatBillPaidInFullSummary(payment);
     }
     return formatBillPaidProgress(payment) ?? formatBillTotalBreakdown(payment);
 };

@@ -1,6 +1,6 @@
 import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
 import type { Team } from '@/types';
-import { formatBillPaidInFull, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
+import { formatBillPaidInFullSummary, formatBillPaidProgress, formatBillTotalBreakdown } from '@/lib/billDisplay';
 import type { TeamComplianceSummary } from '@/lib/eventTeamCompliance';
 
 type DivisionTeamComplianceCardProps = {
@@ -58,7 +58,7 @@ const getPaymentLabel = (
   }
 
   if (summary.payment.isPaidInFull) {
-    return { label: formatBillPaidInFull(summary.payment), color: 'green' };
+    return { label: formatBillPaidInFullSummary(summary.payment), color: 'green' };
   }
 
   return {

@@ -195,7 +195,7 @@ describe('DivisionTeamComplianceCard', () => {
       />,
     );
 
-    expect(screen.getByText('Bill pending ($50.00)')).toBeInTheDocument();
+    expect(screen.getByText('Bill pending (Total $50.00)')).toBeInTheDocument();
     expect(screen.queryByText('$0.00 of $50.00 paid')).not.toBeInTheDocument();
   });
 
@@ -218,7 +218,7 @@ describe('DivisionTeamComplianceCard', () => {
       />,
     );
 
-    expect(screen.getByText('Payment proof submitted ($50.00)')).toBeInTheDocument();
+    expect(screen.getByText('Payment proof submitted (Total $50.00)')).toBeInTheDocument();
     expect(screen.queryByText('Payment pending')).not.toBeInTheDocument();
   });
 
