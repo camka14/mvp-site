@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import DiscoverMapModal from '../DiscoverMapModal';
@@ -137,18 +137,31 @@ const buildMapEvent = (overrides: Partial<Event> = {}): Event => ({
   ...overrides,
 } as Event);
 
-const renderModal = (location = VANCOUVER_WA_CENTER) => renderWithMantine(
+const DEFAULT_EVENT_TAGS = [
+  { id: 'tag-tryouts', name: 'Tryouts', slug: 'tryouts' },
+  { id: 'tag-clinic', name: 'Clinic', slug: 'clinic' },
+];
+
+const renderModal = (
+  location = VANCOUVER_WA_CENTER,
+  options: {
+    selectedTags?: string[];
+    setSelectedTags?: Dispatch<SetStateAction<string[]>>;
+  } = {},
+) => renderWithMantine(
   <DiscoverMapModal
     opened
     onClose={jest.fn()}
     location={location}
     requestLocation={jest.fn()}
     kmBetween={kmBetween}
-    selectedEventTypes={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']}
-    setSelectedEventTypes={jest.fn()}
-    eventTypeOptions={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const}
     selectedSports={[]}
     setSelectedSports={jest.fn()}
+    selectedTags={options.selectedTags ?? []}
+    setSelectedTags={options.setSelectedTags ?? jest.fn()}
+    eventTags={DEFAULT_EVENT_TAGS}
+    eventTagsLoading={false}
+    eventTagsError={null}
     sports={[]}
     sportsLoading={false}
     sportsError={null}
@@ -181,11 +194,13 @@ function CurrentLocationHarness() {
         location={location}
         requestLocation={jest.fn()}
         kmBetween={kmBetween}
-        selectedEventTypes={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']}
-        setSelectedEventTypes={jest.fn()}
-        eventTypeOptions={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const}
         selectedSports={[]}
         setSelectedSports={jest.fn()}
+        selectedTags={[]}
+        setSelectedTags={jest.fn()}
+        eventTags={DEFAULT_EVENT_TAGS}
+        eventTagsLoading={false}
+        eventTagsError={null}
         sports={[]}
         sportsLoading={false}
         sportsError={null}
@@ -244,6 +259,33 @@ describe('DiscoverMapModal', () => {
     });
 
     expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses event tags instead of event types in the map event filter', async () => {
+    renderModal(VANCOUVER_WA_CENTER, { selectedTags: ['Tryouts'] });
+
+    await waitFor(() => {
+      expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockedEventService.getEventsPaginated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: ['Tryouts'],
+      }),
+      100,
+      0,
+    );
+    expect(mockedEventService.getEventsPaginated).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventTypes: expect.any(Array),
+      }),
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(screen.getByText('Tags')).toBeInTheDocument();
+    expect(screen.getAllByText('Tryouts').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Event Type')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tournament')).not.toBeInTheDocument();
   });
 
   it('groups touching event markers into a count marker', async () => {

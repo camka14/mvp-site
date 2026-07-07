@@ -1000,11 +1000,13 @@ function DiscoverPageContent() {
         location={location}
         requestLocation={requestLocation}
         kmBetween={kmBetween}
-        selectedEventTypes={selectedEventTypes}
-        setSelectedEventTypes={setSelectedEventTypes}
-        eventTypeOptions={EVENT_TYPE_OPTIONS}
         selectedSports={selectedSports}
         setSelectedSports={setSelectedSports}
+        selectedTags={selectedEventTags}
+        setSelectedTags={setSelectedEventTags}
+        eventTags={eventTags}
+        eventTagsLoading={eventTagsLoading}
+        eventTagsError={eventTagsError}
         sports={sportOptions}
         sportsLoading={sportsLoading}
         sportsError={sportsError?.message ?? null}

@@ -38,6 +38,7 @@ import { CalendarDays, Search, X } from 'lucide-react';
 
 import {
   Event,
+  EventTag,
   Field,
   Organization,
   TimeSlot,
@@ -90,11 +91,13 @@ type DiscoverMapModalProps = {
   location: MapCenter | null;
   requestLocation: () => Promise<void>;
   kmBetween: (a: MapCenter, b: MapCenter) => number;
-  selectedEventTypes: Event['eventType'][];
-  setSelectedEventTypes: Dispatch<SetStateAction<Event['eventType'][]>>;
-  eventTypeOptions: readonly Event['eventType'][];
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
+  selectedTags: string[];
+  setSelectedTags: Dispatch<SetStateAction<string[]>>;
+  eventTags: EventTag[];
+  eventTagsLoading: boolean;
+  eventTagsError: string | null;
   sports: string[];
   sportsLoading: boolean;
   sportsError: string | null;
@@ -374,6 +377,19 @@ const eventMatchesSports = (event: Event, selectedSports: string[]): boolean => 
   return eventSportValues.some((value) => selected.has(value));
 };
 
+const eventMatchesTags = (event: Event, selectedTags: string[]): boolean => {
+  if (!selectedTags.length) {
+    return true;
+  }
+  const selected = new Set(selectedTags.map(normalizeFilterValue));
+  const eventTagValues = (event.tags ?? [])
+    .flatMap((tag) => [tag.name, tag.slug, tag.id, tag.$id])
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map(normalizeFilterValue);
+
+  return eventTagValues.some((value) => selected.has(value));
+};
+
 const getInitials = (value: string, fallback: string): string => {
   const parts = value
     .trim()
@@ -557,11 +573,13 @@ export default function DiscoverMapModal({
   location,
   requestLocation,
   kmBetween,
-  selectedEventTypes,
-  setSelectedEventTypes,
-  eventTypeOptions,
   selectedSports,
   setSelectedSports,
+  selectedTags,
+  setSelectedTags,
+  eventTags,
+  eventTagsLoading,
+  eventTagsError,
   sports,
   sportsLoading,
   sportsError,
@@ -595,6 +613,7 @@ export default function DiscoverMapModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<MarkerSelection | null>(null);
   const [sportSearchTerm, setSportSearchTerm] = useState('');
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [isSearchAreaDirty, setIsSearchAreaDirty] = useState(false);
   const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM);
   const latestLoadMapDataRef = useRef<(nextCenter: MapCenter, radiusKm?: number) => Promise<void>>(async () => {});
@@ -663,7 +682,7 @@ export default function DiscoverMapModal({
           maxDistance: effectiveEventRadiusKm,
           dateFrom: eventDateRange.dateFrom,
           dateTo: eventDateRange.dateTo,
-          eventTypes: selectedEventTypes.length === eventTypeOptions.length ? undefined : selectedEventTypes,
+          tags: selectedTags.length > 0 ? selectedTags : undefined,
           sports: selectedSports.length > 0 ? selectedSports : undefined,
         }, 100, 0),
         organizationService.listOrganizationsWithFields(),
@@ -721,11 +740,10 @@ export default function DiscoverMapModal({
   }, [
     eventDateRange.dateFrom,
     eventDateRange.dateTo,
-    eventTypeOptions.length,
     kmBetween,
     maxDistance,
-    selectedEventTypes,
     selectedSports,
+    selectedTags,
   ]);
 
   useEffect(() => {
@@ -853,16 +871,15 @@ export default function DiscoverMapModal({
     if (searchTarget !== 'events') {
       return [];
     }
-    const selectedEventTypeSet = new Set(selectedEventTypes);
     const dateFromTime = new Date(eventDateRange.dateFrom).getTime();
     const dateToTime = eventDateRange.dateTo ? new Date(eventDateRange.dateTo).getTime() : null;
     const distanceCenter = searchedCenter ?? center;
 
     return events.filter((event) => {
-      if (!selectedEventTypeSet.has(event.eventType)) {
+      if (!eventMatchesSports(event, selectedSports)) {
         return false;
       }
-      if (!eventMatchesSports(event, selectedSports)) {
+      if (!eventMatchesTags(event, selectedTags)) {
         return false;
       }
       const startTime = new Date(event.start).getTime();
@@ -890,8 +907,8 @@ export default function DiscoverMapModal({
     maxDistance,
     searchedCenter,
     searchTarget,
-    selectedEventTypes,
     selectedSports,
+    selectedTags,
   ]);
   const visibleOrganizations = useMemo(
     () => (searchTarget === 'organizations' ? organizations : []),
@@ -999,39 +1016,36 @@ export default function DiscoverMapModal({
   }, [focusResult, searchResults]);
 
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
+  const tagsQuery = tagSearchTerm.trim().toLowerCase();
   const visibleSports = useMemo(() => {
     if (!sportsQuery) {
       return sports;
     }
     return sports.filter((sport) => sport.toLowerCase().includes(sportsQuery));
   }, [sports, sportsQuery]);
-  const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;
-  const allSportsSelected = selectedSports.length === 0;
-  const activeEventFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
-
-  if (!allEventTypesSelected) {
-    if (selectedEventTypes.length) {
-      selectedEventTypes.forEach((type) => {
-        activeEventFilters.push({
-          key: `event-type-${type}`,
-          label: formatEnumDisplayLabel(type, 'Event'),
-          onRemove: () => setSelectedEventTypes((current) => current.filter((value) => value !== type)),
-        });
-      });
-    } else {
-      activeEventFilters.push({
-        key: 'event-type-none',
-        label: 'No event types',
-        onRemove: () => setSelectedEventTypes([...eventTypeOptions]),
-      });
+  const visibleEventTags = useMemo(() => {
+    if (!tagsQuery) {
+      return eventTags;
     }
-  }
+    return eventTags.filter((tag) => tag.name.toLowerCase().includes(tagsQuery));
+  }, [eventTags, tagsQuery]);
+  const allSportsSelected = selectedSports.length === 0;
+  const allTagsSelected = selectedTags.length === 0;
+  const activeEventFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
 
   selectedSports.forEach((sport) => {
     activeEventFilters.push({
       key: `sport-${sport}`,
       label: sport,
       onRemove: () => setSelectedSports((current) => current.filter((value) => value !== sport)),
+    });
+  });
+
+  selectedTags.forEach((tag) => {
+    activeEventFilters.push({
+      key: `tag-${tag}`,
+      label: tag,
+      onRemove: () => setSelectedTags((current) => current.filter((value) => value !== tag)),
     });
   });
 
@@ -1060,17 +1074,16 @@ export default function DiscoverMapModal({
   }
 
   const resetEventFilters = useCallback(() => {
-    setSelectedEventTypes([...eventTypeOptions]);
     setSelectedSports([]);
+    setSelectedTags([]);
     setMaxDistance(null);
     setSelectedStartDate(null);
     setSelectedEndDate(null);
   }, [
-    eventTypeOptions,
     setMaxDistance,
     setSelectedEndDate,
-    setSelectedEventTypes,
     setSelectedSports,
+    setSelectedTags,
     setSelectedStartDate,
   ]);
   const activeEventFilterCount = activeEventFilters.length;
@@ -1215,36 +1228,60 @@ export default function DiscoverMapModal({
               <div className="space-y-6">
                 <div>
                   <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
-                    Event Type
+                    Tags
                   </Text>
-                  <Group gap="xs">
+                  <TextInput
+                    value={tagSearchTerm}
+                    onChange={(event) => setTagSearchTerm(event.currentTarget.value)}
+                    placeholder="Search tag..."
+                    mb="sm"
+                  />
+                  <Group gap="xs" align="center">
                     <Chip
                       radius="xl"
-                      checked={allEventTypesSelected}
-                      onChange={(checked) => setSelectedEventTypes(checked ? [...eventTypeOptions] : [])}
+                      checked={allTagsSelected}
+                      disabled={eventTagsLoading || !eventTags.length}
+                      onChange={(checked) => {
+                        if (checked) {
+                          setSelectedTags([]);
+                        }
+                      }}
                     >
                       All
                     </Chip>
-                    {eventTypeOptions.map((type) => (
-                      <Chip
-                        key={type}
-                        radius="xl"
-                        checked={selectedEventTypes.includes(type)}
-                        onChange={(checked) => {
-                          setSelectedEventTypes((current) => {
-                            if (checked) {
-                              const next = new Set(current);
-                              next.add(type);
-                              return eventTypeOptions.filter((option) => next.has(option));
-                            }
-                            return current.filter((value) => value !== type);
-                          });
-                        }}
-                      >
-                        {formatEnumDisplayLabel(type, 'Event')}
-                      </Chip>
-                    ))}
+                    {eventTagsLoading ? (
+                      <Loader size="sm" aria-label="Loading tags" />
+                    ) : visibleEventTags.length ? (
+                      visibleEventTags.map((tag) => (
+                        <Chip
+                          key={tag.slug || tag.name}
+                          radius="xl"
+                          checked={selectedTags.includes(tag.name)}
+                          onChange={(checked) => {
+                            setSelectedTags((current) => {
+                              if (checked) {
+                                const next = new Set(current);
+                                next.add(tag.name);
+                                return Array.from(next);
+                              }
+                              return current.filter((value) => value !== tag.name);
+                            });
+                          }}
+                        >
+                          {tag.name}
+                        </Chip>
+                      ))
+                    ) : (
+                      <Text size="sm" c="dimmed">
+                        {tagsQuery ? 'No tags match this search.' : 'No tags available.'}
+                      </Text>
+                    )}
                   </Group>
+                  {eventTagsError && (
+                    <Alert color="red" radius="md" mt="sm">
+                      {eventTagsError}
+                    </Alert>
+                  )}
                 </div>
 
                 <div>
