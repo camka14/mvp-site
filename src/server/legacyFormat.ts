@@ -11,11 +11,18 @@ export const withLegacyFields = <T extends Record<string, any>>(row: T): T & {
   $updatedAt?: string | null;
 } => {
   const id = row.$id ?? row.id ?? '';
+  const normalizedRow = (
+    row.end == null
+    && row.noFixedEndDateTime === true
+    && row.start != null
+  )
+    ? { ...(row as Record<string, any>), end: row.start }
+    : row;
   return {
-    ...(row as Record<string, any>),
+    ...(normalizedRow as Record<string, any>),
     $id: typeof id === 'string' ? id : String(id),
-    $createdAt: toIsoString((row as any).createdAt ?? (row as any).$createdAt),
-    $updatedAt: toIsoString((row as any).updatedAt ?? (row as any).$updatedAt),
+    $createdAt: toIsoString((normalizedRow as any).createdAt ?? (normalizedRow as any).$createdAt),
+    $updatedAt: toIsoString((normalizedRow as any).updatedAt ?? (normalizedRow as any).$updatedAt),
   } as T & {
     $id: string;
     $createdAt?: string | null;
