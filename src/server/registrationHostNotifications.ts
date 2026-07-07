@@ -1,10 +1,13 @@
 import { SITE_URL } from '@/lib/siteUrl';
 import { prisma } from '@/lib/prisma';
+import { resolveDivisionDisplayName } from '@/lib/divisionDisplay';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 
 const NOT_PROVIDED = 'Not provided';
 
 type NotificationRow = [label: string, value: unknown];
+type NotificationLinkRow = [label: string, value: unknown, options: { href?: string | null }];
+type NotificationTableRow = NotificationRow | NotificationLinkRow;
 
 const normalizeText = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -49,21 +52,46 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
-const buildText = (title: string, rows: NotificationRow[]): string => (
+const getRowOptions = (row: NotificationTableRow): { href?: string | null } => (
+  row.length === 3 ? row[2] : {}
+);
+
+const notificationRow = (
+  label: string,
+  value: unknown,
+  options?: { href?: string | null },
+): NotificationTableRow => (
+  options ? [label, value, options] : [label, value]
+);
+
+const buildText = (title: string, rows: NotificationTableRow[]): string => (
   [
     title,
     '',
-    ...rows.map(([label, value]) => `${label}: ${formatValue(value)}`),
+    ...rows.map((row) => {
+      const [label, value] = row;
+      const formatted = formatValue(value);
+      const href = normalizeText(getRowOptions(row).href);
+      return href && href !== formatted
+        ? `${label}: ${formatted} (${href})`
+        : `${label}: ${formatted}`;
+    }),
   ].join('\n')
 );
 
-const buildHtml = (title: string, rows: NotificationRow[]): string => (
+const buildHtml = (title: string, rows: NotificationTableRow[]): string => (
   [
     `<h1>${escapeHtml(title)}</h1>`,
     '<table cellpadding="8" cellspacing="0" style="border-collapse:collapse;">',
-    ...rows.map(([label, value]) => (
-      `<tr><th align="left" valign="top">${escapeHtml(label)}</th><td>${escapeHtml(formatValue(value)).replace(/\n/g, '<br>')}</td></tr>`
-    )),
+    ...rows.map((row) => {
+      const [label, value] = row;
+      const href = normalizeText(getRowOptions(row).href);
+      const formatted = escapeHtml(formatValue(value)).replace(/\n/g, '<br>');
+      const htmlValue = href
+        ? `<a href="${escapeHtml(href)}">${formatted}</a>`
+        : formatted;
+      return `<tr><th align="left" valign="top">${escapeHtml(label)}</th><td>${htmlValue}</td></tr>`;
+    }),
     '</table>',
   ].join('')
 );
@@ -71,6 +99,187 @@ const buildHtml = (title: string, rows: NotificationRow[]): string => (
 const buildEventUrl = (eventId: string): string => {
   const baseUrl = normalizeText(process.env.PUBLIC_WEB_BASE_URL) ?? SITE_URL;
   return `${baseUrl.replace(/\/$/, '')}/events/${encodeURIComponent(eventId)}`;
+};
+
+const formatDateTimeForManager = (
+  value: Date | string | null | undefined,
+  timeZone: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const normalizedTimeZone = normalizeText(timeZone);
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+    ...(normalizedTimeZone ? { timeZone: normalizedTimeZone } : {}),
+  };
+
+  try {
+    return new Intl.DateTimeFormat('en-US', options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    }).format(date);
+  }
+};
+
+const formatDateOnlyForManager = (
+  value: string | null | undefined,
+): string | null => {
+  const normalized = normalizeText(value);
+  const match = normalized?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return normalized;
+
+  const [, year, month, day] = match;
+  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
+  if (Number.isNaN(parsed.getTime())) return normalized;
+
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(parsed);
+};
+
+const formatTimeZoneForManager = (
+  timeZone: string | null | undefined,
+  referenceDate: Date | null | undefined,
+): string | null => {
+  const normalized = normalizeText(timeZone);
+  if (!normalized) return null;
+
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: normalized,
+      timeZoneName: 'longGeneric',
+    }).formatToParts(referenceDate ?? new Date());
+    return normalizeText(parts.find((part) => part.type === 'timeZoneName')?.value)
+      ?? normalized.replace(/_/g, ' ');
+  } catch {
+    return normalized.replace(/_/g, ' ');
+  }
+};
+
+const formatRegistrationType = (value: unknown): string => {
+  const normalized = normalizeText(value)?.toUpperCase();
+  if (normalized === 'TEAM') return 'Team';
+  if (normalized === 'CHILD') return 'Child participant';
+  if (normalized === 'SELF') return 'Participant';
+  if (!normalized) return 'Participant';
+  return normalized
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatMinutesLabel = (value: unknown): string | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const totalMinutes = Math.max(0, Math.trunc(value));
+  const hours24 = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+
+const formatSlotTimeRange = (slot: {
+  startTimeMinutes: number | null;
+  endTimeMinutes: number | null;
+} | null): string | null => {
+  const start = formatMinutesLabel(slot?.startTimeMinutes);
+  const end = formatMinutesLabel(slot?.endTimeMinutes);
+  if (start && end) return `${start}-${end}`;
+  return start ?? end;
+};
+
+const resolveDivisionLabel = async (
+  registration: {
+    divisionId: string | null;
+    divisionTypeId: string | null;
+    divisionTypeKey: string | null;
+  },
+  event: {
+    sportId: string | null;
+  },
+): Promise<string | null> => {
+  const divisionId = normalizeText(registration.divisionId);
+  const divisionType = normalizeText(registration.divisionTypeKey)
+    ?? normalizeText(registration.divisionTypeId);
+
+  const division = divisionId
+    ? await prisma.divisions.findUnique({
+      where: { id: divisionId },
+      select: {
+        id: true,
+        name: true,
+        key: true,
+        playoffPlacementDivisionIds: true,
+      },
+    })
+    : null;
+
+  const divisionForDisplay = division
+    ? {
+      ...division,
+      key: division.key ?? undefined,
+    }
+    : null;
+
+  return resolveDivisionDisplayName({
+    division: divisionForDisplay ?? divisionId ?? divisionType,
+    divisionDetails: divisionForDisplay ? [divisionForDisplay] : undefined,
+    sportInput: event.sportId,
+  });
+};
+
+const resolveOccurrenceLabel = async (
+  registration: {
+    slotId: string | null;
+    occurrenceDate: string | null;
+  },
+  event: {
+    timeZone: string | null;
+  },
+): Promise<string | null> => {
+  const slotId = normalizeText(registration.slotId);
+  const occurrenceDate = normalizeText(registration.occurrenceDate);
+  const slot = slotId
+    ? await prisma.timeSlots.findUnique({
+      where: { id: slotId },
+      select: {
+        startTimeMinutes: true,
+        endTimeMinutes: true,
+        timeZone: true,
+      },
+    })
+    : null;
+
+  const dateLabel = formatDateOnlyForManager(occurrenceDate);
+  const timeRange = formatSlotTimeRange(slot);
+  const timeZoneLabel = slot && timeRange
+    ? formatTimeZoneForManager(slot.timeZone ?? event.timeZone, new Date())
+    : null;
+
+  return [
+    dateLabel,
+    timeRange,
+    timeZoneLabel,
+  ].filter(Boolean).join(', ') || null;
 };
 
 const resolveUserIdentity = async (userId: string | null | undefined): Promise<{
@@ -211,6 +420,7 @@ export const sendEventRegistrationHostNotification = async ({
         start: true,
         timeZone: true,
         location: true,
+        sportId: true,
         hostId: true,
         organizationId: true,
       },
@@ -226,25 +436,25 @@ export const sendEventRegistrationHostNotification = async ({
     }
 
     const registrant = await resolveRegistrantLabel(registration);
+    const divisionLabel = await resolveDivisionLabel(registration, event);
+    const occurrenceLabel = await resolveOccurrenceLabel(registration, event);
     const registrationKind = registration.registrantType === 'TEAM' ? 'team' : 'participant';
     const title = `New ${registrationKind} registration`;
-    const rows: NotificationRow[] = [
-      ['Event', event.name],
-      ['Event URL', buildEventUrl(event.id)],
-      ['Event start', event.start],
-      ['Time zone', event.timeZone],
-      ['Location', event.location],
-      ['Registrant', registrant.label],
-      ['Registrant type', registration.registrantType],
-      ['Registrant email', registrant.email],
-      ['Parent/guardian email', registrant.parentEmail],
-      ['Division', registration.divisionId],
-      ['Division type', registration.divisionTypeId ?? registration.divisionTypeKey],
-      ['Occurrence slot', registration.slotId],
-      ['Occurrence date', registration.occurrenceDate],
-      ['Registration ID', registration.id],
-      ['Registered at', registration.createdAt],
-    ];
+    const eventUrl = buildEventUrl(event.id);
+    const rows: NotificationTableRow[] = [
+      notificationRow('Event', event.name),
+      notificationRow('Event page', 'Open event page', { href: eventUrl }),
+      notificationRow('Event start', formatDateTimeForManager(event.start, event.timeZone)),
+      notificationRow('Time zone', formatTimeZoneForManager(event.timeZone, event.start)),
+      notificationRow('Location', event.location),
+      notificationRow('Registrant', registrant.label),
+      notificationRow('Registrant type', formatRegistrationType(registration.registrantType)),
+      notificationRow('Registrant email', registrant.email),
+      ...(registrant.parentEmail ? [notificationRow('Parent/guardian email', registrant.parentEmail)] : []),
+      ...(divisionLabel ? [notificationRow('Division', divisionLabel)] : []),
+      ...(occurrenceLabel ? [notificationRow('Session', occurrenceLabel)] : []),
+      notificationRow('Registered at', formatDateTimeForManager(registration.createdAt, event.timeZone)),
+    ].filter(([, value]) => formatValue(value) !== NOT_PROVIDED);
 
     await sendEmail({
       to: host.email,
