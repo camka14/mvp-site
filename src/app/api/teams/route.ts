@@ -210,10 +210,13 @@ export async function GET(req: NextRequest) {
     String(params.get('openRegistration') ?? '').trim().toLowerCase(),
   );
   const limit = Number(params.get('limit') || '100');
+  const offset = Number(params.get('offset') || '0');
   const session = await getOptionalSession(req);
   const includeAdminOnly = await canIncludeAdminOnlyTeams(session, organizationId);
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 200) : 100;
+  const normalizedOffset = Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0;
   const teams = await listCanonicalTeamsForUser({
     ids,
     eventId,
@@ -223,9 +226,19 @@ export async function GET(req: NextRequest) {
     query: normalizeId(query),
     openRegistrationOnly,
     includeAdminOnly,
-    limit: Number.isFinite(limit) ? limit : 100,
+    limit: normalizedLimit + 1,
+    offset: normalizedOffset,
   }, prisma);
-  return NextResponse.json({ teams: withTeamRoleAliasesList(teams as Record<string, any>[]) }, { status: 200 });
+  const pageRows = teams.slice(0, normalizedLimit);
+  return NextResponse.json({
+    teams: withTeamRoleAliasesList(pageRows as Record<string, any>[]),
+    pagination: {
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      nextOffset: normalizedOffset + pageRows.length,
+      hasMore: teams.length > normalizedLimit,
+    },
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

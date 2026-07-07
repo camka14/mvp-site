@@ -13,6 +13,7 @@ import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { locationService } from '@/lib/locationService';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { buildEventDivisionDisplayLabels } from '@/lib/eventDivisionDisplay';
+import { trackEventOutboundClicked } from '@/lib/analytics/eventAnalytics';
 
 interface EventCardProps {
   event: Event;
@@ -354,7 +355,12 @@ export default function EventCard({
                 target={hostedByLink.startsWith('http') ? '_blank' : undefined}
                 rel={hostedByLink.startsWith('http') ? 'noreferrer' : undefined}
                 className="font-semibold text-slate-700 underline-offset-2 hover:text-slate-950 hover:underline"
-                onClick={(clickEvent) => clickEvent.stopPropagation()}
+                onClick={(clickEvent) => {
+                  clickEvent.stopPropagation();
+                  if (hostedByLink.startsWith('http')) {
+                    trackEventOutboundClicked(event, hostedByLink, 'event_card_host');
+                  }
+                }}
               >
                 {hostedByText}
               </a>

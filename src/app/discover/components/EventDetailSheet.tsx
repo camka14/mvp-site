@@ -89,6 +89,10 @@ import {
     getManualPaymentProviderLabel,
     normalizeManualPaymentProvider,
 } from '@/lib/manualRegistrationPayments';
+import {
+    trackEventOutboundClicked,
+    trackEventRegistrationStarted,
+} from '@/lib/analytics/eventAnalytics';
 // Replaced shadcn Select with Mantine Select
 
 interface EventDetailSheetProps {
@@ -307,6 +311,25 @@ const emptyAuthModalForm: AuthModalFormState = {
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
 );
+
+const getJoinIntentRegistrationType = (intent: JoinIntent) => {
+    switch (intent.mode) {
+        case 'team':
+            return 'team';
+        case 'child':
+            return 'child';
+        case 'user_waitlist':
+        case 'child_waitlist':
+            return 'waitlist';
+        case 'team_waitlist':
+            return 'team_waitlist';
+        case 'child_free_agent':
+            return 'free_agent';
+        case 'user':
+        default:
+            return 'self';
+    }
+};
 
 const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant' | 'parent_guardian' | 'child'): SignStep[] => {
     const seen = new Set<string>();
@@ -3275,6 +3298,12 @@ export default function EventDetailSheet({
             );
         }
         const selection = resolvedDivisionSelectionPayload;
+        trackEventRegistrationStarted(currentEvent, getJoinIntentRegistrationType(intent), {
+            division_id: selection?.divisionId,
+            division_type_id: selection?.divisionTypeId,
+            slot_id: selectedWeeklyOccurrence?.slotId,
+            occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
+        });
 
         if (intent.mode === 'child') {
             if (!intent.childId) {
@@ -3580,6 +3609,14 @@ export default function EventDetailSheet({
         let signingStarted = false;
         try {
             if (intent.mode === 'user' && isMinor) {
+                trackEventRegistrationStarted(currentEvent, 'self', {
+                    division_id: resolvedDivisionSelectionPayload?.divisionId,
+                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
+                    slot_id: selectedWeeklyOccurrence?.slotId,
+                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
+                    requires_parent_approval: true,
+                    answered_registration_questions: true,
+                });
                 const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload, intent.answers);
                 if (result.requiresParentApproval) {
                     setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
@@ -3614,6 +3651,7 @@ export default function EventDetailSheet({
         registrationQuestionAnswers,
         resolvedDivisionSelectionPayload,
         saveEventRegistrationProgress,
+        selectedWeeklyOccurrence,
         user,
         validateRegistrationQuestionAnswers,
     ]);
@@ -4189,6 +4227,13 @@ export default function EventDetailSheet({
         let signingStarted = false;
         try {
             if (isMinor) {
+                trackEventRegistrationStarted(currentEvent, 'self', {
+                    division_id: resolvedDivisionSelectionPayload?.divisionId,
+                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
+                    slot_id: selectedWeeklyOccurrence?.slotId,
+                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
+                    requires_parent_approval: true,
+                });
                 const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
                 if (result.requiresParentApproval) {
                     setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
@@ -4246,6 +4291,13 @@ export default function EventDetailSheet({
         let signingStarted = false;
         try {
             if (isMinor) {
+                trackEventRegistrationStarted(currentEvent, 'waitlist', {
+                    division_id: resolvedDivisionSelectionPayload?.divisionId,
+                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
+                    slot_id: selectedWeeklyOccurrence?.slotId,
+                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
+                    requires_parent_approval: true,
+                });
                 const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
                 if (result.requiresParentApproval) {
                     setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
@@ -5874,6 +5926,15 @@ export default function EventDetailSheet({
                                             rel="noopener noreferrer"
                                             fullWidth
                                             disabled={!affiliateActionUrl}
+                                            onClick={() => {
+                                                if (!affiliateActionUrl) {
+                                                    return;
+                                                }
+                                                trackEventOutboundClicked(currentEvent, affiliateActionUrl, 'event_detail');
+                                                trackEventRegistrationStarted(currentEvent, 'affiliate', {
+                                                    destination_selected: true,
+                                                });
+                                            }}
                                         >
                                             View Event
                                         </Button>
@@ -6323,6 +6384,13 @@ export default function EventDetailSheet({
                                                             setJoinError(null);
                                                             try {
                                                                 if (isMinor) {
+                                                                    trackEventRegistrationStarted(currentEvent, 'free_agent', {
+                                                                        division_id: resolvedDivisionSelectionPayload?.divisionId,
+                                                                        division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
+                                                                        slot_id: selectedWeeklyOccurrence?.slotId,
+                                                                        occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
+                                                                        requires_parent_approval: true,
+                                                                    });
                                                                     const result = await registrationService.registerSelfForEvent(
                                                                         currentEvent.$id,
                                                                         resolvedDivisionSelectionPayload,

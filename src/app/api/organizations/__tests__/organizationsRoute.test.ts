@@ -3,11 +3,15 @@
 import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
+const facilitiesFindManyMock = jest.fn();
 const createMock = jest.fn();
 const authUserFindUniqueMock = jest.fn();
 const prismaMock = {
   authUser: {
     findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
+  },
+  facilities: {
+    findMany: (...args: any[]) => facilitiesFindManyMock(...args),
   },
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
@@ -74,10 +78,55 @@ describe('/api/organizations', () => {
     expect(res.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith({
       where: { status: 'LISTED' },
-      take: 25,
+      take: 26,
+      skip: 0,
       orderBy: { name: 'asc' },
     });
     expect(json.organizations).toEqual([]);
+    expect(json.pagination).toEqual({
+      limit: 25,
+      offset: 0,
+      nextOffset: 0,
+      hasMore: false,
+    });
+  });
+
+  it('can include private organizations that have active affiliate rental facilities', async () => {
+    facilitiesFindManyMock.mockResolvedValue([
+      { organizationId: 'org_affiliate_rental' },
+      { organizationId: 'org_affiliate_rental' },
+    ]);
+    findManyMock.mockResolvedValue([
+      { id: 'org_affiliate_rental', name: 'Affiliate Rental Org', status: 'UNLISTED' },
+    ]);
+
+    const res = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?limit=25&includeAffiliateRentals=true',
+    ));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(facilitiesFindManyMock).toHaveBeenCalledWith({
+      where: {
+        affiliateUrl: { not: null },
+        status: 'ACTIVE',
+      },
+      select: { organizationId: true },
+    });
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { status: 'LISTED' },
+          { id: { in: ['org_affiliate_rental'] } },
+        ],
+      },
+      take: 26,
+      skip: 0,
+      orderBy: { name: 'asc' },
+    });
+    expect(json.organizations).toEqual([
+      expect.objectContaining({ $id: 'org_affiliate_rental', status: 'UNLISTED' }),
+    ]);
   });
 
   it('keeps unlisted organizations available for owner-scoped management lists', async () => {
@@ -91,7 +140,8 @@ describe('/api/organizations', () => {
     expect(res.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith({
       where: { ownerId: 'owner_1' },
-      take: 25,
+      take: 26,
+      skip: 0,
       orderBy: { name: 'asc' },
     });
     expect(json.organizations).toEqual([

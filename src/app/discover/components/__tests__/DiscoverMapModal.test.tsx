@@ -4,7 +4,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import DiscoverMapModal from '../DiscoverMapModal';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
-import type { Event } from '@/types';
+import type { Event, Organization } from '@/types';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 
 const VANCOUVER_WA_CENTER = { lat: 45.6387, lng: -122.6615 };
@@ -95,7 +95,7 @@ jest.mock('@/lib/organizationService', () => ({
 
 jest.mock('next/image', () => ({
   __esModule: true,
-  default: (props: any) => {
+  default: ({ unoptimized, ...props }: any) => {
     // eslint-disable-next-line @next/next/no-img-element
     return <img {...props} alt={props.alt ?? ''} />;
   },
@@ -176,6 +176,43 @@ const renderModal = (
     onOrganizationClick={jest.fn()}
   />,
 );
+
+const buildAffiliateRentalOrganization = (): Organization => ({
+  $id: 'org-affiliate-rentals',
+  name: 'Affiliate Rentals',
+  location: 'Vancouver, WA',
+  address: null,
+  description: 'External rental inventory',
+  logoId: null,
+  ownerId: 'owner-1',
+  website: 'https://example.com',
+  sports: ['Soccer'],
+  status: 'UNLISTED',
+  coordinates: [VANCOUVER_WA_CENTER.lng, VANCOUVER_WA_CENTER.lat],
+  productIds: [],
+  fields: [],
+  facilities: [
+    {
+      $id: 'facility-affiliate',
+      name: 'Affiliate Indoor Court',
+      organizationId: 'org-affiliate-rentals',
+      location: 'Vancouver, WA',
+      address: '100 Main St, Vancouver, WA',
+      coordinates: [VANCOUVER_WA_CENTER.lng, VANCOUVER_WA_CENTER.lat],
+      operatingHours: null,
+      timeZone: 'America/Los_Angeles',
+      status: 'ACTIVE',
+      isDefault: false,
+      sortOrder: null,
+      affiliateUrl: 'https://example.com/book',
+    },
+  ],
+  events: [],
+  teams: [],
+  officials: [],
+  hosts: [],
+  products: [],
+} as unknown as Organization);
 
 function CurrentLocationHarness() {
   const [location, setLocation] = useState(VANCOUVER_WA_CENTER);
@@ -318,5 +355,34 @@ describe('DiscoverMapModal', () => {
 
     expect(await screen.findByText('Riverside FC Pickup')).toBeInTheDocument();
     expect(screen.getByText('Cascade Crew Clinic')).toBeInTheDocument();
+  });
+
+  it('shows affiliate rental facilities on the rentals map and opens their affiliate URL', async () => {
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    mockedOrganizationService.listOrganizationsWithFields.mockResolvedValue([
+      buildAffiliateRentalOrganization(),
+    ]);
+
+    renderModal();
+
+    await waitFor(() => {
+      expect(mockedOrganizationService.listOrganizationsWithFields).toHaveBeenCalledWith(
+        100,
+        { includeAffiliateRentals: true },
+      );
+    });
+
+    fireEvent.change(screen.getAllByLabelText('Map search category')[0], {
+      target: { value: 'Rentals' },
+    });
+    fireEvent.click(await screen.findByText('Rentals'));
+
+    const marker = await screen.findByRole('button', { name: 'Affiliate Indoor Court' });
+    fireEvent.click(marker);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open booking' }));
+
+    expect(openSpy).toHaveBeenCalledWith('https://example.com/book', '_blank', 'noopener,noreferrer');
+    openSpy.mockRestore();
   });
 });

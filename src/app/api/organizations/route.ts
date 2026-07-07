@@ -122,8 +122,10 @@ export async function GET(req: NextRequest) {
   const ownerId = params.get('ownerId');
   const userId = params.get('userId');
   const limit = Number(params.get('limit') || '100');
+  const offset = Number(params.get('offset') || '0');
   const query = normalizeSearchQuery(params.get('query'));
   const normalizedQuery = query.toLowerCase();
+  const includeAffiliateRentals = params.get('includeAffiliateRentals') === 'true';
 
   if (userId) {
     const session = await requireSession(req);
@@ -133,7 +135,8 @@ export async function GET(req: NextRequest) {
   }
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
-  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 1000) : 100;
+  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 200) : 100;
+  const normalizedOffset = Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0;
 
   const accessibleOrganizationIds = userId
     ? Array.from(
@@ -146,11 +149,35 @@ export async function GET(req: NextRequest) {
     )
     : [];
 
+  const applyListedOnlyFilter = shouldApplyListedOnlyFilter({ ids, ownerId, userId });
+  const affiliateRentalOrganizationIds = includeAffiliateRentals && applyListedOnlyFilter
+    ? Array.from(
+      new Set(
+        (await prisma.facilities.findMany({
+          where: {
+            affiliateUrl: { not: null },
+            status: 'ACTIVE',
+          },
+          select: { organizationId: true },
+        }))
+          .map((row) => row.organizationId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    )
+    : [];
+
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (ownerId) where.ownerId = ownerId;
-  if (shouldApplyListedOnlyFilter({ ids, ownerId, userId })) {
-    where.status = DEFAULT_ORGANIZATION_STATUS;
+  if (applyListedOnlyFilter) {
+    if (affiliateRentalOrganizationIds.length) {
+      where.OR = [
+        { status: DEFAULT_ORGANIZATION_STATUS },
+        { id: { in: affiliateRentalOrganizationIds } },
+      ];
+    } else {
+      where.status = DEFAULT_ORGANIZATION_STATUS;
+    }
   }
   if (userId) {
     where.OR = [
@@ -176,13 +203,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const requestedTake = normalizedLimit + 1;
   const candidateTake = query.length > 0
-    ? Math.min(Math.max(normalizedLimit * 5, 40), 500)
-    : normalizedLimit;
+    ? Math.max((normalizedOffset + requestedTake) * 5, 40)
+    : requestedTake;
 
   let organizations = await prisma.organizations.findMany({
     where,
     take: candidateTake,
+    ...(query.length > 0 ? {} : { skip: normalizedOffset }),
     orderBy: { name: 'asc' },
   });
 
@@ -197,10 +226,21 @@ export async function GET(req: NextRequest) {
         if (leftScore[3] !== rightScore[3]) return leftScore[3] - rightScore[3];
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
-      .slice(0, normalizedLimit);
+      .slice(normalizedOffset, normalizedOffset + requestedTake);
   }
 
-  return NextResponse.json({ organizations: withLegacyList(organizations) }, { status: 200 });
+  const pageRows = organizations.slice(0, normalizedLimit);
+  const hasMore = organizations.length > normalizedLimit;
+
+  return NextResponse.json({
+    organizations: withLegacyList(pageRows),
+    pagination: {
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      nextOffset: normalizedOffset + pageRows.length,
+      hasMore,
+    },
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

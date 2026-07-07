@@ -502,6 +502,18 @@ class TeamService {
         query: string = '',
         limit: number = 100,
     ): Promise<Team[]> {
+        const page = await this.searchOpenRegistrationTeamsPage(query, limit, 0);
+        return page.teams;
+    }
+
+    async searchOpenRegistrationTeamsPage(
+        query: string = '',
+        limit: number = 100,
+        offset: number = 0,
+    ): Promise<{
+        teams: Team[];
+        pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
+    }> {
         try {
             const params = new URLSearchParams();
             const normalizedQuery = query.trim();
@@ -510,13 +522,31 @@ class TeamService {
             }
             params.set('openRegistration', 'true');
             params.set('limit', String(limit));
-            const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
-            return (response.teams ?? [])
+            params.set('offset', String(Math.max(0, Math.trunc(offset))));
+            const response = await apiRequest<{
+                teams?: any[];
+                pagination?: { limit?: number; offset?: number; nextOffset?: number; hasMore?: boolean };
+            }>(`/api/teams?${params.toString()}`);
+            const teams = (response.teams ?? [])
                 .map((row: any) => this.mapRowToTeam(row))
                 .filter((team) => team.openRegistration === true);
+            return {
+                teams,
+                pagination: {
+                    limit,
+                    offset,
+                    nextOffset: typeof response.pagination?.nextOffset === 'number'
+                        ? response.pagination.nextOffset
+                        : offset + teams.length,
+                    hasMore: Boolean(response.pagination?.hasMore ?? teams.length === limit),
+                },
+            };
         } catch (error) {
             console.error('Failed to search open registration teams:', error);
-            return [];
+            return {
+                teams: [],
+                pagination: { limit, offset, nextOffset: offset, hasMore: false },
+            };
         }
     }
 

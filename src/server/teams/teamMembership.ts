@@ -722,6 +722,7 @@ export const listCanonicalTeamsForUser = async (params: {
   includeAdminOnly?: boolean;
   includeArchived?: boolean;
   limit?: number;
+  offset?: number;
 }, client: PrismaLike = prisma) => {
   if (params.ids?.length) {
     const teams = await listTeamsByIds(params.ids, client, { eventId: params.eventId });
@@ -779,6 +780,7 @@ export const listCanonicalTeamsForUser = async (params: {
     const rows = await getEventTeamsDelegate(client)?.findMany?.({
       where: andFilters.length ? { AND: andFilters } : undefined,
       take: params.limit ?? 100,
+      skip: params.offset ?? 0,
       orderBy: { name: 'asc' },
     }) ?? [];
     return (rows as EventTeamRow[]).map((row) => serializeLegacyEventTeam(row));
@@ -829,6 +831,7 @@ export const listCanonicalTeamsForUser = async (params: {
     const rows = await canonicalTeamsDelegate.findMany({
       where: Object.keys(where).length ? where : undefined,
       take: params.limit ?? 100,
+      skip: params.offset ?? 0,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     });
     return Promise.all((rows as CanonicalTeamRow[]).map((row) => loadCanonicalTeamById(row.id, client))).then((items) => items.filter(Boolean));
@@ -845,7 +848,7 @@ export const listCanonicalTeamsForUser = async (params: {
       && teamMatchesQuery(team as Record<string, unknown>)
       && (params.includeAdminOnly || !isAdminOnlyCanonicalTeam(team as Record<string, unknown>))
     ))
-    .slice(0, params.limit ?? 100);
+    .slice(params.offset ?? 0, (params.offset ?? 0) + (params.limit ?? 100));
 };
 
 export const getCanonicalTeamIdsByUserIds = async (

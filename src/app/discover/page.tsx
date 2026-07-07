@@ -1,6 +1,6 @@
 'use client';
 
-import { Dispatch, SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dispatch, RefObject, SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Alert,
@@ -57,6 +57,13 @@ type RentalListing = {
   distanceKm?: number;
 };
 
+type RentalCardEntry = {
+  key: string;
+  organization: Organization;
+  listings: RentalListing[];
+  actionLabel: string;
+};
+
 type OrganizationResult = {
   organization: Organization;
   distanceKm?: number;
@@ -66,6 +73,7 @@ type OrganizationResult = {
 type DiscoverTab = 'events' | 'organizations' | 'rentals' | 'teams';
 
 const EVENTS_LIMIT = 18;
+const DISCOVERY_PAGE_SIZE = 100;
 const DEFAULT_MAX_DISTANCE = 50;
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
@@ -199,6 +207,9 @@ function DiscoverPageContent() {
   const [rentalOrganizations, setRentalOrganizations] = useState<Organization[]>([]);
   const [rentalsLoaded, setRentalsLoaded] = useState(false);
   const [rentalsLoading, setRentalsLoading] = useState(false);
+  const [rentalsLoadingMore, setRentalsLoadingMore] = useState(false);
+  const [hasMoreRentals, setHasMoreRentals] = useState(true);
+  const [rentalOffset, setRentalOffset] = useState(0);
   const [rentalsError, setRentalsError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
   const [rentalsMaxDistance, setRentalsMaxDistance] = useState<number | null>(null);
@@ -209,6 +220,9 @@ function DiscoverPageContent() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsLoadingMore, setOrganizationsLoadingMore] = useState(false);
+  const [hasMoreOrganizations, setHasMoreOrganizations] = useState(true);
+  const [organizationOffset, setOrganizationOffset] = useState(0);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
   const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(null);
 
@@ -217,6 +231,9 @@ function DiscoverPageContent() {
    */
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsLoadingMore, setTeamsLoadingMore] = useState(false);
+  const [hasMoreTeams, setHasMoreTeams] = useState(true);
+  const [teamOffset, setTeamOffset] = useState(0);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [teamSelectedSports, setTeamSelectedSports] = useState<string[]>([]);
   const [teamSelectedDivisionTypeValues, setTeamSelectedDivisionTypeValues] = useState<string[]>([]);
@@ -263,6 +280,18 @@ function DiscoverPageContent() {
     const lng = typeof lngRaw === 'number' ? lngRaw : Number(lngRaw);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       return { lat, lng };
+    }
+    return null;
+  }, []);
+
+  const getFacilityCoordinates = useCallback((facility: Facility) => {
+    if (Array.isArray(facility.coordinates) && facility.coordinates.length >= 2) {
+      const [lng, lat] = facility.coordinates;
+      const latNum = typeof lat === 'number' ? lat : Number(lat);
+      const lngNum = typeof lng === 'number' ? lng : Number(lng);
+      if (Number.isFinite(latNum) && Number.isFinite(lngNum)) {
+        return { lat: latNum, lng: lngNum };
+      }
     }
     return null;
   }, []);
@@ -467,67 +496,147 @@ function DiscoverPageContent() {
   /**
    * Rentals fetching
    */
-  const loadRentals = useCallback(async () => {
-    if (rentalsLoaded || rentalsLoading) return;
-    setRentalsLoading(true);
+  const mergeOrganizationsById = useCallback((previous: Organization[], incoming: Organization[]) => {
+    const merged = new Map<string, Organization>();
+    previous.forEach((organization) => merged.set(organization.$id, organization));
+    incoming.forEach((organization) => merged.set(organization.$id, organization));
+    return Array.from(merged.values());
+  }, []);
+
+  const mergeTeamsById = useCallback((previous: Team[], incoming: Team[]) => {
+    const merged = new Map<string, Team>();
+    previous.forEach((team) => merged.set(team.$id, team));
+    incoming.forEach((team) => merged.set(team.$id, team));
+    return Array.from(merged.values());
+  }, []);
+
+  const loadRentals = useCallback(async (reset = false) => {
+    if (rentalsLoading || rentalsLoadingMore) return;
+    if (rentalsLoaded && !reset) return;
+    const nextOffset = reset ? 0 : rentalOffset;
+    if (!reset && !hasMoreRentals) return;
+    if (reset || !rentalsLoaded) {
+      setRentalsLoading(true);
+    } else {
+      setRentalsLoadingMore(true);
+    }
     setRentalsError(null);
     try {
-      const organizations = await organizationService.listOrganizationsWithFields();
-      setRentalOrganizations(organizations);
+      const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
+        includeAffiliateRentals: true,
+      });
+      setRentalOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
+      setRentalOffset(page.pagination.nextOffset);
+      setHasMoreRentals(page.pagination.hasMore);
       setRentalsLoaded(true);
     } catch (error) {
       console.error('Failed to load rentals:', error);
       setRentalsError('Failed to load rentals. Please try again.');
     } finally {
       setRentalsLoading(false);
+      setRentalsLoadingMore(false);
     }
-  }, [rentalsLoaded, rentalsLoading]);
+  }, [
+    hasMoreRentals,
+    mergeOrganizationsById,
+    rentalOffset,
+    rentalsLoaded,
+    rentalsLoading,
+    rentalsLoadingMore,
+  ]);
+
+  const loadMoreRentals = useCallback(() => {
+    void loadRentals(false);
+  }, [loadRentals]);
 
   /**
    * Organizations fetching
    */
-  const loadOrganizations = useCallback(async () => {
-    if (organizationsLoaded || organizationsLoading) return;
-    setOrganizationsLoading(true);
+  const loadOrganizations = useCallback(async (reset = false) => {
+    if (organizationsLoading || organizationsLoadingMore) return;
+    if (organizationsLoaded && !reset) return;
+    const nextOffset = reset ? 0 : organizationOffset;
+    if (!reset && !hasMoreOrganizations) return;
+    if (reset || !organizationsLoaded) {
+      setOrganizationsLoading(true);
+    } else {
+      setOrganizationsLoadingMore(true);
+    }
     setOrganizationsError(null);
     try {
-      const orgs = await organizationService.listOrganizationsWithFields();
-      setOrganizations(orgs);
+      const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset);
+      setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
+      setOrganizationOffset(page.pagination.nextOffset);
+      setHasMoreOrganizations(page.pagination.hasMore);
       setOrganizationsLoaded(true);
     } catch (error) {
       console.error('Failed to load organizations:', error);
       setOrganizationsError('Failed to load organizations. Please try again.');
     } finally {
       setOrganizationsLoading(false);
+      setOrganizationsLoadingMore(false);
     }
-  }, [organizationsLoaded, organizationsLoading]);
+  }, [
+    hasMoreOrganizations,
+    mergeOrganizationsById,
+    organizationOffset,
+    organizationsLoaded,
+    organizationsLoading,
+    organizationsLoadingMore,
+  ]);
 
-  const loadTeams = useCallback(async () => {
-    setTeamsLoading(true);
+  const loadMoreOrganizations = useCallback(() => {
+    void loadOrganizations(false);
+  }, [loadOrganizations]);
+
+  const loadTeams = useCallback(async (reset = false) => {
+    if (teamsLoading || teamsLoadingMore) return;
+    const nextOffset = reset ? 0 : teamOffset;
+    if (!reset && !hasMoreTeams) return;
+    if (reset || teams.length === 0) {
+      setTeamsLoading(true);
+    } else {
+      setTeamsLoadingMore(true);
+    }
     setTeamsError(null);
     try {
-      const rows = await teamService.searchOpenRegistrationTeams(searchTerm.trim(), 100);
-      setTeams(rows);
+      const page = await teamService.searchOpenRegistrationTeamsPage(searchTerm.trim(), DISCOVERY_PAGE_SIZE, nextOffset);
+      setTeams((previous) => reset ? page.teams : mergeTeamsById(previous, page.teams));
+      setTeamOffset(page.pagination.nextOffset);
+      setHasMoreTeams(page.pagination.hasMore);
     } catch (error) {
       console.error('Failed to load open registration teams:', error);
       setTeamsError('Failed to load teams. Please try again.');
     } finally {
       setTeamsLoading(false);
+      setTeamsLoadingMore(false);
     }
-  }, [searchTerm]);
+  }, [
+    hasMoreTeams,
+    mergeTeamsById,
+    searchTerm,
+    teamOffset,
+    teams.length,
+    teamsLoading,
+    teamsLoadingMore,
+  ]);
+
+  const loadMoreTeams = useCallback(() => {
+    void loadTeams(false);
+  }, [loadTeams]);
 
   const handleSearchSubmit = useCallback(() => {
     if (activeTab === 'events') {
       void loadFirstPage(searchTerm);
     }
     if (activeTab === 'organizations') {
-      void loadOrganizations();
+      void loadOrganizations(true);
     }
     if (activeTab === 'rentals') {
-      void loadRentals();
+      void loadRentals(true);
     }
     if (activeTab === 'teams') {
-      void loadTeams();
+      void loadTeams(true);
     }
   }, [activeTab, loadFirstPage, loadOrganizations, loadRentals, loadTeams, searchTerm]);
 
@@ -595,7 +704,7 @@ function DiscoverPageContent() {
   const handleSelectRentalOrganization = useCallback(
     (organization: Organization, listings: RentalListing[] = []) => {
       const affiliateFacilityListings = listings.filter((listing) => listing.kind === 'affiliateFacility');
-      if (affiliateFacilityListings.length === listings.length && affiliateFacilityListings.length === 1) {
+      if (affiliateFacilityListings.length === listings.length && affiliateFacilityListings.length > 0) {
         const affiliateUrl = affiliateFacilityListings[0]?.facility?.affiliateUrl?.trim();
         if (affiliateUrl) {
           window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
@@ -622,6 +731,9 @@ function DiscoverPageContent() {
   );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const organizationsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const rentalsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const teamsSentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!sentinelRef.current) return;
     const el = sentinelRef.current;
@@ -637,6 +749,33 @@ function DiscoverPageContent() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [loadMoreEvents]);
+
+  useEffect(() => {
+    const sentinelByTab: Partial<Record<DiscoverTab, HTMLDivElement | null>> = {
+      organizations: organizationsSentinelRef.current,
+      rentals: rentalsSentinelRef.current,
+      teams: teamsSentinelRef.current,
+    };
+    const loadMoreByTab: Partial<Record<DiscoverTab, () => void>> = {
+      organizations: loadMoreOrganizations,
+      rentals: loadMoreRentals,
+      teams: loadMoreTeams,
+    };
+    const el = sentinelByTab[activeTab];
+    const loadMore = loadMoreByTab[activeTab];
+    if (!el || !loadMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          loadMore();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, loadMoreOrganizations, loadMoreRentals, loadMoreTeams]);
 
   /**
    * Rentals derived data
@@ -662,9 +801,10 @@ function DiscoverPageContent() {
           facility,
           nextOccurrence: referenceDate,
         };
-        if (location && coordinates) {
+        const facilityCoordinates = getFacilityCoordinates(facility) ?? coordinates;
+        if (location && facilityCoordinates) {
           try {
-            listing.distanceKm = kmBetween(location, coordinates);
+            listing.distanceKm = kmBetween(location, facilityCoordinates);
           } catch {
             // ignore distance issues
           }
@@ -712,7 +852,7 @@ function DiscoverPageContent() {
     });
 
     return listings;
-  }, [rentalOrganizations, location, kmBetween, getOrgCoordinates]);
+  }, [rentalOrganizations, location, kmBetween, getOrgCoordinates, getFacilityCoordinates]);
 
   const defaultTimeRange = useMemo<[number, number]>(() => {
     if (!rentalListings.length) {
@@ -930,6 +1070,9 @@ function DiscoverPageContent() {
               defaultMaxDistance={DEFAULT_MAX_DISTANCE}
               results={organizationResults}
               loading={organizationsLoading}
+              loadingMore={organizationsLoadingMore}
+              hasMore={hasMoreOrganizations}
+              sentinelRef={organizationsSentinelRef}
               error={organizationsError}
               onSelectOrganization={handleSelectOrganization}
             />
@@ -943,6 +1086,9 @@ function DiscoverPageContent() {
               onOpenMap={() => setMapOpened(true)}
               location={location}
               rentalsLoading={rentalsLoading}
+              rentalsLoadingMore={rentalsLoadingMore}
+              hasMoreRentals={hasMoreRentals}
+              sentinelRef={rentalsSentinelRef}
               rentalsError={rentalsError}
               rentalListings={rentalListings}
               selectedSports={selectedSports}
@@ -969,6 +1115,9 @@ function DiscoverPageContent() {
               teams={filteredTeams}
               totalTeams={teams.length}
               loading={teamsLoading}
+              loadingMore={teamsLoadingMore}
+              hasMore={hasMoreTeams}
+              sentinelRef={teamsSentinelRef}
               error={teamsError}
               selectedSports={teamSelectedSports}
               setSelectedSports={setTeamSelectedSports}
@@ -1040,6 +1189,9 @@ function OrganizationsTabContent(props: {
   defaultMaxDistance: number;
   results: OrganizationResult[];
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  sentinelRef: RefObject<HTMLDivElement | null>;
   error: string | null;
   onSelectOrganization: (organization: Organization) => void;
 }) {
@@ -1059,6 +1211,9 @@ function OrganizationsTabContent(props: {
     defaultMaxDistance,
     results,
     loading,
+    loadingMore,
+    hasMore,
+    sentinelRef,
     error,
     onSelectOrganization,
   } = props;
@@ -1292,6 +1447,17 @@ function OrganizationsTabContent(props: {
               ))}
             </ResponsiveCardGrid>
           )}
+          <div ref={sentinelRef} aria-hidden="true" />
+          {loadingMore && (
+            <Group justify="center" py="md">
+              <Loader size="sm" />
+            </Group>
+          )}
+          {!hasMore && results.length > 0 && (
+            <Text size="sm" c="dimmed" ta="center">
+              No more organizations to load
+            </Text>
+          )}
         </div>
       </div>
     </div>
@@ -1306,6 +1472,9 @@ function TeamsTabContent(props: {
   teams: Team[];
   totalTeams: number;
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  sentinelRef: RefObject<HTMLDivElement | null>;
   error: string | null;
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
@@ -1325,6 +1494,9 @@ function TeamsTabContent(props: {
     teams,
     totalTeams,
     loading,
+    loadingMore,
+    hasMore,
+    sentinelRef,
     error,
     selectedSports,
     setSelectedSports,
@@ -1610,6 +1782,17 @@ function TeamsTabContent(props: {
               ))}
             </ResponsiveCardGrid>
           )}
+          <div ref={sentinelRef} aria-hidden="true" />
+          {loadingMore && (
+            <Group justify="center" py="md">
+              <Loader size="sm" />
+            </Group>
+          )}
+          {!hasMore && teams.length > 0 && (
+            <Text size="sm" c="dimmed" ta="center">
+              No more teams to load
+            </Text>
+          )}
         </div>
       </div>
     </div>
@@ -1623,6 +1806,9 @@ function RentalsTabContent(props: {
   onOpenMap: () => void;
   location: { lat: number; lng: number } | null;
   rentalsLoading: boolean;
+  rentalsLoadingMore: boolean;
+  hasMoreRentals: boolean;
+  sentinelRef: RefObject<HTMLDivElement | null>;
   rentalsError: string | null;
   rentalListings: RentalListing[];
   selectedSports: string[];
@@ -1645,6 +1831,9 @@ function RentalsTabContent(props: {
     onOpenMap,
     location,
     rentalsLoading,
+    rentalsLoadingMore,
+    hasMoreRentals,
+    sentinelRef,
     rentalsError,
     rentalListings,
     selectedSports,
@@ -1698,18 +1887,50 @@ function RentalsTabContent(props: {
     });
   }, [rentalListings, timeRange, selectedSports, location, maxDistance, activeQuery]);
 
-  const organizationsWithListings = useMemo(() => {
-    const map = new Map<string, { organization: Organization; listings: RentalListing[] }>();
+  const rentalCards = useMemo<RentalCardEntry[]>(() => {
+    const groupedSlots = new Map<string, { organization: Organization; listings: RentalListing[] }>();
+    const entries: RentalCardEntry[] = [];
+
     filteredListings.forEach((listing) => {
+      if (listing.kind === 'affiliateFacility' && listing.facility) {
+        const facilityName = listing.facility.name?.trim();
+        const facilityLocation = listing.facility.location?.trim();
+        entries.push({
+          key: `affiliate-${listing.organization.$id}-${listing.facility.$id}`,
+          organization: {
+            ...listing.organization,
+            name: facilityName || listing.organization.name,
+            location: facilityLocation || listing.organization.location,
+            address: listing.facility.address || listing.organization.address,
+            description: listing.organization.name === facilityName
+              ? listing.organization.description
+              : [listing.organization.name, listing.organization.description].filter(Boolean).join(' - '),
+          },
+          listings: [listing],
+          actionLabel: 'External booking',
+        });
+        return;
+      }
+
       const orgId = listing.organization.$id;
-      const existing = map.get(orgId);
+      const existing = groupedSlots.get(orgId);
       if (existing) {
         existing.listings.push(listing);
       } else {
-        map.set(orgId, { organization: listing.organization, listings: [listing] });
+        groupedSlots.set(orgId, { organization: listing.organization, listings: [listing] });
       }
     });
-    return Array.from(map.values());
+
+    Array.from(groupedSlots.values()).forEach((entry) => {
+      entries.push({
+        key: `organization-${entry.organization.$id}`,
+        organization: entry.organization,
+        listings: entry.listings,
+        actionLabel: `${entry.listings.length} rental${entry.listings.length === 1 ? '' : 's'} available`,
+      });
+    });
+
+    return entries;
   }, [filteredListings]);
 
   const activeFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
@@ -1871,7 +2092,7 @@ function RentalsTabContent(props: {
           searchLabel="Search rentals"
         />
         <Text size="sm" c="dimmed">
-          {organizationsWithListings.length} organization{organizationsWithListings.length === 1 ? '' : 's'} with rentals
+          {rentalCards.length} rental listing{rentalCards.length === 1 ? '' : 's'}
           {location ? ' near you.' : '.'}
         </Text>
       </Group>
@@ -1928,7 +2149,7 @@ function RentalsTabContent(props: {
 
           {rentalsLoading ? (
             <Loading text="Loading rentals..." />
-          ) : organizationsWithListings.length === 0 ? (
+          ) : rentalCards.length === 0 ? (
             <Paper withBorder p="xl" radius="md">
               <Text fw={600} mb={4}>
                 No rentals available
@@ -1939,19 +2160,30 @@ function RentalsTabContent(props: {
             </Paper>
           ) : (
             <ResponsiveCardGrid>
-              {organizationsWithListings.map(({ organization, listings }) => (
+              {rentalCards.map(({ key, organization, listings, actionLabel }) => (
                 <OrganizationCard
-                  key={organization.$id}
+                  key={key}
                   organization={organization}
                   onClick={() => onSelectOrganization(organization, listings)}
                   actions={
                     <Text size="xs" c="dimmed">
-                      {listings.length} rental{listings.length === 1 ? '' : 's'} available
+                      {actionLabel}
                     </Text>
                   }
                 />
               ))}
             </ResponsiveCardGrid>
+          )}
+          <div ref={sentinelRef} aria-hidden="true" />
+          {rentalsLoadingMore && (
+            <Group justify="center" py="md">
+              <Loader size="sm" />
+            </Group>
+          )}
+          {!hasMoreRentals && rentalCards.length > 0 && (
+            <Text size="sm" c="dimmed" ta="center">
+              No more rentals to load
+            </Text>
           )}
         </div>
       </div>

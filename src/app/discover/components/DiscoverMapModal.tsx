@@ -39,6 +39,7 @@ import { CalendarDays, Search, X } from 'lucide-react';
 import {
   Event,
   EventTag,
+  Facility,
   Field,
   Organization,
   TimeSlot,
@@ -60,9 +61,11 @@ type MapCenter = { lat: number; lng: number };
 type MapSearchTarget = 'events' | 'organizations' | 'rentals';
 
 type RentalMapListing = {
+  kind: 'slot' | 'affiliateFacility';
   organization: Organization;
-  field: Field;
-  slot: TimeSlot;
+  facility?: Facility;
+  field?: Field;
+  slot?: TimeSlot;
   nextOccurrence: Date;
   coordinates: MapCenter;
   distanceKm?: number;
@@ -84,6 +87,8 @@ type EventMarkerGroup = {
   position: MapCenter;
   events: Event[];
 };
+
+const DISCOVERY_PAGE_SIZE = 100;
 
 type DiscoverMapModalProps = {
   opened: boolean;
@@ -228,6 +233,32 @@ const getFieldCoordinates = (field: Field): MapCenter | null => {
     return { lat, lng };
   }
   return null;
+};
+
+const getFacilityCoordinates = (facility: Facility): MapCenter | null => {
+  if (Array.isArray(facility.coordinates) && facility.coordinates.length >= 2) {
+    const [lng, lat] = facility.coordinates;
+    const latNum = typeof lat === 'number' ? lat : Number(lat);
+    const lngNum = typeof lng === 'number' ? lng : Number(lng);
+    if (Number.isFinite(latNum) && Number.isFinite(lngNum)) {
+      return { lat: latNum, lng: lngNum };
+    }
+  }
+  return null;
+};
+
+const getRentalListingId = (rental: RentalMapListing): string => {
+  if (rental.kind === 'affiliateFacility') {
+    return `${rental.organization.$id}:facility:${rental.facility?.$id ?? 'affiliate'}`;
+  }
+  return `${rental.organization.$id}:${rental.field?.$id ?? 'field'}:${rental.slot?.$id ?? 'slot'}`;
+};
+
+const getRentalListingName = (rental: RentalMapListing): string => {
+  if (rental.kind === 'affiliateFacility') {
+    return rental.facility?.name || rental.organization.name;
+  }
+  return rental.field?.name || rental.organization.name;
 };
 
 const getEventCoordinates = (event: Event): MapCenter | null => {
@@ -685,7 +716,7 @@ export default function DiscoverMapModal({
           tags: selectedTags.length > 0 ? selectedTags : undefined,
           sports: selectedSports.length > 0 ? selectedSports : undefined,
         }, 100, 0),
-        organizationService.listOrganizationsWithFields(),
+        organizationService.listOrganizationsWithFields(DISCOVERY_PAGE_SIZE, { includeAffiliateRentals: true }),
       ]);
 
       const orgsWithDistance = orgs
@@ -703,8 +734,25 @@ export default function DiscoverMapModal({
 
       const referenceDate = new Date();
       const rentalRows: RentalMapListing[] = [];
-      orgsWithDistance.forEach(({ organization }) => {
+      orgs.forEach((organization) => {
         const orgCoordinates = getOrgCoordinates(organization);
+        (organization.facilities ?? []).forEach((facility) => {
+          const affiliateUrl = typeof facility.affiliateUrl === 'string' ? facility.affiliateUrl.trim() : '';
+          if (!affiliateUrl) return;
+          if (String(facility.status ?? 'ACTIVE').trim().toUpperCase() !== 'ACTIVE') return;
+          const facilityCoordinates = getFacilityCoordinates(facility) ?? orgCoordinates;
+          if (!facilityCoordinates) return;
+          const distanceKm = kmBetween(nextCenter, facilityCoordinates);
+          if (distanceKm > mapSearchRadiusKm) return;
+          rentalRows.push({
+            kind: 'affiliateFacility',
+            organization,
+            facility,
+            nextOccurrence: referenceDate,
+            coordinates: facilityCoordinates,
+            distanceKm,
+          });
+        });
         (organization.fields ?? []).forEach((field) => {
           const fieldCoordinates = getFieldCoordinates(field) ?? orgCoordinates;
           if (!fieldCoordinates) return;
@@ -714,6 +762,7 @@ export default function DiscoverMapModal({
             const distanceKm = kmBetween(nextCenter, fieldCoordinates);
             if (distanceKm > mapSearchRadiusKm) return;
             rentalRows.push({
+              kind: 'slot',
               organization,
               field,
               slot,
@@ -974,12 +1023,16 @@ export default function DiscoverMapModal({
     }
 
     visibleRentals.forEach((rental) => {
-      const text = `${rental.organization.name} ${rental.field.name ?? ''} ${rental.field.location ?? ''}`.toLowerCase();
+      const rentalName = getRentalListingName(rental);
+      const rentalLocation = rental.kind === 'affiliateFacility'
+        ? rental.facility?.location ?? ''
+        : rental.field?.location ?? '';
+      const text = `${rental.organization.name} ${rentalName} ${rentalLocation}`.toLowerCase();
       if (text.includes(query)) {
         results.push({
           type: 'rental' as const,
-          id: `${rental.organization.$id}:${rental.field.$id}:${rental.slot.$id}`,
-          label: rental.field.name || rental.organization.name,
+          id: getRentalListingId(rental),
+          label: rentalName,
           description: rental.organization.name,
           coordinates: rental.coordinates,
           rental,
@@ -1103,7 +1156,7 @@ export default function DiscoverMapModal({
     ? organizations.find((organization) => organization.$id === selected.id) ?? null
     : null;
   const selectedRental = selected?.type === 'rental'
-    ? rentals.find((rental) => `${rental.organization.$id}:${rental.field.$id}:${rental.slot.$id}` === selected.id) ?? null
+    ? rentals.find((rental) => getRentalListingId(rental) === selected.id) ?? null
     : null;
 
   return (
@@ -1523,14 +1576,15 @@ export default function DiscoverMapModal({
               );
             })}
             {visibleRentals.map((rental) => {
-              const id = `${rental.organization.$id}:${rental.field.$id}:${rental.slot.$id}`;
+              const id = getRentalListingId(rental);
+              const rentalName = getRentalListingName(rental);
               return (
                 <MapEntityMarker
                   key={`rental-${id}`}
                   position={rental.coordinates}
-                  title={rental.field.name || rental.organization.name}
+                  title={rentalName}
                   markerStyle={MARKER_STYLES.rentals}
-                  initials={getInitials(rental.organization.name, MARKER_STYLES.rentals.shortLabel)}
+                  initials={getInitials(rentalName, MARKER_STYLES.rentals.shortLabel)}
                   imageUrl={getOrganizationAvatarUrl(rental.organization, 64)}
                   zIndex={10}
                   clickTargetIcon={markerClickTargetIcon}
@@ -1643,7 +1697,7 @@ export default function DiscoverMapModal({
                       className="discover-map-card-avatar"
                     />
                     <div>
-                      <strong>{selectedRental.field.name || selectedRental.organization.name}</strong>
+                      <strong>{getRentalListingName(selectedRental)}</strong>
                       <span>{selectedRental.organization.name}</span>
                     </div>
                   </div>
@@ -1651,11 +1705,19 @@ export default function DiscoverMapModal({
                   <button
                     type="button"
                     onClick={() => {
+                      if (selectedRental.kind === 'affiliateFacility') {
+                        const affiliateUrl = selectedRental.facility?.affiliateUrl?.trim();
+                        if (affiliateUrl) {
+                          window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
+                          setSelected(null);
+                          return;
+                        }
+                      }
                       onClose();
                       onOrganizationClick(selectedRental.organization);
                     }}
                   >
-                    View rentals
+                    {selectedRental.kind === 'affiliateFacility' ? 'Open booking' : 'View rentals'}
                   </button>
                 </div>
               </InfoWindowF>

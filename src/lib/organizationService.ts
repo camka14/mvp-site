@@ -507,18 +507,54 @@ class OrganizationService {
     return this.fetchOrganizationById(id, 'eventForm');
   }
 
-  async listOrganizationsWithFields(limit: number = 100): Promise<Organization[]> {
+  async listOrganizationsWithFieldsPage(
+    limit: number = 100,
+    offset: number = 0,
+    options: { includeAffiliateRentals?: boolean } = {},
+  ): Promise<{
+    organizations: Organization[];
+    pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
+  }> {
     try {
       const params = new URLSearchParams();
       params.set('limit', String(limit));
-      const response = await apiRequest<{ organizations?: AnyRow[] }>(`/api/organizations?${params.toString()}`);
+      params.set('offset', String(Math.max(0, Math.trunc(offset))));
+      if (options.includeAffiliateRentals) {
+        params.set('includeAffiliateRentals', 'true');
+      }
+      const response = await apiRequest<{
+        organizations?: AnyRow[];
+        pagination?: { limit?: number; offset?: number; nextOffset?: number; hasMore?: boolean };
+      }>(`/api/organizations?${params.toString()}`);
       const rows = Array.isArray(response.organizations) ? (response.organizations as AnyRow[]) : [];
       const organizations = rows.map((row) => this.mapRowToOrganization(row));
-      return Promise.all(organizations.map((org) => this.withRelations(org)));
+      const hydrated = await Promise.all(organizations.map((org) => this.withRelations(org)));
+      return {
+        organizations: hydrated,
+        pagination: {
+          limit,
+          offset,
+          nextOffset: typeof response.pagination?.nextOffset === 'number'
+            ? response.pagination.nextOffset
+            : offset + hydrated.length,
+          hasMore: Boolean(response.pagination?.hasMore ?? hydrated.length === limit),
+        },
+      };
     } catch (error) {
       console.error('Failed to list organizations with fields:', error);
-      return [];
+      return {
+        organizations: [],
+        pagination: { limit, offset, nextOffset: offset, hasMore: false },
+      };
     }
+  }
+
+  async listOrganizationsWithFields(
+    limit: number = 100,
+    options: { includeAffiliateRentals?: boolean } = {},
+  ): Promise<Organization[]> {
+    const page = await this.listOrganizationsWithFieldsPage(limit, 0, options);
+    return page.organizations;
   }
 
   private async withEventFormRelations(organization: Organization): Promise<Organization> {

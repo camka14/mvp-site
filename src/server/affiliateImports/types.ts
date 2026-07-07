@@ -33,6 +33,9 @@ export const fieldMappingSchema = z.object({
     'absoluteUrl',
     'telerikPostBackUrl',
     'previousDaySectionDateTime',
+    'venueFromLocationText',
+    'addressFromLocationText',
+    'cityFromLocationText',
   ]).optional(),
 });
 

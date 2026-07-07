@@ -29,6 +29,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import Loading from '@/components/ui/Loading';
 import { Event, EventTag, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { trackEventClicked } from '@/lib/analytics/eventAnalytics';
 import DiscoverSearchControls from './DiscoverSearchControls';
 
 const EVENT_SORT_OPTIONS = [
@@ -642,7 +643,10 @@ export default function EventsTabContent<TEventType extends string = Event['even
                     event={event}
                     showDistance={Boolean(location)}
                     userLocation={location}
-                    onClick={() => onEventClick(event)}
+                    onClick={() => {
+                      trackEventClicked(event, 'discover_events');
+                      onEventClick(event);
+                    }}
                   />
                 ))}
               </ResponsiveCardGrid>

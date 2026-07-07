@@ -87,4 +87,36 @@ describe('organizationService', () => {
       }),
     ]);
   });
+
+  it('requests affiliate rental organizations when listing organizations with fields for rentals', async () => {
+    apiRequestMock.mockImplementation(async (url) => {
+      if (String(url).startsWith('/api/organizations?')) {
+        return {
+          organizations: [
+            {
+              $id: 'org_affiliate_rental',
+              id: 'org_affiliate_rental',
+              name: 'Affiliate Rental Org',
+              ownerId: 'owner_1',
+              productIds: [],
+            },
+          ],
+        };
+      }
+      if (String(url).startsWith('/api/facilities?')) {
+        return { facilities: [] };
+      }
+      return {};
+    });
+    listFieldsMock.mockResolvedValue([]);
+
+    const organizations = await organizationService.listOrganizationsWithFields(100, {
+      includeAffiliateRentals: true,
+    });
+
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/organizations?limit=100&offset=0&includeAffiliateRentals=true');
+    expect(organizations).toEqual([
+      expect.objectContaining({ $id: 'org_affiliate_rental', name: 'Affiliate Rental Org' }),
+    ]);
+  });
 });

@@ -290,6 +290,87 @@ const normalizePriceTextValue = (value: string): string => {
   return `$${amount.toFixed(2)}`;
 };
 
+type LocationParts = {
+  venueName: string | null;
+  address: string | null;
+  city: string | null;
+};
+
+const STREET_SUFFIX_PATTERN = [
+  'Avenue',
+  'Ave',
+  'Boulevard',
+  'Blvd',
+  'Circle',
+  'Cir',
+  'Court',
+  'Ct',
+  'Drive',
+  'Dr',
+  'Lane',
+  'Ln',
+  'Loop',
+  'Parkway',
+  'Pkwy',
+  'Place',
+  'Pl',
+  'Road',
+  'Rd',
+  'Street',
+  'St',
+  'Way',
+].join('|');
+
+const normalizeLocationCity = (value: string | null): string | null => {
+  if (!value) return null;
+  const city = normalizeWhitespace(value.replace(/\b(?:OR|Oregon|USA|United States)\b\.?/gi, '')).replace(/,\s*$/, '');
+  return city.length > 0 ? city : null;
+};
+
+const parseVenueAddressFromLocationText = (value: string): LocationParts => {
+  const normalized = normalizeWhitespace(value.replace(/[–—]/g, '-'));
+  const streetPattern = new RegExp(
+    `\\b(\\d{1,6}\\s+(?:(?:N|NE|NW|S|SE|SW|E|W)\\s+)?[A-Za-z0-9 ']+?\\b(?:${STREET_SUFFIX_PATTERN})(?:\\s*-\\s*[A-Za-z][A-Za-z .]+|\\s+[A-Za-z][A-Za-z .]+)?)`,
+    'gi',
+  );
+  const streetMatches = Array.from(normalized.matchAll(streetPattern));
+  const streetMatch = streetMatches[streetMatches.length - 1];
+  if (!streetMatch?.[1] || streetMatch.index == null) {
+    return { venueName: null, address: null, city: null };
+  }
+
+  const venueText = normalized.slice(0, streetMatch.index).replace(/\s*-\s*$/, '').replace(/[.\s]+$/, '');
+  const sentenceParts = venueText.split(/\.\s*/).map(normalizeWhitespace).filter(Boolean);
+  const venueSentence = sentenceParts[sentenceParts.length - 1] ?? venueText;
+  const venueDashParts = venueSentence.split(/\s*-\s*/).map(normalizeWhitespace).filter(Boolean);
+  const venueName = venueDashParts[venueDashParts.length - 1]?.replace(/^\d{1,2}:\d{2}\s*[AP]M\s*-\s*/i, '') ?? null;
+
+  let street = normalizeWhitespace(streetMatch[1]);
+  let city: string | null = null;
+  const dashCity = street.match(/^(.*?)\s*-\s*([A-Za-z][A-Za-z .]+)$/);
+  if (dashCity?.[1] && dashCity[2]) {
+    street = normalizeWhitespace(dashCity[1]);
+    city = normalizeLocationCity(dashCity[2]);
+  } else {
+    const suffixCityPattern = new RegExp(`^(.*\\b(?:${STREET_SUFFIX_PATTERN})\\b)\\s+([A-Za-z][A-Za-z .]+)$`, 'i');
+    const suffixCity = street.match(suffixCityPattern);
+    if (suffixCity?.[1] && suffixCity[2]) {
+      street = normalizeWhitespace(suffixCity[1]);
+      city = normalizeLocationCity(suffixCity[2]);
+    }
+  }
+
+  const address = city
+    ? `${street}, ${city}${/\b(?:OR|Oregon)\b/i.test(city) ? '' : ', OR'}`
+    : street;
+
+  return {
+    venueName: venueName && venueName.length > 0 ? venueName : null,
+    address,
+    city: city ? `${city}${/\b(?:OR|Oregon)\b/i.test(city) ? '' : ', OR'}` : null,
+  };
+};
+
 const cloneElementWithoutExcludedSelectors = (element: Element, mapping: FieldMapping): Element => {
   if (!mapping.excludeSelectors?.length) return element;
   const clone = element.cloneNode(true) as Element;
@@ -356,6 +437,12 @@ const extractFieldValue = (
     value = parsePreviousDaySectionDateTimeValue(element, value, referenceDate);
   } else if (transform === 'priceText') {
     value = normalizePriceTextValue(value);
+  } else if (transform === 'venueFromLocationText') {
+    value = parseVenueAddressFromLocationText(value).venueName ?? '';
+  } else if (transform === 'addressFromLocationText') {
+    value = parseVenueAddressFromLocationText(value).address ?? '';
+  } else if (transform === 'cityFromLocationText') {
+    value = parseVenueAddressFromLocationText(value).city ?? '';
   } else {
     value = normalizeWhitespace(value);
   }

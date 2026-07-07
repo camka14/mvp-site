@@ -479,6 +479,24 @@ describe('extractAffiliateCandidatesFromPage', () => {
         statusText: { selector: '.spot-count', mode: 'text' },
         description: { selector: '.blurb-text', mode: 'text' },
         maxParticipantsText: { selector: '.blurb-text', mode: 'text' },
+        venueName: {
+          selector: 'input[name^="location"]',
+          mode: 'attribute',
+          attribute: 'value',
+          transform: 'venueFromLocationText',
+        },
+        address: {
+          selector: 'input[name^="location"]',
+          mode: 'attribute',
+          attribute: 'value',
+          transform: 'addressFromLocationText',
+        },
+        city: {
+          selector: 'input[name^="location"]',
+          mode: 'attribute',
+          attribute: 'value',
+          transform: 'cityFromLocationText',
+        },
         currentParticipantsText: {
           selector: '.roster-toggle-btn',
           mode: 'text',
@@ -497,6 +515,9 @@ describe('extractAffiliateCandidatesFromPage', () => {
       statusText: '13 spots available',
       description: 'This is a 54 minute game with a gym supervisor and 14 players divided onto 2 teams.',
       maxParticipantsText: 'This is a 54 minute game with a gym supervisor and 14 players divided onto 2 teams.',
+      venueName: 'Columbia Christian School',
+      address: '205 NE 92nd Avenue, Portland, OR',
+      city: 'Portland, OR',
       currentParticipantsText: '1',
       spotsRemainingText: '13 spots available',
     });
