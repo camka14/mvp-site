@@ -943,6 +943,53 @@ const normalizePersistedCoordinates = (value: unknown): [number, number] | null 
   return [lng, lat];
 };
 
+const uniqueStrings = (values: Array<string | null | undefined>): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach((value) => {
+    const normalized = nullableString(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
+  return result;
+};
+
+const buildAffiliateGeocodeQueries = (params: {
+  location?: string | null;
+  address?: string | null;
+  city?: string | null;
+}): string[] => {
+  const location = nullableString(params.location);
+  const address = nullableString(params.address);
+  const city = nullableString(params.city);
+  const fullAddress = address && city && !address.toLowerCase().includes(city.toLowerCase())
+    ? `${address}, ${city}`
+    : address;
+
+  return uniqueStrings([
+    fullAddress,
+    location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
+      ? `${location}, ${fullAddress}`
+      : null,
+    location && city && !location.toLowerCase().includes(city.toLowerCase())
+      ? `${location}, ${city}`
+      : null,
+    city,
+    location,
+  ]);
+};
+
+const geocodeFirstAvailableAddress = async (queries: string[]): Promise<[number, number] | null> => {
+  for (const query of queries) {
+    const coordinates = await geocodeAddressToCoordinates(query);
+    if (coordinates) return coordinates;
+  }
+  return null;
+};
+
 const buildAffiliateEventData = async (
   candidate: any,
   source: { id: string; organizationId?: string | null; name?: string | null },
@@ -974,10 +1021,8 @@ const buildAffiliateEventData = async (
     ?? 'Location TBD';
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
-  const geocodeAddress = address && city && !address.toLowerCase().includes(city.toLowerCase())
-    ? `${address}, ${city}`
-    : address ?? location;
-  const coordinates = await geocodeAddressToCoordinates(geocodeAddress)
+  const geocodeQueries = buildAffiliateGeocodeQueries({ location, address, city });
+  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries)
     ?? normalizePersistedCoordinates(fallbackCoordinates);
   const organizerName = nullableString(candidate.organizerName) ?? nullableString(source.name);
 

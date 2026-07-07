@@ -274,6 +274,7 @@ const sourceDefinitions: SourceDefinition[] = [
         formatLabel: 'Adult recreational league',
         city: 'Portland, OR',
         venueName: 'Portland metro area',
+        address: 'Portland, OR',
         timeZone: 'America/Los_Angeles',
         scheduleText: 'OutLoud Sports Portland lists current league registration on its official LeagueApps page.',
         dateDisplayMode: 'ONGOING',

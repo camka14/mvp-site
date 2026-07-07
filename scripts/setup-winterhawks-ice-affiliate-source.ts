@@ -25,6 +25,8 @@ const HOME_URL = 'https://wicadulthockey.sportngin.com/';
 const SHERWOOD_REGISTRATION_URL = 'https://wicadulthockey.sportngin.com/register/form/297110702';
 const BEAVERTON_REGISTRATION_URL = 'https://wicadulthockey.sportngin.com/register/form/412044013';
 const LOGO_SOURCE_URL = 'https://cdn2.sportngin.com/attachments/logo_graphic/58bc-208869756/WIClogomain_medium.png';
+const SHERWOOD_ICE_ADDRESS = '20407 SW Borchers Dr, Sherwood, OR 97140';
+const BEAVERTON_ICE_ADDRESS = '9250 SW Beaverton Hillsdale Hwy, Beaverton, OR 97005';
 
 const mapping: AffiliateScrapeMapping = {
   kind: 'EVENT',
@@ -56,6 +58,7 @@ const mapping: AffiliateScrapeMapping = {
       formatLabel: 'Adult hockey league',
       city: 'Sherwood, OR',
       venueName: 'Winterhawks ICE Center - Sherwood',
+      address: SHERWOOD_ICE_ADDRESS,
       timeZone: 'America/Los_Angeles',
       scheduleText: 'Fall 2026 Sherwood adult leagues include 35 and Over Draft on Mondays, All Levels Draft on Saturdays, Gold on Thursdays, Silver AA on Sundays, Silver A on Wednesdays, Silver BB on Saturdays, Silver B on Sundays, Silver C on Fridays, and Bronze on Tuesdays.',
       dateDisplayMode: 'NO_FIXED_DATE',
@@ -127,6 +130,7 @@ const mapping: AffiliateScrapeMapping = {
       formatLabel: 'Adult hockey league',
       city: 'Beaverton, OR',
       venueName: 'Winterhawks ICE Center - Beaverton/VMC',
+      address: BEAVERTON_ICE_ADDRESS,
       timeZone: 'America/Los_Angeles',
       scheduleText: 'Fall 2026 Beaverton/VMC adult leagues include Div 2 on Tuesday/Wednesday, Div 3 on Saturday, Div 4 on Friday, 35 and Over Draft on Monday, 50 and Over on Thursday, PUHL Competition on Sunday, PUHL Recreational on Sunday, and PUHL Novice on Wednesday.',
       dateDisplayMode: 'NO_FIXED_DATE',
@@ -339,6 +343,10 @@ const upsertSourceAndMapping = async () => {
       robotsAllowed: true,
       robotsNote: 'robots.txt allows normal public pages and disallows /users/, /event/show_day, and deep /event/* calendar paths. Content signals reserve AI training but allow search/reference use.',
       logoSourceUrl: LOGO_SOURCE_URL,
+      addressSources: {
+        sherwood: 'Winterhawks ICE Center - Sherwood public rink listings',
+        beaverton: 'Winterhawks Skating Center public rink listings',
+      },
     },
   };
 

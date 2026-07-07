@@ -327,7 +327,7 @@ const normalizeLocationCity = (value: string | null): string | null => {
   return city.length > 0 ? city : null;
 };
 
-const parseVenueAddressFromLocationText = (value: string): LocationParts => {
+export const parseVenueAddressFromLocationText = (value: string): LocationParts => {
   const normalized = normalizeWhitespace(value.replace(/[–—]/g, '-'));
   const streetPattern = new RegExp(
     `\\b(\\d{1,6}\\s+(?:(?:N|NE|NW|S|SE|SW|E|W)\\s+)?[A-Za-z0-9 ']+?\\b(?:${STREET_SUFFIX_PATTERN})(?:\\s*-\\s*[A-Za-z][A-Za-z .]+|\\s+[A-Za-z][A-Za-z .]+)?)`,

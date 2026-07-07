@@ -676,6 +676,49 @@ describe('affiliate import service', () => {
     }));
   });
 
+  it('falls back to venue plus address when the plain affiliate event address does not geocode', async () => {
+    geocodeAddressToCoordinatesMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce([-122.801, 45.488]);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_venue_address',
+      sourceId: 'source_1',
+      listingKind: 'EVENT',
+      title: 'Thursday Team Play',
+      organizerName: 'Rose City Volleyball',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Beaverton Hoop YMCA',
+      city: 'Beaverton, OR',
+      address: '9685 SW Harvest Court',
+      startsAt: new Date('2099-07-01T18:00:00.000Z'),
+      endsAt: null,
+      officialActionUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
+      sourceUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city_volleyball',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city_volleyball' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_venue_address' });
+
+    await publishAffiliateCandidate('candidate_venue_address', { publishedByUserId: 'admin_1' });
+
+    expect(geocodeAddressToCoordinatesMock).toHaveBeenNthCalledWith(1, '9685 SW Harvest Court, Beaverton, OR');
+    expect(geocodeAddressToCoordinatesMock).toHaveBeenNthCalledWith(2, 'Beaverton Hoop YMCA, 9685 SW Harvest Court, Beaverton, OR');
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        coordinates: [-122.801, 45.488],
+      }),
+    });
+  });
+
   it('reuses an existing affiliate event occurrence when a later scrape candidate is published', async () => {
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.539, 45.387]);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
