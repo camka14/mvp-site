@@ -67,6 +67,7 @@ const eventRow = (id: string, name = 'Unrelated event') => ({
   location: 'Court 1',
   start: new Date('2026-06-01T18:00:00.000Z'),
   end: new Date('2026-06-01T20:00:00.000Z'),
+  coordinates: [-122.6784, 45.5152],
   state: 'PUBLISHED',
   eventType: 'EVENT',
   parentEvent: null,
@@ -249,7 +250,7 @@ describe('POST /api/events/search', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      take: 3,
+      take: 100,
       skip: 0,
     }));
     expect(prismaMock.events.count).toHaveBeenCalledWith({
@@ -297,6 +298,7 @@ describe('POST /api/events/search', () => {
     prismaMock.events.findMany.mockResolvedValue([
       { ...eventRow('near'), coordinates: [-122.6784, 45.5152] },
       { ...eventRow('far'), coordinates: [-74.006, 40.7128] },
+      { ...eventRow('placeholder'), coordinates: [0, 0] },
     ]);
 
     const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
@@ -317,5 +319,53 @@ describe('POST /api/events/search', () => {
     expect(prismaMock.events.count).not.toHaveBeenCalled();
     expect(json.events.map((event: any) => event.$id)).toEqual(['near']);
     expect(json.pagination).toEqual({ hasMore: false, nextOffset: 1, totalCount: 1 });
+  });
+
+  it('excludes placeholder coordinates from non-distance event discovery', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      { ...eventRow('bad'), coordinates: [0, 0] },
+      { ...eventRow('good'), coordinates: [-122.6784, 45.5152] },
+    ]);
+    prismaMock.events.count.mockResolvedValue(2);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events.map((event: any) => event.$id)).toEqual(['good']);
+  });
+
+  it('ignores distance filtering when the provided user location is a placeholder coordinate', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      { ...eventRow('good'), coordinates: [-122.6784, 45.5152] },
+      { ...eventRow('bad'), coordinates: [0, 0] },
+    ]);
+    prismaMock.events.count.mockResolvedValue(2);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {
+          userLocation: { lat: 0, lng: 0 },
+          maxDistance: 10,
+        },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events.map((event: any) => event.$id)).toEqual(['good']);
+    expect(json.pagination).toEqual({ hasMore: false, nextOffset: 1, totalCount: 2 });
   });
 });

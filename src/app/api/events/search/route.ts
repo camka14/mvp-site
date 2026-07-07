@@ -56,6 +56,22 @@ const emptyEventsResponse = (offset: number) => NextResponse.json(
   { status: 200 },
 );
 
+const isUsableCoordinatePair = (coords: unknown): coords is [number, number] => {
+  if (!Array.isArray(coords) || coords.length < 2) return false;
+  const [lng, lat] = coords;
+  if (typeof lng !== 'number' || typeof lat !== 'number') return false;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
+  return !(lat === 0 && lng === 0);
+};
+
+const isUsableUserLocation = (lat: unknown, lon: unknown): boolean => {
+  if (typeof lat !== 'number' || typeof lon !== 'number') return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return false;
+  return !(lat === 0 && lon === 0);
+};
+
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
   if (!Array.isArray((legacy as any).divisions)) {
@@ -586,12 +602,19 @@ export async function POST(req: NextRequest) {
   }
 
   const userLocation = filters.userLocation;
-  const hasDistanceFilter = Boolean(userLocation && typeof filters.maxDistance === 'number');
+  const userLongitude = userLocation
+    ? (typeof userLocation.long === 'number' ? userLocation.long : userLocation.lng)
+    : undefined;
+  const hasDistanceFilter = Boolean(
+    userLocation &&
+      typeof filters.maxDistance === 'number' &&
+      isUsableUserLocation(userLocation.lat, userLongitude),
+  );
   const candidateTake = hasDistanceFilter
     ? undefined
     : hasQuery
       ? Math.min(Math.max((offset + limit + 1) * 5, 50), 500)
-      : offset + limit + 1;
+      : Math.min(Math.max((offset + limit + 1) * 5, 100), 500);
   let totalCount = 0;
   let events: any[] = [];
   if (hasDistanceFilter) {
@@ -613,20 +636,21 @@ export async function POST(req: NextRequest) {
     totalCount = count;
   }
 
+  events = events.filter((event) => isUsableCoordinatePair(event.coordinates));
+
   if (userLocation && typeof filters.maxDistance === 'number') {
-    const { lat, lng, long } = userLocation;
-    const lon = typeof long === 'number' ? long : lng;
+    const { lat } = userLocation;
+    const lon = userLongitude;
     if (typeof lon !== 'number') {
       return NextResponse.json({ error: 'Invalid input', details: { userLocation: 'Missing longitude' } }, { status: 400 });
     }
-    const maxDistanceMiles = filters.maxDistance * 0.621371;
-    events = events.filter((event) => {
-      const coords = event.coordinates as any;
-      if (!Array.isArray(coords) || coords.length < 2) return true;
-      const [lng, latitude] = coords;
-      if (typeof lng !== 'number' || typeof latitude !== 'number') return true;
-      return haversineMiles(lat, lon, latitude, lng) <= maxDistanceMiles;
-    });
+    if (hasDistanceFilter) {
+      const maxDistanceMiles = filters.maxDistance * 0.621371;
+      events = events.filter((event) => {
+        const [lng, latitude] = event.coordinates as [number, number];
+        return haversineMiles(lat, lon, latitude, lng) <= maxDistanceMiles;
+      });
+    }
   } else if (hasQuery) {
     events = events
       .sort((left, right) => {
