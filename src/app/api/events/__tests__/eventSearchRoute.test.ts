@@ -343,6 +343,39 @@ describe('POST /api/events/search', () => {
     expect(json.events.map((event: any) => event.$id)).toEqual(['good']);
   });
 
+  it('serializes no-fixed-date rows with a start fallback end for mobile compatibility', async () => {
+    const start = new Date('2026-08-01T18:00:00.000Z');
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('evergreen'),
+        start,
+        end: null,
+        noFixedEndDateTime: true,
+        dateDisplayMode: 'NO_FIXED_DATE',
+        dateDisplayText: 'No fixed start date',
+      },
+    ]);
+    prismaMock.events.count.mockResolvedValue(1);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events[0]).toEqual(expect.objectContaining({
+      $id: 'evergreen',
+      end: start.toISOString(),
+      noFixedEndDateTime: true,
+    }));
+  });
+
   it('ignores distance filtering when the provided user location is a placeholder coordinate', async () => {
     prismaMock.events.findMany.mockResolvedValue([
       { ...eventRow('good'), coordinates: [-122.6784, 45.5152] },

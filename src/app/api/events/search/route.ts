@@ -73,7 +73,11 @@ const isUsableUserLocation = (lat: unknown, lon: unknown): boolean => {
 };
 
 const withLegacyEvent = (row: any) => {
-  const legacy = withLegacyFields(row);
+  const normalizedRow = {
+    ...row,
+    end: row.end ?? (row.noFixedEndDateTime === true ? row.start : row.end),
+  };
+  const legacy = withLegacyFields(normalizedRow);
   if (!Array.isArray((legacy as any).divisions)) {
     (legacy as any).divisions = Array.isArray((legacy as any).divisionDetails)
       ? (legacy as any).divisionDetails
