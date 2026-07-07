@@ -90,6 +90,7 @@ import {
     normalizeManualPaymentProvider,
 } from '@/lib/manualRegistrationPayments';
 import {
+    type RegistrationAttemptType,
     trackEventOutboundClicked,
     trackEventRegistrationStarted,
 } from '@/lib/analytics/eventAnalytics';
@@ -312,7 +313,7 @@ const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
 );
 
-const getJoinIntentRegistrationType = (intent: JoinIntent) => {
+const getJoinIntentRegistrationType = (intent: JoinIntent): RegistrationAttemptType => {
     switch (intent.mode) {
         case 'team':
             return 'team';

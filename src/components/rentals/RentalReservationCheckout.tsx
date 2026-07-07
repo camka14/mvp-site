@@ -8,6 +8,10 @@ import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { paymentService } from '@/lib/paymentService';
+import {
+  trackRentalCheckoutStarted,
+  trackRentalClicked,
+} from '@/lib/analytics/eventAnalytics';
 import type { RentalSelectionCheckoutPayload } from '@/app/organizations/[id]/FieldsTabContent';
 import type { BillingAddress, Event, Organization, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
@@ -68,6 +72,14 @@ const RENTAL_EVENT_QUERY_KEYS = [
   'rentalBookingItems',
   'rentalOrgId',
 ];
+
+const rentalSelectionAnalyticsProperties = (payload: RentalSelectionCheckoutPayload) => ({
+  event_id: payload.eventId,
+  field_id: payload.primaryFieldId,
+  field_count: payload.fieldIds.length,
+  facility_id: payload.facilityId,
+  amount_cents: payload.totalRentalCents,
+});
 
 const stripRentalQueryParams = (manageEventUrl: string): string => {
   const url = new URL(manageEventUrl, 'http://localhost');
@@ -241,11 +253,19 @@ export default function RentalReservationCheckout({
       return;
     }
     if (!currentUser) {
+      trackRentalCheckoutStarted(organization, 'public_rental_page', {
+        ...rentalSelectionAnalyticsProperties(pendingSelection),
+        auth_required: true,
+      });
       notifications.show({ color: 'yellow', message: 'Sign in to order this rental.' });
       router.push('/login');
       return;
     }
 
+    trackRentalCheckoutStarted(organization, 'public_rental_page', {
+      ...rentalSelectionAnalyticsProperties(pendingSelection),
+      auth_required: false,
+    });
     const draft = buildRentalPaymentDraft(organization, pendingSelection, currentUser.$id);
     setPaymentDraft(draft);
     setStartingCheckout(true);
@@ -316,6 +336,7 @@ export default function RentalReservationCheckout({
     }
     setOrderCompleteMessage(null);
     setCompletedRentalOrder(null);
+    trackRentalClicked(organization, 'public_rental_page', rentalSelectionAnalyticsProperties(payload));
     setPendingSelection(payload);
     setChoiceOpen(true);
   }, [normalizedRentalOrderSlug]);
