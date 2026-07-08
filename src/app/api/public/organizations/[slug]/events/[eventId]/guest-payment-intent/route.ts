@@ -18,6 +18,7 @@ import {
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
+import { logBillingError } from '@/server/billing/errorLogging';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,9 +134,41 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/public/organizations/[slug]/events/[eventId]/guest-payment-intent',
+          stage: 'resolve_discount',
+          status: error.status,
+          error,
+          context: {
+            slug: params.slug,
+            eventId: event.id,
+            organizationId: organization.id,
+            registrationId: registration.id,
+            userId: token.parentUserId,
+            purchaseType: 'event',
+            targetId: event.id,
+            discountCode: requestedDiscountCode,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : 'Unable to apply discount code.';
+      logBillingError({
+        route: '/api/public/organizations/[slug]/events/[eventId]/guest-payment-intent',
+        stage: 'resolve_discount',
+        status: 400,
+        error,
+        context: {
+          slug: params.slug,
+          eventId: event.id,
+          organizationId: organization.id,
+          registrationId: registration.id,
+          userId: token.parentUserId,
+          purchaseType: 'event',
+          targetId: event.id,
+          discountCode: requestedDiscountCode,
+        },
+      });
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }
@@ -193,9 +226,41 @@ export async function POST(req: NextRequest, context: RouteContext) {
       discountApplication = reservationResult.discount;
     } catch (error) {
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/public/organizations/[slug]/events/[eventId]/guest-payment-intent',
+          stage: 'reserve_discount',
+          status: error.status,
+          error,
+          context: {
+            slug: params.slug,
+            eventId: event.id,
+            organizationId: organization.id,
+            registrationId: registration.id,
+            userId: token.parentUserId,
+            purchaseType: 'event',
+            targetId: event.id,
+            discountCode: discountReservationCode,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      logBillingError({
+        route: '/api/public/organizations/[slug]/events/[eventId]/guest-payment-intent',
+        stage: 'reserve_discount',
+        status: 400,
+        error,
+        context: {
+          slug: params.slug,
+          eventId: event.id,
+          organizationId: organization.id,
+          registrationId: registration.id,
+          userId: token.parentUserId,
+          purchaseType: 'event',
+          targetId: event.id,
+          discountCode: discountReservationCode,
+        },
+      });
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }

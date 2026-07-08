@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logServerError } from '@/server/http/errorLogging';
 
 const getStatusErrorPayload = (error: unknown): { status: number; message: string } | null => {
   if (!error || typeof error !== 'object') {
@@ -17,11 +18,21 @@ const getStatusErrorPayload = (error: unknown): { status: number; message: strin
 
 export const handleRouteError = (error: unknown, message: string): Response => {
   if (error instanceof Response) {
+    logServerError({
+      message,
+      status: error.status,
+      error: error.statusText || 'Request failed',
+    });
     return error;
   }
 
   const statusError = getStatusErrorPayload(error);
   if (statusError) {
+    logServerError({
+      message,
+      status: statusError.status,
+      error,
+    });
     return NextResponse.json({ error: statusError.message }, { status: statusError.status });
   }
 
@@ -35,17 +46,34 @@ export const handleApiRouteError = async (error: unknown, message: string): Prom
     if (contentType.includes('application/json')) {
       const payload = await error.clone().json().catch(() => null);
       if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        logServerError({
+          message,
+          status: error.status,
+          error: typeof (payload as { error?: unknown }).error === 'string'
+            ? (payload as { error: string }).error
+            : error.statusText || 'Request failed',
+        });
         return NextResponse.json(payload, { status: error.status });
       }
     }
 
     const text = await error.clone().text().catch(() => '');
     const normalizedMessage = text.trim() || error.statusText || 'Request failed';
+    logServerError({
+      message,
+      status: error.status,
+      error: normalizedMessage,
+    });
     return NextResponse.json({ error: normalizedMessage }, { status: error.status });
   }
 
   const statusError = getStatusErrorPayload(error);
   if (statusError) {
+    logServerError({
+      message,
+      status: statusError.status,
+      error,
+    });
     return NextResponse.json({ error: statusError.message }, { status: statusError.status });
   }
 

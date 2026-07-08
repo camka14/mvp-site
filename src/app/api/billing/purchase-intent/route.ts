@@ -78,6 +78,7 @@ import {
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
+import { logBillingError } from '@/server/billing/errorLogging';
 
 export const dynamic = 'force-dynamic';
 
@@ -907,6 +908,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body ?? {});
   if (!parsed.success) {
+    logBillingError({
+      route: '/api/billing/purchase-intent',
+      stage: 'validate_input',
+      status: 400,
+      error: 'Invalid input',
+      context: { userId: session.userId, issues: parsed.error.issues.length },
+    });
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
@@ -1008,6 +1016,22 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to resolve purchase details.';
+    logBillingError({
+      route: '/api/billing/purchase-intent',
+      stage: 'resolve_purchase',
+      status: 400,
+      error,
+      context: {
+        userId: session.userId,
+        requestedPurchaseType,
+        eventId,
+        productId: payload.productId,
+        teamId,
+        slotId,
+        occurrenceDate,
+        discountCode: payload.discountCode,
+      },
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -1025,6 +1049,20 @@ export async function POST(req: NextRequest) {
       && resolvedPurchase.purchaseType !== 'product'
       && resolvedPurchase.purchaseType !== 'team_registration'
     ) {
+      logBillingError({
+        route: '/api/billing/purchase-intent',
+        stage: 'unsupported_purchase_type',
+        status: 400,
+        error: 'Discount codes are not supported for this purchase type.',
+        context: {
+          userId: session.userId,
+          purchaseType: resolvedPurchase.purchaseType,
+          eventId,
+          productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+          teamId: teamId ?? resolvedPurchase.team?.id ?? null,
+          discountCode: requestedDiscountCode,
+        },
+      });
       return NextResponse.json({ error: 'Discount codes are not supported for this purchase type.' }, { status: 400 });
     }
     const discountTargetId = resolveDiscountTargetId({
@@ -1053,9 +1091,39 @@ export async function POST(req: NextRequest) {
       }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/billing/purchase-intent',
+          stage: 'resolve_discount',
+          status: error.status,
+          error,
+          context: {
+            userId: session.userId,
+            purchaseType: resolvedPurchase.purchaseType,
+            targetId: discountTargetId,
+            eventId,
+            productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+            teamId: teamId ?? resolvedPurchase.team?.id ?? null,
+            discountCode: requestedDiscountCode,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : 'Unable to apply discount code.';
+      logBillingError({
+        route: '/api/billing/purchase-intent',
+        stage: 'resolve_discount',
+        status: 400,
+        error,
+        context: {
+          userId: session.userId,
+          purchaseType: resolvedPurchase.purchaseType,
+          targetId: discountTargetId,
+          eventId,
+          productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+          teamId: teamId ?? resolvedPurchase.team?.id ?? null,
+          discountCode: requestedDiscountCode,
+        },
+      });
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }
@@ -1484,9 +1552,43 @@ export async function POST(req: NextRequest) {
         userId: actorUserId,
       });
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/billing/purchase-intent',
+          stage: 'reserve_discount',
+          status: error.status,
+          error,
+          context: {
+            userId: actorUserId,
+            purchaseType: resolvedPurchase.purchaseType,
+            targetId: discountReservationRequest.targetId,
+            eventId,
+            productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+            teamId: checkoutTeamId ?? resolvedPurchase.team?.id ?? null,
+            registrationId: reservedRegistrationId,
+            organizationId,
+            discountCode: discountReservationRequest.code,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      logBillingError({
+        route: '/api/billing/purchase-intent',
+        stage: 'reserve_discount',
+        status: 400,
+        error,
+        context: {
+          userId: actorUserId,
+          purchaseType: resolvedPurchase.purchaseType,
+          targetId: discountReservationRequest.targetId,
+          eventId,
+          productId: payload.productId ?? resolvedPurchase.product?.id ?? null,
+          teamId: checkoutTeamId ?? resolvedPurchase.team?.id ?? null,
+          registrationId: reservedRegistrationId,
+          organizationId,
+          discountCode: discountReservationRequest.code,
+        },
+      });
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }

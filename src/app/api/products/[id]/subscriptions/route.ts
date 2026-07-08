@@ -35,6 +35,7 @@ import {
   resolveDiscountApplication,
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
+import { logBillingError } from '@/server/billing/errorLogging';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,8 +172,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     } catch (error) {
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/products/[id]/subscriptions',
+          stage: 'resolve_discount',
+          status: error.status,
+          error,
+          context: {
+            userId: session.userId,
+            purchaseType: 'product',
+            productId: product.id,
+            organizationId: product.organizationId,
+            targetId: product.id,
+            discountCode: requestedDiscountCode,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
+      logBillingError({
+        route: '/api/products/[id]/subscriptions',
+        stage: 'resolve_discount',
+        status: 500,
+        error,
+        context: {
+          userId: session.userId,
+          purchaseType: 'product',
+          productId: product.id,
+          organizationId: product.organizationId,
+          targetId: product.id,
+          discountCode: requestedDiscountCode,
+        },
+      });
       throw error;
     }
   }
@@ -296,9 +325,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       discountApplication = reservationResult.discount;
     } catch (error) {
       if (error instanceof DiscountCodeError) {
+        logBillingError({
+          route: '/api/products/[id]/subscriptions',
+          stage: 'reserve_discount',
+          status: error.status,
+          error,
+          context: {
+            userId: session.userId,
+            purchaseType: 'product',
+            productId: product.id,
+            organizationId: product.organizationId,
+            targetId: product.id,
+            discountCode: discountReservationCode,
+          },
+        });
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : 'Unable to reserve discount code.';
+      logBillingError({
+        route: '/api/products/[id]/subscriptions',
+        stage: 'reserve_discount',
+        status: 400,
+        error,
+        context: {
+          userId: session.userId,
+          purchaseType: 'product',
+          productId: product.id,
+          organizationId: product.organizationId,
+          targetId: product.id,
+          discountCode: discountReservationCode,
+        },
+      });
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }

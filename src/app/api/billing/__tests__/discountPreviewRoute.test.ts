@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const requireSessionMock = jest.fn();
 const resolvePurchaseContextMock = jest.fn();
 const resolveDiscountApplicationMock = jest.fn();
+const logBillingErrorMock = jest.fn();
 
 class MockDiscountCodeError extends Error {
   status: number;
@@ -25,6 +26,9 @@ jest.mock('@/lib/purchaseContext', () => ({
 jest.mock('@/server/discounts/discountCodeResolver', () => ({
   DiscountCodeError: MockDiscountCodeError,
   resolveDiscountApplication: (...args: unknown[]) => resolveDiscountApplicationMock(...args),
+}));
+jest.mock('@/server/billing/errorLogging', () => ({
+  logBillingError: (...args: unknown[]) => logBillingErrorMock(...args),
 }));
 
 import { POST } from '@/app/api/billing/discount-preview/route';
@@ -99,6 +103,33 @@ describe('POST /api/billing/discount-preview', () => {
       originalAmountCents: 2500,
       discountAmountCents: 0,
       discountedAmountCents: 2500,
+    }));
+  });
+
+  it('logs handled discount code failures', async () => {
+    resolveDiscountApplicationMock.mockRejectedValueOnce(
+      new MockDiscountCodeError('Discount code was not found.', 404),
+    );
+
+    const response = await POST(jsonPost({
+      event: { id: 'event_1', price: 2500 },
+      discountCode: 'missing-code',
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload).toEqual({ error: 'Discount code was not found.' });
+    expect(logBillingErrorMock).toHaveBeenCalledWith(expect.objectContaining({
+      route: '/api/billing/discount-preview',
+      stage: 'resolve_discount',
+      status: 404,
+      context: expect.objectContaining({
+        userId: 'user_1',
+        purchaseType: 'event',
+        targetId: 'event_1',
+        eventId: 'event_1',
+        discountCode: 'missing-code',
+      }),
     }));
   });
 });
