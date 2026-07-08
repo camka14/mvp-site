@@ -10,7 +10,7 @@ import {
     TextInput,
     Textarea,
 } from '@mantine/core';
-import type { Event, Sport } from '@/types';
+import type { Event, EventTag, Sport } from '@/types';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 
 import type { EventFormValues } from '../formTypes';
@@ -27,6 +27,7 @@ type BasicInformationSectionProps = {
     sportOptions: Array<{ value: string; label: string }>;
     sportsById: Map<string, Sport>;
     sportsError?: unknown;
+    eventTagOptions: EventTag[];
     lockedTagSlugs?: string[];
     comboboxProps?: ComponentProps<typeof MantineSelect>['comboboxProps'];
     maxEventNameLength: number;
@@ -47,6 +48,7 @@ export const BasicInformationSection = ({
     sportOptions,
     sportsById,
     sportsError,
+    eventTagOptions,
     lockedTagSlugs,
     comboboxProps,
     maxEventNameLength,
@@ -125,6 +127,7 @@ export const BasicInformationSection = ({
                         <div className="md:col-span-4">
                             <EventTagsInput
                                 value={Array.isArray(field.value) ? field.value : []}
+                                options={eventTagOptions}
                                 disabled={isImmutableField('name')}
                                 error={fieldState.error?.message as string | undefined}
                                 lockedTagSlugs={lockedTagSlugs}

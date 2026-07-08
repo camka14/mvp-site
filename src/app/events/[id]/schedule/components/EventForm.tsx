@@ -3,7 +3,7 @@ import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { eventService } from '@/lib/eventService';
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -372,8 +372,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => buildSportOptions(sports), [sports]);
+    const [eventTagOptions, setEventTagOptions] = useState<EventTag[]>([]);
 
     const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        fetch('/api/event-tags', { signal: controller.signal })
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load tags')))
+            .then((body) => {
+                setEventTagOptions(Array.isArray(body?.tags) ? body.tags : []);
+            })
+            .catch((error) => {
+                if (error.name !== 'AbortError') {
+                    setEventTagOptions([]);
+                }
+            });
+        return () => controller.abort();
+    }, []);
 
     useEffect(() => {
         setHydratedOrganization(organization ?? null);
@@ -3760,6 +3776,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             sportOptions={sportOptions}
                             sportsById={sportsById}
                             sportsError={sportsError}
+                            eventTagOptions={eventTagOptions}
                             lockedTagSlugs={lockedEventTypeTagSlugs}
                             comboboxProps={sharedComboboxProps}
                             maxEventNameLength={MAX_EVENT_NAME_LENGTH}

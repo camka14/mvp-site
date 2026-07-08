@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button, Group, Pill, PillsInput, Popover, ScrollArea, Text } from '@mantine/core';
 import type { EventTag } from '@/types';
-import { getEventTagIdentity, slugifyEventTagName } from './eventTypeTags';
+import { getEventTagIdentity, isEventTypeTag, slugifyEventTagName } from './eventTypeTags';
 
 type EventTagsInputProps = {
   value: EventTag[];
+  options: EventTag[];
   disabled?: boolean;
   error?: string;
   lockedTagSlugs?: string[];
@@ -15,10 +16,10 @@ type EventTagsInputProps = {
 
 const normalizeTagName = (value: string): string => value.replace(/\s+/g, ' ').trim().slice(0, 40);
 const tagIdentity = (tag: EventTag): string => getEventTagIdentity(tag);
+const tagLabel = (tag: EventTag): string => `${tag.name} (${tag.eventCount ?? 0})`;
 
-export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs = [], onChange }: EventTagsInputProps) {
+export function EventTagsInput({ value, options, disabled = false, error, lockedTagSlugs = [], onChange }: EventTagsInputProps) {
   const [search, setSearch] = useState('');
-  const [options, setOptions] = useState<EventTag[]>([]);
   const [opened, setOpened] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -32,34 +33,20 @@ export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs 
     [lockedTagSlugs],
   );
   const visibleOptions = useMemo(() => (
-    options.filter((option) => !selectedIdentities.has(tagIdentity(option)))
-  ), [options, selectedIdentities]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => {
-      const params = new URLSearchParams();
-      if (normalizedSearch) {
-        params.set('query', normalizedSearch);
-      }
-      fetch(`/api/event-tags?${params.toString()}`, { signal: controller.signal })
-        .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load tags')))
-        .then((body) => {
-          const tags = Array.isArray(body?.tags) ? body.tags : [];
-          setOptions(tags);
-        })
-        .catch((fetchError) => {
-          if (fetchError.name !== 'AbortError') {
-            setOptions([]);
-          }
-        });
-    }, 180);
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [normalizedSearch]);
+    options
+      .filter((option) => !isEventTypeTag(option))
+      .filter((option) => !selectedIdentities.has(tagIdentity(option)))
+      .filter((option) => (
+        !normalizedSearch ||
+        option.name.toLowerCase().includes(normalizedSearch.toLowerCase()) ||
+        tagIdentity(option).includes(slugifyEventTagName(normalizedSearch))
+      ))
+      .sort((a, b) => {
+        const countDiff = (b.eventCount ?? 0) - (a.eventCount ?? 0);
+        return countDiff || a.name.localeCompare(b.name);
+      })
+      .slice(0, 5)
+  ), [normalizedSearch, options, selectedIdentities]);
 
   const addTag = (tag: EventTag) => {
     const name = normalizeTagName(tag.name);
@@ -73,7 +60,7 @@ export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs 
     }
     onChange([...value, { ...tag, name, slug: identity }]);
     setSearch('');
-    setOpened(false);
+    setOpened(true);
     window.requestAnimationFrame(() => inputRef.current?.focus());
   };
 
@@ -82,6 +69,10 @@ export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs 
       return;
     }
     const typedIdentity = slugifyEventTagName(normalizedSearch);
+    if (isEventTypeTag({ name: normalizedSearch, slug: typedIdentity })) {
+      setSearch('');
+      return;
+    }
     const exactMatch = options.find((option) => tagIdentity(option) === typedIdentity);
     addTag(exactMatch ?? { name: normalizedSearch, slug: typedIdentity });
   };
@@ -159,7 +150,9 @@ export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs 
       <Popover.Dropdown p="xs">
         <ScrollArea.Autosize mah={220} type="auto">
           <Group gap="xs" align="center">
-            {normalizedSearch && !options.some((option) => tagIdentity(option) === slugifyEventTagName(normalizedSearch)) ? (
+            {normalizedSearch &&
+            !isEventTypeTag({ name: normalizedSearch, slug: slugifyEventTagName(normalizedSearch) }) &&
+            !options.some((option) => tagIdentity(option) === slugifyEventTagName(normalizedSearch)) ? (
               <Button
                 type="button"
                 variant="light"
@@ -180,7 +173,7 @@ export function EventTagsInput({ value, disabled = false, error, lockedTagSlugs 
                 size="compact-sm"
                 onClick={() => addTag(option)}
               >
-                {option.name}
+                {tagLabel(option)}
               </Button>
             ))}
             {!normalizedSearch && visibleOptions.length === 0 ? (

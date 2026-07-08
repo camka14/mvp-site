@@ -163,10 +163,16 @@ export default function EventsTabContent<TEventType extends string = Event['even
   }, [sports, sportsQuery]);
 
   const visibleEventTags = useMemo(() => {
-    if (!tagsQuery) {
-      return eventTags;
-    }
-    return eventTags.filter((tag) => tag.name.toLowerCase().includes(tagsQuery));
+    const matchingTags = tagsQuery
+      ? eventTags.filter((tag) => tag.name.toLowerCase().includes(tagsQuery))
+      : eventTags;
+    return matchingTags
+      .slice()
+      .sort((a, b) => {
+        const countDiff = (b.eventCount ?? 0) - (a.eventCount ?? 0);
+        return countDiff || a.name.localeCompare(b.name);
+      })
+      .slice(0, 5);
   }, [eventTags, tagsQuery]);
 
   const resetFilters = useCallback(() => {
@@ -377,7 +383,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
                   });
                 }}
               >
-                {tag.name}
+                {tag.name} ({tag.eventCount ?? 0})
               </Chip>
             ))
           ) : (

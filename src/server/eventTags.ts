@@ -5,6 +5,7 @@ export type EventTagView = {
   id: string;
   name: string;
   slug: string;
+  eventCount?: number;
 };
 
 type PrismaLike = typeof prisma;
@@ -15,9 +16,6 @@ const EVENT_TYPE_TAGS = {
   TOURNAMENT: { name: 'Tournament', slug: 'tournament' },
 } as const;
 const EVENT_TYPE_TAG_SLUGS: Set<string> = new Set(Object.values(EVENT_TYPE_TAGS).map((tag) => tag.slug));
-export const DEFAULT_EVENT_TAGS: EventTagView[] = [
-  { id: 'default_tryouts', name: 'Tryouts', slug: 'tryouts' },
-];
 
 type EventTypeTagOptions = {
   eventType?: unknown;
@@ -100,7 +98,7 @@ export const mergeDefaultEventTags = (
   );
   const merged = new Map<string, EventTagView>();
 
-  [...tags, ...DEFAULT_EVENT_TAGS].forEach((tag) => {
+  tags.forEach((tag) => {
     const slug = tag.slug.trim().toLowerCase();
     if (!slug || !matchesQuery(tag) || merged.has(slug)) {
       return;
@@ -108,7 +106,84 @@ export const mergeDefaultEventTags = (
     merged.set(slug, tag);
   });
 
-  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(merged.values()).sort(sortEventTagsByUsage);
+};
+
+export const sortEventTagsByUsage = (a: EventTagView, b: EventTagView): number => {
+  const countDiff = (b.eventCount ?? 0) - (a.eventCount ?? 0);
+  if (countDiff !== 0) {
+    return countDiff;
+  }
+  return a.name.localeCompare(b.name);
+};
+
+export const withActiveEventCountsForTags = async (
+  tags: EventTagView[],
+  client: PrismaLike | any = prisma,
+  now: Date = new Date(),
+): Promise<EventTagView[]> => {
+  const tagIds = Array.from(new Set(tags.map((tag) => tag.id).filter(Boolean)));
+  if (
+    tagIds.length === 0
+    || typeof client.eventTagAssignments?.findMany !== 'function'
+    || typeof client.events?.findMany !== 'function'
+  ) {
+    return tags.map((tag) => ({ ...tag, eventCount: tag.eventCount ?? 0 }));
+  }
+
+  const assignments = await client.eventTagAssignments.findMany({
+    where: { tagId: { in: tagIds } },
+    select: { tagId: true, eventId: true },
+  });
+  const eventIds = Array.from(
+    new Set(
+      assignments
+        .map((assignment: any) => String(assignment.eventId ?? '').trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (!eventIds.length) {
+    return tags.map((tag) => ({ ...tag, eventCount: 0 }));
+  }
+
+  const activeEvents = await client.events.findMany({
+    where: {
+      id: { in: eventIds },
+      archivedAt: null,
+      OR: [
+        { state: 'PUBLISHED' },
+        { state: null },
+      ],
+      AND: [
+        {
+          OR: [
+            { end: null },
+            { end: { gte: now } },
+          ],
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  const activeEventIds = new Set(activeEvents.map((event: any) => String(event.id)));
+  const countsByTagId = new Map<string, Set<string>>();
+
+  assignments.forEach((assignment: any) => {
+    const tagId = String(assignment.tagId ?? '').trim();
+    const eventId = String(assignment.eventId ?? '').trim();
+    if (!tagId || !eventId || !activeEventIds.has(eventId)) {
+      return;
+    }
+    const eventIdsForTag = countsByTagId.get(tagId) ?? new Set<string>();
+    eventIdsForTag.add(eventId);
+    countsByTagId.set(tagId, eventIdsForTag);
+  });
+
+  return tags.map((tag) => ({
+    ...tag,
+    eventCount: countsByTagId.get(tag.id)?.size ?? 0,
+  }));
 };
 
 export const getEventTagsForEventIds = async (

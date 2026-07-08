@@ -821,6 +821,7 @@ export interface EventTag {
   $id?: string;
   name: string;
   slug?: string;
+  eventCount?: number;
 }
 
 // Core Event interface with relationships

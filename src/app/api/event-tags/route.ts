@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { mergeDefaultEventTags } from '@/server/eventTags';
+import { mergeDefaultEventTags, sortEventTagsByUsage, withActiveEventCountsForTags } from '@/server/eventTags';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
   const tags = await prisma.eventTags.findMany({
     where,
     orderBy: { name: 'asc' },
-    take: 50,
   });
 
   const tagOptions = tags.map((tag) => ({
@@ -28,6 +27,7 @@ export async function GET(req: NextRequest) {
   }));
 
   return NextResponse.json({
-    tags: mergeDefaultEventTags(tagOptions, query),
+    tags: (await withActiveEventCountsForTags(mergeDefaultEventTags(tagOptions, query)))
+      .sort(sortEventTagsByUsage),
   });
 }

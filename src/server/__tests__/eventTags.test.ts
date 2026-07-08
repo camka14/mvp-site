@@ -7,6 +7,7 @@ import {
   slugifyEventTagName,
   syncEventTags,
   syncEventTypeTagsForEvent,
+  withActiveEventCountsForTags,
 } from '@/server/eventTags';
 
 describe('event tag helpers', () => {
@@ -30,15 +31,57 @@ describe('event tag helpers', () => {
       .toEqual(['Pickup', 'League']);
   });
 
-  it('includes tryouts as a default tag option and de-duplicates persisted matches', () => {
-    expect(mergeDefaultEventTags([], '').map((tag) => tag.slug)).toEqual(['tryouts']);
-    expect(mergeDefaultEventTags([], 'try').map((tag) => tag.slug)).toEqual(['tryouts']);
+  it('returns persisted tag options only and de-duplicates persisted matches', () => {
+    expect(mergeDefaultEventTags([], '').map((tag) => tag.slug)).toEqual([]);
+    expect(mergeDefaultEventTags([], 'try').map((tag) => tag.slug)).toEqual([]);
     expect(mergeDefaultEventTags([
-      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts' },
+      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts', eventCount: 4 },
+      { id: 'tag_tryouts_duplicate', name: 'Tryouts', slug: 'tryouts', eventCount: 1 },
     ], '')).toEqual([
-      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts' },
+      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts', eventCount: 4 },
     ]);
     expect(mergeDefaultEventTags([], 'league')).toEqual([]);
+  });
+
+  it('labels tag options with active event counts', async () => {
+    const now = new Date('2026-07-07T12:00:00Z');
+    const client = {
+      eventTagAssignments: {
+        findMany: jest.fn(async () => [
+          { tagId: 'tag_tryouts', eventId: 'event_active_1' },
+          { tagId: 'tag_tryouts', eventId: 'event_active_1' },
+          { tagId: 'tag_tryouts', eventId: 'event_ended' },
+          { tagId: 'tag_clinic', eventId: 'event_active_2' },
+          { tagId: 'tag_clinic', eventId: 'event_private' },
+        ]),
+      },
+      events: {
+        findMany: jest.fn(async () => [
+          { id: 'event_active_1' },
+          { id: 'event_active_2' },
+        ]),
+      },
+    };
+
+    const tags = await withActiveEventCountsForTags([
+      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts' },
+      { id: 'tag_clinic', name: 'Clinic', slug: 'clinic' },
+    ], client as any, now);
+
+    expect(client.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        archivedAt: null,
+        OR: [
+          { state: 'PUBLISHED' },
+          { state: null },
+        ],
+      }),
+      select: { id: true },
+    }));
+    expect(tags).toEqual([
+      { id: 'tag_tryouts', name: 'Tryouts', slug: 'tryouts', eventCount: 1 },
+      { id: 'tag_clinic', name: 'Clinic', slug: 'clinic', eventCount: 1 },
+    ]);
   });
 
   it('reuses tags by slug and syncs event assignments', async () => {
