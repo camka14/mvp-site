@@ -6,7 +6,7 @@ import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { resolveRazumlyAdminFromToken } from '@/server/razumlyAdmin';
-import { Badge, Button, Container, Group, Paper, SimpleGrid, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Container, Group, Paper, SimpleGrid, Text, Title } from '@mantine/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,7 +151,7 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
               <Title order={2}>{displayName}</Title>
               <Text size="sm" c="dimmed">Admin user profile</Text>
             </div>
-            <Button component={Link} href="/admin" variant="default">
+            <Button component="a" href="/admin" variant="default">
               Back to admin
             </Button>
           </Group>
@@ -159,8 +159,8 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
             <Paper withBorder radius="md" p="md">
               <Title order={4} mb="sm">Account</Title>
-              <Table withRowBorders={false}>
-                <Table.Tbody>
+              <table className="w-full text-sm">
+                <tbody>
                   <InfoRow label="User ID" value={userId} />
                   <InfoRow label="Username" value={normalizedProfile?.userName} />
                   <InfoRow label="Email" value={authUser?.email ?? sensitiveUser?.email} />
@@ -169,45 +169,45 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
                   <InfoRow label="Disabled reason" value={authUser?.disabledReason} />
                   <InfoRow label="Created" value={authUser?.createdAt ?? normalizedProfile?.createdAt} />
                   <InfoRow label="Updated" value={authUser?.updatedAt ?? normalizedProfile?.updatedAt} />
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             </Paper>
 
             <Paper withBorder radius="md" p="md">
               <Title order={4} mb="sm">Billing Address</Title>
-              <Table withRowBorders={false}>
-                <Table.Tbody>
+              <table className="w-full text-sm">
+                <tbody>
                   <InfoRow label="City" value={sensitiveUser?.billingCity} />
                   <InfoRow label="State" value={sensitiveUser?.billingState} />
                   <InfoRow label="Country" value={sensitiveUser?.billingCountryCode} />
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             </Paper>
           </SimpleGrid>
 
           <Paper withBorder radius="md" p="md" mt="md">
             <Title order={4} mb="sm">Organizations</Title>
             {ownedOrganizations.length > 0 ? (
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Organization</Table.Th>
-                    <Table.Th>Role</Table.Th>
-                    <Table.Th>ID</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="px-3 py-2 font-semibold">Organization</th>
+                    <th className="px-3 py-2 font-semibold">Role</th>
+                    <th className="px-3 py-2 font-semibold">ID</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {ownedOrganizations.map((organization) => (
-                    <Table.Tr key={organization.id}>
-                      <Table.Td>
+                    <tr key={organization.id} className="border-b border-slate-100 odd:bg-slate-50/60 hover:bg-slate-100/70">
+                      <td className="px-3 py-2">
                         <Link href={`/organizations/${organization.id}`}>{organization.name}</Link>
-                      </Table.Td>
-                      <Table.Td>{organization.ownerId === userId ? 'Owner' : 'Staff'}</Table.Td>
-                      <Table.Td>{organization.id}</Table.Td>
-                    </Table.Tr>
+                      </td>
+                      <td className="px-3 py-2">{organization.ownerId === userId ? 'Owner' : 'Staff'}</td>
+                      <td className="px-3 py-2">{organization.id}</td>
+                    </tr>
                   ))}
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             ) : (
               <Text c="dimmed">No organization relationships found.</Text>
             )}
@@ -216,28 +216,28 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
           <Paper withBorder radius="md" p="md" mt="md">
             <Title order={4} mb="sm">Events</Title>
             {hostedEvents.length > 0 ? (
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Event</Table.Th>
-                    <Table.Th>Start</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>ID</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="px-3 py-2 font-semibold">Event</th>
+                    <th className="px-3 py-2 font-semibold">Start</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">ID</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {hostedEvents.map((event) => (
-                    <Table.Tr key={event.id}>
-                      <Table.Td>
+                    <tr key={event.id} className="border-b border-slate-100 odd:bg-slate-50/60 hover:bg-slate-100/70">
+                      <td className="px-3 py-2">
                         <Link href={`/events/${event.id}?tab=details&mode=edit`}>{event.name}</Link>
-                      </Table.Td>
-                      <Table.Td>{formatValue(event.start)}</Table.Td>
-                      <Table.Td><Badge variant="light">{event.state ?? 'PUBLISHED'}</Badge></Table.Td>
-                      <Table.Td>{event.id}</Table.Td>
-                    </Table.Tr>
+                      </td>
+                      <td className="px-3 py-2">{formatValue(event.start)}</td>
+                      <td className="px-3 py-2"><Badge variant="light">{event.state ?? 'PUBLISHED'}</Badge></td>
+                      <td className="px-3 py-2">{event.id}</td>
+                    </tr>
                   ))}
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             ) : (
               <Text c="dimmed">No hosted event relationships found.</Text>
             )}
@@ -246,32 +246,32 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
           <Paper withBorder radius="md" p="md" mt="md">
             <Title order={4} mb="sm">Teams</Title>
             {teamIds.length > 0 ? (
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Team</Table.Th>
-                    <Table.Th>Role</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>ID</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="px-3 py-2 font-semibold">Team</th>
+                    <th className="px-3 py-2 font-semibold">Role</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">ID</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {[...teamRegistrations, ...staffAssignments].map((row) => {
                     const team = teamsById.get(row.teamId);
                     const href = buildTeamManagementPath(team?.id ?? row.teamId);
                     return (
-                      <Table.Tr key={`${row.teamId}:${'role' in row ? row.role : row.rosterRole}`}>
-                        <Table.Td>
+                      <tr key={`${row.teamId}:${'role' in row ? row.role : row.rosterRole}`} className="border-b border-slate-100 odd:bg-slate-50/60 hover:bg-slate-100/70">
+                        <td className="px-3 py-2">
                           <Link href={href}>{team?.name ?? row.teamId}</Link>
-                        </Table.Td>
-                        <Table.Td>{'role' in row ? row.role : row.rosterRole}</Table.Td>
-                        <Table.Td><Badge variant="light">{row.status}</Badge></Table.Td>
-                        <Table.Td>{row.teamId}</Table.Td>
-                      </Table.Tr>
+                        </td>
+                        <td className="px-3 py-2">{'role' in row ? row.role : row.rosterRole}</td>
+                        <td className="px-3 py-2"><Badge variant="light">{row.status}</Badge></td>
+                        <td className="px-3 py-2">{row.teamId}</td>
+                      </tr>
                     );
                   })}
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             ) : (
               <Text c="dimmed">No team relationships found.</Text>
             )}
@@ -284,13 +284,13 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
 
 function InfoRow({ label, value }: { label: string; value: unknown }) {
   return (
-    <Table.Tr>
-      <Table.Td w={180}>
+    <tr>
+      <td className="w-44 py-1.5 pr-4 align-top">
         <Text size="sm" c="dimmed">{label}</Text>
-      </Table.Td>
-      <Table.Td>
+      </td>
+      <td className="py-1.5 align-top">
         <Text size="sm">{formatValue(value)}</Text>
-      </Table.Td>
-    </Table.Tr>
+      </td>
+    </tr>
   );
 }
