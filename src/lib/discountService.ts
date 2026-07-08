@@ -28,6 +28,7 @@ export type Discount = {
   status: DiscountStatus;
   targetType: DiscountTargetType;
   targetId: string;
+  targetName?: string | null;
   originalPriceCentsSnapshot: number;
   discountedPriceCents: number;
   createdAt?: string | Date | null;

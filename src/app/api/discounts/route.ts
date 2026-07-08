@@ -216,10 +216,25 @@ export async function GET(req: NextRequest) {
     rows.push(code);
     codesByDiscountId.set(code.discountId, rows);
   }
+  const eventTargetIds = Array.from(new Set(
+    discounts
+      .filter((discount) => discount.targetType === 'EVENT')
+      .map((discount) => discount.targetId),
+  ));
+  const events = eventTargetIds.length
+    ? await prisma.events.findMany({
+        where: { id: { in: eventTargetIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const eventNamesById = new Map(events.map((event) => [event.id, normalizeString(event.name)]));
 
   return NextResponse.json({
     discounts: discounts.map((discount) => ({
       ...discount,
+      targetName: discount.targetType === 'EVENT'
+        ? eventNamesById.get(discount.targetId) ?? null
+        : null,
       codes: codesByDiscountId.get(discount.id) ?? [],
     })),
   });

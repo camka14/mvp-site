@@ -238,6 +238,10 @@ export default function DiscountManager({
     setNewPriceCents(0);
   }, []);
 
+  const getDiscountTargetLabel = useCallback((discount: Discount): string | null => {
+    return discount.targetName ?? knownTargets[discount.targetId]?.label ?? null;
+  }, [knownTargets]);
+
   const handleTargetChange = useCallback((value: string | null) => {
     setTargetId(value);
     setSelectedTargetSnapshot(value ? knownTargets[value] ?? targets.find((target) => target.id === value) ?? null : null);
@@ -513,115 +517,121 @@ export default function DiscountManager({
           <Text c="dimmed">No discounts created yet.</Text>
         ) : (
           <Stack gap="md">
-            {discounts.map((discount) => (
-              <Paper key={discount.id} withBorder radius="md" p="md">
-                <Group justify="space-between" align="flex-start" mb="sm">
-                  <div>
-                    <Text fw={700}>{discount.name}</Text>
-                    <Text size="sm" c="dimmed">
-                      {formatTargetType(discount.targetType)} • {formatPrice(discount.discountedPriceCents)} from {formatPrice(discount.originalPriceCentsSnapshot)}
-                    </Text>
-                    {discount.description ? <Text size="sm" c="dimmed">{discount.description}</Text> : null}
-                  </div>
-                  <Badge color={discount.status === "ACTIVE" ? "green" : "gray"} variant="light">
-                    {discount.status}
-                  </Badge>
-                </Group>
-                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm" mb="md">
-                  <TextInput
-                    label="Code"
-                    placeholder="Leave blank to generate"
-                    value={codeInputs[discount.id] ?? ""}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value;
-                      setCodeInputs((current) => ({
+            {discounts.map((discount) => {
+              const targetLabel = getDiscountTargetLabel(discount);
+
+              return (
+                <Paper key={discount.id} withBorder radius="md" p="md">
+                  <Group justify="space-between" align="flex-start" mb="sm">
+                    <div>
+                      <Text fw={700}>{discount.name}</Text>
+                      <Text size="sm" c="dimmed">
+                        {formatTargetType(discount.targetType)}
+                        {targetLabel ? `: ${targetLabel}` : ""} • {formatPrice(discount.discountedPriceCents)} from{" "}
+                        {formatPrice(discount.originalPriceCentsSnapshot)}
+                      </Text>
+                      {discount.description ? <Text size="sm" c="dimmed">{discount.description}</Text> : null}
+                    </div>
+                    <Badge color={discount.status === "ACTIVE" ? "green" : "gray"} variant="light">
+                      {discount.status}
+                    </Badge>
+                  </Group>
+                  <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm" mb="md">
+                    <TextInput
+                      label="Code"
+                      placeholder="Leave blank to generate"
+                      value={codeInputs[discount.id] ?? ""}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setCodeInputs((current) => ({
+                          ...current,
+                          [discount.id]: value,
+                        }));
+                      }}
+                    />
+                    <NumberInput
+                      label="Usage limit"
+                      placeholder="Unlimited"
+                      min={1}
+                      value={usageLimitInputs[discount.id] ?? ""}
+                      onChange={(value) => setUsageLimitInputs((current) => ({
                         ...current,
-                        [discount.id]: value,
-                      }));
-                    }}
-                  />
-                  <NumberInput
-                    label="Usage limit"
-                    placeholder="Unlimited"
-                    min={1}
-                    value={usageLimitInputs[discount.id] ?? ""}
-                    onChange={(value) => setUsageLimitInputs((current) => ({
-                      ...current,
-                      [discount.id]: typeof value === "number" ? value : "",
-                    }))}
-                  />
-                  <Button
-                    mt={{ base: 0, md: 25 }}
-                    onClick={() => void handleGenerateCode(discount.id)}
-                    loading={generatingCodeId === discount.id}
-                  >
-                    Generate code
-                  </Button>
-                </SimpleGrid>
-                {(discount.codes ?? []).length > 0 ? (
-                  <Table.ScrollContainer minWidth={520}>
-                    <Table striped highlightOnHover>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Code</Table.Th>
-                          <Table.Th>Used</Table.Th>
-                          <Table.Th>Limit</Table.Th>
-                          <Table.Th>Status</Table.Th>
-                          <Table.Th>Actions</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {(discount.codes ?? []).map((code) => (
-                          <Table.Tr key={code.id}>
-                            <Table.Td><Text fw={700}>{code.code}</Text></Table.Td>
-                            <Table.Td>{code.usedCount}</Table.Td>
-                            <Table.Td>{code.usageLimit ?? "Unlimited"}</Table.Td>
-                            <Table.Td>{code.status}</Table.Td>
-                            <Table.Td>
-                              <Group gap="xs" wrap="nowrap">
-                                {code.status === "ACTIVE" ? (
-                                  <Button
-                                    size="compact-xs"
-                                    variant="light"
-                                    color="yellow"
-                                    loading={actingCodeId === code.id}
-                                    onClick={() => void handleSetCodeActive(discount.id, code, false)}
-                                  >
-                                    Deactivate
-                                  </Button>
-                                ) : (
-                                  <>
-                                    <Button
-                                      size="compact-xs"
-                                      variant="light"
-                                      loading={actingCodeId === code.id}
-                                      onClick={() => void handleSetCodeActive(discount.id, code, true)}
-                                    >
-                                      Activate
-                                    </Button>
-                                    <Button
-                                      size="compact-xs"
-                                      variant="light"
-                                      color="red"
-                                      loading={actingCodeId === code.id}
-                                      onClick={() => void handleDeleteCode(discount.id, code)}
-                                    >
-                                      Delete
-                                    </Button>
-                                  </>
-                                )}
-                              </Group>
-                            </Table.Td>
+                        [discount.id]: typeof value === "number" ? value : "",
+                      }))}
+                    />
+                    <Button
+                      mt={{ base: 0, md: 25 }}
+                      onClick={() => void handleGenerateCode(discount.id)}
+                      loading={generatingCodeId === discount.id}
+                    >
+                      Generate code
+                    </Button>
+                  </SimpleGrid>
+                  {(discount.codes ?? []).length > 0 ? (
+                    <Table.ScrollContainer minWidth={520}>
+                      <Table striped highlightOnHover>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Code</Table.Th>
+                            <Table.Th>Used</Table.Th>
+                            <Table.Th>Limit</Table.Th>
+                            <Table.Th>Status</Table.Th>
+                            <Table.Th>Actions</Table.Th>
                           </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </Table.ScrollContainer>
-                ) : (
-                  <Text size="sm" c="dimmed">No codes generated for this discount.</Text>
-                )}
-              </Paper>
-            ))}
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {(discount.codes ?? []).map((code) => (
+                            <Table.Tr key={code.id}>
+                              <Table.Td><Text fw={700}>{code.code}</Text></Table.Td>
+                              <Table.Td>{code.usedCount}</Table.Td>
+                              <Table.Td>{code.usageLimit ?? "Unlimited"}</Table.Td>
+                              <Table.Td>{code.status}</Table.Td>
+                              <Table.Td>
+                                <Group gap="xs" wrap="nowrap">
+                                  {code.status === "ACTIVE" ? (
+                                    <Button
+                                      size="compact-xs"
+                                      variant="light"
+                                      color="yellow"
+                                      loading={actingCodeId === code.id}
+                                      onClick={() => void handleSetCodeActive(discount.id, code, false)}
+                                    >
+                                      Deactivate
+                                    </Button>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        size="compact-xs"
+                                        variant="light"
+                                        loading={actingCodeId === code.id}
+                                        onClick={() => void handleSetCodeActive(discount.id, code, true)}
+                                      >
+                                        Activate
+                                      </Button>
+                                      <Button
+                                        size="compact-xs"
+                                        variant="light"
+                                        color="red"
+                                        loading={actingCodeId === code.id}
+                                        onClick={() => void handleDeleteCode(discount.id, code)}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </>
+                                  )}
+                                </Group>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  ) : (
+                    <Text size="sm" c="dimmed">No codes generated for this discount.</Text>
+                  )}
+                </Paper>
+              );
+            })}
           </Stack>
         )}
       </Paper>
