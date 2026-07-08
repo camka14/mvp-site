@@ -19,6 +19,7 @@ export interface CreateFieldData {
   heading?: number;
   inUse?: boolean;
   facilityId?: string | null;
+  sportIds?: string[];
   organization?: Organization;
   eventId?: string;
 }
@@ -32,6 +33,7 @@ export interface UpdateFieldData {
   heading?: number;
   inUse?: boolean;
   facilityId?: string | null;
+  sportIds?: string[];
 }
 
 export interface ManageRentalSlotResult {
@@ -61,6 +63,7 @@ class FieldService {
       heading: data.heading,
       inUse: data.inUse,
       facilityId: data.facilityId,
+      sportIds: Array.isArray(data.sportIds) ? data.sportIds : [],
       organizationId: data.organization?.$id
     };
 
@@ -88,6 +91,7 @@ class FieldService {
       ...(data.heading !== undefined ? { heading: data.heading } : {}),
       ...(data.inUse !== undefined ? { inUse: data.inUse } : {}),
       ...(data.facilityId !== undefined ? { facilityId: data.facilityId } : {}),
+      ...(data.sportIds !== undefined ? { sportIds: data.sportIds } : {}),
     };
 
     const response = await apiRequest<any>(`/api/fields/${data.$id}`, {
@@ -175,6 +179,9 @@ class FieldService {
     const rentalSlotIds = Array.isArray(row.rentalSlotIds)
       ? row.rentalSlotIds.map((value: unknown) => String(value))
       : undefined;
+    const sportIds = Array.isArray(row.sportIds)
+      ? row.sportIds.map((value: unknown) => String(value)).filter((value: string) => value.trim().length > 0)
+      : [];
 
     const field: Field = {
       $id: String(row.$id ?? row.id ?? ''),
@@ -192,6 +199,7 @@ class FieldService {
       organization: row.organization ?? row.organizationId ?? undefined,
       facilityId: typeof row.facilityId === 'string' ? row.facilityId : null,
       facility: row.facility ?? row.facilityId ?? null,
+      sportIds,
       rentalSlotIds,
       rentalSlots: [],
     } as Field;

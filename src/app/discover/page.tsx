@@ -46,6 +46,10 @@ import {
   filterOpenRegistrationTeams,
   type TeamDivisionFilterOption,
 } from './utils/teamFilters';
+import {
+  organizationMatchesSports,
+  rentalResourceMatchesSports,
+} from './rentalSportFilters';
 
 type RentalListing = {
   kind: 'slot' | 'affiliateFacility';
@@ -86,30 +90,10 @@ const DISTANCE_SLIDER_MARKS = [
   { value: DISTANCE_SLIDER_MAX_MILES, label: String(DISTANCE_SLIDER_MAX_MILES) },
 ];
 
-const normalizeSportValue = (value: string): string => value.trim().toLowerCase();
 const kmToMiles = (value: number): number => value / KM_PER_MILE;
 const milesToKm = (value: number): number => value * KM_PER_MILE;
 const clampMiles = (value: number): number =>
   Math.min(DISTANCE_SLIDER_MAX_MILES, Math.max(DISTANCE_SLIDER_MIN_MILES, Math.round(value)));
-
-const organizationMatchesSports = (organization: Organization, selectedSports: string[]): boolean => {
-  if (!selectedSports.length) {
-    return true;
-  }
-
-  const organizationSports = new Set(
-    (Array.isArray(organization.sports) ? organization.sports : [])
-      .filter((sport): sport is string => typeof sport === 'string')
-      .map((sport) => normalizeSportValue(sport))
-      .filter((sport) => sport.length > 0),
-  );
-
-  if (!organizationSports.size) {
-    return false;
-  }
-
-  return selectedSports.some((sport) => organizationSports.has(normalizeSportValue(sport)));
-};
 
 export default function DiscoverPage() {
   return (
@@ -564,7 +548,9 @@ function DiscoverPageContent() {
     }
     setOrganizationsError(null);
     try {
-      const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset);
+      const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
+        hydrateRelations: false,
+      });
       setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
       setOrganizationOffset(page.pagination.nextOffset);
       setHasMoreOrganizations(page.pagination.hasMore);
@@ -1864,7 +1850,7 @@ function RentalsTabContent(props: {
   const filteredListings = useMemo(() => {
     const [startHour, endHour] = timeRange;
     return rentalListings.filter((listing) => {
-      if (!organizationMatchesSports(listing.organization, selectedSports)) {
+      if (!rentalResourceMatchesSports(listing, selectedSports)) {
         return false;
       }
       if (location && typeof maxDistance === 'number') {

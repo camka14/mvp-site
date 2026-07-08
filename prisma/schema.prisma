@@ -419,10 +419,12 @@ model Fields {
   location         String?
   organizationId   String?
   facilityId       String?
+  sportIds         String[]  @default([])
   createdBy        String?
 
   @@index([organizationId])
   @@index([facilityId])
+  @@index([sportIds], type: Gin)
   @@index([createdBy])
   @@index([archivedAt])
 }

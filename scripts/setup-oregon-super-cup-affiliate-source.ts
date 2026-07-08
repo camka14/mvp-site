@@ -31,6 +31,8 @@ const TEAM_APPLICATION_URL = 'https://playmetrics.com/signup?clubToken=U2lnbnVwL
 const LOGO_SOURCE_URL = 'https://soccerchanceacademy.us/wp-content/uploads/2026/02/sca-web-logo-new.png';
 const ORGANIZER_NAME = 'Soccer Chance Academy Portland';
 const ORG_ADDRESS = '1500 SE 96th Ave, Portland, OR 97216';
+const PUBLIC_SLUG = 'soccer-chance-academy-portland';
+const ORGANIZER_DESCRIPTION = 'Soccer Chance Academy Portland is a youth soccer academy offering player development, academy programs, camps, futsal training, tournaments such as Oregon Super Cup, and soccer education programs for players in the Portland metro area.';
 const VENUE_ADDRESS = '3101 S Hillhurst Road, Ridgefield, WA 98642';
 
 const division = (
@@ -193,19 +195,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: ORG_ADDRESS,
-      description: 'Soccer Chance Academy Portland is a youth soccer academy offering player development, academy programs, tournaments, camps, futsal, and related soccer education.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer', 'Indoor Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Soccer Chance Academy Portland programs',
+      publicIntroText: 'Find Soccer Chance Academy tournaments, camps, academy programs, and registration links.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -216,12 +221,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: ORG_ADDRESS,
-      description: 'Soccer Chance Academy Portland is a youth soccer academy offering player development, academy programs, tournaments, camps, futsal, and related soccer education.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer', 'Indoor Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Soccer Chance Academy Portland programs',
+      publicIntroText: 'Find Soccer Chance Academy tournaments, camps, academy programs, and registration links.',
       coordinates,
       operatesAthleticFacility: false,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',

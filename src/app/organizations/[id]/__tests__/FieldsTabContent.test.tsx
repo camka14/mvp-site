@@ -7,6 +7,7 @@ const pushMock = jest.fn();
 const getOrganizationByIdMock = jest.fn();
 const getOrganizationsByOwnerMock = jest.fn();
 const getFieldEventsMatchesMock = jest.fn();
+const createFieldMock = jest.fn();
 const updateFieldMock = jest.fn();
 const updateRentalSlotMock = jest.fn();
 const getNextRentalOccurrenceMock = jest.fn();
@@ -178,7 +179,13 @@ jest.mock('@/components/location/LocationSelector', () => {
         'aria-invalid': isValid === false ? 'true' : undefined,
         'aria-errormessage': isValid === false ? errorMessage : undefined,
         onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-          onChange?.(event.target.value, 0, 0, event.target.value);
+          onChange?.(
+            event.target.value,
+            45.523,
+            -122.676,
+            event.target.value,
+            { selected: true, source: 'manual' },
+          );
         },
       }),
   };
@@ -194,6 +201,7 @@ jest.mock('@/lib/organizationService', () => ({
 jest.mock('@/lib/fieldService', () => ({
   fieldService: {
     getFieldEventsMatches: (...args: any[]) => getFieldEventsMatchesMock(...args),
+    createField: (...args: any[]) => createFieldMock(...args),
     updateField: (...args: any[]) => updateFieldMock(...args),
     createRentalSlot: (...args: any[]) => createRentalSlotMock(...args),
     updateRentalSlot: (...args: any[]) => updateRentalSlotMock(...args),
@@ -450,6 +458,42 @@ describe('FieldsTabContent calendar navigation', () => {
     mockCreateRentalSlotModalProps = null;
     getOrganizationByIdMock.mockResolvedValue(null);
     getOrganizationsByOwnerMock.mockResolvedValue([]);
+    createFacilityMock.mockImplementation(async (data: any) => ({
+      $id: data.$id ?? 'facility_created',
+      organizationId: data.organizationId ?? 'org_test',
+      isDefault: false,
+      sortOrder: 0,
+      ...data,
+    }));
+    updateFacilityMock.mockImplementation(async (id: string, data: any) => ({
+      $id: id,
+      organizationId: 'org_test',
+      isDefault: true,
+      sortOrder: 0,
+      ...data,
+    }));
+    createFieldMock.mockImplementation(async (data: any) => ({
+      $id: data.$id ?? 'field_created',
+      name: data.name,
+      location: data.location ?? '',
+      lat: data.lat ?? 0,
+      long: data.long ?? 0,
+      facilityId: data.facilityId ?? null,
+      sportIds: data.sportIds ?? [],
+      rentalSlotIds: [],
+      rentalSlots: [],
+    }));
+    updateFieldMock.mockImplementation(async (data: any) => ({
+      $id: data.$id,
+      name: data.name ?? 'Updated resource',
+      location: data.location ?? '',
+      lat: data.lat ?? 0,
+      long: data.long ?? 0,
+      facilityId: data.facilityId ?? null,
+      sportIds: data.sportIds ?? [],
+      rentalSlotIds: [],
+      rentalSlots: [],
+    }));
     updateRentalSlotMock.mockImplementation(async (field, slot) => ({
       field: {
         ...field,
@@ -989,7 +1033,7 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(pushMock).not.toHaveBeenCalledWith(expect.stringContaining('/events/'));
   });
 
-  it('shows facility operations metrics for managers', async () => {
+  it('shows the schedule view and details switch for managers', async () => {
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
@@ -1011,22 +1055,21 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(await screen.findByText('Facilities')).toBeInTheDocument();
     expect(screen.queryByText('Resource assignments')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show assignments' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ Facility' })).toBeInTheDocument();
-    expect(screen.getByText('Weekdays 08:00-22:00')).toBeInTheDocument();
-    expect(screen.getByText('Facility operations summary')).toBeInTheDocument();
-    expect(screen.getByText('Utilization')).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Facility details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Facility' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Resource' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Facility operations summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Utilization')).not.toBeInTheDocument();
+    expect(screen.getByText('Calendar layers')).toBeInTheDocument();
     expect(screen.getAllByText('Unassigned resources')).not.toHaveLength(0);
 
-    await user.click(screen.getByRole('button', { name: 'Show summary' }));
+    await user.click(screen.getByRole('button', { name: 'Facility details' }));
 
-    await waitFor(() => {
-      expect(screen.getByText('Utilization')).toBeVisible();
-    });
+    expect(await screen.findByRole('button', { name: '+ Facility' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ Resource' })).toBeInTheDocument();
-    expect(screen.getByText('Revenue / court-hour')).toBeInTheDocument();
-    expect(screen.getAllByText('Open inventory').length).toBeGreaterThan(0);
-    expect(screen.getByText('Unresolved conflicts')).toBeInTheDocument();
-    expect(screen.getByText('No conflicts')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Schedule' })).toBeInTheDocument();
+    expect(screen.getByText('Facility details')).toBeInTheDocument();
   });
 
   it('shows facility operation layers on the main manager calendar', async () => {
@@ -2478,7 +2521,7 @@ describe('FieldsTabContent calendar navigation', () => {
     expect(apiRequestMock.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
   });
 
-  it('opens the facility creation modal for managers', async () => {
+  it('opens inline facility details for managers', async () => {
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
@@ -2497,32 +2540,23 @@ describe('FieldsTabContent calendar navigation', () => {
       </MantineProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: '+ Facility' }));
+    await user.click(await screen.findByRole('button', { name: 'Facility details' }));
 
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    const dialog = screen.getByRole('dialog');
-    expect(screen.getByRole('heading', { name: 'Create Facility' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Downtown Sports Center')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Facility details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Facility' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Resource' })).toBeInTheDocument();
+    expect(screen.getAllByText('Facilities').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Resources')).toBeInTheDocument();
+    expect(screen.getAllByText('River City Sports Complex').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('River City Sports Complex');
     expect(screen.getByText('Operating hours')).toBeInTheDocument();
     expect(screen.getByLabelText('Monday opens')).toBeInTheDocument();
     expect(screen.getByLabelText('Monday closes')).toBeInTheDocument();
-    expect(screen.getByText('Resources in this facility')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show resources' })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByLabelText('Search facility assignment resources')).not.toBeVisible();
-
-    await user.click(screen.getByRole('button', { name: 'Show resources' }));
-
-    expect(screen.getByRole('button', { name: 'Hide resources' })).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => {
-      expect(screen.getByLabelText('Search facility assignment resources')).toBeVisible();
-    });
-    expect(within(dialog).queryByText('Resource assignment')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'All' })).toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: 'Add selected' })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: 'Add unassigned' })).not.toBeInTheDocument();
   });
 
-  it('saves facility operating hours from the edit modal', async () => {
+  it('saves facility operating hours from inline details', async () => {
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
@@ -2548,9 +2582,9 @@ describe('FieldsTabContent calendar navigation', () => {
       </MantineProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(await screen.findByRole('button', { name: 'Facility details' }));
 
-    expect(await screen.findByRole('heading', { name: 'Edit Facility' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'River City Sports Complex' })).toBeInTheDocument();
     const opensInput = screen.getByLabelText('Monday opens');
     const closesInput = screen.getByLabelText('Monday closes');
     expect(opensInput).toHaveValue('08:00');
@@ -2560,7 +2594,7 @@ describe('FieldsTabContent calendar navigation', () => {
     await user.type(opensInput, '07:00');
     await user.clear(closesInput);
     await user.type(closesInput, '21:30');
-    await user.click(screen.getByRole('button', { name: 'Save Facility' }));
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
 
     await waitFor(() => {
       expect(updateFacilityMock).toHaveBeenCalledWith('facility_river_city', expect.objectContaining({
@@ -2578,29 +2612,74 @@ describe('FieldsTabContent calendar navigation', () => {
     });
   });
 
-  it('assigns resources from the facility edit modal through field updates', async () => {
+  it('creates unsaved facilities and resources together from inline details', async () => {
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
       events: [],
       matches: [],
     }));
-    updateFacilityMock.mockImplementation(async (id: string, data: any) => ({
-      $id: id,
-      organizationId: 'org_test',
-      isDefault: true,
-      sortOrder: 0,
+    const emptyOrganization = {
+      $id: 'org_empty',
+      name: 'Empty Org',
+      ownerId: 'owner_1',
+      hasStripeAccount: false,
+      facilities: [],
+      fields: [],
+    } as any;
+    createFacilityMock.mockImplementation(async (data: any) => ({
+      $id: 'facility_new_saved',
+      organizationId: 'org_empty',
       ...data,
     }));
-    updateFieldMock.mockImplementation(async (data: any) => ({
-      $id: data.$id,
-      name: data.$id === 'field_2' ? 'Field 2' : 'Main',
-      location: '',
-      lat: 0,
-      long: 0,
+    createFieldMock.mockImplementation(async (data: any) => ({
+      $id: 'field_new_saved',
       rentalSlotIds: [],
       rentalSlots: [],
-      facilityId: data.facilityId,
+      ...data,
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={emptyOrganization}
+          organizationId="org_empty"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Manage facilities' }));
+    expect(screen.getByRole('button', { name: '+ Resource' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: '+ Facility' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'North Annex');
+    await user.type(screen.getByLabelText('Location'), '200 North Ave');
+    await user.click(screen.getByRole('button', { name: '+ Resource' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Court 1');
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
+
+    await waitFor(() => {
+      expect(createFacilityMock).toHaveBeenCalledWith(expect.objectContaining({
+        organizationId: 'org_empty',
+        name: 'North Annex',
+      }));
+    });
+    expect(createFieldMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Court 1',
+      facilityId: 'facility_new_saved',
+    }));
+    expect(updateFacilityMock).not.toHaveBeenCalled();
+    expect(updateFieldMock).not.toHaveBeenCalled();
+  });
+
+  it('undoes inline facility detail changes before saving', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
     }));
     const user = userEvent.setup();
 
@@ -2614,21 +2693,72 @@ describe('FieldsTabContent calendar navigation', () => {
       </MantineProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
-    expect(await screen.findByRole('heading', { name: 'Edit Facility' })).toBeInTheDocument();
-    const dialog = screen.getByRole('dialog');
-    await user.click(screen.getByRole('button', { name: 'Show resources' }));
-    await waitFor(() => {
-      expect(screen.getByLabelText('Search facility assignment resources')).toBeVisible();
+    await user.click(await screen.findByRole('button', { name: 'Facility details' }));
+    const nameInput = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Temporary Name');
+    expect(screen.getByRole('button', { name: /Save changes/ })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('River City Sports Complex');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(updateFacilityMock).not.toHaveBeenCalled();
+  });
+
+  it('assigns an existing resource to another facility from inline details', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const organization = buildOrganizationWithFacilityRentalFields();
+    organization.facilities.push({
+      $id: 'facility_annex',
+      organizationId: 'org_test',
+      name: 'North Annex',
+      location: '200 North Ave',
+      address: '200 North Ave',
+      coordinates: [-122.68, 45.53],
+      operatingHours: null,
+      isDefault: false,
+      sortOrder: 1,
     });
-    await user.click(within(dialog).getByRole('button', { name: /Field 2/i }));
-    await user.click(screen.getByRole('button', { name: 'Save Facility' }));
+    updateFieldMock.mockImplementation(async (data: any) => ({
+      $id: data.$id,
+      name: 'Main',
+      location: '',
+      lat: 0,
+      long: 0,
+      rentalSlotIds: [],
+      rentalSlots: [],
+      facilityId: data.facilityId,
+      sportIds: data.sportIds ?? [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={organization}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Facility details' }));
+    await user.click(screen.getByRole('button', { name: /Main/ }));
+    await user.click(screen.getByRole('textbox', { name: 'Facility' }));
+    fireEvent.click(screen.getByRole('option', { name: 'North Annex', hidden: true }));
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
 
     await waitFor(() => {
-      expect(updateFieldMock).toHaveBeenCalledWith({
-        $id: 'field_2',
-        facilityId: 'facility_river_city',
-      });
+      expect(updateFieldMock).toHaveBeenCalledWith(expect.objectContaining({
+        $id: 'field_main',
+        facilityId: 'facility_annex',
+      }));
     });
   });
 

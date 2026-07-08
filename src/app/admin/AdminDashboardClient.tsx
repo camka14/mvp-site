@@ -34,9 +34,15 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
-import { ExternalLink, Search, Send, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Search, Send, Trash2 } from 'lucide-react';
 
 type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports';
+type AdminUserSortField = 'name' | 'username' | 'email' | 'status' | 'dateJoined' | 'lastSeen';
+type SortDirection = 'asc' | 'desc';
+type AdminUserSort = {
+  field: AdminUserSortField;
+  direction: SortDirection;
+};
 
 type PageState<T> = {
   items: T[];
@@ -66,6 +72,8 @@ type AdminUserRow = UserData & {
   disabledAt?: string | null;
   disabledByUserId?: string | null;
   disabledReason?: string | null;
+  dateJoined?: string | null;
+  lastSeenAt?: string | null;
 };
 
 type AdminChatGroupRow = {
@@ -203,6 +211,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [verificationDrafts, setVerificationDrafts] = useState<Record<string, VerificationDraft>>({});
   const [moderationDrafts, setModerationDrafts] = useState<Record<string, ModerationDraft>>({});
   const [userSearchInput, setUserSearchInput] = useState('');
+  const [userSort, setUserSort] = useState<AdminUserSort>({ field: 'lastSeen', direction: 'desc' });
   const [selectedChatGroupId, setSelectedChatGroupId] = useState<string | null>(null);
   const [selectedChatGroup, setSelectedChatGroup] = useState<AdminChatGroupRow | null>(null);
   const [selectedChatMessages, setSelectedChatMessages] = useState<AdminChatMessageRow[]>([]);
@@ -401,12 +410,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     }
   }, [fieldsState.query]);
 
-  const loadUsers = useCallback(async (offset = 0, query = usersState.query) => {
+  const loadUsers = useCallback(async (
+    offset = 0,
+    query = usersState.query,
+    sort = userSort,
+  ) => {
     setUsersState((previous) => ({ ...previous, loading: true, error: null }));
     try {
       const params = new URLSearchParams({
         limit: String(DEFAULT_LIMIT),
         offset: String(offset),
+        sort: sort.field,
+        direction: sort.direction,
       });
       const normalizedQuery = query.trim();
       if (normalizedQuery.length > 0) {
@@ -435,7 +450,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         error: error instanceof Error ? error.message : 'Failed to load users.',
       }));
     }
-  }, [usersState.query]);
+  }, [usersState.query, userSort]);
 
   const loadChats = useCallback(async (offset = 0, query = chatsState.query) => {
     setChatsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -959,6 +974,14 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     const normalizedQuery = userSearchInput.trim();
     void loadUsers(0, normalizedQuery);
   }, [loadUsers, userSearchInput]);
+
+  const onUserSortChange = useCallback((field: AdminUserSortField) => {
+    const nextSort: AdminUserSort = userSort.field === field
+      ? { field, direction: userSort.direction === 'asc' ? 'desc' : 'asc' }
+      : { field, direction: field === 'name' || field === 'username' || field === 'email' ? 'asc' : 'desc' };
+    setUserSort(nextSort);
+    void loadUsers(0, usersState.query, nextSort);
+  }, [loadUsers, userSort, usersState.query]);
 
   const getVerificationDraft = useCallback((organization: Organization): VerificationDraft => (
     verificationDrafts[organization.$id] ?? {
@@ -1484,10 +1507,12 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                   <Table striped highlightOnHover withTableBorder withColumnBorders>
                     <Table.Thead>
                       <Table.Tr>
-                        <Table.Th>Name</Table.Th>
-                        <Table.Th>Username</Table.Th>
-                        <Table.Th>Email</Table.Th>
-                        <Table.Th>Status</Table.Th>
+                        <UserSortHeader field="name" label="Name" sort={userSort} onSort={onUserSortChange} />
+                        <UserSortHeader field="username" label="Username" sort={userSort} onSort={onUserSortChange} />
+                        <UserSortHeader field="email" label="Email" sort={userSort} onSort={onUserSortChange} />
+                        <UserSortHeader field="status" label="Status" sort={userSort} onSort={onUserSortChange} />
+                        <UserSortHeader field="dateJoined" label="Date joined" sort={userSort} onSort={onUserSortChange} />
+                        <UserSortHeader field="lastSeen" label="Last seen" sort={userSort} onSort={onUserSortChange} />
                         <Table.Th>ID</Table.Th>
                         <Table.Th>Actions</Table.Th>
                       </Table.Tr>
@@ -1509,6 +1534,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                               <Badge color="teal" variant="light">Active</Badge>
                             )}
                           </Table.Td>
+                          <Table.Td>{formatAdminDateTime(user.dateJoined)}</Table.Td>
+                          <Table.Td>{formatAdminDateTime(user.lastSeenAt)}</Table.Td>
                           <Table.Td>{user.$id}</Table.Td>
                           <Table.Td>
                             <Group gap="xs" onClick={(clickEvent) => clickEvent.stopPropagation()}>
@@ -2180,6 +2207,37 @@ function AdminPanelState({ loading, error, itemCount, emptyMessage, children }: 
     return <Text c="dimmed">{emptyMessage}</Text>;
   }
   return <>{children}</>;
+}
+
+function UserSortHeader({
+  field,
+  label,
+  sort,
+  onSort,
+}: {
+  field: AdminUserSortField;
+  label: string;
+  sort: AdminUserSort;
+  onSort: (field: AdminUserSortField) => void;
+}) {
+  const isActive = sort.field === field;
+  const Icon = isActive ? (sort.direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const directionLabel = isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'not sorted';
+
+  return (
+    <Table.Th>
+      <Button
+        variant="subtle"
+        color={isActive ? 'blue' : 'gray'}
+        size="compact-xs"
+        rightSection={<Icon size={14} aria-hidden="true" />}
+        onClick={() => onSort(field)}
+        aria-label={`Sort users by ${label}; currently ${directionLabel}`}
+      >
+        {label}
+      </Button>
+    </Table.Th>
+  );
 }
 
 type PaginationControlsProps = {

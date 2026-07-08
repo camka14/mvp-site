@@ -37,19 +37,16 @@ import { organizationService } from '@/lib/organizationService';
 import { createId } from '@/lib/id';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import { fieldService } from '@/lib/fieldService';
-import { facilityService } from '@/lib/facilityService';
 import { apiRequest } from '@/lib/apiClient';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/calendar/FieldCalendarFilter';
 import SharedCalendarEvent, { type SharedCalendarEventVariant } from '@/components/calendar/SharedCalendarEvent';
-import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal, { type CreateRentalSlotModalSubmitPayload } from '@/components/ui/CreateRentalSlotModal';
-import FacilityManagementOverview from './fieldsTab/FacilityManagementOverview';
 import FacilityCalendarPanel from './fieldsTab/FacilityCalendarPanel';
 import ManagerFacilityCalendarSidebar from './fieldsTab/ManagerFacilityCalendarSidebar';
 import PublicRentalSelectionsPanel from './fieldsTab/PublicRentalSelectionsPanel';
-import FacilityEditorModal from './fieldsTab/FacilityEditorModal';
+import FacilityDetailsWorkspace from './fieldsTab/FacilityDetailsWorkspace';
 import StaffTimeslotEditorModal from './fieldsTab/StaffTimeslotEditorModal';
 import {
   OpenStaffDeleteConfirmationModal,
@@ -57,25 +54,11 @@ import {
 } from './fieldsTab/StaffAssignmentConfirmationModals';
 import {
   ALL_FACILITIES_FILTER_VALUE,
-  DEFAULT_FACILITY_CLOSE_TIME,
-  DEFAULT_FACILITY_OPEN_TIME,
-  EMPTY_FACILITY_COORDINATES,
-  FACILITY_DAY_OPTIONS,
-  FACILITY_LOCATION_REQUIRED_ERROR,
-  FACILITY_LOCATION_SELECTION_ERROR,
   STAFF_TIMESLOT_REPEAT_DAY_OPTIONS,
   UNASSIGNED_FACILITY_FILTER_VALUE,
-  buildDefaultFacilityWeeklyHours,
-  buildOperatingHoursFromFormRows,
   coerceDatePickerValue,
-  facilityCoordinatesFromInput,
-  facilityCoordinatesToInput,
-  facilityOperatingHoursToFormRows,
-  formatFacilityOperatingHours,
-  hasFacilityCoordinates,
   normalizeDaysOfWeek,
   normalizeFieldIds,
-  type FacilityWeeklyHoursFormRow,
 } from './fieldsTab/facilityFormUtils';
 import {
   buildManagerResourceSelectionStorageKey,
@@ -602,14 +585,6 @@ const buildFacilityManagementList = (
   });
 
   return Array.from(byId.values()).sort(compareFacilitiesForManagement);
-};
-
-const upsertFacility = (facilities: Facility[] | undefined, facility: Facility): Facility[] => {
-  const existing = facilities ?? [];
-  const next = existing.some((entry) => entry.$id === facility.$id)
-    ? existing.map((entry) => (entry.$id === facility.$id ? facility : entry))
-    : [...existing, facility];
-  return next.sort(compareFacilitiesForManagement);
 };
 
 const minutesToDate = (base: Date, minutes: number): Date => {
@@ -1456,13 +1431,11 @@ export default function FieldsTabContent({
   const [hostSelection, setHostSelection] = useState<string>('self');
   const [fieldEventsLoading, setFieldEventsLoading] = useState(false);
   const lastLoadedFieldEventsKeyRef = useRef<string | null>(null);
-  const [createFieldOpen, setCreateFieldOpen] = useState(false);
-  const [editField, setEditField] = useState<Field | null>(null);
   const [createRentalOpen, setCreateRentalOpen] = useState(false);
   const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
   const [editingRentalField, setEditingRentalField] = useState<Field | null>(null);
   const [rentalDraftRange, setRentalDraftRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [facilitySummaryOpen, setFacilitySummaryOpen] = useState(false);
+  const [facilityWorkspaceView, setFacilityWorkspaceView] = useState<'schedule' | 'details'>('schedule');
   const managerCreateDragModeRef = useRef<ManagerCalendarSelectionMode | null>(null);
   const managerCreateDragSourceRef = useRef<'pointer' | null>(null);
   const managerCreateLastPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -1503,21 +1476,7 @@ export default function FieldsTabContent({
   const managerDraftSuppressNextClickRef = useRef(false);
   const openManagerCalendarDraftEditorRef = useRef<((draftId: string) => void) | null>(null);
   const [calendarLayerFilters, setCalendarLayerFilters] = useState<CalendarLayerType[]>(CALENDAR_LAYER_ORDER);
-  const [facilityModalOpen, setFacilityModalOpen] = useState(false);
-  const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
-  const [facilityFormName, setFacilityFormName] = useState('');
-  const [facilityFormLocation, setFacilityFormLocation] = useState('');
-  const [facilityFormAddress, setFacilityFormAddress] = useState('');
-  const [facilityFormAffiliateUrl, setFacilityFormAffiliateUrl] = useState('');
-  const [facilityFormCoordinates, setFacilityFormCoordinates] = useState<{ lat: number; lng: number }>(EMPTY_FACILITY_COORDINATES);
-  const [facilityLocationSelected, setFacilityLocationSelected] = useState(false);
-  const [facilityWeeklyHours, setFacilityWeeklyHours] = useState<FacilityWeeklyHoursFormRow[]>(() => buildDefaultFacilityWeeklyHours());
-  const [facilityResourceIds, setFacilityResourceIds] = useState<string[]>([]);
-  const [facilityResourcesOpen, setFacilityResourcesOpen] = useState(false);
-  const [facilityFormError, setFacilityFormError] = useState<string | null>(null);
-  const [facilitySubmitting, setFacilitySubmitting] = useState(false);
   const [selectedFacilityFilterValue, setSelectedFacilityFilterValue] = useState<string>(ALL_FACILITIES_FILTER_VALUE);
-  const [newResourceFacilityId, setNewResourceFacilityId] = useState<string | null>(null);
   const [staffScheduleAssignments, setStaffScheduleAssignments] = useState<StaffScheduleAssignment[]>([]);
   const [staffScheduleMembers, setStaffScheduleMembers] = useState<StaffScheduleStaffMember[]>([]);
   const [staffScheduleLoaded, setStaffScheduleLoaded] = useState(false);
@@ -1597,10 +1556,6 @@ export default function FieldsTabContent({
     [canManage, org?.$id, organizationId],
   );
   const facilities = useMemo(() => buildFacilityManagementList(org, fields), [fields, org]);
-  const defaultFacilityId = useMemo(
-    () => facilities.find((facility) => facility.isDefault)?.$id ?? facilities[0]?.$id ?? null,
-    [facilities],
-  );
   const unassignedFields = useMemo(
     () => fields.filter((field) => !getFieldFacilityId(field)),
     [fields],
@@ -1636,21 +1591,6 @@ export default function FieldsTabContent({
     () => facilityFilteredFields.map((field) => field.$id),
     [facilityFilteredFields],
   );
-  const resourceCountByFacilityId = useMemo(() => {
-    const counts = new Map<string, number>();
-    fields.forEach((field) => {
-      const facilityId = getFieldFacilityId(field);
-      if (!facilityId) {
-        return;
-      }
-      counts.set(facilityId, (counts.get(facilityId) ?? 0) + 1);
-    });
-    return counts;
-  }, [fields]);
-  const allFieldOptions = useMemo(() => fields.map((field) => ({
-    value: field.$id,
-    label: getFacilityScopedFieldDisplayName(field),
-  })), [fields]);
   const fieldFilterItems = useMemo<FieldCalendarFilterItem[]>(() => facilityFilteredFields.map((field) => {
     const label = getFacilityScopedFieldDisplayName(field);
     const count = (field.events?.length ?? 0) + (field.matches?.length ?? 0) + (field.rentalSlots?.length ?? 0);
@@ -1663,21 +1603,6 @@ export default function FieldsTabContent({
       colorMatchKey: field.$id,
     };
   }), [facilityFilteredFields]);
-  const resourceAssignmentItems = useMemo<FieldCalendarFilterItem[]>(() => fields.map((field) => {
-    const label = getFacilityScopedFieldDisplayName(field);
-    const facilityId = getFieldFacilityId(field);
-    const currentFacility = facilityId ? facilities.find((facility) => facility.$id === facilityId) : null;
-    const resolvedLocation = getFieldResolvedLocation(field);
-    return {
-      id: field.$id,
-      label,
-      detail: currentFacility?.name
-        ? `${currentFacility.name}${resolvedLocation ? ` - ${resolvedLocation}` : ''}`
-        : resolvedLocation || (facilityId ? 'Assigned to another facility' : 'Unassigned'),
-      colorSeed: label || field.$id,
-      colorMatchKey: field.$id,
-    };
-  }), [facilities, fields]);
   const fieldColorReferenceList = useMemo(
     () => buildUniqueColorReferenceList(fields.map((field) => field.$id)),
     [fields],
@@ -2147,153 +2072,6 @@ export default function FieldsTabContent({
       console.warn('Failed to refresh organization:', error);
     }
   }, [organizationId]);
-
-  const openCreateFacility = useCallback(() => {
-    setEditingFacility(null);
-    setFacilityFormName('');
-    setFacilityFormLocation('');
-    setFacilityFormAddress('');
-    setFacilityFormAffiliateUrl('');
-    setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
-    setFacilityLocationSelected(false);
-    setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
-    setFacilityResourceIds([]);
-    setFacilityResourcesOpen(false);
-    setFacilityFormError(null);
-    setFacilityModalOpen(true);
-  }, []);
-
-  const openEditFacility = useCallback((facility: Facility) => {
-    setEditingFacility(facility);
-    setFacilityFormName(facility.name || '');
-    setFacilityFormLocation(facility.location || facility.address || '');
-    setFacilityFormAddress(facility.address || '');
-    setFacilityFormAffiliateUrl(facility.affiliateUrl || '');
-    const nextCoordinates = facilityCoordinatesToInput(facility.coordinates);
-    setFacilityFormCoordinates(nextCoordinates);
-    setFacilityLocationSelected(Boolean((facility.location || facility.address || '').trim()) && hasFacilityCoordinates(nextCoordinates));
-    setFacilityWeeklyHours(facilityOperatingHoursToFormRows(facility.operatingHours));
-    setFacilityResourceIds(fields.filter((field) => getFieldFacilityId(field) === facility.$id).map((field) => field.$id));
-    setFacilityResourcesOpen(false);
-    setFacilityFormError(null);
-    setFacilityModalOpen(true);
-  }, [fields]);
-
-  const handleSaveFacility = useCallback(async () => {
-    if (!canManage || !organizationId) {
-      return;
-    }
-    const name = facilityFormName.trim();
-    if (!name) {
-      setFacilityFormError('Facility name is required.');
-      return;
-    }
-    const location = facilityFormLocation.trim();
-    if (!location) {
-      setFacilityFormError(FACILITY_LOCATION_REQUIRED_ERROR);
-      return;
-    }
-    const coordinates = facilityCoordinatesFromInput(facilityFormCoordinates);
-    if (!facilityLocationSelected || !coordinates) {
-      setFacilityFormError(FACILITY_LOCATION_SELECTION_ERROR);
-      return;
-    }
-    const { operatingHours, error: operatingHoursError } = buildOperatingHoursFromFormRows(facilityWeeklyHours);
-    if (operatingHoursError) {
-      setFacilityFormError(operatingHoursError);
-      return;
-    }
-
-    try {
-      setFacilitySubmitting(true);
-      setFacilityFormError(null);
-      const savedFacility = editingFacility
-          ? await facilityService.updateFacility(editingFacility.$id, {
-            name,
-            location,
-            address: facilityFormAddress.trim() || null,
-            affiliateUrl: facilityFormAffiliateUrl.trim() || null,
-            coordinates,
-            operatingHours,
-          })
-        : await facilityService.createFacility({
-            organizationId,
-            name,
-            location,
-            address: facilityFormAddress.trim() || null,
-            affiliateUrl: facilityFormAffiliateUrl.trim() || null,
-            coordinates,
-            operatingHours,
-            isDefault: facilities.length === 0,
-            sortOrder: facilities.length,
-          });
-      const selectedResourceIds = new Set(normalizeFieldIds(facilityResourceIds));
-      const assignmentUpdates = fields.filter((field) => {
-        const isCurrentlyAssigned = getFieldFacilityId(field) === savedFacility.$id;
-        const shouldBeAssigned = selectedResourceIds.has(field.$id);
-        return isCurrentlyAssigned !== shouldBeAssigned;
-      });
-      const updatedFields = await Promise.all(assignmentUpdates.map(async (field) => {
-        const shouldBeAssigned = selectedResourceIds.has(field.$id);
-        const updatedField = await fieldService.updateField({
-          $id: field.$id,
-          facilityId: shouldBeAssigned ? savedFacility.$id : null,
-        });
-        return shouldBeAssigned
-          ? { ...updatedField, facilityId: savedFacility.$id, facility: savedFacility }
-          : { ...updatedField, facilityId: null, facility: null };
-      }));
-      const updatedFieldById = new Map(updatedFields.map((field) => [field.$id, field]));
-      setOrg((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          facilities: upsertFacility(prev.facilities, savedFacility),
-          fields: (prev.fields ?? []).map((field) => (
-            updatedFieldById.get(field.$id)
-              ? mergeFieldPreservingCalendarHydration(field, updatedFieldById.get(field.$id) as Field)
-              : (
-                getFieldFacilityId(field) === savedFacility.$id
-                  ? { ...field, facilityId: savedFacility.$id, facility: savedFacility }
-                  : field
-              )
-          )),
-        };
-      });
-      setSelectedFacilityFilterValue(savedFacility.$id);
-      setFacilityModalOpen(false);
-      setEditingFacility(null);
-      setFacilityFormName('');
-      setFacilityFormLocation('');
-      setFacilityFormAddress('');
-      setFacilityFormAffiliateUrl('');
-      setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
-      setFacilityLocationSelected(false);
-      setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
-      setFacilityResourceIds([]);
-      setFacilityResourcesOpen(false);
-      notifications.show({ color: 'green', message: editingFacility ? 'Facility updated.' : 'Facility created.' });
-    } catch (error) {
-      console.error('Failed to save facility:', error);
-      setFacilityFormError('Facility could not be saved. Try again.');
-    } finally {
-      setFacilitySubmitting(false);
-    }
-  }, [
-    canManage,
-    editingFacility,
-    facilities,
-    facilityFormAddress,
-    facilityFormAffiliateUrl,
-    facilityFormCoordinates,
-    facilityLocationSelected,
-    facilityFormLocation,
-    facilityFormName,
-    facilityResourceIds,
-    facilityWeeklyHours,
-    fields,
-    organizationId,
-  ]);
 
   const computeCalendarRange = useMemo(() => {
     return (view: View, date: Date) => {
@@ -5274,20 +5052,15 @@ export default function FieldsTabContent({
           </Text>
         </div>
 
-        {canManage && (
+        {canManage && facilityWorkspaceView === 'schedule' && (
           <Group gap="xs" className="md:justify-end">
-            <Button size="xs" variant="light" onClick={openCreateFacility}>
-              + Facility
-            </Button>
             <Button
               size="xs"
-              onClick={() => {
-                setEditField(null);
-                setNewResourceFacilityId(defaultFacilityId);
-                setCreateFieldOpen(true);
-              }}
+              variant="light"
+              onClick={() => setFacilityWorkspaceView('details')}
+              disabled={managerCalendarDraftsSaving || managerCalendarPendingChangeCount > 0}
             >
-              + Resource
+              Facility details
             </Button>
             {managerCalendarEditMode ? (
               <>
@@ -5338,21 +5111,30 @@ export default function FieldsTabContent({
         </Alert>
       )}
 
-      {!org || !(org.fields && org.fields.length) ? (
+      {!org ? (
+        <Paper withBorder radius="md" p="lg">
+          <Text c="dimmed">Organization details are unavailable.</Text>
+        </Paper>
+      ) : canManage && facilityWorkspaceView === 'details' ? (
+        <FacilityDetailsWorkspace
+          organization={org}
+          facilities={facilities}
+          fields={fields}
+          canManage={canManage}
+          onSwitchToSchedule={() => setFacilityWorkspaceView('schedule')}
+          onSaved={refreshOrganization}
+        />
+      ) : !(org.fields && org.fields.length) ? (
         <Paper withBorder radius="md" p="lg">
           <Stack gap="sm">
             <Text c="dimmed">No resources available.</Text>
             {canManage ? (
               <Button
                 size="sm"
-                onClick={() => {
-                  setEditField(null);
-                  setNewResourceFacilityId(defaultFacilityId);
-                  setCreateFieldOpen(true);
-                }}
+                onClick={() => setFacilityWorkspaceView('details')}
                 style={{ alignSelf: 'flex-start' }}
               >
-                Create your first resource
+                Manage facilities
               </Button>
             ) : (
               <Text size="sm" c="dimmed">
@@ -5364,51 +5146,36 @@ export default function FieldsTabContent({
       ) : (
         <Stack gap="md">
           {canManage ? (
-            <Stack gap="md">
-              <FacilityManagementOverview
-                facilities={facilities}
-                unassignedFields={unassignedFields}
-                resourceCountByFacilityId={resourceCountByFacilityId}
-                facilityCalendarRangeLabel={facilityCalendarRangeLabel}
-                facilityCalendarSummary={facilityCalendarSummary}
-                summaryOpen={facilitySummaryOpen}
-                onToggleSummary={() => setFacilitySummaryOpen((open) => !open)}
-                onEditFacility={openEditFacility}
-                onViewUnassignedResources={() => handleFacilityFilterChange(UNASSIGNED_FACILITY_FILTER_VALUE)}
-                getOperatingHoursLabel={(facility) => formatFacilityOperatingHours(facility.operatingHours)}
+            <div className="shared-calendar-layout">
+              <ManagerFacilityCalendarSidebar
+                facilityFilterOptions={facilityFilterOptions}
+                selectedFacilityFilterValue={selectedFacilityFilterValue}
+                onFacilityFilterChange={handleFacilityFilterChange}
+                calendarLayerOrder={CALENDAR_LAYER_ORDER}
+                calendarLayerLabels={CALENDAR_LAYER_LABELS}
+                calendarLayerColors={CALENDAR_LAYER_COLORS}
+                calendarLayerCounts={calendarLayerCounts}
+                activeCalendarLayerSet={activeCalendarLayerSet}
+                allCalendarLayersSelected={allCalendarLayersSelected}
+                onSelectAllCalendarLayers={() => setCalendarLayerFilters(CALENDAR_LAYER_ORDER)}
+                onToggleCalendarLayer={toggleCalendarLayer}
+                editMode={managerCalendarEditMode}
+                createTemplates={MANAGER_CREATE_TEMPLATES}
+                selectedFieldIds={selectedFieldIds}
+                facilityFilteredFieldIds={facilityFilteredFieldIds}
+                fieldFilterItems={fieldFilterItems}
+                fieldColorReferenceList={fieldColorReferenceList}
+                createDragMode={managerCreateDragMode}
+                onCreatePointerDown={handleManagerCreatePointerDown}
+                onCreatePointerMove={handleManagerCreatePointerMove}
+                onCreatePointerUp={handleManagerCreatePointerUp}
+                onCreatePointerCancel={handleManagerCreatePointerCancel}
+                onSelectedFieldIdsChange={handleSelectedFieldIdsChange}
               />
-
-              <div className="shared-calendar-layout">
-                <ManagerFacilityCalendarSidebar
-                  facilityFilterOptions={facilityFilterOptions}
-                  selectedFacilityFilterValue={selectedFacilityFilterValue}
-                  onFacilityFilterChange={handleFacilityFilterChange}
-                  calendarLayerOrder={CALENDAR_LAYER_ORDER}
-                  calendarLayerLabels={CALENDAR_LAYER_LABELS}
-                  calendarLayerColors={CALENDAR_LAYER_COLORS}
-                  calendarLayerCounts={calendarLayerCounts}
-                  activeCalendarLayerSet={activeCalendarLayerSet}
-                  allCalendarLayersSelected={allCalendarLayersSelected}
-                  onSelectAllCalendarLayers={() => setCalendarLayerFilters(CALENDAR_LAYER_ORDER)}
-                  onToggleCalendarLayer={toggleCalendarLayer}
-                  editMode={managerCalendarEditMode}
-                  createTemplates={MANAGER_CREATE_TEMPLATES}
-                  selectedFieldIds={selectedFieldIds}
-                  facilityFilteredFieldIds={facilityFilteredFieldIds}
-                  fieldFilterItems={fieldFilterItems}
-                  fieldColorReferenceList={fieldColorReferenceList}
-                  createDragMode={managerCreateDragMode}
-                  onCreatePointerDown={handleManagerCreatePointerDown}
-                  onCreatePointerMove={handleManagerCreatePointerMove}
-                  onCreatePointerUp={handleManagerCreatePointerUp}
-                  onCreatePointerCancel={handleManagerCreatePointerCancel}
-                  onSelectedFieldIdsChange={handleSelectedFieldIdsChange}
-                />
-                <Stack gap="sm" className="min-w-0">
-                  {fieldCalendarNode}
-                </Stack>
-              </div>
-            </Stack>
+              <Stack gap="sm" className="min-w-0">
+                {fieldCalendarNode}
+              </Stack>
+            </div>
           ) : (
             <PublicRentalSelectionsPanel
               selections={rentalSelections}
@@ -5620,99 +5387,6 @@ export default function FieldsTabContent({
         ))}
         onCancel={() => setOpenStaffDeleteConfirmation(null)}
         onConfirm={() => void confirmOpenStaffAssignmentDelete()}
-      />
-
-      <FacilityEditorModal
-        opened={facilityModalOpen}
-        editingFacility={editingFacility}
-        submitting={facilitySubmitting}
-        formError={facilityFormError}
-        name={facilityFormName}
-        location={facilityFormLocation}
-        affiliateUrl={facilityFormAffiliateUrl}
-        coordinates={facilityFormCoordinates}
-        locationSelected={facilityLocationSelected}
-        locationRequiredError={FACILITY_LOCATION_REQUIRED_ERROR}
-        locationSelectionError={FACILITY_LOCATION_SELECTION_ERROR}
-        resourceIds={facilityResourceIds}
-        resourceAssignmentItems={resourceAssignmentItems}
-        resourcesOpen={facilityResourcesOpen}
-        allResourcesDisabled={allFieldOptions.length === 0}
-        colorReferenceList={fieldColorReferenceList}
-        weeklyHours={facilityWeeklyHours}
-        dayOptions={FACILITY_DAY_OPTIONS}
-        defaultOpenTime={DEFAULT_FACILITY_OPEN_TIME}
-        defaultCloseTime={DEFAULT_FACILITY_CLOSE_TIME}
-        onClose={() => {
-          setFacilityModalOpen(false);
-          setEditingFacility(null);
-          setFacilityFormName('');
-          setFacilityFormLocation('');
-          setFacilityFormAddress('');
-          setFacilityFormAffiliateUrl('');
-          setFacilityFormCoordinates(EMPTY_FACILITY_COORDINATES);
-          setFacilityLocationSelected(false);
-          setFacilityWeeklyHours(buildDefaultFacilityWeeklyHours());
-          setFacilityResourceIds([]);
-          setFacilityResourcesOpen(false);
-          setFacilityFormError(null);
-        }}
-        onSave={handleSaveFacility}
-        onNameChange={setFacilityFormName}
-        onLocationChange={(location, lat, lng, address, meta) => {
-          const nextSelected = Boolean(meta?.selected);
-          setFacilityFormLocation(location);
-          setFacilityLocationSelected(nextSelected);
-          setFacilityFormCoordinates(nextSelected ? { lat, lng } : EMPTY_FACILITY_COORDINATES);
-          setFacilityFormAddress(nextSelected ? address ?? location : '');
-          if (
-            (facilityFormError === FACILITY_LOCATION_REQUIRED_ERROR || facilityFormError === FACILITY_LOCATION_SELECTION_ERROR)
-            && nextSelected
-          ) {
-            setFacilityFormError(null);
-          }
-        }}
-        onAffiliateUrlChange={setFacilityFormAffiliateUrl}
-        onResourceIdsChange={(values) => setFacilityResourceIds(normalizeFieldIds(values))}
-        onResourcesOpenChange={setFacilityResourcesOpen}
-        onWeeklyHoursChange={setFacilityWeeklyHours}
-      />
-
-      <CreateFieldModal
-        isOpen={createFieldOpen}
-        onClose={() => {
-          setCreateFieldOpen(false);
-          setNewResourceFacilityId(null);
-        }}
-        organization={org ?? undefined}
-        field={editField}
-        facilities={facilities}
-        defaultFacilityId={editField ? getFieldFacilityId(editField) : newResourceFacilityId ?? defaultFacilityId}
-        onFieldSaved={async (savedField) => {
-          setOrg((prev) => {
-            if (!prev) return prev;
-            const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
-            const nextFields = sortFieldsByCreatedAt(prevFields.some((field) => field.$id === savedField.$id)
-              ? prevFields.map((field) => (
-                field.$id === savedField.$id
-                  ? mergeFieldPreservingCalendarHydration(field, savedField)
-                  : field
-              ))
-              : [...prevFields, savedField]);
-
-            return { ...prev, fields: nextFields };
-          });
-
-          setSelection(() => {
-            const start = new Date();
-            start.setMinutes(0, 0, 0);
-            const end = new Date(start.getTime() + MIN_SELECTION_MS);
-            return { fieldIds: [savedField.$id], start, end };
-          });
-          setCalendarDate(new Date());
-          setNewResourceFacilityId(null);
-          await refreshOrganization();
-        }}
       />
 
       <CreateRentalSlotModal

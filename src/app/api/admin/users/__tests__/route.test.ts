@@ -34,27 +34,47 @@ describe('GET /api/admin/users', () => {
     expect(res.status).toBe(403);
   });
 
-  it('returns paginated users and includes email metadata', async () => {
+  it('returns paginated users and includes email and activity metadata', async () => {
     requireRazumlyAdminMock.mockResolvedValue({ userId: 'admin_1', adminEmail: 'admin@razumly.com' });
     prismaMock.authUser.findMany
       .mockResolvedValueOnce([{ id: 'user_1' }])
-      .mockResolvedValueOnce([{ id: 'user_1', email: 'user@example.com', emailVerifiedAt: new Date('2026-03-10T10:00:00Z') }]);
-    prismaMock.userData.count.mockResolvedValue(1);
-    prismaMock.userData.findMany.mockResolvedValue([
-      {
+      .mockResolvedValueOnce([{
         id: 'user_1',
-        firstName: 'sam',
-        lastName: 'player',
-        userName: 'sam_player',
-        dateOfBirth: new Date('2000-01-01T00:00:00Z'),
-        teamIds: [],
-        friendIds: [],
-        friendRequestIds: [],
-        friendRequestSentIds: [],
-        followingIds: [],
-        uploadedImages: [],
-      },
-    ]);
+        email: 'user@example.com',
+        emailVerifiedAt: new Date('2026-03-10T10:00:00Z'),
+        disabledAt: null,
+        disabledByUserId: null,
+        disabledReason: null,
+        createdAt: new Date('2026-03-01T10:00:00Z'),
+        lastLogin: new Date('2026-03-12T10:00:00Z'),
+      }]);
+    prismaMock.userData.count.mockResolvedValue(1);
+    prismaMock.userData.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'user_1',
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+          firstName: 'sam',
+          lastName: 'player',
+          userName: 'sam_player',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'user_1',
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+          firstName: 'sam',
+          lastName: 'player',
+          userName: 'sam_player',
+          dateOfBirth: new Date('2000-01-01T00:00:00Z'),
+          teamIds: [],
+          friendIds: [],
+          friendRequestIds: [],
+          friendRequestSentIds: [],
+          followingIds: [],
+          uploadedImages: [],
+        },
+      ]);
 
     const res = await adminUsersGet(new NextRequest('http://localhost/api/admin/users?query=user@example.com'));
     const json = await res.json();
@@ -64,5 +84,9 @@ describe('GET /api/admin/users', () => {
     expect(json.users).toHaveLength(1);
     expect(json.users[0].email).toBe('user@example.com');
     expect(json.users[0].firstName).toBe('Sam');
+    expect(json.users[0].dateJoined).toBe('2026-03-01T10:00:00.000Z');
+    expect(json.users[0].lastSeenAt).toBe('2026-03-12T10:00:00.000Z');
+    expect(json.sort).toBe('lastSeen');
+    expect(json.direction).toBe('desc');
   });
 });

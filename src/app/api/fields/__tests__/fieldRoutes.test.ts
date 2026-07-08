@@ -83,7 +83,12 @@ describe('field routes', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    const res = await POST(jsonRequest({ id: 'field_1', name: 'Court A', organizationId: 'org_1' }));
+    const res = await POST(jsonRequest({
+      id: 'field_1',
+      name: 'Court A',
+      organizationId: 'org_1',
+      sportIds: ['Basketball', 'Indoor Soccer', 'Basketball', ''],
+    }));
     const json = await res.json();
 
     expect(res.status).toBe(201);
@@ -93,6 +98,7 @@ describe('field routes', () => {
         data: expect.objectContaining({
           organizationId: 'org_1',
           facilityId: 'facility_org_1',
+          sportIds: ['Basketball', 'Indoor Soccer'],
         }),
       }),
     );
@@ -224,5 +230,22 @@ describe('field routes', () => {
       $id: 'facility_org_1',
       name: 'River City Sports Complex',
     });
+  });
+
+  it('filters fields by sport ids', async () => {
+    prismaMock.fields.findMany.mockResolvedValue([]);
+
+    const res = await GET(new NextRequest('http://localhost/api/fields?organizationId=org_1&sportId=Basketball&sportIds=Indoor%20Soccer,Pickleball'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.fields.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          archivedAt: null,
+          organizationId: 'org_1',
+          sportIds: { hasSome: ['Basketball', 'Indoor Soccer', 'Pickleball'] },
+        },
+      }),
+    );
   });
 });

@@ -35,6 +35,8 @@ const TENNIS_DOUBLES_FORM_URL = 'https://docs.google.com/forms/d/1Fhl7Jzd1YURHpZ
 const LOGO_SOURCE_URL = 'https://cascadeac.com/wp-content/uploads/2024/04/logo-blue.png';
 const ADDRESS = '19201 SE Division St, Gresham, OR 97030';
 const ORG_SPORTS = ['Basketball', 'Pickleball', 'Racquetball', 'Tennis'];
+const PUBLIC_SLUG = 'cascade-athletic-clubs-gresham';
+const ORGANIZER_DESCRIPTION = 'Cascade Athletic Clubs Gresham is a multi-sport athletic club with basketball, pickleball, racquetball, tennis, swimming, fitness, youth programs, court reservations, and club sports programming.';
 
 const staticManualPageClient: ScrapePageClient = {
   async fetchPage(params) {
@@ -347,19 +349,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Cascade Athletic Clubs Gresham',
       location: 'Gresham, OR',
       address: ADDRESS,
-      description: 'Cascade Athletic Clubs Gresham is a multi-sport athletic club with basketball, pickleball, racquetball, tennis, swimming, fitness, youth programs, court reservations, and club sports programming.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: LIST_URL,
       sports,
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Cascade Athletic Clubs Gresham programs',
+      publicIntroText: 'Find Cascade Gresham sports programs, court reservations, youth programs, and club links.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: true,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -370,14 +375,17 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Cascade Athletic Clubs Gresham',
       location: 'Gresham, OR',
       address: ADDRESS,
-      description: 'Cascade Athletic Clubs Gresham is a multi-sport athletic club with basketball, pickleball, racquetball, tennis, swimming, fitness, youth programs, court reservations, and club sports programming.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: LIST_URL,
       sports,
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Cascade Athletic Clubs Gresham programs',
+      publicIntroText: 'Find Cascade Gresham sports programs, court reservations, youth programs, and club links.',
       coordinates,
-      publicPageEnabled: false,
       publicWidgetsEnabled: false,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: true,

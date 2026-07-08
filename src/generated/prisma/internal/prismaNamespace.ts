@@ -6624,6 +6624,7 @@ export const FieldsScalarFieldEnum = {
   location: 'location',
   organizationId: 'organizationId',
   facilityId: 'facilityId',
+  sportIds: 'sportIds',
   createdBy: 'createdBy'
 } as const
 

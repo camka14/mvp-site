@@ -510,7 +510,7 @@ class OrganizationService {
   async listOrganizationsWithFieldsPage(
     limit: number = 100,
     offset: number = 0,
-    options: { includeAffiliateRentals?: boolean } = {},
+    options: { includeAffiliateRentals?: boolean; hydrateRelations?: boolean } = {},
   ): Promise<{
     organizations: Organization[];
     pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
@@ -528,16 +528,19 @@ class OrganizationService {
       }>(`/api/organizations?${params.toString()}`);
       const rows = Array.isArray(response.organizations) ? (response.organizations as AnyRow[]) : [];
       const organizations = rows.map((row) => this.mapRowToOrganization(row));
-      const hydrated = await Promise.all(organizations.map((org) => this.withRelations(org)));
+      const shouldHydrateRelations = options.hydrateRelations !== false;
+      const pageOrganizations = shouldHydrateRelations
+        ? await Promise.all(organizations.map((org) => this.withRelations(org)))
+        : organizations;
       return {
-        organizations: hydrated,
+        organizations: pageOrganizations,
         pagination: {
           limit,
           offset,
           nextOffset: typeof response.pagination?.nextOffset === 'number'
             ? response.pagination.nextOffset
-            : offset + hydrated.length,
-          hasMore: Boolean(response.pagination?.hasMore ?? hydrated.length === limit),
+            : offset + pageOrganizations.length,
+          hasMore: Boolean(response.pagination?.hasMore ?? pageOrganizations.length === limit),
         },
       };
     } catch (error) {

@@ -18,6 +18,8 @@ const REGISTRARS_URL = 'https://leagues.bluesombrero.com/Default.aspx?tabid=1711
 const FALL_SHOOTOUT_URL = 'https://leagues.bluesombrero.com/Default.aspx?tabid=2244874';
 const FALL_TEAM_REGISTRATION_URL = 'https://docs.google.com/document/d/1EnXobKDVPREHkaGz4Eh0yN9Jhu90rajKk_uNxTcwhuU/edit?tab=t.oqy6fv6i453i#heading=h.lftbxvkh6ewn';
 const LOGO_SOURCE_URL = 'https://leagues.bluesombrero.com/Portals/81086/logo638264953461949679.png';
+const PUBLIC_SLUG = 'portland-youth-soccer-association';
+const ORGANIZER_DESCRIPTION = 'Portland Youth Soccer Association supports Portland-area youth soccer clubs and leagues, including recreational and competitive play, seasonal registration, schedules, field information, coaching resources, and official league administration.';
 
 const fallLeagueDivisions = [
   { name: 'U7', divisionTypeId: 'u7', priceCents: 22500 },
@@ -215,19 +217,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Portland Youth Soccer Association',
       location: 'Portland, OR',
       address: '10940 SW Barnes Rd #322, Portland, OR 97225',
-      description: 'Portland Youth Soccer Association serves Portland-area youth soccer clubs with recreational league play, team registration, schedules, referee and registrar resources, and the PYSA Fall Shootout tournament.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates: [-122.789617, 45.512921],
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Portland Youth Soccer Association programs',
+      publicIntroText: 'Find Portland youth soccer league information, registration links, fields, and member-club resources.',
       taxOrganizationType: 'NONPROFIT_ORGANIZATION',
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -238,12 +243,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Portland Youth Soccer Association',
       location: 'Portland, OR',
       address: '10940 SW Barnes Rd #322, Portland, OR 97225',
-      description: 'Portland Youth Soccer Association serves Portland-area youth soccer clubs with recreational league play, team registration, schedules, referee and registrar resources, and the PYSA Fall Shootout tournament.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Portland Youth Soccer Association programs',
+      publicIntroText: 'Find Portland youth soccer league information, registration links, fields, and member-club resources.',
       coordinates: [-122.789617, 45.512921],
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',

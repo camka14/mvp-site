@@ -25,6 +25,8 @@ const ORG_ID = 'affiliate_org_eastside_timbers';
 const LOGO_FILE_ID = 'affiliate_file_eastside_timbers_logo';
 const LOGO_PATH = 'affiliate_org_eastside_timbers-eastside-timbers-logo-upscaled.png';
 const BASE_URL = 'https://www.eastsidetimbers.com/';
+const PUBLIC_SLUG = 'eastside-timbers';
+const ORGANIZER_DESCRIPTION = 'Eastside Timbers is a youth soccer club and program operator serving East Multnomah and Clackamas Counties. The organization runs recreational soccer, competitive programs, camps, training, field rentals, and indoor futsal programs through Oregon Premier Futsal.';
 
 const PLAYMETRICS_RECREATION_URL = 'https://playmetrics.com/signup?clubToken=TG9naW4tQ2x1Yi52MS01MDEtMTc4NjMwMTAwOHxyZFZFWWpSbkl6eS8ySHhEdmNuYTZuR0tZM2p4MWFMaFhmRlhhYm5tVUljPQ==&program_id=108422';
 const PLAYMETRICS_EDGE_URL = 'https://playmetrics.com/signup?clubToken=TG9naW4tQ2x1Yi52MS01MDEtMTc4NjQxMTg0MnxJeVNPcS91VndVOTZMaElLKy85YjM0RUtMVXZveUxybTRMVFd4cmpOYVVrPQ==&program_id=109854';
@@ -517,19 +519,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Eastside Timbers',
       location: 'Portland, OR',
       address: '4710 SE 174th Ave, Portland, OR 97236',
-      description: 'Eastside Timbers is a youth soccer club and program operator serving East Multnomah and Clackamas Counties. The organization runs recreational soccer, camps, training programs, field rentals, and indoor programs through Oregon Premier Futsal.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
       sports: ['Grass Soccer', 'Indoor Soccer', 'Other'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Eastside Timbers programs',
+      publicIntroText: 'Find Eastside Timbers recreation, camps, training, field rentals, and indoor soccer opportunities.',
       taxOrganizationType: 'NONPROFIT_ORGANIZATION',
       operatesAthleticFacility: true,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -540,12 +545,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Eastside Timbers',
       location: 'Portland, OR',
       address: '4710 SE 174th Ave, Portland, OR 97236',
-      description: 'Eastside Timbers is a youth soccer club and program operator serving East Multnomah and Clackamas Counties. The organization runs recreational soccer, camps, training programs, field rentals, and indoor programs through Oregon Premier Futsal.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
       sports: ['Grass Soccer', 'Indoor Soccer', 'Other'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Eastside Timbers programs',
+      publicIntroText: 'Find Eastside Timbers recreation, camps, training, field rentals, and indoor soccer opportunities.',
       coordinates,
       operatesAthleticFacility: true,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',

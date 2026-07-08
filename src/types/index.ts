@@ -733,6 +733,7 @@ export interface Field {
   heading?: number;
   inUse?: boolean;
   facilityId?: string | null;
+  sportIds?: string[];
   rentalSlotIds?: string[];
 
   // Relationships
@@ -764,6 +765,7 @@ export type FieldPayload = Omit<Field, FieldRelationKeys | '$id'> & {
   eventIds?: string[];
   organizationId?: string;
   facilityId?: string | null;
+  sportIds?: string[];
   rentalSlotIds?: string[];
 };
 
@@ -979,6 +981,8 @@ export interface Organization {
   website?: string;
   sports?: string[];
   logoId?: string;
+  logoUrl?: string;
+  imageUrl?: string;
   location?: string;
   address?: string;
   coordinates?: [number, number];
@@ -2003,6 +2007,10 @@ export function getOrganizationAvatarUrl(
   size: number = 64,
 ): string {
   if (organization && typeof organization === 'object') {
+    const displayUrl = organization.logoUrl?.trim() || organization.imageUrl?.trim();
+    if (displayUrl) {
+      return displayUrl;
+    }
     if (organization.logoId) {
       return buildPreviewUrl(organization.logoId, size, size);
     }

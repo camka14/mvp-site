@@ -24,6 +24,7 @@ const fieldPatchSchema = z.object({
   inUse: z.boolean().nullable().optional(),
   rentalSlotIds: z.array(z.string()).optional(),
   facilityId: z.string().nullable().optional(),
+  sportIds: z.array(z.string()).optional(),
   organizationId: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
 }).strict();
@@ -37,6 +38,7 @@ const FIELD_MUTABLE_FIELDS = new Set<string>([
   'inUse',
   'rentalSlotIds',
   'facilityId',
+  'sportIds',
   'organizationId',
   'createdBy',
 ]);
@@ -70,6 +72,18 @@ const fieldCoordinatesAreSet = (lat: unknown, lng: unknown): boolean => {
   const normalizedLng = Number(lng);
   return Number.isFinite(normalizedLat) && Number.isFinite(normalizedLng) && !(normalizedLat === 0 && normalizedLng === 0);
 };
+
+const normalizeStringList = (values: unknown): string[] => (
+  Array.isArray(values)
+    ? Array.from(
+        new Set(
+          values
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0),
+        ),
+      )
+    : []
+);
 
 const deriveLegacyOrglessFieldOwner = async (fieldId: string): Promise<string | null> => {
   const earliestLinkedEvent = await prisma.events.findFirst({
@@ -255,6 +269,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       safePayload.facilityId = facility.id;
     }
+  }
+  if (Object.prototype.hasOwnProperty.call(safePayload, 'sportIds')) {
+    safePayload.sportIds = normalizeStringList(safePayload.sportIds);
   }
   const updateData: Record<string, unknown> = {};
   for (const key of FIELD_MUTABLE_FIELDS) {

@@ -15,6 +15,8 @@ const MAPPING_ID = 'affiliate_mapping_oregon_youth_soccer_sanctioned_tournaments
 const BASE_URL = 'https://www.oregonyouthsoccer.org/';
 const LIST_URL = 'https://www.oregonyouthsoccer.org/sanctioned-tournaments/';
 const LOGO_SOURCE_URL = 'https://www.oregonyouthsoccer.org/wp-content/uploads/sites/279/2024/03/OYSA-Main-Shield-LOGO2.png';
+const PUBLIC_SLUG = 'oregon-youth-soccer-association';
+const ORGANIZER_DESCRIPTION = 'Oregon Youth Soccer Association is a statewide youth soccer organization that supports Oregon member clubs, leagues, tournaments, coaching, refereeing, and player programs. Its sanctioned tournament directory lists approved youth soccer competitions hosted around Oregon.';
 const TOURNAMENT_DATE_REGEX = '((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z]*\\.?\\s+\\d{1,2}.*?\\b20\\d{2}\\b)';
 const TITLE_BEFORE_DATE_REGEX = '^(?:20\\d{2}\\s+)?(.+?)\\s+(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec))';
 const HOST_BEFORE_TITLE_REGEX = '^(.+?)\\s+[–-]\\s+';
@@ -171,19 +173,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Oregon Youth Soccer Association',
       location: 'Beaverton, OR',
       address: 'Beaverton, OR',
-      description: 'Oregon Youth Soccer Association is a statewide youth soccer organization that supports Oregon member clubs, leagues, tournaments, coaching, refereeing, and player programs. Its sanctioned tournament directory lists approved youth soccer competitions hosted around Oregon.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates: [-122.8037, 45.4871],
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Oregon Youth Soccer Association programs',
+      publicIntroText: 'Find sanctioned youth soccer tournaments, member-club programs, and official OYSA links.',
       taxOrganizationType: 'NONPROFIT_ORGANIZATION',
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -194,12 +199,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: 'Oregon Youth Soccer Association',
       location: 'Beaverton, OR',
       address: 'Beaverton, OR',
-      description: 'Oregon Youth Soccer Association is a statewide youth soccer organization that supports Oregon member clubs, leagues, tournaments, coaching, refereeing, and player programs. Its sanctioned tournament directory lists approved youth soccer competitions hosted around Oregon.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: BASE_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Oregon Youth Soccer Association programs',
+      publicIntroText: 'Find sanctioned youth soccer tournaments, member-club programs, and official OYSA links.',
       coordinates: [-122.8037, 45.4871],
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',

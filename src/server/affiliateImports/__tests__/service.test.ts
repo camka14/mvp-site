@@ -44,6 +44,7 @@ const prismaMock = {
     deleteMany: jest.fn(),
   },
   facilities: {
+    findUnique: jest.fn(),
     upsert: jest.fn(),
     deleteMany: jest.fn(),
   },
@@ -52,6 +53,8 @@ const prismaMock = {
     deleteMany: jest.fn(),
     upsert: jest.fn(),
   },
+  eventTags: undefined as any,
+  eventTagAssignments: undefined as any,
 };
 
 let idCounter = 0;
@@ -88,6 +91,7 @@ describe('affiliate import service', () => {
     prismaMock.divisions.upsert.mockImplementation(async ({ create }) => create);
     prismaMock.events.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.canonicalTeams.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.facilities.findUnique.mockResolvedValue(null);
     prismaMock.facilities.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.organizations.findFirst.mockResolvedValue(null);
     prismaMock.organizations.upsert.mockImplementation(async ({ create, update }) => ({
@@ -95,6 +99,8 @@ describe('affiliate import service', () => {
       ...update,
     }));
     prismaMock.organizations.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.eventTags = undefined;
+    prismaMock.eventTagAssignments = undefined;
   });
 
   it('deletes affiliate candidates and their backing target rows', async () => {
@@ -674,6 +680,77 @@ describe('affiliate import service', () => {
       hostId: null,
       organizationId: 'org_troutdale',
     }));
+  });
+
+  it('syncs explicit and inferred tags when publishing affiliate events', async () => {
+    prismaMock.eventTags = {
+      upsert: jest.fn(async ({ where, create, update }) => ({
+        id: `tag_${where.slug}`,
+        name: update.name ?? create.name,
+        slug: where.slug,
+      })),
+    };
+    prismaMock.eventTagAssignments = {
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
+    };
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_tagged',
+      sourceId: 'source_1',
+      listingKind: 'EVENT',
+      title: 'Sunday Open Gym',
+      organizerName: 'Rose City Volleyball',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Columbia Christian School',
+      city: 'Portland',
+      address: '205 NE 92nd Avenue Portland',
+      startsAt: new Date('2099-07-05T21:00:00.000Z'),
+      priceText: '$11.00',
+      officialActionUrl: 'https://example.com/open-gym',
+      sourceUrl: 'https://example.com/source',
+      rawPayload: {
+        tags: ['Featured'],
+        extractedFields: {
+          tagText: 'Open Play',
+        },
+      },
+      publishedEventId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city_volleyball',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city_volleyball' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_tagged' });
+
+    await publishAffiliateCandidate('candidate_tagged', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.eventTags.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { slug: 'featured' },
+    }));
+    expect(prismaMock.eventTags.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { slug: 'open-play' },
+    }));
+    expect(prismaMock.eventTagAssignments.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          eventId: 'generated_1',
+          tagId: 'tag_featured',
+          tagNameSnapshot: 'Featured',
+        }),
+        expect.objectContaining({
+          eventId: 'generated_1',
+          tagId: 'tag_open-play',
+          tagNameSnapshot: 'Open Play',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
   it('falls back to venue plus address when the plain affiliate event address does not geocode', async () => {
@@ -2134,6 +2211,86 @@ describe('affiliate import service', () => {
       update: expect.objectContaining({
         coordinates: [-122.4650436, 45.5047844],
         affiliateUrl: 'https://cascadeac.clubautomation.com/',
+      }),
+    });
+  });
+
+  it('geocodes affiliate rental facilities from facility name and city when no street address is available', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_gresham_fields',
+      name: 'City of Gresham Sports Field Rentals',
+      sourceKey: 'city-gresham-sports-field-rentals',
+      activeMappingId: 'mapping_gresham_fields',
+      listUrl: 'https://greshamoregon.gov/Parks-and-Recreation/',
+      organizationId: 'org_gresham',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_gresham',
+      ownerId: 'owner_1',
+      coordinates: [-122.43148, 45.50014],
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_gresham_fields',
+      sourceId: 'source_gresham_fields',
+      mapping: {
+        kind: 'RENTAL',
+        listUrl: 'https://greshamoregon.gov/Parks-and-Recreation/',
+        itemSelector: 'li',
+        fields: {
+          title: { selector: ':scope' },
+          officialActionUrl: {
+            selector: ':scope',
+            mode: 'literal',
+            value: 'https://greshamoregon.gov/Parks-and-Recreation/',
+            transform: 'absoluteUrl',
+          },
+          city: {
+            selector: ':scope',
+            mode: 'literal',
+            value: 'Gresham, OR',
+          },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_gresham_fields' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_gresham_fields', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.facilities.upsert.mockImplementation(async ({ create }) => ({ ...create }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    geocodeAddressToCoordinatesMock.mockImplementation(async (query) => (
+      query === 'Vance Park, Gresham, OR'
+        ? [-122.4319, 45.5077]
+        : null
+    ));
+
+    const client = {
+      fetchPage: jest.fn(async () => ({
+        url: 'https://greshamoregon.gov/Parks-and-Recreation/',
+        finalUrl: 'https://greshamoregon.gov/Parks-and-Recreation/',
+        statusCode: 200,
+        fetchedAt: '2026-07-07T00:00:00.000Z',
+        body: '<li>Vance Park</li>',
+      })),
+    };
+
+    await runAffiliateSourceScrape('source_gresham_fields', { client });
+
+    expect(geocodeAddressToCoordinatesMock).toHaveBeenCalledWith('Vance Park, Gresham, OR');
+    expect(prismaMock.facilities.upsert).toHaveBeenCalledWith({
+      where: { id: 'affiliate_facility_city_gresham_sports_field_rentals_vance_park' },
+      create: expect.objectContaining({
+        id: 'affiliate_facility_city_gresham_sports_field_rentals_vance_park',
+        organizationId: 'org_gresham',
+        name: 'Vance Park',
+        location: 'Gresham, OR',
+        address: null,
+        coordinates: [-122.4319, 45.5077],
+        affiliateUrl: 'https://greshamoregon.gov/Parks-and-Recreation/',
+      }),
+      update: expect.objectContaining({
+        coordinates: [-122.4319, 45.5077],
       }),
     });
   });

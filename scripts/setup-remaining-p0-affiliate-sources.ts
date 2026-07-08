@@ -36,6 +36,9 @@ type SourceOrganizationDefinition = {
   description: string;
   sports: string[];
   operatesAthleticFacility: boolean;
+  publicSlug?: string;
+  publicHeadline?: string;
+  publicIntroText?: string;
 };
 
 type SourceDefinition = {
@@ -104,6 +107,9 @@ const orgDefinitions: SourceOrganizationDefinition[] = [
     description: 'RECS Pickleball operates indoor pickleball clubs in Clackamas and Tualatin with court reservations, group play, clinics, lessons, mixers, round robins, tournaments, events, and private group rentals.',
     sports: ['Pickleball'],
     operatesAthleticFacility: true,
+    publicSlug: 'recs-pickleball',
+    publicHeadline: 'RECS Pickleball programs',
+    publicIntroText: 'Find RECS Pickleball open play, leagues, lessons, events, tournaments, court reservations, and rentals.',
   },
   {
     id: 'affiliate_org_oregon_badminton_academy',
@@ -117,6 +123,9 @@ const orgDefinitions: SourceOrganizationDefinition[] = [
     description: 'Oregon Badminton Academy is a Beaverton badminton facility offering court reservations, open play, youth and adult coaching, camps, tournaments, corporate events, and team events.',
     sports: ['Badminton'],
     operatesAthleticFacility: true,
+    publicSlug: 'oregon-badminton-academy',
+    publicHeadline: 'Oregon Badminton Academy programs',
+    publicIntroText: 'Find Oregon Badminton Academy court reservations, open play, coaching, camps, and tournament links.',
   },
   {
     id: 'affiliate_org_batting_a_thousand',
@@ -791,6 +800,7 @@ const upsertOrganization = async (org: SourceOrganizationDefinition, ownerId: st
   });
   const coordinates = await resolveCoordinates(org);
   const sports = Array.from(new Set([...(existing?.sports ?? []), ...org.sports]));
+  const publicPageEnabled = Boolean(org.publicSlug);
 
   await (prisma as any).organizations.upsert({
     where: { id: org.id },
@@ -806,14 +816,17 @@ const upsertOrganization = async (org: SourceOrganizationDefinition, ownerId: st
       ownerId,
       website: org.website,
       sports,
-      status: 'UNLISTED',
+      status: publicPageEnabled ? 'LISTED' : 'UNLISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: org.publicSlug ?? null,
+      publicPageEnabled,
       publicWidgetsEnabled: false,
+      publicHeadline: org.publicHeadline ?? `${org.name} on BracketIQ`,
+      publicIntroText: org.publicIntroText ?? 'Find upcoming events, teams, rentals, and products.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: org.operatesAthleticFacility,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -829,10 +842,13 @@ const upsertOrganization = async (org: SourceOrganizationDefinition, ownerId: st
       ownerId,
       website: org.website,
       sports,
-      status: 'UNLISTED',
+      status: publicPageEnabled ? 'LISTED' : 'UNLISTED',
       coordinates,
-      publicPageEnabled: false,
+      publicSlug: org.publicSlug ?? null,
+      publicPageEnabled,
       publicWidgetsEnabled: false,
+      publicHeadline: org.publicHeadline ?? `${org.name} on BracketIQ`,
+      publicIntroText: org.publicIntroText ?? 'Find upcoming events, teams, rentals, and products.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: org.operatesAthleticFacility,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',

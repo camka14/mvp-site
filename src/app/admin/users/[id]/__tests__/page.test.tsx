@@ -116,6 +116,7 @@ describe('Admin user profile page', () => {
       firstName: 'Marc',
       lastName: 'Berezhnoy',
       userName: 'berezhnoymarc',
+      dateOfBirth: new Date('1995-04-12T00:00:00.000Z'),
       createdAt: new Date('2026-07-08T12:33:07.000Z'),
       updatedAt: new Date('2026-07-08T12:33:24.000Z'),
     });
@@ -148,6 +149,7 @@ describe('Admin user profile page', () => {
     render(view);
 
     expect(screen.getByText('Marc Berezhnoy')).toBeInTheDocument();
+    expect(screen.getByText('DOB')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to admin' })).toHaveAttribute('href', '/admin');
   });
 });

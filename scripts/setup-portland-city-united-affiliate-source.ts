@@ -34,6 +34,8 @@ const TECHNICAL_ACADEMY_FALL_URL = 'https://pcusc.byga.net/programs/zfxi8ta17/si
 const ROSE_CITY_CLASSIC_REGISTRATION_URL = 'https://system.gotsport.com/event_regs/748264b6ae';
 const LOGO_SOURCE_URL = 'https://static.wixstatic.com/media/7e16f0_e383eeea2a8040d1b5f0a30d70f31968~mv2.png';
 const ORGANIZER_NAME = 'Portland City United Soccer Club';
+const PUBLIC_SLUG = 'portland-city-united-soccer-club';
+const ORGANIZER_DESCRIPTION = 'Portland City United Soccer Club is a Portland youth soccer club serving U5-U19 players with teams, academies, camps, leagues, tournaments, ECNL RL and Pre-ECNL RL pathways, financial aid, and training facilities at Buckman Field Complex and Portland Christian High School.';
 const BUCKMAN_ADDRESS = '426 NE 12th St, Portland, OR 97232';
 const PORTLAND_CHRISTIAN_ADDRESS = '12425 NE San Rafael St, Portland, OR 97230';
 
@@ -328,19 +330,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: BUCKMAN_ADDRESS,
-      description: 'Portland City United Soccer Club serves Portland youth soccer players with teams, academies, camps, tournaments, financial aid, and development pathways from U5 through U19.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer', 'Indoor Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'Portland City United Soccer Club programs',
+      publicIntroText: 'Find PCU teams, academies, camps, tournaments, and current registration opportunities.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: true,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -351,12 +356,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: BUCKMAN_ADDRESS,
-      description: 'Portland City United Soccer Club serves Portland youth soccer players with teams, academies, camps, tournaments, financial aid, and development pathways from U5 through U19.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer', 'Indoor Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'Portland City United Soccer Club programs',
+      publicIntroText: 'Find PCU teams, academies, camps, tournaments, and current registration opportunities.',
       coordinates,
       operatesAthleticFacility: true,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',

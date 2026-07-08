@@ -33,6 +33,7 @@ const nullableFieldNames = [
   'registrationDeadlineText',
   'sourceUrl',
   'description',
+  'tagText',
 ] as const;
 
 const createDom = (html: string, url: string): JSDOM => (
@@ -45,6 +46,24 @@ const createDom = (html: string, url: string): JSDOM => (
 const normalizeWhitespace = (value: string): string => (
   value.replace(/\s+/g, ' ').trim()
 );
+
+const normalizeTagInputs = (value: unknown): string[] => {
+  const rawValues = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(/[,;|]/) : []);
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  rawValues.forEach((rawValue) => {
+    if (typeof rawValue !== 'string') return;
+    const tag = normalizeWhitespace(rawValue);
+    if (!tag) return;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    tags.push(tag);
+  });
+  return tags;
+};
 
 const normalizeDateText = (value: string): string => (
   normalizeWhitespace(value)
@@ -462,10 +481,13 @@ export const extractAffiliateCandidatesFromPage = (
         title: manualCandidate.title,
         officialActionUrl: toAbsoluteUrl(manualCandidate.officialActionUrl, baseUrl),
         sourceUrl: toAbsoluteUrl(manualCandidate.sourceUrl ?? manualCandidate.officialActionUrl, baseUrl),
+        tags: normalizeTagInputs(manualCandidate.tags ?? manualCandidate.tagText),
+        tagText: manualCandidate.tagText ?? null,
         rawPayload: {
           sourceIndex: index,
           manualSummaryCandidate: true,
           extractedFields: manualCandidate,
+          tags: normalizeTagInputs(manualCandidate.tags ?? manualCandidate.tagText),
         },
         warnings: manualCandidate.warnings ?? [],
       };
@@ -518,9 +540,12 @@ export const extractAffiliateCandidatesFromPage = (
         title,
         officialActionUrl,
         sourceUrl,
+        tags: normalizeTagInputs(fieldValues.tagText),
+        tagText: fieldValues.tagText ?? null,
         rawPayload: {
           sourceIndex: index,
           extractedFields: fieldValues,
+          tags: normalizeTagInputs(fieldValues.tagText),
         },
         warnings,
       };

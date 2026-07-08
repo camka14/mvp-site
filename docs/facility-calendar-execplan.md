@@ -10,6 +10,8 @@ Facilities and event organizers need rental customers and managers to understand
 
 The first user-visible proof is that fields returned for an organization carry a facility identity and rental UI labels can say, for example, "Downtown Sports Center - Court 2" instead of only "Court 2". Existing rental windows remain powered by `TimeSlots`, so this change does not create a duplicate availability source.
 
+The July 2026 slice adds a manager details workspace beside that schedule. Managers can switch from the schedule to a facility details view with a facility list, resource list, and an inline editor panel. New facilities and resources are drafted locally, resources are always assigned to the selected facility, and one Save changes action persists the created or edited facilities first and then the resources that depend on them.
+
 ## Progress
 
 - [x] (2026-06-18 America/Los_Angeles) Reviewed the current organization fields/rentals tab, `Fields`, `TimeSlots`, finance actuals, and `docs/staff-official-operations-execplan.md`.
@@ -24,6 +26,10 @@ The first user-visible proof is that fields returned for an organization carry a
 - [x] (2026-06-18 America/Los_Angeles) Added facility metadata to field API payloads and updated mobile rental labels to preserve facility context in `mvp-app`.
 - [x] (2026-06-18 America/Los_Angeles) Added a facility calendar feed helper that normalizes rentals, rental reservations, events, games, maintenance blocks, staff assignments, official assignments, and conflicts into one derived feed.
 - [x] (2026-06-18 America/Los_Angeles) Folded the derived feed into the existing resource calendar with manager layer filters and red conflict cards instead of adding a second calendar panel.
+- [x] (2026-07-08 America/Los_Angeles) Reviewed the existing modal-based facility/resource management flow, the Customers tab split-list layout, and the facility/resource service contracts for a new inline details workspace.
+- [x] (2026-07-08 America/Los_Angeles) Replaced manager modal entry points on the Facilities tab with a details workspace and a schedule/details view switch.
+- [x] (2026-07-08 America/Los_Angeles) Added local draft state, undo, and batched save for created and edited facilities/resources.
+- [x] (2026-07-08 America/Los_Angeles) Validated focused Facilities tab behavior and the shared resource sports input.
 
 ## Surprises & Discoveries
 
@@ -47,6 +53,9 @@ The first user-visible proof is that fields returned for an organization carry a
 
 - Observation: Mobile `Field` is also a Room entity, so API-only facility metadata should not be added as persisted constructor fields.
   Evidence: Android unit-test compilation failed in Room/KSP when ignored facility fields were constructor params; moving them to ignored body properties kept the table schema stable while allowing JSON hydration.
+
+- Observation: Plain `npx tsc --noEmit` is currently blocked by an unrelated untracked affiliate preview script.
+  Evidence: TypeScript reported `scripts/preview-affiliate-org-logo-fit.ts(483,65): Property 'path' does not exist on type '{}'` and related `logo.bucket`/`logo.path` errors. The focused Facilities tab Jest suite and `git diff --check` pass.
 
 ## Decision Log
 
@@ -78,6 +87,14 @@ The first user-visible proof is that fields returned for an organization carry a
   Rationale: The calendar can be derived from existing rental slots, rental booking items, event/match hydration, assignment rows, and maintenance-like blocks already attached to resources. A persisted calendar table would risk becoming a duplicate source of truth before we have a concrete offline/audit use case.
   Date/Author: 2026-06-18 / Codex
 
+- Decision: Keep the schedule view as the default Facilities tab view and add a manager-only details workspace switch.
+  Rationale: The existing tab already behaves as the schedule surface and focused tests exercise that calendar on initial render. Defaulting to schedule preserves current manager behavior while making the new facility/resource editor one click away.
+  Date/Author: 2026-07-08 / Codex
+
+- Decision: Draft facilities and resources in one local workspace and save facilities before resources.
+  Rationale: A resource requires a concrete facility id. Saving newly drafted facilities first gives resources created under those draft facilities a real `facilityId` before `fieldService.createField` or `fieldService.updateField` is called.
+  Date/Author: 2026-07-08 / Codex
+
 ## Outcomes & Retrospective
 
 The first slice is complete. Organizations now have a `Facilities` model, organization fields can carry `facilityId`, existing organization fields are backfilled to deterministic default facilities, and new organization field creation assigns either a validated requested facility or the organization's default facility. `fieldService` hydrates facility records by id and the organization rental/field calendar uses facility-scoped labels such as "River City Sports Complex - Main" when facility data is available.
@@ -89,6 +106,8 @@ The cross-client rental slice now exposes nested facility metadata from the fiel
 The facility calendar slice now keeps the existing resource calendar as the single manager operating surface. It uses the derived `buildFacilityCalendarFeed` output to layer maintenance blocks, staff assignments, official assignments, and unresolved conflicts directly onto the resource calendar while existing generated entries continue to show open rentals, reservations, events, and games.
 
 This work intentionally does not add persisted facility calendar records, persisted mobile facility snapshots, or a new parallel staff assignment model. Facility operating hours exist as organization/facility operations metadata; rental availability remains powered by `TimeSlots`.
+
+The July 2026 inline details slice is complete. The schedule view now shows the calendar sidebar and calendar only, with a manager switch to Facility details and an Edit schedule action. Facility details renders facility and resource columns plus an inline editor panel, supports drafting new facilities and resources without modals, disables resource creation until a facility is selected, tracks edits with an undo stack, and saves facilities before resources so newly drafted resources receive the saved facility id.
 
 ## Context and Orientation
 
@@ -123,6 +142,8 @@ After the resource grouping slice, add a calendar summary helper that aggregates
 
 For mobile parity, attach facility payloads to the existing field API responses rather than adding a mobile-only facility fetch. `mvp-app` should decode that metadata for rental labels but keep the local Room `Field` schema unchanged.
 
+For the manager details workspace, keep `FieldsTabContent.tsx` responsible for switching between schedule and details views. Move the management UI into a dedicated client component under `src/app/organizations/[id]/fieldsTab/FacilityDetailsWorkspace.tsx`. That component should initialize draft rows from `organization.facilities` and `organization.fields`, render columns for facilities and resources, show the selected facility or resource editor in the right panel, maintain an undo history of previous draft snapshots, and expose Save changes only when the local draft differs from the baseline. The save path should call `facilityService.createFacility` or `facilityService.updateFacility` for changed facilities, build a mapping from draft facility ids to saved facility ids, then call `fieldService.createField` or `fieldService.updateField` for changed resources.
+
 ## Concrete Steps
 
 Run commands from the repository root.
@@ -143,6 +164,9 @@ Run commands from the repository root.
 14. Add facility-first resource filtering for manager calendars and public rental selection, including an unassigned-resource group.
 15. Build `buildFacilityCalendarFeed` as the derived feed across rentals, reservations, events, games, maintenance, staff, officials, and conflicts.
 16. Render feed-only operations records directly on the existing resource calendar, add manager layer filters to the left rail, and show unresolved conflicts as red calendar cards.
+17. Add `FacilityDetailsWorkspace` with a facility column, resource column, inline facility/resource editors, local draft creation, undo, and batched save.
+18. Update `FieldsTabContent.tsx` so manager schedule view shows only the schedule rail/calendar plus an Edit schedule button, while details view shows Facility details, + Facility, + Resource, Save changes, and Undo controls.
+19. Extract the tags-style resource sports picker into a reusable component so both the existing resource modal and the inline resource editor use the same pill/dropdown behavior.
 
 ## Validation and Acceptance
 
@@ -172,6 +196,10 @@ Validation results from this slice:
     PASS: git diff --check after integrated calendar layers
     PASS: npm run build after integrated calendar layers
     PASS: Browser smoke test of http://localhost:3000/organizations/org_1?tab=fields with left-side layer filters, conflict filtering, staff selection mode, and red conflict card rendering
+    PASS: FieldsTabContent focused Jest suite, 43 tests, after inline facility/resource details workspace
+    PASS: CreateFieldModal focused Jest suite, 2 tests, after extracting shared sports picker
+    PASS: git diff --check after inline facility/resource details workspace
+    BLOCKED: npx tsc --noEmit by unrelated untracked script scripts/preview-affiliate-org-logo-fit.ts typing errors around logo.path/logo.bucket
 
 Acceptance for the first slice:
 
@@ -190,6 +218,10 @@ Acceptance for the first slice:
 - Public rental selection can be scoped by facility before selecting resources, while checkout still serializes the existing rental params.
 - Managers can filter the existing resource calendar by rentals, reservations, events, games, maintenance blocks, staff assignments, official assignments, and conflicts.
 - Unresolved conflicts render as red calendar cards on the calendar body and are derived from existing feed inputs instead of persisted as a second calendar source.
+- Managers can switch from Schedule to Facility details and see a facility column, a resource column scoped to the selected facility, and an inline details panel.
+- In Facility details, + Resource is disabled when no facility is selected, and each new resource is assigned to the selected facility.
+- Managers can create a facility, create resources under that unsaved facility, undo draft changes, then click Save changes once to persist the facility and its resources.
+- The schedule view hides the facility management cards and inline details controls, leaving the schedule rail and calendar as the primary surface.
 
 ## Idempotence and Recovery
 
@@ -242,3 +274,5 @@ Change log:
 - 2026-06-18: Added field API facility payloads and mobile rental label parity without changing mobile persistence.
 - 2026-06-18: Added facility-modal resource assignment and facility-first resource filtering while keeping `Fields.facilityId` as the source of truth.
 - 2026-06-18: Added the derived facility calendar feed and folded feed-only records into the existing resource calendar with layer filters and red conflict cards.
+- 2026-07-08: Began the inline manager details workspace slice so facility/resource creation and editing can happen without modals while preserving the schedule calendar.
+- 2026-07-08: Completed the inline manager details workspace with draft creation, undo, batched facility-before-resource saves, and focused Jest coverage.

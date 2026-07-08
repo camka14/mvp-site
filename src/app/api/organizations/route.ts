@@ -97,6 +97,31 @@ const secondaryRank = (value: string | null | undefined, normalizedQuery: string
   return 1;
 };
 
+const buildOrganizationAvatarUrl = (
+  organization: { name?: string | null; logoId?: string | null },
+  baseUrl: string,
+  size = 96,
+): string => {
+  const logoId = organization.logoId?.trim();
+  if (logoId) {
+    return new URL(`/api/files/${encodeURIComponent(logoId)}/preview?w=${size}&h=${size}&fit=cover`, baseUrl).toString();
+  }
+  const label = organization.name?.trim() || 'Org';
+  return new URL(`/api/avatars/initials?name=${encodeURIComponent(label)}&size=${size}&format=png`, baseUrl).toString();
+};
+
+const withOrganizationDisplayFields = <T extends { name?: string | null; logoId?: string | null }>(
+  organization: T,
+  baseUrl: string,
+): T & { logoUrl: string; imageUrl: string } => {
+  const avatarUrl = buildOrganizationAvatarUrl(organization, baseUrl);
+  return {
+    ...organization,
+    logoUrl: avatarUrl,
+    imageUrl: avatarUrl,
+  };
+};
+
 const relevanceScore = (
   organization: { name?: string | null; location?: string | null; address?: string | null; description?: string | null },
   normalizedQuery: string,
@@ -118,6 +143,7 @@ const shouldApplyListedOnlyFilter = (params: {
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
+  const baseUrl = req.nextUrl.origin;
   const idsParam = params.get('ids');
   const ownerId = params.get('ownerId');
   const userId = params.get('userId');
@@ -231,9 +257,34 @@ export async function GET(req: NextRequest) {
 
   const pageRows = organizations.slice(0, normalizedLimit);
   const hasMore = organizations.length > normalizedLimit;
+  const affiliateFacilitiesByOrganizationId = new Map<string, any[]>();
+
+  if (includeAffiliateRentals && pageRows.length > 0) {
+    const affiliateFacilities = await (prisma as any).facilities.findMany({
+      where: {
+        organizationId: { in: pageRows.map((organization) => organization.id) },
+        affiliateUrl: { not: null },
+        status: 'ACTIVE',
+      },
+      orderBy: { name: 'asc' },
+    });
+    affiliateFacilities.forEach((facility: any) => {
+      const organizationId = typeof facility.organizationId === 'string' ? facility.organizationId : '';
+      if (!organizationId) return;
+      const facilities = affiliateFacilitiesByOrganizationId.get(organizationId) ?? [];
+      facilities.push(withLegacyFields(facility));
+      affiliateFacilitiesByOrganizationId.set(organizationId, facilities);
+    });
+  }
+  const responseRows = includeAffiliateRentals
+    ? pageRows.map((organization) => ({
+        ...withOrganizationDisplayFields(organization, baseUrl),
+        facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
+      }))
+    : pageRows.map((organization) => withOrganizationDisplayFields(organization, baseUrl));
 
   return NextResponse.json({
-    organizations: withLegacyList(pageRows),
+    organizations: withLegacyList(responseRows),
     pagination: {
       limit: normalizedLimit,
       offset: normalizedOffset,

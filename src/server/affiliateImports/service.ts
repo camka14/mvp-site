@@ -10,12 +10,14 @@ import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
+import { syncEventTags } from '@/server/eventTags';
 import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
 import {
   inferAffiliateParticipantAvailability,
   parseAffiliateMaxParticipants,
 } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
+import { inferAffiliateEventTagNames } from './tags';
 import {
   type AffiliateDateDisplayMode,
   type AffiliateCandidateInput,
@@ -245,8 +247,10 @@ const candidatePersistenceData = (
   },
 ) => {
   const { sourceId, runId, mappingId, dedupeKey, candidate } = params;
+  const tagNames = candidate.listingKind === 'EVENT' ? buildAffiliateEventTagNames(candidate) : [];
   const rawPayload = {
     ...(candidate.rawPayload ?? {}),
+    tags: tagNames,
     normalizedImport: buildAffiliateImportMetadata(candidate),
   };
   return {
@@ -431,6 +435,22 @@ const affiliateCandidateText = (candidate: any): string => (
   ]
     .map((value) => nullableString(value) ?? '')
     .join(' ')
+);
+
+export const buildAffiliateEventTagNames = (
+  candidate: any,
+  eventType: unknown = inferAffiliateEventType(candidate),
+): string[] => (
+  inferAffiliateEventTagNames(
+    {
+      ...rawExtractedCandidateFields(candidate),
+      ...candidate,
+    },
+    {
+      eventType,
+      listingKind: candidate?.listingKind,
+    },
+  )
 );
 
 const inferAffiliateTeamSignup = (
@@ -863,6 +883,7 @@ const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
     dateDisplayMode: normalizeDateDisplayMode(candidate.dateDisplayMode),
     dateDisplayText: dateDisplayTextFromCandidate(candidate),
     evergreen: isEvergreenAffiliateCandidate(candidate),
+    tags: buildAffiliateEventTagNames(candidate),
   };
 };
 
@@ -979,6 +1000,43 @@ const buildAffiliateGeocodeQueries = (params: {
       : null,
     city,
     location,
+  ]);
+};
+
+const buildAffiliateFacilityGeocodeQueries = (params: {
+  name?: string | null;
+  location?: string | null;
+  address?: string | null;
+  city?: string | null;
+}): string[] => {
+  const name = nullableString(params.name);
+  const location = nullableString(params.location);
+  const address = nullableString(params.address);
+  const city = nullableString(params.city);
+  const fullAddress = address && city && !address.toLowerCase().includes(city.toLowerCase())
+    ? `${address}, ${city}`
+    : address;
+
+  return uniqueStrings([
+    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase())
+      ? `${name}, ${fullAddress}`
+      : null,
+    fullAddress,
+    location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
+      ? `${location}, ${fullAddress}`
+      : null,
+    name && city && !name.toLowerCase().includes(city.toLowerCase())
+      ? `${name}, ${city}`
+      : null,
+    name && location && !name.toLowerCase().includes(location.toLowerCase())
+      ? `${name}, ${location}`
+      : null,
+    location && city && !location.toLowerCase().includes(city.toLowerCase())
+      ? `${location}, ${city}`
+      : null,
+    city,
+    location,
+    name,
   ]);
 };
 
@@ -1230,6 +1288,10 @@ const upsertAffiliateFacilityForCandidate = async (
   const organization = await loadSourceOrganization(source);
   const { facilities } = affiliatePrisma();
   const facilityId = nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
+  const existingFacility = await facilities.findUnique({
+    where: { id: facilityId },
+    select: { coordinates: true },
+  });
   const name = nullableString(candidate.title)
     ?? nullableString(candidate.venueName)
     ?? 'Affiliate facility';
@@ -1238,8 +1300,15 @@ const upsertAffiliateFacilityForCandidate = async (
     ?? nullableString(candidate.address)
     ?? name;
   const address = nullableString(candidate.address);
-  const geocodeAddress = address ?? location;
-  const coordinates = await geocodeAddressToCoordinates(geocodeAddress)
+  const city = nullableString(candidate.city);
+  const geocodeQueries = buildAffiliateFacilityGeocodeQueries({
+    name,
+    location,
+    address,
+    city,
+  });
+  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries)
+    ?? normalizePersistedCoordinates(existingFacility?.coordinates)
     ?? normalizePersistedCoordinates(organization.coordinates);
   const data = {
     organizationId: nullableString(source.organizationId),
@@ -1406,6 +1475,19 @@ const upsertAffiliateEventForCandidate = async (
       eventType: event?.eventType ?? inferAffiliateEventType(candidate),
     });
   };
+  const syncSourceTags = async (event: any) => {
+    const eventType = event?.eventType ?? inferAffiliateEventType(candidate);
+    await syncEventTags(
+      event.id,
+      buildAffiliateEventTagNames(candidate, eventType),
+      prisma,
+      { eventType },
+    );
+  };
+  const syncSourceMetadata = async (event: any) => {
+    await syncSourceDivisions(event);
+    await syncSourceTags(event);
+  };
   const existingEventId = publishedEventIdFromCandidate(candidate);
   if (existingEventId) {
     const existingEvent = await events.findUnique({ where: { id: existingEventId } });
@@ -1421,7 +1503,7 @@ const upsertAffiliateEventForCandidate = async (
         where: { id: existingEventId },
         data: updateData,
       });
-      await syncSourceDivisions(event);
+      await syncSourceMetadata(event);
       return event;
     }
   }
@@ -1444,7 +1526,7 @@ const upsertAffiliateEventForCandidate = async (
       where: { id: existingBySource.id },
       data: updateData,
     });
-    await syncSourceDivisions(event);
+    await syncSourceMetadata(event);
     return event;
   }
 
@@ -1475,7 +1557,7 @@ const upsertAffiliateEventForCandidate = async (
       where: { id: existingByOccurrence.id },
       data: updateData,
     });
-    await syncSourceDivisions(event);
+    await syncSourceMetadata(event);
     return event;
   }
 
@@ -1485,7 +1567,7 @@ const upsertAffiliateEventForCandidate = async (
       ...createData,
     },
   });
-  await syncSourceDivisions(event);
+  await syncSourceMetadata(event);
   return event;
 };
 

@@ -27,6 +27,20 @@ const formatValue = (value: unknown): string => {
   return '—';
 };
 
+const formatDateOnly = (value: unknown): string => {
+  if (value instanceof Date) {
+    return value.toLocaleDateString();
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return '—';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString();
+};
+
 export default async function AdminUserProfilePage({ params }: AdminUserProfilePageProps) {
   const token = (await cookies()).get('auth_token')?.value ?? null;
   const { session, status } = await resolveRazumlyAdminFromToken(token);
@@ -164,6 +178,7 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
                   <InfoRow label="User ID" value={userId} />
                   <InfoRow label="Username" value={normalizedProfile?.userName} />
                   <InfoRow label="Email" value={authUser?.email ?? sensitiveUser?.email} />
+                  <InfoRow label="DOB" value={formatDateOnly(normalizedProfile?.dateOfBirth)} />
                   <InfoRow label="Verified" value={authUser?.emailVerifiedAt ? 'Yes' : 'No'} />
                   <InfoRow label="Status" value={authUser?.disabledAt ? 'Suspended' : 'Active'} />
                   <InfoRow label="Disabled reason" value={authUser?.disabledReason} />

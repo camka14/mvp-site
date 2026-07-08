@@ -37,6 +37,9 @@ type SourceOrganizationDefinition = {
   sports: string[];
   taxOrganizationType: string;
   operatesAthleticFacility: boolean;
+  publicSlug?: string;
+  publicHeadline?: string;
+  publicIntroText?: string;
   logo?: {
     id: string;
     url: string;
@@ -150,6 +153,9 @@ const sourceOrganizations: SourceOrganizationDefinition[] = [
     sports: ['Grass Soccer', 'Indoor Soccer'],
     taxOrganizationType: 'NONPROFIT_ORGANIZATION',
     operatesAthleticFacility: false,
+    publicSlug: 'timbers-army-fc',
+    publicHeadline: 'Timbers Army FC community teams',
+    publicIntroText: 'Find Timbers Army FC team information, league participation details, and official community links.',
     logo: {
       id: 'affiliate_file_timbers_army_fc_logo',
       url: 'https://107ist.org/resources/Pictures/TA%20Crests%20Black%20Border%20Tight%20Crop.png',
@@ -555,6 +561,8 @@ const upsertOrganization = async (ownerId: string, definition: SourceOrganizatio
     ?? existing?.coordinates
     ?? null;
 
+  const publicPageEnabled = Boolean(definition.publicSlug);
+
   await (prisma as any).organizations.upsert({
     where: { id: definition.id },
     create: {
@@ -569,14 +577,17 @@ const upsertOrganization = async (ownerId: string, definition: SourceOrganizatio
       ownerId,
       website: definition.website,
       sports,
-      status: 'UNLISTED',
+      status: publicPageEnabled ? 'LISTED' : 'UNLISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: definition.publicSlug ?? null,
+      publicPageEnabled,
       publicWidgetsEnabled: false,
+      publicHeadline: definition.publicHeadline ?? `${definition.name} on BracketIQ`,
+      publicIntroText: definition.publicIntroText ?? 'Find upcoming events, teams, rentals, and products.',
       taxOrganizationType: definition.taxOrganizationType,
       operatesAthleticFacility: definition.operatesAthleticFacility,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -592,7 +603,11 @@ const upsertOrganization = async (ownerId: string, definition: SourceOrganizatio
       ownerId,
       website: definition.website,
       sports,
-      status: 'UNLISTED',
+      status: publicPageEnabled ? 'LISTED' : 'UNLISTED',
+      publicSlug: definition.publicSlug ?? null,
+      publicPageEnabled,
+      publicHeadline: definition.publicHeadline ?? `${definition.name} on BracketIQ`,
+      publicIntroText: definition.publicIntroText ?? 'Find upcoming events, teams, rentals, and products.',
       coordinates,
       operatesAthleticFacility: definition.operatesAthleticFacility,
       taxOrganizationType: definition.taxOrganizationType,

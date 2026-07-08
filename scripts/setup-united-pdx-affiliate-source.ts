@@ -35,6 +35,8 @@ const YDA_WEST_REGISTRATION_URL = 'https://playmetrics.com/signup?clubToken=TG9n
 const YDA_EAST_REGISTRATION_URL = 'https://playmetrics.com/signup?clubToken=TG9naW4tQ2x1Yi52MS0zMjAtMTc4MDI1MjUwMXxRaWkrV1c5VmVUMFNQU0Q1eEEyamt0QVNhTDhSY3RMNURObkdaSGxSRjZrPQ==&program_id=95632';
 const LOGO_SOURCE_URL = 'https://www.unitedpdx.com/wp-content/uploads/sites/61/2023/03/MicrosoftTeams-image__27_.png';
 const ORGANIZER_NAME = 'United PDX';
+const PUBLIC_SLUG = 'united-pdx';
+const ORGANIZER_DESCRIPTION = 'United PDX is a Portland youth soccer club offering U8-U10 Youth Development Academy, U11-U18/19 academy pathways, recreational soccer, camps, college ID opportunities, and year-round player development programs.';
 const GRANT_ADDRESS = '2245 NE 36th Ave, Portland, OR 97212';
 const WEST_HILLS_ADDRESS = '7945 SW Capitol Hill Rd, Portland, OR 97219';
 
@@ -335,19 +337,22 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: 'Portland, OR',
-      description: 'United PDX is a Portland youth soccer club with academy, recreational, camp, college ID, and development programming.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
       hasStripeAccount: false,
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
       productIds: [],
-      publicPageEnabled: false,
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
       publicWidgetsEnabled: false,
+      publicHeadline: 'United PDX programs',
+      publicIntroText: 'Find United PDX academy programs, recreational soccer, camps, and registration opportunities.',
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'ORGANIZER_COLLECTS',
@@ -358,12 +363,16 @@ const upsertOrganization = async (ownerId: string) => {
       name: ORGANIZER_NAME,
       location: 'Portland, OR',
       address: 'Portland, OR',
-      description: 'United PDX is a Portland youth soccer club with academy, recreational, camp, college ID, and development programming.',
+      description: ORGANIZER_DESCRIPTION,
       logoId: LOGO_FILE_ID,
       ownerId,
       website: HOME_URL,
       sports: ['Grass Soccer'],
-      status: 'UNLISTED',
+      status: 'LISTED',
+      publicSlug: PUBLIC_SLUG,
+      publicPageEnabled: true,
+      publicHeadline: 'United PDX programs',
+      publicIntroText: 'Find United PDX academy programs, recreational soccer, camps, and registration opportunities.',
       coordinates,
       operatesAthleticFacility: false,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',

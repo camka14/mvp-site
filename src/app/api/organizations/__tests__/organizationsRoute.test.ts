@@ -92,9 +92,20 @@ describe('/api/organizations', () => {
   });
 
   it('can include private organizations that have active affiliate rental facilities', async () => {
-    facilitiesFindManyMock.mockResolvedValue([
+    facilitiesFindManyMock.mockResolvedValueOnce([
       { organizationId: 'org_affiliate_rental' },
       { organizationId: 'org_affiliate_rental' },
+    ]);
+    facilitiesFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'facility_affiliate',
+        organizationId: 'org_affiliate_rental',
+        name: 'Affiliate Rental Court',
+        location: 'Gresham, OR',
+        coordinates: [-122.4314, 45.5001],
+        status: 'ACTIVE',
+        affiliateUrl: 'https://example.com/book',
+      },
     ]);
     findManyMock.mockResolvedValue([
       { id: 'org_affiliate_rental', name: 'Affiliate Rental Org', status: 'UNLISTED' },
@@ -106,7 +117,7 @@ describe('/api/organizations', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(facilitiesFindManyMock).toHaveBeenCalledWith({
+    expect(facilitiesFindManyMock).toHaveBeenNthCalledWith(1, {
       where: {
         affiliateUrl: { not: null },
         status: 'ACTIVE',
@@ -124,8 +135,29 @@ describe('/api/organizations', () => {
       skip: 0,
       orderBy: { name: 'asc' },
     });
+    expect(facilitiesFindManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        organizationId: { in: ['org_affiliate_rental'] },
+        affiliateUrl: { not: null },
+        status: 'ACTIVE',
+      },
+      orderBy: { name: 'asc' },
+    });
     expect(json.organizations).toEqual([
-      expect.objectContaining({ $id: 'org_affiliate_rental', status: 'UNLISTED' }),
+      expect.objectContaining({
+        $id: 'org_affiliate_rental',
+        logoUrl: 'http://localhost/api/avatars/initials?name=Affiliate%20Rental%20Org&size=96&format=png',
+        imageUrl: 'http://localhost/api/avatars/initials?name=Affiliate%20Rental%20Org&size=96&format=png',
+        status: 'UNLISTED',
+        facilities: [
+          expect.objectContaining({
+            $id: 'facility_affiliate',
+            name: 'Affiliate Rental Court',
+            coordinates: [-122.4314, 45.5001],
+            affiliateUrl: 'https://example.com/book',
+          }),
+        ],
+      }),
     ]);
   });
 

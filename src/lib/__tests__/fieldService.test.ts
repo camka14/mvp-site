@@ -29,27 +29,37 @@ describe('fieldService', () => {
   it('creates a field via apiRequest', async () => {
     apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A' });
 
-    const field = await fieldService.createField({ name: 'Court A' });
-
-    expect(apiRequestMock).toHaveBeenCalledWith('/api/fields', expect.objectContaining({ method: 'POST' }));
-    expect(field.$id).toBe('field_1');
-  });
-
-  it('updates a field via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A' });
-
-    const field = await fieldService.updateField({ $id: 'field_1', name: 'Court A' });
+    const field = await fieldService.createField({ name: 'Court A', sportIds: ['Basketball'] });
 
     expect(apiRequestMock).toHaveBeenCalledWith(
-      '/api/fields/field_1',
-      expect.objectContaining({ method: 'PATCH' }),
+      '/api/fields',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.objectContaining({ sportIds: ['Basketball'] }),
+      }),
     );
     expect(field.$id).toBe('field_1');
   });
 
+  it('updates a field via apiRequest', async () => {
+    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', sportIds: ['Basketball'] });
+
+    const field = await fieldService.updateField({ $id: 'field_1', name: 'Court A', sportIds: ['Basketball'] });
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/fields/field_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: { field: { name: 'Court A', sportIds: ['Basketball'] } },
+      }),
+    );
+    expect(field.$id).toBe('field_1');
+    expect(field.sportIds).toEqual(['Basketball']);
+  });
+
   it('lists fields by ids', async () => {
     apiRequestMock
-      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', rentalSlotIds: ['slot_1'] }] })
+      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', rentalSlotIds: ['slot_1'], sportIds: ['Indoor Soccer'] }] })
       .mockResolvedValueOnce({
         timeSlots: [
           {
@@ -67,6 +77,7 @@ describe('fieldService', () => {
     expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('/api/fields?'));
     expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('/api/time-slots?ids=slot_1'));
     expect(fields[0].name).toBe('Court A');
+    expect(fields[0].sportIds).toEqual(['Indoor Soccer']);
     expect(fields[0].rentalSlotIds).toEqual(['slot_1']);
     expect(fields[0].rentalSlots?.map((slot) => slot.$id)).toEqual(['slot_1']);
   });

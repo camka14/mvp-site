@@ -62,6 +62,8 @@ const affiliateManualCandidateSchema = z.object({
   title: z.string().trim().min(1),
   officialActionUrl: z.string().trim().url(),
   sourceUrl: z.string().trim().url().nullable().optional(),
+  tags: z.array(z.string().trim().min(1)).optional(),
+  tagText: optionalNullableStringSchema,
   organizerName: optionalNullableStringSchema,
   sportName: optionalNullableStringSchema,
   formatLabel: optionalNullableStringSchema,
@@ -123,6 +125,7 @@ export const affiliateScrapeMappingSchema = z.object({
     registrationDeadlineText: fieldMappingSchema.optional(),
     sourceUrl: fieldMappingSchema.optional(),
     description: fieldMappingSchema.optional(),
+    tagText: fieldMappingSchema.optional(),
   }),
   detailPage: z.object({
     urlField: z.enum(['officialActionUrl', 'sourceUrl']),
@@ -166,6 +169,8 @@ export type AffiliateCandidateInput = {
   registrationDeadlineText?: string | null;
   officialActionUrl: string;
   sourceUrl: string;
+  tags?: string[];
+  tagText?: string | null;
   description?: string | null;
   rawPayload?: Record<string, unknown>;
   warnings?: string[];

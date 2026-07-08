@@ -33,6 +33,7 @@ const createSchema = z.object({
   inUse: z.boolean().optional(),
   organizationId: z.string().optional(),
   facilityId: z.string().nullable().optional(),
+  sportIds: z.array(z.string()).optional(),
   rentalSlotIds: z.array(z.string()).optional(),
 }).passthrough();
 
@@ -47,11 +48,24 @@ const fieldCoordinatesAreSet = (lat: unknown, lng: unknown): boolean => {
   return Number.isFinite(normalizedLat) && Number.isFinite(normalizedLng) && !(normalizedLat === 0 && normalizedLng === 0);
 };
 
+const normalizeStringList = (values: unknown): string[] => (
+  Array.isArray(values)
+    ? Array.from(
+        new Set(
+          values
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0),
+        ),
+      )
+    : []
+);
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const eventId = params.get('eventId');
   const organizationId = params.get('organizationId');
+  const sportIds = normalizeStringList(params.getAll('sportId').concat(params.get('sportIds')?.split(',') ?? []));
 
   let ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   if (!ids && eventId) {
@@ -65,6 +79,9 @@ export async function GET(req: NextRequest) {
   }
   if (organizationId) {
     where.organizationId = organizationId;
+  }
+  if (sportIds.length) {
+    where.sportIds = { hasSome: sportIds };
   }
 
   const fields = await prisma.fields.findMany({
@@ -140,6 +157,7 @@ export async function POST(req: NextRequest) {
       inUse: data.inUse ?? null,
       organizationId: orgId,
       facilityId,
+      sportIds: normalizeStringList(data.sportIds),
       rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
       createdAt: new Date(),
       updatedAt: new Date(),

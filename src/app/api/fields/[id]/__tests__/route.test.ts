@@ -143,6 +143,7 @@ describe('PATCH /api/fields/[id]', () => {
       patchRequest({
         field: {
           name: 'Court A',
+          sportIds: ['Basketball', 'Basketball', 'Indoor Soccer', ''],
         },
       }),
       { params: Promise.resolve({ id: 'field_1' }) },
@@ -155,6 +156,7 @@ describe('PATCH /api/fields/[id]', () => {
         where: { id: 'field_1' },
         data: expect.objectContaining({
           name: 'Court A',
+          sportIds: ['Basketball', 'Indoor Soccer'],
           updatedAt: expect.any(Date),
         }),
       }),

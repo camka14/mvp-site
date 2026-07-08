@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Button, Group, Select, TextInput } from '@mantine/core';
+import { Alert, Modal, Button, Group, Select, TextInput } from '@mantine/core';
 import type { Facility, Field, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
+import { sportsService } from '@/lib/sportsService';
 import LocationSelector, { type LocationSelectionMeta } from '@/components/location/LocationSelector';
+import ResourceSportsInput, { type ResourceSportOption } from '@/components/ui/ResourceSportsInput';
 
 interface CreateFieldModalProps {
   isOpen: boolean;
@@ -23,6 +25,7 @@ type FieldFormState = {
   lat: string | number;
   long: string | number;
   facilityId: string | null;
+  sportIds: string[];
   organization?: Organization;
 };
 
@@ -33,6 +36,7 @@ const createEmptyState = (organization?: Organization, defaultFacilityId?: strin
   lat: '',
   long: '',
   facilityId: defaultFacilityId ?? null,
+  sportIds: [],
   organization: organization
 });
 
@@ -55,6 +59,9 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<FieldFormState>(() => createEmptyState(organization, defaultFacilityId));
   const [locationSelected, setLocationSelected] = useState(false);
+  const [sportsLoading, setSportsLoading] = useState(false);
+  const [sportsError, setSportsError] = useState<string | null>(null);
+  const [sportOptions, setSportOptions] = useState<ResourceSportOption[]>([]);
 
   const isEditMode = useMemo(() => Boolean(field?.$id), [field]);
   const facilityOptions = useMemo(
@@ -73,6 +80,46 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
       return;
     }
 
+    let cancelled = false;
+    setSportsLoading(true);
+    setSportsError(null);
+    sportsService.getAll()
+      .then((sports) => {
+        if (cancelled) {
+          return;
+        }
+        setSportOptions(
+          sports
+            .filter((sport) => sport.$id || sport.name)
+            .map((sport) => ({
+              value: sport.$id || sport.name,
+              label: sport.name || sport.$id,
+            })),
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to load sports for resource form:', error);
+        if (!cancelled) {
+          setSportsError('Sports could not be loaded. You can save the resource and add sports later.');
+          setSportOptions([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSportsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
     if (field) {
       setForm({
         $id: field.$id,
@@ -81,6 +128,7 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         lat: typeof field.lat === 'number' ? field.lat : '',
         long: typeof field.long === 'number' ? field.long : '',
         facilityId: field.facilityId ?? defaultFacilityId ?? null,
+        sportIds: Array.isArray(field.sportIds) ? field.sportIds : [],
         organization: field.organization
       });
       setLocationSelected(Boolean((field.location || '').trim()) && hasSelectedCoordinates(field.lat, field.long));
@@ -93,6 +141,15 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
   const hasResourceLocation = form.location.trim().length > 0;
   const isLocationValid = !hasResourceLocation || locationSelected;
   const isValid = form.name.trim().length > 0 && (!requiresFacility || Boolean(form.facilityId)) && isLocationValid;
+  const mergedSportOptions = useMemo(() => {
+    const optionsByValue = new Map(sportOptions.map((option) => [option.value, option]));
+    form.sportIds.forEach((sportId) => {
+      if (!optionsByValue.has(sportId)) {
+        optionsByValue.set(sportId, { value: sportId, label: sportId });
+      }
+    });
+    return Array.from(optionsByValue.values());
+  }, [form.sportIds, sportOptions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +164,7 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         lat: form.lat === '' ? undefined : Number(form.lat),
         long: form.long === '' ? undefined : Number(form.long),
         facilityId: form.facilityId,
+        sportIds: form.sportIds,
         organization: form.organization || undefined,
       };
       const saved = isEditMode && payload.$id
@@ -117,6 +175,7 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
             lat: payload.lat,
             long: payload.long,
             facilityId: payload.facilityId,
+            sportIds: payload.sportIds,
           })
         : await fieldService.createField(payload);
       onFieldSaved?.(saved);
@@ -154,6 +213,20 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
             required={requiresFacility}
             searchable
           />
+        ) : null}
+
+        <ResourceSportsInput
+          value={form.sportIds}
+          options={mergedSportOptions}
+          loading={sportsLoading}
+          disabled={sportsLoading && mergedSportOptions.length === 0}
+          onChange={(values) => setForm((prev) => ({ ...prev, sportIds: values }))}
+        />
+
+        {sportsError ? (
+          <Alert color="yellow" radius="md">
+            {sportsError}
+          </Alert>
         ) : null}
 
         <LocationSelector

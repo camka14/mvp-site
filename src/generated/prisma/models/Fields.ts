@@ -90,6 +90,7 @@ export type FieldsCountAggregateOutputType = {
   location: number
   organizationId: number
   facilityId: number
+  sportIds: number
   createdBy: number
   _all: number
 }
@@ -159,6 +160,7 @@ export type FieldsCountAggregateInputType = {
   location?: true
   organizationId?: true
   facilityId?: true
+  sportIds?: true
   createdBy?: true
   _all?: true
 }
@@ -265,6 +267,7 @@ export type FieldsGroupByOutputType = {
   location: string | null
   organizationId: string | null
   facilityId: string | null
+  sportIds: string[]
   createdBy: string | null
   _count: FieldsCountAggregateOutputType | null
   _avg: FieldsAvgAggregateOutputType | null
@@ -307,6 +310,7 @@ export type FieldsWhereInput = {
   location?: Prisma.StringNullableFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Fields"> | string | null
   facilityId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  sportIds?: Prisma.StringNullableListFilter<"Fields">
   createdBy?: Prisma.StringNullableFilter<"Fields"> | string | null
 }
 
@@ -326,6 +330,7 @@ export type FieldsOrderByWithRelationInput = {
   location?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sportIds?: Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
@@ -348,6 +353,7 @@ export type FieldsWhereUniqueInput = Prisma.AtLeast<{
   location?: Prisma.StringNullableFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Fields"> | string | null
   facilityId?: Prisma.StringNullableFilter<"Fields"> | string | null
+  sportIds?: Prisma.StringNullableListFilter<"Fields">
   createdBy?: Prisma.StringNullableFilter<"Fields"> | string | null
 }, "id">
 
@@ -367,6 +373,7 @@ export type FieldsOrderByWithAggregationInput = {
   location?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sportIds?: Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.FieldsCountOrderByAggregateInput
   _avg?: Prisma.FieldsAvgOrderByAggregateInput
@@ -394,6 +401,7 @@ export type FieldsScalarWhereWithAggregatesInput = {
   location?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
   facilityId?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
+  sportIds?: Prisma.StringNullableListFilter<"Fields">
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"Fields"> | string | null
 }
 
@@ -413,6 +421,7 @@ export type FieldsCreateInput = {
   location?: string | null
   organizationId?: string | null
   facilityId?: string | null
+  sportIds?: Prisma.FieldsCreatesportIdsInput | string[]
   createdBy?: string | null
 }
 
@@ -432,6 +441,7 @@ export type FieldsUncheckedCreateInput = {
   location?: string | null
   organizationId?: string | null
   facilityId?: string | null
+  sportIds?: Prisma.FieldsCreatesportIdsInput | string[]
   createdBy?: string | null
 }
 
@@ -451,6 +461,7 @@ export type FieldsUpdateInput = {
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportIds?: Prisma.FieldsUpdatesportIdsInput | string[]
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -470,6 +481,7 @@ export type FieldsUncheckedUpdateInput = {
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportIds?: Prisma.FieldsUpdatesportIdsInput | string[]
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -489,6 +501,7 @@ export type FieldsCreateManyInput = {
   location?: string | null
   organizationId?: string | null
   facilityId?: string | null
+  sportIds?: Prisma.FieldsCreatesportIdsInput | string[]
   createdBy?: string | null
 }
 
@@ -508,6 +521,7 @@ export type FieldsUpdateManyMutationInput = {
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportIds?: Prisma.FieldsUpdatesportIdsInput | string[]
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -527,6 +541,7 @@ export type FieldsUncheckedUpdateManyInput = {
   location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportIds?: Prisma.FieldsUpdatesportIdsInput | string[]
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -546,6 +561,7 @@ export type FieldsCountOrderByAggregateInput = {
   location?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   facilityId?: Prisma.SortOrder
+  sportIds?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
 }
 
@@ -601,6 +617,10 @@ export type FieldsCreaterentalSlotIdsInput = {
   set: string[]
 }
 
+export type FieldsCreatesportIdsInput = {
+  set: string[]
+}
+
 export type NullableDateTimeFieldUpdateOperationsInput = {
   set?: Date | string | null
 }
@@ -618,6 +638,11 @@ export type NullableBoolFieldUpdateOperationsInput = {
 }
 
 export type FieldsUpdaterentalSlotIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type FieldsUpdatesportIdsInput = {
   set?: string[]
   push?: string | string[]
 }
@@ -640,6 +665,7 @@ export type FieldsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   location?: boolean
   organizationId?: boolean
   facilityId?: boolean
+  sportIds?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -659,6 +685,7 @@ export type FieldsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   location?: boolean
   organizationId?: boolean
   facilityId?: boolean
+  sportIds?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -678,6 +705,7 @@ export type FieldsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   location?: boolean
   organizationId?: boolean
   facilityId?: boolean
+  sportIds?: boolean
   createdBy?: boolean
 }, ExtArgs["result"]["fields"]>
 
@@ -697,10 +725,11 @@ export type FieldsSelectScalar = {
   location?: boolean
   organizationId?: boolean
   facilityId?: boolean
+  sportIds?: boolean
   createdBy?: boolean
 }
 
-export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "facilityId" | "createdBy", ExtArgs["result"]["fields"]>
+export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "archivedAt" | "archivedByUserId" | "archiveReason" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId" | "facilityId" | "sportIds" | "createdBy", ExtArgs["result"]["fields"]>
 
 export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Fields"
@@ -721,6 +750,7 @@ export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     location: string | null
     organizationId: string | null
     facilityId: string | null
+    sportIds: string[]
     createdBy: string | null
   }, ExtArgs["result"]["fields"]>
   composites: {}
@@ -1160,6 +1190,7 @@ export interface FieldsFieldRefs {
   readonly location: Prisma.FieldRef<"Fields", 'String'>
   readonly organizationId: Prisma.FieldRef<"Fields", 'String'>
   readonly facilityId: Prisma.FieldRef<"Fields", 'String'>
+  readonly sportIds: Prisma.FieldRef<"Fields", 'String[]'>
   readonly createdBy: Prisma.FieldRef<"Fields", 'String'>
 }
 
