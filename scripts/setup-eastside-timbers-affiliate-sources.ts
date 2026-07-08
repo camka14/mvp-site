@@ -569,9 +569,28 @@ const upsertSourceAndMapping = async (source: SourceDefinition) => {
       activeMappingId: `${source.id}_mapping_v1`,
       notes: source.notes,
       metadata: {
-        inspectedAt: '2026-07-04',
+        inspectedAt: '2026-07-08',
         platform: 'SportsEngine',
         logoSourceUrl: 'https://cdn4.sportngin.com/attachments/logo_graphic/ed6b-217372808/logo_small.png',
+        sourcePages: [
+          `${BASE_URL}programs`,
+          `${BASE_URL}tryouts`,
+          `${BASE_URL}recreation`,
+          `${BASE_URL}etcamps`,
+          `${BASE_URL}edge`,
+          `${BASE_URL}tinytimbers`,
+          `${BASE_URL}indoorcamps`,
+          `${BASE_URL}opfprograms`,
+          `${BASE_URL}opfcommunity`,
+          `${BASE_URL}fieldrentals`,
+        ],
+        skippedRows: [
+          {
+            title: 'Eastside Timbers Supplemental Tryouts',
+            url: `${BASE_URL}tryouts`,
+            reason: 'Supplemental tryout dates are May 19-20, 2026, which are past as of 2026-07-08. Tryouts should not become evergreen events.',
+          },
+        ],
       },
     },
     update: {
@@ -584,9 +603,28 @@ const upsertSourceAndMapping = async (source: SourceDefinition) => {
       activeMappingId: `${source.id}_mapping_v1`,
       notes: source.notes,
       metadata: {
-        inspectedAt: '2026-07-04',
+        inspectedAt: '2026-07-08',
         platform: 'SportsEngine',
         logoSourceUrl: 'https://cdn4.sportngin.com/attachments/logo_graphic/ed6b-217372808/logo_small.png',
+        sourcePages: [
+          `${BASE_URL}programs`,
+          `${BASE_URL}tryouts`,
+          `${BASE_URL}recreation`,
+          `${BASE_URL}etcamps`,
+          `${BASE_URL}edge`,
+          `${BASE_URL}tinytimbers`,
+          `${BASE_URL}indoorcamps`,
+          `${BASE_URL}opfprograms`,
+          `${BASE_URL}opfcommunity`,
+          `${BASE_URL}fieldrentals`,
+        ],
+        skippedRows: [
+          {
+            title: 'Eastside Timbers Supplemental Tryouts',
+            url: `${BASE_URL}tryouts`,
+            reason: 'Supplemental tryout dates are May 19-20, 2026, which are past as of 2026-07-08. Tryouts should not become evergreen events.',
+          },
+        ],
       },
     },
   });
