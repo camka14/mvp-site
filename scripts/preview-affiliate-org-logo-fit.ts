@@ -184,8 +184,8 @@ const writeOpaqueCandidate = async (
 
   const logoBuffer = await sharp(trimmed)
     .resize({
-      width: 1280,
-      height: 540,
+      width: 760,
+      height: 760,
       fit: 'inside',
       withoutEnlargement: false,
       background,
@@ -193,12 +193,13 @@ const writeOpaqueCandidate = async (
     .png()
     .toBuffer();
   const logoMetadata = await sharp(logoBuffer).metadata();
-  const logoWidth = logoMetadata.width ?? 1040;
+  const logoWidth = logoMetadata.width ?? 760;
+  const logoHeight = logoMetadata.height ?? 760;
 
   await sharp({
     create: {
-      width: 1600,
-      height: 1000,
+      width: 1024,
+      height: 1024,
       channels: 4,
       background,
     },
@@ -206,7 +207,7 @@ const writeOpaqueCandidate = async (
     .composite([
       {
         input: Buffer.from(`
-          <svg width="1600" height="1000" viewBox="0 0 1600 1000" xmlns="http://www.w3.org/2000/svg">
+          <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <radialGradient id="glow" cx="50%" cy="30%" r="72%">
                 <stop offset="0%" stop-color="#ffffff" stop-opacity="${background === DARK_LOGO_BG ? '0.10' : '0.40'}"/>
@@ -217,16 +218,16 @@ const writeOpaqueCandidate = async (
                 <stop offset="100%" stop-color="#0f172a" stop-opacity="${background === DARK_LOGO_BG ? '0.24' : '0.10'}"/>
               </linearGradient>
             </defs>
-            <rect width="1600" height="1000" fill="url(#glow)"/>
-            <rect width="1600" height="1000" fill="url(#vignette)"/>
+            <rect width="1024" height="1024" fill="url(#glow)"/>
+            <rect width="1024" height="1024" fill="url(#vignette)"/>
           </svg>
         `),
         gravity: 'center',
       },
       {
         input: logoBuffer,
-        top: 145,
-        left: Math.round((1600 - logoWidth) / 2),
+        top: Math.round((1024 - logoHeight) / 2),
+        left: Math.round((1024 - logoWidth) / 2),
       },
     ])
     .png()
