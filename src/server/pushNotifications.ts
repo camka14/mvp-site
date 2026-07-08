@@ -34,6 +34,7 @@ export interface SendPushToUsersInput {
   body: string;
   data?: Record<string, unknown>;
   notificationType?: NotificationType;
+  deviceTypes?: PushDeviceType[];
 }
 
 export interface PushDispatchResult {
@@ -46,10 +47,48 @@ export interface PushDispatchResult {
   prunedTokenCount: number;
 }
 
+export type PushDeviceType = 'all' | 'ios' | 'android' | 'web' | 'unknown';
+
+export interface PushAudienceStats {
+  totalUsers: number;
+  totalTokens: number;
+  byDeviceType: Array<{
+    deviceType: Exclude<PushDeviceType, 'all'>;
+    userCount: number;
+    tokenCount: number;
+  }>;
+}
+
+const PUSH_DEVICE_TYPES = ['all', 'ios', 'android', 'web', 'unknown'] as const;
+
 const normalizeOptional = (value?: string | null): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
+
+export const normalizePushDeviceTypes = (deviceTypes?: string[] | null): PushDeviceType[] => {
+  const normalized = Array.from(new Set(
+    (deviceTypes ?? [])
+      .map((deviceType) => deviceType.trim().toLowerCase())
+      .filter((deviceType): deviceType is PushDeviceType => (
+        (PUSH_DEVICE_TYPES as readonly string[]).includes(deviceType)
+      )),
+  ));
+
+  if (!normalized.length || normalized.includes('all')) {
+    return ['all'];
+  }
+
+  return normalized;
+};
+
+const shouldIncludeAllDeviceTypes = (deviceTypes?: PushDeviceType[]): boolean => (
+  !deviceTypes?.length || deviceTypes.includes('all')
+);
+
+const toConcreteDeviceTypes = (deviceTypes?: PushDeviceType[]): string[] => (
+  (deviceTypes ?? []).filter((deviceType) => deviceType !== 'all' && deviceType !== 'unknown')
+);
 
 const normalizeUserIds = (userIds: string[]): string[] => (
   Array.from(new Set(userIds.map((id) => id.trim()).filter(Boolean)))
@@ -170,18 +209,120 @@ export const unregisterPushDeviceTarget = async ({
   `;
 };
 
-const getPushTokensForUsers = async (userIds: string[]): Promise<string[]> => {
+const getPushTokensForUsers = async (userIds: string[], deviceTypes?: PushDeviceType[]): Promise<string[]> => {
   const normalizedUserIds = normalizeUserIds(userIds);
   if (!normalizedUserIds.length) return [];
+  const normalizedDeviceTypes = normalizePushDeviceTypes(deviceTypes);
+  const includeAllDeviceTypes = shouldIncludeAllDeviceTypes(normalizedDeviceTypes);
+  const includeUnknownDeviceType = normalizedDeviceTypes.includes('unknown');
+  const concreteDeviceTypes = toConcreteDeviceTypes(normalizedDeviceTypes);
 
   const rows = await prisma.$queryRaw<Pick<PushDeviceTargetRow, 'pushToken'>[]>`
     SELECT DISTINCT "pushToken"
     FROM "PushDeviceTarget"
     WHERE "userId" = ANY(${normalizedUserIds}::text[])
       AND "pushToken" IS NOT NULL
+      AND (
+        ${includeAllDeviceTypes}::boolean
+        OR LOWER(COALESCE("pushPlatform", '')) = ANY(${concreteDeviceTypes}::text[])
+        OR (
+          ${includeUnknownDeviceType}::boolean
+          AND COALESCE("pushPlatform", '') = ''
+        )
+      )
   `;
 
   return Array.from(new Set(rows.map((row) => row.pushToken?.trim()).filter(Boolean) as string[]));
+};
+
+export const getPushAudienceUserIds = async (deviceTypes?: PushDeviceType[]): Promise<string[]> => {
+  const normalizedDeviceTypes = normalizePushDeviceTypes(deviceTypes);
+  const includeAllDeviceTypes = shouldIncludeAllDeviceTypes(normalizedDeviceTypes);
+  const includeUnknownDeviceType = normalizedDeviceTypes.includes('unknown');
+  const concreteDeviceTypes = toConcreteDeviceTypes(normalizedDeviceTypes);
+
+  const rows = await prisma.$queryRaw<Pick<PushDeviceTargetRow, 'userId'>[]>`
+    SELECT DISTINCT "userId"
+    FROM "PushDeviceTarget"
+    WHERE "pushToken" IS NOT NULL
+      AND (
+        ${includeAllDeviceTypes}::boolean
+        OR LOWER(COALESCE("pushPlatform", '')) = ANY(${concreteDeviceTypes}::text[])
+        OR (
+          ${includeUnknownDeviceType}::boolean
+          AND COALESCE("pushPlatform", '') = ''
+        )
+      )
+  `;
+
+  return normalizeUserIds(rows.map((row) => row.userId));
+};
+
+export const getPushAudienceStats = async (deviceTypes?: PushDeviceType[]): Promise<PushAudienceStats> => {
+  const normalizedDeviceTypes = normalizePushDeviceTypes(deviceTypes);
+  const includeAllDeviceTypes = shouldIncludeAllDeviceTypes(normalizedDeviceTypes);
+  const includeUnknownDeviceType = normalizedDeviceTypes.includes('unknown');
+  const concreteDeviceTypes = toConcreteDeviceTypes(normalizedDeviceTypes);
+
+  const [totalRow, rows] = await Promise.all([
+    prisma.$queryRaw<Array<{
+      userCount: number | bigint;
+      tokenCount: number | bigint;
+    }>>`
+      SELECT
+        COUNT(DISTINCT "userId") AS "userCount",
+        COUNT(DISTINCT "pushToken") AS "tokenCount"
+      FROM "PushDeviceTarget"
+      WHERE "pushToken" IS NOT NULL
+        AND (
+          ${includeAllDeviceTypes}::boolean
+          OR LOWER(COALESCE("pushPlatform", '')) = ANY(${concreteDeviceTypes}::text[])
+          OR (
+            ${includeUnknownDeviceType}::boolean
+            AND COALESCE("pushPlatform", '') = ''
+          )
+        )
+    `,
+    prisma.$queryRaw<Array<{
+      deviceType: string;
+      userCount: number | bigint;
+      tokenCount: number | bigint;
+    }>>`
+      SELECT
+        CASE
+          WHEN LOWER(COALESCE("pushPlatform", '')) IN ('ios', 'android', 'web') THEN LOWER("pushPlatform")
+          ELSE 'unknown'
+        END AS "deviceType",
+        COUNT(DISTINCT "userId") AS "userCount",
+        COUNT(DISTINCT "pushToken") AS "tokenCount"
+      FROM "PushDeviceTarget"
+      WHERE "pushToken" IS NOT NULL
+        AND (
+          ${includeAllDeviceTypes}::boolean
+          OR LOWER(COALESCE("pushPlatform", '')) = ANY(${concreteDeviceTypes}::text[])
+          OR (
+            ${includeUnknownDeviceType}::boolean
+            AND COALESCE("pushPlatform", '') = ''
+          )
+        )
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `,
+  ]);
+
+  const byDeviceType = rows.map((row) => ({
+    deviceType: (PUSH_DEVICE_TYPES.includes(row.deviceType as PushDeviceType) && row.deviceType !== 'all'
+      ? row.deviceType
+      : 'unknown') as Exclude<PushDeviceType, 'all'>,
+    userCount: Number(row.userCount),
+    tokenCount: Number(row.tokenCount),
+  }));
+
+  return {
+    totalUsers: Number(totalRow[0]?.userCount ?? 0),
+    totalTokens: Number(totalRow[0]?.tokenCount ?? 0),
+    byDeviceType,
+  };
 };
 
 const prunePushTokens = async (tokens: string[]): Promise<number> => {
@@ -201,6 +342,7 @@ export const sendPushToUsers = async ({
   body,
   data,
   notificationType,
+  deviceTypes,
 }: SendPushToUsersInput): Promise<PushDispatchResult> => {
   const normalizedUserIds = notificationType
     ? await filterUserIdsForNotificationChannel(userIds, notificationType, 'push')
@@ -217,7 +359,7 @@ export const sendPushToUsers = async ({
     };
   }
 
-  const tokens = await getPushTokensForUsers(normalizedUserIds);
+  const tokens = await getPushTokensForUsers(normalizedUserIds, deviceTypes);
   if (!tokens.length) {
     return {
       attempted: false,

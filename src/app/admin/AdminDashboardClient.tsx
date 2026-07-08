@@ -19,11 +19,14 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Container,
   Group,
   Loader,
   Paper,
   Select,
+  SimpleGrid,
+  Stack,
   Table,
   Tabs,
   Text,
@@ -31,9 +34,9 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
-import { ExternalLink, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, Search, Send, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'affiliateImports';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports';
 
 type PageState<T> = {
   items: T[];
@@ -122,7 +125,50 @@ type ModerationDraft = {
   error: string | null;
 };
 
+type AdminNotificationDeviceType = 'all' | 'ios' | 'android' | 'web' | 'unknown';
+
+type AdminNotificationAudience = {
+  totalUsers: number;
+  totalTokens: number;
+  byDeviceType: Array<{
+    deviceType: Exclude<AdminNotificationDeviceType, 'all'>;
+    userCount: number;
+    tokenCount: number;
+  }>;
+};
+
+type AdminNotificationDraft = {
+  title: string;
+  body: string;
+  deepLink: string;
+  deviceTypes: AdminNotificationDeviceType[];
+};
+
+type AdminNotificationState = {
+  audience: AdminNotificationAudience | null;
+  loading: boolean;
+  loaded: boolean;
+  sending: boolean;
+  error: string | null;
+  result: string | null;
+};
+
 const DEFAULT_LIMIT = 50;
+
+const DEFAULT_NOTIFICATION_DRAFT: AdminNotificationDraft = {
+  title: '',
+  body: '',
+  deepLink: '',
+  deviceTypes: ['all'],
+};
+
+const NOTIFICATION_DEVICE_OPTIONS: Array<{ value: AdminNotificationDeviceType; label: string }> = [
+  { value: 'all', label: 'All devices' },
+  { value: 'ios', label: 'iOS' },
+  { value: 'android', label: 'Android' },
+  { value: 'web', label: 'Web' },
+  { value: 'unknown', label: 'Unknown' },
+];
 
 const initialPageState = <T,>(query = ''): PageState<T> => ({
   items: [],
@@ -164,6 +210,16 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [selectedChatError, setSelectedChatError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
+  const [notificationDraft, setNotificationDraft] =
+    useState<AdminNotificationDraft>(() => ({ ...DEFAULT_NOTIFICATION_DRAFT }));
+  const [notificationState, setNotificationState] = useState<AdminNotificationState>({
+    audience: null,
+    loading: false,
+    loaded: false,
+    sending: false,
+    error: null,
+    result: null,
+  });
 
   const loadEvents = useCallback(async (offset = 0, query = eventsState.query) => {
     setEventsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -453,6 +509,109 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     }
   }, [moderationState.query]);
 
+  const loadNotificationAudience = useCallback(async (
+    deviceTypes = notificationDraft.deviceTypes,
+  ) => {
+    setNotificationState((previous) => ({ ...previous, loading: true, error: null }));
+    try {
+      const params = new URLSearchParams();
+      deviceTypes.forEach((deviceType) => params.append('deviceType', deviceType));
+      const res = await fetch(`/api/admin/notifications?${params.toString()}`, { credentials: 'include' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to load notification audience.');
+      }
+      setNotificationState((previous) => ({
+        ...previous,
+        audience: payload.audience ?? null,
+        loading: false,
+        loaded: true,
+        error: null,
+      }));
+    } catch (error) {
+      setNotificationState((previous) => ({
+        ...previous,
+        loading: false,
+        loaded: true,
+        error: error instanceof Error ? error.message : 'Failed to load notification audience.',
+      }));
+    }
+  }, [notificationDraft.deviceTypes]);
+
+  const updateNotificationDeviceTypes = useCallback((values: string[]) => {
+    const typedValues = values.filter((value): value is AdminNotificationDeviceType => (
+      NOTIFICATION_DEVICE_OPTIONS.some((option) => option.value === value)
+    ));
+    const withoutAll = typedValues.filter((value) => value !== 'all');
+    const nextDeviceTypes: AdminNotificationDeviceType[] = typedValues.length === 0
+      ? ['all']
+      : typedValues.includes('all') && !notificationDraft.deviceTypes.includes('all')
+        ? ['all']
+        : withoutAll.length > 0
+          ? withoutAll
+          : ['all'];
+
+    setNotificationDraft((previous) => ({ ...previous, deviceTypes: nextDeviceTypes }));
+    void loadNotificationAudience(nextDeviceTypes);
+  }, [loadNotificationAudience, notificationDraft.deviceTypes]);
+
+  const sendAdminNotification = useCallback(async () => {
+    const normalizedTitle = notificationDraft.title.trim();
+    const normalizedBody = notificationDraft.body.trim();
+    if (!normalizedTitle || !normalizedBody) {
+      setNotificationState((previous) => ({
+        ...previous,
+        error: 'Title and message are required.',
+        result: null,
+      }));
+      return;
+    }
+
+    const audience = notificationState.audience;
+    const confirmed = window.confirm(
+      `Send this notification to ${audience?.totalTokens ?? 0} device token(s) across ${audience?.totalUsers ?? 0} user(s)?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setNotificationState((previous) => ({ ...previous, sending: true, error: null, result: null }));
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: normalizedTitle,
+          body: normalizedBody,
+          deepLink: notificationDraft.deepLink.trim() || null,
+          deviceTypes: notificationDraft.deviceTypes,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to send notification.');
+      }
+      const delivery = payload.delivery ?? {};
+      setNotificationState((previous) => ({
+        ...previous,
+        audience: payload.audience ?? previous.audience,
+        sending: false,
+        error: null,
+        result: `Sent ${Number(delivery.successCount ?? 0)} of ${Number(delivery.tokenCount ?? 0)} token(s). ${Number(delivery.failureCount ?? 0)} failed.`,
+      }));
+    } catch (error) {
+      setNotificationState((previous) => ({
+        ...previous,
+        sending: false,
+        error: error instanceof Error ? error.message : 'Failed to send notification.',
+        result: null,
+      }));
+    }
+  }, [notificationDraft, notificationState.audience]);
+
   const loadSelectedChat = useCallback(async (chatGroupId: string) => {
     setSelectedChatGroupId(chatGroupId);
     setSelectedChatLoading(true);
@@ -680,6 +839,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     if (activeTab === 'moderation' && !moderationState.loaded) {
       void loadModeration(0, moderationState.query);
     }
+    if (activeTab === 'notifications' && !notificationState.loaded) {
+      void loadNotificationAudience(notificationDraft.deviceTypes);
+    }
   }, [
     activeTab,
     chatsState.loaded,
@@ -690,8 +852,11 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     loadTeams,
     organizationsState.loaded,
     loadModeration,
+    loadNotificationAudience,
     moderationState.loaded,
     moderationState.query,
+    notificationDraft.deviceTypes,
+    notificationState.loaded,
     teamsState.loaded,
     verificationState.loaded,
     usersState.loaded,
@@ -711,6 +876,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     if (activeTab === 'fields') return fieldsState;
     if (activeTab === 'chats') return chatsState;
     if (activeTab === 'moderation') return moderationState;
+    if (activeTab === 'notifications') {
+      return {
+        items: notificationState.audience ? [notificationState.audience] : [],
+        total: notificationState.audience?.totalTokens ?? 0,
+        limit: DEFAULT_LIMIT,
+        offset: 0,
+        loading: notificationState.loading,
+        loaded: notificationState.loaded,
+        error: notificationState.error,
+        query: '',
+      };
+    }
     if (activeTab === 'affiliateImports') {
       return {
         items: [],
@@ -724,7 +901,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       };
     }
     return usersState;
-  }, [activeTab, chatsState, eventsState, fieldsState, moderationState, organizationsState, teamsState, verificationState, usersState]);
+  }, [activeTab, chatsState, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
 
   const onRefreshActiveTab = useCallback(() => {
     if (activeTab === 'events') {
@@ -741,6 +918,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       void loadChats(chatsState.offset, chatsState.query);
     } else if (activeTab === 'moderation') {
       void loadModeration(moderationState.offset, moderationState.query);
+    } else if (activeTab === 'notifications') {
+      void loadNotificationAudience(notificationDraft.deviceTypes);
     } else if (activeTab === 'affiliateImports') {
       setAffiliateRefreshKey((previous) => previous + 1);
     } else {
@@ -758,11 +937,13 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     loadEvents,
     loadFields,
     loadModeration,
+    loadNotificationAudience,
     loadOrganizations,
     loadTeams,
     loadUsers,
     moderationState.offset,
     moderationState.query,
+    notificationDraft.deviceTypes,
     organizationsState.offset,
     organizationsState.query,
     teamsState.offset,
@@ -880,6 +1061,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
                 <Tabs.Tab value="chats">Chats ({chatsState.total})</Tabs.Tab>
                 <Tabs.Tab value="moderation">Moderation ({moderationState.total})</Tabs.Tab>
+                <Tabs.Tab value="notifications">Notifications</Tabs.Tab>
                 <Tabs.Tab value="affiliateImports">Affiliate imports</Tabs.Tab>
               </Tabs.List>
 
@@ -1817,6 +1999,152 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                   />
                 </AdminPanelState>
               </Tabs.Panel>
+
+              <Tabs.Panel value="notifications">
+                <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
+                  <Paper withBorder radius="md" p="md">
+                    <Stack gap="md">
+                      <div>
+                        <Title order={4}>Custom Push Notification</Title>
+                        <Text size="sm" c="dimmed">
+                          Sends through Firebase to registered BracketIQ device tokens.
+                        </Text>
+                      </div>
+
+                      {notificationState.error ? (
+                        <Alert color="red">{notificationState.error}</Alert>
+                      ) : null}
+                      {notificationState.result ? (
+                        <Alert color="teal">{notificationState.result}</Alert>
+                      ) : null}
+
+                      <TextInput
+                        label="Title"
+                        value={notificationDraft.title}
+                        maxLength={160}
+                        onChange={(event) => {
+                          setNotificationDraft((previous) => ({
+                            ...previous,
+                            title: event.currentTarget.value,
+                          }));
+                        }}
+                      />
+                      <Textarea
+                        label="Message"
+                        value={notificationDraft.body}
+                        minRows={5}
+                        maxLength={2000}
+                        autosize
+                        onChange={(event) => {
+                          setNotificationDraft((previous) => ({
+                            ...previous,
+                            body: event.currentTarget.value,
+                          }));
+                        }}
+                      />
+                      <TextInput
+                        label="Deep link"
+                        placeholder="mvp://profile/invites"
+                        value={notificationDraft.deepLink}
+                        maxLength={500}
+                        onChange={(event) => {
+                          setNotificationDraft((previous) => ({
+                            ...previous,
+                            deepLink: event.currentTarget.value,
+                          }));
+                        }}
+                      />
+                      <Checkbox.Group
+                        label="Device targets"
+                        value={notificationDraft.deviceTypes}
+                        onChange={updateNotificationDeviceTypes}
+                      >
+                        <Group gap="md" mt="xs">
+                          {NOTIFICATION_DEVICE_OPTIONS.map((option) => (
+                            <Checkbox key={option.value} value={option.value} label={option.label} />
+                          ))}
+                        </Group>
+                      </Checkbox.Group>
+
+                      <Group justify="space-between">
+                        <Button
+                          variant="default"
+                          onClick={() => {
+                            void loadNotificationAudience(notificationDraft.deviceTypes);
+                          }}
+                          loading={notificationState.loading}
+                        >
+                          Refresh audience
+                        </Button>
+                        <Button
+                          leftSection={<Send size={16} />}
+                          onClick={() => {
+                            void sendAdminNotification();
+                          }}
+                          loading={notificationState.sending}
+                          disabled={notificationState.loading || (notificationState.audience?.totalTokens ?? 0) === 0}
+                        >
+                          Send notification
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Paper>
+
+                  <Paper withBorder radius="md" p="md">
+                    <Group justify="space-between" align="flex-start" mb="md">
+                      <div>
+                        <Title order={4}>Audience</Title>
+                        <Text size="sm" c="dimmed">
+                          Counts reflect stored push tokens for the selected targets.
+                        </Text>
+                      </div>
+                      {notificationState.loading ? <Loader size="sm" /> : null}
+                    </Group>
+
+                    {notificationState.audience ? (
+                      <Stack gap="md">
+                        <Group gap="xs">
+                          <Badge color="blue" variant="light">
+                            {notificationState.audience.totalUsers} users
+                          </Badge>
+                          <Badge color="teal" variant="light">
+                            {notificationState.audience.totalTokens} tokens
+                          </Badge>
+                        </Group>
+
+                        <Table striped withTableBorder withColumnBorders>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th>Device type</Table.Th>
+                              <Table.Th>Users</Table.Th>
+                              <Table.Th>Tokens</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {notificationState.audience.byDeviceType.length > 0 ? (
+                              notificationState.audience.byDeviceType.map((row) => (
+                                <Table.Tr key={row.deviceType}>
+                                  <Table.Td>{formatNotificationDeviceType(row.deviceType)}</Table.Td>
+                                  <Table.Td>{row.userCount}</Table.Td>
+                                  <Table.Td>{row.tokenCount}</Table.Td>
+                                </Table.Tr>
+                              ))
+                            ) : (
+                              <Table.Tr>
+                                <Table.Td colSpan={3}>
+                                  <Text size="sm" c="dimmed">No device tokens match this target.</Text>
+                                </Table.Td>
+                              </Table.Tr>
+                            )}
+                          </Table.Tbody>
+                        </Table>
+                      </Stack>
+                    ) : (
+                      <Text c="dimmed">Load the audience to preview reachable devices.</Text>
+                    )}
+                  </Paper>
+                </SimpleGrid>
+              </Tabs.Panel>
             </Tabs>
           </Paper>
         </Container>
@@ -1906,6 +2234,13 @@ function formatAdminDateTime(value?: string | null): string {
     return value;
   }
   return parsed.toLocaleString();
+}
+
+function formatNotificationDeviceType(value: Exclude<AdminNotificationDeviceType, 'all'>): string {
+  if (value === 'ios') return 'iOS';
+  if (value === 'android') return 'Android';
+  if (value === 'web') return 'Web';
+  return 'Unknown';
 }
 
 function formatAdminTeamDivision(value: AdminTeamRow['division']): string {
