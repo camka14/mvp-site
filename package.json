@@ -25,6 +25,8 @@
     "affiliate:setup:oysa-clubs": "tsx scripts/setup-oregon-youth-soccer-club-directory-source.ts",
     "affiliate:setup:ceva-clubs": "tsx scripts/setup-ceva-club-directory-source.ts",
     "affiliate:setup:osha-youth-hockey": "tsx scripts/setup-oregon-state-hockey-youth-directory-source.ts",
+    "affiliate:clubs:discover-events": "tsx scripts/discover-club-affiliate-events.ts",
+    "affiliate:clubs:discover-logos": "tsx scripts/discover-affiliate-club-logos.ts",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
     "affiliate:logo-fit": "tsx scripts/preview-affiliate-org-logo-fit.ts",
     "affiliate:normalize-pricing": "tsx scripts/normalize-affiliate-event-pricing.ts",
