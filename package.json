@@ -28,6 +28,7 @@
     "affiliate:setup:clackamas-united": "tsx scripts/setup-clackamas-united-affiliate-source.ts",
     "affiliate:setup:saints-soccer": "tsx scripts/setup-saints-soccer-academy-affiliate-source.ts",
     "affiliate:setup:soccer-chance": "tsx scripts/setup-soccer-chance-academy-affiliate-source.ts",
+    "affiliate:setup:foothills-soccer": "tsx scripts/setup-foothills-soccer-club-affiliate-source.ts",
     "affiliate:clubs:discover-events": "tsx scripts/discover-club-affiliate-events.ts",
     "affiliate:clubs:discover-logos": "tsx scripts/discover-affiliate-club-logos.ts",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
