@@ -130,6 +130,75 @@ const fetchText = async (url: string): Promise<string | null> => {
   return response.text();
 };
 
+const fetchRenderedCandidates = async (url: string, orgName: string): Promise<ImageCandidate[]> => {
+  try {
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage({
+        viewport: { width: 1365, height: 900 },
+        userAgent: USER_AGENT,
+      });
+      await page.goto(url, { waitUntil: 'networkidle', timeout: FETCH_TIMEOUT_MS * 2 });
+      const rendered = await page.evaluate(() => {
+        const images = [...document.images].map((element) => {
+          const nearestHeader = element.closest('header, nav, [class*="header" i], [id*="header" i], [class*="logo" i], [id*="logo" i]');
+          return {
+            src: element.currentSrc || element.src,
+            alt: element.getAttribute('alt'),
+            title: element.getAttribute('title'),
+            className: String(element.getAttribute('class') ?? ''),
+            id: element.getAttribute('id'),
+            width: element.naturalWidth,
+            height: element.naturalHeight,
+            inHeader: Boolean(nearestHeader),
+            headerHtml: nearestHeader?.outerHTML.slice(0, 500) ?? '',
+          };
+        });
+        const backgrounds = [...document.querySelectorAll('*')].flatMap((element) => {
+          const style = getComputedStyle(element);
+          const value = style.backgroundImage;
+          if (!value || value === 'none') return [];
+          return [{
+            value,
+            className: String(element.getAttribute('class') ?? ''),
+            id: element.getAttribute('id'),
+          }];
+        });
+        return { images, backgrounds };
+      });
+      const candidates = new Map<string, ImageCandidate>();
+      const tokens = orgTokens(orgName);
+      for (const image of rendered.images) {
+        const label = [
+          image.alt,
+          image.title,
+          image.className,
+          image.id,
+          image.inHeader ? image.headerHtml : '',
+          image.width && image.height ? `${image.width}x${image.height}` : '',
+        ].filter(Boolean).join(' ');
+        addCandidate(candidates, resolveUrl(image.src, url), label, image.inHeader ? 'rendered-header-img' : 'rendered-img', tokens);
+      }
+      for (const background of rendered.backgrounds) {
+        const matches = [...background.value.matchAll(/url\((['"]?)(.*?)\1\)/g)];
+        for (const match of matches) {
+          const label = `${background.className} ${background.id ?? ''} ${background.value}`;
+          addCandidate(candidates, resolveUrl(match[2], url), label, 'rendered-css-url', tokens);
+        }
+      }
+      return [...candidates.values()]
+        .filter((candidate) => candidate.score >= 18)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+    } finally {
+      await browser.close();
+    }
+  } catch {
+    return [];
+  }
+};
+
 const fetchBuffer = async (url: string): Promise<Buffer | null> => {
   const response = await fetch(url, {
     headers: {
@@ -218,6 +287,14 @@ const scoreCandidate = (candidateUrl: string, label: string, source: string, tok
   if (source === 'header-img') {
     score += 35;
     reason.push('header image');
+  }
+  if (source === 'rendered-header-img') {
+    score += 42;
+    reason.push('rendered header image');
+  }
+  if (source === 'rendered-css-url') {
+    score += 20;
+    reason.push('rendered css image');
   }
   if (source === 'link-icon') {
     score += 8;
@@ -500,8 +577,20 @@ const processOrg = async (ownerId: string, org: ClubOrg): Promise<ReportRow> => 
       reason: 'Official website did not return HTML.',
     };
   }
-  const candidates = extractCandidates(html, website!, org.name);
-  const best = await bestUsableImage(candidates);
+  let candidates = extractCandidates(html, website!, org.name);
+  let best = await bestUsableImage(candidates);
+  if (!best) {
+    const renderedCandidates = await fetchRenderedCandidates(website!, org.name);
+    const combined = new Map<string, ImageCandidate>();
+    for (const candidate of [...candidates, ...renderedCandidates]) {
+      const existing = combined.get(candidate.url);
+      if (!existing || candidate.score > existing.score) {
+        combined.set(candidate.url, candidate);
+      }
+    }
+    candidates = [...combined.values()].sort((a, b) => b.score - a.score).slice(0, 10);
+    best = await bestUsableImage(candidates);
+  }
   if (!best) {
     return {
       orgId: org.id,
