@@ -35,6 +35,7 @@
     "affiliate:setup:portland-community-fc": "tsx scripts/setup-portland-community-fc-affiliate-source.ts",
     "affiliate:setup:portland-volleyball-club": "tsx scripts/setup-portland-volleyball-club-affiliate-source.ts",
     "affiliate:setup:athena-ajax-volleyball": "tsx scripts/setup-athena-ajax-volleyball-affiliate-source.ts",
+    "affiliate:setup:oregon-juniors-volleyball": "tsx scripts/setup-oregon-juniors-volleyball-academy-affiliate-source.ts",
     "affiliate:setup:ptfc-adult-league": "tsx scripts/setup-ptfc-adult-league-affiliate-source.ts",
     "affiliate:clubs:discover-events": "tsx scripts/discover-club-affiliate-events.ts",
     "affiliate:clubs:discover-logos": "tsx scripts/discover-affiliate-club-logos.ts",
