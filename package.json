@@ -24,6 +24,7 @@
     "affiliate:sources:audit-backlog": "tsx scripts/audit-affiliate-source-backlog.ts",
     "affiliate:setup:oysa-clubs": "tsx scripts/setup-oregon-youth-soccer-club-directory-source.ts",
     "affiliate:setup:ceva-clubs": "tsx scripts/setup-ceva-club-directory-source.ts",
+    "affiliate:setup:ceva-camps": "tsx scripts/setup-ceva-camps-affiliate-source.ts",
     "affiliate:setup:osha-youth-hockey": "tsx scripts/setup-oregon-state-hockey-youth-directory-source.ts",
     "affiliate:setup:clackamas-united": "tsx scripts/setup-clackamas-united-affiliate-source.ts",
     "affiliate:setup:saints-soccer": "tsx scripts/setup-saints-soccer-academy-affiliate-source.ts",
