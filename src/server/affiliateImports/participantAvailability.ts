@@ -39,12 +39,13 @@ const firstNonNegativeIntFromMatch = (match: RegExpMatchArray | null, index = 1)
 export const parseAffiliateMaxParticipants = (value: unknown): number | null => {
   const text = nullableString(value);
   if (!text) return null;
+  const capacityText = text.replace(/\$\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?/g, ' ');
 
-  return firstPositiveIntFromMatch(text.match(/\b(?:max(?:imum)?|capacity|limit(?:ed)?(?:\s+to)?|up\s+to)\s*:?\s*([1-9]\d{0,3})\b/i))
-    ?? firstPositiveIntFromMatch(text.match(/\b([1-9]\d{0,3})\s*(?:to|-|–)\s*([1-9]\d{0,3})\s+(?:players?|teams?|participants?)\b/i), 2)
-    ?? firstPositiveIntFromMatch(text.match(/\b(?:with|and)\s+([1-9]\d{0,3})\s+players?\s+divided\b/i))
-    ?? firstPositiveIntFromMatch(text.match(/\bmake\s+([1-9]\d{0,3})\s+players?\b/i))
-    ?? firstPositiveIntFromMatch(text.match(/\b([1-9]\d{0,3})\s+(?:teams?|players?|participants?)\b/i));
+  return firstPositiveIntFromMatch(capacityText.match(/\b(?:max(?:imum)?|capacity|limit(?:ed)?(?:\s+to)?|up\s+to)\s*:?\s*([1-9]\d{0,3})\b/i))
+    ?? firstPositiveIntFromMatch(capacityText.match(/\b([1-9]\d{0,3})\s*(?:to|-|–)\s*([1-9]\d{0,3})\s+(?:players?|teams?|participants?)\b/i), 2)
+    ?? firstPositiveIntFromMatch(capacityText.match(/\b(?:with|and)\s+([1-9]\d{0,3})\s+players?\s+divided\b/i))
+    ?? firstPositiveIntFromMatch(capacityText.match(/\bmake\s+([1-9]\d{0,3})\s+players?\b/i))
+    ?? firstPositiveIntFromMatch(capacityText.match(/\b([1-9]\d{0,3})\s+(?:teams?|players?|participants?)\b/i));
 };
 
 export const parseAffiliateCurrentParticipants = (value: unknown): number | null => {

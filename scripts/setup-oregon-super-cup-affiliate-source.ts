@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import sharp from 'sharp';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 
 dotenv.config({ quiet: true });
@@ -136,8 +137,37 @@ const downloadLogo = async () => {
     throw new Error(`Failed to download logo ${LOGO_SOURCE_URL}: ${response.status}`);
   }
   const data = Buffer.from(await response.arrayBuffer());
-  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
-  return { data, contentType };
+  const background = '#ffffff';
+  const flattened = await sharp(data, { animated: false })
+    .rotate()
+    .flatten({ background })
+    .trim({ background, threshold: 8 })
+    .png()
+    .toBuffer()
+    .catch(async () => sharp(data, { animated: false }).rotate().flatten({ background }).png().toBuffer());
+  const logo = await sharp(flattened)
+    .resize({ width: 860, height: 560, fit: 'inside', withoutEnlargement: false })
+    .png()
+    .toBuffer();
+  const metadata = await sharp(logo).metadata();
+  const width = metadata.width ?? 860;
+  const height = metadata.height ?? 560;
+  const square = await sharp({
+    create: {
+      width: 1024,
+      height: 1024,
+      channels: 4,
+      background,
+    },
+  })
+    .composite([{
+      input: logo,
+      left: Math.round((1024 - width) / 2),
+      top: Math.round((1024 - height) / 2),
+    }])
+    .png()
+    .toBuffer();
+  return { data: square, contentType: 'image/png' };
 };
 
 const upsertLogo = async (ownerId: string) => {
@@ -145,7 +175,7 @@ const upsertLogo = async (ownerId: string) => {
   const { getStorageProvider } = await import('../src/lib/storageProvider');
   const stored = await getStorageProvider().putObject({
     data,
-    originalName: 'soccer-chance-academy-logo.png',
+    originalName: 'soccer-chance-academy-logo-square.png',
     contentType,
     organizationId: ORG_ID,
   });
@@ -157,7 +187,7 @@ const upsertLogo = async (ownerId: string) => {
       uploaderId: ownerId,
       organizationId: ORG_ID,
       bucket: stored.bucket ?? null,
-      originalName: 'soccer-chance-academy-logo.png',
+      originalName: 'soccer-chance-academy-logo-square.png',
       mimeType: contentType,
       sizeBytes: stored.sizeBytes,
       path: stored.key,
@@ -168,7 +198,7 @@ const upsertLogo = async (ownerId: string) => {
       uploaderId: ownerId,
       organizationId: ORG_ID,
       bucket: stored.bucket ?? null,
-      originalName: 'soccer-chance-academy-logo.png',
+      originalName: 'soccer-chance-academy-logo-square.png',
       mimeType: contentType,
       sizeBytes: stored.sizeBytes,
       path: stored.key,

@@ -1297,6 +1297,7 @@ export default function DiscoverMapModal({
                   />
                   <Group gap="xs" align="center">
                     <Chip
+                      color="green"
                       radius="xl"
                       checked={allTagsSelected}
                       disabled={eventTagsLoading || !eventTags.length}
@@ -1314,6 +1315,7 @@ export default function DiscoverMapModal({
                       visibleEventTags.map((tag) => (
                         <Chip
                           key={tag.slug || tag.name}
+                          color="green"
                           radius="xl"
                           checked={selectedTags.includes(tag.name)}
                           onChange={(checked) => {

@@ -134,6 +134,48 @@ describe('event tag helpers', () => {
     });
   });
 
+  it('recovers when concurrent custom tag creation hits an existing slug', async () => {
+    const uniqueSlugError = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    const client = {
+      eventTags: {
+        upsert: jest.fn(async () => {
+          throw uniqueSlugError;
+        }),
+        findUnique: jest.fn(async (args) => ({
+          id: 'tag_pickup',
+          name: 'Pickup Game',
+          slug: args.where.slug,
+        })),
+      },
+      eventTagAssignments: {
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+      },
+    };
+
+    const tags = await syncEventTags('event_1', ['Pickup Game'], client as any);
+
+    expect(client.eventTags.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { slug: 'pickup-game' },
+    }));
+    expect(client.eventTags.findUnique).toHaveBeenCalledWith({
+      where: { slug: 'pickup-game' },
+    });
+    expect(tags).toEqual([
+      { id: 'tag_pickup', name: 'Pickup Game', slug: 'pickup-game' },
+    ]);
+    expect(client.eventTagAssignments.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [
+        expect.objectContaining({
+          eventId: 'event_1',
+          tagId: 'tag_pickup',
+          tagNameSnapshot: 'Pickup Game',
+        }),
+      ],
+      skipDuplicates: true,
+    }));
+  });
+
   it('clears assignments when the event has no tags', async () => {
     const client = {
       eventTags: {

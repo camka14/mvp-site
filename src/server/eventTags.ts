@@ -21,6 +21,66 @@ type EventTypeTagOptions = {
   eventType?: unknown;
 };
 
+const PRISMA_UNIQUE_CONSTRAINT_CODE = 'P2002';
+
+const isUniqueConstraintError = (error: unknown): boolean => (
+  Boolean(error)
+  && typeof error === 'object'
+  && (error as { code?: unknown }).code === PRISMA_UNIQUE_CONSTRAINT_CODE
+);
+
+const findEventTagBySlug = async (
+  slug: string,
+  client: PrismaLike | any = prisma,
+): Promise<EventTagView | null> => {
+  if (typeof client.eventTags?.findUnique === 'function') {
+    const tag = await client.eventTags.findUnique({ where: { slug } });
+    return tag ? { id: tag.id, name: tag.name, slug: tag.slug } : null;
+  }
+
+  if (typeof client.eventTags?.findFirst === 'function') {
+    const tag = await client.eventTags.findFirst({ where: { slug } });
+    return tag ? { id: tag.id, name: tag.name, slug: tag.slug } : null;
+  }
+
+  return null;
+};
+
+const upsertEventTagByName = async (
+  name: string,
+  client: PrismaLike | any = prisma,
+): Promise<EventTagView> => {
+  const slug = slugifyEventTagName(name);
+  try {
+    const tag = await client.eventTags.upsert({
+      where: { slug },
+      create: {
+        id: createId(),
+        name,
+        slug,
+      },
+      update: {
+        name,
+      },
+    });
+    return {
+      id: tag.id,
+      name: tag.name,
+      slug: tag.slug,
+    };
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+
+    const existingTag = await findEventTagBySlug(slug, client);
+    if (existingTag) {
+      return existingTag;
+    }
+    throw error;
+  }
+};
+
 export const normalizeEventTagName = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -261,23 +321,8 @@ export const syncEventTags = async (
 
   const tags: EventTagView[] = [];
   for (const name of tagNames) {
-    const slug = slugifyEventTagName(name);
-    const tag = await client.eventTags.upsert({
-      where: { slug },
-      create: {
-        id: createId(),
-        name,
-        slug,
-      },
-      update: {
-        name,
-      },
-    });
-    tags.push({
-      id: tag.id,
-      name: tag.name,
-      slug: tag.slug,
-    });
+    const tag = await upsertEventTagByName(name, client);
+    tags.push(tag);
   }
 
   const tagIds = tags.map((tag) => tag.id);
