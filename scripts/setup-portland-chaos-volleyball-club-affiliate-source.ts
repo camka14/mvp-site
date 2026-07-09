@@ -448,7 +448,7 @@ const relinkClubCandidateToSourceOrganization = async () => {
   const duplicateOrgIds = Array.from(new Set(
     duplicateRows
       .map((row: { publishedOrganizationId: string | null }) => row.publishedOrganizationId)
-      .filter((id): id is string => Boolean(id) && id !== ORG_ID),
+      .filter((id: string | null): id is string => Boolean(id) && id !== ORG_ID),
   ));
 
   await (prisma as any).affiliateImportCandidates.updateMany({
