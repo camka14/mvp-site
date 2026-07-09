@@ -1,4 +1,6 @@
 import { createHash } from 'crypto';
+import path from 'path';
+import sharp from 'sharp';
 import {
   buildCompositeDivisionTypeId,
   buildDivisionToken,
@@ -8,14 +10,12 @@ import {
 } from '@/lib/divisionTypes';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
+import { getStorageProvider } from '@/lib/storageProvider';
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
 import { syncEventTags } from '@/server/eventTags';
 import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
-import {
-  inferAffiliateParticipantAvailability,
-  parseAffiliateMaxParticipants,
-} from './participantAvailability';
+import { inferAffiliateParticipantAvailability, parseAffiliateMaxParticipants } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
 import { inferAffiliateEventTagNames } from './tags';
 import {
@@ -71,6 +71,7 @@ const affiliatePrisma = () => {
     divisions: client.divisions,
     organizations: client.organizations,
     sports: client.sports,
+    files: client.file,
   };
 };
 
@@ -80,11 +81,8 @@ const nullableString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const sleep = (milliseconds: number): Promise<void> => (
-  milliseconds > 0
-    ? new Promise((resolve) => setTimeout(resolve, milliseconds))
-    : Promise.resolve()
-);
+const sleep = (milliseconds: number): Promise<void> =>
+  milliseconds > 0 ? new Promise((resolve) => setTimeout(resolve, milliseconds)) : Promise.resolve();
 
 const AFFILIATE_DATE_DISPLAY_MODES = new Set(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
 const EVERGREEN_AFFILIATE_START_DATE = new Date('2099-12-31T12:00:00.000Z');
@@ -92,23 +90,19 @@ const EVERGREEN_AFFILIATE_START_DATE = new Date('2099-12-31T12:00:00.000Z');
 const normalizeDateDisplayMode = (value: unknown): AffiliateDateDisplayMode => {
   const normalized = nullableString(value)?.toUpperCase();
   return normalized && AFFILIATE_DATE_DISPLAY_MODES.has(normalized)
-    ? normalized as AffiliateDateDisplayMode
+    ? (normalized as AffiliateDateDisplayMode)
     : 'SCHEDULED';
 };
 
-const isEvergreenAffiliateCandidate = (candidate: any): boolean => (
-  normalizeDateDisplayMode(candidate?.dateDisplayMode) !== 'SCHEDULED'
-);
+const isEvergreenAffiliateCandidate = (candidate: any): boolean =>
+  normalizeDateDisplayMode(candidate?.dateDisplayMode) !== 'SCHEDULED';
 
-const dateDisplayTextFromCandidate = (candidate: any): string | null => (
-  nullableString(candidate.dateDisplayText)
-  ?? (isEvergreenAffiliateCandidate(candidate) ? nullableString(candidate.scheduleText) : null)
-  ?? (isEvergreenAffiliateCandidate(candidate) ? 'No fixed start date' : null)
-);
+const dateDisplayTextFromCandidate = (candidate: any): string | null =>
+  nullableString(candidate.dateDisplayText) ??
+  (isEvergreenAffiliateCandidate(candidate) ? nullableString(candidate.scheduleText) : null) ??
+  (isEvergreenAffiliateCandidate(candidate) ? 'No fixed start date' : null);
 
-const normalizeStatus = (value: unknown, fallback: string): string => (
-  nullableString(value)?.toUpperCase() ?? fallback
-);
+const normalizeStatus = (value: unknown, fallback: string): string => nullableString(value)?.toUpperCase() ?? fallback;
 
 const parseDateOrNull = (value: string | null | undefined): Date | null => {
   if (!value) return null;
@@ -116,13 +110,12 @@ const parseDateOrNull = (value: string | null | undefined): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const normalizeDateText = (value: string): string => (
+const normalizeDateText = (value: string): string =>
   value
     .replace(/\s+/g, ' ')
     .replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
     .replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+/gi, '')
-    .trim()
-);
+    .trim();
 
 const parseSourceDateOrNull = (
   value: string | null | undefined,
@@ -160,10 +153,7 @@ const candidateRegistrationDeadline = (
   });
 };
 
-const isImportableCandidate = (
-  candidate: AffiliateCandidateInput,
-  now: Date = new Date(),
-): boolean => {
+const isImportableCandidate = (candidate: AffiliateCandidateInput, now: Date = new Date()): boolean => {
   return candidateImportRejectionReasons(candidate, now).length === 0;
 };
 
@@ -181,10 +171,7 @@ const isTryoutCandidate = (candidate: AffiliateCandidateInput): boolean => {
   return /\btry[\s-]?outs?\b|\bevaluations?\b/.test(haystack);
 };
 
-const candidateImportRejectionReasons = (
-  candidate: AffiliateCandidateInput,
-  now: Date = new Date(),
-): string[] => {
+const candidateImportRejectionReasons = (candidate: AffiliateCandidateInput, now: Date = new Date()): string[] => {
   if (candidate.listingKind === 'RENTAL' || candidate.listingKind === 'CLUB') return [];
   const reasons: string[] = [];
   const start = candidateStartDate(candidate);
@@ -227,25 +214,18 @@ export const buildAffiliateCandidateDedupeKey = (
   candidate: AffiliateCandidateInput,
   mapping: AffiliateScrapeMapping,
 ): string => {
-  const fields = mapping.dedupe?.fields?.length
-    ? mapping.dedupe.fields
-    : ['officialActionUrl', 'title', 'startsAt'];
-  const raw = [
-    sourceId,
-    ...fields.map((fieldName) => candidateValue(candidate, fieldName)),
-  ].join('|');
+  const fields = mapping.dedupe?.fields?.length ? mapping.dedupe.fields : ['officialActionUrl', 'title', 'startsAt'];
+  const raw = [sourceId, ...fields.map((fieldName) => candidateValue(candidate, fieldName))].join('|');
   return createHash('sha256').update(raw).digest('hex');
 };
 
-const candidatePersistenceData = (
-  params: {
-    sourceId: string;
-    runId: string;
-    mappingId: string | null;
-    dedupeKey: string;
-    candidate: AffiliateCandidateInput;
-  },
-) => {
+const candidatePersistenceData = (params: {
+  sourceId: string;
+  runId: string;
+  mappingId: string | null;
+  dedupeKey: string;
+  candidate: AffiliateCandidateInput;
+}) => {
   const { sourceId, runId, mappingId, dedupeKey, candidate } = params;
   const tagNames = candidate.listingKind === 'EVENT' ? buildAffiliateEventTagNames(candidate) : [];
   const rawPayload = {
@@ -309,11 +289,12 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
       targetKind: normalizeStatus(input.targetKind, 'EVENT'),
       status: normalizeStatus(input.status, 'ACTIVE'),
       autoScrapeEnabled: input.autoScrapeEnabled === true,
-      scrapeIntervalMinutes: typeof input.scrapeIntervalMinutes === 'number'
-        && Number.isInteger(input.scrapeIntervalMinutes)
-        && input.scrapeIntervalMinutes >= 60
-        ? input.scrapeIntervalMinutes
-        : 1440,
+      scrapeIntervalMinutes:
+        typeof input.scrapeIntervalMinutes === 'number' &&
+        Number.isInteger(input.scrapeIntervalMinutes) &&
+        input.scrapeIntervalMinutes >= 60
+          ? input.scrapeIntervalMinutes
+          : 1440,
       notes: nullableString(input.notes),
       metadata: input.metadata ?? null,
     },
@@ -340,9 +321,7 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
   });
 };
 
-const normalizeSourceType = (value: unknown): string | null => (
-  nullableString(value)?.toUpperCase() ?? null
-);
+const normalizeSourceType = (value: unknown): string | null => nullableString(value)?.toUpperCase() ?? null;
 
 const normalizeListingKind = (value: unknown): AffiliateListingKind => {
   const normalized = normalizeSourceType(value);
@@ -352,26 +331,58 @@ const normalizeListingKind = (value: unknown): AffiliateListingKind => {
   throw new Error('Affiliate listing kind must be EVENT, TEAM, RENTAL, or CLUB.');
 };
 
-const publishedEventIdFromCandidate = (candidate: any): string | null => (
-  nullableString(candidate?.publishedEventId)
-);
+const publishedEventIdFromCandidate = (candidate: any): string | null => nullableString(candidate?.publishedEventId);
 
-const publishedTeamIdFromCandidate = (candidate: any): string | null => (
-  nullableString(candidate?.publishedTeamId)
-);
+const publishedTeamIdFromCandidate = (candidate: any): string | null => nullableString(candidate?.publishedTeamId);
 
-const publishedOrganizationIdFromCandidate = (candidate: any): string | null => (
-  nullableString(candidate?.publishedOrganizationId)
-);
+const publishedOrganizationIdFromCandidate = (candidate: any): string | null =>
+  nullableString(candidate?.publishedOrganizationId);
 
-const slugifyForId = (value: string): string => (
+const slugifyForId = (value: string): string =>
   value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || 'item'
-);
+    .slice(0, 80) || 'item';
+
+const filenameFromUrl = (url: string, fallback: string): string => {
+  try {
+    const parsed = new URL(url);
+    const basename = path.basename(parsed.pathname);
+    return basename || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeAffiliateOrganizationLogo = async (input: Buffer): Promise<Buffer> => {
+  const flattened = await sharp(input, { animated: false })
+    .rotate()
+    .flatten({ background: '#ffffff' })
+    .png()
+    .toBuffer();
+  const trimmed = await sharp(flattened)
+    .trim({ background: '#ffffff', threshold: 10 })
+    .png()
+    .toBuffer()
+    .catch(async () => flattened);
+  const logo = await sharp(trimmed).resize({ width: 820, height: 820, fit: 'inside' }).png().toBuffer();
+
+  return sharp({
+    create: {
+      width: 1024,
+      height: 1024,
+      channels: 4,
+      background: '#ffffff',
+    },
+  })
+    .composite([{ input: logo, gravity: 'center' }])
+    .png()
+    .toBuffer();
+};
+
+const affiliateOrganizationLogoId = (organizationId: string): string => `${slugifyForId(organizationId)}_logo`;
 
 const parseFirstPositiveInteger = (value: unknown): number | null => {
   const text = nullableString(value);
@@ -391,25 +402,95 @@ const rawExtractedCandidateFields = (candidate: any): Record<string, unknown> =>
   }
   const extractedFields = (rawPayload as Record<string, unknown>).extractedFields;
   const detailPage = (rawPayload as Record<string, unknown>).detailPage;
-  const detailFields = detailPage && typeof detailPage === 'object' && !Array.isArray(detailPage)
-    ? (detailPage as Record<string, unknown>).extractedFields
-    : null;
+  const detailFields =
+    detailPage && typeof detailPage === 'object' && !Array.isArray(detailPage)
+      ? (detailPage as Record<string, unknown>).extractedFields
+      : null;
   return {
     ...(extractedFields && typeof extractedFields === 'object' && !Array.isArray(extractedFields)
-      ? extractedFields as Record<string, unknown>
+      ? (extractedFields as Record<string, unknown>)
       : {}),
     ...(detailFields && typeof detailFields === 'object' && !Array.isArray(detailFields)
-      ? detailFields as Record<string, unknown>
+      ? (detailFields as Record<string, unknown>)
       : {}),
   };
 };
 
-const inferCandidateParticipantAvailability = (candidate: any) => (
+const candidateClubLogoUrl = (candidate: any): string | null => {
+  const fields = rawExtractedCandidateFields(candidate);
+  return (
+    nullableString(fields.logoUrl) ??
+    nullableString(fields.logoSourceUrl) ??
+    nullableString((candidate?.rawPayload as Record<string, unknown> | null)?.logoUrl) ??
+    nullableString((candidate?.rawPayload as Record<string, unknown> | null)?.logoSourceUrl)
+  );
+};
+
+const upsertAffiliateOrganizationLogoForCandidate = async (
+  candidate: any,
+  organizationId: string,
+  ownerId: string,
+): Promise<string | null> => {
+  const logoUrl = candidateClubLogoUrl(candidate);
+  if (!logoUrl) return null;
+
+  try {
+    const response = await fetch(logoUrl, {
+      headers: {
+        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'user-agent': 'BracketIQ source review bot; contact samuel.r@razumly.com',
+      },
+    });
+    if (!response.ok) return null;
+
+    const normalized = await normalizeAffiliateOrganizationLogo(Buffer.from(await response.arrayBuffer()));
+    const logoId = affiliateOrganizationLogoId(organizationId);
+    const originalName =
+      nullableString(rawExtractedCandidateFields(candidate).logoOriginalName) ??
+      filenameFromUrl(logoUrl, `${slugifyForId(organizationId)}-logo.png`);
+    const stored = await getStorageProvider().putObject({
+      data: normalized,
+      originalName,
+      contentType: 'image/png',
+      organizationId,
+    });
+
+    await affiliatePrisma().files.upsert({
+      where: { id: logoId },
+      create: {
+        id: logoId,
+        uploaderId: ownerId,
+        organizationId,
+        bucket: stored.bucket ?? null,
+        originalName,
+        mimeType: 'image/png',
+        sizeBytes: stored.sizeBytes,
+        path: stored.key,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      update: {
+        uploaderId: ownerId,
+        organizationId,
+        bucket: stored.bucket ?? null,
+        originalName,
+        mimeType: 'image/png',
+        sizeBytes: stored.sizeBytes,
+        path: stored.key,
+        updatedAt: new Date(),
+      },
+    });
+    return logoId;
+  } catch {
+    return null;
+  }
+};
+
+const inferCandidateParticipantAvailability = (candidate: any) =>
   inferAffiliateParticipantAvailability({
     ...rawExtractedCandidateFields(candidate),
     ...candidate,
-  })
-);
+  });
 
 const parsePriceCents = (value: unknown): number | null => {
   const text = nullableString(value);
@@ -421,7 +502,7 @@ const parsePriceCents = (value: unknown): number | null => {
   return Math.max(0, Math.round(amount * 100));
 };
 
-const affiliateCandidateText = (candidate: any): string => (
+const affiliateCandidateText = (candidate: any): string =>
   [
     candidate.title,
     candidate.description,
@@ -434,13 +515,12 @@ const affiliateCandidateText = (candidate: any): string => (
     rawExtractedCandidateFields(candidate).participantOptionsText,
   ]
     .map((value) => nullableString(value) ?? '')
-    .join(' ')
-);
+    .join(' ');
 
 export const buildAffiliateEventTagNames = (
   candidate: any,
   eventType: unknown = inferAffiliateEventType(candidate),
-): string[] => (
+): string[] =>
   inferAffiliateEventTagNames(
     {
       ...rawExtractedCandidateFields(candidate),
@@ -450,8 +530,7 @@ export const buildAffiliateEventTagNames = (
       eventType,
       listingKind: candidate?.listingKind,
     },
-  )
-);
+  );
 
 const inferAffiliateTeamSignup = (
   candidate: any,
@@ -460,11 +539,19 @@ const inferAffiliateTeamSignup = (
   const text = affiliateCandidateText(candidate);
   const lower = text.toLowerCase();
 
-  if (/\b(?:individual|player|free[-\s]?agent)\s+registration\b|\bindividual\s+type\s+price\b|\bregister\s+individually\b|\bno\s+team\s+required\b|\bopen\s+(?:gym|play|court)\b|\bpick[-\s]?up\b|\bdrop[-\s]?in\b/.test(lower)) {
+  if (
+    /\b(?:individual|player|free[-\s]?agent)\s+registration\b|\bindividual\s+type\s+price\b|\bregister\s+individually\b|\bno\s+team\s+required\b|\bopen\s+(?:gym|play|court)\b|\bpick[-\s]?up\b|\bdrop[-\s]?in\b/.test(
+      lower,
+    )
+  ) {
     return false;
   }
 
-  if (/\$\s*[0-9]+(?:\.[0-9]{1,2})?\s*\/\s*team\b|\bper\s+team\b|\bteam\s+(?:entry|registration|fee|price|cost)\b|\bregister\s+a\s+(?:full\s+)?team\b/.test(lower)) {
+  if (
+    /\$\s*[0-9]+(?:\.[0-9]{1,2})?\s*\/\s*team\b|\bper\s+team\b|\bteam\s+(?:entry|registration|fee|price|cost)\b|\bregister\s+a\s+(?:full\s+)?team\b/.test(
+      lower,
+    )
+  ) {
     return true;
   }
 
@@ -475,15 +562,12 @@ const inferAffiliateTeamSignup = (
   return eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
 };
 
-const inferAffiliateTeamSizeLimit = (
-  candidate: any,
-  teamSignup: boolean,
-): number => {
+const inferAffiliateTeamSizeLimit = (candidate: any, teamSignup: boolean): number => {
   if (!teamSignup) return 1;
 
   const text = affiliateCandidateText(candidate).toLowerCase();
-  const explicitTeamSize = text.match(/\bteams?\s+of\s+([1-9]\d?)\b/)
-    ?? text.match(/\b([1-9]\d?)\s*(?:person|player)\s+teams?\b/);
+  const explicitTeamSize =
+    text.match(/\bteams?\s+of\s+([1-9]\d?)\b/) ?? text.match(/\b([1-9]\d?)\s*(?:person|player)\s+teams?\b/);
   if (explicitTeamSize) {
     const parsed = Number.parseInt(explicitTeamSize[1], 10);
     if (Number.isFinite(parsed) && parsed > 1) {
@@ -500,14 +584,13 @@ const inferAffiliateTeamSizeLimit = (
   return 20;
 };
 
-const slugToken = (value: string): string => (
+const slugToken = (value: string): string =>
   value
     .trim()
     .toLowerCase()
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-);
+    .replace(/^_+|_+$/g, '');
 
 const inferDivisionGender = (value: unknown): DivisionGender => {
   const text = nullableString(value)?.toLowerCase() ?? '';
@@ -517,7 +600,13 @@ const inferDivisionGender = (value: unknown): DivisionGender => {
   return 'C';
 };
 
-const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge: number | null; ageDivisionTypeId: string | null } => {
+const inferAgeRangeFromText = (
+  value: unknown,
+): {
+  minAge: number | null;
+  maxAge: number | null;
+  ageDivisionTypeId: string | null;
+} => {
   const haystack = nullableString(value) ?? '';
   const uRangeMatch = haystack.match(/\bU\s*([1-9]\d?)\s*(?:-|–|to)\s*U?\s*([1-9]\d?)\b/i);
   if (uRangeMatch) {
@@ -551,10 +640,11 @@ const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge:
     return { minAge: null, maxAge, ageDivisionTypeId: `u${maxAge}` };
   }
 
-  const overMatch = haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i)
-    ?? haystack.match(/\bover\s*([1-9]\d?)(?!\d)/i)
-    ?? haystack.match(/\b([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i)
-    ?? haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\b/i);
+  const overMatch =
+    haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i) ??
+    haystack.match(/\bover\s*([1-9]\d?)(?!\d)/i) ??
+    haystack.match(/\b([1-9]\d?)\s*(?:\+|(?:and\s+)?over|or\s+older|and\s+older|and\s+up)(?!\w)/i) ??
+    haystack.match(/\b(?:ages?|adult)\s*([1-9]\d?)\b/i);
   if (overMatch) {
     const minAge = Number.parseInt(overMatch[1], 10);
     return { minAge, maxAge: null, ageDivisionTypeId: `${minAge}plus` };
@@ -563,17 +653,18 @@ const inferAgeRangeFromText = (value: unknown): { minAge: number | null; maxAge:
   return { minAge: null, maxAge: null, ageDivisionTypeId: null };
 };
 
-const inferAgeRange = (candidate: any): { minAge: number | null; maxAge: number | null; ageDivisionTypeId: string | null } => (
-  inferAgeRangeFromText([
-    candidate.divisionText,
-    candidate.skillLevel,
-    candidate.ageGroup,
-    candidate.description,
-    candidate.title,
-  ]
-    .map((value) => nullableString(value) ?? '')
-    .join(' '))
-);
+const inferAgeRange = (
+  candidate: any,
+): {
+  minAge: number | null;
+  maxAge: number | null;
+  ageDivisionTypeId: string | null;
+} =>
+  inferAgeRangeFromText(
+    [candidate.divisionText, candidate.skillLevel, candidate.ageGroup, candidate.description, candidate.title]
+      .map((value) => nullableString(value) ?? '')
+      .join(' '),
+  );
 
 const inferSkillDivisionTypeId = (value: unknown): string => {
   const raw = nullableString(value) ?? '';
@@ -586,20 +677,13 @@ const inferSkillDivisionTypeId = (value: unknown): string => {
   return slugToken(withoutGender) || 'open';
 };
 
-const buildAffiliateDivisionDetailFromLabel = (
-  sourceLabel: string,
-  candidate: any,
-  sportId?: string | null,
-) => {
+const buildAffiliateDivisionDetailFromLabel = (sourceLabel: string, candidate: any, sportId?: string | null) => {
   const gender = inferDivisionGender(sourceLabel);
-  const ageRange = inferAgeRangeFromText([
-    sourceLabel,
-    candidate.ageGroup,
-    candidate.description,
-    candidate.title,
-  ]
-    .map((value) => nullableString(value) ?? '')
-    .join(' '));
+  const ageRange = inferAgeRangeFromText(
+    [sourceLabel, candidate.ageGroup, candidate.description, candidate.title]
+      .map((value) => nullableString(value) ?? '')
+      .join(' '),
+  );
   const ratingType: DivisionRatingType = 'SKILL';
   const skillDivisionTypeId = inferSkillDivisionTypeId(sourceLabel);
   const divisionTypeId = ageRange.ageDivisionTypeId
@@ -635,8 +719,7 @@ const buildAffiliateDivisionDetailFromLabel = (
 };
 
 const buildAffiliateDivisionDetail = (candidate: any, sportId?: string | null) => {
-  const sourceLabel = nullableString(candidate.divisionText)
-    ?? nullableString(candidate.skillLevel);
+  const sourceLabel = nullableString(candidate.divisionText) ?? nullableString(candidate.skillLevel);
   if (!sourceLabel) return null;
   return buildAffiliateDivisionDetailFromLabel(sourceLabel, candidate, sportId);
 };
@@ -666,9 +749,9 @@ const normalizeSourceDivisionMaxParticipants = (value: unknown): number | null |
 const sourceDivisionRowsFromCandidate = (candidate: any): Record<string, unknown>[] => {
   const rows = rawExtractedCandidateFields(candidate).divisions;
   return Array.isArray(rows)
-    ? rows.filter((row): row is Record<string, unknown> => (
-        row != null && typeof row === 'object' && !Array.isArray(row)
-      ))
+    ? rows.filter(
+        (row): row is Record<string, unknown> => row != null && typeof row === 'object' && !Array.isArray(row),
+      )
     : [];
 };
 
@@ -681,8 +764,9 @@ const buildAffiliateDivisionDetailsFromSourceRows = (candidate: any, sportId?: s
       const gender = normalizeDivisionGenderValue(row.gender) ?? inferred.gender;
       const ratingType = normalizeDivisionRatingTypeValue(row.ratingType) ?? inferred.ratingType;
       const divisionTypeId = nullableString(row.divisionTypeId) ?? inferred.divisionTypeId;
-      const key = nullableString(row.key)
-        ?? buildDivisionToken({
+      const key =
+        nullableString(row.key) ??
+        buildDivisionToken({
           gender,
           ratingType,
           divisionTypeId,
@@ -711,15 +795,10 @@ const buildAffiliateDivisionDetailsFromSourceRows = (candidate: any, sportId?: s
 };
 
 const inferSourceDivisionLabels = (candidate: any): string[] => {
-  const explicitLabel = nullableString(candidate.divisionText)
-    ?? nullableString(candidate.skillLevel);
+  const explicitLabel = nullableString(candidate.divisionText) ?? nullableString(candidate.skillLevel);
   if (explicitLabel) return [explicitLabel];
 
-  const haystack = [
-    candidate.title,
-    candidate.description,
-    candidate.participantOptionsText,
-  ]
+  const haystack = [candidate.title, candidate.description, candidate.participantOptionsText]
     .map((value) => nullableString(value) ?? '')
     .join(' ');
   const labels: string[] = [];
@@ -733,11 +812,10 @@ const inferSourceDivisionLabels = (candidate: any): string[] => {
   if (/\bwomen(?:['’]s)?\b|\bwomens\b/i.test(haystack)) addLabel('Women');
   if (/\bcoed\b|\bco-ed\b|\bmixed\b/i.test(haystack)) addLabel('Coed');
 
-  Array.from(haystack.matchAll(/\b([1-9]\d?)\s*(?:&|and)\s*over\b|\b([1-9]\d?)\s*\+/gi))
-    .forEach((match) => {
-      const age = match[1] ?? match[2];
-      if (age) addLabel(`${age}+`);
-    });
+  Array.from(haystack.matchAll(/\b([1-9]\d?)\s*(?:&|and)\s*over\b|\b([1-9]\d?)\s*\+/gi)).forEach((match) => {
+    const age = match[1] ?? match[2];
+    if (age) addLabel(`${age}+`);
+  });
   if (/\bsenior(?:s)?\b/i.test(haystack) && !labels.some((label) => label === '40+')) {
     addLabel('40+');
   }
@@ -751,8 +829,9 @@ const buildAffiliateDivisionDetails = (candidate: any, sportId?: string | null) 
     return sourceDivisionDetails;
   }
 
-  const details = inferSourceDivisionLabels(candidate)
-    .map((label) => buildAffiliateDivisionDetailFromLabel(label, candidate, sportId));
+  const details = inferSourceDivisionLabels(candidate).map((label) =>
+    buildAffiliateDivisionDetailFromLabel(label, candidate, sportId),
+  );
   const byKey = new Map<string, NonNullable<ReturnType<typeof buildAffiliateDivisionDetailFromLabel>>>();
   details.forEach((detail) => {
     if (detail) byKey.set(detail.key, detail);
@@ -765,25 +844,23 @@ type AffiliatePriceRange = {
   maxPriceCents: number;
 };
 
-const formatAffiliatePriceCents = (priceCents: number): string => (
-  priceCents <= 0 ? 'Free' : `$${(priceCents / 100).toFixed(2)}`
-);
+const formatAffiliatePriceCents = (priceCents: number): string =>
+  priceCents <= 0 ? 'Free' : `$${(priceCents / 100).toFixed(2)}`;
 
-const formatAffiliatePriceRange = (range: AffiliatePriceRange): string => (
+const formatAffiliatePriceRange = (range: AffiliatePriceRange): string =>
   range.minPriceCents === range.maxPriceCents
     ? formatAffiliatePriceCents(range.minPriceCents)
-    : `${formatAffiliatePriceCents(range.minPriceCents)} - ${formatAffiliatePriceCents(range.maxPriceCents)}`
-);
+    : `${formatAffiliatePriceCents(range.minPriceCents)} - ${formatAffiliatePriceCents(range.maxPriceCents)}`;
 
 const affiliatePriceRangeFromDivisionDetails = (
   divisionDetails: Array<{ price?: number | null }>,
 ): AffiliatePriceRange | null => {
   const prices = divisionDetails
-    .map((divisionDetail) => (
+    .map((divisionDetail) =>
       typeof divisionDetail.price === 'number' && Number.isFinite(divisionDetail.price)
         ? Math.max(0, Math.round(divisionDetail.price))
-        : null
-    ))
+        : null,
+    )
     .filter((price): price is number => price !== null);
 
   if (prices.length === 0) {
@@ -803,8 +880,14 @@ const parseAffiliateSourcePriceRange = (value: unknown): AffiliatePriceRange | n
   const amountPattern = '([0-9][0-9,]*(?:\\.[0-9]{1,2})?)';
   const rangePatterns = [
     new RegExp(`\\$\\s*${amountPattern}\\s*(?:-|–|—|to|through)\\s*(?:\\$\\s*)?${amountPattern}`, 'i'),
-    new RegExp(`\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|range(?:s)?\\s+to)\\b[^$]*\\$\\s*${amountPattern}`, 'i'),
-    new RegExp(`\\b(?:from|start(?:s|ing)?\\s+at)\\b[^$]*\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|to)\\b[^$]*\\$\\s*${amountPattern}`, 'i'),
+    new RegExp(
+      `\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|range(?:s)?\\s+to)\\b[^$]*\\$\\s*${amountPattern}`,
+      'i',
+    ),
+    new RegExp(
+      `\\b(?:from|start(?:s|ing)?\\s+at)\\b[^$]*\\$\\s*${amountPattern}[^$]*?\\b(?:up\\s+to|go(?:es)?\\s+up\\s+to|to)\\b[^$]*\\$\\s*${amountPattern}`,
+      'i',
+    ),
   ];
 
   for (const pattern of rangePatterns) {
@@ -848,21 +931,16 @@ const isSimpleAffiliatePriceText = (sourcePriceText: string, displayPriceText: s
     return true;
   }
 
-  return /^\$?\s*\d[\d,]*(?:\.\d{1,2})?$/.test(sourcePriceText.trim())
-    || /^free$/i.test(sourcePriceText.trim());
+  return /^\$?\s*\d[\d,]*(?:\.\d{1,2})?$/.test(sourcePriceText.trim()) || /^free$/i.test(sourcePriceText.trim());
 };
 
-const buildAffiliateEventPricing = (
-  candidate: any,
-  divisionDetails: Array<{ price?: number | null }>,
-) => {
-  const range = affiliatePriceRangeFromDivisionDetails(divisionDetails)
-    ?? parseAffiliateSourcePriceRange(candidate.priceText);
+const buildAffiliateEventPricing = (candidate: any, divisionDetails: Array<{ price?: number | null }>) => {
+  const range =
+    affiliatePriceRangeFromDivisionDetails(divisionDetails) ?? parseAffiliateSourcePriceRange(candidate.priceText);
   const displayText = range ? formatAffiliatePriceRange(range) : null;
   const sourcePriceText = nullableString(candidate.priceText);
-  const detailsText = sourcePriceText && !isSimpleAffiliatePriceText(sourcePriceText, displayText)
-    ? sourcePriceText
-    : null;
+  const detailsText =
+    sourcePriceText && !isSimpleAffiliatePriceText(sourcePriceText, displayText) ? sourcePriceText : null;
 
   return {
     priceCents: range?.minPriceCents ?? null,
@@ -932,7 +1010,11 @@ const inferAffiliateEventType = (candidate: any): 'EVENT' | 'WEEKLY_EVENT' | 'LE
   ]
     .map((value) => nullableString(value)?.toLowerCase() ?? '')
     .join(' ');
-  if (/\btournament\b|\bbracket\b|\bpool play\b|\b(?:[2-9]\s*)?game guarantee\b|\b[2-9]\s*gg\b|\bteam entry fee\b|\bhomerun bracelets?\b/.test(haystack)) {
+  if (
+    /\btournament\b|\bbracket\b|\bpool play\b|\b(?:[2-9]\s*)?game guarantee\b|\b[2-9]\s*gg\b|\bteam entry fee\b|\bhomerun bracelets?\b/.test(
+      haystack,
+    )
+  ) {
     return 'TOURNAMENT';
   }
   if (/\bleague\b|\bleagues\b/.test(haystack)) {
@@ -986,18 +1068,15 @@ const buildAffiliateGeocodeQueries = (params: {
   const location = nullableString(params.location);
   const address = nullableString(params.address);
   const city = nullableString(params.city);
-  const fullAddress = address && city && !address.toLowerCase().includes(city.toLowerCase())
-    ? `${address}, ${city}`
-    : address;
+  const fullAddress =
+    address && city && !address.toLowerCase().includes(city.toLowerCase()) ? `${address}, ${city}` : address;
 
   return uniqueStrings([
     fullAddress,
     location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
       ? `${location}, ${fullAddress}`
       : null,
-    location && city && !location.toLowerCase().includes(city.toLowerCase())
-      ? `${location}, ${city}`
-      : null,
+    location && city && !location.toLowerCase().includes(city.toLowerCase()) ? `${location}, ${city}` : null,
     city,
     location,
   ]);
@@ -1013,27 +1092,18 @@ const buildAffiliateFacilityGeocodeQueries = (params: {
   const location = nullableString(params.location);
   const address = nullableString(params.address);
   const city = nullableString(params.city);
-  const fullAddress = address && city && !address.toLowerCase().includes(city.toLowerCase())
-    ? `${address}, ${city}`
-    : address;
+  const fullAddress =
+    address && city && !address.toLowerCase().includes(city.toLowerCase()) ? `${address}, ${city}` : address;
 
   return uniqueStrings([
-    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase())
-      ? `${name}, ${fullAddress}`
-      : null,
+    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase()) ? `${name}, ${fullAddress}` : null,
     fullAddress,
     location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
       ? `${location}, ${fullAddress}`
       : null,
-    name && city && !name.toLowerCase().includes(city.toLowerCase())
-      ? `${name}, ${city}`
-      : null,
-    name && location && !name.toLowerCase().includes(location.toLowerCase())
-      ? `${name}, ${location}`
-      : null,
-    location && city && !location.toLowerCase().includes(city.toLowerCase())
-      ? `${location}, ${city}`
-      : null,
+    name && city && !name.toLowerCase().includes(city.toLowerCase()) ? `${name}, ${city}` : null,
+    name && location && !name.toLowerCase().includes(location.toLowerCase()) ? `${name}, ${location}` : null,
+    location && city && !location.toLowerCase().includes(city.toLowerCase()) ? `${location}, ${city}` : null,
     city,
     location,
     name,
@@ -1058,13 +1128,12 @@ const buildAffiliateEventData = async (
   const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
   const dateDisplayText = dateDisplayTextFromCandidate(candidate);
   const start = eventStartFromCandidate(candidate);
-  const end = dateDisplayMode === 'SCHEDULED'
-    ? (
-        candidate.endsAt instanceof Date
-          ? candidate.endsAt
-          : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
-      )
-    : null;
+  const end =
+    dateDisplayMode === 'SCHEDULED'
+      ? candidate.endsAt instanceof Date
+        ? candidate.endsAt
+        : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
+      : null;
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
@@ -1073,15 +1142,20 @@ const buildAffiliateEventData = async (
   const hasSourceDivision = divisionDetails.length > 0;
   const eventType = inferAffiliateEventType(candidate);
   const teamSignup = inferAffiliateTeamSignup(candidate, eventType);
-  const location = nullableString(candidate.venueName)
-    ?? nullableString(candidate.city)
-    ?? nullableString(candidate.address)
-    ?? 'Location TBD';
+  const location =
+    nullableString(candidate.venueName) ??
+    nullableString(candidate.city) ??
+    nullableString(candidate.address) ??
+    'Location TBD';
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
-  const geocodeQueries = buildAffiliateGeocodeQueries({ location, address, city });
-  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries)
-    ?? normalizePersistedCoordinates(fallbackCoordinates);
+  const geocodeQueries = buildAffiliateGeocodeQueries({
+    location,
+    address,
+    city,
+  });
+  const coordinates =
+    (await geocodeFirstAvailableAddress(geocodeQueries)) ?? normalizePersistedCoordinates(fallbackCoordinates);
   const organizerName = nullableString(candidate.organizerName) ?? nullableString(source.name);
 
   return {
@@ -1192,12 +1266,8 @@ const buildAffiliateTeamData = async (
   const organization = await loadSourceOrganization(source);
   const sourceName = nullableString(source.name);
   const title = nullableString(candidate.title) ?? 'Affiliate team registration';
-  const name = sourceName && !title.toLowerCase().includes(sourceName.toLowerCase())
-    ? `${sourceName} ${title}`
-    : title;
-  const division = nullableString(candidate.divisionText)
-    ?? nullableString(candidate.formatLabel)
-    ?? 'Community Team';
+  const name = sourceName && !title.toLowerCase().includes(sourceName.toLowerCase()) ? `${sourceName} ${title}` : title;
+  const division = nullableString(candidate.divisionText) ?? nullableString(candidate.formatLabel) ?? 'Community Team';
   const divisionDetail = buildAffiliateDivisionDetail(candidate);
 
   return {
@@ -1231,7 +1301,9 @@ const upsertAffiliateTeamForCandidate = async (
   const { teams } = affiliatePrisma();
   const existingTeamId = publishedTeamIdFromCandidate(candidate);
   if (existingTeamId) {
-    const existingTeam = await teams.findUnique({ where: { id: existingTeamId } });
+    const existingTeam = await teams.findUnique({
+      where: { id: existingTeamId },
+    });
     if (existingTeam) {
       const updateData = await buildAffiliateTeamData(
         candidate,
@@ -1287,18 +1359,15 @@ const upsertAffiliateFacilityForCandidate = async (
 ) => {
   const organization = await loadSourceOrganization(source);
   const { facilities } = affiliatePrisma();
-  const facilityId = nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
+  const facilityId =
+    nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
   const existingFacility = await facilities.findUnique({
     where: { id: facilityId },
     select: { coordinates: true },
   });
-  const name = nullableString(candidate.title)
-    ?? nullableString(candidate.venueName)
-    ?? 'Affiliate facility';
-  const location = nullableString(candidate.venueName)
-    ?? nullableString(candidate.city)
-    ?? nullableString(candidate.address)
-    ?? name;
+  const name = nullableString(candidate.title) ?? nullableString(candidate.venueName) ?? 'Affiliate facility';
+  const location =
+    nullableString(candidate.venueName) ?? nullableString(candidate.city) ?? nullableString(candidate.address) ?? name;
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
   const geocodeQueries = buildAffiliateFacilityGeocodeQueries({
@@ -1307,9 +1376,10 @@ const upsertAffiliateFacilityForCandidate = async (
     address,
     city,
   });
-  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries)
-    ?? normalizePersistedCoordinates(existingFacility?.coordinates)
-    ?? normalizePersistedCoordinates(organization.coordinates);
+  const coordinates =
+    (await geocodeFirstAvailableAddress(geocodeQueries)) ??
+    normalizePersistedCoordinates(existingFacility?.coordinates) ??
+    normalizePersistedCoordinates(organization.coordinates);
   const data = {
     organizationId: nullableString(source.organizationId),
     name,
@@ -1333,15 +1403,14 @@ const upsertAffiliateFacilityForCandidate = async (
   });
 };
 
-const slugifyForPublicSlug = (value: string): string => (
+const slugifyForPublicSlug = (value: string): string =>
   value
     .trim()
     .toLowerCase()
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'club'
-);
+    .slice(0, 80) || 'club';
 
 const affiliateOrganizationIdForCandidate = (candidate: any, source: AffiliateScrapeSourceRow): string => {
   const sourceKey = nullableString(source.sourceKey) ?? nullableString(source.id) ?? 'source';
@@ -1380,32 +1449,35 @@ const buildAffiliateOrganizationData = async (
   if (!ownerId) {
     throw new Error('Affiliate source organization must have an owner before club rows can be created.');
   }
-  const name = nullableString(candidate.title)
-    ?? nullableString(candidate.organizerName)
-    ?? nullableString(source.name)
-    ?? 'Affiliate club';
-  const location = nullableString(candidate.venueName)
-    ?? nullableString(candidate.city)
-    ?? nullableString(candidate.address)
-    ?? null;
+  const name =
+    nullableString(candidate.title) ??
+    nullableString(candidate.organizerName) ??
+    nullableString(source.name) ??
+    'Affiliate club';
+  const location =
+    nullableString(candidate.venueName) ?? nullableString(candidate.city) ?? nullableString(candidate.address) ?? null;
   const address = nullableString(candidate.address);
   const geocodeAddress = address ?? location;
   const coordinates = geocodeAddress
-    ? await geocodeAddressToCoordinates(geocodeAddress)
-      ?? normalizePersistedCoordinates(sourceOrganization.coordinates)
+    ? ((await geocodeAddressToCoordinates(geocodeAddress)) ??
+      normalizePersistedCoordinates(sourceOrganization.coordinates))
     : normalizePersistedCoordinates(sourceOrganization.coordinates);
   const sportName = nullableString(candidate.sportName);
-  const description = nullableString(candidate.description)
-    ?? nullableString(candidate.scheduleText)
-    ?? nullableString(candidate.statusText)
-    ?? null;
-  const website = nullableString(candidate.officialActionUrl)
-    ?? nullableString(candidate.sourceUrl)
-    ?? nullableString(source.baseUrl);
+  const description =
+    nullableString(candidate.description) ??
+    nullableString(candidate.scheduleText) ??
+    nullableString(candidate.statusText) ??
+    null;
+  const website =
+    nullableString(candidate.officialActionUrl) ??
+    nullableString(candidate.sourceUrl) ??
+    nullableString(source.baseUrl);
+  const logoId = await upsertAffiliateOrganizationLogoForCandidate(candidate, organizationId, ownerId);
 
   return {
     updatedAt: new Date(),
     name,
+    ...(logoId ? { logoId } : {}),
     ownerId,
     location,
     address,
@@ -1433,8 +1505,8 @@ const upsertAffiliateOrganizationForCandidate = async (
   options: { status?: 'LISTED' | 'UNLISTED'; publicPageEnabled?: boolean } = {},
 ) => {
   const { organizations } = affiliatePrisma();
-  const organizationId = publishedOrganizationIdFromCandidate(candidate)
-    ?? affiliateOrganizationIdForCandidate(candidate, source);
+  const organizationId =
+    publishedOrganizationIdFromCandidate(candidate) ?? affiliateOrganizationIdForCandidate(candidate, source);
   const data = await buildAffiliateOrganizationData(candidate, source, organizationId, options);
 
   return organizations.upsert({
@@ -1477,15 +1549,10 @@ const upsertAffiliateEventForCandidate = async (
   };
   const syncSourceTags = async (event: any) => {
     const eventType = event?.eventType ?? inferAffiliateEventType(candidate);
-    const syncEventType = eventType === 'LEAGUE' || eventType === 'TOURNAMENT'
-      ? eventType
-      : undefined;
-    await syncEventTags(
-      event.id,
-      buildAffiliateEventTagNames(candidate, eventType),
-      prisma,
-      { eventType: syncEventType },
-    );
+    const syncEventType = eventType === 'LEAGUE' || eventType === 'TOURNAMENT' ? eventType : undefined;
+    await syncEventTags(event.id, buildAffiliateEventTagNames(candidate, eventType), prisma, {
+      eventType: syncEventType,
+    });
   };
   const syncSourceMetadata = async (event: any) => {
     await syncSourceDivisions(event);
@@ -1493,7 +1560,9 @@ const upsertAffiliateEventForCandidate = async (
   };
   const existingEventId = publishedEventIdFromCandidate(candidate);
   if (existingEventId) {
-    const existingEvent = await events.findUnique({ where: { id: existingEventId } });
+    const existingEvent = await events.findUnique({
+      where: { id: existingEventId },
+    });
     if (existingEvent) {
       const updateData = await buildAffiliateEventData(
         candidate,
@@ -1576,7 +1645,10 @@ const upsertAffiliateEventForCandidate = async (
 
 const resolveActiveMapping = async (
   source: AffiliateScrapeSourceRow,
-): Promise<{ row: AffiliateScrapeMappingRow; mapping: AffiliateScrapeMapping }> => {
+): Promise<{
+  row: AffiliateScrapeMappingRow;
+  mapping: AffiliateScrapeMapping;
+}> => {
   const { mappings } = affiliatePrisma();
   const mappingRow = source.activeMappingId
     ? await mappings.findUnique({ where: { id: source.activeMappingId } })
@@ -1886,7 +1958,9 @@ export const deleteAffiliateCandidate = async (candidateId: string) => {
   if (!candidate) {
     throw new Error('Affiliate import candidate not found.');
   }
-  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+  const source = await sources.findUnique({
+    where: { id: candidate.sourceId },
+  });
 
   const eventId = nullableString(candidate.publishedEventId);
   if (eventId) {
@@ -1909,17 +1983,16 @@ export const deleteAffiliateCandidate = async (candidateId: string) => {
   return candidate;
 };
 
-export const reclassifyAffiliateCandidate = async (
-  candidateId: string,
-  listingKind: unknown,
-) => {
+export const reclassifyAffiliateCandidate = async (candidateId: string, listingKind: unknown) => {
   const nextKind = normalizeListingKind(listingKind);
   const { candidates, divisions, events, teams, facilities, sources } = affiliatePrisma();
   const candidate = await candidates.findUnique({ where: { id: candidateId } });
   if (!candidate) {
     throw new Error('Affiliate import candidate not found.');
   }
-  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+  const source = await sources.findUnique({
+    where: { id: candidate.sourceId },
+  });
   if (!source) {
     throw new Error('Affiliate scrape source not found.');
   }
@@ -2036,11 +2109,15 @@ export const publishAffiliateCandidate = async (
   }
 
   if (normalizeSourceType(candidate.listingKind) === 'EVENT') {
-    const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+    const source = await sources.findUnique({
+      where: { id: candidate.sourceId },
+    });
     if (!source) {
       throw new Error('Affiliate scrape source not found.');
     }
-    const event = await upsertAffiliateEventForCandidate(candidate, source, { state: 'PUBLISHED' });
+    const event = await upsertAffiliateEventForCandidate(candidate, source, {
+      state: 'PUBLISHED',
+    });
     await candidates.update({
       where: { id: candidateId },
       data: {
@@ -2052,11 +2129,15 @@ export const publishAffiliateCandidate = async (
   }
 
   if (normalizeSourceType(candidate.listingKind) === 'TEAM') {
-    const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+    const source = await sources.findUnique({
+      where: { id: candidate.sourceId },
+    });
     if (!source) {
       throw new Error('Affiliate scrape source not found.');
     }
-    const team = await upsertAffiliateTeamForCandidate(candidate, source, { visibility: 'PUBLIC' });
+    const team = await upsertAffiliateTeamForCandidate(candidate, source, {
+      visibility: 'PUBLIC',
+    });
     await candidates.update({
       where: { id: candidateId },
       data: {
@@ -2067,7 +2148,9 @@ export const publishAffiliateCandidate = async (
     return team;
   }
 
-  const source = await sources.findUnique({ where: { id: candidate.sourceId } });
+  const source = await sources.findUnique({
+    where: { id: candidate.sourceId },
+  });
   if (normalizeSourceType(candidate.listingKind) === 'RENTAL') {
     if (!source) {
       throw new Error('Affiliate scrape source not found.');

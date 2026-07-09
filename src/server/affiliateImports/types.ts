@@ -25,18 +25,20 @@ export const fieldMappingSchema = z.object({
   regex: z.string().min(1).optional(),
   excludeSelectors: z.array(z.string().min(1)).optional(),
   required: z.boolean().optional(),
-  transform: z.enum([
-    'trim',
-    'priceText',
-    'dateTime',
-    'dateRangeEnd',
-    'absoluteUrl',
-    'telerikPostBackUrl',
-    'previousDaySectionDateTime',
-    'venueFromLocationText',
-    'addressFromLocationText',
-    'cityFromLocationText',
-  ]).optional(),
+  transform: z
+    .enum([
+      'trim',
+      'priceText',
+      'dateTime',
+      'dateRangeEnd',
+      'absoluteUrl',
+      'telerikPostBackUrl',
+      'previousDaySectionDateTime',
+      'venueFromLocationText',
+      'addressFromLocationText',
+      'cityFromLocationText',
+    ])
+    .optional(),
 });
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
@@ -87,6 +89,9 @@ const affiliateManualCandidateSchema = z.object({
   statusText: optionalNullableStringSchema,
   registrationDeadlineText: optionalNullableStringSchema,
   description: optionalNullableStringSchema,
+  logoUrl: optionalNullableStringSchema,
+  logoSourceUrl: optionalNullableStringSchema,
+  logoOriginalName: optionalNullableStringSchema,
   divisions: z.array(affiliateManualDivisionSchema).optional(),
   warnings: z.array(z.string()).optional(),
 });
@@ -127,16 +132,20 @@ export const affiliateScrapeMappingSchema = z.object({
     description: fieldMappingSchema.optional(),
     tagText: fieldMappingSchema.optional(),
   }),
-  detailPage: z.object({
-    urlField: z.enum(['officialActionUrl', 'sourceUrl']),
-    fields: z.record(z.string(), fieldMappingSchema),
-    renderJavascript: z.boolean().optional(),
-    waitMs: z.number().int().min(0).max(30_000).optional(),
-    requestDelayMs: z.number().int().min(0).max(30_000).optional(),
-  }).optional(),
-  dedupe: z.object({
-    fields: z.array(z.string().min(1)).min(1),
-  }).optional(),
+  detailPage: z
+    .object({
+      urlField: z.enum(['officialActionUrl', 'sourceUrl']),
+      fields: z.record(z.string(), fieldMappingSchema),
+      renderJavascript: z.boolean().optional(),
+      waitMs: z.number().int().min(0).max(30_000).optional(),
+      requestDelayMs: z.number().int().min(0).max(30_000).optional(),
+    })
+    .optional(),
+  dedupe: z
+    .object({
+      fields: z.array(z.string().min(1)).min(1),
+    })
+    .optional(),
   manualCandidates: z.array(affiliateManualCandidateSchema).optional(),
 });
 
@@ -176,6 +185,5 @@ export type AffiliateCandidateInput = {
   warnings?: string[];
 };
 
-export const parseAffiliateScrapeMapping = (value: unknown): AffiliateScrapeMapping => (
-  affiliateScrapeMappingSchema.parse(value)
-);
+export const parseAffiliateScrapeMapping = (value: unknown): AffiliateScrapeMapping =>
+  affiliateScrapeMappingSchema.parse(value);

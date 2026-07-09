@@ -40,6 +40,8 @@ const DIRECTORY_ROWS = [
     title: "Rose City Hockey Club",
     region: "Portland Area",
     url: "http://www.rosecityhockeyclub.com/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/rosecity-logo_6.png?1696287810",
     city: "Portland, OR",
     programs: [
       "6U-16U Learn to Play / House Programs",
@@ -51,6 +53,8 @@ const DIRECTORY_ROWS = [
     title: "Winterhawks Jr. Hockey",
     region: "Portland Area",
     url: "https://www.winterhawksjrhockey.com/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/jrwinterhawks_3.png",
     city: "Portland, OR",
     programs: [
       "6U-18U Metro League (House/Rec Program)",
@@ -62,6 +66,8 @@ const DIRECTORY_ROWS = [
     title: "Bend Rapids Youth Hockey",
     region: "Central Oregon",
     url: "http://www.bendrapidsyouthhockey.org/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/bend-rapids-logo_6.png?1696287777",
     city: "Bend, OR",
     programs: ["8U-18U House/Travel", "16U AA"],
   },
@@ -69,6 +75,8 @@ const DIRECTORY_ROWS = [
     title: "Lane Amateur Hockey Association",
     region: "Willamette Valley",
     url: "http://www.laha.org/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/eug-jr-gen-logo_10.png?1696287771",
     city: "Eugene, OR",
     programs: ["6U-18U House/Travel"],
   },
@@ -76,6 +84,8 @@ const DIRECTORY_ROWS = [
     title: "The Rink Exchange",
     region: "Willamette Valley",
     url: "http://www.therinkexchange.com/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/rink-exchange-logo_6.png",
     city: "Eugene, OR",
     programs: ["Ages 4+"],
   },
@@ -83,6 +93,8 @@ const DIRECTORY_ROWS = [
     title: "Klamath Ice Sports",
     region: "Southern Oregon",
     url: "https://www.klamathicesports.org/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/ice-hawks-logo-final_6.jpg",
     city: "Klamath Falls, OR",
     programs: ["8U-18U House/Travel"],
   },
@@ -90,6 +102,8 @@ const DIRECTORY_ROWS = [
     title: "Rogue Valley Hockey Association",
     region: "Southern Oregon",
     url: "https://rvhahockey.org/",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/rvha-reign_3.jpg?1696287820",
     city: "Medford, OR",
     programs: ["10U-18U House/Travel"],
   },
@@ -97,6 +111,8 @@ const DIRECTORY_ROWS = [
     title: "Team Oregon",
     region: "Statewide",
     url: "https://www.oregonstatehockey.com/program-overview.html",
+    logoUrl:
+      "https://www.oregonstatehockey.com/uploads/1/1/9/5/119503984/editor/teamoregonlogo-fin_15.png",
     city: "Oregon",
     programs: ["12U-19U Tier II / AA travel teams"],
   },
@@ -259,6 +275,11 @@ const buildMapping = (): AffiliateScrapeMapping => ({
     title: row.title,
     officialActionUrl: row.url,
     sourceUrl: LIST_URL,
+    logoUrl: row.logoUrl,
+    logoOriginalName: `${row.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")}-logo.png`,
     organizerName: row.title,
     sportName: "Hockey",
     formatLabel: "Youth hockey club",
