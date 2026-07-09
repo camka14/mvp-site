@@ -2,6 +2,11 @@ import type { MetadataRoute } from 'next';
 import { getContentSitemapEntries } from '@/lib/blog';
 import { SITE_URL } from '@/lib/siteUrl';
 import { listPublicSitemapEntries } from '@/server/publicSearchSeo';
+import {
+  listPublicSearchSitemapEntries,
+  listRegularPublicEventSitemapEntries,
+  listRegularOrganizationProfileSitemapEntries,
+} from '@/server/publicSearchPages';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +69,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  const publicEntries = await listPublicSitemapEntries();
+  const [publicEntries, publicSearchEntries, regularOrganizationEntries, regularEventEntries] = await Promise.all([
+    listPublicSitemapEntries(),
+    listPublicSearchSitemapEntries(),
+    listRegularOrganizationProfileSitemapEntries(),
+    listRegularPublicEventSitemapEntries(),
+  ]);
 
-  return [...staticEntries, ...contentEntries, ...publicEntries];
+  return [
+    ...staticEntries,
+    ...contentEntries,
+    ...publicEntries,
+    ...publicSearchEntries,
+    ...regularOrganizationEntries,
+    ...regularEventEntries,
+  ];
 }

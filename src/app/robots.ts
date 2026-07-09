@@ -6,8 +6,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/blog', '/blog/', '/api/files/', '/api/avatars/'],
-        disallow: ['/api/', '/admin', '/discover', '/login', '/my-schedule', '/organizations', '/profile', '/teams', '/verify'],
+        allow: ['/', '/blog', '/blog/', '/find-events', '/find-clubs', '/find-facilities', '/organizations/', '/api/files/', '/api/avatars/'],
+        disallow: ['/api/', '/admin', '/discover', '/login', '/my-schedule', '/organizations$', '/organizations?', '/profile', '/teams', '/verify'],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

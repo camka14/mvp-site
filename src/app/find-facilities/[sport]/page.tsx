@@ -5,23 +5,23 @@ import {
   fallbackSearchTitle,
   getSearchPageForSegments,
   metadataForPublicSearchPage,
-} from '../publicSearchRoute';
+} from '@/app/find-events/publicSearchRoute';
 
 export const dynamic = 'force-dynamic';
 
-type EventSearchPageProps = {
+type FacilitySearchPageProps = {
   params: Promise<{ sport: string }>;
 };
 
-export async function generateMetadata({ params }: EventSearchPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: FacilitySearchPageProps): Promise<Metadata> {
   const { sport } = await params;
-  const page = await getSearchPageForSegments('events', [sport]);
-  return metadataForPublicSearchPage(page, fallbackSearchTitle('events', sport));
+  const page = await getSearchPageForSegments('facilities', [sport]);
+  return metadataForPublicSearchPage(page, fallbackSearchTitle('facilities', sport));
 }
 
-export default async function EventSearchPage({ params }: EventSearchPageProps) {
+export default async function FacilitySearchPage({ params }: FacilitySearchPageProps) {
   const { sport } = await params;
-  const page = await getSearchPageForSegments('events', [sport]);
+  const page = await getSearchPageForSegments('facilities', [sport]);
   if (!page) {
     notFound();
   }

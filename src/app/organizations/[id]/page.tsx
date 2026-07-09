@@ -1756,13 +1756,9 @@ function OrganizationDetailContent() {
 
   useEffect(() => {
     if (!authLoading) {
-      if (!isAuthenticated || !user) {
-        router.push('/login');
-        return;
-      }
       if (id) loadOrg(id);
     }
-  }, [authLoading, isAuthenticated, user, router, id, loadOrg]);
+  }, [authLoading, id, loadOrg]);
 
   useEffect(() => {
     if (authLoading || !isAuthenticated || !user || !id) {
@@ -1877,9 +1873,6 @@ function OrganizationDetailContent() {
     if (authLoading) {
       return;
     }
-    if (!isAuthenticated || !user) {
-      return;
-    }
     if (activeTab !== 'events') {
       return;
     }
@@ -1887,7 +1880,7 @@ function OrganizationDetailContent() {
       return;
     }
     void loadFirstPageOfOrganizationEvents();
-  }, [activeTab, authLoading, id, isAuthenticated, loadFirstPageOfOrganizationEvents, user]);
+  }, [activeTab, authLoading, id, loadFirstPageOfOrganizationEvents]);
 
   useEffect(() => {
     if (activeTab !== 'events') {
@@ -3537,7 +3530,6 @@ function OrganizationDetailContent() {
   };
 
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
-  if (!isAuthenticated || !user) return null;
 
   const logoUrl = org?.logoId
     ? `/api/files/${org.logoId}/preview?w=64&h=64&fit=cover`
