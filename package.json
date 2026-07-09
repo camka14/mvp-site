@@ -32,6 +32,7 @@
     "affiliate:setup:fc-piamonte": "tsx scripts/setup-fc-piamonte-affiliate-source.ts",
     "affiliate:setup:la-amistad": "tsx scripts/setup-la-amistad-soccer-club-affiliate-source.ts",
     "affiliate:setup:portland-community-fc": "tsx scripts/setup-portland-community-fc-affiliate-source.ts",
+    "affiliate:setup:ptfc-adult-league": "tsx scripts/setup-ptfc-adult-league-affiliate-source.ts",
     "affiliate:clubs:discover-events": "tsx scripts/discover-club-affiliate-events.ts",
     "affiliate:clubs:discover-logos": "tsx scripts/discover-affiliate-club-logos.ts",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
