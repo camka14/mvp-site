@@ -5,6 +5,7 @@
  * writes source and opaque candidate assets under output/affiliate-logo-fit,
  * and generates an HTML contact sheet that compares the current raw logo
  * against a generated replacement in the major BracketIQ card/detail surfaces.
+ * Mobile card previews use the same cover crop as the rendered event cards.
  */
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
@@ -71,12 +72,38 @@ const outputRoot = outputRootArg
 const assetsDir = path.join(outputRoot, 'assets');
 const PLATFORM_LIGHT_BG = '#ffffff';
 const PLATFORM_DARK_BG = '#000000';
-const LIGHT_LOGO_BG = '#f8fafc';
+const LIGHT_LOGO_BG = '#ffffff';
 const DARK_CARD_BG = '#111827';
 const DARK_LOGO_BG = '#172033';
 
 let prisma: PrismaClientInstance | undefined;
 let storage: StorageProviderInstance | undefined;
+
+type LogoTargetBox = {
+  width: number;
+  height: number;
+};
+
+const getLogoTargetBox = (width: number, height: number): LogoTargetBox => {
+  if (!width || !height) {
+    return { width: 840, height: 840 };
+  }
+
+  const aspectRatio = width / height;
+  if (aspectRatio >= 2.4) {
+    return { width: 680, height: 500 };
+  }
+  if (aspectRatio >= 1.5) {
+    return { width: 720, height: 560 };
+  }
+  if (aspectRatio <= 0.55) {
+    return { width: 500, height: 760 };
+  }
+  if (aspectRatio <= 0.8) {
+    return { width: 560, height: 760 };
+  }
+  return { width: 760, height: 760 };
+};
 
 const loadAppModules = async () => {
   ({ prisma } = await import('../src/lib/prisma'));
@@ -154,6 +181,22 @@ const getVisibleLogoTone = async (input: Buffer): Promise<LogoTone | null> => {
   };
 };
 
+const hasTransparentPixels = async (input: Buffer, metadata: sharp.Metadata): Promise<boolean> => {
+  if (!metadata.hasAlpha) return false;
+  const { data, info } = await sharp(input, { animated: false })
+    .rotate()
+    .resize({ width: 180, height: 180, fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  for (let index = 0; index < data.length; index += info.channels) {
+    const alpha = data[index + 3] ?? 255;
+    if (alpha < 250) return true;
+  }
+  return false;
+};
+
 const getSafeBackground = async (input: Buffer, metadata: sharp.Metadata): Promise<string> => {
   if (!metadata.hasAlpha) {
     return LIGHT_LOGO_BG;
@@ -175,17 +218,29 @@ const writeOpaqueCandidate = async (
   const source = sharp(input, { animated: false });
   const metadata = await source.metadata();
   const background = await getSafeBackground(input, metadata);
+  const sourceHasTransparency = await hasTransparentPixels(input, metadata);
+  if ((metadata.width ?? 0) === 1024 && (metadata.height ?? 0) === 1024 && !sourceHasTransparency) {
+    await sharp(input, { animated: false })
+      .rotate()
+      .png()
+      .toFile(outputPath);
+    return { metadata, background };
+  }
+
   const trimmed = await sharp(input, { animated: false })
     .rotate()
+    .flatten({ background })
     .trim({ background, threshold: 12 })
     .png()
     .toBuffer()
-    .catch(async () => sharp(input, { animated: false }).rotate().png().toBuffer());
+    .catch(async () => sharp(input, { animated: false }).rotate().flatten({ background }).png().toBuffer());
 
+  const trimmedMetadata = await sharp(trimmed).metadata();
+  const targetBox = getLogoTargetBox(trimmedMetadata.width ?? 0, trimmedMetadata.height ?? 0);
   const logoBuffer = await sharp(trimmed)
     .resize({
-      width: 760,
-      height: 760,
+      width: targetBox.width,
+      height: targetBox.height,
       fit: 'inside',
       withoutEnlargement: false,
       background,
@@ -195,6 +250,29 @@ const writeOpaqueCandidate = async (
   const logoMetadata = await sharp(logoBuffer).metadata();
   const logoWidth = logoMetadata.width ?? 760;
   const logoHeight = logoMetadata.height ?? 760;
+  const decorativeOverlays = background === DARK_LOGO_BG
+    ? [
+        {
+          input: Buffer.from(`
+            <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="glow" cx="50%" cy="30%" r="72%">
+                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
+                  <stop offset="58%" stop-color="#ffffff" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0.03"/>
+                  <stop offset="100%" stop-color="#0f172a" stop-opacity="0.24"/>
+                </linearGradient>
+              </defs>
+              <rect width="1024" height="1024" fill="url(#glow)"/>
+              <rect width="1024" height="1024" fill="url(#vignette)"/>
+            </svg>
+          `),
+          gravity: 'center' as const,
+        },
+      ]
+    : [];
 
   await sharp({
     create: {
@@ -205,25 +283,7 @@ const writeOpaqueCandidate = async (
     },
   })
     .composite([
-      {
-        input: Buffer.from(`
-          <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <radialGradient id="glow" cx="50%" cy="30%" r="72%">
-                <stop offset="0%" stop-color="#ffffff" stop-opacity="${background === DARK_LOGO_BG ? '0.10' : '0.40'}"/>
-                <stop offset="58%" stop-color="#ffffff" stop-opacity="0"/>
-              </radialGradient>
-              <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#ffffff" stop-opacity="${background === DARK_LOGO_BG ? '0.03' : '0.16'}"/>
-                <stop offset="100%" stop-color="#0f172a" stop-opacity="${background === DARK_LOGO_BG ? '0.24' : '0.10'}"/>
-              </linearGradient>
-            </defs>
-            <rect width="1024" height="1024" fill="url(#glow)"/>
-            <rect width="1024" height="1024" fill="url(#vignette)"/>
-          </svg>
-        `),
-        gravity: 'center',
-      },
+      ...decorativeOverlays,
       {
         input: logoBuffer,
         top: Math.round((1024 - logoHeight) / 2),
@@ -236,7 +296,7 @@ const writeOpaqueCandidate = async (
   return { metadata, background };
 };
 
-const buildWarnings = (metadata: sharp.Metadata): string[] => {
+const buildWarnings = (metadata: sharp.Metadata, hasTransparency: boolean): string[] => {
   const warnings: string[] = [];
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
@@ -254,7 +314,7 @@ const buildWarnings = (metadata: sharp.Metadata): string[] => {
   if (aspect < 0.35) {
     warnings.push(`very tall source aspect ${aspect.toFixed(2)}:1`);
   }
-  if (metadata.hasAlpha) {
+  if (hasTransparency) {
     warnings.push('transparent source; current rendering changes by light/dark platform background');
   }
   return warnings;
@@ -298,6 +358,42 @@ const buildSurface = (
             : '<div class="missing-surface">Missing candidate</div>'}
           <div class="surface-scrim"></div>
           <div class="surface-copy"><strong>${escapeHtml(orgName)}</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+const buildIconSurface = (
+  label: string,
+  className: string,
+  sourceSrc: string,
+  candidateSrc: string,
+  orgName: string,
+) => `
+  <div class="surface-set icon-set ${className}">
+    <h3>${label}</h3>
+    <div class="preview-stack">
+      <div>
+        <span class="mode-label">Current</span>
+        <div class="icon-preview ${className}">
+          <div class="icon-shell">
+            ${sourceSrc
+              ? `<img src="${sourceSrc}" alt="${escapeHtml(orgName)} raw logo on ${label} preview">`
+              : '<div class="missing-surface">Missing source</div>'}
+          </div>
+          <span>${escapeHtml(orgName)}</span>
+        </div>
+      </div>
+      <div>
+        <span class="mode-label">Opaque candidate</span>
+        <div class="icon-preview ${className}">
+          <div class="icon-shell">
+            ${candidateSrc
+              ? `<img src="${candidateSrc}" alt="${escapeHtml(orgName)} opaque candidate on ${label} preview">`
+              : '<div class="missing-surface">Missing candidate</div>'}
+          </div>
+          <span>${escapeHtml(orgName)}</span>
         </div>
       </div>
     </div>
@@ -434,7 +530,7 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
     }
     .surfaces {
       display: grid;
-      grid-template-columns: repeat(5, minmax(190px, 1fr));
+      grid-template-columns: repeat(7, minmax(156px, 1fr));
       gap: 16px;
       align-items: start;
     }
@@ -530,6 +626,53 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
       aspect-ratio: 1200 / 420;
       border-radius: 0;
     }
+    .icon-set {
+      background: #eef3f8;
+    }
+    .icon-preview {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-height: 64px;
+      padding: 10px;
+      border-radius: 14px;
+      background: #e6edf4;
+    }
+    .icon-preview span {
+      overflow: hidden;
+      color: #1f2937;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .icon-shell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #ffffff;
+    }
+    .icon-shell img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .map-marker .icon-preview {
+      grid-template-columns: 56px minmax(0, 1fr);
+      background: #ffffff;
+    }
+    .map-marker .icon-shell {
+      width: 54px;
+      height: 54px;
+      border: 4px solid #f97316;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, .22);
+    }
     .ios-card .surface-scrim,
     .android-card .surface-scrim {
       background:
@@ -554,7 +697,7 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
 <body>
   <header>
     <h1>Affiliate Logo Fit Preview</h1>
-    <p>${rows.length} affiliate org logos. Current previews render the raw logo with the same cover crop used by iOS, Android, and web; light/dark rows show transparent-logo background differences. Opaque candidates are generated replacement images rendered through the same crop.</p>
+    <p>${rows.length} affiliate org logos. Mobile card previews model the event-card cover crop; generated logos keep the mark inside the safe center so wide logos are not chopped. Light/dark rows show transparent-logo background differences. Opaque candidates are generated replacement images for storage.</p>
   </header>
   <main>
     ${rows.map((row) => {
@@ -589,6 +732,8 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
             ${buildSurface('Mobile detail', 'mobile-detail', source, candidate, row.orgName)}
             ${buildSurface('Site card', 'site-card', source, candidate, row.orgName)}
             ${buildSurface('Site detail', 'site-detail', source, candidate, row.orgName)}
+            ${buildIconSurface('Rental/org list icon', 'list-icon', source, candidate, row.orgName)}
+            ${buildIconSurface('Map marker icon', 'map-marker', source, candidate, row.orgName)}
           </div>
         </section>
       `;
@@ -686,6 +831,7 @@ const main = async () => {
     const sourcePath = path.join(assetsDir, sourceFile);
     const candidatePath = path.join(assetsDir, candidateFile);
     const { metadata, background } = await writeOpaqueCandidate(sourceBuffer, candidatePath);
+    const sourceHasTransparency = await hasTransparentPixels(sourceBuffer, metadata);
     await sharp(sourceBuffer, { animated: false })
       .rotate()
       .png()
@@ -703,8 +849,8 @@ const main = async () => {
       sourceWidth: width,
       sourceHeight: height,
       sourceAspectRatio: width && height ? width / height : null,
-      hasAlpha: Boolean(metadata.hasAlpha),
-      warnings: buildWarnings(metadata),
+      hasAlpha: sourceHasTransparency,
+      warnings: buildWarnings(metadata, sourceHasTransparency),
     });
   }
 

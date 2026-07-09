@@ -36,7 +36,8 @@
     "gmail:oauth:token": "node scripts/gmail-oauth-token.mjs",
     "widget:test-server": "node scripts/widget-test-server.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "affiliate:logos:improve": "tsx scripts/improve-affiliate-org-logos.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",

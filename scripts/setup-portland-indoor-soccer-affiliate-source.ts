@@ -28,7 +28,7 @@ const HOME_URL = 'https://pdxindoorsoccer.com/';
 const TEAMS_URL = 'https://pdxindoorsoccer.com/teams/';
 const FAQ_URL = 'https://pdxindoorsoccer.com/faqs/';
 const REGISTRATION_FORM_URL = 'https://pdxindoorsoccer.com/wp-content/uploads/2011/05/registration.pdf';
-const LOGO_SOURCE_URL = 'https://pdxindoorsoccer.com/wp-content/plugins/genesis-favicon-uploader/favicons/favicon.ico';
+const LOGO_SOURCE_URL = 'https://pdxindoorsoccer.com/wp-content/themes/metric/images/logo.png';
 const ADDRESS = '418 SE Main Street, Portland, OR 97214';
 
 const mapping: AffiliateScrapeMapping = {
@@ -155,7 +155,7 @@ const upsertLogo = async (ownerId: string) => {
   const { getStorageProvider } = await import('../src/lib/storageProvider');
   const stored = await getStorageProvider().putObject({
     data,
-    originalName: 'portland-indoor-soccer-logo.ico',
+    originalName: 'portland-indoor-soccer-logo.png',
     contentType,
     organizationId: ORG_ID,
   });
@@ -167,7 +167,7 @@ const upsertLogo = async (ownerId: string) => {
       uploaderId: ownerId,
       organizationId: ORG_ID,
       bucket: stored.bucket ?? null,
-      originalName: 'portland-indoor-soccer-logo.ico',
+      originalName: 'portland-indoor-soccer-logo.png',
       mimeType: contentType,
       sizeBytes: stored.sizeBytes,
       path: stored.key,
@@ -178,7 +178,7 @@ const upsertLogo = async (ownerId: string) => {
       uploaderId: ownerId,
       organizationId: ORG_ID,
       bucket: stored.bucket ?? null,
-      originalName: 'portland-indoor-soccer-logo.ico',
+      originalName: 'portland-indoor-soccer-logo.png',
       mimeType: contentType,
       sizeBytes: stored.sizeBytes,
       path: stored.key,

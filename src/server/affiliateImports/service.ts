@@ -1477,11 +1477,14 @@ const upsertAffiliateEventForCandidate = async (
   };
   const syncSourceTags = async (event: any) => {
     const eventType = event?.eventType ?? inferAffiliateEventType(candidate);
+    const syncEventType = eventType === 'LEAGUE' || eventType === 'TOURNAMENT'
+      ? eventType
+      : undefined;
     await syncEventTags(
       event.id,
       buildAffiliateEventTagNames(candidate, eventType),
       prisma,
-      { eventType },
+      { eventType: syncEventType },
     );
   };
   const syncSourceMetadata = async (event: any) => {

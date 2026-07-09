@@ -147,7 +147,10 @@ const backfillPublishedAffiliateEvents = async () => {
       });
     }
     if (apply) {
-      await syncEventTags(event.id, tags, prisma, { eventType: event.eventType });
+      const syncEventType = event.eventType === 'LEAGUE' || event.eventType === 'TOURNAMENT'
+        ? event.eventType
+        : undefined;
+      await syncEventTags(event.id, tags, prisma, { eventType: syncEventType });
     }
   }
 
