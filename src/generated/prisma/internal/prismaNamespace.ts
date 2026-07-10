@@ -437,6 +437,8 @@ export const ModelName = {
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
+  OrganizationTags: 'OrganizationTags',
+  OrganizationTagAssignments: 'OrganizationTagAssignments',
   RefundRequests: 'RefundRequests',
   Discounts: 'Discounts',
   DiscountCodes: 'DiscountCodes',
@@ -482,7 +484,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -4408,6 +4410,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    OrganizationTags: {
+      payload: Prisma.$OrganizationTagsPayload<ExtArgs>
+      fields: Prisma.OrganizationTagsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationTagsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationTagsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationTagsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationTagsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationTagsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationTagsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationTagsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationTagsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationTagsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationTagsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationTagsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationTagsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationTagsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationTagsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationTagsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationTags>
+        }
+        groupBy: {
+          args: Prisma.OrganizationTagsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationTagsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationTagsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationTagsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationTagAssignments: {
+      payload: Prisma.$OrganizationTagAssignmentsPayload<ExtArgs>
+      fields: Prisma.OrganizationTagAssignmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationTagAssignmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationTagAssignmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationTagAssignmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationTagAssignmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationTagAssignmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationTagAssignmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationTagAssignmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationTagAssignmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationTagAssignmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationTagAssignmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationTagAssignmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationTagAssignmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationTagAssignmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationTagAssignmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationTagAssignmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationTagAssignmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationTagAssignments>
+        }
+        groupBy: {
+          args: Prisma.OrganizationTagAssignmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationTagAssignmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationTagAssignmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationTagAssignmentsCountAggregateOutputType> | number
+        }
+      }
+    }
     RefundRequests: {
       payload: Prisma.$RefundRequestsPayload<ExtArgs>
       fields: Prisma.RefundRequestsFieldRefs
@@ -7816,7 +7966,8 @@ export const EventTagsScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   name: 'name',
-  slug: 'slug'
+  slug: 'slug',
+  isSystem: 'isSystem'
 } as const
 
 export type EventTagsScalarFieldEnum = (typeof EventTagsScalarFieldEnum)[keyof typeof EventTagsScalarFieldEnum]
@@ -7831,6 +7982,29 @@ export const EventTagAssignmentsScalarFieldEnum = {
 } as const
 
 export type EventTagAssignmentsScalarFieldEnum = (typeof EventTagAssignmentsScalarFieldEnum)[keyof typeof EventTagAssignmentsScalarFieldEnum]
+
+
+export const OrganizationTagsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  slug: 'slug',
+  isSystem: 'isSystem'
+} as const
+
+export type OrganizationTagsScalarFieldEnum = (typeof OrganizationTagsScalarFieldEnum)[keyof typeof OrganizationTagsScalarFieldEnum]
+
+
+export const OrganizationTagAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  organizationId: 'organizationId',
+  tagId: 'tagId',
+  tagNameSnapshot: 'tagNameSnapshot'
+} as const
+
+export type OrganizationTagAssignmentsScalarFieldEnum = (typeof OrganizationTagAssignmentsScalarFieldEnum)[keyof typeof OrganizationTagAssignmentsScalarFieldEnum]
 
 
 export const RefundRequestsScalarFieldEnum = {
@@ -9805,6 +9979,8 @@ export type GlobalOmitConfig = {
   affiliateImportCandidates?: Prisma.AffiliateImportCandidatesOmit
   eventTags?: Prisma.EventTagsOmit
   eventTagAssignments?: Prisma.EventTagAssignmentsOmit
+  organizationTags?: Prisma.OrganizationTagsOmit
+  organizationTagAssignments?: Prisma.OrganizationTagAssignmentsOmit
   refundRequests?: Prisma.RefundRequestsOmit
   discounts?: Prisma.DiscountsOmit
   discountCodes?: Prisma.DiscountCodesOmit

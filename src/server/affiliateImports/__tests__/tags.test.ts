@@ -135,4 +135,14 @@ describe('affiliate import tag inference', () => {
       tags: ['Camp'],
     })).toEqual(['Camp']);
   });
+
+  it('does not turn league practice timing into a clinic tag', () => {
+    expect(inferAffiliateEventTagNames({
+      title: 'Fall Recreational Soccer',
+      formatLabel: 'Youth recreational soccer league',
+      scheduleText: 'Training begins the week of September 7 and games begin September 12.',
+      tags: ['League'],
+      sportName: 'Grass Soccer',
+    })).toEqual(['League']);
+  });
 });

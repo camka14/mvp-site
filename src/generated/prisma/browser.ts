@@ -283,6 +283,16 @@ export type EventTags = Prisma.EventTagsModel
  */
 export type EventTagAssignments = Prisma.EventTagAssignmentsModel
 /**
+ * Model OrganizationTags
+ *
+ */
+export type OrganizationTags = Prisma.OrganizationTagsModel
+/**
+ * Model OrganizationTagAssignments
+ *
+ */
+export type OrganizationTagAssignments = Prisma.OrganizationTagAssignmentsModel
+/**
  * Model RefundRequests
  *
  */

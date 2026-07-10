@@ -7,6 +7,7 @@ import {
   Button,
   Chip,
   Container,
+  Drawer,
   Group,
   Loader,
   Paper,
@@ -18,7 +19,7 @@ import {
   Title,
 } from '@mantine/core';
 
-import { X } from 'lucide-react';
+import { SlidersHorizontal, X } from 'lucide-react';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -28,7 +29,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, EventTag, Facility, Field, Organization, Team, TimeSlot } from '@/types';
+import { Event, EventTag, Facility, Field, Organization, OrganizationTag, Team, TimeSlot } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
@@ -141,6 +142,10 @@ function DiscoverPageContent() {
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
   const [eventTagsLoading, setEventTagsLoading] = useState(false);
   const [eventTagsError, setEventTagsError] = useState<string | null>(null);
+  const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>([]);
+  const [organizationTags, setOrganizationTags] = useState<OrganizationTag[]>([]);
+  const [organizationTagsLoading, setOrganizationTagsLoading] = useState(false);
+  const [organizationTagsError, setOrganizationTagsError] = useState<string | null>(null);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
@@ -154,7 +159,7 @@ function DiscoverPageContent() {
     const controller = new AbortController();
     setEventTagsLoading(true);
     setEventTagsError(null);
-    fetch('/api/event-tags', { signal: controller.signal })
+    fetch('/api/event-tags?filterOnly=true', { signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load event tags')))
       .then((body) => {
         const tags = Array.isArray(body?.tags) ? body.tags : [];
@@ -168,6 +173,29 @@ function DiscoverPageContent() {
       .finally(() => {
         if (!controller.signal.aborted) {
           setEventTagsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    setOrganizationTagsLoading(true);
+    setOrganizationTagsError(null);
+    fetch('/api/organization-tags?filterOnly=true', { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load organization tags')))
+      .then((body) => {
+        const tags = Array.isArray(body?.tags) ? body.tags : [];
+        setOrganizationTags(tags);
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setOrganizationTagsError('Unable to load organization tags.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setOrganizationTagsLoading(false);
         }
       });
 
@@ -550,6 +578,7 @@ function DiscoverPageContent() {
     try {
       const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
         hydrateRelations: false,
+        tagSlugs: selectedOrganizationTags,
       });
       setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
       setOrganizationOffset(page.pagination.nextOffset);
@@ -569,6 +598,7 @@ function DiscoverPageContent() {
     organizationsLoaded,
     organizationsLoading,
     organizationsLoadingMore,
+    selectedOrganizationTags,
   ]);
 
   const loadMoreOrganizations = useCallback(() => {
@@ -678,6 +708,13 @@ function DiscoverPageContent() {
       loadTeams();
     }
   }, [activeTab, loadOrganizations, loadRentals, loadTeams]);
+
+  useEffect(() => {
+    if (activeTab !== 'organizations') {
+      return;
+    }
+    void loadOrganizations(true);
+  }, [activeTab, loadOrganizations, selectedOrganizationTags]);
 
   const handleCreateEventNavigation = useCallback(() => {
     if (!user) {
@@ -1048,6 +1085,11 @@ function DiscoverPageContent() {
               location={location}
               selectedSports={selectedSports}
               setSelectedSports={setSelectedSports}
+              selectedTags={selectedOrganizationTags}
+              setSelectedTags={setSelectedOrganizationTags}
+              organizationTags={organizationTags}
+              organizationTagsLoading={organizationTagsLoading}
+              organizationTagsError={organizationTagsError}
               sports={sportOptions}
               sportsLoading={sportsLoading}
               sportsError={sportsError?.message ?? null}
@@ -1167,6 +1209,11 @@ function OrganizationsTabContent(props: {
   location: { lat: number; lng: number } | null;
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
+  selectedTags: string[];
+  setSelectedTags: Dispatch<SetStateAction<string[]>>;
+  organizationTags: OrganizationTag[];
+  organizationTagsLoading: boolean;
+  organizationTagsError: string | null;
   sports: string[];
   sportsLoading: boolean;
   sportsError: string | null;
@@ -1189,6 +1236,11 @@ function OrganizationsTabContent(props: {
     location,
     selectedSports,
     setSelectedSports,
+    selectedTags,
+    setSelectedTags,
+    organizationTags,
+    organizationTagsLoading,
+    organizationTagsError,
     sports,
     sportsLoading,
     sportsError,
@@ -1205,8 +1257,12 @@ function OrganizationsTabContent(props: {
   } = props;
 
   const [sportSearchTerm, setSportSearchTerm] = useState('');
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
+  const [filtersOpened, setFiltersOpened] = useState(false);
   const allSportsSelected = selectedSports.length === 0;
+  const allTagsSelected = selectedTags.length === 0;
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
+  const tagsQuery = tagSearchTerm.trim().toLowerCase();
   const activeQuery = searchTerm.trim();
   const visibleSports = useMemo(() => {
     if (!sportsQuery) {
@@ -1214,6 +1270,18 @@ function OrganizationsTabContent(props: {
     }
     return sports.filter((sport) => sport.toLowerCase().includes(sportsQuery));
   }, [sports, sportsQuery]);
+  const visibleOrganizationTags = useMemo(() => {
+    const matchingTags = tagsQuery
+      ? organizationTags.filter((tag) => tag.name.toLowerCase().includes(tagsQuery))
+      : organizationTags;
+    return matchingTags
+      .slice()
+      .sort((a, b) => {
+        const countDiff = (b.organizationCount ?? 0) - (a.organizationCount ?? 0);
+        return countDiff || a.name.localeCompare(b.name);
+      })
+      .slice(0, 5);
+  }, [organizationTags, tagsQuery]);
 
   const hasResults = results.length > 0;
   const activeFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
@@ -1234,6 +1302,15 @@ function OrganizationsTabContent(props: {
     });
   });
 
+  selectedTags.forEach((tagSlug) => {
+    const tag = organizationTags.find((option) => (option.slug ?? option.name) === tagSlug);
+    activeFilters.push({
+      key: `tag-${tagSlug}`,
+      label: tag?.name ?? tagSlug,
+      onRemove: () => setSelectedTags((current) => current.filter((value) => value !== tagSlug)),
+    });
+  });
+
   if (location && typeof maxDistance === 'number') {
     activeFilters.push({
       key: 'distance',
@@ -1245,13 +1322,76 @@ function OrganizationsTabContent(props: {
   const resetFilters = useCallback(() => {
     setSearchTerm('');
     setSelectedSports([]);
+    setSelectedTags([]);
     setMaxDistance(null);
-  }, [setSearchTerm, setSelectedSports, setMaxDistance]);
+  }, [setSearchTerm, setSelectedSports, setSelectedTags, setMaxDistance]);
 
   const activeFilterCount = activeFilters.length;
 
   const filterPanel = (
     <div className="space-y-6">
+      <div>
+        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+          Tags
+        </Text>
+        <TextInput
+          value={tagSearchTerm}
+          onChange={(event) => setTagSearchTerm(event.currentTarget.value)}
+          placeholder="Search tag..."
+          mb="sm"
+        />
+        <Group gap="xs" align="center">
+          <Chip
+            color="blue"
+            radius="xl"
+            checked={allTagsSelected}
+            disabled={organizationTagsLoading || !organizationTags.length}
+            onChange={(checked) => {
+              if (checked) {
+                setSelectedTags([]);
+              }
+            }}
+          >
+            All
+          </Chip>
+          {organizationTagsLoading ? (
+            <Loader size="sm" aria-label="Loading organization tags" />
+          ) : visibleOrganizationTags.length ? (
+            visibleOrganizationTags.map((tag) => {
+              const identity = tag.slug ?? tag.name;
+              return (
+                <Chip
+                  key={identity}
+                  color="blue"
+                  radius="xl"
+                  checked={selectedTags.includes(identity)}
+                  onChange={(checked) => {
+                    setSelectedTags((current) => {
+                      if (checked) {
+                        const next = new Set(current);
+                        next.add(identity);
+                        return Array.from(next);
+                      }
+                      return current.filter((value) => value !== identity);
+                    });
+                  }}
+                >
+                  {tag.name} ({tag.organizationCount ?? 0})
+                </Chip>
+              );
+            })
+          ) : (
+            <Text size="sm" c="dimmed">
+              {tagsQuery ? 'No tags match this search.' : 'No tags available.'}
+            </Text>
+          )}
+        </Group>
+        {organizationTagsError && (
+          <Alert color="red" radius="md" mt="sm">
+            {organizationTagsError}
+          </Alert>
+        )}
+      </div>
       <div>
         <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
           Sports
@@ -1349,6 +1489,25 @@ function OrganizationsTabContent(props: {
         </Text>
       </Group>
 
+      <Drawer
+        opened={filtersOpened}
+        onClose={() => setFiltersOpened(false)}
+        title="Filter Organizations"
+        position="bottom"
+        size="auto"
+        padding="md"
+      >
+        <Group justify="space-between" align="center" mb="md">
+          <Text fw={700} size="sm">
+            Filters
+          </Text>
+          <Button variant="subtle" size="compact-sm" onClick={resetFilters} disabled={!activeFilterCount}>
+            Reset
+          </Button>
+        </Group>
+        {filterPanel}
+      </Drawer>
+
       <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="hidden lg:block lg:sticky lg:top-24 lg:h-[calc(100dvh-6.5rem)]">
           <Paper withBorder p={0} radius="lg" className="h-full overflow-hidden">
@@ -1367,6 +1526,15 @@ function OrganizationsTabContent(props: {
         </aside>
 
         <div className="space-y-4">
+          <Button
+            variant="default"
+            leftSection={<SlidersHorizontal size={16} />}
+            onClick={() => setFiltersOpened(true)}
+            className="lg:hidden"
+          >
+            Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
+          </Button>
+
           {activeFilters.length > 0 && (
             <Paper withBorder p="sm" radius="lg" className="discover-active-filters">
               <Group justify="space-between" align="flex-start" gap="xs" wrap="wrap">
@@ -1504,7 +1672,6 @@ function TeamsTabContent(props: {
     }
     return sports.filter((sport) => sport.toLowerCase().includes(sportsQuery));
   }, [sports, sportsQuery]);
-
   const divisionOptionsBySport = useMemo(() => {
     const groups: Array<{ sport: string; options: TeamDivisionFilterOption[] }> = [];
     const groupIndexes = new Map<string, number>();

@@ -1661,8 +1661,10 @@ model EventTags {
   updatedAt DateTime @updatedAt
   name      String
   slug      String   @unique
+  isSystem  Boolean  @default(false)
 
   @@index([name])
+  @@index([isSystem])
 }
 
 model EventTagAssignments {
@@ -1674,6 +1676,30 @@ model EventTagAssignments {
 
   @@unique([eventId, tagId])
   @@index([eventId])
+  @@index([tagId])
+}
+
+model OrganizationTags {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String
+  slug      String   @unique
+  isSystem  Boolean  @default(false)
+
+  @@index([name])
+  @@index([isSystem])
+}
+
+model OrganizationTagAssignments {
+  id                 String   @id
+  createdAt          DateTime @default(now())
+  organizationId     String
+  tagId              String
+  tagNameSnapshot    String
+
+  @@unique([organizationId, tagId])
+  @@index([organizationId])
   @@index([tagId])
 }
 

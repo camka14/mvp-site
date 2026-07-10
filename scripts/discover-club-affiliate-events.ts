@@ -22,6 +22,7 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { JSDOM, VirtualConsole } from "jsdom";
 import type { AffiliateScrapeMapping } from "../src/server/affiliateImports/types";
+import { parseVenueAddressFromLocationText } from "../src/server/affiliateImports/mappingExtractor";
 
 dotenv.config({ path: ".env", override: false, quiet: true });
 dotenv.config({ path: ".env.local", override: false, quiet: true });
@@ -51,6 +52,7 @@ type ClubRow = {
   publishedOrganizationId: string;
   organizationName: string | null;
   organizationWebsite: string | null;
+  reviewedSourceUrls: string[];
 };
 
 type RobotsRule = {
@@ -90,6 +92,18 @@ type OrganizationSummary = {
   website: string | null;
 };
 
+const REVIEWED_DISCOVERY_EXCLUSIONS = new Map<string, Map<string, string>>([
+  [
+    "affiliate_org_oregon_youth_soccer_find_a_club_illinois_valley_youth_soccer_league",
+    new Map([
+      [
+        "https://begreat4kids.com/facility-rental/",
+        "parent Boys & Girls Clubs rental page is not attributable to the Illinois Valley soccer org",
+      ],
+    ]),
+  ],
+]);
+
 const args = new Map<string, string | boolean>();
 for (const rawArg of process.argv.slice(2)) {
   if (!rawArg.startsWith("--")) continue;
@@ -105,18 +119,24 @@ const maxPagesPerClub = Number(args.get("max-pages") ?? DEFAULT_MAX_PAGES_PER_CL
 const now = new Date();
 const virtualConsole = new VirtualConsole();
 
-const sourceIdsByAlias: Record<string, string[]> = {
-  all: [
-    "affiliate_source_oregon_youth_soccer_find_a_club",
-    "affiliate_source_ceva_club_directory",
-    "affiliate_source_oregon_state_hockey_youth_directory",
-  ],
+const DIRECTORY_SOURCE_IDS = [
+  "affiliate_source_oregon_youth_soccer_find_a_club",
+  "affiliate_source_ceva_club_directory",
+  "affiliate_source_oregon_state_hockey_youth_directory",
+];
+
+const sourceIdsByAlias: Record<string, string[] | null> = {
+  all: null,
+  directories: DIRECTORY_SOURCE_IDS,
   oysa: ["affiliate_source_oregon_youth_soccer_find_a_club"],
   ceva: ["affiliate_source_ceva_club_directory"],
   hockey: ["affiliate_source_oregon_state_hockey_youth_directory"],
 };
 
-const selectedSourceIds = sourceIdsByAlias[sourceArg] ?? sourceIdsByAlias.all;
+const selectedSourceIds = sourceArg === "direct" ? [] : sourceIdsByAlias[sourceArg];
+if (selectedSourceIds === undefined) {
+  throw new Error(`Unknown --source=${sourceArg}. Use all, directories, direct, oysa, ceva, or hockey.`);
+}
 
 const slugify = (value: string) =>
   value
@@ -126,20 +146,6 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-
-const normalizeWebsiteKey = (value: string | null | undefined) => {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    url.protocol = "https:";
-    url.hash = "";
-    url.search = "";
-    const pathname = url.pathname.replace(/\/+$/, "");
-    return `${url.hostname.replace(/^www\./, "").toLowerCase()}${pathname || ""}`;
-  } catch {
-    return null;
-  }
-};
 
 const textContent = (html: string) =>
   html
@@ -155,13 +161,47 @@ const textContent = (html: string) =>
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
 
+const normalizeComparableUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+    return url.toString();
+  } catch {
+    return value.trim();
+  }
+};
+
+const sourceStreetAddress = (address: string | null, city: string | null) => {
+  const normalizedAddress = normalizeWhitespace(address ?? "");
+  const normalizedCity = normalizeWhitespace(city ?? "");
+  if (!normalizedAddress || normalizedAddress.toLowerCase() === normalizedCity.toLowerCase()) {
+    return null;
+  }
+  if (/\b(event|read more|loading|full court|road game|street soccer)\b/i.test(normalizedAddress)) {
+    return null;
+  }
+  return /\d/.test(normalizedAddress) ? normalizedAddress : null;
+};
+
 const isDirectoryOrSocialUrl = (url: string) => {
   try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
-    return (
-      /oregonyouthsoccer\.org|cevaregion\.org|oregonstatehockey\.com/i.test(hostname) ||
-      /facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com/i.test(hostname)
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+    const pathname = parsed.pathname.replace(/\/+$/, "").toLowerCase();
+    const isKnownDirectoryPage = (
+      (hostname === "oregonyouthsoccer.org" && pathname === "/find-a-club")
+      || (hostname === "cevaregion.org" && pathname === "/clubdirectory")
+      || (hostname === "oregonstatehockey.com" && pathname === "/youth-hockey.html")
     );
+    if (isKnownDirectoryPage) return true;
+    return [
+      "facebook.com",
+      "instagram.com",
+      "twitter.com",
+      "x.com",
+      "youtube.com",
+    ].some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
   } catch {
     return true;
   }
@@ -276,6 +316,7 @@ const linkScore = (text: string, href: string) => {
   const value = `${text} ${href}`.toLowerCase();
   let score = 0;
   if (/\btry[-\s]?outs?\b|\bevaluations?\b/.test(value)) score += 100;
+  if (/\b(rentals?|book(?:ing)?|reserve|facility|facilities|courts?|fields?|gyms?)\b/.test(value)) score += 90;
   if (/\bcamps?\b/.test(value)) score += 80;
   if (/\bclinics?\b|\bclasses?\b|\btraining\b|\bacademy\b/.test(value)) score += 75;
   if (/\btournaments?\b|\bevents?\b|\bschedule\b/.test(value)) score += 60;
@@ -328,6 +369,24 @@ const extractRegistrationUrl = (page: PageResult) => {
     .filter((item): item is { text: string; url: string; score: number } => Boolean(item))
     .filter((item) => /\b(register|registration|sign[-\s]?up|book|apply)\b/i.test(`${item.text} ${item.url}`))
     .sort((a, b) => b.score - a.score);
+  return links[0]?.url ?? page.finalUrl;
+};
+
+const extractRentalActionUrl = (page: PageResult) => {
+  const dom = new JSDOM(page.html, { url: page.finalUrl, virtualConsole });
+  const links = Array.from(dom.window.document.querySelectorAll("a[href]"))
+    .map((link) => {
+      const text = normalizeWhitespace(link.textContent ?? "");
+      const href = link.getAttribute("href") ?? "";
+      try {
+        return { text, url: new URL(href, page.finalUrl).toString() };
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is { text: string; url: string } => Boolean(item))
+    .filter((item) => !/newsletter|subscribe/i.test(`${item.text} ${item.url}`))
+    .filter((item) => /\b(book|booking|reserve|availability|rental (?:form|application|agreement)|rent (?:a|the))\b/i.test(`${item.text} ${item.url}`));
   return links[0]?.url ?? page.finalUrl;
 };
 
@@ -441,17 +500,23 @@ const inferTitle = (page: PageResult, club: ClubRow, tags: string[]) => {
       cleaned &&
       !/^welcome$/i.test(cleaned) &&
       !isGenericPageTitle(cleaned) &&
+      !isGenericCandidateTitle(cleaned) &&
       cleaned.length <= 90
     ) {
       return cleaned;
     }
   }
-  const tag = tags[0] ?? "Event";
-  return `${club.title} ${tag}`;
+  const tagLabel = tags.length > 0 ? tags.join(" & ") : "Event";
+  return `${club.title} ${tagLabel}`;
 };
 
 const isGenericPageTitle = (value: string | null | undefined) =>
   /^(home|website manager|registration process|programs?|play for .+|adidas|20\d{2}(?:\D.*)?|.*season is complete)$/i.test(
+    normalizeWhitespace(value ?? ""),
+  );
+
+const isGenericCandidateTitle = (value: string | null | undefined) =>
+  /^(ready to compete\??|camp information|camps?\s*&\s*clinics?|training|facility rentals?|rentals?\s*&\s*amenities|discover your perfect\s*party space)$/i.test(
     normalizeWhitespace(value ?? ""),
   );
 
@@ -484,11 +549,22 @@ const descriptionForPage = (page: PageResult, club: ClubRow, tags: string[]) => 
     .filter((sentence) => sentence.length >= 40 && sentence.length <= 260)
     .filter((sentence) => /\btry[-\s]?outs?|evaluations?|camps?|clinics?|training|academy|tournaments?|events?|registration\b/i.test(sentence));
   if (sentences.length) return sentences.slice(0, 3).join(" ");
-  return `${club.title} lists ${tags.join(", ").toLowerCase() || "program"} information on its official website. Use the official link for current registration details.`;
+
+  const signal = new RegExp(
+    `\\b(${tags.map((tag) => tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "event"}|registration|schedule)\\b`,
+    "i",
+  );
+  const signalIndex = page.text.search(signal);
+  if (signalIndex >= 0) {
+    const start = Math.max(0, signalIndex - 120);
+    return normalizeWhitespace(page.text.slice(start, signalIndex + 380));
+  }
+
+  return normalizeWhitespace(page.text.slice(0, 500));
 };
 
 const eventTypeLabel = (tags: string[]) => {
-  if (tags.includes("Tryouts")) return "Soccer tryouts";
+  if (tags.includes("Tryouts")) return "Tryouts";
   if (tags.includes("Tournament")) return "Tournament";
   if (tags.includes("League")) return "League";
   if (tags.includes("Camp")) return "Camp";
@@ -496,8 +572,82 @@ const eventTypeLabel = (tags: string[]) => {
   return "Event";
 };
 
+const isRentalPage = (page: PageResult) => {
+  const label = `${page.discoveryLabel ?? ""} ${page.title ?? ""} ${page.finalUrl}`;
+  const hasRentalLanguage = /\b(rentals?|rent\s+(?:a|our)\s+(?:court|field|gym|facility|space)|party[-\s]?rental)\b/i.test(label);
+  const hasSportsBookingLanguage = /\b(book(?:ing)?|reserve)\b/i.test(label)
+    && /\b(court|field|gym|facility|space)\b/i.test(label);
+  return Boolean(page.discoveryLabel) && (hasRentalLanguage || hasSportsBookingLanguage);
+};
+
+const sourceVenueName = (value: string | null, fallback: string) => {
+  const normalized = normalizeWhitespace(value ?? "");
+  if (
+    !normalized ||
+    normalized.length > 100 ||
+    /^\d+$/i.test(normalized) ||
+    /\b(what we provide|tables|chairs|trash|follow us|contact us|read more|loading)\b/i.test(normalized)
+  ) {
+    return fallback;
+  }
+  return normalized;
+};
+
+const sourceCity = (value: string | null, fallback: string | null) => {
+  const normalized = normalizeWhitespace(value ?? "");
+  if (!normalized) return fallback;
+  if (/^(?:N|NE|NW|S|SE|SW|E|W)\s+/i.test(normalized)) return fallback;
+  return normalized;
+};
+
+const buildRentalCandidateFromPage = (
+  page: PageResult,
+  club: ClubRow,
+): DiscoveryCandidate => {
+  const pageLocation = parseVenueAddressFromLocationText(page.text);
+  const city = sourceCity(pageLocation.city, club.city);
+  const address = sourceStreetAddress(pageLocation.address, city)
+    ?? sourceStreetAddress(club.address, club.city);
+  const title = inferTitle(page, club, ["Rental"]);
+  const description = descriptionForPage(page, club, ["Rental"]);
+  const warnings = [
+    "Detected by club listing discovery. Review the official source page before publishing.",
+  ];
+  if (!address) {
+    warnings.push("Rental page did not expose a reliable street address; resolve the facility location before publishing.");
+  }
+
+  return {
+    listingKind: "RENTAL",
+    title,
+    officialActionUrl: extractRentalActionUrl(page),
+    sourceUrl: page.finalUrl,
+    organizerName: club.organizationName ?? club.title,
+    sportName: club.sportName,
+    formatLabel: "Facility rental",
+    city,
+    venueName: sourceVenueName(
+      pageLocation.venueName,
+      club.venueName ?? club.organizationName ?? club.title,
+    ),
+    address,
+    dateDisplayMode: "ONGOING",
+    dateDisplayText: "Check official availability",
+    scheduleText: "Use the official booking page for current availability.",
+    participantOptionsText: "External booking",
+    priceText: extractPriceText(page.text),
+    statusText: "Review the official booking page for current availability.",
+    description,
+    tags: ["Rental"],
+    warnings,
+  };
+};
+
 const buildCandidateFromPage = (page: PageResult, club: ClubRow): { candidate?: DiscoveryCandidate; skipped?: string } => {
   if (page.status >= 400) return { skipped: `HTTP ${page.status}` };
+  if (isRentalPage(page)) {
+    return { candidate: buildRentalCandidateFromPage(page, club) };
+  }
   if (isRootPage(page) && !page.discoveryLabel) {
     return { skipped: "club homepage needs manual mapping" };
   }
@@ -541,7 +691,7 @@ const buildCandidateFromPage = (page: PageResult, club: ClubRow): { candidate?: 
       formatLabel,
       city: club.city,
       venueName: club.venueName ?? club.organizationName ?? club.title,
-      address: club.address ?? club.city,
+      address: sourceStreetAddress(club.address, club.city),
       startsAt: date.iso,
       timeZone: "America/Los_Angeles",
       scheduleText: date.label,
@@ -612,6 +762,17 @@ const discoverClub = async (club: ClubRow): Promise<ClubAudit> => {
 
   const seenCandidates = new Set<string>();
   for (const page of pages) {
+    const exclusionReason = REVIEWED_DISCOVERY_EXCLUSIONS
+      .get(club.publishedOrganizationId)
+      ?.get(page.finalUrl)
+      ?? (club.reviewedSourceUrls.includes(normalizeComparableUrl(page.finalUrl))
+        ? "reviewed and intentionally excluded by an existing source mapping"
+        : null);
+    if (exclusionReason) {
+      audit.skipped.push({ url: page.finalUrl, reason: `reviewed exclusion: ${exclusionReason}` });
+      continue;
+    }
+
     const result = buildCandidateFromPage(page, club);
     if (result.candidate) {
       const key = `${result.candidate.title}|${result.candidate.startsAt}|${result.candidate.sourceUrl}`;
@@ -628,7 +789,7 @@ const discoverClub = async (club: ClubRow): Promise<ClubAudit> => {
 };
 
 const sourceForClub = (club: ClubRow, candidates: DiscoveryCandidate[]): AffiliateScrapeMapping => ({
-  kind: "EVENT",
+  kind: candidates.every((candidate) => candidate.listingKind === "RENTAL") ? "RENTAL" : "EVENT",
   listUrl: club.officialActionUrl,
   itemSelector: "body",
   fields: {
@@ -651,18 +812,20 @@ const writeClubCandidates = async (club: ClubRow, audit: ClubAudit) => {
   const mappingId = `${sourceId}_mapping_v1`;
   const now = new Date();
   const sourcePayload = {
-    name: `${club.organizationName ?? club.title} Club Events`,
+    name: `${club.organizationName ?? club.title} Club Listings`,
     sourceKey,
     organizationId: club.publishedOrganizationId,
     baseUrl: new URL(club.officialActionUrl).origin,
     listUrl: club.officialActionUrl,
-    targetKind: "EVENT",
+    targetKind: audit.candidates.every((candidate) => candidate.listingKind === "RENTAL")
+      ? "RENTAL"
+      : "EVENT",
     status: "ACTIVE",
     activeMappingId: mappingId,
     autoScrapeEnabled: false,
     scrapeIntervalMinutes: 10080,
     notes:
-      "Manual event candidates detected from the club official site. Tryouts and other one-time club events require source-provided future dates and are not evergreen.",
+      "Manual event and rental candidates detected from the club official site. One-time club events require source-provided future dates and are not evergreen; rentals require a verified facility address before publishing.",
     metadata: {
       discoveredAt: now.toISOString(),
       discoveryScript: "scripts/discover-club-affiliate-events.ts",
@@ -725,7 +888,11 @@ const main = async () => {
   const rows = (await (prisma as any).affiliateImportCandidates.findMany({
     where: {
       listingKind: "CLUB",
-      sourceId: { in: selectedSourceIds },
+      ...(sourceArg === "direct"
+        ? { sourceId: { notIn: DIRECTORY_SOURCE_IDS } }
+        : selectedSourceIds
+          ? { sourceId: { in: selectedSourceIds } }
+          : {}),
       publishedOrganizationId: { not: null },
     },
     select: {
@@ -766,52 +933,84 @@ const main = async () => {
   const organizationById = new Map<string, OrganizationSummary>(
     organizations.map((organization: OrganizationSummary) => [organization.id, organization]),
   );
-  const websiteKeys = Array.from(
-    new Set(
-      rows
-        .map((row) => normalizeWebsiteKey(row.officialActionUrl))
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-  const listedOrganizations = await (prisma as any).organizations.findMany({
-    where: {
-      status: "LISTED",
-      website: { not: null },
-      id: { notIn: organizationIds },
-    },
-    select: { id: true, name: true, website: true },
+  const existingSources = await (prisma as any).affiliateScrapeSources.findMany({
+    where: { organizationId: { in: organizationIds } },
+    select: { id: true, organizationId: true, metadata: true },
   });
-  const canonicalOrganizationByWebsite = new Map<string, OrganizationSummary>();
-  for (const organization of listedOrganizations as OrganizationSummary[]) {
-    const key = normalizeWebsiteKey(organization.website);
-    if (key && websiteKeys.includes(key)) {
-      canonicalOrganizationByWebsite.set(key, organization);
+  const reviewedSourceUrlsByOrganizationId = new Map<string, Set<string>>();
+  const organizationIdBySourceId = new Map<string, string>();
+  for (const source of existingSources as Array<{ id: string; organizationId: string | null; metadata: unknown }>) {
+    if (!source.organizationId) continue;
+    organizationIdBySourceId.set(source.id, source.organizationId);
+    if (!source.metadata || typeof source.metadata !== "object") continue;
+    const skippedRows = (source.metadata as { skippedRows?: unknown }).skippedRows;
+    if (!Array.isArray(skippedRows)) continue;
+    const urls = reviewedSourceUrlsByOrganizationId.get(source.organizationId) ?? new Set<string>();
+    for (const row of skippedRows) {
+      if (row && typeof row === "object" && typeof (row as { url?: unknown }).url === "string") {
+        urls.add(normalizeComparableUrl(String((row as { url: string }).url)));
+      }
     }
+    reviewedSourceUrlsByOrganizationId.set(source.organizationId, urls);
   }
-
-  const clubs: ClubRow[] = rows
+  const existingCandidates = await (prisma as any).affiliateImportCandidates.findMany({
+    where: { sourceId: { in: Array.from(organizationIdBySourceId.keys()) } },
+    select: { sourceId: true, sourceUrl: true, officialActionUrl: true },
+  });
+  for (const candidate of existingCandidates as Array<{
+    sourceId: string;
+    sourceUrl: string | null;
+    officialActionUrl: string;
+  }>) {
+    const organizationId = organizationIdBySourceId.get(candidate.sourceId);
+    if (!organizationId) continue;
+    const urls = reviewedSourceUrlsByOrganizationId.get(organizationId) ?? new Set<string>();
+    if (candidate.sourceUrl) urls.add(normalizeComparableUrl(candidate.sourceUrl));
+    if (candidate.officialActionUrl) urls.add(normalizeComparableUrl(candidate.officialActionUrl));
+    reviewedSourceUrlsByOrganizationId.set(organizationId, urls);
+  }
+  const clubsByOrganizationId = new Map<string, ClubRow>();
+  for (const row of rows
     .filter((row) => row.publishedOrganizationId)
-    .filter((row) => (clubFilter ? row.title.toLowerCase().includes(clubFilter) : true))
-    .map((row) => {
-      const currentOrganization = organizationById.get(row.publishedOrganizationId as string);
-      const canonicalOrganization =
-        canonicalOrganizationByWebsite.get(normalizeWebsiteKey(currentOrganization?.website || row.officialActionUrl) ?? "") ??
-        null;
-      const organization = canonicalOrganization ?? currentOrganization;
-      return {
+    .sort((left, right) => left.title.localeCompare(right.title))) {
+    const organizationId = row.publishedOrganizationId as string;
+    const organization = organizationById.get(organizationId);
+    const organizationName = organization?.name ?? row.title;
+    if (
+      clubFilter &&
+      !organizationName.toLowerCase().includes(clubFilter) &&
+      !row.title.toLowerCase().includes(clubFilter)
+    ) {
+      continue;
+    }
+
+    const existing = clubsByOrganizationId.get(organizationId);
+    if (!existing) {
+      clubsByOrganizationId.set(organizationId, {
         candidateId: row.id,
-        title: row.title,
+        title: organizationName,
         officialActionUrl: organization?.website || row.officialActionUrl,
         sourceId: row.sourceId,
         sportName: row.sportName,
         city: row.city,
         venueName: row.venueName,
         address: row.address,
-        publishedOrganizationId: organization?.id ?? (row.publishedOrganizationId as string),
-        organizationName: organization?.name ?? row.title,
+        publishedOrganizationId: organizationId,
+        organizationName,
         organizationWebsite: organization?.website ?? null,
-      };
-    })
+        reviewedSourceUrls: Array.from(reviewedSourceUrlsByOrganizationId.get(organizationId) ?? []),
+      });
+      continue;
+    }
+
+    existing.sportName ??= row.sportName;
+    existing.city ??= row.city;
+    existing.venueName ??= row.venueName;
+    existing.address ??= row.address;
+  }
+
+  const clubs: ClubRow[] = Array.from(clubsByOrganizationId.values())
+    .sort((left, right) => left.title.localeCompare(right.title))
     .slice(0, Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_LIMIT);
 
   console.log(
@@ -841,6 +1040,7 @@ const main = async () => {
       {
         generatedAt: new Date().toISOString(),
         source: sourceArg,
+        scanKinds: ["EVENT", "RENTAL"],
         write: shouldWrite,
         clubCount: clubs.length,
         candidateCount: audits.reduce((sum, audit) => sum + audit.candidates.length, 0),

@@ -4,6 +4,8 @@ import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
 const facilitiesFindManyMock = jest.fn();
+const organizationTagsFindManyMock = jest.fn();
+const organizationTagAssignmentsFindManyMock = jest.fn();
 const createMock = jest.fn();
 const authUserFindUniqueMock = jest.fn();
 const prismaMock = {
@@ -12,6 +14,12 @@ const prismaMock = {
   },
   facilities: {
     findMany: (...args: any[]) => facilitiesFindManyMock(...args),
+  },
+  organizationTags: {
+    findMany: (...args: any[]) => organizationTagsFindManyMock(...args),
+  },
+  organizationTagAssignments: {
+    findMany: (...args: any[]) => organizationTagAssignmentsFindManyMock(...args),
   },
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
@@ -39,6 +47,8 @@ describe('/api/organizations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     authUserFindUniqueMock.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    organizationTagsFindManyMock.mockResolvedValue([]);
+    organizationTagAssignmentsFindManyMock.mockResolvedValue([]);
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
@@ -89,6 +99,46 @@ describe('/api/organizations', () => {
       nextOffset: 0,
       hasMore: false,
     });
+  });
+
+  it('filters discover organization lists by curated system tag slugs', async () => {
+    organizationTagsFindManyMock.mockResolvedValueOnce([{ id: 'tag_facility' }]);
+    organizationTagAssignmentsFindManyMock
+      .mockResolvedValueOnce([
+        { organizationId: 'org_facility' },
+        { organizationId: 'org_facility' },
+      ])
+      .mockResolvedValueOnce([]);
+    findManyMock.mockResolvedValue([
+      { id: 'org_facility', name: 'Facility Org', status: 'LISTED' },
+    ]);
+
+    const res = await organizationsGet(new NextRequest('http://localhost/api/organizations?tags=facility&limit=25'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(organizationTagsFindManyMock).toHaveBeenCalledWith({
+      where: {
+        slug: { in: ['facility'] },
+        isSystem: true,
+      },
+      select: { id: true },
+    });
+    expect(organizationTagAssignmentsFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: { tagId: { in: ['tag_facility'] } },
+      select: { organizationId: true },
+    });
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        status: 'LISTED',
+        AND: [
+          { id: { in: ['org_facility'] } },
+        ],
+      },
+    }));
+    expect(json.organizations).toEqual([
+      expect.objectContaining({ $id: 'org_facility', name: 'Facility Org' }),
+    ]);
   });
 
   it('can include private organizations that have active affiliate rental facilities', async () => {

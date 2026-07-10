@@ -104,6 +104,8 @@ export const ModelName = {
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
+  OrganizationTags: 'OrganizationTags',
+  OrganizationTagAssignments: 'OrganizationTagAssignments',
   RefundRequests: 'RefundRequests',
   Discounts: 'Discounts',
   DiscountCodes: 'DiscountCodes',
@@ -1301,7 +1303,8 @@ export const EventTagsScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   name: 'name',
-  slug: 'slug'
+  slug: 'slug',
+  isSystem: 'isSystem'
 } as const
 
 export type EventTagsScalarFieldEnum = (typeof EventTagsScalarFieldEnum)[keyof typeof EventTagsScalarFieldEnum]
@@ -1316,6 +1319,29 @@ export const EventTagAssignmentsScalarFieldEnum = {
 } as const
 
 export type EventTagAssignmentsScalarFieldEnum = (typeof EventTagAssignmentsScalarFieldEnum)[keyof typeof EventTagAssignmentsScalarFieldEnum]
+
+
+export const OrganizationTagsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  slug: 'slug',
+  isSystem: 'isSystem'
+} as const
+
+export type OrganizationTagsScalarFieldEnum = (typeof OrganizationTagsScalarFieldEnum)[keyof typeof OrganizationTagsScalarFieldEnum]
+
+
+export const OrganizationTagAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  organizationId: 'organizationId',
+  tagId: 'tagId',
+  tagNameSnapshot: 'tagNameSnapshot'
+} as const
+
+export type OrganizationTagAssignmentsScalarFieldEnum = (typeof OrganizationTagAssignmentsScalarFieldEnum)[keyof typeof OrganizationTagAssignmentsScalarFieldEnum]
 
 
 export const RefundRequestsScalarFieldEnum = {

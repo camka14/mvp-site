@@ -52,6 +52,9 @@ const SOURCE_KEY = 'clackamas-united-club-events';
 const MAPPING_ID = 'affiliate_mapping_clackamas_united_club_events_v1';
 const BASE_URL = 'https://www.clackamasunited.com/';
 const CAMP_URL = 'https://www.clackamasunited.com/news/2026-06-01-2026-rangers-summer-camp.html';
+const PROGRAMS_URL = 'https://www.clackamasunited.com/programs/overview.html';
+const CLASSIC_TRYOUTS_URL = 'https://www.clackamasunited.com/news/2026-04-03-2627-classic-tryout-schedule.html';
+const PDP_TRYOUTS_URL = 'https://www.clackamasunited.com/news/2026-04-03-2627-pdp-tryout-schedule.html';
 const REGISTER_URL = 'https://playmetrics.com/signup?clubToken=TG9naW4tQ2x1Yi52MS0xMDA2LTE3ODU2MTI3MzF8bTJaekVsdCtDdXAzakRmaktrdm5GOTRCZ25nT3gwYjdnazM5NXRjUmQxND0=&program_id=98213';
 const LOGO_SOURCE_URL = 'https://www.clackamasunited.com/images/club-logo.png';
 const SCHOOL_ADDRESS = '14486 SE 122nd Ave, Clackamas, OR 97015';
@@ -314,9 +317,14 @@ const upsertSourceAndMapping = async () => {
         inspectedAt: '2026-07-09',
         logoSourceUrl: LOGO_SOURCE_URL,
         venueAddressSourceUrl: 'https://chs.nclack.k12.or.us/',
+        sourcePages: [BASE_URL, PROGRAMS_URL, CAMP_URL, CLASSIC_TRYOUTS_URL, PDP_TRYOUTS_URL],
         skippedRows: [
-          '2026 Summer Rec Camps July 20-23 session has TBD location.',
-          '2026/27 Classic Tryouts and PDP Tryouts are May 2026 and past.',
+          { url: BASE_URL, reason: 'Current public program links were reviewed and the future Rangers camp is handled by this mapping.' },
+          { url: PROGRAMS_URL, reason: 'Generic program overview was reviewed; it provides no additional future dated registration row.' },
+          { url: CAMP_URL, reason: 'The future Rangers camp is handled by this mapping.' },
+          { label: '2026 Summer Rec Camp', reason: 'The July 20-23 session has a TBD location and cannot be published with a verified venue.' },
+          { url: CLASSIC_TRYOUTS_URL, reason: 'The 2026/27 Classic tryouts were in May 2026 and are past.' },
+          { url: PDP_TRYOUTS_URL, reason: 'The 2026/27 PDP tryouts were in May 2026 and are past.' },
         ],
       },
     },
@@ -336,9 +344,14 @@ const upsertSourceAndMapping = async () => {
         inspectedAt: '2026-07-09',
         logoSourceUrl: LOGO_SOURCE_URL,
         venueAddressSourceUrl: 'https://chs.nclack.k12.or.us/',
+        sourcePages: [BASE_URL, PROGRAMS_URL, CAMP_URL, CLASSIC_TRYOUTS_URL, PDP_TRYOUTS_URL],
         skippedRows: [
-          '2026 Summer Rec Camps July 20-23 session has TBD location.',
-          '2026/27 Classic Tryouts and PDP Tryouts are May 2026 and past.',
+          { url: BASE_URL, reason: 'Current public program links were reviewed and the future Rangers camp is handled by this mapping.' },
+          { url: PROGRAMS_URL, reason: 'Generic program overview was reviewed; it provides no additional future dated registration row.' },
+          { url: CAMP_URL, reason: 'The future Rangers camp is handled by this mapping.' },
+          { label: '2026 Summer Rec Camp', reason: 'The July 20-23 session has a TBD location and cannot be published with a verified venue.' },
+          { url: CLASSIC_TRYOUTS_URL, reason: 'The 2026/27 Classic tryouts were in May 2026 and are past.' },
+          { url: PDP_TRYOUTS_URL, reason: 'The 2026/27 PDP tryouts were in May 2026 and are past.' },
         ],
       },
     },

@@ -30,6 +30,7 @@ export type EventTagsMinAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   slug: string | null
+  isSystem: boolean | null
 }
 
 export type EventTagsMaxAggregateOutputType = {
@@ -38,6 +39,7 @@ export type EventTagsMaxAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   slug: string | null
+  isSystem: boolean | null
 }
 
 export type EventTagsCountAggregateOutputType = {
@@ -46,6 +48,7 @@ export type EventTagsCountAggregateOutputType = {
   updatedAt: number
   name: number
   slug: number
+  isSystem: number
   _all: number
 }
 
@@ -56,6 +59,7 @@ export type EventTagsMinAggregateInputType = {
   updatedAt?: true
   name?: true
   slug?: true
+  isSystem?: true
 }
 
 export type EventTagsMaxAggregateInputType = {
@@ -64,6 +68,7 @@ export type EventTagsMaxAggregateInputType = {
   updatedAt?: true
   name?: true
   slug?: true
+  isSystem?: true
 }
 
 export type EventTagsCountAggregateInputType = {
@@ -72,6 +77,7 @@ export type EventTagsCountAggregateInputType = {
   updatedAt?: true
   name?: true
   slug?: true
+  isSystem?: true
   _all?: true
 }
 
@@ -153,6 +159,7 @@ export type EventTagsGroupByOutputType = {
   updatedAt: Date
   name: string
   slug: string
+  isSystem: boolean
   _count: EventTagsCountAggregateOutputType | null
   _min: EventTagsMinAggregateOutputType | null
   _max: EventTagsMaxAggregateOutputType | null
@@ -182,6 +189,7 @@ export type EventTagsWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"EventTags"> | Date | string
   name?: Prisma.StringFilter<"EventTags"> | string
   slug?: Prisma.StringFilter<"EventTags"> | string
+  isSystem?: Prisma.BoolFilter<"EventTags"> | boolean
 }
 
 export type EventTagsOrderByWithRelationInput = {
@@ -190,6 +198,7 @@ export type EventTagsOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   slug?: Prisma.SortOrder
+  isSystem?: Prisma.SortOrder
 }
 
 export type EventTagsWhereUniqueInput = Prisma.AtLeast<{
@@ -201,6 +210,7 @@ export type EventTagsWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"EventTags"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"EventTags"> | Date | string
   name?: Prisma.StringFilter<"EventTags"> | string
+  isSystem?: Prisma.BoolFilter<"EventTags"> | boolean
 }, "id" | "slug">
 
 export type EventTagsOrderByWithAggregationInput = {
@@ -209,6 +219,7 @@ export type EventTagsOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   slug?: Prisma.SortOrder
+  isSystem?: Prisma.SortOrder
   _count?: Prisma.EventTagsCountOrderByAggregateInput
   _max?: Prisma.EventTagsMaxOrderByAggregateInput
   _min?: Prisma.EventTagsMinOrderByAggregateInput
@@ -223,6 +234,7 @@ export type EventTagsScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"EventTags"> | Date | string
   name?: Prisma.StringWithAggregatesFilter<"EventTags"> | string
   slug?: Prisma.StringWithAggregatesFilter<"EventTags"> | string
+  isSystem?: Prisma.BoolWithAggregatesFilter<"EventTags"> | boolean
 }
 
 export type EventTagsCreateInput = {
@@ -231,6 +243,7 @@ export type EventTagsCreateInput = {
   updatedAt?: Date | string
   name: string
   slug: string
+  isSystem?: boolean
 }
 
 export type EventTagsUncheckedCreateInput = {
@@ -239,6 +252,7 @@ export type EventTagsUncheckedCreateInput = {
   updatedAt?: Date | string
   name: string
   slug: string
+  isSystem?: boolean
 }
 
 export type EventTagsUpdateInput = {
@@ -247,6 +261,7 @@ export type EventTagsUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   slug?: Prisma.StringFieldUpdateOperationsInput | string
+  isSystem?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type EventTagsUncheckedUpdateInput = {
@@ -255,6 +270,7 @@ export type EventTagsUncheckedUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   slug?: Prisma.StringFieldUpdateOperationsInput | string
+  isSystem?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type EventTagsCreateManyInput = {
@@ -263,6 +279,7 @@ export type EventTagsCreateManyInput = {
   updatedAt?: Date | string
   name: string
   slug: string
+  isSystem?: boolean
 }
 
 export type EventTagsUpdateManyMutationInput = {
@@ -271,6 +288,7 @@ export type EventTagsUpdateManyMutationInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   slug?: Prisma.StringFieldUpdateOperationsInput | string
+  isSystem?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type EventTagsUncheckedUpdateManyInput = {
@@ -279,6 +297,7 @@ export type EventTagsUncheckedUpdateManyInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   slug?: Prisma.StringFieldUpdateOperationsInput | string
+  isSystem?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type EventTagsCountOrderByAggregateInput = {
@@ -287,6 +306,7 @@ export type EventTagsCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   slug?: Prisma.SortOrder
+  isSystem?: Prisma.SortOrder
 }
 
 export type EventTagsMaxOrderByAggregateInput = {
@@ -295,6 +315,7 @@ export type EventTagsMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   slug?: Prisma.SortOrder
+  isSystem?: Prisma.SortOrder
 }
 
 export type EventTagsMinOrderByAggregateInput = {
@@ -303,6 +324,7 @@ export type EventTagsMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   slug?: Prisma.SortOrder
+  isSystem?: Prisma.SortOrder
 }
 
 
@@ -313,6 +335,7 @@ export type EventTagsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   updatedAt?: boolean
   name?: boolean
   slug?: boolean
+  isSystem?: boolean
 }, ExtArgs["result"]["eventTags"]>
 
 export type EventTagsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -321,6 +344,7 @@ export type EventTagsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   updatedAt?: boolean
   name?: boolean
   slug?: boolean
+  isSystem?: boolean
 }, ExtArgs["result"]["eventTags"]>
 
 export type EventTagsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -329,6 +353,7 @@ export type EventTagsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   updatedAt?: boolean
   name?: boolean
   slug?: boolean
+  isSystem?: boolean
 }, ExtArgs["result"]["eventTags"]>
 
 export type EventTagsSelectScalar = {
@@ -337,9 +362,10 @@ export type EventTagsSelectScalar = {
   updatedAt?: boolean
   name?: boolean
   slug?: boolean
+  isSystem?: boolean
 }
 
-export type EventTagsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "slug", ExtArgs["result"]["eventTags"]>
+export type EventTagsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "slug" | "isSystem", ExtArgs["result"]["eventTags"]>
 
 export type $EventTagsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "EventTags"
@@ -350,6 +376,7 @@ export type $EventTagsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     updatedAt: Date
     name: string
     slug: string
+    isSystem: boolean
   }, ExtArgs["result"]["eventTags"]>
   composites: {}
 }
@@ -778,6 +805,7 @@ export interface EventTagsFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"EventTags", 'DateTime'>
   readonly name: Prisma.FieldRef<"EventTags", 'String'>
   readonly slug: Prisma.FieldRef<"EventTags", 'String'>
+  readonly isSystem: Prisma.FieldRef<"EventTags", 'Boolean'>
 }
 
 

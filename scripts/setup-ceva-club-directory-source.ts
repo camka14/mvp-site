@@ -39,6 +39,9 @@ const ORGANIZER_DESCRIPTION =
 const normalizeWhitespace = (value: string) =>
   value.replace(/\s+/g, " ").trim();
 
+const normalizeClubName = (value: string) =>
+  normalizeWhitespace(value.replace(/([A-Za-z0-9])\)+(?=[A-Za-z0-9])/g, "$1 "));
+
 const requireOwner = async () => {
   const owner = await (prisma as any).authUser.findUnique({
     where: { email: OWNER_EMAIL },
@@ -204,7 +207,7 @@ const parseTitle = (rawTitle: string) => {
     return null;
   }
   return {
-    title: parts[0].trim(),
+    title: normalizeClubName(parts[0]),
     location: parts.slice(1).join(" - ").trim(),
   };
 };

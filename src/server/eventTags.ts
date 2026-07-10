@@ -5,6 +5,7 @@ export type EventTagView = {
   id: string;
   name: string;
   slug: string;
+  isSystem?: boolean;
   eventCount?: number;
 };
 
@@ -35,12 +36,12 @@ const findEventTagBySlug = async (
 ): Promise<EventTagView | null> => {
   if (typeof client.eventTags?.findUnique === 'function') {
     const tag = await client.eventTags.findUnique({ where: { slug } });
-    return tag ? { id: tag.id, name: tag.name, slug: tag.slug } : null;
+    return tag ? { id: tag.id, name: tag.name, slug: tag.slug, isSystem: tag.isSystem === true } : null;
   }
 
   if (typeof client.eventTags?.findFirst === 'function') {
     const tag = await client.eventTags.findFirst({ where: { slug } });
-    return tag ? { id: tag.id, name: tag.name, slug: tag.slug } : null;
+    return tag ? { id: tag.id, name: tag.name, slug: tag.slug, isSystem: tag.isSystem === true } : null;
   }
 
   return null;
@@ -67,6 +68,7 @@ const upsertEventTagByName = async (
       id: tag.id,
       name: tag.name,
       slug: tag.slug,
+      isSystem: tag.isSystem === true,
     };
   } catch (error) {
     if (!isUniqueConstraintError(error)) {
@@ -282,6 +284,7 @@ export const getEventTagsForEventIds = async (
         id: tag.id,
         name: tag.name,
         slug: tag.slug,
+        isSystem: tag.isSystem === true,
       },
     ]),
   );
