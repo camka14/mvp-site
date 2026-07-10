@@ -432,6 +432,9 @@ const writeLiveState = async (
       const values = ORGANIZATION_COLUMNS.map((column) => {
         if (column === 'ownerId') return liveOwnerId;
         if (column === 'updatedAt') return new Date();
+        if (column === 'coordinates' && organization[column] != null) {
+          return JSON.stringify(organization[column]);
+        }
         return organization[column];
       });
       await liveClient.query(
