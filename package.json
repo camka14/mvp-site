@@ -63,6 +63,8 @@
     "affiliate:org-readiness": "tsx scripts/audit-affiliate-org-readiness.ts",
     "affiliate:org-tags": "tsx scripts/sync-affiliate-organization-tags.ts",
     "affiliate:orgs:sync-live": "tsx scripts/sync-affiliate-organizations-to-live.ts",
+    "affiliate:imports:sync-live": "tsx scripts/sync-affiliate-import-state-to-live.ts",
+    "affiliate:facilities:backfill-coordinates": "tsx scripts/backfill-affiliate-facility-coordinates.ts",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
     "affiliate:logo-fit": "tsx scripts/preview-affiliate-org-logo-fit.ts",
     "affiliate:normalize-pricing": "tsx scripts/normalize-affiliate-event-pricing.ts",
