@@ -531,10 +531,19 @@ export type BoldSignSyncOperationStatusEnum = (typeof BoldSignSyncOperationStatu
 export const ModerationReportTargetTypeEnum = {
   CHAT_GROUP: 'CHAT_GROUP',
   EVENT: 'EVENT',
-  BLOCK_USER: 'BLOCK_USER'
+  BLOCK_USER: 'BLOCK_USER',
+  ORGANIZATION_REVIEW: 'ORGANIZATION_REVIEW'
 } as const
 
 export type ModerationReportTargetTypeEnum = (typeof ModerationReportTargetTypeEnum)[keyof typeof ModerationReportTargetTypeEnum]
+
+
+export const OrganizationReviewStatusEnum = {
+  PUBLISHED: 'PUBLISHED',
+  HIDDEN: 'HIDDEN'
+} as const
+
+export type OrganizationReviewStatusEnum = (typeof OrganizationReviewStatusEnum)[keyof typeof OrganizationReviewStatusEnum]
 
 
 export const ModerationReportStatusEnum = {

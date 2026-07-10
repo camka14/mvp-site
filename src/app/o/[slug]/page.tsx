@@ -18,6 +18,7 @@ import {
   publicOrganizationPath,
 } from '@/server/publicSearchSeo';
 import PublicProductGrid from './PublicProductGrid';
+import { getOrganizationReviewsPayload } from '@/server/organizationReviews';
 import styles from './PublicOrganizationPage.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -209,6 +210,7 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
   }
 
   const { organization, events, teams, rentals, products } = catalog;
+  const reviewPayload = await getOrganizationReviewsPayload(organization.id, null, { limit: 6 });
   const pageStyle = {
     '--org-primary': organization.brandPrimaryColor,
     '--org-accent': organization.brandAccentColor,
@@ -227,6 +229,13 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
           </div>
           <h1 className={styles.headline}>{organization.publicHeadline}</h1>
           <p className={styles.intro}>{organization.publicIntroText}</p>
+          {reviewPayload.summary.reviewCount > 0 ? (
+            <div className={styles.heroRating} aria-label={`${reviewPayload.summary.averageRating} out of 5 stars`}>
+              <span className={styles.heroRatingValue}>{reviewPayload.summary.averageRating?.toFixed(1)}</span>
+              <span className={styles.stars} aria-hidden="true">★★★★★</span>
+              <span>{reviewPayload.summary.reviewCount} {reviewPayload.summary.reviewCount === 1 ? 'review' : 'reviews'}</span>
+            </div>
+          ) : null}
           <div className={styles.heroActions}>
             <a href="#events" className={styles.button}>Find events</a>
             <a href="#rentals" className={styles.buttonSecondary}>Book rentals</a>
@@ -235,6 +244,38 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
       </section>
 
       <div className={styles.content}>
+        <section id="reviews" className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h2 className={styles.sectionTitle}>Reviews</h2>
+              <p className={styles.sectionText}>Feedback from people in the BracketIQ community.</p>
+            </div>
+            <Link href={`/organizations/${encodeURIComponent(organization.id)}/reviews`} className={styles.sectionAction}>
+              Write a review
+            </Link>
+          </div>
+          {reviewPayload.reviews.length ? (
+            <div className={styles.reviewGrid}>
+              {reviewPayload.reviews.map((review) => (
+                <article key={review.id} className={styles.review}>
+                  <div className={styles.reviewHeader}>
+                    {review.reviewer.profileImageUrl ? (
+                      <Image src={review.reviewer.profileImageUrl} alt="" width={44} height={44} className={styles.reviewAvatar} unoptimized />
+                    ) : <span className={styles.reviewAvatarFallback} aria-hidden="true">{review.reviewer.displayName.slice(0, 1)}</span>}
+                    <div>
+                      <p className={styles.reviewName}>{review.reviewer.displayName}</p>
+                      <p className={styles.reviewRating} aria-label={`${review.rating} out of 5 stars`}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</p>
+                    </div>
+                  </div>
+                  {review.body ? <p className={styles.reviewBody}>{review.body}</p> : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.empty}>No reviews yet.</p>
+          )}
+        </section>
+
         <section id="events" className={styles.section}>
           <div className={styles.sectionHeader}>
             <div>

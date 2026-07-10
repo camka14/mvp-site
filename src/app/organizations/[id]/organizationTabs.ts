@@ -1,5 +1,6 @@
 export type OrganizationTab =
   | 'overview'
+  | 'reviews'
   | 'events'
   | 'eventTemplates'
   | 'teams'
@@ -22,6 +23,7 @@ export type OrganizationCustomerRouteType = 'users' | 'teams';
 
 const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
   overview: '',
+  reviews: 'reviews',
   events: 'events',
   eventTemplates: 'event-templates',
   teams: 'teams',
@@ -38,6 +40,7 @@ const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
 
 const ORGANIZATION_TAB_ALIASES: Record<string, OrganizationTab> = {
   overview: 'overview',
+  reviews: 'reviews',
   events: 'events',
   eventTemplates: 'eventTemplates',
   'event-templates': 'eventTemplates',
@@ -180,6 +183,7 @@ export const buildOrganizationTabs = ({
 }: BuildOrganizationTabsParams): OrganizationTabOption[] => {
   const tabs: OrganizationTabOption[] = [
     { label: 'Overview', value: 'overview' },
+    { label: 'Reviews', value: 'reviews' },
     { label: 'Events', value: 'events' },
   ];
 

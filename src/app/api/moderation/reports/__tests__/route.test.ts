@@ -15,6 +15,7 @@ jest.mock('@/generated/prisma/client', () => ({
     CHAT_GROUP: 'CHAT_GROUP',
     EVENT: 'EVENT',
     BLOCK_USER: 'BLOCK_USER',
+    ORGANIZATION_REVIEW: 'ORGANIZATION_REVIEW',
   },
   Prisma: { JsonNull: null },
 }));
@@ -156,5 +157,48 @@ describe('POST /api/moderation/reports', () => {
     }));
     expect(json.removedChatIds).toEqual(['chat_1']);
     expect(json.hiddenEventIds).toEqual([]);
+  });
+
+  it('creates an organization review report without hiding unrelated content', async () => {
+    createModerationReportMock.mockResolvedValue({
+      id: 'report_review_1',
+      reporterUserId: 'user_1',
+      targetType: 'ORGANIZATION_REVIEW',
+      targetId: 'review_1',
+      category: 'report_organization_review',
+      dueAt: new Date('2026-07-10T12:00:00.000Z'),
+      createdAt: new Date('2026-07-09T12:00:00.000Z'),
+      updatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      metadata: { organizationId: 'org_1' },
+    });
+    prismaMock.$transaction.mockImplementation(async (callback: any) => callback({
+      organizationReviews: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'review_1',
+          reviewerUserId: 'user_2',
+          organizationId: 'org_1',
+        }),
+      },
+    }));
+
+    const response = await POST(new NextRequest('http://localhost/api/moderation/reports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        targetType: 'ORGANIZATION_REVIEW',
+        targetId: 'review_1',
+      }),
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createModerationReportMock).toHaveBeenCalledWith(expect.objectContaining({
+      reporterUserId: 'user_1',
+      targetType: 'ORGANIZATION_REVIEW',
+      targetId: 'review_1',
+      metadata: { organizationId: 'org_1' },
+    }));
+    expect(json.hiddenEventIds).toEqual([]);
+    expect(json.removedChatIds).toEqual([]);
   });
 });

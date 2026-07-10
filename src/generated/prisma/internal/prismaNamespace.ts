@@ -448,6 +448,7 @@ export const ModelName = {
   StripeAccounts: 'StripeAccounts',
   Events: 'Events',
   Organizations: 'Organizations',
+  OrganizationReviews: 'OrganizationReviews',
   Products: 'Products',
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
@@ -481,7 +482,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -5221,6 +5222,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    OrganizationReviews: {
+      payload: Prisma.$OrganizationReviewsPayload<ExtArgs>
+      fields: Prisma.OrganizationReviewsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationReviewsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationReviewsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationReviewsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationReviewsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationReviewsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationReviewsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationReviewsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationReviewsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationReviewsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationReviewsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationReviewsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationReviewsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationReviewsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationReviewsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationReviewsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationReviews>
+        }
+        groupBy: {
+          args: Prisma.OrganizationReviewsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationReviewsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationReviewsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationReviewsCountAggregateOutputType> | number
+        }
+      }
+    }
     Products: {
       payload: Prisma.$ProductsPayload<ExtArgs>
       fields: Prisma.ProductsFieldRefs
@@ -8103,6 +8178,22 @@ export const OrganizationsScalarFieldEnum = {
 export type OrganizationsScalarFieldEnum = (typeof OrganizationsScalarFieldEnum)[keyof typeof OrganizationsScalarFieldEnum]
 
 
+export const OrganizationReviewsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  reviewerUserId: 'reviewerUserId',
+  rating: 'rating',
+  body: 'body',
+  status: 'status',
+  hiddenAt: 'hiddenAt',
+  hiddenByUserId: 'hiddenByUserId'
+} as const
+
+export type OrganizationReviewsScalarFieldEnum = (typeof OrganizationReviewsScalarFieldEnum)[keyof typeof OrganizationReviewsScalarFieldEnum]
+
+
 export const ProductsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -9413,6 +9504,20 @@ export type ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$Pris
 
 
 /**
+ * Reference to a field of type 'OrganizationReviewStatusEnum'
+ */
+export type EnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationReviewStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationReviewStatusEnum[]'
+ */
+export type ListEnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationReviewStatusEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'ProductsPeriodEnum'
  */
 export type EnumProductsPeriodEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ProductsPeriodEnum'>
@@ -9711,6 +9816,7 @@ export type GlobalOmitConfig = {
   stripeAccounts?: Prisma.StripeAccountsOmit
   events?: Prisma.EventsOmit
   organizations?: Prisma.OrganizationsOmit
+  organizationReviews?: Prisma.OrganizationReviewsOmit
   products?: Prisma.ProductsOmit
   subscriptions?: Prisma.SubscriptionsOmit
   timeSlots?: Prisma.TimeSlotsOmit

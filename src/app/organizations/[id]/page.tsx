@@ -36,6 +36,7 @@ import FieldsTabContent from './FieldsTabContent';
 import RentalReservationCheckout from '@/components/rentals/RentalReservationCheckout';
 import OrganizationFinancePanel from './OrganizationFinancePanel';
 import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
+import OrganizationReviewsPanel from './OrganizationReviewsPanel';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
@@ -3629,6 +3630,13 @@ function OrganizationDetailContent() {
                       <Text size="sm" c="dimmed">No events yet.</Text>
                     )}
                   </Paper>
+                  <div style={{ marginTop: 16 }}>
+                    <OrganizationReviewsPanel
+                      organizationId={org.$id}
+                      mode="summary"
+                      onViewAll={() => handleOrganizationTabChange('reviews')}
+                    />
+                  </div>
                 </div>
                 <div>
                   {isOwner && (
@@ -3725,6 +3733,10 @@ function OrganizationDetailContent() {
                   )}
                 </div>
               </SimpleGrid>
+            )}
+
+            {activeTab === 'reviews' && org && (
+              <OrganizationReviewsPanel organizationId={org.$id} />
             )}
 
             {activeTab === 'events' && (

@@ -115,6 +115,7 @@ export const ModelName = {
   StripeAccounts: 'StripeAccounts',
   Events: 'Events',
   Organizations: 'Organizations',
+  OrganizationReviews: 'OrganizationReviews',
   Products: 'Products',
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
@@ -1660,6 +1661,22 @@ export const OrganizationsScalarFieldEnum = {
 } as const
 
 export type OrganizationsScalarFieldEnum = (typeof OrganizationsScalarFieldEnum)[keyof typeof OrganizationsScalarFieldEnum]
+
+
+export const OrganizationReviewsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  reviewerUserId: 'reviewerUserId',
+  rating: 'rating',
+  body: 'body',
+  status: 'status',
+  hiddenAt: 'hiddenAt',
+  hiddenByUserId: 'hiddenByUserId'
+} as const
+
+export type OrganizationReviewsScalarFieldEnum = (typeof OrganizationReviewsScalarFieldEnum)[keyof typeof OrganizationReviewsScalarFieldEnum]
 
 
 export const ProductsScalarFieldEnum = {

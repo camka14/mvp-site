@@ -18,6 +18,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
     ]);
   });
@@ -31,6 +32,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
       { label: 'Facilities', value: 'fields' },
     ]);
@@ -44,6 +46,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: true,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Facilities', value: 'fields' },
@@ -61,6 +64,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Customers', value: 'users' },
@@ -87,6 +91,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Staff', value: 'staff' },
@@ -104,6 +109,7 @@ describe('buildOrganizationTabs', () => {
       hasProducts: false,
     })).toEqual([
       { label: 'Overview', value: 'overview' },
+      { label: 'Reviews', value: 'reviews' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
       { label: 'Finance', value: 'finance' },
@@ -114,11 +120,13 @@ describe('buildOrganizationTabs', () => {
 
   it('maps organization tabs to shareable path segments', () => {
     expect(buildOrganizationTabPath('org_1', 'overview')).toBe('/organizations/org_1');
+    expect(buildOrganizationTabPath('org_1', 'reviews')).toBe('/organizations/org_1/reviews');
     expect(buildOrganizationTabPath('org_1', 'finance')).toBe('/organizations/org_1/finance');
     expect(buildOrganizationTabPath('org_1', 'users')).toBe('/organizations/org_1/customers');
     expect(buildOrganizationTabPath('org_1', 'fields')).toBe('/organizations/org_1/facilities');
     expect(buildOrganizationTabPath('org_1', 'publicPage')).toBe('/organizations/org_1/public-page');
     expect(organizationTabFromPathSegment('customers')).toBe('users');
+    expect(organizationTabFromPathSegment('reviews')).toBe('reviews');
     expect(organizationTabFromPathSegment('event-templates')).toBe('eventTemplates');
     expect(organizationTabFromPathSegment('facilities')).toBe('fields');
     expect(organizationTabFromPathSegment('fields')).toBe('fields');

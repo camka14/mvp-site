@@ -16,6 +16,7 @@ const reportSchema = z.object({
   targetType: z.enum([
     ModerationReportTargetTypeEnum.CHAT_GROUP,
     ModerationReportTargetTypeEnum.EVENT,
+    ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW,
   ]),
   targetId: z.string().trim().min(1),
   category: z.string().trim().max(120).optional(),
@@ -48,6 +49,40 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      if (parsed.data.targetType === ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW) {
+        const review = await tx.organizationReviews.findUnique({
+          where: { id: parsed.data.targetId },
+          select: { id: true, reviewerUserId: true, organizationId: true },
+        });
+        if (!review) {
+          throw new Response('Not found', { status: 404 });
+        }
+        if (review.reviewerUserId === session.userId) {
+          throw new Response('You cannot report your own review.', { status: 400 });
+        }
+
+        const report = await createModerationReport({
+          reporterUserId: session.userId,
+          targetType: ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW,
+          targetId: review.id,
+          category: parsed.data.category ?? 'report_organization_review',
+          notes: parsed.data.notes,
+          metadata: asJsonValue({
+            ...(parsed.data.metadata && typeof parsed.data.metadata === 'object'
+              ? parsed.data.metadata as Record<string, unknown>
+              : {}),
+            organizationId: review.organizationId,
+          }),
+          client: tx,
+        });
+
+        return {
+          report,
+          hiddenEventIds: [] as string[],
+          removedChatIds: [] as string[],
+        };
+      }
+
       if (parsed.data.targetType === ModerationReportTargetTypeEnum.EVENT) {
         const [event, actor] = await Promise.all([
           tx.events.findUnique({

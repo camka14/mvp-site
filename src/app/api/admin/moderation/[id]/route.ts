@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { ModerationReportStatusEnum } from '@/generated/prisma/client';
+import { ModerationReportStatusEnum, ModerationReportTargetTypeEnum, OrganizationReviewStatusEnum } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     const report = await prisma.moderationReport.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, targetType: true, targetId: true },
     });
     if (!report) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -50,6 +50,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt: now,
       },
     });
+
+    if (
+      nextStatus === ModerationReportStatusEnum.ACTIONED
+      && report.targetType === ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW
+    ) {
+      await prisma.organizationReviews.updateMany({
+        where: { id: report.targetId },
+        data: {
+          status: OrganizationReviewStatusEnum.HIDDEN,
+          hiddenAt: now,
+          hiddenByUserId: session.userId,
+          updatedAt: now,
+        },
+      });
+    }
 
     return NextResponse.json(withLegacyFields(updated), { status: 200 });
   } catch (error) {

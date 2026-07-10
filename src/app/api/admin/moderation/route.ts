@@ -63,7 +63,10 @@ export async function GET(req: NextRequest) {
     const reportedEventIds = reports
       .filter((report) => report.targetType === ModerationReportTargetTypeEnum.EVENT)
       .map((report) => report.targetId);
-    const [reporters, reviewers, chatOwners, eventOwners] = await Promise.all([
+    const reportedReviewIds = reports
+      .filter((report) => report.targetType === ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW)
+      .map((report) => report.targetId);
+    const [reporters, reviewers, chatOwners, eventOwners, organizationReviews] = await Promise.all([
       reporterIds.length > 0
         ? prisma.userData.findMany({
             where: { id: { in: reporterIds } },
@@ -106,6 +109,12 @@ export async function GET(req: NextRequest) {
             },
           })
         : Promise.resolve([]),
+      reportedReviewIds.length > 0
+        ? prisma.organizationReviews.findMany({
+            where: { id: { in: reportedReviewIds } },
+            select: { id: true, reviewerUserId: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const reportersById = new Map(
@@ -116,6 +125,7 @@ export async function GET(req: NextRequest) {
     );
     const chatOwnersById = new Map(chatOwners.map((chat) => [chat.id, chat.hostId]));
     const eventOwnersById = new Map(eventOwners.map((event) => [event.id, event.hostId]));
+    const reviewOwnersById = new Map(organizationReviews.map((review) => [review.id, review.reviewerUserId]));
     const now = Date.now();
 
     return NextResponse.json(
@@ -128,6 +138,8 @@ export async function GET(req: NextRequest) {
             ? chatOwnersById.get(report.targetId) ?? null
             : report.targetType === ModerationReportTargetTypeEnum.EVENT
               ? eventOwnersById.get(report.targetId) ?? null
+              : report.targetType === ModerationReportTargetTypeEnum.ORGANIZATION_REVIEW
+                ? reviewOwnersById.get(report.targetId) ?? null
               : report.targetType === ModerationReportTargetTypeEnum.BLOCK_USER
                 ? report.targetId
                 : null,

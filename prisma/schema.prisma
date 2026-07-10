@@ -365,6 +365,12 @@ enum ModerationReportTargetTypeEnum {
   CHAT_GROUP
   EVENT
   BLOCK_USER
+  ORGANIZATION_REVIEW
+}
+
+enum OrganizationReviewStatusEnum {
+  PUBLISHED
+  HIDDEN
 }
 
 enum ModerationReportStatusEnum {
@@ -2045,6 +2051,23 @@ model Organizations {
   @@index([verificationStatus])
   @@index([verificationReviewStatus])
   @@index([status])
+}
+
+model OrganizationReviews {
+  id              String                       @id
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  organizationId  String
+  reviewerUserId  String
+  rating          Int
+  body            String?
+  status          OrganizationReviewStatusEnum @default(PUBLISHED)
+  hiddenAt        DateTime?
+  hiddenByUserId  String?
+
+  @@unique([organizationId, reviewerUserId])
+  @@index([organizationId, status, updatedAt])
+  @@index([reviewerUserId])
 }
 
 model Products {

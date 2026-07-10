@@ -338,6 +338,11 @@ export type Events = Prisma.EventsModel
  */
 export type Organizations = Prisma.OrganizationsModel
 /**
+ * Model OrganizationReviews
+ *
+ */
+export type OrganizationReviews = Prisma.OrganizationReviewsModel
+/**
  * Model Products
  *
  */
