@@ -1058,6 +1058,9 @@ export class EventBuilder {
   private assignTeamOfficials(matches: Match[]): void {
     const teams = Object.values(this.event.teams).filter((team) => team.captainId.trim().length > 0);
     const unassigned = [...teams];
+    const divisionById = new Map(
+      this.schedulingDivisions().map((division) => [division.id, division]),
+    );
     const ordered = [...matches].sort((a, b) => {
       const startDiff = a.start.getTime() - b.start.getTime();
       if (startDiff !== 0) return startDiff;
@@ -1068,8 +1071,22 @@ export class EventBuilder {
     for (const match of ordered) {
       this.attachMatchToParticipants(match);
       if (match.teamOfficial || !match.division || !(match.team1 && match.team2)) continue;
-      const availableTeams = this.schedule.freeParticipants(match.division, match.start, match.end)
-        .filter((participant) => participant instanceof Team && participant.captainId.trim().length > 0) as Team[];
+      const candidateDivisionIds = new Set([
+        match.division.id,
+        ...match.division.playoffPlacementDivisionIds,
+      ]);
+      const candidateDivisions = Array.from(candidateDivisionIds)
+        .map((divisionId) => divisionById.get(divisionId))
+        .filter((division): division is Division => Boolean(division));
+      const availableTeamsById = new Map<string, Team>();
+      for (const division of candidateDivisions) {
+        const freeTeams = this.schedule.freeParticipants(division, match.start, match.end)
+          .filter((participant) => participant instanceof Team && participant.captainId.trim().length > 0) as Team[];
+        for (const team of freeTeams) {
+          availableTeamsById.set(team.id, team);
+        }
+      }
+      const availableTeams = Array.from(availableTeamsById.values());
       const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
       let candidate: Team | null = null;
       for (let i = 0; i < unassigned.length; i += 1) {

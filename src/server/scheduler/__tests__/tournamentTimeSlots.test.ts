@@ -436,10 +436,7 @@ describe('tournament scheduling (time slots)', () => {
     };
     poolB.leagueConfig = { ...poolA.leagueConfig };
     const field = buildField(bracketDivision);
-    const teams = {
-      ...buildTeamsForDivision('single_pool_a', 2, poolA),
-      ...buildTeamsForDivision('single_pool_b', 2, poolB),
-    };
+    const teams = buildTeams(4, bracketDivision);
     const start = new Date(2026, 0, 3, 9, 0, 0);
     const timeSlot = new TimeSlot({
       id: 'slot_single_pool_bracket',
@@ -467,7 +464,8 @@ describe('tournament scheduling (time slots)', () => {
       playoffTeamCount: 4,
       fields: { [field.id]: field },
       timeSlots: [timeSlot],
-      doTeamsOfficiate: false,
+      doTeamsOfficiate: true,
+      teamOfficialsMaySwap: true,
       doubleElimination: true,
       winnerSetCount: 3,
       loserSetCount: 1,
@@ -488,6 +486,11 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches.some((match) => (
       !match.losersBracket && match.end.getTime() - match.start.getTime() === 60 * 60 * 1000
     ))).toBe(true);
+    const poolMatches = scheduled.matches.filter((match) => (
+      match.division.id === poolA.id || match.division.id === poolB.id
+    ));
+    expect(poolMatches.length).toBeGreaterThan(0);
+    expect(poolMatches.every((match) => match.teamOfficial?.division?.id === bracketDivision.id)).toBe(true);
     expect(scheduled.matches.length).toBeGreaterThan(5);
   });
 
