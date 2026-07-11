@@ -36,6 +36,9 @@ const nextConfig = {
   allowedDevOrigins,
   pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
   poweredByHeader: false,
+  // OBS Browser Sources load the local development server too; suppress Next's
+  // dev toolbar so it can never become part of the broadcast frame.
+  devIndicators: false,
   transpilePackages: ['date-fns'],
   experimental: {
     optimizePackageImports: ['date-fns'],
