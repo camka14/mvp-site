@@ -1328,10 +1328,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Forbidden', { status: 403 });
       }
 
-      const matchUpdate = normalizeLegacyOfficialCheckIn(parsed.data, {
+      let matchUpdate: z.infer<typeof updateSchema> = normalizeLegacyOfficialCheckIn(parsed.data, {
         isHostOrAdmin,
         isOfficial,
       });
+
+      // v1.6.14 mobile serializes its cached match snapshot with a normal,
+      // non-final set confirmation. The snapshot is frozen by the server when
+      // the match starts, so an official must be able to confirm the set
+      // without that stale client field being interpreted as a policy edit.
+      // Keep this compatibility path narrow and never apply the submitted
+      // snapshot; all score and set validation still uses the persisted rules.
+      const isLegacyMobileSetConfirmation = (
+        !isHostOrAdmin
+        && isOfficial
+        && matchUpdate.officialCheckIn === undefined
+        && matchUpdate.officialCheckedIn === true
+        && matchUpdate.matchPolicy === undefined
+        && matchUpdate.matchRulesSnapshot !== null
+        && hasOwn(matchUpdate, 'matchRulesSnapshot')
+        && Array.isArray(matchUpdate.segmentOperations)
+        && matchUpdate.segmentOperations.some((operation) => (
+          String(operation.status ?? '').trim().toUpperCase() === 'COMPLETE'
+          || Boolean(operation.winnerEventTeamId)
+        ))
+      );
+      if (isLegacyMobileSetConfirmation) {
+        const { matchRulesSnapshot: _staleSnapshot, ...withoutSnapshot } = matchUpdate;
+        matchUpdate = withoutSnapshot;
+      }
 
       if (matchUpdate.officialCheckIn) {
         assertWindowOpen(

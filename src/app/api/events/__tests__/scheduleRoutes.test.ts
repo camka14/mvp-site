@@ -151,6 +151,120 @@ const patchRequest = (url: string, body: any) => new NextRequest(url, {
   body: JSON.stringify(body),
 });
 
+const buildOfficialMobileSetConfirmation = () => {
+  const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+  const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
+  const persistedSnapshot = {
+    scoringModel: 'SETS',
+    segmentCount: 3,
+    segmentLabel: 'Set',
+    setPointTargets: [21, 21, 15],
+    pointIncidentRequiresParticipant: false,
+  };
+  const event = {
+    id: 'event_1',
+    eventType: 'LEAGUE',
+    hostId: 'host_1',
+    usesSets: true,
+    pointsToVictory: [21, 21, 15],
+    resolvedMatchRules: persistedSnapshot,
+    matches: {
+      match_1: {
+        id: 'match_1',
+        eventId: 'event_1',
+        team1,
+        team2,
+        status: 'IN_PROGRESS',
+        actualStart: '2026-04-19T10:00:00.000Z',
+        officialCheckedIn: true,
+        team1Points: [21, 0, 0],
+        team2Points: [19, 0, 0],
+        setResults: [0, 0, 0],
+        segments: [
+          {
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_1: 21, team_2: 19 },
+            winnerEventTeamId: null,
+          },
+          {
+            id: 'match_1_segment_2',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 2,
+            status: 'NOT_STARTED',
+            scores: { team_1: 0, team_2: 0 },
+            winnerEventTeamId: null,
+          },
+          {
+            id: 'match_1_segment_3',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 3,
+            status: 'NOT_STARTED',
+            scores: { team_1: 0, team_2: 0 },
+            winnerEventTeamId: null,
+          },
+        ],
+        incidents: [],
+        matchRulesSnapshot: persistedSnapshot,
+        resolvedMatchRules: persistedSnapshot,
+      },
+    },
+    teams: { team_1: team1, team_2: team2 },
+    officials: [{ id: 'official_1' }],
+    officialPositions: [],
+    eventOfficials: [],
+    divisions: [],
+    fields: {},
+    timeSlots: [],
+  };
+  const mobileSnapshot = {
+    ...persistedSnapshot,
+    segmentCount: 1,
+    setPointTargets: [15],
+  };
+
+  return {
+    event,
+    persistedSnapshot,
+    mobileConfirmation: {
+      team1Points: [21, 0, 0],
+      team2Points: [19, 0, 0],
+      setResults: [1, 0, 0],
+      officialCheckedIn: true,
+      matchRulesSnapshot: mobileSnapshot,
+      segmentOperations: [
+        {
+          id: 'match_1_segment_1',
+          sequence: 1,
+          status: 'COMPLETE',
+          scores: { team_1: 21, team_2: 19 },
+          winnerEventTeamId: 'team_1',
+          endedAt: '2026-04-19T10:30:00.000Z',
+        },
+        {
+          id: 'match_1_segment_2',
+          sequence: 2,
+          status: 'NOT_STARTED',
+          scores: { team_1: 0, team_2: 0 },
+          winnerEventTeamId: null,
+        },
+        {
+          id: 'match_1_segment_3',
+          sequence: 3,
+          status: 'NOT_STARTED',
+          scores: { team_1: 0, team_2: 0 },
+          winnerEventTeamId: null,
+        },
+      ],
+    },
+  };
+};
+
 describe('schedule routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1425,6 +1539,92 @@ describe('schedule routes', () => {
     const savedMatch = saveMatchesMock.mock.calls[0][1][0];
     expect(savedMatch.winnerEventTeamId).toBeNull();
     expect(finalizeMatchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a legacy mobile set confirmation without applying its cached rules snapshot', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const { event, persistedSnapshot, mobileConfirmation } = buildOfficialMobileSetConfirmation();
+    loadEventWithRelationsMock.mockResolvedValue(event);
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', mobileConfirmation),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.matchRulesSnapshot).toEqual(persistedSnapshot);
+    expect(savedMatch.segments[0]).toEqual(expect.objectContaining({
+      status: 'COMPLETE',
+      scores: { team_1: 21, team_2: 19 },
+      winnerEventTeamId: 'team_1',
+    }));
+  });
+
+  it('still rejects an explicit match-policy change from a non-host official', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const { event, mobileConfirmation } = buildOfficialMobileSetConfirmation();
+    loadEventWithRelationsMock.mockResolvedValue(event);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        ...mobileConfirmation,
+        matchPolicy: {
+          scoringModel: 'SETS',
+          segmentCount: 1,
+          setPointTargets: [15],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
+  it('still rejects a cached rules snapshot when no segment is being confirmed', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const { event, mobileConfirmation } = buildOfficialMobileSetConfirmation();
+    loadEventWithRelationsMock.mockResolvedValue(event);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        officialCheckedIn: true,
+        matchRulesSnapshot: mobileConfirmation.matchRulesSnapshot,
+        segmentOperations: [
+          {
+            id: 'match_1_segment_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_1: 21, team_2: 19 },
+            winnerEventTeamId: null,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('rejects set completion when the submitted score passed the first valid win-by-two score', async () => {
