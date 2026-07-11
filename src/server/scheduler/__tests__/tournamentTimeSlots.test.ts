@@ -385,6 +385,101 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches.filter((match) => match.division.id === bracketDivision.id)).toHaveLength(3);
   });
 
+  it('uses event-level double elimination for single-division pool play', () => {
+    const bracketDivision = new Division(
+      'single_pool_bracket',
+      'Open',
+      [],
+      null,
+      4,
+      4,
+      'PLAYOFF',
+    );
+    bracketDivision.playoffConfig = {
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      winnerBracketPointsToVictory: [21],
+      loserBracketPointsToVictory: [21],
+      prize: '',
+      fieldCount: 1,
+      restTimeMinutes: 0,
+      matchDurationMinutes: 60,
+    };
+    const poolA = new Division(
+      'single_pool_bracket_pool_a',
+      'Pool A',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [bracketDivision.id, bracketDivision.id],
+    );
+    const poolB = new Division(
+      'single_pool_bracket_pool_b',
+      'Pool B',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [bracketDivision.id, bracketDivision.id],
+    );
+    poolA.leagueConfig = {
+      gamesPerOpponent: 1,
+      usesSets: false,
+      matchDurationMinutes: 30,
+      restTimeMinutes: 0,
+    };
+    poolB.leagueConfig = { ...poolA.leagueConfig };
+    const field = buildField(bracketDivision);
+    const teams = {
+      ...buildTeamsForDivision('single_pool_a', 2, poolA),
+      ...buildTeamsForDivision('single_pool_b', 2, poolB),
+    };
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const timeSlot = new TimeSlot({
+      id: 'slot_single_pool_bracket',
+      dayOfWeek: 5,
+      startDate: start,
+      repeating: true,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 22 * 60,
+      fieldIds: [field.id],
+      divisions: [bracketDivision],
+    });
+    const tournament = new Tournament({
+      id: 'single_division_pool_double_elimination',
+      name: 'Single Division Pool Tournament',
+      start,
+      end: new Date(2026, 0, 3, 22, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      singleDivision: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      divisions: [poolA, poolB],
+      playoffDivisions: [bracketDivision],
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      fields: { [field.id]: field },
+      timeSlots: [timeSlot],
+      doTeamsOfficiate: false,
+      doubleElimination: true,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+
+    expect(scheduled.matches.some((match) => match.losersBracket)).toBe(true);
+    expect(scheduled.matches.length).toBeGreaterThan(5);
+  });
+
   it('removes stale generated placeholders before rebuilding tournament pool play', () => {
     const bracketDivision = new Division(
       'tournament_bracket_stale',

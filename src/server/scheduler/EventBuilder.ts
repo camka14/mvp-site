@@ -727,7 +727,9 @@ export class EventBuilder {
 
   private resolvePlayoffTournamentConfig(division?: Division): PlayoffDivisionConfig {
     const fallbackDivision = division ?? (!this.useSplitPlayoffDivisions ? this.defaultDivision() : undefined);
-    const divisionConfig = fallbackDivision?.playoffConfig ?? null;
+    // Single-division events own their bracket settings at the event level. A
+    // stale generated division config must not override those settings.
+    const divisionConfig = this.event.singleDivision ? null : fallbackDivision?.playoffConfig ?? null;
     const normalizePositiveInt = (value: unknown, fallback: number): number => {
       const parsed = typeof value === 'number' ? value : Number(value);
       if (!Number.isFinite(parsed)) {
