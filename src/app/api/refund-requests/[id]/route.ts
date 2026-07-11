@@ -9,6 +9,7 @@ import {
   applyRefundAttempts,
   buildTeamRegistrationRefundEventId,
   createStripeRefundAttempts,
+  isRefundScopeSnapshotValid,
   resolveRefundablePaymentsForRequest,
   summarizeRefundAttempts,
   type RefundRequestRow,
@@ -21,6 +22,29 @@ const updateSchema = z.object({
   status: z.enum(['WAITING', 'APPROVED', 'REJECTED']),
 }).passthrough();
 
+const refundRequestResponseSelect = {
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  eventId: true,
+  userId: true,
+  requestedByUserId: true,
+  hostId: true,
+  teamId: true,
+  organizationId: true,
+  reason: true,
+  status: true,
+  slotId: true,
+  occurrenceDate: true,
+  billIds: true,
+  paymentIds: true,
+  requestedAmountCents: true,
+  currency: true,
+  policyDecision: true,
+  scopeVersion: true,
+  scopeHash: true,
+} as const;
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -32,16 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const existing = await prisma.refundRequests.findUnique({
     where: { id },
-    select: {
-      id: true,
-      eventId: true,
-      userId: true,
-      hostId: true,
-      teamId: true,
-      organizationId: true,
-      reason: true,
-      status: true,
-    },
+    select: refundRequestResponseSelect,
   });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -105,7 +120,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const now = new Date();
   let stripeRefundAttempts: StripeRefundAttempt[] = [];
   if (parsed.data.status === 'APPROVED') {
+    if (!isRefundScopeSnapshotValid(existing as RefundRequestRow)) {
+      return NextResponse.json(
+        { error: 'Refund scope is missing or invalid. Ask the customer to submit a new request.' },
+        { status: 409 },
+      );
+    }
     const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, existing as RefundRequestRow);
+    const resolvedPaymentIds = new Set(refundablePayments.map((payment) => payment.id));
+    const resolvedBillIds = new Set(refundablePayments.map((payment) => payment.billId));
+    const currentRefundableAmountCents = refundablePayments.reduce(
+      (total, payment) => total + payment.refundableAmountCents,
+      0,
+    );
+    const hasScopeDrift = existing.paymentIds.some((paymentId) => !resolvedPaymentIds.has(paymentId))
+      || existing.billIds.some((billId) => !resolvedBillIds.has(billId))
+      || currentRefundableAmountCents !== existing.requestedAmountCents;
+    if (hasScopeDrift) {
+      return NextResponse.json(
+        { error: 'Refund scope changed after the request was submitted. Review a new request before refunding.' },
+        { status: 409 },
+      );
+    }
     try {
       stripeRefundAttempts = await createStripeRefundAttempts({
         request: existing as RefundRequestRow,
@@ -125,6 +161,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updated = await tx.refundRequests.update({
       where: { id },
       data: { status: parsed.data.status, updatedAt: now },
+      select: refundRequestResponseSelect,
     });
 
     const updatedPayments = await applyRefundAttempts(tx, stripeRefundAttempts, now);

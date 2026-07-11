@@ -8,6 +8,11 @@ const prismaMock = {
     deleteMany: jest.fn(),
     upsert: jest.fn(),
   },
+  matchOperationReceipts: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    createMany: jest.fn(),
+  },
   teams: {
     create: jest.fn(),
     deleteMany: jest.fn(),
@@ -66,6 +71,7 @@ const sendEmailMock = jest.fn();
 const sendAdminEventCreatedNotificationMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
+let matchOperationReceiptRows: Array<Record<string, any>> = [];
 
 const mockNormalizeStartedMatches = (event: any) => {
   if (event?.matches && typeof event.matches === 'object') {
@@ -155,6 +161,32 @@ describe('schedule routes', () => {
     jest.clearAllMocks();
     applyPersistentAutoLockMock.mockReturnValue(false);
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    matchOperationReceiptRows = [];
+    prismaMock.matchOperationReceipts.findMany.mockImplementation(async ({ where }: any) => {
+      const operationIds = where?.clientOperationId?.in ?? [];
+      return matchOperationReceiptRows.filter((row) => operationIds.includes(row.clientOperationId));
+    });
+    prismaMock.matchOperationReceipts.findFirst.mockImplementation(async ({ where }: any) => {
+      const minimumSequence = where?.clientSequence?.gte;
+      return matchOperationReceiptRows.find((row) => (
+        row.matchId === where?.matchId
+        && row.actorUserId === where?.actorUserId
+        && row.clientDeviceId === where?.clientDeviceId
+        && typeof minimumSequence === 'number'
+        && row.clientSequence >= minimumSequence
+      )) ?? null;
+    });
+    prismaMock.matchOperationReceipts.createMany.mockImplementation(async ({ data }: any) => {
+      let count = 0;
+      for (const row of data as Array<Record<string, any>>) {
+        if (matchOperationReceiptRows.some((existing) => existing.clientOperationId === row.clientOperationId)) {
+          continue;
+        }
+        matchOperationReceiptRows.push({ ...row });
+        count += 1;
+      }
+      return { count };
+    });
     prismaMock.organizations.findUnique.mockResolvedValue(null);
     persistScheduledRosterTeamsMock.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
@@ -961,6 +993,86 @@ describe('schedule routes', () => {
         sourceDevice: 'WEAR_OS',
       },
     });
+  });
+
+  it('returns the canonical match without reapplying a retried client operation', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: ['player_2'] };
+    const event = {
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      resolvedMatchRules: { scoringModel: 'POINTS_ONLY', segmentCount: 1 },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [0],
+          team2Points: [0],
+          setResults: [0],
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'NOT_STARTED',
+            scores: { team_1: 0, team_2: 0 },
+          }],
+          incidents: [],
+        },
+      },
+      teams: { team_1: team1, team_2: team2 },
+      officials: [],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    };
+    loadEventWithRelationsMock.mockResolvedValue(event);
+    serializeMatchesLegacyMock.mockImplementation((matches: Array<{ id: string }>) => (
+      matches.map((match) => ({ $id: match.id }))
+    ));
+    const body = {
+      clientOperationId: 'phone:match_1:10',
+      clientDeviceId: 'phone',
+      clientSequence: 10,
+      sourceDevice: 'PHONE',
+      segmentOperations: [{
+        id: 'match_1_segment_1',
+        sequence: 1,
+        status: 'IN_PROGRESS',
+        scores: { team_1: 1, team_2: 0 },
+        clientOperationId: 'phone:match_1:10',
+        clientDeviceId: 'phone',
+        clientSequence: 10,
+        sourceDevice: 'PHONE',
+      }],
+    };
+
+    const first = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', body),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+    const retry = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', body),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(first.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual(expect.objectContaining({ replayed: true, match: { $id: 'match_1' } }));
+    expect(saveMatchesMock).toHaveBeenCalledTimes(1);
+    expect(matchOperationReceiptRows).toHaveLength(1);
   });
 
   it('allows an event team member to swap into official when enabled', async () => {
@@ -1831,17 +1943,29 @@ describe('schedule routes', () => {
     });
     serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', team1Points: [1, 0], incidents: [] }]);
 
+    const scorePayload = {
+      segmentId: 'match_1_segment_1',
+      sequence: 1,
+      eventTeamId: 'team_1',
+      points: 1,
+      clientOperationId: 'phone:match_1:20',
+      clientDeviceId: 'phone',
+      clientSequence: 20,
+      sourceDevice: 'PHONE',
+    };
     const res = await matchScorePost(
-      jsonRequest('http://localhost/api/events/event_1/matches/match_1/score', {
-        segmentId: 'match_1_segment_1',
-        sequence: 1,
-        eventTeamId: 'team_1',
-        points: 1,
-      }),
+      jsonRequest('http://localhost/api/events/event_1/matches/match_1/score', scorePayload),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+    const retry = await matchScorePost(
+      jsonRequest('http://localhost/api/events/event_1/matches/match_1/score', scorePayload),
       { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
     );
 
     expect(res.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual(expect.objectContaining({ replayed: true }));
+    expect(saveMatchesMock).toHaveBeenCalledTimes(1);
     const savedMatch = saveMatchesMock.mock.calls[0][1][0];
     expect(savedMatch.segments[0]).toEqual(expect.objectContaining({
       status: 'IN_PROGRESS',

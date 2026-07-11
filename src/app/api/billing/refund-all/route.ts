@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import {
+  buildRefundScopeSnapshot,
+  isRefundScopeSnapshotValid,
+  resolveRefundablePaymentsForRequest,
+  type RefundRequestRow,
+} from '@/server/refunds/refundExecution';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +26,27 @@ const normalizeId = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
 };
+
+const refundRequestScopeSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  requestedByUserId: true,
+  hostId: true,
+  teamId: true,
+  organizationId: true,
+  reason: true,
+  status: true,
+  slotId: true,
+  occurrenceDate: true,
+  billIds: true,
+  paymentIds: true,
+  requestedAmountCents: true,
+  currency: true,
+  policyDecision: true,
+  scopeVersion: true,
+  scopeHash: true,
+} as const;
 
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
@@ -60,6 +87,7 @@ export async function POST(req: NextRequest) {
         managerId: true,
         headCoachId: true,
         coachIds: true,
+        playerIds: true,
       },
     });
     if (!team) {
@@ -78,10 +106,10 @@ export async function POST(req: NextRequest) {
         teamId: normalizedTeamId,
         status: 'WAITING',
       },
-      select: { id: true },
+      select: refundRequestScopeSelect,
     });
 
-    if (existingWaitingRequest) {
+    if (existingWaitingRequest && isRefundScopeSnapshotValid(existingWaitingRequest as RefundRequestRow)) {
       return NextResponse.json({
         success: true,
         emailSent: false,
@@ -90,15 +118,51 @@ export async function POST(req: NextRequest) {
       }, { status: 200 });
     }
 
+    const refundRequest: RefundRequestRow = {
+      id: crypto.randomUUID(),
+      eventId: event.id,
+      userId: session.userId,
+      requestedByUserId: session.userId,
+      hostId: event.hostId,
+      organizationId: event.organizationId,
+      teamId: normalizedTeamId,
+      reason: normalizeId(parsed.data.reason) ?? 'team_refund_requested',
+      status: 'WAITING',
+      authorizedPayerUserIds: Array.from(new Set([
+        session.userId,
+        normalizeId(team.captainId),
+        normalizeId(team.managerId),
+        normalizeId(team.headCoachId),
+        ...(Array.isArray(team.coachIds) ? team.coachIds : []),
+        ...(Array.isArray(team.playerIds) ? team.playerIds : []),
+      ].filter((id): id is string => Boolean(id)))),
+    };
+    const payments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+    if (!payments.length) {
+      return NextResponse.json(
+        { error: 'No refundable payment found for this team.' },
+        { status: 409 },
+      );
+    }
+    const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
+
     const created = await prisma.refundRequests.create({
       data: {
-        id: crypto.randomUUID(),
-        eventId: event.id,
-        userId: session.userId,
-        hostId: event.hostId,
-        organizationId: event.organizationId,
-        teamId: normalizedTeamId,
-        reason: normalizeId(parsed.data.reason) ?? 'team_refund_requested',
+        id: refundRequest.id,
+        eventId: refundRequest.eventId,
+        userId: refundRequest.userId,
+        requestedByUserId: refundRequest.requestedByUserId,
+        hostId: refundRequest.hostId,
+        organizationId: refundRequest.organizationId,
+        teamId: refundRequest.teamId,
+        billIds: scope.billIds,
+        paymentIds: scope.paymentIds,
+        requestedAmountCents: scope.requestedAmountCents,
+        currency: scope.currency,
+        policyDecision: scope.policyDecision,
+        scopeVersion: scope.scopeVersion,
+        scopeHash: scope.scopeHash,
+        reason: refundRequest.reason,
         status: 'WAITING',
         createdAt: now,
         updatedAt: now,
@@ -146,31 +210,63 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, emailSent: false }, { status: 200 });
   }
 
-  // Avoid creating duplicate refund requests for the same event/user pair.
+  // Only a request with a verified immutable scope can block a new refund
+  // request. Older rows without a scope were never safe to approve and must
+  // not prevent a customer from submitting a fully scoped replacement.
   const existing = await prisma.refundRequests.findMany({
     where: {
       eventId: event.id,
       userId: { in: targets },
       teamId: null,
+      status: { in: ['WAITING', 'APPROVED'] },
     },
-    select: { userId: true },
+    select: refundRequestScopeSelect,
   });
-  const existingSet = new Set(existing.map((row) => row.userId));
+  const existingSet = new Set(
+    existing
+      .filter((row) => isRefundScopeSnapshotValid(row as RefundRequestRow))
+      .map((row) => row.userId),
+  );
   const toCreate = targets.filter((id) => !existingSet.has(id));
 
-  if (toCreate.length) {
-    await prisma.refundRequests.createMany({
-      data: toCreate.map((userId) => ({
-        id: crypto.randomUUID(),
-        eventId: event.id,
-        userId,
-        hostId: event.hostId,
-        organizationId: event.organizationId,
-        reason: 'event_deleted_by_host',
+  for (const userId of toCreate) {
+    const refundRequest: RefundRequestRow = {
+      id: crypto.randomUUID(),
+      eventId: event.id,
+      userId,
+      requestedByUserId: session.userId,
+      hostId: event.hostId,
+      organizationId: event.organizationId,
+      teamId: null,
+      reason: 'event_deleted_by_host',
+      status: 'WAITING',
+    };
+    const payments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+    if (!payments.length) {
+      continue;
+    }
+    const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
+    await prisma.refundRequests.create({
+      data: {
+        id: refundRequest.id,
+        eventId: refundRequest.eventId,
+        userId: refundRequest.userId,
+        requestedByUserId: refundRequest.requestedByUserId,
+        hostId: refundRequest.hostId,
+        organizationId: refundRequest.organizationId,
+        teamId: null,
+        billIds: scope.billIds,
+        paymentIds: scope.paymentIds,
+        requestedAmountCents: scope.requestedAmountCents,
+        currency: scope.currency,
+        policyDecision: scope.policyDecision,
+        scopeVersion: scope.scopeVersion,
+        scopeHash: scope.scopeHash,
+        reason: refundRequest.reason,
         status: 'WAITING',
         createdAt: now,
         updatedAt: now,
-      })),
+      },
     });
   }
 

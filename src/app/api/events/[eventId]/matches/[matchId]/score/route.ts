@@ -12,6 +12,7 @@ import {
   OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
   assertWindowOpen,
 } from '@/server/matches/matchWindows';
+import { claimMatchOperationReceipts } from '@/server/matches/clientOperationReplay';
 import type { MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -199,6 +200,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       if (!isHostOrAdmin && !isEventOfficial && !isTeamOfficialMember && !isAssignedOfficialUser && !isAssignedTeamOfficialById) {
         throw new Response('Forbidden', { status: 403 });
       }
+      const operationClaim = await claimMatchOperationReceipts({
+        client: tx,
+        eventId,
+        matchId,
+        actorUserId: session.userId,
+        operationKind: 'MATCH_SCORE_SET',
+        payload: parsed.data as Record<string, unknown>,
+      });
+      if (operationClaim.replayed) {
+        return { match, replayed: true };
+      }
       if (!isHostOrAdmin) {
         assertWindowOpen(
           match.start,
@@ -256,15 +268,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       match.segments = segments.sort((left, right) => left.sequence - right.sequence);
       syncLegacyArraysFromSegments(match);
       await saveMatches(eventId, Object.values(event.matches), tx);
-      return match;
+      return { match, replayed: false };
     });
 
-    const serializedMatch = serializeMatchesLegacy([result])[0];
-    publishEventMatchChanges({
-      eventId,
-      matches: serializedMatch ? [serializedMatch] : [],
-    });
-    return NextResponse.json({ match: serializedMatch }, { status: 200 });
+    const serializedMatch = serializeMatchesLegacy([result.match])[0];
+    if (!result.replayed) {
+      publishEventMatchChanges({
+        eventId,
+        matches: serializedMatch ? [serializedMatch] : [],
+      });
+    }
+    return NextResponse.json({ match: serializedMatch, replayed: result.replayed }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Match score set failed', error);

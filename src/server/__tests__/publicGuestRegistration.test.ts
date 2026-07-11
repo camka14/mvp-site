@@ -8,7 +8,8 @@ jest.mock('@/server/publicOrganizationCatalog', () => ({
   getPublicOrganizationBySlug: jest.fn(),
 }));
 
-import { ensureGuestChildUserData } from '@/server/publicGuestRegistration';
+import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
+import { ensureGuestChildUserData, ensureGuestParentIdentity } from '@/server/publicGuestRegistration';
 
 describe('public guest registration helpers', () => {
   it('creates child UserData without creating email-backed sensitive data', async () => {
@@ -43,5 +44,23 @@ describe('public guest registration helpers', () => {
     expect(tx.sensitiveUserData.create).not.toHaveBeenCalled();
     expect(tx.sensitiveUserData.upsert).not.toHaveBeenCalled();
     expect(tx.authUser.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to bind an unauthenticated guest registration to an existing email identity', async () => {
+    const tx = {
+      authUser: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'victim_1' }),
+      },
+      sensitiveUserData: {
+        findFirst: jest.fn().mockResolvedValue({ userId: 'victim_1' }),
+      },
+    };
+
+    await expect(ensureGuestParentIdentity(tx as any, {
+      email: 'victim@example.com',
+      firstName: 'Spoofed',
+      lastName: 'Name',
+    }, new Date())).rejects.toMatchObject({ status: 409 });
+    expect(ensureAuthUserAndUserDataByEmail).not.toHaveBeenCalled();
   });
 });

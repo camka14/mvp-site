@@ -540,7 +540,11 @@ describe('auth routes', () => {
       expect(json.user.id).toBe('user_1');
       expect(prismaMock.authUser.update).toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
-      expect(authTotpMfaMock.createWebLoginMfaChallenge).not.toHaveBeenCalled();
+      expect(authTotpMfaMock.createWebLoginMfaChallenge).toHaveBeenCalledWith({
+        userId: 'user_1',
+        sessionVersion: 0,
+        metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
+      });
     });
 
     it('does not force MFA setup for website login when no authenticator is enabled', async () => {
@@ -621,6 +625,33 @@ describe('auth routes', () => {
       });
       expect(prismaMock.authUser.update).not.toHaveBeenCalled();
       expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    });
+
+    it('requires MFA even when clientType is omitted', async () => {
+      authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValueOnce({
+        code: 'MFA_REQUIRED',
+        mfa: {
+          challengeId: 'mfa_omitted_client',
+          expiresAt: '2026-06-11T20:00:00.000Z',
+          method: 'totp',
+        },
+      });
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        passwordHash: 'hashed',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 3,
+      });
+
+      const res = await LOGIN_POST(buildJsonRequest('http://localhost/api/auth/login', {
+        email: 'test@example.com',
+        password: 'password123',
+      }));
+      const json = await res.json();
+
+      expect(json.code).toBe('MFA_REQUIRED');
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
 

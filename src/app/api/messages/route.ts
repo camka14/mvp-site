@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
-import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
+import {
+  ensureUserHasAcceptedChatTerms,
+  getChatGroupMemberIds,
+  isChatGroupMember,
+} from '@/server/chatAccess';
 import { handleRouteError } from '@/server/http/routeErrors';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
     const sentTime = parseDateInput(parsed.data.sentTime) ?? new Date();
     const group = await prisma.chatGroup.findUnique({
       where: { id: parsed.data.chatId },
-      select: { id: true, userIds: true, archivedAt: true },
+      select: { id: true, teamId: true, hostId: true, userIds: true, archivedAt: true },
     });
     if (!group) {
       return NextResponse.json({ error: 'Chat not found.' }, { status: 404 });
@@ -68,13 +72,17 @@ export async function POST(req: NextRequest) {
     if (!session.isAdmin && group.archivedAt) {
       return NextResponse.json({ error: 'Chat is no longer available.' }, { status: 400 });
     }
-    if (!session.isAdmin && !group.userIds.includes(parsed.data.userId)) {
+    if (!await isChatGroupMember(session, group)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     if (!session.isAdmin) {
+      const memberIds = await getChatGroupMemberIds(group);
+      if (!memberIds) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       const participants = await prisma.userData.findMany({
-        where: { id: { in: group.userIds } },
+        where: { id: { in: memberIds } },
         select: { id: true, blockedUserIds: true },
       });
       if (hasBlockingRelationship(parsed.data.userId, participants)) {

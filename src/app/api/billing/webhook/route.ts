@@ -1076,7 +1076,7 @@ const markBillPaymentProcessing = async ({
     return { billId, billPaymentId, updated: false };
   }
 
-  if (payment.status === 'PAID') {
+  if (payment.status === 'PAID' || payment.status === 'VOID') {
     return { billId, billPaymentId, updated: false };
   }
 
@@ -1147,7 +1147,7 @@ const releaseBillPaymentProcessing = async ({
     );
     return { billId: payment.billId, billPaymentId: payment.id, updated: false };
   }
-  if (isBillPaymentIssueStatus(payment.status)) {
+  if (payment.status === 'VOID' || isBillPaymentIssueStatus(payment.status)) {
     return { billId: payment.billId, billPaymentId: payment.id, updated: false };
   }
   if (payment.status === 'PAID' && !paymentIntentId) {
@@ -1355,6 +1355,14 @@ const createInstantBillAndPayment = async ({
     select: { id: true, billId: true, status: true },
   });
   if (existingPayment) {
+    if (existingPayment.status === 'VOID') {
+      return {
+        billId: existingPayment.billId,
+        billPaymentId: existingPayment.id,
+        created: false,
+        transitionedToPaid: false,
+      };
+    }
     if (targetPaymentStatus === 'PAID' && existingPayment.status !== 'PAID') {
       await prisma.billPayments.update({
         where: { id: existingPayment.id },
@@ -1573,8 +1581,24 @@ export async function POST(req: NextRequest) {
   const payload = await req.text();
 
   let event: any = safeJsonParse(payload);
+  const allowUnverifiedInDev =
+    process.env.NODE_ENV !== 'production'
+    && process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV === 'true'
+    && event
+    && typeof event === 'object';
 
-  if (webhookSecrets.length > 0 && signature) {
+  if (webhookSecrets.length === 0) {
+    if (!allowUnverifiedInDev) {
+      console.error('Stripe webhook rejected because no webhook secret is configured.');
+      return NextResponse.json({ error: 'Webhook verification is not configured' }, { status: 503 });
+    }
+    console.warn('Stripe webhook verification bypassed in development by explicit configuration.');
+  } else if (!signature) {
+    if (!allowUnverifiedInDev) {
+      return NextResponse.json({ error: 'Missing Stripe signature' }, { status: 400 });
+    }
+    console.warn('Stripe webhook signature is missing; continuing only because the development bypass is enabled.');
+  } else {
     const stripe = stripeForPaymentIntentSync ?? new Stripe(secretKey ?? '');
     let verifiedEvent: any = null;
     let verificationError: unknown = null;
@@ -1591,12 +1615,6 @@ export async function POST(req: NextRequest) {
     if (verifiedEvent) {
       event = verifiedEvent;
     } else {
-      const allowUnverifiedInDev =
-        process.env.NODE_ENV !== 'production' &&
-        process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV === 'true' &&
-        event &&
-        typeof event === 'object';
-
       if (allowUnverifiedInDev) {
         console.warn(
           'Stripe webhook signature failed in development; continuing with unverified payload because ' +
@@ -2046,6 +2064,10 @@ export async function POST(req: NextRequest) {
         if (!payment || payment.billId !== billId) {
           console.warn(
             `Stripe webhook bill metadata mismatch (billId=${billId}, billPaymentId=${billPaymentId}).`,
+          );
+        } else if (payment.status === 'VOID') {
+          console.warn(
+            `Stripe webhook ignored a succeeded payment for voided bill installment ${billPaymentId}.`,
           );
         } else {
           if (payment.status !== 'PAID') {

@@ -7,6 +7,7 @@ const messagesFindManyMock = jest.fn();
 const messagesCountMock = jest.fn();
 const requireSessionMock = jest.fn();
 const ensureUserHasAcceptedChatTermsMock = jest.fn();
+const isChatGroupMemberMock = jest.fn();
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 
 jest.mock('@/lib/prisma', () => ({
@@ -27,6 +28,7 @@ jest.mock('@/lib/permissions', () => ({
 
 jest.mock('@/server/chatAccess', () => ({
   ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
+  isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
 }));
 
 jest.mock('@/server/legacyFormat', () => ({
@@ -41,6 +43,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
+    isChatGroupMemberMock.mockResolvedValue(true);
   });
 
   it('returns indexed pagination metadata for authorized members', async () => {
@@ -81,12 +84,36 @@ describe('/api/chat/groups/[id]/messages GET', () => {
   it('returns 403 for users outside the chat group', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'outsider_1', isAdmin: false });
     chatGroupFindUniqueMock.mockResolvedValue({ id: 'chat_1', userIds: ['user_1', 'user_2'] });
+    isChatGroupMemberMock.mockResolvedValue(false);
 
     const response = await GET(requestFor(), {
       params: Promise.resolve({ id: 'chat_1' }),
     });
 
     expect(response.status).toBe(403);
+    expect(messagesFindManyMock).not.toHaveBeenCalled();
+    expect(messagesCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a stale attacker in a roster-managed team chat', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'stale_attacker', isAdmin: false });
+    const staleTeamGroup = {
+      id: 'team:team_1',
+      teamId: 'team_1',
+      userIds: ['captain_1', 'stale_attacker'],
+    };
+    chatGroupFindUniqueMock.mockResolvedValue(staleTeamGroup);
+    isChatGroupMemberMock.mockResolvedValue(false);
+
+    const response = await GET(requestFor(), {
+      params: Promise.resolve({ id: 'team:team_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(isChatGroupMemberMock).toHaveBeenCalledWith(
+      { userId: 'stale_attacker', isAdmin: false },
+      staleTeamGroup,
+    );
     expect(messagesFindManyMock).not.toHaveBeenCalled();
     expect(messagesCountMock).not.toHaveBeenCalled();
   });

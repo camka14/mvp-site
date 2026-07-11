@@ -580,6 +580,7 @@ describe('listCanonicalTeamsForUser', () => {
         ],
       },
       take: 25,
+      skip: 0,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     });
     expect(canonicalFindUniqueMock).toHaveBeenCalledWith({
@@ -620,6 +621,7 @@ describe('listCanonicalTeamsForUser', () => {
         archivedAt: null,
       },
       take: 50,
+      skip: 0,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     });
   });

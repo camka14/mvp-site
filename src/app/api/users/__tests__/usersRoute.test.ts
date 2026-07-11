@@ -19,6 +19,7 @@ const canonicalTeamsFindUniqueMock = jest.fn();
 const teamRegistrationsFindManyMock = jest.fn();
 const teamStaffAssignmentsFindManyMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
+const requireSessionMock = jest.fn();
 const prismaMock = {
   userData: {
     findMany: (...args: any[]) => findManyMock(...args),
@@ -67,19 +68,20 @@ const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row,
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
   getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
-  requireSession: jest.fn(),
+  requireSession: (...args: any[]) => requireSessionMock(...args),
 }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 
-import { GET as usersGet } from '@/app/api/users/route';
+import { GET as usersGet, POST as usersPost } from '@/app/api/users/route';
 
 describe('users list route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getOptionalSessionMock.mockReturnValue(null);
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     sensitiveUserDataFindManyMock.mockResolvedValue([]);
     authUserFindManyMock.mockResolvedValue([]);
     parentChildLinksFindManyMock.mockResolvedValue([]);
@@ -95,6 +97,17 @@ describe('users list route', () => {
     canonicalTeamsFindUniqueMock.mockResolvedValue(null);
     teamRegistrationsFindManyMock.mockResolvedValue([]);
     teamStaffAssignmentsFindManyMock.mockResolvedValue([]);
+  });
+
+  it('rejects the removed universal profile mutation endpoint', async () => {
+    const res = await usersPost(new NextRequest('http://localhost/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'victim_1', data: { friendIds: ['attacker_1'] } }),
+    }));
+
+    expect(res.status).toBe(410);
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
   it('returns users by ids in requested order', async () => {
@@ -361,10 +374,10 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(3);
     expect(json.users[0].displayName).toBe('Minor One');
     expect(json.users[0].isIdentityHidden).toBe(false);
-    expect(json.users[1].displayName).toBe('Minor Two');
-    expect(json.users[1].isIdentityHidden).toBe(false);
-    expect(json.users[2].displayName).toBe('Minor Free');
-    expect(json.users[2].isIdentityHidden).toBe(false);
+    expect(json.users[1].displayName).toBe('Minor participant');
+    expect(json.users[1].isIdentityHidden).toBe(true);
+    expect(json.users[2].displayName).toBe('Minor participant');
+    expect(json.users[2].isIdentityHidden).toBe(true);
     expect(json.users.map((user: any) => user.isMinor)).toEqual([true, true, true]);
   });
 
@@ -435,10 +448,10 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(3);
     expect(json.users[0].displayName).toBe('Minor One');
     expect(json.users[0].isIdentityHidden).toBe(false);
-    expect(json.users[1].displayName).toBe('Minor Two');
-    expect(json.users[1].isIdentityHidden).toBe(false);
-    expect(json.users[2].displayName).toBe('Minor Free');
-    expect(json.users[2].isIdentityHidden).toBe(false);
+    expect(json.users[1].displayName).toBe('Minor participant');
+    expect(json.users[1].isIdentityHidden).toBe(true);
+    expect(json.users[2].displayName).toBe('Minor participant');
+    expect(json.users[2].isIdentityHidden).toBe(true);
     expect(json.users.map((user: any) => user.isMinor)).toEqual([true, true, true]);
   });
 
@@ -573,5 +586,48 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(1);
     expect(json.users[0].displayName).toBe('Minor Player');
     expect(json.users[0].isIdentityHidden).toBe(false);
+  });
+
+  it('hides an unrelated minor and never returns exact DOB or social metadata publicly', async () => {
+    findManyMock.mockResolvedValue([{
+      id: 'minor_1',
+      firstName: 'Private',
+      lastName: 'Minor',
+      userName: 'private_minor',
+      dateOfBirth: new Date('2012-01-01T00:00:00.000Z'),
+      dobVerified: true,
+      dobVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+      ageVerificationProvider: 'provider',
+      teamIds: ['team_1'],
+      friendIds: ['friend_1'],
+      followingIds: ['follow_1'],
+      friendRequestIds: ['request_1'],
+      friendRequestSentIds: ['sent_1'],
+      uploadedImages: ['image_1'],
+      hasStripeAccount: true,
+      homePageOrganizationId: 'org_1',
+      profileImageId: 'profile_1',
+      accountVisibility: 'PUBLIC',
+    }]);
+
+    const res = await usersGet(new NextRequest('http://localhost/api/users?ids=minor_1'));
+    const [user] = (await res.json()).users;
+
+    expect(user).toEqual(expect.objectContaining({
+      displayName: 'Minor participant',
+      isIdentityHidden: true,
+      dateOfBirth: null,
+      dobVerified: false,
+      dobVerifiedAt: null,
+      ageVerificationProvider: null,
+      friendIds: [],
+      followingIds: [],
+      friendRequestIds: [],
+      friendRequestSentIds: [],
+      uploadedImages: [],
+      hasStripeAccount: false,
+      homePageOrganizationId: null,
+      profileImageId: null,
+    }));
   });
 });

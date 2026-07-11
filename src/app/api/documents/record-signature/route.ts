@@ -9,9 +9,7 @@ import {
   syncTeamRegistrationConsentStatus,
 } from '@/server/teams/teamRegistrationDocuments';
 import {
-  BOLDSIGN_OPERATION_STATUSES,
   BOLDSIGN_OPERATION_TYPES,
-  createOrUpdateBoldSignOperation,
   findLatestBoldSignOperation,
   updateBoldSignOperationById,
 } from '@/lib/boldsignSyncOperations';
@@ -185,6 +183,9 @@ export async function POST(request: NextRequest) {
       select: { organizationId: true },
     })
     : null;
+  if (eventId && !event) {
+    return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
+  }
   const teamId = normalizeText(parsed.data.teamId);
   const team = teamId
     ? await prisma.canonicalTeams.findUnique({
@@ -197,58 +198,39 @@ export async function POST(request: NextRequest) {
   }
   const signedTemplate = await prisma.templateDocuments.findUnique({
     where: { id: parsed.data.templateId },
-    select: { signOnce: true },
+    select: { signOnce: true, type: true },
   });
+  if (!signedTemplate) {
+    return NextResponse.json({ error: 'Template not found.' }, { status: 404 });
+  }
 
   const scopedChildUserId = childUserId ?? (signerContext === 'child' ? userId : null);
-  const normalizedType = normalizeText(parsed.data.type)?.toUpperCase();
-  const isTextSignature = normalizedType === 'TEXT';
+  const isTextSignature = String(signedTemplate.type ?? '').toUpperCase() === 'TEXT';
   if (!isTextSignature) {
-    const requestId = request.headers.get('x-request-id') ?? null;
-    const ipAddress = resolveIpAddress(request);
-    const existingOperation = await findLatestBoldSignOperation({
+    const operation = await findLatestBoldSignOperation({
       operationType: BOLDSIGN_OPERATION_TYPES.DOCUMENT_SEND,
       documentId: parsed.data.documentId,
     });
-
-    const operation = existingOperation ?? await createOrUpdateBoldSignOperation({
-      operationType: BOLDSIGN_OPERATION_TYPES.DOCUMENT_SEND,
-      status: BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
-      idempotencyKey: `record-signature:${parsed.data.documentId}:${userId}:${signerContext}`,
-      documentId: parsed.data.documentId,
-      templateDocumentId: parsed.data.templateId,
-      eventId: eventId ?? null,
-      teamId: teamId ?? null,
-      userId,
-      childUserId: scopedChildUserId,
-      signerRole: signerContext,
-      requestId,
-      ipAddress,
-      payload: {
-        templateId: parsed.data.templateId,
-        eventId: eventId ?? null,
-        teamId: teamId ?? null,
-        signerContext,
-      },
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    });
+    const operationMatchesScope = Boolean(
+      operation
+      && operation.templateDocumentId === parsed.data.templateId
+      && operation.documentId === parsed.data.documentId
+      && (operation.eventId ?? null) === (eventId ?? null)
+      && (operation.teamId ?? null) === (teamId ?? null)
+      && (operation.userId ?? null) === userId
+      && (operation.childUserId ?? null) === scopedChildUserId
+      && (operation.signerRole ?? null) === signerContext,
+    );
+    if (!operationMatchesScope || !operation) {
+      return NextResponse.json(
+        { error: 'Signature confirmation must use a server-issued signing operation.' },
+        { status: 403 },
+      );
+    }
 
     await updateBoldSignOperationById(operation.id, {
-      eventId: eventId ?? operation.eventId ?? null,
-      teamId: teamId ?? operation.teamId ?? null,
-      templateDocumentId: operation.templateDocumentId ?? parsed.data.templateId,
-      documentId: parsed.data.documentId,
-      userId,
-      childUserId: scopedChildUserId,
-      signerRole: signerContext,
-      requestId,
-      ipAddress,
       payload: {
         ...(operation.payload ?? {}),
-        templateId: parsed.data.templateId,
-        eventId: eventId ?? null,
-        teamId: teamId ?? null,
-        signerContext,
         acknowledgedAt: new Date().toISOString(),
       },
     });
@@ -260,69 +242,47 @@ export async function POST(request: NextRequest) {
     }, { status: 200 });
   }
 
-  const now = new Date();
-  const nextSignedAt = isTextSignature ? now.toISOString() : null;
-  const nextStatus = isTextSignature ? 'SIGNED' : 'UNSIGNED';
-  const scopedTeamId = signedTemplate?.signOnce ? null : teamId;
+  // Text acknowledgements are issued as UNSIGNED rows by the scoped event,
+  // team, rental, or profile signing endpoints. This legacy acknowledgement
+  // endpoint may only transition that exact server-issued row; it can never
+  // create a caller-defined waiver or broaden its event/team scope.
   const existing = await prisma.signedDocuments.findFirst({
     where: {
+      signedDocumentId: parsed.data.documentId,
       templateId: parsed.data.templateId,
       userId,
       signerRole: signerContext,
       hostId: scopedChildUserId,
-      ...(eventId ? { eventId } : {}),
-      ...(scopedTeamId ? { teamId: scopedTeamId } : {}),
+      eventId: eventId ?? null,
+      teamId: teamId ?? null,
+      status: { in: ['UNSIGNED', 'SIGNED'] },
     },
     orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
-      organizationId: true,
-      teamId: true,
       status: true,
       signedAt: true,
     },
   });
 
-  if (existing) {
-    const existingIsSigned = isSignedStatus(existing.status);
+  if (!existing) {
+    return NextResponse.json(
+      { error: 'Text acknowledgement must use a server-issued signing document.' },
+      { status: 403 },
+    );
+  }
+
+  const existingIsSigned = isSignedStatus(existing.status);
+  if (!existingIsSigned) {
+    const now = new Date();
     await prisma.signedDocuments.update({
       where: { id: existing.id },
       data: {
         updatedAt: now,
-        signedDocumentId: parsed.data.documentId,
-        status: existingIsSigned ? 'SIGNED' : nextStatus,
-        signedAt: existingIsSigned ? (normalizeText(existing.signedAt) ?? nextSignedAt) : nextSignedAt,
-        signerEmail: normalizeText(parsed.data.user?.email) ?? null,
-        signerRole: signerContext,
-        hostId: scopedChildUserId,
-        organizationId: existing.organizationId ?? event?.organizationId ?? team?.organizationId ?? null,
-        eventId: eventId ?? null,
-        teamId: existing.teamId ?? teamId ?? null,
+        status: 'SIGNED',
+        signedAt: new Date().toISOString(),
         ipAddress: resolveIpAddress(request),
         requestId: request.headers.get('x-request-id') ?? null,
-      },
-    });
-  } else {
-    await prisma.signedDocuments.create({
-      data: {
-        id: crypto.randomUUID(),
-        signedDocumentId: parsed.data.documentId,
-        templateId: parsed.data.templateId,
-        userId,
-        documentName: parsed.data.type === 'TEXT' ? 'Text Waiver' : 'Signed Document',
-        hostId: scopedChildUserId,
-        organizationId: event?.organizationId ?? team?.organizationId ?? null,
-        eventId: eventId ?? null,
-        teamId: teamId ?? null,
-        status: nextStatus,
-        signedAt: nextSignedAt,
-        signerEmail: normalizeText(parsed.data.user?.email) ?? null,
-        roleIndex: null,
-        signerRole: signerContext,
-        ipAddress: resolveIpAddress(request),
-        requestId: request.headers.get('x-request-id') ?? null,
-        createdAt: now,
-        updatedAt: now,
       },
     });
   }

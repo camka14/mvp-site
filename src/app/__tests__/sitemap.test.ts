@@ -4,6 +4,12 @@ jest.mock('@/server/publicSearchSeo', () => ({
   listPublicSitemapEntries: () => mockListPublicSitemapEntries(),
 }));
 
+jest.mock('@/server/publicSearchPages', () => ({
+  listPublicSearchSitemapEntries: () => Promise.resolve([]),
+  listRegularOrganizationProfileSitemapEntries: () => Promise.resolve([]),
+  listRegularPublicEventSitemapEntries: () => Promise.resolve([]),
+}));
+
 import sitemap from '../sitemap';
 
 describe('sitemap', () => {

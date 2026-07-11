@@ -177,9 +177,7 @@ const verifyPaymentIntent = async ({
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
-    return normalizedIntentId.startsWith('pi_')
-      ? { ok: true, paymentIntentId: normalizedIntentId, metadata: {}, totalChargeCents: expectedAmountCents }
-      : { ok: false, status: 402, error: 'Payment confirmation is required before creating the rental order.' };
+    return { ok: false, status: 503, error: 'Payment processing is unavailable. Please try again later.' };
   }
 
   const stripe = new Stripe(secretKey);

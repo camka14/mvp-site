@@ -5,8 +5,10 @@ import { requireSession } from '@/lib/permissions';
 import { getRefundPolicy } from '@/lib/refundPolicy';
 import {
   applyRefundAttempts,
+  buildRefundScopeSnapshot,
   createStripeRefundAttempts,
   resolveRefundablePaymentsForRequest,
+  isRefundScopeSnapshotValid,
   summarizeRefundAttempts,
   type RefundRequestRow,
   type StripeRefundAttempt,
@@ -178,6 +180,16 @@ export async function POST(req: NextRequest) {
     organizationId: true,
     reason: true,
     status: true,
+    requestedByUserId: true,
+    slotId: true,
+    occurrenceDate: true,
+    billIds: true,
+    paymentIds: true,
+    requestedAmountCents: true,
+    currency: true,
+    policyDecision: true,
+    scopeVersion: true,
+    scopeHash: true,
   } as const;
 
   const buildRefundRequestRow = (id: string, status: RefundRequestRow['status']): RefundRequestRow => ({
@@ -189,6 +201,7 @@ export async function POST(req: NextRequest) {
     organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
     reason,
     status,
+    requestedByUserId: session.userId,
     slotId: resolvedOccurrence?.slotId ?? null,
     occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
   });
@@ -199,6 +212,8 @@ export async function POST(req: NextRequest) {
         eventId,
         userId: targetUserId,
         teamId: refundTeamId,
+        slotId: resolvedOccurrence?.slotId ?? null,
+        occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         status: { in: ['WAITING', 'APPROVED'] },
       },
       orderBy: {
@@ -207,18 +222,32 @@ export async function POST(req: NextRequest) {
       select: requestSelect,
     });
 
-    const refundRequest = existingAutoRefund
-      ? {
-        ...existingAutoRefund,
-        reason,
-        slotId: resolvedOccurrence?.slotId ?? null,
-        occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
-      } as RefundRequestRow
+    const baseRefundRequest = existingAutoRefund
+      ? { ...existingAutoRefund, reason } as RefundRequestRow
       : buildRefundRequestRow(crypto.randomUUID(), 'APPROVED');
+    if (existingAutoRefund && !isRefundScopeSnapshotValid(baseRefundRequest)) {
+      return NextResponse.json(
+        { error: 'This legacy refund request has no verified payment scope. Submit a new request.' },
+        { status: 409 },
+      );
+    }
 
     let stripeRefundAttempts: StripeRefundAttempt[] = [];
+    let refundRequest: RefundRequestRow;
     try {
-      const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+      const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, baseRefundRequest);
+      const scopeSnapshot = existingAutoRefund
+        ? {
+          billIds: existingAutoRefund.billIds,
+          paymentIds: existingAutoRefund.paymentIds,
+          requestedAmountCents: existingAutoRefund.requestedAmountCents,
+          currency: existingAutoRefund.currency,
+          policyDecision: existingAutoRefund.policyDecision,
+          scopeVersion: existingAutoRefund.scopeVersion,
+          scopeHash: existingAutoRefund.scopeHash,
+        }
+        : buildRefundScopeSnapshot(baseRefundRequest, refundablePayments, 'AUTO_APPROVED');
+      refundRequest = { ...baseRefundRequest, ...scopeSnapshot };
       stripeRefundAttempts = await createStripeRefundAttempts({
         request: refundRequest,
         payments: refundablePayments,
@@ -269,9 +298,19 @@ export async function POST(req: NextRequest) {
             id: refundRequest.id,
             eventId: refundRequest.eventId,
             userId: refundRequest.userId,
+            requestedByUserId: refundRequest.requestedByUserId,
             hostId: refundRequest.hostId,
             teamId: refundRequest.teamId,
             organizationId: refundRequest.organizationId,
+            slotId: refundRequest.slotId,
+            occurrenceDate: refundRequest.occurrenceDate,
+            billIds: refundRequest.billIds ?? [],
+            paymentIds: refundRequest.paymentIds ?? [],
+            requestedAmountCents: refundRequest.requestedAmountCents ?? 0,
+            currency: refundRequest.currency ?? 'usd',
+            policyDecision: refundRequest.policyDecision,
+            scopeVersion: refundRequest.scopeVersion ?? 1,
+            scopeHash: refundRequest.scopeHash,
             reason: refundRequest.reason,
             status: 'APPROVED',
             createdAt: now,
@@ -306,12 +345,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const waitingRequest = buildRefundRequestRow(crypto.randomUUID(), 'WAITING');
+  const waitingPayments = await resolveRefundablePaymentsForRequest(prisma, waitingRequest);
+  const waitingScope = buildRefundScopeSnapshot(waitingRequest, waitingPayments, 'HOST_REVIEW_REQUIRED');
+
   const result = await prisma.$transaction(async (tx) => {
     const existingWaitingRequest = await tx.refundRequests.findFirst({
       where: {
         eventId,
         userId: targetUserId,
         teamId: refundTeamId,
+        slotId: resolvedOccurrence?.slotId ?? null,
+        occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         status: 'WAITING',
       },
       select: { id: true },
@@ -341,12 +386,22 @@ export async function POST(req: NextRequest) {
 
     const createdRefund = await tx.refundRequests.create({
       data: {
-        id: crypto.randomUUID(),
+        id: waitingRequest.id,
         eventId,
         userId: targetUserId,
+        requestedByUserId: session.userId,
         hostId: event.hostId ?? parsed.data.payloadEvent?.hostId ?? null,
         teamId: refundTeamId,
         organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
+        slotId: resolvedOccurrence?.slotId ?? null,
+        occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
+        billIds: waitingScope.billIds,
+        paymentIds: waitingScope.paymentIds,
+        requestedAmountCents: waitingScope.requestedAmountCents,
+        currency: waitingScope.currency,
+        policyDecision: waitingScope.policyDecision,
+        scopeVersion: waitingScope.scopeVersion,
+        scopeHash: waitingScope.scopeHash,
         reason,
         status: 'WAITING',
         createdAt: now,

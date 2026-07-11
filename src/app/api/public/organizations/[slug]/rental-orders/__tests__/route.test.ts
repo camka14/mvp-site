@@ -288,7 +288,7 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     expect(txBillsCreateMock).not.toHaveBeenCalled();
   });
 
-  it('creates a paid rental bill linked to the booking source', async () => {
+  it('rejects paid rental creation when Stripe verification is unavailable', async () => {
     organizationsFindUniqueMock.mockResolvedValue({
       id: 'org_1',
       name: 'Summit',
@@ -338,50 +338,10 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     }), { params });
     const json = await response.json();
 
-    expect(response.status).toBe(201);
-    expect(json).toMatchObject({
-      bookingId: 'booking_1',
-      billId: 'bill_1',
-      eventId: null,
-      totalCents: 2400,
-    });
-    expect(txBillsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        organizationId: 'org_1',
-        ownerType: 'USER',
-        ownerId: 'user_1',
-        sourceType: 'RENTAL_BOOKING',
-        sourceId: 'booking_1',
-        status: 'PAID',
-        totalAmountCents: 2400,
-        paidAmountCents: 2400,
-        lineItems: expect.arrayContaining([
-          expect.objectContaining({
-            type: 'RENTAL',
-            amountCents: 2400,
-            rentalBookingId: 'booking_1',
-            organizationId: 'org_1',
-            userId: 'user_1',
-          }),
-        ]),
-      }),
-    }));
-    expect(txBillPaymentsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        billId: 'bill_1',
-        amountCents: 2400,
-        paymentIntentId: 'pi_rental_1',
-        status: 'PAID',
-      }),
-    }));
-    expect(txRentalBookingsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        id: 'booking_1',
-        billId: 'bill_1',
-        status: 'CONFIRMED',
-        totalAmountCents: 2400,
-        paymentIntentId: 'pi_rental_1',
-      }),
-    }));
+    expect(response.status).toBe(503);
+    expect(json.error).toMatch(/payment processing is unavailable/i);
+    expect(txBillsCreateMock).not.toHaveBeenCalled();
+    expect(txBillPaymentsCreateMock).not.toHaveBeenCalled();
+    expect(txRentalBookingsCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -71,14 +71,6 @@ class UserService {
     return chunks;
   }
 
-  async createUser(id: string, data: Partial<UserData>): Promise<UserData> {
-    const response = await apiFetch<{ user: UserData }>('/api/users', {
-      method: 'POST',
-      body: JSON.stringify({ id, data }),
-    });
-    return normalizeUserDataNames(response.user);
-  }
-
   async getUserById(id: string, context: UserVisibilityContext = {}): Promise<UserData | undefined> {
     try {
       const params = new URLSearchParams();

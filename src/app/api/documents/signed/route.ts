@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
-import { syncAllTeamRegistrationConsentStatusesForRegistrant } from '@/server/teams/teamRegistrationDocuments';
+import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
-
-const createSchema = z.object({
-  documentId: z.string().optional(),
-  templateId: z.string(),
-  eventId: z.string().optional(),
-  teamId: z.string().optional(),
-  userId: z.string().optional(),
-  userEmail: z.string().optional(),
-}).passthrough();
 
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -83,46 +72,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireSession(req);
-  const body = await req.json().catch(() => null);
-  const parsed = createSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const userId = parsed.data.userId ?? session.userId;
-  if (!session.isAdmin && session.userId !== userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const record = await prisma.signedDocuments.create({
-    data: {
-      id: crypto.randomUUID(),
-      signedDocumentId: parsed.data.documentId ?? crypto.randomUUID(),
-      templateId: parsed.data.templateId,
-      userId,
-      documentName: 'Signed Document',
-      hostId: null,
-      organizationId: null,
-      eventId: parsed.data.eventId ?? null,
-      teamId: parsed.data.teamId ?? null,
-      status: 'SIGNED',
-      signedAt: new Date().toISOString(),
-      signerEmail: parsed.data.userEmail ?? null,
-      roleIndex: null,
-      signerRole: null,
-      ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-      requestId: req.headers.get('x-request-id') ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
-
-  if (parsed.data.teamId) {
-    await syncAllTeamRegistrationConsentStatusesForRegistrant({
-      registrantId: userId,
-    });
-  }
-
-  return NextResponse.json(withLegacyFields(record), { status: 201 });
+  await requireSession(req);
+  return NextResponse.json(
+    { error: 'Direct signed-document creation is not supported. Use a scoped signing workflow.' },
+    { status: 410 },
+  );
 }

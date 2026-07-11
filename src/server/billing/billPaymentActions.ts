@@ -350,8 +350,11 @@ export const markBillPaymentProcessingForAction = async ({
     throw new Error('Payment intent does not match this bill payment.');
   }
 
-  await prisma.billPayments.update({
-    where: { id: payment.id },
+  const transition = await prisma.billPayments.updateMany({
+    where: {
+      id: payment.id,
+      OR: [{ status: 'PENDING' }, { status: 'FAILED' }, { status: null }],
+    } as any,
     data: {
       status: 'PROCESSING',
       paymentIntentId,
@@ -361,6 +364,9 @@ export const markBillPaymentProcessingForAction = async ({
       updatedAt: now,
     },
   });
+  if (transition.count !== 1) {
+    throw new Error('Bill payment is no longer available. Refresh and try again.');
+  }
 
   const reconciledBill = await reconcileBillForPendingPayment(bill.id, now);
   if (bill.sourceType === 'EVENT_REGISTRATION' && bill.sourceId) {

@@ -640,8 +640,6 @@ export async function POST(req: NextRequest) {
     totalCount = count;
   }
 
-  events = events.filter((event) => isUsableCoordinatePair(event.coordinates));
-
   if (userLocation && typeof filters.maxDistance === 'number') {
     const { lat } = userLocation;
     const lon = userLongitude;
@@ -649,6 +647,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid input', details: { userLocation: 'Missing longitude' } }, { status: 400 });
     }
     if (hasDistanceFilter) {
+      events = events.filter((event) => isUsableCoordinatePair(event.coordinates));
       const maxDistanceMiles = filters.maxDistance * 0.621371;
       events = events.filter((event) => {
         const [lng, latitude] = event.coordinates as [number, number];

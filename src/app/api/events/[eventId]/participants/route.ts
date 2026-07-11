@@ -37,7 +37,9 @@ import {
 import { getRefundPolicy } from '@/lib/refundPolicy';
 import {
   applyRefundAttempts,
+  buildRefundScopeSnapshot,
   createStripeRefundAttempts,
+  isRefundScopeSnapshotValid,
   resolveRefundablePaymentsForRequest,
   type RefundRequestRow,
   type StripeRefundAttempt,
@@ -857,11 +859,21 @@ const refundRequestSelect = {
   id: true,
   eventId: true,
   userId: true,
+  requestedByUserId: true,
   hostId: true,
   teamId: true,
   organizationId: true,
   reason: true,
   status: true,
+  slotId: true,
+  occurrenceDate: true,
+  billIds: true,
+  paymentIds: true,
+  requestedAmountCents: true,
+  currency: true,
+  policyDecision: true,
+  scopeVersion: true,
+  scopeHash: true,
 } as const;
 
 const divisionAliases = (divisionId: string | null): Set<string> => {
@@ -955,84 +967,6 @@ const canManageLinkedChildParticipant = async (params: {
     select: { id: true },
   });
   return Boolean(link);
-};
-
-const hasRefundablePaidTeamEventPayments = async (
-  params: {
-    eventId: string;
-    teamOwnerIds?: string[];
-    participantUserIds?: string[];
-  },
-  client: PrismaLike = prisma,
-): Promise<boolean> => {
-  const teamOwnerIds = normalizeUserIdList(params.teamOwnerIds ?? []);
-  const participantUserIds = normalizeUserIdList(params.participantUserIds ?? []);
-
-  if (!teamOwnerIds.length && !participantUserIds.length) {
-    return false;
-  }
-
-  const teamBills = teamOwnerIds.length
-    ? await client.bills.findMany({
-      where: {
-        eventId: params.eventId,
-        ownerType: 'TEAM',
-        ownerId: { in: teamOwnerIds },
-      },
-      select: { id: true },
-    })
-    : [];
-  const directUserBills = participantUserIds.length
-    ? await client.bills.findMany({
-      where: {
-        eventId: params.eventId,
-        ownerType: 'USER',
-        ownerId: { in: participantUserIds },
-      },
-      select: { id: true },
-    })
-    : [];
-  const splitUserBills = teamBills.length
-    ? await client.bills.findMany({
-      where: {
-        eventId: params.eventId,
-        ownerType: 'USER',
-        parentBillId: { in: teamBills.map((bill) => bill.id) },
-      },
-      select: { id: true },
-    })
-    : [];
-  const bills = Array.from(
-    new Map(
-      [...teamBills, ...directUserBills, ...splitUserBills].map((bill) => [bill.id, bill]),
-    ).values(),
-  );
-  if (!bills.length) {
-    return false;
-  }
-
-  const billPayments = await client.billPayments.findMany({
-    where: {
-      billId: { in: bills.map((bill) => bill.id) },
-      status: 'PAID',
-      paymentIntentId: { not: null },
-    },
-    select: {
-      amountCents: true,
-      refundedAmountCents: true,
-      paymentIntentId: true,
-    },
-  });
-
-  return billPayments.some((payment) => {
-    const amountCents = Number.isFinite(Number(payment.amountCents))
-      ? Math.max(0, Number(payment.amountCents))
-      : 0;
-    const refundedAmountCents = Number.isFinite(Number(payment.refundedAmountCents))
-      ? Math.max(0, Number(payment.refundedAmountCents))
-      : 0;
-    return amountCents > refundedAmountCents;
-  });
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -1163,41 +1097,66 @@ const ensureTeamRefundRequest = async (
     teamId: string;
     requestedByUserId: string;
     reason: string;
-    teamOwnerIds?: string[];
     participantUserIds?: string[];
+    slotId?: string | null;
+    occurrenceDate?: string | null;
   },
   client: PrismaLike = prisma,
 ): Promise<void> => {
-  const hasRefundablePayments = await hasRefundablePaidTeamEventPayments({
-    eventId: params.eventId,
-    teamOwnerIds: params.teamOwnerIds,
-    participantUserIds: params.participantUserIds,
-  }, client);
-  if (!hasRefundablePayments) {
-    return;
-  }
-
   const existing = await client.refundRequests.findFirst({
     where: {
       eventId: params.eventId,
       teamId: params.teamId,
+      requestedByUserId: params.requestedByUserId,
+      slotId: params.slotId ?? null,
+      occurrenceDate: params.occurrenceDate ?? null,
       status: 'WAITING',
     },
-    select: { id: true },
+    select: refundRequestSelect,
   });
-  if (existing?.id) {
+  if (existing?.id && isRefundScopeSnapshotValid(existing as RefundRequestRow)) {
     return;
   }
+
+  const refundRequest: RefundRequestRow = {
+    id: crypto.randomUUID(),
+    eventId: params.eventId,
+    userId: params.requestedByUserId,
+    requestedByUserId: params.requestedByUserId,
+    hostId: params.hostId,
+    organizationId: params.organizationId,
+    teamId: params.teamId,
+    slotId: params.slotId ?? null,
+    occurrenceDate: params.occurrenceDate ?? null,
+    reason: params.reason,
+    status: 'WAITING',
+    authorizedPayerUserIds: params.participantUserIds,
+  };
+  const payments = await resolveRefundablePaymentsForRequest(client, refundRequest);
+  if (!payments.length) {
+    return;
+  }
+  const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
   const now = new Date();
   await client.refundRequests.create({
     data: {
-      id: crypto.randomUUID(),
-      eventId: params.eventId,
-      userId: params.requestedByUserId,
-      hostId: params.hostId,
-      organizationId: params.organizationId,
-      teamId: params.teamId,
-      reason: params.reason,
+      id: refundRequest.id,
+      eventId: refundRequest.eventId,
+      userId: refundRequest.userId,
+      requestedByUserId: refundRequest.requestedByUserId,
+      hostId: refundRequest.hostId,
+      organizationId: refundRequest.organizationId,
+      teamId: refundRequest.teamId,
+      slotId: refundRequest.slotId ?? null,
+      occurrenceDate: refundRequest.occurrenceDate ?? null,
+      billIds: scope.billIds,
+      paymentIds: scope.paymentIds,
+      requestedAmountCents: scope.requestedAmountCents,
+      currency: scope.currency,
+      policyDecision: scope.policyDecision,
+      scopeVersion: scope.scopeVersion,
+      scopeHash: scope.scopeHash,
+      reason: refundRequest.reason,
       status: 'WAITING',
       createdAt: now,
       updatedAt: now,
@@ -1450,8 +1409,8 @@ async function updateParticipants(
     }
     | null = null;
   let teamRefundReason = normalizeId(parsed.data.refundReason) ?? 'team_refund_requested';
-  let teamRefundOwnerIds: string[] = [];
   let teamRefundParticipantUserIds: string[] = [];
+  let teamRefundAuthorizedPayerUserIds: string[] = [];
   let teamRefundRequestTeamId: string | null = null;
   let canonicalTeamRow: Record<string, any> | null = null;
   let teamForRemoval: Record<string, any> | null = null;
@@ -1484,20 +1443,15 @@ async function updateParticipants(
     teamRefundRequestTeamId = normalizeId((registeredEventTeam as any)?.parentTeamId)
       ?? normalizeId((team as any).parentTeamId)
       ?? team.id;
-    teamRefundOwnerIds = ensureUnique(
-      [
-        normalizeId(registeredEventTeam?.id),
-        normalizeId((registeredEventTeam as any)?.parentTeamId),
-        normalizeId((team as any).parentTeamId),
-        team.id,
-      ].filter((value): value is string => Boolean(value)),
-    );
     teamRefundParticipantUserIds = ensureUnique(
       [
         ...normalizeUserIdList((team as any).playerIds),
         ...normalizeUserIdList([(team as any).captainId, (team as any).managerId, (team as any).headCoachId]),
       ],
     );
+    teamRefundAuthorizedPayerUserIds = (session.isAdmin || canManageCurrentEvent)
+      ? teamRefundParticipantUserIds
+      : [session.userId];
     if (mode === 'add') {
       canonicalTeamRow = team as Record<string, any>;
       teamForRegistration = {
@@ -1720,15 +1674,23 @@ async function updateParticipants(
           normalizeId(existingRegistration.eventTeamId),
         ].filter((value): value is string => Boolean(value)),
       );
-      existingAutoRefundRequest = await prisma.refundRequests.findFirst({
+      const existingAutoRefundCandidate = await prisma.refundRequests.findFirst({
         where: {
           eventId: event.id,
           teamId: { in: refundTeamIds },
+          requestedByUserId: session.userId,
+          slotId: resolvedOccurrence?.slotId ?? null,
+          occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
           status: { in: ['WAITING', 'APPROVED'] },
         },
         orderBy: { updatedAt: 'desc' },
         select: refundRequestSelect,
       }) as RefundRequestRow | null;
+      existingAutoRefundRequest = (session.isAdmin || canManageCurrentEvent)
+        && existingAutoRefundCandidate
+        && isRefundScopeSnapshotValid(existingAutoRefundCandidate)
+        ? existingAutoRefundCandidate
+        : null;
       autoRefundRequest = existingAutoRefundRequest
         ? {
           ...existingAutoRefundRequest,
@@ -1740,6 +1702,7 @@ async function updateParticipants(
           id: crypto.randomUUID(),
           eventId: event.id,
           userId: session.userId,
+          requestedByUserId: session.userId,
           hostId: event.hostId,
           teamId: teamRefundRequestTeamId ?? teamId,
           organizationId: event.organizationId ?? null,
@@ -1747,10 +1710,23 @@ async function updateParticipants(
           status: 'APPROVED',
           slotId: resolvedOccurrence?.slotId ?? null,
           occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
+          authorizedPayerUserIds: teamRefundAuthorizedPayerUserIds,
         };
 
       try {
         const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, autoRefundRequest);
+        if (!existingAutoRefundRequest && !refundablePayments.length) {
+          return NextResponse.json(
+            { error: 'No refundable payment found for automatic refund.' },
+            { status: 400 },
+          );
+        }
+        if (!existingAutoRefundRequest) {
+          autoRefundRequest = {
+            ...autoRefundRequest,
+            ...buildRefundScopeSnapshot(autoRefundRequest, refundablePayments, 'AUTO_APPROVED'),
+          };
+        }
         autoRefundAttempts = await createStripeRefundAttempts({
           request: autoRefundRequest,
           payments: refundablePayments,
@@ -1855,9 +1831,19 @@ async function updateParticipants(
               id: autoRefundRequest.id,
               eventId: autoRefundRequest.eventId,
               userId: autoRefundRequest.userId,
+              requestedByUserId: autoRefundRequest.requestedByUserId,
               hostId: autoRefundRequest.hostId,
               teamId: autoRefundRequest.teamId,
               organizationId: autoRefundRequest.organizationId,
+              slotId: autoRefundRequest.slotId ?? null,
+              occurrenceDate: autoRefundRequest.occurrenceDate ?? null,
+              billIds: autoRefundRequest.billIds ?? [],
+              paymentIds: autoRefundRequest.paymentIds ?? [],
+              requestedAmountCents: autoRefundRequest.requestedAmountCents ?? 0,
+              currency: autoRefundRequest.currency ?? 'usd',
+              policyDecision: autoRefundRequest.policyDecision,
+              scopeVersion: autoRefundRequest.scopeVersion ?? 1,
+              scopeHash: autoRefundRequest.scopeHash,
               reason: autoRefundRequest.reason,
               status: 'APPROVED',
               createdAt: now,
@@ -1874,8 +1860,9 @@ async function updateParticipants(
           teamId: teamRefundRequestTeamId ?? normalizeId(existingRegistration.eventTeamId) ?? teamId,
           requestedByUserId: session.userId,
           reason: teamRefundReason,
-          teamOwnerIds: teamRefundOwnerIds,
-          participantUserIds: teamRefundParticipantUserIds,
+          participantUserIds: teamRefundAuthorizedPayerUserIds,
+          slotId: resolvedOccurrence?.slotId ?? null,
+          occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         }, tx);
       }
 

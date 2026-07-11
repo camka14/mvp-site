@@ -9,6 +9,9 @@ const prismaMock = {
   events: {
     findUnique: jest.fn(),
   },
+  organizations: {
+    findUnique: jest.fn(),
+  },
   divisions: {
     findMany: jest.fn(),
   },
@@ -20,6 +23,8 @@ prismaMock.$transaction.mockImplementation(
 );
 
 const requireSessionMock = jest.fn();
+const hasOrgPermissionMock = jest.fn();
+const canManageEventMock = jest.fn();
 
 const upsertEventFromPayloadMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
@@ -34,6 +39,10 @@ const isRentalBookingReservationErrorMock = jest.fn(() => false);
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/accessControl', () => ({
+  canManageEvent: (...args: any[]) => canManageEventMock(...args),
+  hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
+}));
 jest.mock('@/server/repositories/events', () => ({
   upsertEventFromPayload: (...args: any[]) => upsertEventFromPayloadMock(...args),
   loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
@@ -72,6 +81,9 @@ describe('event save route', () => {
     isRentalBookingReservationErrorMock.mockReturnValue(false);
     prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
+    hasOrgPermissionMock.mockResolvedValue(true);
+    canManageEventMock.mockResolvedValue(true);
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'host_1' });
   });
 
   it('blocks event creation when the session user has not verified email', async () => {
@@ -226,6 +238,45 @@ describe('event save route', () => {
     expect(saveMatchesMock).not.toHaveBeenCalled();
     expect(saveEventScheduleMock).not.toHaveBeenCalled();
     expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
+  });
+
+  it('derives the host from the authenticated session for non-admin event creation', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    upsertEventFromPayloadMock.mockResolvedValueOnce('event_1');
+    loadEventWithRelationsMock.mockResolvedValueOnce({ eventType: 'EVENT' });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'event_1', name: 'Safe Event', hostId: 'host_1', divisions: [], fieldIds: [],
+        state: 'UNPUBLISHED', start: new Date(), end: new Date(),
+      });
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+
+    const res = await eventsPost(postRequest('http://localhost/api/events', {
+      id: 'event_1',
+      event: { name: 'Safe Event', hostId: 'victim_1', eventType: 'EVENT' },
+    }));
+
+    expect(res.status).toBe(201);
+    expect(upsertEventFromPayloadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hostId: 'host_1' }),
+      prismaMock,
+    );
+  });
+
+  it('rejects creating an event under an organization the caller cannot manage', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce(null);
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_2', ownerId: 'owner_2' });
+    hasOrgPermissionMock.mockResolvedValueOnce(false);
+
+    const res = await eventsPost(postRequest('http://localhost/api/events', {
+      id: 'event_1',
+      event: { name: 'Spoofed Org Event', organizationId: 'org_2', eventType: 'EVENT' },
+    }));
+
+    expect(res.status).toBe(403);
+    expect(upsertEventFromPayloadMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when a new event has no selected or created fields', async () => {

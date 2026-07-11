@@ -45,6 +45,7 @@ import {
   assertLegacySetScoreUpdateAllowed,
   assertSetSegmentOperationsAllowed,
 } from '@/server/matches/setScoringRules';
+import { claimMatchOperationReceipts } from '@/server/matches/clientOperationReplay';
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -1327,6 +1328,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Forbidden', { status: 403 });
       }
 
+      const operationClaim = await claimMatchOperationReceipts({
+        client: tx,
+        eventId,
+        matchId,
+        actorUserId: session.userId,
+        operationKind: 'MATCH_UPDATE',
+        payload: parsed.data as Record<string, unknown>,
+      });
+      if (operationClaim.replayed) {
+        return {
+          match: targetMatch,
+          replayed: true,
+          matchScheduleNotification: null,
+        };
+      }
+
       if (parsed.data.officialCheckIn) {
         assertWindowOpen(
           targetMatch.start,
@@ -1569,6 +1586,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       return {
         match: targetMatch,
+        replayed: false,
         matchScheduleNotification: {
           eventId,
           eventName: String((event as { name?: unknown }).name ?? 'Event'),
@@ -1582,18 +1600,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     }, MATCH_UPDATE_TRANSACTION_OPTIONS);
 
     const serializedMatch = serializeMatchesLegacy([result.match])[0];
-    publishEventMatchChanges({
-      eventId,
-      matches: serializedMatch ? [serializedMatch] : [],
-    });
-    await notifyTeamsOfMatchScheduleUpdate(result.matchScheduleNotification).catch((error) => {
-      console.warn('Failed to send match schedule update notifications', {
+    if (!result.replayed) {
+      publishEventMatchChanges({
         eventId,
-        matchId,
-        error,
+        matches: serializedMatch ? [serializedMatch] : [],
       });
-    });
-    return NextResponse.json({ match: serializedMatch }, { status: 200 });
+      await notifyTeamsOfMatchScheduleUpdate(result.matchScheduleNotification!).catch((error) => {
+        console.warn('Failed to send match schedule update notifications', {
+          eventId,
+          matchId,
+          error,
+        });
+      });
+    }
+    return NextResponse.json({ match: serializedMatch, replayed: result.replayed }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof AutoRescheduleWindowExceededError) {

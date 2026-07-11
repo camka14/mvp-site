@@ -39,7 +39,8 @@ export const currentUserSelect = {
 
 export type CurrentUser = Prisma.UserDataGetPayload<{ select: typeof currentUserSelect }>;
 
-export type VisibilityUser = PublicUser & {
+export type VisibilityUser = Omit<PublicUser, 'dateOfBirth'> & {
+  dateOfBirth: Date | null;
   isMinor: boolean;
   isIdentityHidden: boolean;
   displayName: string;
@@ -469,6 +470,33 @@ export const createVisibilityContext = async (
 
 export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): VisibilityUser => {
   const isMinor = isMinorAtUtcDate(user.dateOfBirth, context.now);
+  const canViewPrivateProfile = Boolean(
+    context.isAdmin
+    || context.viewerId === user.id
+    || context.activeChildIds.has(user.id)
+  );
+  const canViewScopedMinorIdentity = Boolean(
+    canViewPrivateProfile
+    || (
+      context.contextTeamVisibleUserIds.has(user.id)
+      && (
+        context.viewerManagesContextTeam
+        || context.viewerBelongsToContextTeam
+        || context.contextTeamAllowsParent
+        || context.contextOrganizationAllowsStaff
+      )
+    )
+    || (context.contextEventAllowsHost && context.contextEventVisibleUserIds.has(user.id))
+    || context.contextEventViewerTeamVisibleUserIds.has(user.id)
+    || (context.contextEventAllowsParent && context.contextEventParentVisibleUserIds.has(user.id))
+    || (context.contextOrganizationAllowsStaff && context.contextOrganizationVisibleUserIds.has(user.id))
+    || (
+      context.viewerManagesContextTeam
+      && context.allowManagerFreeAgentUnmask
+      && context.contextEventFreeAgentIds.has(user.id)
+    )
+  );
+  const isIdentityHidden = isMinor && !canViewScopedMinorIdentity;
 
   const normalizedUser: PublicUser = {
     ...user,
@@ -477,11 +505,33 @@ export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): 
     accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   };
 
-  return {
+  const privacyMinimizedUser = {
     ...normalizedUser,
+    dateOfBirth: canViewPrivateProfile ? normalizedUser.dateOfBirth : null,
+    dobVerified: canViewPrivateProfile ? normalizedUser.dobVerified : false,
+    dobVerifiedAt: canViewPrivateProfile ? normalizedUser.dobVerifiedAt : null,
+    ageVerificationProvider: canViewPrivateProfile ? normalizedUser.ageVerificationProvider : null,
+    friendIds: canViewPrivateProfile ? normalizedUser.friendIds : [],
+    followingIds: canViewPrivateProfile ? normalizedUser.followingIds : [],
+    friendRequestIds: canViewPrivateProfile ? normalizedUser.friendRequestIds : [],
+    friendRequestSentIds: canViewPrivateProfile ? normalizedUser.friendRequestSentIds : [],
+    uploadedImages: canViewPrivateProfile ? normalizedUser.uploadedImages : [],
+    hasStripeAccount: canViewPrivateProfile ? normalizedUser.hasStripeAccount : false,
+    homePageOrganizationId: canViewPrivateProfile ? normalizedUser.homePageOrganizationId : null,
+    ...(isIdentityHidden ? {
+      firstName: null,
+      lastName: null,
+      userName: 'Minor participant',
+      teamIds: [],
+      profileImageId: null,
+    } : {}),
+  };
+
+  return {
+    ...privacyMinimizedUser,
     isMinor,
-    isIdentityHidden: false,
-    displayName: resolveDisplayName(normalizedUser),
+    isIdentityHidden,
+    displayName: isIdentityHidden ? 'Minor participant' : resolveDisplayName(normalizedUser),
   };
 };
 

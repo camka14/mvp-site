@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { parseAccountVisibility } from '@/lib/accountVisibility';
-import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
-import { normalizeNotificationSettings } from '@/lib/notificationSettings';
-import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
-import {
-  findUserNameConflictUserId,
-  isPrismaUserNameUniqueError,
-  normalizeUserName,
-  reserveGeneratedUserName,
-} from '@/server/userNames';
+import { withLegacyList } from '@/server/legacyFormat';
 import {
   applyUserPrivacyList,
   createVisibilityContext,
@@ -20,11 +10,6 @@ import {
   publicUserSelect,
 } from '@/server/userPrivacy';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
-
-const createSchema = z.object({
-  id: z.string(),
-  data: z.record(z.string(), z.any()),
-});
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -51,15 +36,6 @@ const parseContextIdParam = (raw: string | null): string | null => {
 const isExcludedSearchEmail = (value: string | null | undefined): boolean => {
   const normalized = value?.trim().toLowerCase();
   return Boolean(normalized?.endsWith('@test.com'));
-};
-
-const normalizeNameFields = (data: Record<string, unknown>) => {
-  if (Object.prototype.hasOwnProperty.call(data, 'firstName')) {
-    data.firstName = normalizeOptionalName(data.firstName);
-  }
-  if (Object.prototype.hasOwnProperty.call(data, 'lastName')) {
-    data.lastName = normalizeOptionalName(data.lastName);
-  }
 };
 
 export async function GET(req: NextRequest) {
@@ -142,98 +118,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   await requireSession(req);
-  const body = await req.json().catch(() => null);
-  const parsed = createSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const { id, data } = parsed.data;
-  const normalizedData: Record<string, unknown> = { ...data };
-  normalizeNameFields(normalizedData);
-  if (normalizedData.dateOfBirth) {
-    const parsedDate = new Date(normalizedData.dateOfBirth as any);
-    if (!Number.isNaN(parsedDate.getTime())) {
-      normalizedData.dateOfBirth = parsedDate;
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(normalizedData, 'notificationSettings')) {
-    normalizedData.notificationSettings = normalizeNotificationSettings(normalizedData.notificationSettings);
-  }
-  if (Object.prototype.hasOwnProperty.call(normalizedData, 'onboardingIntent')) {
-    const rawOnboardingIntent = normalizedData.onboardingIntent;
-    if (rawOnboardingIntent == null || rawOnboardingIntent === '') {
-      normalizedData.onboardingIntent = null;
-    } else {
-      const onboardingIntent = normalizeOnboardingIntent(rawOnboardingIntent);
-      if (!onboardingIntent) {
-        return NextResponse.json({ error: 'onboardingIntent is invalid.' }, { status: 400 });
-      }
-      normalizedData.onboardingIntent = onboardingIntent;
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(normalizedData, 'accountVisibility')) {
-    const accountVisibility = parseAccountVisibility(normalizedData.accountVisibility);
-    if (!accountVisibility) {
-      return NextResponse.json({ error: 'accountVisibility is invalid.' }, { status: 400 });
-    }
-    normalizedData.accountVisibility = accountVisibility;
-  }
-  const now = new Date();
-  const existing = await prisma.userData.findUnique({ where: { id } });
-  if (!existing) {
-    const providedUserName = normalizeUserName(normalizedData.userName);
-    const userName = providedUserName
-      ?? await reserveGeneratedUserName(prisma, id, { excludeUserId: id, suffixSeed: id });
-    const dateOfBirth = normalizedData.dateOfBirth instanceof Date
-      ? normalizedData.dateOfBirth
-      : new Date(0);
-
-    if (!userName || Number.isNaN(dateOfBirth.getTime())) {
-      return NextResponse.json({ error: 'Missing required user fields' }, { status: 400 });
-    }
-
-    const conflictUserId = await findUserNameConflictUserId(prisma, userName, id);
-    if (conflictUserId) {
-      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
-    }
-
-    try {
-      const record = await prisma.userData.create({
-        data: { id, createdAt: now, updatedAt: now, ...normalizedData, userName, dateOfBirth },
-      });
-      return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(record)) }, { status: 201 });
-    } catch (error) {
-      if (isPrismaUserNameUniqueError(error)) {
-        return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
-      }
-      throw error;
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(normalizedData, 'userName')) {
-    const normalizedUserName = normalizeUserName(normalizedData.userName);
-    if (!normalizedUserName) {
-      return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
-    }
-    const conflictUserId = await findUserNameConflictUserId(prisma, normalizedUserName, id);
-    if (conflictUserId) {
-      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
-    }
-    normalizedData.userName = normalizedUserName;
-  }
-  try {
-    const record = existing
-      ? await prisma.userData.update({ where: { id }, data: { ...normalizedData, updatedAt: now } })
-      : null;
-
-    return NextResponse.json(
-      { user: record ? withLegacyFields(applyNameCaseToUserFields(record)) : record },
-      { status: 201 },
-    );
-  } catch (error) {
-    if (isPrismaUserNameUniqueError(error)) {
-      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
-    }
-    throw error;
-  }
+  return NextResponse.json(
+    { error: 'This legacy endpoint has been removed. Use PATCH /api/users/:id or POST /api/users/ensure.' },
+    { status: 410 },
+  );
 }

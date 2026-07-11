@@ -26,6 +26,8 @@ describe('authTotpMfa', () => {
       AUTH_SECRET: 'test-secret',
       NODE_ENV: 'test',
     };
+    delete process.env.AUTH_MFA_DISABLED_LOCAL;
+    delete process.env.AUTH_MFA_DISABLED;
   });
 
   afterEach(() => {
@@ -66,7 +68,7 @@ describe('authTotpMfa', () => {
     })).resolves.toBeNull();
   });
 
-  it('only enables the local MFA bypass for non-test local hosts or explicit env override', () => {
+  it('requires an explicit non-production configuration for the local MFA bypass', () => {
     const localRequest = {
       headers: {
         get: jest.fn().mockReturnValue('localhost:3000'),
@@ -75,18 +77,19 @@ describe('authTotpMfa', () => {
 
     expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(false);
 
-    process.env.NODE_ENV = 'production';
+    process.env.AUTH_MFA_DISABLED_LOCAL = 'true';
     expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(true);
 
     process.env.AUTH_MFA_DISABLED_LOCAL = 'false';
     expect(isLocalAuthMfaBypassEnabled(localRequest)).toBe(false);
 
     process.env.AUTH_MFA_DISABLED_LOCAL = 'true';
+    process.env.NODE_ENV = 'production';
     expect(isLocalAuthMfaBypassEnabled({
       headers: {
-        get: jest.fn().mockReturnValue('bracket-iq.com'),
+        get: jest.fn().mockReturnValue('localhost:3000'),
       },
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('returns a controlled MFA error when an authenticator secret cannot be decrypted', async () => {

@@ -34,7 +34,7 @@ jest.mock('@/server/moderation', () => ({
   archiveChatGroup: (...args: any[]) => archiveChatGroupMock(...args),
 }));
 
-import { PATCH } from '@/app/api/chat/groups/[id]/route';
+import { DELETE, PATCH } from '@/app/api/chat/groups/[id]/route';
 
 const patchRequest = (body: unknown) => new NextRequest('http://localhost/api/chat/groups/chat_1', {
   method: 'PATCH',
@@ -78,7 +78,40 @@ describe('/api/chat/groups/[id] PATCH', () => {
     expect(chatGroupUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('allows minor participants to remain in team chats', async () => {
+  it('rejects a team-chat host attempting to mutate roster-managed membership', async () => {
+    chatGroupFindUniqueMock.mockResolvedValue(existingGroup({ teamId: 'team_1' }));
+
+    const response = await PATCH(patchRequest({
+      group: { userIds: ['user_1', 'minor_1'] },
+    }), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('roster');
+    expect(chatGroupUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a team-chat host attempting to archive the deterministic team chat', async () => {
+    chatGroupFindUniqueMock.mockResolvedValue(existingGroup({
+      id: 'team:team_1',
+      teamId: null,
+    }));
+
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/chat/groups/team:team_1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'team:team_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('roster');
+    expect(archiveChatGroupMock).not.toHaveBeenCalled();
+  });
+
+  it('allows an administrator to repair a roster-managed team chat', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'admin_1', isAdmin: true });
     const updatedGroup = existingGroup({
       teamId: 'team_1',
       userIds: ['user_1', 'minor_1'],
@@ -99,9 +132,7 @@ describe('/api/chat/groups/[id] PATCH', () => {
     expect(response.status).toBe(200);
     expect(chatGroupUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'chat_1' },
-      data: expect.objectContaining({
-        userIds: ['user_1', 'minor_1'],
-      }),
+      data: expect.objectContaining({ userIds: ['user_1', 'minor_1'] }),
     }));
   });
 });

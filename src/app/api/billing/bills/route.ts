@@ -53,6 +53,57 @@ const uniqueIds = (values: Array<string | null | undefined>): string[] => (
   Array.from(new Set(values.filter((value): value is string => Boolean(value))))
 );
 
+type BillOwnerType = z.infer<typeof createSchema>['ownerType'];
+
+const canManageBillOwner = async (
+  session: Awaited<ReturnType<typeof requireSession>>,
+  ownerType: BillOwnerType,
+  ownerId: string,
+): Promise<boolean> => {
+  if (session.isAdmin) return true;
+  if (ownerType === 'USER') return ownerId === session.userId;
+
+  if (ownerType === 'ORGANIZATION') {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: ownerId },
+      select: { id: true, ownerId: true },
+    });
+    return Boolean(organization && await canManageOrganization(session, organization));
+  }
+
+  const requestedTeam = await prisma.teams.findUnique({
+    where: { id: ownerId },
+    select: {
+      parentTeamId: true,
+      captainId: true,
+      managerId: true,
+      headCoachId: true,
+    },
+  });
+  if (!requestedTeam) return false;
+
+  const teams = [requestedTeam];
+  const parentTeamId = normalizeId(requestedTeam.parentTeamId);
+  if (parentTeamId) {
+    const parentTeam = await prisma.teams.findUnique({
+      where: { id: parentTeamId },
+      select: {
+        parentTeamId: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+      },
+    });
+    if (parentTeam) teams.push(parentTeam);
+  }
+
+  return teams.some((team) => uniqueIds([
+    normalizeId(team.captainId),
+    normalizeId(team.managerId),
+    normalizeId(team.headCoachId),
+  ]).includes(session.userId));
+};
+
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
@@ -75,6 +126,9 @@ export async function GET(req: NextRequest) {
     if (!organization || !(await canManageOrganization(session, organization))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+  }
+  if (ownerType === 'TEAM' && !(await canManageBillOwner(session, ownerType, ownerId))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let ownerIds = [ownerId];
@@ -144,6 +198,9 @@ export async function POST(req: NextRequest) {
   let ownerId = requestedOwnerId;
   if (!ownerId) {
     return NextResponse.json({ error: 'ownerId is required' }, { status: 400 });
+  }
+  if (!(await canManageBillOwner(session, parsed.data.ownerType, ownerId))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const totalAmountCents = Math.round(parsed.data.totalAmountCents);
@@ -338,7 +395,7 @@ export async function POST(req: NextRequest) {
         allowSplit: parsed.data.allowSplit ?? false,
         status: 'OPEN',
         paymentPlanEnabled,
-        createdBy: parsed.data.user?.$id ?? session.userId ?? null,
+        createdBy: session.userId,
         lineItems: normalizedLineItems.length > 0
           ? normalizedLineItems
           : [

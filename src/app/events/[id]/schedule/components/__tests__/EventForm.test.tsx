@@ -1423,11 +1423,13 @@ describe('EventForm dirty state', () => {
       target: { value: 'casey' },
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add as official' })).toBeInTheDocument();
-    });
+    // `getByRole` recomputes the accessibility tree for the entire form on
+    // every waitFor retry. EventForm is intentionally large, so use the
+    // result text to await the async search and then assert its button owner.
+    const addOfficialButton = (await screen.findByText('Add as official', {}, { timeout: 10_000 })).closest('button');
+    expect(addOfficialButton).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add as official' }));
+    fireEvent.click(addOfficialButton as HTMLButtonElement);
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
@@ -1448,11 +1450,10 @@ describe('EventForm dirty state', () => {
       target: { value: 'alex' },
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add as assistant host' })).toBeInTheDocument();
-    });
+    const addAssistantHostButton = (await screen.findByText('Add as assistant host', {}, { timeout: 10_000 })).closest('button');
+    expect(addAssistantHostButton).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add as assistant host' }));
+    fireEvent.click(addAssistantHostButton as HTMLButtonElement);
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });

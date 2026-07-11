@@ -11,13 +11,20 @@ const prismaMock = {
     findMany: jest.fn(),
     create: jest.fn(),
   },
+  teams: {
+    findUnique: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
 const requireSessionMock = jest.fn();
+const canManageBillPaymentMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/billing/billPaymentActions', () => ({
+  canManageBillPayment: (...args: any[]) => canManageBillPaymentMock(...args),
+}));
 
 import { POST } from '@/app/api/billing/bills/[id]/split/route';
 
@@ -32,6 +39,8 @@ describe('POST /api/billing/bills/[id]/split', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
+    canManageBillPaymentMock.mockResolvedValue(true);
+    prismaMock.teams.findUnique.mockResolvedValue({ playerIds: ['player_1', 'player_2'] });
   });
 
   it('splits each pending installment across players and preserves installment due dates', async () => {
@@ -47,6 +56,7 @@ describe('POST /api/billing/bills/[id]/split', () => {
       totalAmountCents: 1000,
       paidAmountCents: 0,
       paymentPlanEnabled: true,
+      allowSplit: true,
     });
     prismaMock.billPayments.findMany.mockResolvedValue([
       { amountCents: 600, dueDate: dueDateOne, sequence: 1, status: 'PENDING' },
@@ -54,15 +64,22 @@ describe('POST /api/billing/bills/[id]/split', () => {
     ]);
 
     const txMock = {
+      billPayments: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'parent_payment_1', amountCents: 600, dueDate: dueDateOne, sequence: 1, status: 'PENDING', paymentIntentId: null },
+          { id: 'parent_payment_2', amountCents: 400, dueDate: dueDateTwo, sequence: 2, status: 'PENDING', paymentIntentId: null },
+        ]),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        create: jest.fn().mockResolvedValue({}),
+      },
       bills: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest
           .fn()
           .mockResolvedValueOnce({ id: 'child_1' })
           .mockResolvedValueOnce({ id: 'child_2' }),
       },
-      billPayments: {
-        create: jest.fn().mockResolvedValue({}),
-      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
 
@@ -78,6 +95,15 @@ describe('POST /api/billing/bills/[id]/split', () => {
     expect(Array.isArray(payload.children)).toBe(true);
     expect(payload.children).toHaveLength(2);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(txMock.billPayments.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ['parent_payment_1', 'parent_payment_2'] },
+      }),
+      data: expect.objectContaining({
+        status: 'VOID',
+        paymentIntentId: null,
+      }),
+    }));
 
     expect(txMock.bills.create).toHaveBeenNthCalledWith(
       1,
@@ -160,13 +186,28 @@ describe('POST /api/billing/bills/[id]/split', () => {
   it('returns 400 when the bill has no pending installments to split', async () => {
     prismaMock.bills.findUnique.mockResolvedValue({
       id: 'bill_team_2',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
       totalAmountCents: 1000,
       paidAmountCents: 1000,
+      allowSplit: true,
     });
-    prismaMock.billPayments.findMany.mockResolvedValue([
-      { amountCents: 500, dueDate: new Date('2026-04-01T00:00:00.000Z'), sequence: 1, status: 'PAID' },
-      { amountCents: 500, dueDate: new Date('2026-05-01T00:00:00.000Z'), sequence: 2, status: 'VOID' },
-    ]);
+    const txMock = {
+      billPayments: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'parent_payment_1', amountCents: 500, dueDate: new Date('2026-04-01T00:00:00.000Z'), sequence: 1, status: 'PAID', paymentIntentId: 'pi_paid' },
+          { id: 'parent_payment_2', amountCents: 500, dueDate: new Date('2026-05-01T00:00:00.000Z'), sequence: 2, status: 'VOID', paymentIntentId: null },
+        ]),
+        updateMany: jest.fn(),
+        create: jest.fn(),
+      },
+      bills: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
 
     const response = await POST(
       jsonPost('http://localhost/api/billing/bills/bill_team_2/split', {
@@ -178,6 +219,72 @@ describe('POST /api/billing/bills/[id]/split', () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toBe('Bill has no pending installments to split');
+    expect(txMock.billPayments.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unrelated caller before creating split debt', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_3',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      allowSplit: true,
+    });
+    canManageBillPaymentMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_3/split', {
+        playerIds: ['player_1'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_3' }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(prismaMock.billPayments.findMany).not.toHaveBeenCalled();
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a split while a parent installment has an active checkout', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_4',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      totalAmountCents: 1000,
+      paidAmountCents: 0,
+      allowSplit: true,
+    });
+    const txMock = {
+      billPayments: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'parent_payment_1',
+            amountCents: 1000,
+            dueDate: new Date('2026-04-01T00:00:00.000Z'),
+            status: 'PROCESSING',
+            paymentIntentId: 'pi_in_flight',
+          },
+        ]),
+        updateMany: jest.fn(),
+        create: jest.fn(),
+      },
+      bills: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_4/split', {
+        playerIds: ['player_1', 'player_2'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_4' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toContain('started or partially paid');
+    expect(txMock.billPayments.updateMany).not.toHaveBeenCalled();
+    expect(txMock.bills.create).not.toHaveBeenCalled();
   });
 });

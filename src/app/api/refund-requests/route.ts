@@ -8,6 +8,31 @@ export const dynamic = 'force-dynamic';
 
 const TEAM_REFUND_FANOUT_REASON = 'team_refund_fanout';
 
+// This is also the mobile approval-preview contract. Keep the immutable
+// snapshot fields explicit rather than relying on Prisma's default selection.
+const refundRequestSelect = {
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  eventId: true,
+  userId: true,
+  requestedByUserId: true,
+  hostId: true,
+  teamId: true,
+  reason: true,
+  organizationId: true,
+  status: true,
+  slotId: true,
+  occurrenceDate: true,
+  billIds: true,
+  paymentIds: true,
+  requestedAmountCents: true,
+  currency: true,
+  policyDecision: true,
+  scopeVersion: true,
+  scopeHash: true,
+} as const;
+
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
@@ -32,16 +57,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // An unscoped list is a personal inbox, never a global financial report.
+  // Hosts and organization managers must explicitly request the scope they
+  // manage; administrators retain the operational global view.
   const where: any = {};
   if (organizationId) where.organizationId = organizationId;
   if (userId) where.userId = userId;
   if (hostId) where.hostId = hostId;
+  if (!organizationId && !userId && !hostId && !session.isAdmin) {
+    where.userId = session.userId;
+  }
   where.reason = { not: TEAM_REFUND_FANOUT_REASON };
 
   const refunds = await prisma.refundRequests.findMany({
     where,
     take: Number.isFinite(limit) ? limit : 100,
     orderBy: { createdAt: 'desc' },
+    select: refundRequestSelect,
   });
 
   return NextResponse.json({ refunds: withLegacyList(refunds) }, { status: 200 });

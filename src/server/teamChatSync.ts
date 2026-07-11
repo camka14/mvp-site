@@ -83,22 +83,32 @@ const isUnknownTeamIdArgumentError = (error: unknown): boolean => {
 const findExistingTeamChatGroup = async (
   chatGroupDelegate: any,
   teamId: string,
-): Promise<{ id: string; userIds: string[] } | null> => {
+): Promise<{ id: string; userIds: string[]; teamId?: string | null } | null> => {
   const stableGroupId = buildTeamChatGroupId(teamId);
+  const readGroup = async (where: Record<string, unknown>) => {
+    try {
+      return await chatGroupDelegate.findUnique({
+        where,
+        select: { id: true, userIds: true, teamId: true },
+      });
+    } catch (error) {
+      if (!isUnknownTeamIdArgumentError(error)) {
+        throw error;
+      }
+      return chatGroupDelegate.findUnique({
+        where,
+        select: { id: true, userIds: true },
+      });
+    }
+  };
 
-  const byStableId = await chatGroupDelegate.findUnique({
-    where: { id: stableGroupId },
-    select: { id: true, userIds: true },
-  });
+  const byStableId = await readGroup({ id: stableGroupId });
   if (byStableId?.id) {
     return byStableId;
   }
 
   try {
-    const byLegacyTeamId = await chatGroupDelegate.findUnique({
-      where: { teamId },
-      select: { id: true, userIds: true },
-    });
+    const byLegacyTeamId = await readGroup({ teamId });
     if (byLegacyTeamId?.id) {
       return byLegacyTeamId;
     }
@@ -148,14 +158,17 @@ const createTeamChatGroup = async (
   }
 };
 
-const getActiveParentIdsForMinorMembers = async (tx: any, memberIds: string[]): Promise<string[]> => {
+const getActiveParentIdsForMinorMembers = async (
+  tx: any,
+  memberIds: string[],
+  options: { failClosed?: boolean } = {},
+): Promise<string[] | null> => {
   if (!memberIds.length) {
     return [];
   }
   const userDataDelegate = tx?.userData;
-  const parentChildLinksDelegate = tx?.parentChildLinks;
-  if (!userDataDelegate?.findMany || !parentChildLinksDelegate?.findMany) {
-    return [];
+  if (!userDataDelegate?.findMany) {
+    return options.failClosed ? null : [];
   }
 
   const members = await userDataDelegate.findMany({
@@ -165,6 +178,9 @@ const getActiveParentIdsForMinorMembers = async (tx: any, memberIds: string[]): 
       dateOfBirth: true,
     },
   });
+  if (options.failClosed && members.length !== new Set(memberIds).size) {
+    return null;
+  }
 
   const minorMemberIds = members
     .filter((member: { dateOfBirth: Date | null }) => isMinorAtUtcDate(member.dateOfBirth))
@@ -172,6 +188,11 @@ const getActiveParentIdsForMinorMembers = async (tx: any, memberIds: string[]): 
 
   if (!minorMemberIds.length) {
     return [];
+  }
+
+  const parentChildLinksDelegate = tx?.parentChildLinks;
+  if (!parentChildLinksDelegate?.findMany) {
+    return options.failClosed ? null : [];
   }
 
   const activeLinks = await parentChildLinksDelegate.findMany({
@@ -220,11 +241,47 @@ const getTeamById = async (tx: any, teamId: string): Promise<TeamRecord | null> 
   });
 };
 
+/**
+ * Returns the authoritative roster for a team chat, including active guardians
+ * of current minor players. Unlike the write-side synchronizer, this fails
+ * closed when the roster cannot be fully resolved so an old ChatGroup.userIds
+ * array can never grant access by itself.
+ */
+export const getCurrentTeamChatMemberIds = async (
+  tx: any,
+  teamId: string,
+): Promise<string[] | null> => {
+  const normalizedTeamId = String(teamId ?? '').trim();
+  if (!normalizedTeamId) {
+    return null;
+  }
+
+  const team = await getTeamById(tx, normalizedTeamId);
+  if (!team) {
+    return null;
+  }
+
+  const baseMemberIds = getTeamMemberIds(team);
+  if (!baseMemberIds.length) {
+    return null;
+  }
+
+  const parentIds = await getActiveParentIdsForMinorMembers(tx, baseMemberIds, { failClosed: true });
+  if (!parentIds) {
+    return null;
+  }
+
+  return Array.from(new Set([...baseMemberIds, ...parentIds]));
+};
+
 export const syncTeamChatInTx = async (
   tx: any,
   teamId: string,
   options: TeamChatSyncOptions = {},
 ): Promise<void> => {
+  // Team-chat membership is roster-derived. Retaining arbitrary historical
+  // group members lets a forged/preexisting row survive future roster syncs.
+  void options;
   const team = await getTeamById(tx, teamId);
   if (!team) {
     return;
@@ -236,7 +293,7 @@ export const syncTeamChatInTx = async (
 
   const baseMemberIds = getTeamMemberIds(team);
   const parentIds = await getActiveParentIdsForMinorMembers(tx, baseMemberIds);
-  const managedMemberIds = Array.from(new Set([...baseMemberIds, ...parentIds]));
+  const managedMemberIds = Array.from(new Set([...baseMemberIds, ...(parentIds ?? [])]));
   if (!managedMemberIds.length) {
     return;
   }
@@ -247,37 +304,34 @@ export const syncTeamChatInTx = async (
   const existing = await findExistingTeamChatGroup(chatGroupDelegate, team.id);
 
   if (existing) {
-    let nextUserIds = managedMemberIds;
-    const previousMemberIds = normalizeIdList(options.previousMemberIds);
-    if (previousMemberIds.length > 0) {
-      const previousParentIds = await getActiveParentIdsForMinorMembers(tx, previousMemberIds);
-      const previousManagedMemberSet = new Set([...previousMemberIds, ...previousParentIds]);
-      const currentManagedMemberSet = new Set(managedMemberIds);
-      const existingUserSet = new Set(normalizeIdList(existing.userIds));
+    const nextUserIds = managedMemberIds;
 
-      for (const memberId of currentManagedMemberSet) {
-        if (!previousManagedMemberSet.has(memberId)) {
-          existingUserSet.add(memberId);
-        }
-      }
-      for (const memberId of previousManagedMemberSet) {
-        if (!currentManagedMemberSet.has(memberId)) {
-          existingUserSet.delete(memberId);
-        }
-      }
-      existingUserSet.add(hostId);
-      nextUserIds = Array.from(existingUserSet);
+    // A historical generic row can collide with the deterministic team ID.
+    // Clear its untrusted messages before adopting it, then persist the team
+    // association so all team-chat guards apply going forward.
+    if (existing.id === chatGroupId && existing.teamId === null && tx?.messages?.deleteMany) {
+      await tx.messages.deleteMany({ where: { chatId: existing.id } });
     }
-
-    await chatGroupDelegate.update({
-      where: { id: existing.id },
-      data: {
-        name: team.name,
-        userIds: nextUserIds,
-        hostId,
-        updatedAt: now,
-      },
-    });
+    const baseData = {
+      name: team.name,
+      userIds: nextUserIds,
+      hostId,
+      updatedAt: now,
+    };
+    try {
+      await chatGroupDelegate.update({
+        where: { id: existing.id },
+        data: { ...baseData, teamId: team.id },
+      });
+    } catch (error) {
+      if (!isUnknownTeamIdArgumentError(error)) {
+        throw error;
+      }
+      await chatGroupDelegate.update({
+        where: { id: existing.id },
+        data: baseData,
+      });
+    }
     return;
   }
 

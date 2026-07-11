@@ -10,6 +10,11 @@ import {
   loadChatParticipants,
   normalizeChatParticipantIds,
 } from '@/server/chatSafety';
+import {
+  getChatGroupMemberIds,
+  getChatTeamIdsForUser,
+  isReservedTeamChatGroupId,
+} from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +34,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const groups = await prisma.chatGroup.findMany({
+    // Team rows are roster-authorized below rather than trusted through their
+    // persisted userIds array. Include known direct/guardian team candidates so
+    // a valid member is visible even before a write-side roster sync runs.
+    const teamIds = await getChatTeamIdsForUser(userId);
+    const groupOrFilters: any[] = [
+      { userIds: { has: userId } },
+      { hostId: userId },
+    ];
+    if (teamIds.length) {
+      groupOrFilters.push(
+        { teamId: { in: teamIds } },
+        { id: { in: teamIds.map((teamId) => `team:${teamId}`) } },
+      );
+    }
+
+    const candidateGroups = await prisma.chatGroup.findMany({
       where: {
-        userIds: { has: userId },
         archivedAt: null,
+        OR: groupOrFilters,
       },
       orderBy: { updatedAt: 'desc' },
     });
+    const groups = (await Promise.all(candidateGroups.map(async (group) => {
+      const memberIds = await getChatGroupMemberIds(group);
+      return memberIds?.includes(userId) ? group : null;
+    }))).filter((group): group is NonNullable<typeof group> => Boolean(group));
 
     const groupIds = groups.map((group) => group.id);
     const unreadCountByGroupId = new Map<string, number>();
@@ -95,6 +119,13 @@ export async function POST(req: NextRequest) {
 
     const normalizedHostId = parsed.data.hostId.trim();
     const requestedUserIds = normalizeChatParticipantIds(parsed.data.userIds);
+
+    if (isReservedTeamChatGroupId(parsed.data.id)) {
+      return NextResponse.json(
+        { error: 'Team chat identifiers are reserved for roster-managed chats.' },
+        { status: 403 },
+      );
+    }
 
     if (!requestedUserIds.includes(session.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

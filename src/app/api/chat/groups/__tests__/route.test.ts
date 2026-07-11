@@ -9,6 +9,8 @@ const messagesFindManyMock = jest.fn();
 const userDataFindManyMock = jest.fn();
 const requireSessionMock = jest.fn();
 const ensureUserHasAcceptedChatTermsMock = jest.fn();
+const getChatGroupMemberIdsMock = jest.fn();
+const getChatTeamIdsForUserMock = jest.fn();
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
@@ -34,6 +36,9 @@ jest.mock('@/lib/permissions', () => ({
 
 jest.mock('@/server/chatAccess', () => ({
   ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
+  getChatGroupMemberIds: (...args: any[]) => getChatGroupMemberIdsMock(...args),
+  getChatTeamIdsForUser: (...args: any[]) => getChatTeamIdsForUserMock(...args),
+  isReservedTeamChatGroupId: (id: string) => id.startsWith('team:'),
 }));
 
 jest.mock('@/server/legacyFormat', () => ({
@@ -54,6 +59,10 @@ describe('/api/chat/groups GET', () => {
     jest.clearAllMocks();
     userDataFindManyMock.mockResolvedValue([]);
     ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
+    getChatTeamIdsForUserMock.mockResolvedValue([]);
+    getChatGroupMemberIdsMock.mockImplementation(async (group: { hostId?: string | null; userIds?: string[] | null }) => (
+      Array.from(new Set([...(group.userIds ?? []), group.hostId].filter(Boolean)))
+    ));
   });
 
   it('returns unread counts and last message summary without per-group fanout', async () => {
@@ -130,6 +139,30 @@ describe('/api/chat/groups GET', () => {
     expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(json.groups).toHaveLength(1);
   });
+
+  it('does not expose a stale team chat to a user retained only in persisted membership', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'stale_attacker', isAdmin: false });
+    const staleTeamGroup = {
+      id: 'team:team_1',
+      teamId: 'team_1',
+      hostId: 'captain_1',
+      // This is deliberately poisoned historical data; the roster helper is
+      // authoritative and must override it.
+      userIds: ['captain_1', 'stale_attacker'],
+      updatedAt: new Date('2026-03-20T00:00:00.000Z'),
+    };
+    chatGroupFindManyMock.mockResolvedValue([staleTeamGroup]);
+    getChatGroupMemberIdsMock.mockResolvedValue(['captain_1', 'player_1']);
+
+    const response = await GET(new NextRequest('http://localhost/api/chat/groups?userId=stale_attacker'));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.groups).toEqual([]);
+    expect(getChatGroupMemberIdsMock).toHaveBeenCalledWith(staleTeamGroup);
+    expect(messagesGroupByMock).not.toHaveBeenCalled();
+    expect(messagesFindManyMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/chat/groups POST', () => {
@@ -137,6 +170,10 @@ describe('/api/chat/groups POST', () => {
     jest.clearAllMocks();
     userDataFindManyMock.mockResolvedValue([]);
     ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
+    getChatTeamIdsForUserMock.mockResolvedValue([]);
+    getChatGroupMemberIdsMock.mockImplementation(async (group: { hostId?: string | null; userIds?: string[] | null }) => (
+      Array.from(new Set([...(group.userIds ?? []), group.hostId].filter(Boolean)))
+    ));
   });
 
   it('creates a chat group with normalized unique user ids', async () => {
@@ -168,6 +205,21 @@ describe('/api/chat/groups POST', () => {
       }),
     }));
     expect(json.$id).toBe('chat_1');
+  });
+
+  it('reserves deterministic team chat ids for roster synchronization', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const response = await POST(createPostRequest({
+      id: 'team:team_1',
+      hostId: 'user_1',
+      userIds: ['user_1', 'user_2'],
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('reserved');
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when userIds contain blank entries', async () => {

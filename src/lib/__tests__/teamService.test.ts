@@ -334,7 +334,7 @@ describe('teamService', () => {
 
       const teams = await teamService.searchOpenRegistrationTeams(' aces ', 25);
 
-      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams?query=aces&openRegistration=true&limit=25');
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams?query=aces&openRegistration=true&limit=25&offset=0');
       expect(teams).toHaveLength(1);
       expect(teams[0]).toMatchObject({
         $id: 'team_open',

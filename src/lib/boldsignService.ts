@@ -266,30 +266,6 @@ class BoldSignService {
     }));
   }
 
-  /** @deprecated Use webhook-driven operation polling instead. */
-  async markSigned(params: {
-    documentId: string;
-    templateId: string;
-    eventId?: string;
-    user: UserData;
-    userEmail?: string;
-  }): Promise<void> {
-    const result = await apiRequest<{ error?: string }>('/api/documents/signed', {
-      method: 'POST',
-      body: {
-        documentId: params.documentId,
-        templateId: params.templateId,
-        eventId: params.eventId,
-        user: params.user,
-        userId: params.user.$id,
-        userEmail: params.userEmail,
-      },
-    });
-    if (result?.error) {
-      throw new Error(result.error);
-    }
-  }
-
   async getOperationStatus(operationId: string): Promise<BoldSignOperationStatus> {
     const result = await apiRequest<BoldSignOperationStatus>(
       `/api/boldsign/operations/${operationId}`,

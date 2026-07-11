@@ -1042,13 +1042,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const hostIdFromPayload = typeof commandEvent.hostId === 'string' && commandEvent.hostId.trim().length > 0
+  const organizationId = typeof commandEvent.organizationId === 'string'
+    ? commandEvent.organizationId.trim()
+    : '';
+  if (organizationId) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { id: true, ownerId: true },
+    });
+    if (!organization) {
+      return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
+    }
+    if (!await hasOrgPermission(session, organization, ORG_PERMISSIONS.EVENTS_MANAGE)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
+  const requestedHostId = typeof commandEvent.hostId === 'string' && commandEvent.hostId.trim().length > 0
     ? commandEvent.hostId.trim()
     : session.userId;
+  const authoritativeHostId = session.isAdmin ? requestedHostId : session.userId;
   const eventPayload: Record<string, unknown> = {
     ...commandEvent,
     id: eventId,
-    hostId: hostIdFromPayload,
+    hostId: authoritativeHostId,
   };
   if (Array.isArray(parsed.data.newFields) && parsed.data.newFields.length > 0) {
     eventPayload.fields = parsed.data.newFields;

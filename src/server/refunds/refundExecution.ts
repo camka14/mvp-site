@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { createHash } from 'crypto';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 
@@ -15,6 +16,20 @@ export type RefundRequestRow = {
   status: 'WAITING' | 'APPROVED' | 'REJECTED' | null;
   slotId?: string | null;
   occurrenceDate?: string | null;
+  requestedByUserId?: string | null;
+  billIds?: string[];
+  paymentIds?: string[];
+  requestedAmountCents?: number;
+  currency?: string;
+  policyDecision?: string | null;
+  scopeVersion?: number;
+  scopeHash?: string | null;
+  /**
+   * Transient authorization context used while the immutable payment scope is
+   * created. It is intentionally not persisted: the resulting bill/payment
+   * snapshot is the durable authorization boundary for later approval.
+   */
+  authorizedPayerUserIds?: string[];
 };
 
 const TEAM_REGISTRATION_REFUND_EVENT_PREFIX = 'team_registration:';
@@ -29,6 +44,7 @@ type RefundablePaymentRow = {
   amountCents: number;
   refundedAmountCents: number | null;
   paymentIntentId: string | null;
+  payerUserId: string | null;
 };
 
 export type StripeRefundAttempt = {
@@ -90,11 +106,137 @@ const dedupeById = <T extends { id: string }>(rows: T[]): T[] => {
   return Array.from(byId.values());
 };
 
+type RefundScopeSnapshot = {
+  billIds: string[];
+  paymentIds: string[];
+  requestedAmountCents: number;
+  currency: string;
+  policyDecision: string;
+  scopeVersion: number;
+  scopeHash: string;
+};
+
+const calculateRefundScopeHash = (input: {
+  requestId: string;
+  eventId: string;
+  userId: string;
+  requestedByUserId?: string | null;
+  teamId?: string | null;
+  slotId?: string | null;
+  occurrenceDate?: string | null;
+  billIds: string[];
+  paymentIds: string[];
+  requestedAmountCents: number;
+  currency: string;
+  policyDecision: string;
+  scopeVersion: number;
+}): string => createHash('sha256').update(JSON.stringify({
+  ...input,
+  billIds: [...input.billIds].sort(),
+  paymentIds: [...input.paymentIds].sort(),
+})).digest('hex');
+
+export const buildRefundScopeSnapshot = (
+  request: RefundRequestRow,
+  payments: Array<RefundablePaymentRow & { refundableAmountCents: number }>,
+  policyDecision: string,
+): RefundScopeSnapshot => {
+  const billIds = normalizeIdList(payments.map((payment) => payment.billId));
+  const paymentIds = normalizeIdList(payments.map((payment) => payment.id));
+  const requestedAmountCents = payments.reduce(
+    (total, payment) => total + Math.max(0, Math.round(payment.refundableAmountCents)),
+    0,
+  );
+  const currency = 'usd';
+  const scopeVersion = 1;
+  return {
+    billIds,
+    paymentIds,
+    requestedAmountCents,
+    currency,
+    policyDecision,
+    scopeVersion,
+    scopeHash: calculateRefundScopeHash({
+      requestId: request.id,
+      eventId: request.eventId,
+      userId: request.userId,
+      requestedByUserId: request.requestedByUserId,
+      teamId: request.teamId,
+      slotId: request.slotId,
+      occurrenceDate: request.occurrenceDate,
+      billIds,
+      paymentIds,
+      requestedAmountCents,
+      currency,
+      policyDecision,
+      scopeVersion,
+    }),
+  };
+};
+
+export const isRefundScopeSnapshotValid = (request: RefundRequestRow): boolean => {
+  const billIds = normalizeIdList(request.billIds);
+  const paymentIds = normalizeIdList(request.paymentIds);
+  const requestedAmountCents = Math.max(0, Math.round(Number(request.requestedAmountCents) || 0));
+  const currency = normalizeId(request.currency)?.toLowerCase() ?? 'usd';
+  const policyDecision = normalizeId(request.policyDecision) ?? '';
+  const scopeVersion = Number(request.scopeVersion);
+  if (!billIds.length || !paymentIds.length || requestedAmountCents <= 0 || !policyDecision || scopeVersion !== 1) {
+    return false;
+  }
+  return request.scopeHash === calculateRefundScopeHash({
+    requestId: request.id,
+    eventId: request.eventId,
+    userId: request.userId,
+    requestedByUserId: request.requestedByUserId,
+    teamId: request.teamId,
+    slotId: request.slotId,
+    occurrenceDate: request.occurrenceDate,
+    billIds,
+    paymentIds,
+    requestedAmountCents,
+    currency,
+    policyDecision,
+    scopeVersion,
+  });
+};
+
 export const resolveRefundablePaymentsForRequest = async (
   client: PrismaLike,
   request: RefundRequestRow,
 ): Promise<Array<RefundablePaymentRow & { refundableAmountCents: number }>> => {
+  const snapshotPaymentIds = normalizeIdList(request.paymentIds);
+  const snapshotBillIds = normalizeIdList(request.billIds);
+  if (snapshotPaymentIds.length > 0) {
+    const snapshotPayments = await client.billPayments.findMany({
+      where: {
+        id: { in: snapshotPaymentIds },
+        ...(snapshotBillIds.length ? { billId: { in: snapshotBillIds } } : {}),
+        status: 'PAID',
+        paymentIntentId: { not: null },
+      },
+      select: {
+        id: true,
+        billId: true,
+        amountCents: true,
+        refundedAmountCents: true,
+        paymentIntentId: true,
+        payerUserId: true,
+      },
+    });
+    return snapshotPayments.map((payment) => ({
+      ...payment,
+      amountCents: Math.max(0, Number(payment.amountCents) || 0),
+      refundedAmountCents: Math.max(0, Number(payment.refundedAmountCents) || 0),
+      refundableAmountCents: Math.max(
+        0,
+        (Number(payment.amountCents) || 0) - (Number(payment.refundedAmountCents) || 0),
+      ),
+    })).filter((payment) => payment.refundableAmountCents > 0);
+  }
+
   let bills: Array<{ id: string }> = [];
+  let teamOwnedBillIds = new Set<string>();
   const normalizedTeamId = normalizeId(request.teamId);
   const normalizedSlotId = normalizeId(request.slotId);
   const normalizedOccurrenceDate = normalizeId(request.occurrenceDate);
@@ -108,6 +250,11 @@ export const resolveRefundablePaymentsForRequest = async (
     normalizedTeamId
       && request.eventId === buildTeamRegistrationRefundEventId(normalizedTeamId),
   );
+  const authorizedPayerUserIds = normalizeIdList([
+    request.userId,
+    request.requestedByUserId,
+    ...(request.authorizedPayerUserIds ?? []),
+  ]);
 
   if (normalizedTeamId) {
     const team = await client.teams.findUnique({
@@ -124,14 +271,6 @@ export const resolveRefundablePaymentsForRequest = async (
     });
     if (team) {
       const teamOwnerIds = normalizeIdList([team.id, team.parentTeamId]);
-      const participantUserIds = Array.from(
-        new Set([
-          ...normalizeIdList(team.playerIds),
-          ...normalizeIdList(team.coachIds),
-          ...normalizeIdList([team.captainId, team.managerId, team.headCoachId]),
-        ]),
-      );
-
       const teamBills = teamOwnerIds.length
         ? await client.bills.findMany({
           where: {
@@ -144,24 +283,29 @@ export const resolveRefundablePaymentsForRequest = async (
         })
         : [];
       const teamBillIds = teamBills.map((bill) => bill.id);
+      teamOwnedBillIds = new Set(teamBillIds);
       const splitUserBills = teamBillIds.length
         ? await client.bills.findMany({
           where: {
             eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
             parentBillId: { in: teamBillIds },
-            ...(isTeamRegistrationRefund ? { ownerId: request.userId } : {}),
+            ownerId: authorizedPayerUserIds.length === 1
+              ? authorizedPayerUserIds[0]
+              : { in: authorizedPayerUserIds },
             ...occurrenceBillWhere,
           },
           select: { id: true },
         })
         : [];
-      const directUserBills = participantUserIds.length
+      const directUserBills = authorizedPayerUserIds.length
         ? await client.bills.findMany({
           where: {
             eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
-            ownerId: isTeamRegistrationRefund ? request.userId : { in: participantUserIds },
+            ownerId: authorizedPayerUserIds.length === 1
+              ? authorizedPayerUserIds[0]
+              : { in: authorizedPayerUserIds },
             ...occurrenceBillWhere,
           },
           select: { id: true },
@@ -204,6 +348,7 @@ export const resolveRefundablePaymentsForRequest = async (
       amountCents: true,
       refundedAmountCents: true,
       paymentIntentId: true,
+      payerUserId: true,
     },
   });
 
@@ -223,7 +368,11 @@ export const resolveRefundablePaymentsForRequest = async (
         refundableAmountCents,
       };
     })
-    .filter((payment) => payment.refundableAmountCents > 0 && normalizeId(payment.paymentIntentId));
+    .filter((payment) => {
+      if (payment.refundableAmountCents <= 0 || !normalizeId(payment.paymentIntentId)) return false;
+      if (!teamOwnedBillIds.has(payment.billId)) return true;
+      return Boolean(payment.payerUserId && authorizedPayerUserIds.includes(payment.payerUserId));
+    });
 };
 
 export const createStripeRefundAttempts = async (params: {

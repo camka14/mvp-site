@@ -4049,7 +4049,7 @@ describe('League schedule page', () => {
       fireEvent.click(participantsTab);
 
       await screen.findByText('Casey Rivers');
-      await screen.findByText('$30.00 of $50.00 paid');
+      await screen.findByText('$30.00 paid of $50.00');
       await screen.findByText('1/2 signatures complete');
       expect(screen.queryByText(/no team bill yet/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();

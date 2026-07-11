@@ -7,6 +7,7 @@ import { getRequestOrigin } from '@/lib/requestOrigin';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
+import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,47 @@ const EMAIL_REGEX = /^[^@]+@[^@]+\.[^@]+$/;
 
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
+const canInviteToScope = async (
+  session: Awaited<ReturnType<typeof requireSession>>,
+  invite: z.infer<typeof inviteItemSchema>,
+): Promise<boolean> => {
+  if (session.isAdmin) return true;
+
+  if (invite.teamId) {
+    const team = await prisma.teams.findUnique({
+      where: { id: invite.teamId },
+      select: {
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        coachIds: true,
+      },
+    });
+    if (!team) return false;
+    return [team.captainId, team.managerId, team.headCoachId, ...(team.coachIds ?? [])]
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      .includes(session.userId);
+  }
+
+  if (invite.eventId) {
+    const event = await prisma.events.findUnique({
+      where: { id: invite.eventId },
+      select: { hostId: true, assistantHostIds: true, organizationId: true },
+    });
+    return canManageEvent(session, event);
+  }
+
+  if (invite.organizationId) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: invite.organizationId },
+      select: { id: true, ownerId: true },
+    });
+    return canManageOrganization(session, organization);
+  }
+
+  return false;
+};
+
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -37,7 +79,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const inviterId = parsed.data.inviterId ?? session.userId;
   const sentRecords: any[] = [];
   const notEmailedRecords: any[] = [];
   const failed: any[] = [];
@@ -68,6 +109,11 @@ export async function POST(req: NextRequest) {
         failed.push({ email, reason: 'official_scope_required' });
         continue;
       }
+    }
+
+    if (!(await canInviteToScope(session, invite))) {
+      failed.push({ email, reason: 'forbidden_scope' });
+      continue;
     }
 
     const existing = await prisma.invites.findFirst({
@@ -105,7 +151,7 @@ export async function POST(req: NextRequest) {
         organizationId: invite.organizationId ?? null,
         teamId: invite.teamId ?? null,
         userId,
-        createdBy: inviterId,
+        createdBy: session.userId,
         firstName: firstName ?? null,
         lastName: lastName ?? null,
         createdAt: now,

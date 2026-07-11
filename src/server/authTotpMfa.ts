@@ -33,12 +33,6 @@ type TotpVerificationResult = {
   counter?: number;
 };
 
-type RequestHostSource = {
-  headers: {
-    get(name: string): string | null;
-  };
-};
-
 export class TotpMfaError extends Error {
   code: string;
   status: number;
@@ -72,24 +66,13 @@ const readBooleanEnvFlag = (...keys: string[]): boolean | null => {
   return null;
 };
 
-const isLocalHost = (host: string): boolean => {
-  const normalized = host.trim().toLowerCase();
-  return normalized === 'localhost'
-    || normalized.startsWith('localhost:')
-    || normalized === '127.0.0.1'
-    || normalized.startsWith('127.0.0.1:')
-    || normalized === '[::1]'
-    || normalized.startsWith('[::1]:');
-};
-
-export const isLocalAuthMfaBypassEnabled = (req?: RequestHostSource | null): boolean => {
+// MFA must never trust request metadata such as Host: an internet-facing
+// deployment can receive arbitrary Host headers. Development/test bypasses
+// require an explicit local configuration and are disabled in production.
+export const isLocalAuthMfaBypassEnabled = (_req?: unknown): boolean => {
+  if (process.env.NODE_ENV === 'production') return false;
   const explicit = readBooleanEnvFlag('AUTH_MFA_DISABLED_LOCAL', 'AUTH_MFA_DISABLED');
-  if (explicit !== null) return explicit;
-
-  if (process.env.NODE_ENV === 'test') return false;
-  if (process.env.NODE_ENV !== 'production') return true;
-
-  return isLocalHost(req?.headers.get('host') ?? '');
+  return explicit === true;
 };
 
 const decryptTotpSecret = (encryptedSecret: string): string => {

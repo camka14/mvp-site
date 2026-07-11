@@ -127,12 +127,14 @@ const buildDisputeClosedEvent = (params: {
 
 describe('POST /api/billing/webhook', () => {
   const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
+  const originalWebhookBypass = process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV;
 
   beforeEach(() => {
     jest.clearAllMocks();
     sendPurchaseReceiptEmailMock.mockResolvedValue({ sent: true });
     sendPaymentFailureEmailMock.mockResolvedValue({ sent: true });
     delete process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV = 'true';
     stripeInvoicesUpdateMock.mockResolvedValue({});
     stripeSubscriptionsRetrieveMock.mockResolvedValue({
       id: 'sub_123',
@@ -236,11 +238,41 @@ describe('POST /api/billing/webhook', () => {
   });
 
   afterAll(() => {
-    if (originalStripeSecret === undefined) {
-      delete process.env.STRIPE_SECRET_KEY;
-    } else {
-      process.env.STRIPE_SECRET_KEY = originalStripeSecret;
-    }
+    if (originalStripeSecret == null) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = originalStripeSecret;
+    if (originalWebhookBypass == null) delete process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV;
+    else process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV = originalWebhookBypass;
+  });
+
+  it('rejects unsigned webhook payloads when verification is not explicitly bypassed', async () => {
+    delete process.env.STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV;
+
+    const response = await POST(jsonPost(buildPaymentIntentSucceededEvent({
+      intentId: 'pi_forged',
+      metadata: { billId: 'bill_1', billPaymentId: 'bill_payment_1' },
+    })));
+
+    expect(response.status).toBe(503);
+    expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
+    expect(prismaMock.bills.update).not.toHaveBeenCalled();
+  });
+
+  it('does not revive a voided parent installment after a team bill split', async () => {
+    prismaMock.billPayments.findUnique.mockResolvedValueOnce({
+      id: 'bill_payment_1',
+      billId: 'bill_1',
+      status: 'VOID',
+    });
+
+    const response = await POST(jsonPost(buildPaymentIntentSucceededEvent({
+      intentId: 'pi_voided_parent_1',
+      metadata: { billId: 'bill_1', billPaymentId: 'bill_payment_1' },
+    })));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
+    expect(prismaMock.bills.update).not.toHaveBeenCalled();
+    expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
   });
 
   it('creates a paid bill and bill payment for an instant event purchase and sends a receipt', async () => {

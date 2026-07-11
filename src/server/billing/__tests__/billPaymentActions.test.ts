@@ -105,9 +105,9 @@ describe('bill payment actions', () => {
       now,
     });
 
-    expect(prismaMock.billPayments.update).toHaveBeenCalledWith(
+    expect(prismaMock.billPayments.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'payment_1' },
+        where: expect.objectContaining({ id: 'payment_1' }),
         data: expect.objectContaining({
           status: 'PROCESSING',
           paymentIntentId: 'pi_pending_1',
@@ -125,6 +125,24 @@ describe('bill payment actions', () => {
         }),
       }),
     );
+  });
+
+  it('refuses to revive an installment that was voided by a concurrent split', async () => {
+    prismaMock.billPayments.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(markBillPaymentProcessingForAction({
+      bill: {
+        id: 'bill_1', ownerType: 'USER', ownerId: 'user_1', organizationId: null,
+        eventId: null, totalAmountCents: 5000, status: 'OPEN', paymentPlanEnabled: false, lineItems: [],
+      },
+      payment: {
+        id: 'payment_1', billId: 'bill_1', amountCents: 5000, status: 'PENDING',
+        paymentIntentId: null, payerUserId: null, refundedAmountCents: 0,
+      },
+      paymentIntent: 'pi_pending_1_secret_abc',
+      userId: 'user_1',
+      now: new Date('2026-05-19T12:00:00.000Z'),
+    })).rejects.toThrow('no longer available');
   });
 
   it('cancels Stripe and restores a payment-plan installment to due', async () => {

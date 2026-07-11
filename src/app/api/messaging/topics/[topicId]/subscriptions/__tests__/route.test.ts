@@ -20,12 +20,26 @@ const prismaMock = {
 const requireSessionMock = jest.fn();
 const registerPushDeviceTargetMock = jest.fn();
 const unregisterPushDeviceTargetMock = jest.fn();
+const canManageChatGroupMock = jest.fn();
+const getChatGroupMemberIdsMock = jest.fn();
+const isChatGroupMemberMock = jest.fn();
+const isReservedTeamChatGroupIdMock = jest.fn((id: string) => id.startsWith('team:'));
+const isTeamChatGroupMock = jest.fn((group: { id?: string | null; teamId?: string | null }) => (
+  Boolean(group.teamId) || Boolean(group.id?.startsWith('team:'))
+));
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/pushNotifications', () => ({
   registerPushDeviceTarget: (...args: any[]) => registerPushDeviceTargetMock(...args),
   unregisterPushDeviceTarget: (...args: any[]) => unregisterPushDeviceTargetMock(...args),
+}));
+jest.mock('@/server/chatAccess', () => ({
+  canManageChatGroup: (...args: any[]) => canManageChatGroupMock(...args),
+  getChatGroupMemberIds: (...args: any[]) => getChatGroupMemberIdsMock(...args),
+  isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
+  isReservedTeamChatGroupId: (...args: any[]) => isReservedTeamChatGroupIdMock(...args),
+  isTeamChatGroup: (...args: any[]) => isTeamChatGroupMock(...args),
 }));
 
 import { DELETE, GET, POST } from '@/app/api/messaging/topics/[topicId]/subscriptions/route';
@@ -50,6 +64,11 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    canManageChatGroupMock.mockImplementation((session: { isAdmin: boolean; userId: string }, group: { hostId?: string | null; teamId?: string | null }) => (
+      session.isAdmin || (!group.teamId && group.hostId === session.userId)
+    ));
+    isChatGroupMemberMock.mockResolvedValue(true);
+    getChatGroupMemberIdsMock.mockResolvedValue(['user_1', 'user_2']);
     registerPushDeviceTargetMock.mockResolvedValue(undefined);
     unregisterPushDeviceTargetMock.mockResolvedValue(undefined);
     prismaMock.pushDeviceTarget.count.mockResolvedValue(0);
@@ -61,7 +80,9 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
   });
 
   it('registers push token metadata when subscribing', async () => {
-    prismaMock.chatGroup.findUnique.mockResolvedValue({ id: 'user_user_1', userIds: ['user_2'] });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'user_user_1', userIds: ['user_2', 'user_1'], hostId: 'user_2', teamId: null,
+    });
     prismaMock.chatGroup.update.mockResolvedValue({
       id: 'user_user_1',
       name: null,
@@ -124,15 +145,31 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     expect(prismaMock.userData.findMany).not.toHaveBeenCalled();
   });
 
+  it('does not create a generic group at a reserved team topic id', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue(null);
+
+    const res = await POST(postRequest({ userIds: ['user_1', 'user_2'] }), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain('reserved');
+    expect(prismaMock.chatGroup.create).not.toHaveBeenCalled();
+  });
+
   it('does not subscribe a minor account into a non-team chat', async () => {
-    prismaMock.chatGroup.findUnique.mockResolvedValue({ id: 'user_user_1', userIds: ['user_2'], teamId: null });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'user_user_1', userIds: ['user_1', 'user_2'], hostId: 'user_1', teamId: null,
+    });
     prismaMock.userData.findMany.mockResolvedValue([
-      { id: 'user_1', dateOfBirth: new Date('2012-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'minor_1', dateOfBirth: new Date('2012-01-01T00:00:00.000Z'), blockedUserIds: [] },
       { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
     ]);
 
     const res = await POST(postRequest({
-      userIds: ['user_1'],
+      userIds: ['minor_1'],
     }), {
       params: Promise.resolve({ topicId: 'user_user_1' }),
     });
@@ -144,8 +181,29 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     expect(registerPushDeviceTargetMock).not.toHaveBeenCalled();
   });
 
+  it('does not add a blocked user to a non-team chat', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'user_user_1', userIds: ['user_1'], hostId: 'user_1', teamId: null,
+    });
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: ['user_1'] },
+    ]);
+
+    const res = await POST(postRequest({ userIds: ['user_2'] }), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain('blocked');
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+  });
+
   it('removes push token metadata when unsubscribing', async () => {
-    prismaMock.chatGroup.findUnique.mockResolvedValue({ id: 'user_user_1', userIds: ['user_1', 'user_2'] });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'user_user_1', userIds: ['user_1', 'user_2'], hostId: 'user_1', teamId: null,
+    });
     prismaMock.chatGroup.update.mockResolvedValue({
       id: 'user_user_1',
       name: null,
@@ -209,5 +267,77 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     });
 
     expect(res.status).toBe(403);
+  });
+
+  it('rejects a non-member trying to add themselves to a team chat', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'team:team_1',
+      userIds: ['captain_1', 'minor_1'],
+      hostId: 'captain_1',
+      teamId: 'team_1',
+    });
+    isChatGroupMemberMock.mockResolvedValue(false);
+
+    const res = await POST(postRequest({ userIds: ['user_1'] }), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+    expect(registerPushDeviceTargetMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale attacker from subscription operations on a team chat', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'stale_attacker', isAdmin: false });
+    const staleTeamTopic = {
+      id: 'team:team_1',
+      teamId: 'team_1',
+      hostId: 'captain_1',
+      userIds: ['captain_1', 'stale_attacker'],
+    };
+    prismaMock.chatGroup.findUnique.mockResolvedValue(staleTeamTopic);
+    isChatGroupMemberMock.mockResolvedValue(false);
+
+    const res = await POST(postRequest({
+      userIds: ['stale_attacker'],
+      pushToken: 'attacker_push_token',
+    }), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(isChatGroupMemberMock).toHaveBeenCalledWith(
+      { userId: 'stale_attacker', isAdmin: false },
+      staleTeamTopic,
+    );
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+    expect(registerPushDeviceTargetMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a current roster member subscribe even when a legacy team row lacks that member', async () => {
+    const staleTeamTopic = {
+      id: 'team:team_1',
+      teamId: null,
+      hostId: 'captain_1',
+      userIds: ['captain_1', 'stale_attacker'],
+    };
+    prismaMock.chatGroup.findUnique.mockResolvedValue(staleTeamTopic);
+    isChatGroupMemberMock.mockResolvedValue(true);
+    getChatGroupMemberIdsMock.mockResolvedValue(['captain_1', 'user_1']);
+
+    const res = await POST(postRequest({
+      userIds: ['user_1'],
+      pushToken: 'current_roster_push_token',
+    }), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(registerPushDeviceTargetMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user_1',
+      pushToken: 'current_roster_push_token',
+      pushTarget: 'team:team_1',
+    }));
+    expect(prismaMock.userData.findMany).not.toHaveBeenCalled();
   });
 });

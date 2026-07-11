@@ -4,7 +4,13 @@ import {
   type RegistrationQuestionAnswerSnapshotItem,
 } from '@/server/registrationQuestions';
 import { resolveConnectedAccountId } from '@/lib/stripeConnectAccounts';
-import { buildTeamRegistrationRefundEventId } from '@/server/refunds/refundExecution';
+import {
+  buildRefundScopeSnapshot,
+  buildTeamRegistrationRefundEventId,
+  isRefundScopeSnapshotValid,
+  resolveRefundablePaymentsForRequest,
+  type RefundRequestRow,
+} from '@/server/refunds/refundExecution';
 import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import {
   loadCanonicalTeamById,
@@ -1085,8 +1091,62 @@ export const requestTeamRegistrationRefund = async ({
         status: { in: ['WAITING', 'APPROVED'] as any },
       },
       orderBy: { updatedAt: 'desc' },
-      select: { id: true },
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        requestedByUserId: true,
+        hostId: true,
+        teamId: true,
+        organizationId: true,
+        reason: true,
+        status: true,
+        slotId: true,
+        occurrenceDate: true,
+        billIds: true,
+        paymentIds: true,
+        requestedAmountCents: true,
+        currency: true,
+        policyDecision: true,
+        scopeVersion: true,
+        scopeHash: true,
+      },
     });
+    const verifiedExistingRefund = existingRefund
+      && isRefundScopeSnapshotValid(existingRefund as RefundRequestRow)
+      ? existingRefund
+      : null;
+
+    let newRefundRequest: RefundRequestRow | null = null;
+    let newRefundScope: ReturnType<typeof buildRefundScopeSnapshot> | null = null;
+    if (!verifiedExistingRefund) {
+      const organizationId = await findOrganizationIdForTeam(tx, team);
+      const hostUserId = await findHostUserIdForTeam(tx, team);
+      newRefundRequest = {
+        id: crypto.randomUUID(),
+        eventId: refundEventId,
+        userId: normalizedUserId,
+        requestedByUserId: normalizedUserId,
+        hostId: hostUserId,
+        teamId: normalizedTeamId,
+        organizationId,
+        reason: normalizedReason,
+        status: 'WAITING',
+      };
+      const payments = await resolveRefundablePaymentsForRequest(tx, newRefundRequest);
+      if (!payments.length) {
+        return {
+          ok: false,
+          status: 409,
+          error: 'No refundable payment was found for this team registration.',
+        };
+      }
+      newRefundScope = buildRefundScopeSnapshot(
+        newRefundRequest,
+        payments,
+        'HOST_REVIEW_REQUIRED',
+      );
+    }
 
     const previousMemberIds = await readTeamBeforeChatSync(tx, normalizedTeamId);
     await tx.teamRegistrations.update({
@@ -1105,21 +1165,30 @@ export const requestTeamRegistrationRefund = async ({
     });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
 
-    if (existingRefund) {
-      return { ok: true, refundId: existingRefund.id, refundAlreadyPending: true };
+    if (verifiedExistingRefund) {
+      return { ok: true, refundId: verifiedExistingRefund.id, refundAlreadyPending: true };
     }
 
-    const organizationId = await findOrganizationIdForTeam(tx, team);
-    const hostUserId = await findHostUserIdForTeam(tx, team);
+    if (!newRefundRequest || !newRefundScope) {
+      throw new Error('Unable to create a verified team registration refund request.');
+    }
     const refund = await tx.refundRequests.create({
       data: {
-        id: crypto.randomUUID(),
-        eventId: refundEventId,
-        userId: normalizedUserId,
-        hostId: hostUserId,
-        teamId: normalizedTeamId,
-        organizationId,
-        reason: normalizedReason,
+        id: newRefundRequest.id,
+        eventId: newRefundRequest.eventId,
+        userId: newRefundRequest.userId,
+        requestedByUserId: newRefundRequest.requestedByUserId,
+        hostId: newRefundRequest.hostId,
+        teamId: newRefundRequest.teamId,
+        organizationId: newRefundRequest.organizationId,
+        billIds: newRefundScope.billIds,
+        paymentIds: newRefundScope.paymentIds,
+        requestedAmountCents: newRefundScope.requestedAmountCents,
+        currency: newRefundScope.currency,
+        policyDecision: newRefundScope.policyDecision,
+        scopeVersion: newRefundScope.scopeVersion,
+        scopeHash: newRefundScope.scopeHash,
+        reason: newRefundRequest.reason,
         status: 'WAITING' as any,
         createdAt: now,
         updatedAt: now,

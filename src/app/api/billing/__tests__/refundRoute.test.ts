@@ -23,6 +23,7 @@ const prismaMock = {
   },
   teams: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
   },
   timeSlots: {
     findUnique: jest.fn(),
@@ -83,6 +84,7 @@ describe('POST /api/billing/refund', () => {
       freeAgentIds: [],
     });
     prismaMock.teams.findFirst.mockResolvedValue(null);
+    prismaMock.teams.findUnique.mockResolvedValue(null);
     prismaMock.timeSlots.findUnique.mockResolvedValue(null);
     prismaMock.refundRequests.findFirst.mockResolvedValue(null);
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
@@ -444,6 +446,15 @@ describe('POST /api/billing/refund', () => {
       freeAgentIds: [],
     });
     prismaMock.teams.findFirst.mockResolvedValueOnce({ id: 'slot_team_1' });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'slot_team_1',
+      captainId: 'captain_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      coachIds: [],
+      playerIds: ['team_player_1'],
+      parentTeamId: null,
+    });
 
     const response = await POST(
       jsonPost('http://localhost/api/billing/refund', {

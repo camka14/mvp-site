@@ -83,6 +83,22 @@ export const ensureGuestParentIdentity = async (
 
   const normalizedFirstName = normalizeOptionalName(input.firstName);
   const normalizedLastName = normalizeOptionalName(input.lastName);
+  const [existingAuthUser, existingSensitiveUser] = await Promise.all([
+    tx.authUser.findUnique({
+      where: { email },
+      select: { id: true },
+    }),
+    tx.sensitiveUserData.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { userId: true },
+    }),
+  ]);
+  if (existingAuthUser || existingSensitiveUser) {
+    throw Object.assign(
+      new Error('An account already exists for this email. Sign in to register or manage this participant.'),
+      { status: 409 },
+    );
+  }
   const identity = await ensureAuthUserAndUserDataByEmail(tx, email, now, {
     firstName: normalizedFirstName,
     lastName: normalizedLastName,

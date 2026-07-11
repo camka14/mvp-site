@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { handleRouteError } from '@/server/http/routeErrors';
+import { isChatGroupMember } from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!group) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    if (!session.isAdmin && !group.userIds.includes(session.userId)) {
+    if (!await isChatGroupMember(session, group)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

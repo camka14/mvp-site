@@ -6,6 +6,7 @@ import {
   shouldUseSecureAuthCookie,
   signSessionToken,
   signWatchSetupToken,
+  verifySessionToken,
   verifyWatchSetupToken,
 } from '@/lib/authServer';
 
@@ -33,7 +34,7 @@ describe('authServer token helpers', () => {
     process.env.NODE_ENV = originalNodeEnv;
   });
 
-  it('signs persistent session tokens without a fixed exp claim', () => {
+  it('signs typed, bounded session tokens for the session audience', () => {
     const token = signSessionToken({
       userId: 'user_1',
       isAdmin: false,
@@ -45,8 +46,16 @@ describe('authServer token helpers', () => {
 
     expect(decoded.userId).toBe('user_1');
     expect(decoded.device).toBe('mobile');
+    expect(decoded.tokenType).toBe('session');
+    expect(decoded.iss).toBe('bracket-iq');
+    expect(decoded.aud).toBe('bracket-iq-session');
     expect(decoded.iat).toEqual(expect.any(Number));
-    expect(decoded.exp).toBeUndefined();
+    expect(decoded.exp - decoded.iat).toBe(60 * 60 * 24 * 400);
+    expect(verifySessionToken(token)).toEqual(expect.objectContaining({
+      userId: 'user_1',
+      sessionVersion: 0,
+      device: 'mobile',
+    }));
   });
 
   it('signs short-lived watch setup tokens that cannot be verified as another purpose', () => {
@@ -72,6 +81,17 @@ describe('authServer token helpers', () => {
       issuedAtSeconds: decoded.iat,
     });
     expect(verifyWatchSetupToken(sessionToken)).toBeNull();
+    expect(verifySessionToken(token)).toBeNull();
+  });
+
+  it('rejects a correctly signed scoped token as an application session', () => {
+    const scopedToken = jwt.sign(
+      { userId: 'user_1', purpose: 'email_verification', sessionVersion: 0 },
+      'test-secret',
+      { algorithm: 'HS256' },
+    );
+
+    expect(verifySessionToken(scopedToken)).toBeNull();
   });
 
   it('uses secure auth cookies in production by default', () => {

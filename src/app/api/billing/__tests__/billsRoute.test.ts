@@ -17,9 +17,15 @@ const prismaMock = {
   bills: {
     findMany: jest.fn(),
   },
+  billPayments: {
+    findMany: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
+  },
+  organizations: {
+    findUnique: jest.fn(),
   },
   events: {
     findUnique: jest.fn(),
@@ -48,7 +54,12 @@ describe('POST /api/billing/bills', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
-    prismaMock.teams.findUnique.mockResolvedValue(null);
+    prismaMock.teams.findUnique.mockResolvedValue({
+      parentTeamId: null,
+      captainId: 'user_1',
+      managerId: 'user_1',
+      headCoachId: null,
+    });
     prismaMock.teams.findMany.mockResolvedValue([]);
     txMock.bills.findFirst.mockResolvedValue(null);
     txMock.bills.create.mockResolvedValue({
@@ -116,7 +127,20 @@ describe('POST /api/billing/bills', () => {
   });
 
   it('stores TEAM bills on the parent team when an event team id is supplied', async () => {
-    prismaMock.teams.findUnique.mockResolvedValueOnce({ parentTeamId: 'team_parent' });
+    prismaMock.teams.findUnique
+      .mockResolvedValueOnce({
+        parentTeamId: 'team_parent',
+        captainId: 'user_1',
+        managerId: 'user_1',
+        headCoachId: null,
+      })
+      .mockResolvedValueOnce({
+        parentTeamId: null,
+        captainId: 'user_1',
+        managerId: 'user_1',
+        headCoachId: null,
+      })
+      .mockResolvedValueOnce({ parentTeamId: 'team_parent' });
     txMock.bills.update.mockResolvedValueOnce({
       id: 'bill_1',
       ownerType: 'TEAM',
@@ -329,6 +353,43 @@ describe('POST /api/billing/bills', () => {
     expect(txMock.bills.create).not.toHaveBeenCalled();
     expect(txMock.billPayments.create).not.toHaveBeenCalled();
   });
+
+  it('rejects creating a bill for an unrelated team and ignores a spoofed actor', async () => {
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      parentTeamId: null,
+      captainId: 'captain_2',
+      managerId: 'manager_2',
+      headCoachId: null,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'TEAM',
+        ownerId: 'team_2',
+        totalAmountCents: 5000,
+        user: { $id: 'spoofed_actor' },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+  });
+
+  it('always records the authenticated user as the bill creator', async () => {
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        totalAmountCents: 5000,
+        user: { $id: 'spoofed_actor' },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(txMock.bills.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ createdBy: 'user_1' }),
+    }));
+  });
 });
 
 describe('GET /api/billing/bills', () => {
@@ -338,9 +399,18 @@ describe('GET /api/billing/bills', () => {
     prismaMock.teams.findUnique.mockResolvedValue(null);
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
   it('includes event-team bills when listing bills for a parent team', async () => {
+    prismaMock.teams.findUnique
+      .mockResolvedValueOnce({
+        parentTeamId: null,
+        captainId: 'manager_1',
+        managerId: null,
+        headCoachId: null,
+      })
+      .mockResolvedValueOnce({ parentTeamId: null });
     prismaMock.teams.findMany.mockResolvedValueOnce([
       { id: 'event_team_1' },
     ]);
@@ -382,7 +452,14 @@ describe('GET /api/billing/bills', () => {
   });
 
   it('includes parent-team bills when listing bills for an event team', async () => {
-    prismaMock.teams.findUnique.mockResolvedValueOnce({ parentTeamId: 'team_parent' });
+    prismaMock.teams.findUnique
+      .mockResolvedValueOnce({
+        parentTeamId: null,
+        captainId: 'manager_1',
+        managerId: null,
+        headCoachId: null,
+      })
+      .mockResolvedValueOnce({ parentTeamId: 'team_parent' });
     prismaMock.bills.findMany.mockResolvedValueOnce([
       {
         id: 'bill_parent_team_1',
@@ -409,5 +486,24 @@ describe('GET /api/billing/bills', () => {
       }),
     );
     expect(payload.bills[0]).toEqual(expect.objectContaining({ $id: 'bill_parent_team_1' }));
+  });
+
+  it('rejects a TEAM bill list for an unrelated caller', async () => {
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      parentTeamId: null,
+      captainId: 'captain_2',
+      managerId: 'manager_2',
+      headCoachId: null,
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/billing/bills?ownerType=TEAM&ownerId=team_2'),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Forbidden');
+    expect(prismaMock.teams.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.bills.findMany).not.toHaveBeenCalled();
   });
 });

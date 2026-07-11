@@ -14,7 +14,6 @@ import {
   createWebLoginMfaChallenge,
   isLocalAuthMfaBypassEnabled,
   isTotpMfaError,
-  isWebLoginClient,
   readTotpMfaRequestMetadata,
 } from '@/server/authTotpMfa';
 
@@ -36,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { email, password, clientType } = parsed.data;
+  const { email, password } = parsed.data;
   const normalizedEmail = email.toLowerCase();
   const authUser = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
   if (!authUser) {
@@ -70,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (isWebLoginClient(clientType) && !isLocalAuthMfaBypassEnabled(req)) {
+  if (!isLocalAuthMfaBypassEnabled(req)) {
     try {
       const challenge = await createWebLoginMfaChallenge({
         userId: authUser.id,

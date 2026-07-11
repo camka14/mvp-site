@@ -1097,11 +1097,21 @@ export interface RefundRequest {
   $id: string;
   eventId: string;
   userId: string;
+  requestedByUserId?: string;
   hostId?: string;
   teamId?: string;
   organizationId?: string;
   reason: string;
   status?: 'WAITING' | 'APPROVED' | 'REJECTED';
+  slotId?: string;
+  occurrenceDate?: string;
+  billIds?: string[];
+  paymentIds?: string[];
+  requestedAmountCents?: number;
+  currency?: string;
+  policyDecision?: string;
+  scopeVersion?: number;
+  scopeHash?: string;
   $createdAt?: string;
   $updatedAt?: string;
 }

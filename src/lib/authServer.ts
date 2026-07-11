@@ -6,6 +6,10 @@ const scrypt = promisify(_scrypt);
 
 const AUTH_COOKIE_NAME = 'auth_token';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400; // Browser-friendly persistent session cap.
+const AUTH_TOKEN_ISSUER = 'bracket-iq';
+const SESSION_TOKEN_AUDIENCE = 'bracket-iq-session';
+const WATCH_SETUP_TOKEN_AUDIENCE = 'bracket-iq-watch-setup';
+const JWT_ALGORITHM = 'HS256' as const;
 export const WATCH_SETUP_TOKEN_TTL_SECONDS = 60 * 5;
 
 export type SessionDevice = 'web' | 'mobile' | 'watch';
@@ -66,16 +70,32 @@ export const verifyPassword = async (plain: string, stored: string): Promise<boo
 };
 
 export const signSessionToken = (payload: SessionToken): string => {
-  return jwt.sign(payload, getAuthSecret());
+  return jwt.sign(
+    { ...payload, tokenType: 'session' },
+    getAuthSecret(),
+    {
+      algorithm: JWT_ALGORITHM,
+      issuer: AUTH_TOKEN_ISSUER,
+      audience: SESSION_TOKEN_AUDIENCE,
+      expiresIn: SESSION_COOKIE_MAX_AGE_SECONDS,
+    },
+  );
 };
 
 export const verifySessionToken = (token: string): VerifiedSessionToken | null => {
   try {
-    const decoded = jwt.verify(token, getAuthSecret()) as JwtPayload;
+    const decoded = jwt.verify(token, getAuthSecret(), {
+      algorithms: [JWT_ALGORITHM],
+      issuer: AUTH_TOKEN_ISSUER,
+      audience: SESSION_TOKEN_AUDIENCE,
+    }) as JwtPayload;
+    if (decoded.tokenType !== 'session') return null;
+    if (typeof decoded.userId !== 'string' || decoded.userId.trim().length === 0) return null;
+    if (!Number.isInteger(decoded.sessionVersion)) return null;
     return {
-      userId: decoded.userId as string,
+      userId: decoded.userId,
       isAdmin: Boolean(decoded.isAdmin),
-      sessionVersion: Number.isInteger(decoded.sessionVersion) ? Number(decoded.sessionVersion) : 0,
+      sessionVersion: Number(decoded.sessionVersion),
       device: isSessionDevice(decoded.device) ? decoded.device : undefined,
       issuedAtSeconds: Number.isInteger(decoded.iat) ? Number(decoded.iat) : null,
     };
@@ -90,16 +110,26 @@ export const signWatchSetupToken = (payload: Pick<SessionToken, 'userId' | 'sess
       userId: payload.userId,
       sessionVersion: payload.sessionVersion,
       purpose: 'watch_setup',
+      tokenType: 'watch_setup',
     },
     getAuthSecret(),
-    { expiresIn: WATCH_SETUP_TOKEN_TTL_SECONDS },
+    {
+      algorithm: JWT_ALGORITHM,
+      issuer: AUTH_TOKEN_ISSUER,
+      audience: WATCH_SETUP_TOKEN_AUDIENCE,
+      expiresIn: WATCH_SETUP_TOKEN_TTL_SECONDS,
+    },
   );
 };
 
 export const verifyWatchSetupToken = (token: string): WatchSetupToken | null => {
   try {
-    const decoded = jwt.verify(token, getAuthSecret()) as JwtPayload;
-    if (decoded.purpose !== 'watch_setup') return null;
+    const decoded = jwt.verify(token, getAuthSecret(), {
+      algorithms: [JWT_ALGORITHM],
+      issuer: AUTH_TOKEN_ISSUER,
+      audience: WATCH_SETUP_TOKEN_AUDIENCE,
+    }) as JwtPayload;
+    if (decoded.purpose !== 'watch_setup' || decoded.tokenType !== 'watch_setup') return null;
     if (typeof decoded.userId !== 'string' || decoded.userId.trim().length === 0) return null;
     return {
       userId: decoded.userId,

@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
@@ -553,6 +554,24 @@ model MatchIncidents {
   @@index([eventRegistrationId])
   @@index([participantUserId])
   @@index([officialUserId])
+}
+
+// Durable, server-authoritative receipts for mobile/watch match writes. The
+// client operation ID is deliberately globally unique so a retry can never be
+// applied as a second scoring/lifecycle action.
+model MatchOperationReceipts {
+  clientOperationId String   @id
+  createdAt         DateTime @default(now())
+  eventId           String
+  matchId           String
+  actorUserId       String
+  clientDeviceId    String?
+  clientSequence    Int?
+  operationKind     String
+  requestHash       String
+
+  @@index([eventId, matchId])
+  @@index([matchId, actorUserId, clientDeviceId, clientSequence])
 }
 
 model Divisions {
@@ -1678,16 +1697,29 @@ model EventTagAssignments {
 }
 
 model RefundRequests {
-  id             String                    @id
-  createdAt      DateTime?
-  updatedAt      DateTime?
-  eventId        String
-  userId         String
-  hostId         String?
-  teamId         String?
-  reason         String
-  organizationId String?
-  status         RefundRequestsStatusEnum?
+  id                   String                    @id
+  createdAt            DateTime?
+  updatedAt            DateTime?
+  eventId              String
+  userId               String
+  requestedByUserId    String?
+  hostId               String?
+  teamId               String?
+  reason               String
+  organizationId       String?
+  status               RefundRequestsStatusEnum?
+  slotId               String?
+  occurrenceDate       String?
+  billIds              String[]                  @default([])
+  paymentIds           String[]                  @default([])
+  requestedAmountCents Int                       @default(0)
+  currency             String                    @default("usd")
+  policyDecision       String?
+  scopeVersion         Int                       @default(1)
+  scopeHash            String?
+
+  @@index([eventId, userId, slotId, occurrenceDate])
+  @@index([scopeHash])
 }
 
 model Discounts {

@@ -9,6 +9,7 @@ import {
   getMinorChatParticipantIds,
   hasBlockingChatRelationship,
 } from '@/server/chatSafety';
+import { canManageChatGroup, isChatGroupMember, isTeamChatGroup } from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (!session.isAdmin && !group.userIds.includes(session.userId)) {
+    if (!await isChatGroupMember(session, group)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (group.archivedAt && !session.isAdmin) {
@@ -79,6 +80,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (existing.archivedAt && !session.isAdmin) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    if (isTeamChatGroup(existing) && !session.isAdmin) {
+      return NextResponse.json(
+        { error: 'Team chat membership is managed by the team roster.' },
+        { status: 403 },
+      );
+    }
 
     const rawPayload = parsed.payload as Record<string, any>;
     const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
@@ -107,7 +114,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     delete payload.createdAt;
     delete payload.updatedAt;
 
-    const canManage = session.isAdmin || existing.hostId === session.userId;
+    const canManage = canManageChatGroup(session, existing);
     if (!canManage) {
       // Non-host members can only remove themselves from the group.
       if (payload.name !== undefined) {
@@ -154,7 +161,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (requestedUsers.length !== normalizedUserIds.length) {
         return NextResponse.json({ error: 'User not found.' }, { status: 404 });
       }
-      if (!existing.teamId && getMinorChatParticipantIds(requestedUsers).length > 0) {
+      if (!isTeamChatGroup(existing) && getMinorChatParticipantIds(requestedUsers).length > 0) {
         return NextResponse.json(
           { error: 'Messaging minor accounts is only allowed in team chats.' },
           { status: 403 },
@@ -206,7 +213,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const canDelete = session.isAdmin || existing.hostId === session.userId;
+    if (isTeamChatGroup(existing) && !session.isAdmin) {
+      return NextResponse.json(
+        { error: 'Team chat membership is managed by the team roster.' },
+        { status: 403 },
+      );
+    }
+    const canDelete = canManageChatGroup(session, existing);
     if (!canDelete) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
