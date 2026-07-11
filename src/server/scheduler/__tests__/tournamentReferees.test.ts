@@ -1,7 +1,7 @@
 /** @jest-environment node */
 
 import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
-import { finalizeMatch } from '@/server/scheduler/updateMatch';
+import { finalizeMatch, finalizeMatchWithoutRescheduling } from '@/server/scheduler/updateMatch';
 import { Division, PlayingField, Team, Tournament, UserData } from '@/server/scheduler/types';
 
 const context = {
@@ -147,6 +147,45 @@ describe('tournament scheduling (officials)', () => {
 
     expect(final?.team1 === winner || final?.team2 === winner).toBe(true);
     expect(final?.teamOfficial?.id).toBe(loser.id);
+  });
+
+  it('advances a confirmed result without rebuilding the existing bracket schedule', () => {
+    const division = buildDivision();
+    const teams = buildTeams(4, division);
+    const tournament = buildTournament({
+      id: 'tournament_preserve_existing_schedule',
+      teams,
+      divisions: [division],
+      officials: [],
+      doTeamsOfficiate: true,
+      doubleElimination: false,
+    });
+
+    scheduleEvent({ event: tournament }, context);
+    const matches = Object.values(tournament.matches);
+    const final = matches.find(
+      (match) =>
+        !match.losersBracket &&
+        !match.winnerNextMatch &&
+        Boolean(match.previousLeftMatch || match.previousRightMatch),
+    );
+    const semi = matches.find((match) => match.winnerNextMatch === final);
+    expect(final).toBeTruthy();
+    expect(semi?.team1).toBeTruthy();
+    expect(semi?.team2).toBeTruthy();
+    if (!final || !semi) return;
+
+    const finalStart = final.start.getTime();
+    const winner = semi.team1 as Team;
+    semi.setResults = [1, 1];
+    semi.team1Points = [21, 21];
+    semi.team2Points = [12, 8];
+
+    finalizeMatchWithoutRescheduling(tournament, semi, new Date(semi.end));
+
+    expect(final.team1 === winner || final.team2 === winner).toBe(true);
+    expect(final.start.getTime()).toBe(finalStart);
+    expect(semi.status).toBe('COMPLETE');
   });
 
   it('stagger first-round matches when teams officiate and only one team official is available', () => {

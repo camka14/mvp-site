@@ -8,7 +8,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import {
   applyMatchUpdates,
   applyPersistentAutoLock,
-  finalizeMatch,
+  finalizeMatchWithTeamOfficialCapacityFallback,
   isScheduleWindowExceededError,
   type MatchUpdate,
 } from '@/server/scheduler/updateMatch';
@@ -1539,7 +1539,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           throw new Response('Invalid time', { status: 400 });
         }
         try {
-          finalizeMatch(event, targetMatch, context, currentTime);
+          finalizeMatchWithTeamOfficialCapacityFallback(event, targetMatch, context, currentTime);
         } catch (error) {
           const noFixedEndDateTime = typeof event.noFixedEndDateTime === 'boolean'
             ? event.noFixedEndDateTime
