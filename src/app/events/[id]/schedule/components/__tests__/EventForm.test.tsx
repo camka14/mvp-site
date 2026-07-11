@@ -161,7 +161,7 @@ jest.mock('@/app/discover/components/LeagueFields', () => {
       ? props.slots.reduce((count: number, slot: any) => count + (Array.isArray(slot?.conflicts) ? slot.conflicts.length : 0), 0)
       : 0;
     return (
-      <div data-testid="league-fields">
+      <div data-testid="league-fields" data-configuration-title={props?.configurationTitle}>
         {props?.showTimeslots === false ? null : (
           <span data-testid="league-conflict-count">{conflictCount}</span>
         )}
@@ -2862,6 +2862,7 @@ describe('EventForm dirty state', () => {
     expect(defaultsContent).toContainElement(screen.getByLabelText('Pool Count'));
     expect(defaultsContent).toContainElement(screen.getByLabelText('Pool Team Count'));
     expect(screen.getByLabelText('Pool Team Count')).toBeDisabled();
+    expect(document.querySelectorAll('[data-configuration-title="Pool Configuration"]')).toHaveLength(1);
     expect(screen.getAllByText('Pool Scoring Config').length).toBeGreaterThan(0);
   });
 

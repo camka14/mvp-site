@@ -286,7 +286,7 @@ export const DivisionEditorLeaguePanel = ({
                 }}
             />
             <DivisionEditorTournamentConfigControls
-                poolConfigVisible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                poolConfigVisible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
                 tournamentConfigVisible={showOperationalControls && eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
                 leagueData={divisionEditor.leagueConfig}
                 tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}

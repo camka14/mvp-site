@@ -117,7 +117,7 @@ export const SingleDivisionScheduleControls = ({
             className="md:col-span-12"
         >
             <TournamentFields
-                title="Tournament Configuration"
+                title={includePlayoffs ? 'Bracket Configuration' : 'Tournament Configuration'}
                 tournamentData={tournamentData}
                 setTournamentData={onTournamentDataChange}
                 sport={sport}

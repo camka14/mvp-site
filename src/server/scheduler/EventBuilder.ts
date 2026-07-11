@@ -478,6 +478,14 @@ export class EventBuilder {
     return Math.max(1, Math.trunc(parsed));
   }
 
+  private normalizePositiveDuration(value: unknown, fallback: number): number {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return Math.max(1, Math.trunc(fallback));
+    }
+    return Math.max(1, Math.trunc(parsed));
+  }
+
   private normalizeNonNegativeInt(value: unknown, fallback: number): number {
     const parsed = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(parsed)) {
@@ -503,7 +511,7 @@ export class EventBuilder {
 
     if (usesSets) {
       const setsPerMatch = this.normalizePositiveInt(divisionConfig?.setsPerMatch, this.event.setsPerMatch || 1);
-      const setDurationMinutes = this.normalizePositiveInt(
+      const setDurationMinutes = this.normalizePositiveDuration(
         divisionConfig?.setDurationMinutes,
         this.event.setDurationMinutes || 20,
       );
@@ -516,7 +524,7 @@ export class EventBuilder {
       };
     }
 
-    const matchDurationMinutes = this.normalizePositiveInt(
+    const matchDurationMinutes = this.normalizePositiveDuration(
       divisionConfig?.matchDurationMinutes,
       this.event.matchDurationMinutes || 60,
     );
@@ -917,11 +925,11 @@ export class EventBuilder {
     const scheduledMatches: Match[] = [];
     const playoffBufferMs = Math.max(config.restTimeMinutes, 0) * MINUTE_MS;
     const playoffDurationMs = this.event.usesSets
-      ? this.normalizePositiveInt(
+      ? this.normalizePositiveDuration(
           config.setDurationMinutes,
           this.event.setDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
         ) * Math.max(1, config.winnerSetCount || 1) * MINUTE_MS
-      : this.normalizePositiveInt(
+      : this.normalizePositiveDuration(
           config.matchDurationMinutes,
           this.event.matchDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
         ) * MINUTE_MS;

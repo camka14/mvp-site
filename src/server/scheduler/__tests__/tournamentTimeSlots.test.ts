@@ -316,7 +316,7 @@ describe('tournament scheduling (time slots)', () => {
       gamesPerOpponent: 2,
       usesSets: true,
       setsPerMatch: 3,
-      setDurationMinutes: 5,
+      setDurationMinutes: 0,
       pointsToVictory: [11, 11, 11],
       restTimeMinutes: 45,
     };
@@ -374,7 +374,12 @@ describe('tournament scheduling (time slots)', () => {
     ));
     expect(poolMatches).toHaveLength(4);
     expect(poolMatches.every((match) => match.team1Points.length === 3)).toBe(true);
-    expect(poolMatches.every((match) => match.end.getTime() - match.start.getTime() === 15 * 60 * 1000)).toBe(true);
+    expect(poolMatches
+      .filter((match) => match.division.id === poolA.id)
+      .every((match) => match.end.getTime() - match.start.getTime() === 15 * 60 * 1000)).toBe(true);
+    expect(poolMatches
+      .filter((match) => match.division.id === poolB.id)
+      .every((match) => match.end.getTime() - match.start.getTime() === 60 * 60 * 1000)).toBe(true);
     expect(scheduled.matches.some((match) => match.division.id === poolA.id)).toBe(true);
     expect(scheduled.matches.some((match) => match.division.id === poolB.id)).toBe(true);
     expect(scheduled.matches.filter((match) => match.division.id === bracketDivision.id)).toHaveLength(3);
