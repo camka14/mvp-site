@@ -5259,6 +5259,7 @@ function EventScheduleContent() {
 
   const canUserManageScore = useCallback(
     (match: Match) => {
+      if (canManageEvent) return true;
       if (!user?.$id || !isOfficialCheckedIn(match)) return false;
       if (collectMatchAssignmentUserIds(match).includes(user.$id)) {
         return true;
@@ -5266,7 +5267,7 @@ function EventScheduleContent() {
       const teamOfficial = resolveTeam(match.teamOfficial ?? match.teamOfficialId);
       return userOnTeam(teamOfficial);
     },
-    [isOfficialCheckedIn, resolveTeam, user?.$id, userOnTeam],
+    [canManageEvent, isOfficialCheckedIn, resolveTeam, user?.$id, userOnTeam],
   );
 
   const updateMatchOfficialState = useCallback(

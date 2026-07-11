@@ -495,6 +495,14 @@ describe('League schedule page', () => {
     jest.useRealTimers();
   });
 
+  it('lets an event host start an unstaffed match from the score modal', async () => {
+    renderWithMantine(<LeagueSchedulePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
+
+    expect(await screen.findByRole('button', { name: 'Start Match' })).toBeInTheDocument();
+  });
+
   it('shows the terms modal on event creation until consent is accepted', async () => {
     const setUserMock = jest.fn();
     useAppMock.mockReturnValue({
