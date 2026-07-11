@@ -58,6 +58,7 @@ import {
 } from '@/server/events/tournamentPools';
 import { getEventTagsForEventIds, syncEventTags, syncEventTypeTagsForEvent } from '@/server/eventTags';
 import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -1856,7 +1857,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
   try {
     const context = buildContext();
-    const updated = await prisma.$transaction(async (tx) => {
+    const patchResult = await prisma.$transaction(async (tx) => {
       const existing = await tx.events.findUnique({ where: { id: eventId } });
       if (!existing) {
         throw new Response('Not found', { status: 404 });
@@ -2845,6 +2846,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const nextEventTypeForSchedule = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
+      let didRebuildSchedule = false;
       if (shouldSchedule && isSchedulableEventType(nextEventTypeForSchedule)) {
         await acquireEventLock(tx, eventId);
         const loaded = await loadEventWithRelations(eventId, tx);
@@ -2854,6 +2856,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           await deleteMatchesByEvent(eventId, tx);
           await saveMatches(eventId, scheduled.matches, tx);
           await saveEventSchedule(scheduled.event, tx);
+          didRebuildSchedule = true;
         }
       }
 
@@ -2864,8 +2867,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (shouldFallbackAddressWrite) {
         (fresh as Record<string, unknown>).address = fallbackAddressValue;
       }
-      return fresh;
+      return { event: fresh, didRebuildSchedule };
     });
+    const { event: updated, didRebuildSchedule } = patchResult;
+    if (didRebuildSchedule) {
+      await refreshBroadcastPresentationForEvent({
+        eventId,
+        reason: 'SCHEDULE_CHANGE',
+      }).catch((error) => {
+        console.error('[broadcast-overlay] Presentation refresh failed after event reschedule', {
+          eventId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    }
     const [divisionKeys, playoffDivisionKeys] = await Promise.all([
       getVisibleDivisionKeysForEventResponse(eventId, updated),
       getDivisionKeysForEventKind(eventId, 'PLAYOFF'),

@@ -27,6 +27,7 @@ import {
   notifyTeamsOfMatchScheduleUpdate,
   snapshotMatchScheduleState,
 } from '@/server/matchScheduleNotifications';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,7 +142,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
-        return { preview: false, event, matches: Object.values(event.matches), warnings: [] };
+        return {
+          preview: false,
+          event,
+          matches: Object.values(event.matches),
+          warnings: [],
+          didRebuildSchedule: false,
+        };
       }
 
       if (isLeagueEvent(event) && event.singleDivision) {
@@ -237,6 +244,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       return {
         preview: false,
         ...scheduled,
+        didRebuildSchedule: true,
         matchScheduleNotification,
         warnings: Array.isArray((scheduled as { warnings?: unknown[] }).warnings)
           ? (scheduled as { warnings: unknown[] }).warnings
@@ -247,6 +255,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     const matchScheduleNotification = 'matchScheduleNotification' in result
       ? result.matchScheduleNotification
       : null;
+    if (result.didRebuildSchedule) {
+      await refreshBroadcastPresentationForEvent({
+        eventId,
+        reason: 'SCHEDULE_CHANGE',
+      }).catch((error) => {
+        console.error('[broadcast-overlay] Presentation refresh failed after schedule rebuild', {
+          eventId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    }
     await notifyTeamsOfMatchScheduleUpdate(matchScheduleNotification).catch((error) => {
       console.warn('Failed to send match schedule update notifications', {
         eventId,

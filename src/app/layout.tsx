@@ -1,4 +1,5 @@
 import { Archivo, IBM_Plex_Mono, Roboto_Flex } from 'next/font/google';
+import { headers } from 'next/headers';
 import Script from 'next/script';
 import './globals.css';
 import '@mantine/core/styles.css';
@@ -52,7 +53,16 @@ interface RootLayoutProps {
   children: ReactNode;
 }
 
-export default function RootLayout({ children }: RootLayoutProps) {
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const surface = (await headers()).get('x-bracketiq-surface');
+  if (surface === 'overlay') {
+    return (
+      <html lang="en" className={`${robotoFlex.className} ${landingHeading.variable} ${landingMono.variable}`}>
+        <body className="broadcast-overlay-body">{children}</body>
+      </html>
+    );
+  }
+
   const disableChat = process.env.NEXT_PUBLIC_DISABLE_CHAT === '1';
   const disableAgent = ['0', 'false', 'off', 'disabled'].includes(
     (process.env.OPENAI_AGENT_ENABLED ?? '').trim().toLowerCase(),

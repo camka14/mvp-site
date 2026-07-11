@@ -259,7 +259,10 @@ const pointsOnlyRules = (
 
 const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
   'Indoor Volleyball': setBasedRules(),
-  'Beach Volleyball': setBasedRules(),
+  'Beach Volleyball': setBasedRules({
+    segmentCount: 3,
+    setPointTargets: [21, 21, 15],
+  }),
   'Grass Volleyball': setBasedRules(),
   Basketball: periodRules(4, 'Quarter', 10, {
     supportsOvertime: true,

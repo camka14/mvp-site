@@ -146,6 +146,7 @@ export const countEventReferences = async (
     reference('signed_documents', await countRows(client.signedDocuments, { eventId })),
     reference('event_registrations', await countRows(client.eventRegistrations, { eventId })),
     reference('matches', await countRows(client.matches, { eventId })),
+    reference('broadcast_overlays', await countRows(client.broadcastOverlays, { eventId })),
     reference('rental_bookings', await countRows(client.rentalBookings, { eventId })),
     reference('rental_booking_items', await countRows(client.rentalBookingItems, { eventId })),
     reference('payment_intents', await countRows(client.paymentIntents, { eventId })),
@@ -369,10 +370,76 @@ const archiveEvent = async ({
     archiveReason: event.archiveReason ?? reason ?? 'delete_requested_with_references',
   };
 
-  await client.events.update({
-    where: { id: eventId },
-    data,
-  });
+  const archiveInTransaction = async (tx: PrismaLike): Promise<Array<{
+    overlayId: string;
+    accessTokenId: string;
+  }>> => {
+    await tx.events.update({
+      where: { id: eventId },
+      data,
+    });
+
+    // A program capability must stop working as soon as its event is archived.
+    // These delegates are optional so older focused archive-policy test doubles
+    // remain valid while the production Prisma client performs the cascade.
+    const overlays = typeof tx.broadcastOverlays?.findMany === 'function'
+      ? await tx.broadcastOverlays.findMany({ where: { eventId, archivedAt: null }, select: { id: true } })
+      : [];
+    const overlayIds = normalizeIdList(overlays.map((overlay: { id: string }) => overlay.id));
+    if (!overlayIds.length) {
+      return [];
+    }
+
+    const activeTokens = typeof tx.broadcastOverlayAccessTokens?.findMany === 'function'
+      ? await tx.broadcastOverlayAccessTokens.findMany({
+        where: { overlayId: { in: overlayIds }, revokedAt: null },
+        select: { id: true, overlayId: true },
+      })
+      : [];
+    const revokedCapabilities = activeTokens.flatMap((token: { id: string; overlayId: string }) => {
+      const overlayId = normalizeId(token.overlayId);
+      const accessTokenId = normalizeId(token.id);
+      return overlayId && accessTokenId ? [{ overlayId, accessTokenId }] : [];
+    });
+
+    await tx.broadcastOverlays?.updateMany?.({
+      where: { id: { in: overlayIds }, archivedAt: null },
+      data: {
+        status: 'ARCHIVED',
+        archivedAt: now,
+        archivedByUserId: actorUserId,
+        archiveReason: reason ?? 'event_archived',
+      },
+    });
+    await tx.broadcastOverlayAccessTokens?.updateMany?.({
+      where: { overlayId: { in: overlayIds }, revokedAt: null },
+      data: {
+        revokedAt: now,
+        revokedByUserId: actorUserId,
+        revokeReason: 'EVENT_ARCHIVED',
+      },
+    });
+
+    return revokedCapabilities;
+  };
+
+  // The event, overlay archive, and token revocation need one commit boundary.
+  // Live sockets are notified only after that boundary has completed successfully.
+  const revokedCapabilities: Array<{ overlayId: string; accessTokenId: string }> = typeof client.$transaction === 'function'
+    ? await client.$transaction((tx: PrismaLike) => archiveInTransaction(tx))
+    : await archiveInTransaction(client);
+
+  if (revokedCapabilities.length) {
+    try {
+      const { publishBroadcastOverlayRevocation } = await import('@/server/realtime/broadcastOverlayRealtime');
+      revokedCapabilities.forEach(({ overlayId, accessTokenId }) => {
+        publishBroadcastOverlayRevocation({ overlayId, accessTokenId });
+      });
+    } catch (error) {
+      // Archival must remain durable even when a local/Redis realtime fanout is unavailable.
+      console.error('[archive-policy] Broadcast overlay revocation fanout failed', error);
+    }
+  }
 
   return {
     action: 'archived',
@@ -451,6 +518,17 @@ const hardDeleteUnreferencedEvent = async ({
           select: { id: true },
         })).map((row: { id: string }) => row.id)
       : [];
+
+    const broadcastOverlays = typeof tx.broadcastOverlays?.findMany === 'function'
+      ? await tx.broadcastOverlays.findMany({ where: { eventId }, select: { id: true } })
+      : [];
+    const broadcastOverlayIds = normalizeIdList(broadcastOverlays.map((overlay: { id: string }) => overlay.id));
+    if (broadcastOverlayIds.length) {
+      await tx.broadcastOverlayActions?.deleteMany?.({ where: { overlayId: { in: broadcastOverlayIds } } });
+      await tx.broadcastOverlayAccessTokens?.deleteMany?.({ where: { overlayId: { in: broadcastOverlayIds } } });
+      await tx.broadcastOverlayStates?.deleteMany?.({ where: { overlayId: { in: broadcastOverlayIds } } });
+      await tx.broadcastOverlays?.deleteMany?.({ where: { id: { in: broadcastOverlayIds } } });
+    }
 
     await tx.matches.deleteMany({ where: { eventId } });
     await tx.divisions.deleteMany({ where: { eventId } });

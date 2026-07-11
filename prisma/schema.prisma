@@ -527,6 +527,97 @@ model MatchSegments {
   @@index([winnerEventTeamId])
 }
 
+// These broadcast records deliberately use raw IDs instead of Prisma relation
+// fields. The event remains the ownership source; services reload it before
+// authorizing any action so a copied organizationId can never grant access.
+model BroadcastOverlays {
+  id                      String    @id
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  eventId                 String
+  organizationId          String?
+  name                    String
+  templateKey             String    @default("COMPACT_SCOREBUG")
+  status                  String    @default("DRAFT")
+  draftConfig             Json      @default("{}")
+  publishedConfig         Json?
+  publishedConfigRevision Int       @default(0)
+  publishedAt             DateTime?
+  publishedByUserId       String?
+  createdByUserId         String
+  updatedByUserId         String?
+  archivedAt              DateTime?
+  archivedByUserId        String?
+  archiveReason           String?
+
+  @@index([eventId, status, createdAt])
+  @@index([organizationId, status])
+  @@index([archivedAt])
+}
+
+model BroadcastOverlayStates {
+  id                            String    @id
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+  overlayId                     String    @unique
+  eventId                       String
+  activeMatchId                 String?
+  revision                      Int       @default(0)
+  scoringMode                   String    @default("AUTOMATIC")
+  presentationState             Json      @default("{}")
+  automaticShadowState          Json      @default("{}")
+  manualOverrideBaseRevision    Int?
+  manualOverrideStartedAt       DateTime?
+  manualOverrideStartedByUserId String?
+  manualOverrideReason          String?
+  updatedByUserId               String?
+
+  @@index([eventId, activeMatchId])
+  @@index([activeMatchId])
+}
+
+model BroadcastOverlayActions {
+  id                   String   @id
+  createdAt            DateTime @default(now())
+  overlayId            String
+  organizationId       String?
+  eventId              String
+  matchId              String?
+  accessTokenId        String?
+  actorUserId          String?
+  actorKind            String   @default("USER")
+  actionType           String
+  baseRevision         Int?
+  presentationRevision Int
+  requestId            String
+  payload              Json     @default("{}")
+
+  @@unique([overlayId, requestId])
+  @@index([overlayId, presentationRevision, createdAt])
+  @@index([eventId])
+  @@index([matchId])
+  @@index([accessTokenId])
+}
+
+model BroadcastOverlayAccessTokens {
+  id              String    @id
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  overlayId       String
+  tokenHash       String
+  label           String?
+  createdByUserId String
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  revokedByUserId String?
+  revokeReason    String?
+  lastUsedAt      DateTime?
+
+  @@index([overlayId, revokedAt, createdAt])
+  @@index([expiresAt])
+  @@index([tokenHash])
+}
+
 model MatchIncidents {
   id                  String    @id
   createdAt           DateTime?

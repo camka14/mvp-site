@@ -56,6 +56,10 @@ export const ModelName = {
   Facilities: 'Facilities',
   Matches: 'Matches',
   MatchSegments: 'MatchSegments',
+  BroadcastOverlays: 'BroadcastOverlays',
+  BroadcastOverlayStates: 'BroadcastOverlayStates',
+  BroadcastOverlayActions: 'BroadcastOverlayActions',
+  BroadcastOverlayAccessTokens: 'BroadcastOverlayAccessTokens',
   MatchIncidents: 'MatchIncidents',
   MatchOperationReceipts: 'MatchOperationReceipts',
   Divisions: 'Divisions',
@@ -271,6 +275,89 @@ export const MatchSegmentsScalarFieldEnum = {
 } as const
 
 export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
+
+
+export const BroadcastOverlaysScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  organizationId: 'organizationId',
+  name: 'name',
+  templateKey: 'templateKey',
+  status: 'status',
+  draftConfig: 'draftConfig',
+  publishedConfig: 'publishedConfig',
+  publishedConfigRevision: 'publishedConfigRevision',
+  publishedAt: 'publishedAt',
+  publishedByUserId: 'publishedByUserId',
+  createdByUserId: 'createdByUserId',
+  updatedByUserId: 'updatedByUserId',
+  archivedAt: 'archivedAt',
+  archivedByUserId: 'archivedByUserId',
+  archiveReason: 'archiveReason'
+} as const
+
+export type BroadcastOverlaysScalarFieldEnum = (typeof BroadcastOverlaysScalarFieldEnum)[keyof typeof BroadcastOverlaysScalarFieldEnum]
+
+
+export const BroadcastOverlayStatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  overlayId: 'overlayId',
+  eventId: 'eventId',
+  activeMatchId: 'activeMatchId',
+  revision: 'revision',
+  scoringMode: 'scoringMode',
+  presentationState: 'presentationState',
+  automaticShadowState: 'automaticShadowState',
+  manualOverrideBaseRevision: 'manualOverrideBaseRevision',
+  manualOverrideStartedAt: 'manualOverrideStartedAt',
+  manualOverrideStartedByUserId: 'manualOverrideStartedByUserId',
+  manualOverrideReason: 'manualOverrideReason',
+  updatedByUserId: 'updatedByUserId'
+} as const
+
+export type BroadcastOverlayStatesScalarFieldEnum = (typeof BroadcastOverlayStatesScalarFieldEnum)[keyof typeof BroadcastOverlayStatesScalarFieldEnum]
+
+
+export const BroadcastOverlayActionsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  overlayId: 'overlayId',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  accessTokenId: 'accessTokenId',
+  actorUserId: 'actorUserId',
+  actorKind: 'actorKind',
+  actionType: 'actionType',
+  baseRevision: 'baseRevision',
+  presentationRevision: 'presentationRevision',
+  requestId: 'requestId',
+  payload: 'payload'
+} as const
+
+export type BroadcastOverlayActionsScalarFieldEnum = (typeof BroadcastOverlayActionsScalarFieldEnum)[keyof typeof BroadcastOverlayActionsScalarFieldEnum]
+
+
+export const BroadcastOverlayAccessTokensScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  overlayId: 'overlayId',
+  tokenHash: 'tokenHash',
+  label: 'label',
+  createdByUserId: 'createdByUserId',
+  expiresAt: 'expiresAt',
+  revokedAt: 'revokedAt',
+  revokedByUserId: 'revokedByUserId',
+  revokeReason: 'revokeReason',
+  lastUsedAt: 'lastUsedAt'
+} as const
+
+export type BroadcastOverlayAccessTokensScalarFieldEnum = (typeof BroadcastOverlayAccessTokensScalarFieldEnum)[keyof typeof BroadcastOverlayAccessTokensScalarFieldEnum]
 
 
 export const MatchIncidentsScalarFieldEnum = {

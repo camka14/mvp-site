@@ -1,3 +1,9 @@
+const refreshBroadcastPresentationForEventMock = jest.fn();
+
+jest.mock('@/server/broadcast/presentation', () => ({
+  refreshBroadcastPresentationForEvent: (...args: unknown[]) => refreshBroadcastPresentationForEventMock(...args),
+}));
+
 import {
   buildMatchRealtimeRedisEnvelope,
   buildMatchRealtimeMessage,
@@ -14,6 +20,8 @@ describe('match realtime broadcaster', () => {
 
   beforeEach(() => {
     process.env.REDIS_DISABLED = 'true';
+    refreshBroadcastPresentationForEventMock.mockReset();
+    refreshBroadcastPresentationForEventMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -75,6 +83,11 @@ describe('match realtime broadcaster', () => {
       eventId: 'event_1',
       matches: [{ id: 'match_1' }],
       deleted: ['match_2'],
+    });
+    expect(refreshBroadcastPresentationForEventMock).toHaveBeenCalledWith({
+      eventId: 'event_1',
+      changedMatchIds: ['match_1', 'match_2'],
+      reason: 'MATCH_DELETE',
     });
   });
 

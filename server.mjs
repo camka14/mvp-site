@@ -5,6 +5,11 @@ import { randomUUID } from 'node:crypto';
 
 const MATCH_REALTIME_PATH = '/api/realtime/matches';
 const MATCH_REALTIME_SCOPE = 'event-match-updates';
+const BROADCAST_OVERLAY_REALTIME_PATH = '/api/realtime/broadcast-overlays';
+const BROADCAST_OVERLAY_SOCKET_SCOPE = 'broadcast-overlay-read';
+const BROADCAST_OVERLAY_SOCKET_ISSUER = 'bracket-iq';
+const BROADCAST_OVERLAY_SOCKET_AUDIENCE = 'bracket-iq-broadcast-overlay';
+const BROADCAST_OVERLAY_SOCKET_TOKEN_TYPE = 'broadcast_overlay_stream';
 
 const parsePort = (args) => {
   const equalsArg = args.find((arg) => arg.startsWith('--port='));
@@ -60,6 +65,24 @@ const verifyRealtimeToken = (token, eventId) => {
   }
 };
 
+const verifyBroadcastOverlaySocketTicket = (token) => {
+  try {
+    const decoded = jwt.verify(token, getAuthSecret(), {
+      algorithms: ['HS256'],
+      issuer: BROADCAST_OVERLAY_SOCKET_ISSUER,
+      audience: BROADCAST_OVERLAY_SOCKET_AUDIENCE,
+    });
+    if (!decoded || typeof decoded !== 'object') return null;
+    if (decoded.tokenType !== BROADCAST_OVERLAY_SOCKET_TOKEN_TYPE) return null;
+    if (decoded.scope !== BROADCAST_OVERLAY_SOCKET_SCOPE) return null;
+    const overlayId = normalizeToken(decoded.overlayId);
+    const accessTokenId = normalizeToken(decoded.accessTokenId);
+    return overlayId && accessTokenId ? { overlayId, accessTokenId } : null;
+  } catch {
+    return null;
+  }
+};
+
 const sendUpgradeError = (socket, status, message) => {
   socket.write(
     `HTTP/1.1 ${status} ${message}\r\n` +
@@ -99,6 +122,7 @@ const redisUrl = process.env.REDIS_DISABLED === 'true'
   : normalizeToken(process.env.REDIS_URL);
 const redisKeyPrefix = normalizeToken(process.env.REDIS_KEY_PREFIX) || 'bracketiq';
 const MATCH_REALTIME_REDIS_CHANNEL = `${redisKeyPrefix}:realtime:matches`;
+const BROADCAST_OVERLAY_REALTIME_REDIS_CHANNEL = `${redisKeyPrefix}:realtime:broadcast-overlays`;
 
 const app = next({
   dev,
@@ -109,7 +133,10 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 const matchSocketServer = new WebSocketServer({ noServer: true });
+const broadcastOverlaySocketServer = new WebSocketServer({ noServer: true });
 const eventClients = new Map();
+const overlayClients = new Map();
+const overlayTokenClients = new Map();
 let redisRealtimeSubscriber = null;
 let redisRealtimeReconnectTimer = null;
 let isShuttingDown = false;
@@ -129,6 +156,40 @@ const addClient = (eventId, socket) => {
   eventClients.set(eventId, clients);
 };
 
+const removeOverlayClient = (overlayId, accessTokenId, socket) => {
+  const clients = overlayClients.get(overlayId);
+  if (clients) {
+    clients.delete(socket);
+    if (clients.size === 0) overlayClients.delete(overlayId);
+  }
+  const tokenClients = overlayTokenClients.get(accessTokenId);
+  if (tokenClients) {
+    tokenClients.delete(socket);
+    if (tokenClients.size === 0) overlayTokenClients.delete(accessTokenId);
+  }
+};
+
+const addOverlayClient = (overlayId, accessTokenId, socket) => {
+  const clients = overlayClients.get(overlayId) ?? new Set();
+  clients.add(socket);
+  overlayClients.set(overlayId, clients);
+  const tokenClients = overlayTokenClients.get(accessTokenId) ?? new Set();
+  tokenClients.add(socket);
+  overlayTokenClients.set(accessTokenId, tokenClients);
+};
+
+const closeOverlayTokenClients = (accessTokenId) => {
+  const clients = overlayTokenClients.get(accessTokenId);
+  if (!clients) return;
+  for (const client of clients) {
+    try {
+      client.close(4001, 'Capability revoked');
+    } catch {
+      client.terminate();
+    }
+  }
+};
+
 globalThis.__mvpMatchRealtimeBroadcast = (message) => {
   if (!message || typeof message !== 'object') return 0;
   const eventId = normalizeToken(message.eventId);
@@ -142,6 +203,48 @@ globalThis.__mvpMatchRealtimeBroadcast = (message) => {
     if (client.readyState !== WebSocket.OPEN) continue;
     client.send(body);
     sent += 1;
+  }
+  return sent;
+};
+
+const isBroadcastOverlayRealtimeMessage = (value) => {
+  if (!value || typeof value !== 'object') return false;
+  const overlayId = normalizeToken(value.overlayId);
+  if (!overlayId) return false;
+  if (value.type === 'overlay.revoked') {
+    return Boolean(normalizeToken(value.accessTokenId));
+  }
+  if (value.type === 'overlay.subscribed') {
+    return Number.isInteger(value.revision) && value.revision >= 0;
+  }
+  if (value.type !== 'overlay.state') return false;
+  if (!Number.isInteger(value.revision) || value.revision < 0) return false;
+  if (!value.state || typeof value.state !== 'object' || value.state.revision !== value.revision) return false;
+  if (!value.event || typeof value.event !== 'object' || typeof value.event.type !== 'string' || typeof value.event.animate !== 'boolean') return false;
+  return true;
+};
+
+globalThis.__mvpBroadcastOverlayRealtimeBroadcast = (message) => {
+  if (!isBroadcastOverlayRealtimeMessage(message)) return 0;
+  const overlayId = normalizeToken(message.overlayId);
+  if (!overlayId) return 0;
+  // Revocation is intentionally delivered only to the sockets authenticated
+  // with the revoked capability. Other capability holders for the same
+  // overlay remain live and never learn another token-row identifier.
+  const clients = message.type === 'overlay.revoked'
+    ? overlayTokenClients.get(message.accessTokenId)
+    : overlayClients.get(overlayId);
+  let sent = 0;
+  const body = JSON.stringify(message);
+  if (clients) {
+    for (const client of clients) {
+      if (client.readyState !== WebSocket.OPEN) continue;
+      client.send(body);
+      sent += 1;
+    }
+  }
+  if (message.type === 'overlay.revoked') {
+    closeOverlayTokenClients(message.accessTokenId);
   }
   return sent;
 };
@@ -172,6 +275,18 @@ const parseMatchRealtimeRedisEnvelope = (payload) => {
     const message = normalizeMatchRealtimeMessage(parsed.message);
     if (!originId || !message) return null;
     return { originId, message };
+  } catch {
+    return null;
+  }
+};
+
+const parseBroadcastOverlayRealtimeRedisEnvelope = (payload) => {
+  try {
+    const parsed = JSON.parse(payload);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const originId = normalizeToken(parsed.originId);
+    if (parsed.version !== 1 || !originId || !isBroadcastOverlayRealtimeMessage(parsed.message)) return null;
+    return { originId, message: parsed.message };
   } catch {
     return null;
   }
@@ -218,8 +333,17 @@ const startRedisRealtimeSubscriber = async () => {
       globalThis.__mvpMatchRealtimeBroadcast?.(envelope.message);
     });
 
+    await client.subscribe(BROADCAST_OVERLAY_REALTIME_REDIS_CHANNEL, (payload) => {
+      const envelope = parseBroadcastOverlayRealtimeRedisEnvelope(payload);
+      if (!envelope || envelope.originId === serverInstanceId) {
+        return;
+      }
+      globalThis.__mvpBroadcastOverlayRealtimeBroadcast?.(envelope.message);
+    });
+
     redisRealtimeSubscriber = client;
     console.log(`[server] match realtime Redis subscriber listening on ${MATCH_REALTIME_REDIS_CHANNEL}`);
+    console.log(`[server] broadcast overlay Redis subscriber listening on ${BROADCAST_OVERLAY_REALTIME_REDIS_CHANNEL}`);
   } catch (error) {
     console.error('[server] failed to start match realtime Redis subscriber', error);
     redisRealtimeSubscriber = null;
@@ -248,8 +372,34 @@ matchSocketServer.on('connection', (socket, request, context) => {
   }));
 });
 
+broadcastOverlaySocketServer.on('connection', (socket, request, context) => {
+  const overlayId = context?.overlayId;
+  const accessTokenId = context?.accessTokenId;
+  socket.isAlive = true;
+  addOverlayClient(overlayId, accessTokenId, socket);
+
+  socket.on('pong', () => {
+    socket.isAlive = true;
+  });
+  socket.on('close', () => removeOverlayClient(overlayId, accessTokenId, socket));
+  socket.on('error', () => removeOverlayClient(overlayId, accessTokenId, socket));
+  socket.send(JSON.stringify({
+    type: 'overlay.subscribed',
+    overlayId,
+    revision: 0,
+  }));
+});
+
 const heartbeat = setInterval(() => {
   for (const socket of matchSocketServer.clients) {
+    if (socket.isAlive === false) {
+      socket.terminate();
+      continue;
+    }
+    socket.isAlive = false;
+    socket.ping();
+  }
+  for (const socket of broadcastOverlaySocketServer.clients) {
     if (socket.isAlive === false) {
       socket.terminate();
       continue;
@@ -270,6 +420,22 @@ const server = createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
   const parsedUrl = parseRequestUrl(req.url);
+  if (parsedUrl.pathname === BROADCAST_OVERLAY_REALTIME_PATH) {
+    const ticket = normalizeToken(parsedUrl.searchParams.get('ticket'));
+    if (!ticket) {
+      sendUpgradeError(socket, 400, 'Bad Request');
+      return;
+    }
+    const verified = verifyBroadcastOverlaySocketTicket(ticket);
+    if (!verified) {
+      sendUpgradeError(socket, 401, 'Unauthorized');
+      return;
+    }
+    broadcastOverlaySocketServer.handleUpgrade(req, socket, head, (ws) => {
+      broadcastOverlaySocketServer.emit('connection', ws, req, verified);
+    });
+    return;
+  }
   if (parsedUrl.pathname !== MATCH_REALTIME_PATH) {
     void handleUpgrade(req, socket, head);
     return;
@@ -323,7 +489,10 @@ const shutdown = () => {
   }
   delete globalThis.__mvpMatchRealtimeBroadcast;
   delete globalThis.__mvpMatchRealtimeOriginId;
+  delete globalThis.__mvpBroadcastOverlayRealtimeBroadcast;
+  delete globalThis.__mvpBroadcastOverlayRealtimeOriginId;
   matchSocketServer.close();
+  broadcastOverlaySocketServer.close();
   const redisClosePromise = closeRedisRealtimeSubscriber();
   server.close(() => {
     void redisClosePromise
@@ -340,4 +509,5 @@ server.listen(port, hostname, () => {
   console.log(`[server] mode: ${dev ? 'development' : 'production'}`);
   console.log(`[server] ready on http://${hostname}:${port}`);
   console.log(`[server] match realtime websocket mounted at ${MATCH_REALTIME_PATH}`);
+  console.log(`[server] broadcast overlay websocket mounted at ${BROADCAST_OVERLAY_REALTIME_PATH}`);
 });

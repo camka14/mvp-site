@@ -26,6 +26,19 @@ html {
   position: relative;
 }
 
+html:has(body.broadcast-overlay-body),
+body.broadcast-overlay-body {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  background: transparent !important;
+}
+
+body.broadcast-overlay-body {
+  overflow: hidden;
+}
+
 img,
 video,
 canvas,

@@ -1,0 +1,301 @@
+.canvas {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.scorebug {
+  position: absolute;
+  z-index: 1;
+  width: min(100%, 52rem);
+  border: 1px solid color-mix(in srgb, #fff 23%, transparent);
+  border-radius: 0.8rem;
+  box-shadow: 0 0.7rem 2rem rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  will-change: transform, opacity;
+}
+
+.surfaceDark {
+  background: rgba(7, 18, 30, 0.94);
+}
+
+.surfaceLight {
+  background: rgba(248, 251, 255, 0.96);
+  color: #10263b;
+  border-color: rgba(16, 38, 59, 0.18);
+}
+
+.surfaceGlass {
+  background: rgba(8, 25, 43, 0.72);
+  backdrop-filter: blur(0.6rem);
+}
+
+.contextBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.65rem;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.35rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: clamp(0.58rem, 0.65vw, 0.74rem);
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.contextBar > span,
+.contextBar > time {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contextBar > time {
+  opacity: 1;
+}
+
+.scoreRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.team {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.teamRight {
+  flex-direction: row-reverse;
+}
+
+.teamIdentity {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.58rem 0.7rem;
+}
+
+.teamRight .teamIdentity {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.logo {
+  width: clamp(1.7rem, 2.2vw, 2.55rem);
+  height: clamp(1.7rem, 2.2vw, 2.55rem);
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.teamCopy {
+  min-width: 0;
+}
+
+.teamNameRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.teamRight .teamNameRow {
+  justify-content: flex-end;
+}
+
+.teamName {
+  overflow: hidden;
+  color: inherit;
+  font-size: clamp(0.8rem, 1.24vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playerNames {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: 0.19rem;
+  font-size: clamp(0.54rem, 0.7vw, 0.68rem);
+  line-height: 1.1;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.servingIndicator {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-top: 0.32rem solid transparent;
+  border-bottom: 0.32rem solid transparent;
+  border-left: 0.46rem solid #f6c55a;
+  filter: drop-shadow(0 0 0.22rem rgba(246, 197, 90, 0.45));
+}
+
+.seed {
+  flex: 0 0 auto;
+  font-size: 0.62em;
+  font-weight: 750;
+  opacity: 0.68;
+}
+
+.teamScore {
+  display: flex;
+  align-items: stretch;
+  color: var(--team-foreground);
+  background: var(--team-accent);
+}
+
+.teamRight .teamScore {
+  flex-direction: row-reverse;
+}
+
+.setsWon,
+.points {
+  display: grid;
+  min-width: clamp(1.55rem, 2.4vw, 2.25rem);
+  place-items: center;
+  padding: 0.22rem 0.18rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.setsWon {
+  font-size: clamp(0.8rem, 1.1vw, 1.08rem);
+  background: color-mix(in srgb, #000 20%, transparent);
+}
+
+.points {
+  min-width: clamp(2.1rem, 3vw, 3.05rem);
+  font-size: clamp(1.55rem, 2.7vw, 2.6rem);
+  letter-spacing: -0.075em;
+}
+
+.middleRail {
+  display: grid;
+  min-width: clamp(6.25rem, 9vw, 8.6rem);
+  place-content: center;
+  gap: 0.25rem;
+  padding: 0.38rem 0.5rem;
+  border-inline: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  text-align: center;
+}
+
+.currentSetLabel {
+  font-size: clamp(0.5rem, 0.6vw, 0.62rem);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  opacity: 0.62;
+}
+
+.setRow {
+  display: flex;
+  justify-content: center;
+  gap: 0.22rem;
+}
+
+.setScore {
+  display: grid;
+  min-width: 2.2rem;
+  gap: 0.08rem;
+  padding: 0.18rem 0.22rem;
+  border-radius: 0.24rem;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  font-size: clamp(0.53rem, 0.64vw, 0.67rem);
+  line-height: 1;
+}
+
+.setScore small {
+  font-size: 0.82em;
+  font-weight: 700;
+  opacity: 0.55;
+}
+
+.setScore b {
+  font-size: 1em;
+}
+
+.currentSet {
+  background: color-mix(in srgb, #f6c55a 76%, transparent);
+  color: #1c2733;
+}
+
+.stinger {
+  position: absolute;
+  z-index: 2;
+  right: 4.5vw;
+  bottom: 4.5vh;
+  display: grid;
+  max-width: min(34rem, 65vw);
+  gap: 0.22rem;
+  padding: 1.1rem 1.3rem;
+  border-left: 0.35rem solid #f6c55a;
+  background: rgba(5, 17, 29, 0.94);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+.stinger span {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0.75;
+}
+
+.stinger strong {
+  overflow: hidden;
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .scorebug {
+    width: min(100%, 34rem);
+  }
+
+  .contextBar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .contextBar > span:nth-child(2) {
+    display: none;
+  }
+
+  .teamIdentity {
+    padding-inline: 0.42rem;
+  }
+
+  .playerNames,
+  .seed {
+    display: none;
+  }
+
+  .middleRail {
+    min-width: 5.25rem;
+    padding-inline: 0.25rem;
+  }
+
+  .setScore {
+    min-width: 1.65rem;
+  }
+}

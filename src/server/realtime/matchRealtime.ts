@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getRedisClient, getRedisKeyPrefix } from '@/lib/redis';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export type MatchRealtimeMessage = {
   type: 'match.changed';
@@ -30,6 +31,12 @@ const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const matchIdFromPayload = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  return normalizeId(row.id) ?? normalizeId(row.$id);
 };
 
 export const buildMatchRealtimeMessage = (input: {
@@ -95,6 +102,27 @@ export const publishEventMatchChanges = (input: {
     eventId,
     matches: input.matches,
     deleted: input.deleted,
+  });
+
+  // The legacy match channel intentionally remains unchanged. Broadcast
+  // overlays refresh themselves from a fresh, sanitized projection only after
+  // the committed mutation reaches this post-commit publication boundary.
+  // Audit-remediation routes suppress this call for replayed operations, so a
+  // retried client operation cannot create a second overlay revision.
+  const changedMatchIds = [
+    ...(input.matches ?? []).map(matchIdFromPayload),
+    ...(input.deleted ?? []).map(normalizeId),
+  ].filter((id): id is string => Boolean(id));
+  void refreshBroadcastPresentationForEvent({
+    eventId,
+    changedMatchIds,
+    reason: input.deleted?.length ? 'MATCH_DELETE' : 'OFFICIAL_MATCH_CHANGE',
+  }).catch((error) => {
+    console.error('[broadcast-overlay] Presentation refresh failed', {
+      eventId,
+      changedMatchCount: changedMatchIds.length,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   });
 
   const broadcaster = (globalThis as MatchRealtimeGlobal).__mvpMatchRealtimeBroadcast;

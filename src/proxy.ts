@@ -45,6 +45,8 @@ const SENSITIVE_PATH_PREFIXES = [
   '/api/users',
 ];
 
+const OVERLAY_SURFACE_PATH_PREFIXES = ['/overlay', '/broadcast-preview'];
+
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -110,6 +112,24 @@ const isSensitivePath = (pathname: string): boolean => (
   SENSITIVE_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 );
 
+const isOverlaySurfacePath = (pathname: string): boolean => (
+  OVERLAY_SURFACE_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+);
+
+const isBroadcastPreviewPath = (pathname: string): boolean => (
+  pathname === '/broadcast-preview' || pathname.startsWith('/broadcast-preview/')
+);
+
+const nextResponseForRequest = (request: NextRequest): NextResponse => {
+  if (!isOverlaySurfacePath(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-bracketiq-surface', 'overlay');
+  return NextResponse.next({ request: { headers: requestHeaders } });
+};
+
 const isEmbeddableWidgetPath = (pathname: string): boolean => (
   pathname === '/embed' || pathname.startsWith('/embed/')
 );
@@ -139,6 +159,13 @@ const applySecurityHeaders = (response: NextResponse, request: NextRequest): Nex
     if (name === 'X-Frame-Options' && isEmbeddableWidgetPath(request.nextUrl.pathname)) {
       return;
     }
+    // The authenticated Studio embeds the exact isolated preview renderer in a
+    // same-origin iframe. Program Overlay pages stay DENY-framed; only this
+    // private preview surface permits its intended same-origin parent.
+    if (name === 'X-Frame-Options' && isBroadcastPreviewPath(request.nextUrl.pathname)) {
+      response.headers.set(name, 'SAMEORIGIN');
+      return;
+    }
     response.headers.set(name, value);
   });
   if (process.env.NODE_ENV === 'production') {
@@ -148,6 +175,13 @@ const applySecurityHeaders = (response: NextResponse, request: NextRequest): Nex
     response.headers.set('Cache-Control', NO_STORE_VALUE);
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
+  }
+  if (isOverlaySurfacePath(request.nextUrl.pathname)) {
+    response.headers.set('Cache-Control', NO_STORE_VALUE);
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Referrer-Policy', 'no-referrer');
+    response.headers.set('X-Robots-Tag', 'noindex');
   }
   return response;
 };
@@ -184,7 +218,7 @@ export function proxy(request: NextRequest) {
   }
 
   if (host !== WWW_HOST) {
-    return applySecurityHeaders(NextResponse.next(), request);
+    return applySecurityHeaders(nextResponseForRequest(request), request);
   }
 
   const redirectUrl = request.nextUrl.clone();

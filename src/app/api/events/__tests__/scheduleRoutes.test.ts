@@ -71,6 +71,7 @@ const sendEmailMock = jest.fn();
 const sendAdminEventCreatedNotificationMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
+const refreshBroadcastPresentationForEventMock = jest.fn();
 let matchOperationReceiptRows: Array<Record<string, any>> = [];
 
 const mockNormalizeStartedMatches = (event: any) => {
@@ -135,6 +136,9 @@ jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
 }));
 jest.mock('@/server/adminNotifications', () => ({
   sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
+}));
+jest.mock('@/server/broadcast/presentation', () => ({
+  refreshBroadcastPresentationForEvent: (...args: any[]) => refreshBroadcastPresentationForEventMock(...args),
 }));
 
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
@@ -217,6 +221,7 @@ describe('schedule routes', () => {
       error: 'not_rental_checkout',
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
+    refreshBroadcastPresentationForEventMock.mockResolvedValue(undefined);
   });
 
   it('returns hydrated match lists with incidents', async () => {
@@ -358,6 +363,10 @@ describe('schedule routes', () => {
     );
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalled();
+    expect(refreshBroadcastPresentationForEventMock).toHaveBeenCalledWith({
+      eventId: 'event_1',
+      reason: 'SCHEDULE_CHANGE',
+    });
     expect(json.event.$id).toBe('event_1');
     expect(json.matches[0].$id).toBe('match_1');
     expect(prismaMock.$transaction).toHaveBeenCalledWith(
@@ -501,6 +510,10 @@ describe('schedule routes', () => {
     );
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalled();
+    expect(refreshBroadcastPresentationForEventMock).toHaveBeenCalledWith({
+      eventId: 'event_1',
+      reason: 'SCHEDULE_CHANGE',
+    });
     expect(json.event.$id).toBe('event_1');
     expect(json.matches[0].$id).toBe('match_1');
     expect(prismaMock.$transaction).toHaveBeenCalledWith(

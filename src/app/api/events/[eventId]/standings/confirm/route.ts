@@ -11,6 +11,7 @@ import {
   getDivisionValidation,
   toStandingsEvent,
 } from '../shared';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,10 +121,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         reassignedPlayoffDivisionIds,
         seededTeamIds,
         teamIdsByPlayoffDivision,
+        didUpdateMatches: reassignedPlayoffDivisionIds.length > 0 || seededTeamIds.length > 0,
       };
     });
 
-    return NextResponse.json(result, { status: 200 });
+    const { didUpdateMatches, ...response } = result;
+    if (didUpdateMatches) {
+      await refreshBroadcastPresentationForEvent({
+        eventId,
+        reason: 'SCHEDULE_CHANGE',
+      }).catch((error) => {
+        console.error('[broadcast-overlay] Presentation refresh failed after standings reassignment', {
+          eventId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    }
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;

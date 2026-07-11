@@ -22,6 +22,7 @@ import {
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
 import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,11 +130,23 @@ export async function POST(req: NextRequest) {
       const event = await loadEventWithRelations(eventId, tx);
       const affiliateUrl = typeof eventAccess.affiliateUrl === 'string' ? eventAccess.affiliateUrl.trim() : '';
       if (affiliateUrl.length > 0) {
-        return { preview: false, event, matches: Object.values(event.matches), createdEvent };
+        return {
+          preview: false,
+          event,
+          matches: Object.values(event.matches),
+          createdEvent,
+          didRebuildSchedule: false,
+        };
       }
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
-        return { preview: false, event, matches: Object.values(event.matches), createdEvent };
+        return {
+          preview: false,
+          event,
+          matches: Object.values(event.matches),
+          createdEvent,
+          didRebuildSchedule: false,
+        };
       }
 
       const scheduled = scheduleEvent({ event, participantCount, includePlaceholderTeams }, context);
@@ -145,8 +158,20 @@ export async function POST(req: NextRequest) {
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
-      return { ...scheduled, createdEvent };
+      return { ...scheduled, createdEvent, didRebuildSchedule: true };
     }, SCHEDULE_TRANSACTION_OPTIONS);
+
+    if (result.didRebuildSchedule && eventId) {
+      await refreshBroadcastPresentationForEvent({
+        eventId,
+        reason: 'SCHEDULE_CHANGE',
+      }).catch((error) => {
+        console.error('[broadcast-overlay] Presentation refresh failed after schedule rebuild', {
+          eventId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    }
 
     if (rentalLockWindowToRelease && eventId) {
       const windowWithResolvedEventId = {

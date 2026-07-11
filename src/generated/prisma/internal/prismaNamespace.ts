@@ -389,6 +389,10 @@ export const ModelName = {
   Facilities: 'Facilities',
   Matches: 'Matches',
   MatchSegments: 'MatchSegments',
+  BroadcastOverlays: 'BroadcastOverlays',
+  BroadcastOverlayStates: 'BroadcastOverlayStates',
+  BroadcastOverlayActions: 'BroadcastOverlayActions',
+  BroadcastOverlayAccessTokens: 'BroadcastOverlayAccessTokens',
   MatchIncidents: 'MatchIncidents',
   MatchOperationReceipts: 'MatchOperationReceipts',
   Divisions: 'Divisions',
@@ -483,7 +487,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -854,6 +858,302 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.MatchSegmentsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.MatchSegmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    BroadcastOverlays: {
+      payload: Prisma.$BroadcastOverlaysPayload<ExtArgs>
+      fields: Prisma.BroadcastOverlaysFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BroadcastOverlaysFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BroadcastOverlaysFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        findFirst: {
+          args: Prisma.BroadcastOverlaysFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BroadcastOverlaysFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        findMany: {
+          args: Prisma.BroadcastOverlaysFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>[]
+        }
+        create: {
+          args: Prisma.BroadcastOverlaysCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        createMany: {
+          args: Prisma.BroadcastOverlaysCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BroadcastOverlaysCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>[]
+        }
+        delete: {
+          args: Prisma.BroadcastOverlaysDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        update: {
+          args: Prisma.BroadcastOverlaysUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        deleteMany: {
+          args: Prisma.BroadcastOverlaysDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BroadcastOverlaysUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BroadcastOverlaysUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>[]
+        }
+        upsert: {
+          args: Prisma.BroadcastOverlaysUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlaysPayload>
+        }
+        aggregate: {
+          args: Prisma.BroadcastOverlaysAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBroadcastOverlays>
+        }
+        groupBy: {
+          args: Prisma.BroadcastOverlaysGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlaysGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BroadcastOverlaysCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlaysCountAggregateOutputType> | number
+        }
+      }
+    }
+    BroadcastOverlayStates: {
+      payload: Prisma.$BroadcastOverlayStatesPayload<ExtArgs>
+      fields: Prisma.BroadcastOverlayStatesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BroadcastOverlayStatesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BroadcastOverlayStatesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        findFirst: {
+          args: Prisma.BroadcastOverlayStatesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BroadcastOverlayStatesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        findMany: {
+          args: Prisma.BroadcastOverlayStatesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>[]
+        }
+        create: {
+          args: Prisma.BroadcastOverlayStatesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        createMany: {
+          args: Prisma.BroadcastOverlayStatesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BroadcastOverlayStatesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>[]
+        }
+        delete: {
+          args: Prisma.BroadcastOverlayStatesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        update: {
+          args: Prisma.BroadcastOverlayStatesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        deleteMany: {
+          args: Prisma.BroadcastOverlayStatesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BroadcastOverlayStatesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BroadcastOverlayStatesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>[]
+        }
+        upsert: {
+          args: Prisma.BroadcastOverlayStatesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayStatesPayload>
+        }
+        aggregate: {
+          args: Prisma.BroadcastOverlayStatesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBroadcastOverlayStates>
+        }
+        groupBy: {
+          args: Prisma.BroadcastOverlayStatesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayStatesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BroadcastOverlayStatesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayStatesCountAggregateOutputType> | number
+        }
+      }
+    }
+    BroadcastOverlayActions: {
+      payload: Prisma.$BroadcastOverlayActionsPayload<ExtArgs>
+      fields: Prisma.BroadcastOverlayActionsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BroadcastOverlayActionsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BroadcastOverlayActionsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        findFirst: {
+          args: Prisma.BroadcastOverlayActionsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BroadcastOverlayActionsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        findMany: {
+          args: Prisma.BroadcastOverlayActionsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>[]
+        }
+        create: {
+          args: Prisma.BroadcastOverlayActionsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        createMany: {
+          args: Prisma.BroadcastOverlayActionsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BroadcastOverlayActionsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>[]
+        }
+        delete: {
+          args: Prisma.BroadcastOverlayActionsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        update: {
+          args: Prisma.BroadcastOverlayActionsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        deleteMany: {
+          args: Prisma.BroadcastOverlayActionsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BroadcastOverlayActionsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BroadcastOverlayActionsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>[]
+        }
+        upsert: {
+          args: Prisma.BroadcastOverlayActionsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayActionsPayload>
+        }
+        aggregate: {
+          args: Prisma.BroadcastOverlayActionsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBroadcastOverlayActions>
+        }
+        groupBy: {
+          args: Prisma.BroadcastOverlayActionsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayActionsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BroadcastOverlayActionsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayActionsCountAggregateOutputType> | number
+        }
+      }
+    }
+    BroadcastOverlayAccessTokens: {
+      payload: Prisma.$BroadcastOverlayAccessTokensPayload<ExtArgs>
+      fields: Prisma.BroadcastOverlayAccessTokensFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BroadcastOverlayAccessTokensFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BroadcastOverlayAccessTokensFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        findFirst: {
+          args: Prisma.BroadcastOverlayAccessTokensFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BroadcastOverlayAccessTokensFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        findMany: {
+          args: Prisma.BroadcastOverlayAccessTokensFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>[]
+        }
+        create: {
+          args: Prisma.BroadcastOverlayAccessTokensCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        createMany: {
+          args: Prisma.BroadcastOverlayAccessTokensCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BroadcastOverlayAccessTokensCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>[]
+        }
+        delete: {
+          args: Prisma.BroadcastOverlayAccessTokensDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        update: {
+          args: Prisma.BroadcastOverlayAccessTokensUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        deleteMany: {
+          args: Prisma.BroadcastOverlayAccessTokensDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BroadcastOverlayAccessTokensUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BroadcastOverlayAccessTokensUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>[]
+        }
+        upsert: {
+          args: Prisma.BroadcastOverlayAccessTokensUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BroadcastOverlayAccessTokensPayload>
+        }
+        aggregate: {
+          args: Prisma.BroadcastOverlayAccessTokensAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBroadcastOverlayAccessTokens>
+        }
+        groupBy: {
+          args: Prisma.BroadcastOverlayAccessTokensGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayAccessTokensGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BroadcastOverlayAccessTokensCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BroadcastOverlayAccessTokensCountAggregateOutputType> | number
         }
       }
     }
@@ -6862,6 +7162,89 @@ export const MatchSegmentsScalarFieldEnum = {
 export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
 
 
+export const BroadcastOverlaysScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  organizationId: 'organizationId',
+  name: 'name',
+  templateKey: 'templateKey',
+  status: 'status',
+  draftConfig: 'draftConfig',
+  publishedConfig: 'publishedConfig',
+  publishedConfigRevision: 'publishedConfigRevision',
+  publishedAt: 'publishedAt',
+  publishedByUserId: 'publishedByUserId',
+  createdByUserId: 'createdByUserId',
+  updatedByUserId: 'updatedByUserId',
+  archivedAt: 'archivedAt',
+  archivedByUserId: 'archivedByUserId',
+  archiveReason: 'archiveReason'
+} as const
+
+export type BroadcastOverlaysScalarFieldEnum = (typeof BroadcastOverlaysScalarFieldEnum)[keyof typeof BroadcastOverlaysScalarFieldEnum]
+
+
+export const BroadcastOverlayStatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  overlayId: 'overlayId',
+  eventId: 'eventId',
+  activeMatchId: 'activeMatchId',
+  revision: 'revision',
+  scoringMode: 'scoringMode',
+  presentationState: 'presentationState',
+  automaticShadowState: 'automaticShadowState',
+  manualOverrideBaseRevision: 'manualOverrideBaseRevision',
+  manualOverrideStartedAt: 'manualOverrideStartedAt',
+  manualOverrideStartedByUserId: 'manualOverrideStartedByUserId',
+  manualOverrideReason: 'manualOverrideReason',
+  updatedByUserId: 'updatedByUserId'
+} as const
+
+export type BroadcastOverlayStatesScalarFieldEnum = (typeof BroadcastOverlayStatesScalarFieldEnum)[keyof typeof BroadcastOverlayStatesScalarFieldEnum]
+
+
+export const BroadcastOverlayActionsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  overlayId: 'overlayId',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  accessTokenId: 'accessTokenId',
+  actorUserId: 'actorUserId',
+  actorKind: 'actorKind',
+  actionType: 'actionType',
+  baseRevision: 'baseRevision',
+  presentationRevision: 'presentationRevision',
+  requestId: 'requestId',
+  payload: 'payload'
+} as const
+
+export type BroadcastOverlayActionsScalarFieldEnum = (typeof BroadcastOverlayActionsScalarFieldEnum)[keyof typeof BroadcastOverlayActionsScalarFieldEnum]
+
+
+export const BroadcastOverlayAccessTokensScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  overlayId: 'overlayId',
+  tokenHash: 'tokenHash',
+  label: 'label',
+  createdByUserId: 'createdByUserId',
+  expiresAt: 'expiresAt',
+  revokedAt: 'revokedAt',
+  revokedByUserId: 'revokedByUserId',
+  revokeReason: 'revokeReason',
+  lastUsedAt: 'lastUsedAt'
+} as const
+
+export type BroadcastOverlayAccessTokensScalarFieldEnum = (typeof BroadcastOverlayAccessTokensScalarFieldEnum)[keyof typeof BroadcastOverlayAccessTokensScalarFieldEnum]
+
+
 export const MatchIncidentsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -9857,6 +10240,10 @@ export type GlobalOmitConfig = {
   facilities?: Prisma.FacilitiesOmit
   matches?: Prisma.MatchesOmit
   matchSegments?: Prisma.MatchSegmentsOmit
+  broadcastOverlays?: Prisma.BroadcastOverlaysOmit
+  broadcastOverlayStates?: Prisma.BroadcastOverlayStatesOmit
+  broadcastOverlayActions?: Prisma.BroadcastOverlayActionsOmit
+  broadcastOverlayAccessTokens?: Prisma.BroadcastOverlayAccessTokensOmit
   matchIncidents?: Prisma.MatchIncidentsOmit
   matchOperationReceipts?: Prisma.MatchOperationReceiptsOmit
   divisions?: Prisma.DivisionsOmit

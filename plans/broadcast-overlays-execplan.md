@@ -15,10 +15,11 @@ The first pilot is deliberately beach-volleyball-first. It proves one reliable p
 - [x] (2026-07-11 05:35Z) Read the supplied Broadcast Overlays recommendation, PLANS.md, the Admin dashboard/tab convention, existing match scoring and set-rule code, custom WebSocket server, Redis fanout plan, app layout, Prisma schema, and relevant test conventions.
 - [x] (2026-07-11 05:35Z) Verified the OBS Browser Source and OBS browser-dock capabilities needed for the pilot from official OBS materials.
 - [x] (2026-07-11 05:35Z) Wrote this repository-specific implementation plan and resolved the initial architectural decisions below.
-- [ ] Implement the persistence, authorization, and projection foundation.
-- [ ] Implement the private Admin Studio and exact program preview.
-- [ ] Implement the isolated token-authorized Program Overlay and revisioned realtime feed.
-- [ ] Implement the Control Room, then prove the complete first-live-test scenario in OBS.
+- [x] (2026-07-11) Implemented additive persistence, event-scoped authorization, a narrow projection, revisioned commands/actions, hashed capabilities, and archive/delete cleanup.
+- [x] (2026-07-11) Implemented the private Admin Studio, draft/live preview iframe, positioning controls, and Compact Scorebug renderer.
+- [x] (2026-07-11) Implemented the transparent Program Overlay, snapshot-first revisioned WebSocket feed, targeted token revocation, and refresh hooks for score, match, schedule, and standings mutations.
+- [x] (2026-07-11) Implemented the pilot Control Room, including visibility, serving, timeout, stinger, broadcast-only manual override, undo, and feature-detected OBS replay-buffer control.
+- [x] (2026-07-11) Completed hands-on OBS Browser Source validation in OBS 32.1.2 on macOS 26.5. A temporary 1920×1080 Browser Source rendered the transparent Program scorebug at a stable 60.00/60.00 FPS with custom Browser Source FPS and performance mode off. Live manager visibility commands hid revision 7 and restored revision 8 in the rendered OBS canvas; the temporary source/configuration was removed, the capability was revoked, and the original OBS collection was restored.
 
 ## Surprises & Discoveries
 
@@ -42,6 +43,24 @@ The first pilot is deliberately beach-volleyball-first. It proves one reliable p
 
 - Observation: OBS Browser Source can set its own viewport and custom frame rate, starts with transparent-background CSS, and exposes a browser-dock JavaScript bridge. Saving the Replay Buffer requires the BASIC permission level.
   Evidence: the official OBS Browser Source guide documents configurable width, height, custom FPS, transparent CSS, and source lifecycle behavior; the official obs-browser README documents window.obsstudio, replay-buffer events, and window.obsstudio.saveReplayBuffer().
+
+- Observation: this Next.js 16 checkout uses `src/proxy.ts`, not a root `middleware.ts`.
+  Evidence: the existing global request-security implementation and Next.js route handling are in `src/proxy.ts`. The isolated surface marker and response headers were added there so overlay and preview routes take the bare root-layout branch.
+
+- Observation: the local database has historical migration drift unrelated to this feature.
+  Evidence: `npx prisma migrate status` reported both missing historical local migrations and unapplied repository migrations. The reviewed additive `20260711023000_add_broadcast_overlays` SQL was applied only to the local Docker development database; no reset or production migration was attempted.
+
+- Observation: `prisma/schema.generated.prisma` is a pre-existing stale, unused reference rather than the runtime schema.
+  Evidence: `docs/code-audit/README.md` records 47 models in that file versus 83 in `prisma/schema.prisma`; `prisma.config.ts` and `prisma generate` use only the canonical schema. Synchronizing the entire legacy file would add 1,774 unrelated lines, so this pilot updates only the canonical schema and generated client.
+
+- Observation: the private preview needs a different frame policy from the Program Overlay.
+  Evidence: the Studio embeds `/broadcast-preview/[overlayId]` in a same-origin iframe. `X-Frame-Options: DENY` blocked that legitimate preview, so preview responses use `SAMEORIGIN` while Program Overlay responses remain `DENY`.
+
+- Observation: an OBS Browser Source must be fit to the canvas as well as given a matching viewport.
+  Evidence: OBS normalized the temporary source placement to its center when loading the isolated QA configuration. The Program Overlay rendered correctly, but its position reflected that source transform. The Admin setup copy now explicitly instructs producers to use Transform → Fit to Screen after setting the 1920×1080 Browser Source viewport.
+
+- Observation: this OBS/macOS combination can crash in its Qt accessibility cache while closing the scene-collection importer.
+  Evidence: the local diagnostic report recorded an `NSInvalidArgumentException` in `QAccessibleCache::removeAccessibleElement`; it occurred before Browser Source rendering and did not recur during the loaded source test. The temporary configuration route avoided further importer interaction.
 
 ## Decision Log
 
@@ -89,11 +108,23 @@ The first pilot is deliberately beach-volleyball-first. It proves one reliable p
   Rationale: these features depend on a demonstrated reliable presentation state and, for automatic replay playback, a trusted local companion or OBS plugin. Version one may call the OBS dock’s Save Replay Buffer bridge when permission is available, but it will not promise local scene or media-source automation.
   Date/Author: 2026-07-11 / Codex
 
+- Decision: use `src/proxy.ts` as the chrome-bypass and no-store boundary.
+  Rationale: this is the active Next.js 16 request hook in this checkout. It preserves existing global security behavior while marking only Program/Preview routes for the bare root layout.
+  Date/Author: 2026-07-11 / Codex
+
+- Decision: a deleted selected match clears the on-air effective state even during manual override.
+  Rationale: a manual correction must never preserve a stale, deleted match on stream. The state remains visibly marked as manual in the private Control Room, but the Program scorebug hides and the producer can select a new match or resume automatic state.
+  Date/Author: 2026-07-11 / Codex
+
+- Decision: do not synchronize the stale `schema.generated.prisma` during this pilot.
+  Rationale: it is not used by Prisma config or runtime, and a full synchronization would be an unrelated audit-scale rewrite. The canonical `prisma/schema.prisma` and generated Prisma client are the executable source of truth; a dedicated audit remediation should retire or regenerate the legacy artifact.
+  Date/Author: 2026-07-11 / Codex
+
 ## Outcomes & Retrospective
 
-Planning is complete. The planned design preserves one official source of truth for match data, makes the streamed program output intentionally smaller and safer than internal match payloads, and gives the feature a staged path from a private platform-admin pilot to an event-owned organizer workspace. No application behavior has changed yet.
+The local implementation is complete through the private Admin pilot. It preserves one official source of truth for match data, sends a smaller validated presentation contract to Program Overlay clients, and leaves the public/organizer surface as a later routing and authorization decision.
 
-The main risk remaining before implementation is live-environment verification: browser-source frame performance, cross-process Redis fanout, and token revocation must be tested on the intended OBS machines. The milestones below isolate those risks before replay automation or other production tooling is attempted.
+Local browser evidence confirmed a Program Overlay snapshot, WebSocket-driven hide/show transition, transparent no-chrome body, capability revocation (subsequent snapshot returned 401), and no delivery of a later manager command to the revoked client. Focused tests, type checking, Prisma validation/generation, and production build have been run. Hands-on OBS validation also passed: a real 1920×1080 Browser Source rendered the transparent scorebug at 60 FPS and immediately applied live hide/show revisions 7 and 8. The temporary source/configuration was removed, the QA capability was revoked, and the original OBS collection was restored. Remaining validation risk is production multi-process Redis fanout and a sustained 4K performance run.
 
 ## Context and Orientation
 
@@ -425,7 +456,30 @@ Expected final checks:
     npm run build
     exited successfully
 
-Populate this section with actual commands, short success output, screenshot locations, OBS configuration evidence, and any implementation-specific caveats as the work advances.
+Actual local evidence:
+
+    npx prisma validate && npx prisma generate
+    schema valid; Prisma Client 7.8.0 generated successfully
+
+    npm test -- --runInBand --runTestsByPath <15 focused overlay, API, schedule, renderer, and archive suites>
+    Test Suites: 15 passed, 15 total
+    Tests: 90 passed, 90 total
+
+    npx tsc --noEmit --pretty false
+    exited successfully
+
+    node --check server.mjs
+    exited successfully
+
+    npm run build
+    exited successfully; compiled, type-checked, collected page data, and generated 132 static pages
+
+    npm run dev:plain
+    local custom server mounted both match and broadcast-overlay WebSocket paths
+
+The 1280 by 720 in-app-browser visual smoke confirmed transparent computed `html` and `body` backgrounds and no mounted footer or chat. An authenticated local manager command hid and restored the connected scorebug at higher revisions; after capability revocation, a snapshot returned 401 and a later command was not delivered to that client. A final live projection also converted a scheduler-scoped division ID to the safe display label `Open`. No capability value is recorded here.
+
+2026-07-11 OBS artifact: OBS 32.1.2 on macOS 26.5 loaded a temporary Program Browser Source with a 1920×1080 viewport and default (canvas-driven) 60 FPS; performance mode was off. The transparent compact scorebug rendered in the OBS canvas. A manager SET_VISIBILITY command hid it at revision 7 and restored it at revision 8. The test source and temporary collection configuration were removed afterward, the exact QA capability was revoked (snapshot returned 401), and the original `Untitled` collection with its macOS Screen Capture source was reopened. During setup, the OBS scene-collection importer crashed in its Qt accessibility cache, so the temporary source was loaded through isolated configuration instead; this did not affect Browser Source rendering.
 
 ## Interfaces and Dependencies
 
@@ -483,4 +537,4 @@ src/server/realtime/broadcastOverlayRealtime.ts must export a broadcaster that s
 
 src/components/broadcast/usePresentationStream.ts must expose a client hook that takes an overlay ID and opaque capability from the URL fragment, starts with GET snapshot, reconnects with exponential backoff, applies only higher revisions, and exposes a connection state only to private preview/control UI. BroadcastOverlayRenderer receives already-sanitized state and config; it must have no API, authentication, or mutation responsibilities.
 
-Revision note: Created after repository and official OBS capability research. The important implementation choices are event-scoped APIs, a published/draft split, a narrow revisioned presentation contract, an opaque revocable Program Overlay capability, a bare React output shell, and a Compact Scorebug-first rollout.
+Revision note: Updated after local implementation, automated/browser verification, and hands-on OBS validation. The pilot now uses `src/proxy.ts` for the bare shell, canonical Prisma schema/client generation only, revision-safe projection updates, capability-targeted revocation, a same-origin private preview policy, and explicit OBS Transform → Fit to Screen setup guidance.

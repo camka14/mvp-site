@@ -25,6 +25,7 @@ const acquireEventLockMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const applyLeagueDivisionPlayoffReassignmentMock = jest.fn();
+const refreshBroadcastPresentationForEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -41,6 +42,9 @@ jest.mock('@/server/scheduler/standings', () => {
     applyLeagueDivisionPlayoffReassignment: (...args: any[]) => applyLeagueDivisionPlayoffReassignmentMock(...args),
   };
 });
+jest.mock('@/server/broadcast/presentation', () => ({
+  refreshBroadcastPresentationForEvent: (...args: any[]) => refreshBroadcastPresentationForEventMock(...args),
+}));
 
 import { GET as standingsGet, PATCH as standingsPatch } from '@/app/api/events/[eventId]/standings/route';
 import { POST as standingsConfirm } from '@/app/api/events/[eventId]/standings/confirm/route';
@@ -317,6 +321,7 @@ describe('standings routes', () => {
     });
     loadEventWithRelationsMock.mockResolvedValue(buildLeagueFixture());
     divisionsMock.update.mockResolvedValue({});
+    refreshBroadcastPresentationForEventMock.mockResolvedValue(undefined);
   });
 
   it('GET allows non-host access for published events', async () => {
@@ -442,6 +447,7 @@ describe('standings routes', () => {
       }),
     );
     expect(saveMatchesMock).not.toHaveBeenCalled();
+    expect(refreshBroadcastPresentationForEventMock).not.toHaveBeenCalled();
 
     const json = await res.json();
     expect(json.applyReassignment).toBe(false);
@@ -472,6 +478,10 @@ describe('standings routes', () => {
       }),
     );
     expect(divisionsMock.update).toHaveBeenCalledTimes(1);
+    expect(refreshBroadcastPresentationForEventMock).toHaveBeenCalledWith({
+      eventId: 'event_1',
+      reason: 'SCHEDULE_CHANGE',
+    });
 
     const json = await res.json();
     expect(json.seededTeamIds).toEqual(['team_1', 'team_2']);

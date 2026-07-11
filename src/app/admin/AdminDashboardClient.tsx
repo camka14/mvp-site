@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AdminAffiliateImportsPanel from './AdminAffiliateImportsPanel';
+import AdminBroadcastOverlaysPanel from './AdminBroadcastOverlaysPanel';
 import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
@@ -36,7 +37,7 @@ import {
 } from '@mantine/core';
 import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Search, Send, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports' | 'broadcastOverlays';
 type AdminUserSortField = 'name' | 'username' | 'email' | 'status' | 'dateJoined' | 'lastSeen';
 type SortDirection = 'asc' | 'desc';
 type AdminUserSort = {
@@ -219,6 +220,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [selectedChatError, setSelectedChatError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
+  const [broadcastOverlayRefreshKey, setBroadcastOverlayRefreshKey] = useState(0);
   const [notificationDraft, setNotificationDraft] =
     useState<AdminNotificationDraft>(() => ({ ...DEFAULT_NOTIFICATION_DRAFT }));
   const [notificationState, setNotificationState] = useState<AdminNotificationState>({
@@ -915,6 +917,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         query: '',
       };
     }
+    if (activeTab === 'broadcastOverlays') {
+      return {
+        items: [],
+        total: 0,
+        limit: DEFAULT_LIMIT,
+        offset: 0,
+        loading: false,
+        loaded: true,
+        error: null,
+        query: '',
+      };
+    }
     return usersState;
   }, [activeTab, chatsState, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
 
@@ -937,6 +951,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       void loadNotificationAudience(notificationDraft.deviceTypes);
     } else if (activeTab === 'affiliateImports') {
       setAffiliateRefreshKey((previous) => previous + 1);
+    } else if (activeTab === 'broadcastOverlays') {
+      setBroadcastOverlayRefreshKey((previous) => previous + 1);
     } else {
       void loadUsers(usersState.offset, usersState.query);
     }
@@ -1086,6 +1102,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <Tabs.Tab value="moderation">Moderation ({moderationState.total})</Tabs.Tab>
                 <Tabs.Tab value="notifications">Notifications</Tabs.Tab>
                 <Tabs.Tab value="affiliateImports">Affiliate imports</Tabs.Tab>
+                <Tabs.Tab value="broadcastOverlays">Broadcast overlays</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="events">
@@ -1209,6 +1226,13 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <AdminAffiliateImportsPanel
                   active={activeTab === 'affiliateImports'}
                   refreshKey={affiliateRefreshKey}
+                />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="broadcastOverlays">
+                <AdminBroadcastOverlaysPanel
+                  active={activeTab === 'broadcastOverlays'}
+                  refreshKey={broadcastOverlayRefreshKey}
                 />
               </Tabs.Panel>
 

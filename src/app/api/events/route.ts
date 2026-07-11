@@ -44,6 +44,7 @@ import {
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
 import { getEventTagsForEventIds } from '@/server/eventTags';
+import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 import {
   normalizeManualPaymentInstructions,
   normalizeManualPaymentLinks,
@@ -1097,10 +1098,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const context = buildContext();
-    const event = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       await upsertEventFromPayload(eventPayload, tx);
 
       const loaded = await loadEventWithRelations(eventId, tx);
+      let didRebuildSchedule = false;
       if (isSchedulableEventType(loaded.eventType)) {
         await acquireEventLock(tx, eventId);
         const scheduled = scheduleEvent({ event: loaded }, context);
@@ -1108,14 +1110,28 @@ export async function POST(req: NextRequest) {
         await deleteMatchesByEvent(eventId, tx);
         await saveMatches(eventId, scheduled.matches, tx);
         await saveEventSchedule(scheduled.event, tx);
+        didRebuildSchedule = true;
       }
 
       const fresh = await tx.events.findUnique({ where: { id: eventId } });
       if (!fresh) {
         throw new Error('Failed to create event');
       }
-      return fresh;
+      return { event: fresh, didRebuildSchedule };
     }, CREATE_EVENT_TRANSACTION_OPTIONS);
+
+    const { event, didRebuildSchedule } = created;
+    if (didRebuildSchedule) {
+      await refreshBroadcastPresentationForEvent({
+        eventId,
+        reason: 'SCHEDULE_CHANGE',
+      }).catch((error) => {
+        console.error('[broadcast-overlay] Presentation refresh failed after event creation schedule', {
+          eventId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    }
 
     const payload = await buildEventResponsePayload(event);
     void notifySocialAudienceOfEventCreation({
