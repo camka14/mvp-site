@@ -44,6 +44,40 @@ describe('matchPolicy', () => {
     expect(snapshot.timekeeping.segmentDurationMinutes).toBe(15);
   });
 
+  it('honors an explicit one-set policy even when legacy rows have three segments', () => {
+    const snapshot = buildMatchRulesSnapshot({
+      baseRules,
+      existingSnapshot: baseRules,
+      policy: {
+        scoringModel: 'SETS',
+        segmentCount: 1,
+        setPointTargets: [21],
+      },
+      fallbackSetPointTargets: [21, 21, 15],
+      existingSegmentCount: 3,
+    });
+
+    expect(snapshot.segmentCount).toBe(1);
+    expect(snapshot.setPointTargets).toEqual([21]);
+  });
+
+  it('honors an incoming one-set snapshot even when legacy rows have three segments', () => {
+    const snapshot = buildMatchRulesSnapshot({
+      baseRules,
+      existingSnapshot: baseRules,
+      incomingSnapshot: {
+        ...baseRules,
+        segmentCount: 1,
+        setPointTargets: [21],
+      },
+      fallbackSetPointTargets: [21, 21, 15],
+      existingSegmentCount: 3,
+    });
+
+    expect(snapshot.segmentCount).toBe(1);
+    expect(snapshot.setPointTargets).toEqual([21]);
+  });
+
   it('prefers match snapshot point targets over event defaults', () => {
     const targets = resolveMatchSetPointTargets(
       {

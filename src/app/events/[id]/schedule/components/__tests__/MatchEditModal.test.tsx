@@ -159,6 +159,73 @@ describe('MatchEditModal', () => {
     }));
   });
 
+  it('keeps a loser-bracket match to its configured single set when stale rows remain', () => {
+    const onSave = jest.fn();
+    const loserMatch = {
+      ...match,
+      losersBracket: true,
+      status: 'IN_PROGRESS',
+      actualStart: '2026-03-01T10:00:00.000Z',
+      team1Points: [0, 0, 0],
+      team2Points: [0, 0, 0],
+      setResults: [0, 0, 0],
+      resolvedMatchRules: {
+        scoringModel: 'SETS',
+        segmentCount: 3,
+        segmentLabel: 'Set',
+        setPointTargets: [21, 21, 15],
+      },
+      segments: [
+        ...(match.segments ?? []).map((segment) => ({ ...segment, status: 'IN_PROGRESS' })),
+        {
+          id: 'match_1_segment_2',
+          eventId: 'event_1',
+          matchId: 'match_1',
+          sequence: 2,
+          status: 'NOT_STARTED',
+          scores: { team_a: 0, team_b: 0 },
+          winnerEventTeamId: null,
+        },
+        {
+          id: 'match_1_segment_3',
+          eventId: 'event_1',
+          matchId: 'match_1',
+          sequence: 3,
+          status: 'NOT_STARTED',
+          scores: { team_a: 0, team_b: 0 },
+          winnerEventTeamId: null,
+        },
+      ],
+    } as Match;
+
+    renderWithMantine(
+      <MatchEditModal
+        opened
+        match={loserMatch}
+        tournament={{
+          ...event,
+          usesSets: true,
+          winnerSetCount: 3,
+          loserSetCount: 1,
+        } as Event}
+        teams={[loserMatch.team1, loserMatch.team2] as NonNullable<Event['teams']>}
+        canManageOperations
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toEqual(expect.objectContaining({
+      team1Points: [0],
+      team2Points: [0],
+      setResults: [0],
+    }));
+    expect(onSave.mock.calls[0][0].segments).toHaveLength(1);
+  });
+
   it('manages started and segment status from the bracket column in order', async () => {
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
     const onSetComplete = jest.fn().mockResolvedValue(undefined);
