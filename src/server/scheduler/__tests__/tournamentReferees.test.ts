@@ -188,6 +188,49 @@ describe('tournament scheduling (officials)', () => {
     expect(semi.status).toBe('COMPLETE');
   });
 
+  it('keeps bracket participant slots intact when a feeder is finalized again', () => {
+    const division = buildDivision();
+    const teams = buildTeams(4, division);
+    const tournament = buildTournament({
+      id: 'tournament_idempotent_advancement',
+      teams,
+      divisions: [division],
+      officials: [],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+    });
+
+    scheduleEvent({ event: tournament }, context);
+    const final = Object.values(tournament.matches).find(
+      (match) => !match.winnerNextMatch && match.previousLeftMatch && match.previousRightMatch,
+    );
+    expect(final).toBeTruthy();
+    if (!final?.previousLeftMatch || !final.previousRightMatch) return;
+
+    const leftSemi = final.previousLeftMatch;
+    const rightSemi = final.previousRightMatch;
+    const initialLeftWinner = leftSemi.team1 as Team;
+    const rightWinner = rightSemi.team1 as Team;
+
+    leftSemi.setResults = [1, 1];
+    leftSemi.team1Points = [21, 21];
+    leftSemi.team2Points = [10, 10];
+    finalizeMatchWithoutRescheduling(tournament, leftSemi, new Date(leftSemi.end));
+
+    rightSemi.setResults = [1, 1];
+    rightSemi.team1Points = [21, 21];
+    rightSemi.team2Points = [10, 10];
+    finalizeMatchWithoutRescheduling(tournament, rightSemi, new Date(rightSemi.end));
+
+    expect(final.team1).toBe(initialLeftWinner);
+    expect(final.team2).toBe(rightWinner);
+
+    // Retrying the same confirmation is an idempotent no-op.
+    finalizeMatchWithoutRescheduling(tournament, leftSemi, new Date(leftSemi.end));
+    expect(final.team1).toBe(initialLeftWinner);
+    expect(final.team2).toBe(rightWinner);
+  });
+
   it('stagger first-round matches when teams officiate and only one team official is available', () => {
     const division = buildDivision();
     const teams = buildTeams(4, division);

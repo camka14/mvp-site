@@ -12,7 +12,7 @@ import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type 
 
 import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, MatchSegment, ResolvedMatchRules, Team, UserData } from '@/types';
 
-import ScoreUpdateModal from './ScoreUpdateModal';
+import ScoreUpdateModal, { type ScorePayload } from './ScoreUpdateModal';
 
 type ScoreUpdateModalComponentProps = ComponentProps<typeof ScoreUpdateModal>;
 type MatchStatusRules = Pick<ResolvedMatchRules, 'scoringModel' | 'segmentCount' | 'segmentLabel'>;
@@ -550,6 +550,35 @@ export default function MatchEditModal({
   const [statusReasonValue, setStatusReasonValue] = useState('');
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
   const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
+
+  const syncEmbeddedScoreState = useCallback((payload: ScorePayload) => {
+    const nextSegments = Array.isArray(payload.segments)
+      ? payload.segments.map((segment) => ({
+          ...segment,
+          scores: { ...(segment.scores ?? {}) },
+        }))
+      : [];
+    setStatusSegmentsValue(nextSegments);
+    setMatchStartedValue(nextSegments.some((segment) => (
+      segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'
+    )));
+  }, []);
+
+  const handleEmbeddedScoreChange = useCallback(async (payload: ScorePayload) => {
+    if (!onScoreChange) {
+      return;
+    }
+    await onScoreChange(payload);
+    syncEmbeddedScoreState(payload);
+  }, [onScoreChange, syncEmbeddedScoreState]);
+
+  const handleEmbeddedSetComplete = useCallback(async (payload: ScorePayload) => {
+    if (!onSetComplete) {
+      return;
+    }
+    await onSetComplete(payload);
+    syncEmbeddedScoreState(payload);
+  }, [onSetComplete, syncEmbeddedScoreState]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -1980,8 +2009,8 @@ export default function MatchEditModal({
                   tournament={tournament}
                   participantTeams={participantTeams}
                   canManage={canManageOperations}
-                  onScoreChange={onScoreChange}
-                  onSetComplete={onSetComplete}
+                  onScoreChange={onScoreChange ? handleEmbeddedScoreChange : undefined}
+                  onSetComplete={onSetComplete ? handleEmbeddedSetComplete : undefined}
                   onSubmit={onScoreSubmit}
                   onMatchComplete={onMatchComplete}
                   onClose={() => undefined}

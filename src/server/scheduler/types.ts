@@ -636,16 +636,73 @@ export class Match implements SchedulableEvent {
     return true;
   }
 
+  private addUpcomingMatch(team: Team, match: Match): void {
+    if (!team.matches.some((existing) => existing.id === match.id)) {
+      team.matches.push(match);
+    }
+  }
+
+  /**
+   * Resolves the target slot from the bracket graph rather than from whichever
+   * side happens to be empty. A completed match can be finalized again by a
+   * retry or a score correction, so occupancy is not a safe source of truth.
+   */
+  private advancingSlot(nextMatch: Match, team: Team): 'team1' | 'team2' | null {
+    if (nextMatch.previousLeftMatch === this) {
+      return 'team1';
+    }
+    if (nextMatch.previousRightMatch === this) {
+      return 'team2';
+    }
+
+    // Preserve compatibility with legacy, unlinked brackets while never
+    // overwriting a different known participant.
+    if (nextMatch.team1?.id === team.id) {
+      return 'team1';
+    }
+    if (nextMatch.team2?.id === team.id) {
+      return 'team2';
+    }
+    if (this.side === Side.LEFT && !nextMatch.team1) {
+      return 'team1';
+    }
+    if (this.side !== Side.LEFT && !nextMatch.team2) {
+      return 'team2';
+    }
+    if (!nextMatch.team1) {
+      return 'team1';
+    }
+    if (!nextMatch.team2) {
+      return 'team2';
+    }
+    return null;
+  }
+
+  private advanceTeamInto(nextMatch: Match, team: Team, seed: number | null): void {
+    const slot = this.advancingSlot(nextMatch, team);
+    if (!slot) {
+      return;
+    }
+    if (slot === 'team1') {
+      nextMatch.team1 = team;
+      nextMatch.team1Seed = seed;
+    } else {
+      nextMatch.team2 = team;
+      nextMatch.team2Seed = seed;
+    }
+    this.addUpcomingMatch(team, nextMatch);
+  }
+
   advanceTeams(winner: Team, loser: Team): void {
     const winnerSeed = this.seedForTeam(winner);
     const loserSeed = this.seedForTeam(loser);
 
     if (this.winnerNextMatch) {
-      winner.matches.push(this.winnerNextMatch);
+      this.addUpcomingMatch(winner, this.winnerNextMatch);
     }
     if (this.winnerNextMatch && this.winnerNextMatch === this.loserNextMatch) {
       if (this.loserNextMatch) {
-        loser.matches.push(this.loserNextMatch);
+        this.addUpcomingMatch(loser, this.loserNextMatch);
       }
       if (!this.winnerRequiresReset(winner)) {
         return;
@@ -659,23 +716,11 @@ export class Match implements SchedulableEvent {
       }
     } else {
       if (this.winnerNextMatch) {
-        if (this.side === Side.LEFT && !this.winnerNextMatch.team1) {
-          this.winnerNextMatch.team1 = winner;
-          this.winnerNextMatch.team1Seed = winnerSeed;
-        } else {
-          this.winnerNextMatch.team2 = winner;
-          this.winnerNextMatch.team2Seed = winnerSeed;
-        }
+        this.advanceTeamInto(this.winnerNextMatch, winner, winnerSeed);
       }
       if (this.loserNextMatch) {
-        loser.matches.push(this.loserNextMatch);
-        if (this.side === Side.LEFT && !this.loserNextMatch.team1) {
-          this.loserNextMatch.team1 = loser;
-          this.loserNextMatch.team1Seed = loserSeed;
-        } else {
-          this.loserNextMatch.team2 = loser;
-          this.loserNextMatch.team2Seed = loserSeed;
-        }
+        this.addUpcomingMatch(loser, this.loserNextMatch);
+        this.advanceTeamInto(this.loserNextMatch, loser, loserSeed);
       }
     }
   }

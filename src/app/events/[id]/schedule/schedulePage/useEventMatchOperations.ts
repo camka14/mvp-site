@@ -422,6 +422,9 @@ export default function useEventMatchOperations({
       if (!prev) return prev;
       return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
     });
+    setMatchBeingEdited((current) => (
+      current?.$id === cloned.$id ? (cloneValue(cloned) as Match) : current
+    ));
     setScoreUpdateMatch((current) => (
       current?.$id === cloned.$id ? (cloneValue(cloned) as Match) : current
     ));

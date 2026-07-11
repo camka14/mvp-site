@@ -567,6 +567,10 @@ export const finalizeMatch = (
   }
   const loser = winner === teamOne ? teamTwo : teamOne;
 
+  if (updatedMatch.status === 'COMPLETE' && updatedMatch.winnerEventTeamId === winner.id) {
+    return { updatedMatch, seededTeamIds };
+  }
+
   updatedMatch.winnerEventTeamId = winner.id;
   updatedMatch.status = 'COMPLETE';
   updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
@@ -749,6 +753,10 @@ export const finalizeMatchWithoutRescheduling = (
     return { updatedMatch, seededTeamIds };
   }
   const loser = winner === teamOne ? teamTwo : teamOne;
+
+  if (updatedMatch.status === 'COMPLETE' && updatedMatch.winnerEventTeamId === winner.id) {
+    return { updatedMatch, seededTeamIds };
+  }
 
   updatedMatch.winnerEventTeamId = winner.id;
   updatedMatch.status = 'COMPLETE';

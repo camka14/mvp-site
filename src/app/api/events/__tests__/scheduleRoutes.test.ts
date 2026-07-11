@@ -114,6 +114,7 @@ jest.mock('@/server/scheduler/updateMatch', () => ({
   applyMatchUpdates: (...args: any[]) => applyMatchUpdatesMock(...args),
   applyPersistentAutoLock: (...args: any[]) => applyPersistentAutoLockMock(...args),
   finalizeMatch: (...args: any[]) => finalizeMatchMock(...args),
+  finalizeMatchWithTeamOfficialCapacityFallback: (...args: any[]) => finalizeMatchMock(...args),
   isScheduleWindowExceededError: (...args: any[]) => isScheduleWindowExceededErrorMock(...args),
 }));
 jest.mock('@/server/pushNotifications', () => ({
@@ -2451,6 +2452,87 @@ describe('schedule routes', () => {
       }),
     ]);
     expect(json.matches).toHaveLength(2);
+  });
+
+  it('rejects a bulk update that would assign one team to both match slots', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', name: 'Alpha', matches: [] };
+    const team2 = { id: 'team_2', name: 'Bravo', matches: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: { id: 'match_1', team1, team2, status: 'SCHEDULED' },
+      },
+      teams: { team_1: team1, team_2: team2 },
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [{ id: 'match_1', team2Id: 'team_1' }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.text()).resolves.toContain('same team for both participants');
+    expect(applyMatchUpdatesMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects changing participants of an in-progress match through a bulk save', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', name: 'Alpha', matches: [] };
+    const team2 = { id: 'team_2', name: 'Bravo', matches: [] };
+    const team3 = { id: 'team_3', name: 'Comets', matches: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          team1,
+          team2,
+          status: 'IN_PROGRESS',
+          actualStart: new Date('2026-05-01T10:00:00.000Z'),
+        },
+      },
+      teams: { team_1: team1, team_2: team2, team_3: team3 },
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [{ id: 'match_1', team2Id: 'team_3' }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.text()).resolves.toContain('participants cannot be changed');
+    expect(applyMatchUpdatesMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('notifies match teams with the match label when a single bulk match update reschedules a match', async () => {

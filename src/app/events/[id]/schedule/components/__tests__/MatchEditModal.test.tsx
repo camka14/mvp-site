@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import type { Event, Match } from '@/types';
 
@@ -252,6 +252,57 @@ describe('MatchEditModal', () => {
       scores: { team_a: 1, team_b: 0 },
       winnerEventTeamId: 'team_a',
     }));
+  });
+
+  it('keeps an embedded score update when match details are subsequently saved', async () => {
+    jest.useFakeTimers();
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const onSave = jest.fn();
+    const startedMatch = {
+      ...match,
+      status: 'IN_PROGRESS',
+      actualStart: '2026-03-01T10:00:00.000Z',
+      segments: match.segments?.map((segment) => ({
+        ...segment,
+        status: 'IN_PROGRESS',
+      })),
+    } as Match;
+
+    renderWithMantine(
+      <MatchEditModal
+        opened
+        match={startedMatch}
+        tournament={{ ...event, autoCreatePointMatchIncidents: false } as Event}
+        teams={[startedMatch.team1, startedMatch.team2] as NonNullable<Event['teams']>}
+        canManageOperations
+        onScoreChange={onScoreChange}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toEqual(expect.objectContaining({
+      team1Points: [1],
+      team2Points: [0],
+      setResults: [0],
+    }));
+    expect(onSave.mock.calls[0][0].segments[0]).toEqual(expect.objectContaining({
+      scores: { team_a: 1, team_b: 0 },
+      status: 'IN_PROGRESS',
+    }));
+
+    jest.useRealTimers();
   });
 
   it('allows the final segment confirmation to be unchecked before saving', async () => {
