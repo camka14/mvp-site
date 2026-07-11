@@ -404,7 +404,7 @@ describe('tournament scheduling (time slots)', () => {
       prize: '',
       fieldCount: 1,
       restTimeMinutes: 0,
-      matchDurationMinutes: 60,
+      setDurationMinutes: 20,
     };
     const poolA = new Division(
       'single_pool_bracket_pool_a',
@@ -428,8 +428,10 @@ describe('tournament scheduling (time slots)', () => {
     );
     poolA.leagueConfig = {
       gamesPerOpponent: 1,
-      usesSets: false,
-      matchDurationMinutes: 30,
+      usesSets: true,
+      setsPerMatch: 1,
+      setDurationMinutes: 20,
+      pointsToVictory: [21],
       restTimeMinutes: 0,
     };
     poolB.leagueConfig = { ...poolA.leagueConfig };
@@ -467,16 +469,25 @@ describe('tournament scheduling (time slots)', () => {
       timeSlots: [timeSlot],
       doTeamsOfficiate: false,
       doubleElimination: true,
-      winnerSetCount: 1,
+      winnerSetCount: 3,
       loserSetCount: 1,
-      usesSets: false,
-      matchDurationMinutes: 60,
+      winnerBracketPointsToVictory: [21, 21, 15],
+      loserBracketPointsToVictory: [21],
+      usesSets: true,
+      setDurationMinutes: 20,
       restTimeMinutes: 0,
     });
 
     const scheduled = scheduleEvent({ event: tournament }, context);
 
-    expect(scheduled.matches.some((match) => match.losersBracket)).toBe(true);
+    const losersBracketMatches = scheduled.matches.filter((match) => match.losersBracket);
+    expect(losersBracketMatches.length).toBeGreaterThan(0);
+    expect(losersBracketMatches.every((match) => (
+      match.end.getTime() - match.start.getTime() === 20 * 60 * 1000
+    ))).toBe(true);
+    expect(scheduled.matches.some((match) => (
+      !match.losersBracket && match.end.getTime() - match.start.getTime() === 60 * 60 * 1000
+    ))).toBe(true);
     expect(scheduled.matches.length).toBeGreaterThan(5);
   });
 

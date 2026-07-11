@@ -926,15 +926,14 @@ export class EventBuilder {
     const bracketMatches = Object.values(bracketBuilder.tournament.matches).sort((a, b) => (a.matchId || 0) - (b.matchId || 0));
     const scheduledMatches: Match[] = [];
     const playoffBufferMs = Math.max(config.restTimeMinutes, 0) * MINUTE_MS;
-    const playoffDurationMs = this.event.usesSets
-      ? this.normalizePositiveDuration(
-          config.setDurationMinutes,
-          this.event.setDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
-        ) * Math.max(1, config.winnerSetCount || 1) * MINUTE_MS
-      : this.normalizePositiveDuration(
-          config.matchDurationMinutes,
-          this.event.matchDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
-        ) * MINUTE_MS;
+    const playoffSetDurationMs = this.normalizePositiveDuration(
+      config.setDurationMinutes,
+      this.event.setDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
+    ) * MINUTE_MS;
+    const playoffMatchDurationMs = this.normalizePositiveDuration(
+      config.matchDurationMinutes,
+      this.event.matchDurationMinutes || Math.max(1, Math.round(durationMs / MINUTE_MS)),
+    ) * MINUTE_MS;
     for (const match of bracketMatches) {
       match.unschedule();
       if (match.team1) {
@@ -947,6 +946,12 @@ export class EventBuilder {
         match.teamOfficial = teamLookup[match.teamOfficial.id] ?? match.teamOfficial;
       }
       match.bufferMs = playoffBufferMs;
+      const playoffDurationMs = this.event.usesSets
+        ? playoffSetDurationMs * Math.max(
+            1,
+            match.losersBracket ? config.loserSetCount : config.winnerSetCount,
+          )
+        : playoffMatchDurationMs;
       this.scheduleMatch(match, playoffDurationMs);
       this.attachMatchToParticipants(match);
       scheduledMatches.push(match);
