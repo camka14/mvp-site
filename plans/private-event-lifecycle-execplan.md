@@ -21,8 +21,8 @@ After this change, event managers can mark events as `Private` in addition to `D
   Evidence: `src/app/api/events/route.ts`, `src/app/api/events/search/route.ts`, `src/app/api/events/[eventId]/route.ts`, `src/app/api/events/[eventId]/participants/route.ts`, and `src/app/api/events/[eventId]/weekly-sessions/route.ts` each contain separate state checks.
 - Observation: The frontend lifecycle model already has a translation layer where `DRAFT` maps back to `UNPUBLISHED` for persistence.
   Evidence: `src/app/events/[id]/schedule/page.tsx` uses `EventLifecycleStatus = 'DRAFT' | 'PUBLISHED'` and saves `DRAFT` as `UNPUBLISHED`.
-- Observation: `npx prisma generate` updated the checked-in client output, but it did not refresh `prisma/schema.generated.prisma`.
-  Evidence: after generation, `src/generated/prisma/enums.ts` contained `PRIVATE` while `prisma/schema.generated.prisma` still only listed `PUBLISHED` and `UNPUBLISHED`, so the snapshot required a manual sync edit.
+- Historical observation: `npx prisma generate` once updated the checked-in client output without refreshing a separate schema snapshot.
+  Evidence: at that time `src/generated/prisma/enums.ts` contained `PRIVATE` while `prisma/schema.generated.prisma` still only listed `PUBLISHED` and `UNPUBLISHED`. DATA-005 retired that unused shadow schema; `npm run prisma:check` now verifies the canonical schema against the generated client.
 
 ## Decision Log
 

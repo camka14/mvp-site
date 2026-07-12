@@ -304,7 +304,7 @@ The `EventTemplateLeagueScoringConfigs` table mirrors `LeagueScoringConfigs` but
       @@index([eventTemplateId])
     }
 
-After adding these models, regenerate Prisma client and keep `prisma/schema.generated.prisma` in sync if this repository still tracks it.
+After adding these models, run `npm run prisma:generate`; `npm run prisma:check` verifies that the generated client remains synchronized with the canonical schema.
 
 ## Plan of Work
 
@@ -371,7 +371,7 @@ Add Prisma models and generate a migration:
     npx prisma migrate dev --name add_event_template_records
     npx prisma generate
 
-If the project updates `schema.generated.prisma`, run the existing generation script or command used in the repo and include that generated file.
+Do not add a second Prisma schema snapshot. The canonical schema is `prisma/schema.prisma`, and the generated client is verified by `npm run prisma:check`.
 
 Run backend validation after the schema milestone:
 

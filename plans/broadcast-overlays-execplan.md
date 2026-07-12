@@ -50,8 +50,8 @@ The first pilot is deliberately beach-volleyball-first. It proves one reliable p
 - Observation: the local database has historical migration drift unrelated to this feature.
   Evidence: `npx prisma migrate status` reported both missing historical local migrations and unapplied repository migrations. The reviewed additive `20260711023000_add_broadcast_overlays` SQL was applied only to the local Docker development database; no reset or production migration was attempted.
 
-- Observation: `prisma/schema.generated.prisma` is a pre-existing stale, unused reference rather than the runtime schema.
-  Evidence: `docs/code-audit/README.md` records 47 models in that file versus 83 in `prisma/schema.prisma`; `prisma.config.ts` and `prisma generate` use only the canonical schema. Synchronizing the entire legacy file would add 1,774 unrelated lines, so this pilot updates only the canonical schema and generated client.
+- Observation: the former `prisma/schema.generated.prisma` shadow schema was stale and unused rather than the runtime schema.
+  Evidence: DATA-005 retired it after the audit found 47 models there versus 83 in `prisma/schema.prisma`. `prisma.config.ts` and `npm run prisma:check` use only the canonical schema and generated client.
 
 - Observation: the private preview needs a different frame policy from the Program Overlay.
   Evidence: the Studio embeds `/broadcast-preview/[overlayId]` in a same-origin iframe. `X-Frame-Options: DENY` blocked that legitimate preview, so preview responses use `SAMEORIGIN` while Program Overlay responses remain `DENY`.
@@ -116,8 +116,8 @@ The first pilot is deliberately beach-volleyball-first. It proves one reliable p
   Rationale: a manual correction must never preserve a stale, deleted match on stream. The state remains visibly marked as manual in the private Control Room, but the Program scorebug hides and the producer can select a new match or resume automatic state.
   Date/Author: 2026-07-11 / Codex
 
-- Decision: do not synchronize the stale `schema.generated.prisma` during this pilot.
-  Rationale: it is not used by Prisma config or runtime, and a full synchronization would be an unrelated audit-scale rewrite. The canonical `prisma/schema.prisma` and generated Prisma client are the executable source of truth; a dedicated audit remediation should retire or regenerate the legacy artifact.
+- Historical decision: do not synchronize the stale shadow schema during this pilot.
+  Outcome: DATA-005 later retired the unused artifact. The canonical `prisma/schema.prisma` and generated Prisma client are the executable source of truth.
   Date/Author: 2026-07-11 / Codex
 
 ## Outcomes & Retrospective
@@ -153,7 +153,7 @@ The initial pilot does not include a general public browse page, organizer self-
 
 ## Persistence and Interfaces
 
-Add these models to prisma/schema.prisma and create an additive timestamped migration named prisma/migrations/<timestamp>_add_broadcast_overlays/migration.sql. Follow the repository’s ID-centric convention: use raw string IDs and service-level validation rather than adding Prisma relation fields or foreign keys. Regenerate the Prisma client and deliberately synchronize the separately tracked prisma/schema.generated.prisma according to the repository’s existing generation workflow. Do not reset a populated database if Prisma reports historical migration drift; produce and review additive SQL with prisma migrate diff instead.
+Add these models to prisma/schema.prisma and create an additive timestamped migration named prisma/migrations/<timestamp>_add_broadcast_overlays/migration.sql. Follow the repository’s ID-centric convention: use raw string IDs and service-level validation rather than adding Prisma relation fields or foreign keys. Regenerate and verify the canonical Prisma client with `npm run prisma:check`; do not add a separately tracked schema snapshot. Do not reset a populated database if Prisma reports historical migration drift; produce and review additive SQL with prisma migrate diff instead.
 
 Create BroadcastOverlays with these columns:
 
