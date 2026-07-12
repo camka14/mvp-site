@@ -92,12 +92,16 @@ export const verifySessionToken = (token: string): VerifiedSessionToken | null =
     if (decoded.tokenType !== 'session') return null;
     if (typeof decoded.userId !== 'string' || decoded.userId.trim().length === 0) return null;
     if (!Number.isInteger(decoded.sessionVersion)) return null;
+    if (typeof decoded.isAdmin !== 'boolean') return null;
+    if (!Number.isInteger(decoded.iat) || !Number.isInteger(decoded.exp) || decoded.exp <= decoded.iat) {
+      return null;
+    }
     return {
       userId: decoded.userId,
-      isAdmin: Boolean(decoded.isAdmin),
+      isAdmin: decoded.isAdmin,
       sessionVersion: Number(decoded.sessionVersion),
       device: isSessionDevice(decoded.device) ? decoded.device : undefined,
-      issuedAtSeconds: Number.isInteger(decoded.iat) ? Number(decoded.iat) : null,
+      issuedAtSeconds: Number(decoded.iat),
     };
   } catch {
     return null;

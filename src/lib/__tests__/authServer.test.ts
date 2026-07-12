@@ -94,6 +94,56 @@ describe('authServer token helpers', () => {
     expect(verifySessionToken(scopedToken)).toBeNull();
   });
 
+  it('rejects a session-shaped shared-secret token without an expiry', () => {
+    const noExpiryToken = jwt.sign(
+      {
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        tokenType: 'session',
+      },
+      'test-secret',
+      {
+        algorithm: 'HS256',
+        issuer: 'bracket-iq',
+        audience: 'bracket-iq-session',
+      },
+    );
+
+    expect(verifySessionToken(noExpiryToken)).toBeNull();
+  });
+
+  it('rejects expired or incorrectly scoped session-shaped tokens', () => {
+    const basePayload = {
+      userId: 'user_1',
+      isAdmin: false,
+      sessionVersion: 0,
+      tokenType: 'session',
+    };
+    const expiredToken = jwt.sign(basePayload, 'test-secret', {
+      algorithm: 'HS256',
+      issuer: 'bracket-iq',
+      audience: 'bracket-iq-session',
+      expiresIn: -1,
+    });
+    const wrongAudienceToken = jwt.sign(basePayload, 'test-secret', {
+      algorithm: 'HS256',
+      issuer: 'bracket-iq',
+      audience: 'another-audience',
+      expiresIn: 60,
+    });
+    const stringAdminToken = jwt.sign({ ...basePayload, isAdmin: 'false' }, 'test-secret', {
+      algorithm: 'HS256',
+      issuer: 'bracket-iq',
+      audience: 'bracket-iq-session',
+      expiresIn: 60,
+    });
+
+    expect(verifySessionToken(expiredToken)).toBeNull();
+    expect(verifySessionToken(wrongAudienceToken)).toBeNull();
+    expect(verifySessionToken(stringAdminToken)).toBeNull();
+  });
+
   it('uses secure auth cookies in production by default', () => {
     process.env.NODE_ENV = 'production';
 
