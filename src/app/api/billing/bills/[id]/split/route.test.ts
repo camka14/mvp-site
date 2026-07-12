@@ -98,6 +98,7 @@ describe('POST /api/billing/bills/[id]/split', () => {
     expect(txMock.billPayments.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: { in: ['parent_payment_1', 'parent_payment_2'] },
+        paymentIntentId: null,
       }),
       data: expect.objectContaining({
         status: 'VOID',
@@ -321,6 +322,54 @@ describe('POST /api/billing/bills/[id]/split', () => {
     expect(response.status).toBe(409);
     expect(payload.error).toContain('started or partially paid');
     expect(txMock.billPayments.updateMany).not.toHaveBeenCalled();
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+  });
+
+  it('does not create child debt when an intent binds after the payment snapshot', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_race',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      totalAmountCents: 1000,
+      paidAmountCents: 0,
+      allowSplit: true,
+    });
+    const txMock = {
+      billPayments: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'parent_payment_1',
+            amountCents: 1000,
+            dueDate: new Date('2026-04-01T00:00:00.000Z'),
+            status: 'PENDING',
+            paymentIntentId: null,
+          },
+        ]),
+        // The payment intent was linked after findMany but before the guarded void.
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn(),
+      },
+      bills: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_race/split', {
+        playerIds: ['player_1', 'player_2'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_race' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toContain('changed while it was being split');
+    expect(txMock.billPayments.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ paymentIntentId: null }),
+    }));
     expect(txMock.bills.create).not.toHaveBeenCalled();
   });
 });

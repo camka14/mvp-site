@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
+import { acquireBillSplitLock } from '@/server/billing/billSplitLock';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let children: Array<Record<string, unknown> | null>;
   try {
     children = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`bill-split:${bill.id}`}))`;
+      await acquireBillSplitLock(tx, bill.id);
       const existingChild = await tx.bills.findFirst({
         where: { parentBillId: bill.id },
         select: { id: true },
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const voidedParentPayments = await tx.billPayments.updateMany({
         where: {
           id: { in: pendingPayments.map((payment) => payment.id) },
+          paymentIntentId: null,
           OR: [{ status: 'PENDING' }, { status: 'FAILED' }, { status: null }],
         } as any,
         data: {

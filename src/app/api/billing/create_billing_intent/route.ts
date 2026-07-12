@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Stripe from 'stripe';
+import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { calculateIncludedFeesFromTotalPrice, getPaymentMethodFeeLabel, normalizePaymentMethodFeeType } from '@/lib/billingFees';
 import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
+import { acquireBillSplitLock } from '@/server/billing/billSplitLock';
 import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +15,28 @@ export const dynamic = 'force-dynamic';
 const schema = z.object({
   billId: z.string(),
   billPaymentId: z.string(),
+  // Retained for legacy clients, but never trusted as actor or payer identity.
   user: z.record(z.string(), z.any()).optional(),
 }).passthrough();
+
+const ACTIONABLE_PAYMENT_STATUSES = ['PENDING', 'FAILED', 'DISPUTED'] as const;
+
+const isActionablePaymentStatus = (status: string | null): boolean => (
+  status === null || ACTIONABLE_PAYMENT_STATUSES.includes(status as typeof ACTIONABLE_PAYMENT_STATUSES[number])
+);
+
+const cancelFreshPaymentIntent = async (stripe: Stripe, paymentIntentId: string): Promise<void> => {
+  try {
+    await stripe.paymentIntents.cancel(paymentIntentId, {
+      cancellation_reason: 'requested_by_customer',
+    });
+  } catch (error) {
+    console.error('Failed to cancel a billing payment intent invalidated before checkout.', {
+      paymentIntentId,
+      error,
+    });
+  }
+};
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -35,6 +57,11 @@ const normalizeIdList = (value: unknown): string[] => (
     )
     : []
 );
+
+type TeamPaymentClaimClient = Pick<
+  PrismaClient | Prisma.TransactionClient,
+  'teamRegistrations' | 'teams'
+>;
 
 const teamRowContainsUser = (
   team: {
@@ -57,8 +84,12 @@ const teamRowContainsUser = (
   return memberIds.has(userId);
 };
 
-const canClaimUnassignedTeamBillPayment = async (teamId: string, userId: string): Promise<boolean> => {
-  const directRegistration = await prisma.teamRegistrations.findFirst({
+const canClaimUnassignedTeamBillPayment = async (
+  teamId: string,
+  userId: string,
+  client: TeamPaymentClaimClient = prisma,
+): Promise<boolean> => {
+  const directRegistration = await client.teamRegistrations.findFirst({
     where: {
       teamId,
       userId,
@@ -70,7 +101,7 @@ const canClaimUnassignedTeamBillPayment = async (teamId: string, userId: string)
     return true;
   }
 
-  const eventTeam = await prisma.teams.findUnique({
+  const eventTeam = await client.teams.findUnique({
     where: { id: teamId },
     select: {
       parentTeamId: true,
@@ -86,7 +117,7 @@ const canClaimUnassignedTeamBillPayment = async (teamId: string, userId: string)
 
   const parentTeamId = normalizeId(eventTeam?.parentTeamId);
   if (parentTeamId) {
-    const parentRegistration = await prisma.teamRegistrations.findFirst({
+    const parentRegistration = await client.teamRegistrations.findFirst({
       where: {
         teamId: parentTeamId,
         userId,
@@ -99,7 +130,7 @@ const canClaimUnassignedTeamBillPayment = async (teamId: string, userId: string)
     }
   }
 
-  const childEventTeams = await prisma.teams.findMany({
+  const childEventTeams = await client.teams.findMany({
     where: { parentTeamId: teamId },
     select: {
       playerIds: true,
@@ -158,12 +189,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This bill payment is already pending with Stripe.' }, { status: 409 });
   }
   if (
-    payment.status
-    && payment.status !== 'PENDING'
-    && payment.status !== 'FAILED'
-    && payment.status !== 'DISPUTED'
+    !isActionablePaymentStatus(payment.status)
   ) {
     return NextResponse.json({ error: 'Bill payment is not pending' }, { status: 400 });
+  }
+  if (payment.paymentIntentId && payment.status !== 'FAILED') {
+    return NextResponse.json({ error: 'This bill payment is already pending with Stripe.' }, { status: 409 });
   }
 
   const amountCents = payment.amountCents;
@@ -191,8 +222,10 @@ export async function POST(req: NextRequest) {
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 
   const stripe = new Stripe(secretKey);
+  let freshIntentId: string | null = null;
+  let didBindIntent = false;
   try {
-    const userId = parsed.data.user?.$id ?? parsed.data.user?.id ?? null;
+    const payerUserId = payment.payerUserId ?? session.userId;
     const intent = await stripe.paymentIntents.create({
       amount: totalCharge,
       currency: 'usd',
@@ -213,18 +246,91 @@ export async function POST(req: NextRequest) {
         payment_method_fee_label: getPaymentMethodFeeLabel(paymentMethodType),
         ...(bill.eventId ? { event_id: bill.eventId } : {}),
         ...(bill.organizationId ? { organization_id: bill.organizationId } : {}),
-        ...(userId ? { user_id: String(userId) } : {}),
+        user_id: payerUserId,
       },
+    });
+    freshIntentId = intent.id;
+
+    didBindIntent = await prisma.$transaction(async (tx) => {
+      await acquireBillSplitLock(tx, bill.id);
+
+      const [currentBill, currentPayment] = await Promise.all([
+        tx.bills.findUnique({
+          where: { id: bill.id },
+          select: { id: true, ownerType: true, ownerId: true, status: true },
+        }),
+        tx.billPayments.findUnique({
+          where: { id: payment.id },
+          select: {
+            id: true,
+            billId: true,
+            status: true,
+            paymentIntentId: true,
+            payerUserId: true,
+          },
+        }),
+      ]);
+
+      if (
+        !currentBill
+        || !currentPayment
+        || currentPayment.billId !== currentBill.id
+        || currentBill.status === 'PAID'
+        || currentBill.status === 'CANCELLED'
+        || !isActionablePaymentStatus(currentPayment.status)
+        || currentPayment.payerUserId !== payment.payerUserId
+        || (
+          currentPayment.paymentIntentId !== null
+          && !(currentPayment.status === 'FAILED' && currentPayment.paymentIntentId === payment.paymentIntentId)
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        canClaimTeamPayment
+        && currentBill.ownerType === 'TEAM'
+        && currentPayment.payerUserId === null
+        && !(await canClaimUnassignedTeamBillPayment(currentBill.ownerId, session.userId, tx))
+      ) {
+        return false;
+      }
+
+      if (currentBill.ownerType === 'TEAM') {
+        const existingSplitChild = await tx.bills.findFirst({
+          where: { parentBillId: currentBill.id },
+          select: { id: true },
+        });
+        if (existingSplitChild) {
+          return false;
+        }
+      }
+
+      const boundPayment = await tx.billPayments.updateMany({
+        where: {
+          id: currentPayment.id,
+          billId: currentBill.id,
+          status: currentPayment.status,
+          paymentIntentId: currentPayment.paymentIntentId,
+          payerUserId: currentPayment.payerUserId,
+        },
+        data: {
+          paymentIntentId: intent.id,
+          payerUserId,
+          updatedAt: new Date(),
+        },
+      });
+      return boundPayment.count === 1;
     });
 
-    await prisma.billPayments.update({
-      where: { id: payment.id },
-      data: {
-        paymentIntentId: intent.id,
-        ...(canClaimTeamPayment ? { payerUserId: session.userId } : {}),
-        updatedAt: new Date(),
-      },
-    });
+    if (!didBindIntent) {
+      await cancelFreshPaymentIntent(stripe, intent.id);
+      freshIntentId = null;
+      return NextResponse.json(
+        { error: 'Bill payment is no longer available. Refresh and try again.' },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       paymentIntent: intent.client_secret ?? intent.id,
@@ -234,6 +340,9 @@ export async function POST(req: NextRequest) {
       billPaymentId: payment.id,
     }, { status: 200 });
   } catch (error) {
+    if (freshIntentId && !didBindIntent) {
+      await cancelFreshPaymentIntent(stripe, freshIntentId);
+    }
     console.error('Stripe billing intent failed', error);
     const message = error instanceof Error ? error.message : 'Failed to create billing payment intent.';
     return NextResponse.json({
