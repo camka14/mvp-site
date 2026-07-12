@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
+import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { loadEventWithRelations } from '@/server/repositories/events';
 import { getLeagueDivisionById } from '@/server/scheduler/standings';
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       select: {
         id: true,
         state: true,
+        archivedAt: true,
         hostId: true,
         assistantHostIds: true,
         organizationId: true,
@@ -67,12 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (eventAccess.state === 'TEMPLATE') {
-      const session = await requireSession(req);
-      if (!(await canManageEvent(session, eventAccess))) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
+    await assertCanViewEventSchedule(req, eventAccess);
 
     const loaded = await loadEventWithRelations(eventId);
     const standingsEvent = toStandingsEvent(loaded);

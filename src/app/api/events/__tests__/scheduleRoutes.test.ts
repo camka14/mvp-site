@@ -72,6 +72,7 @@ const sendAdminEventCreatedNotificationMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
 const refreshBroadcastPresentationForEventMock = jest.fn();
+const assertCanViewEventScheduleMock = jest.fn();
 let matchOperationReceiptRows: Array<Record<string, any>> = [];
 
 const mockNormalizeStartedMatches = (event: any) => {
@@ -140,6 +141,9 @@ jest.mock('@/server/adminNotifications', () => ({
 }));
 jest.mock('@/server/broadcast/presentation', () => ({
   refreshBroadcastPresentationForEvent: (...args: any[]) => refreshBroadcastPresentationForEventMock(...args),
+}));
+jest.mock('@/server/eventVisibility', () => ({
+  assertCanViewEventSchedule: (...args: any[]) => assertCanViewEventScheduleMock(...args),
 }));
 
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
@@ -337,6 +341,7 @@ describe('schedule routes', () => {
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
     refreshBroadcastPresentationForEventMock.mockResolvedValue(undefined);
+    assertCanViewEventScheduleMock.mockResolvedValue(undefined);
   });
 
   it('returns hydrated match lists with incidents', async () => {
@@ -397,6 +402,28 @@ describe('schedule routes', () => {
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
     expect(serializeMatchesLegacyMock).toHaveBeenCalledWith([match]);
     expect(json.match.incidents).toEqual([{ $id: 'incident_1', incidentType: 'GOAL' }]);
+  });
+
+  it('does not load match schedule data when event visibility rejects the viewer', async () => {
+    assertCanViewEventScheduleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+
+    const res = await matchesGet(new NextRequest('http://localhost/api/events/event_private/matches'), {
+      params: Promise.resolve({ eventId: 'event_private' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+  });
+
+  it('does not load one match when event visibility rejects the viewer', async () => {
+    assertCanViewEventScheduleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+
+    const res = await matchGet(new NextRequest('http://localhost/api/events/event_private/matches/match_1'), {
+      params: Promise.resolve({ eventId: 'event_private', matchId: 'match_1' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
   });
 
   it('schedules an event from an event document payload', async () => {

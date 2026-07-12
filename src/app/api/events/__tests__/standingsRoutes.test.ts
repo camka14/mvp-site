@@ -20,6 +20,7 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
@@ -28,7 +29,10 @@ const applyLeagueDivisionPlayoffReassignmentMock = jest.fn();
 const refreshBroadcastPresentationForEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  requireSession: requireSessionMock,
+  getOptionalSession: getOptionalSessionMock,
+}));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: canManageEventMock }));
 jest.mock('@/server/repositories/locks', () => ({ acquireEventLock: acquireEventLockMock }));
 jest.mock('@/server/repositories/events', () => ({
@@ -305,6 +309,7 @@ describe('standings routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    getOptionalSessionMock.mockResolvedValue(null);
     canManageEventMock.mockResolvedValue(true);
     acquireEventLockMock.mockResolvedValue(undefined);
     applyLeagueDivisionPlayoffReassignmentMock.mockReturnValue({
@@ -333,6 +338,7 @@ describe('standings routes', () => {
     expect(res.status).toBe(200);
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
     expect(requireSessionMock).not.toHaveBeenCalled();
+    expect(getOptionalSessionMock).not.toHaveBeenCalled();
     expect(canManageEventMock).not.toHaveBeenCalled();
 
     const json = await res.json();
@@ -352,25 +358,28 @@ describe('standings routes', () => {
     });
   });
 
-  it('GET requires host/admin authorization for template events', async () => {
-    eventsMock.findUnique.mockResolvedValueOnce({
-      id: 'event_1',
-      state: 'TEMPLATE',
-      hostId: 'host_1',
-      assistantHostIds: [],
-      organizationId: null,
-    });
-    canManageEventMock.mockResolvedValueOnce(false);
+  it.each(['TEMPLATE', 'DRAFT', 'UNPUBLISHED', 'PRIVATE'])(
+    'GET does not disclose standings for an anonymous %s event',
+    async (state) => {
+      eventsMock.findUnique.mockResolvedValueOnce({
+        id: 'event_1',
+        state,
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: null,
+      });
 
-    const res = await standingsGet(
-      new NextRequest('http://localhost/api/events/event_1/standings?divisionId=division_1', { method: 'GET' }),
-      { params: Promise.resolve({ eventId: 'event_1' }) },
-    );
+      const res = await standingsGet(
+        new NextRequest('http://localhost/api/events/event_1/standings?divisionId=division_1', { method: 'GET' }),
+        { params: Promise.resolve({ eventId: 'event_1' }) },
+      );
 
-    expect(res.status).toBe(403);
-    expect(requireSessionMock).toHaveBeenCalledTimes(1);
-    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(403);
+      expect(getOptionalSessionMock).toHaveBeenCalledTimes(1);
+      expect(requireSessionMock).not.toHaveBeenCalled();
+      expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('GET allows tournament pool play standings for generated pool divisions', async () => {
     loadEventWithRelationsMock.mockResolvedValueOnce(buildTournamentPoolFixture());

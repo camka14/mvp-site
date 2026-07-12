@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
+import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { loadEventWithRelations } from '@/server/repositories/events';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { GET as getEvent } from '../route';
@@ -87,6 +88,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     return passthrough(eventPayload, eventResponse.status);
   }
 
+  let canViewSchedule = false;
+  try {
+    const eventAccess = await prisma.events.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        state: true,
+        archivedAt: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
+    });
+    await assertCanViewEventSchedule(req, eventAccess);
+    canViewSchedule = true;
+  } catch (error) {
+    // The event route intentionally retains direct-link metadata for some
+    // private events.  Keep that response shape, but never hydrate or return
+    // schedule relations unless the same visibility boundary as the dedicated
+    // schedule endpoints grants access.
+    if (error instanceof Response && error.status === 403) {
+      canViewSchedule = false;
+    } else if (error instanceof Response) {
+      return error;
+    } else {
+      console.error('Event detail schedule visibility check failed', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+  }
+
   const manageMode = req.nextUrl.searchParams.get('manage');
   const shouldLoadManageData = await (async () => {
     if (manageMode === 'true') {
@@ -119,30 +150,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   }
 
   try {
+    const eventWithRelationsPromise = canViewSchedule
+      ? loadEventWithRelations(eventId)
+      : Promise.resolve(null);
     const [eventWithRelations, fieldRows, timeSlotRows, leagueScoringConfig] = await Promise.all([
-      loadEventWithRelations(eventId),
+      eventWithRelationsPromise,
       (() => {
         const fieldIds = normalizeIdList(eventPayload?.fieldIds);
-        return fieldIds.length
+        return canViewSchedule && fieldIds.length
           ? prisma.fields.findMany({ where: { id: { in: fieldIds } } })
           : Promise.resolve([]);
       })(),
       (() => {
         const timeSlotIds = normalizeIdList(eventPayload?.timeSlotIds);
-        return timeSlotIds.length
+        return canViewSchedule && timeSlotIds.length
           ? prisma.timeSlots.findMany({ where: { id: { in: timeSlotIds } } })
           : Promise.resolve([]);
       })(),
       (() => {
         const scoringConfigId = normalizeId(eventPayload?.leagueScoringConfigId);
-        return scoringConfigId
+        return canViewSchedule && scoringConfigId
           ? prisma.leagueScoringConfigs.findUnique({ where: { id: scoringConfigId } })
           : Promise.resolve(null);
       })(),
     ]);
 
-    const matches = Object.values(eventWithRelations.matches)
-      .sort((left, right) => matchStartTime(left) - matchStartTime(right));
+    const matches = eventWithRelations
+      ? Object.values(eventWithRelations.matches)
+        .sort((left, right) => matchStartTime(left) - matchStartTime(right))
+      : [];
     const fieldIds = normalizeIdList(eventPayload?.fieldIds);
     const timeSlotIds = normalizeIdList(eventPayload?.timeSlotIds);
 
@@ -166,10 +202,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     return NextResponse.json({
       event: eventPayload,
       participantSnapshot: participantPayload,
-      matches: serializeMatchesLegacy(matches),
-      fields: orderByIds(fieldIds, fieldRows).map((field) => withLegacyFields(field)),
-      timeSlots: orderByIds(timeSlotIds, timeSlotRows).map((slot) => withLegacyFields(slot)),
-      leagueScoringConfig: leagueScoringConfig ? withLegacyFields(leagueScoringConfig) : null,
+      matches: canViewSchedule ? serializeMatchesLegacy(matches) : [],
+      fields: canViewSchedule
+        ? orderByIds(fieldIds, fieldRows).map((field) => withLegacyFields(field))
+        : [],
+      timeSlots: canViewSchedule
+        ? orderByIds(timeSlotIds, timeSlotRows).map((slot) => withLegacyFields(slot))
+        : [],
+      leagueScoringConfig: canViewSchedule && leagueScoringConfig
+        ? withLegacyFields(leagueScoringConfig)
+        : null,
       staffInvites: Array.isArray(eventPayload?.staffInvites) ? eventPayload.staffInvites : [],
       teamCompliance,
       userCompliance,

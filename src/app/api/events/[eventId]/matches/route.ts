@@ -7,6 +7,7 @@ import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseMatchInstantInput } from '@/server/matches/instantPayloads';
+import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, sideFrom } from '@/server/scheduler/types';
@@ -434,14 +435,27 @@ const ensureEventDivisionMembershipForTeam = async (
   });
 };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   try {
     const { eventId } = await params;
+    const eventAccess = await prisma.events.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        state: true,
+        archivedAt: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
+    });
+    await assertCanViewEventSchedule(req, eventAccess);
     const event = await loadEventWithRelations(eventId);
     const matches = Object.values(event.matches)
       .sort((left, right) => matchStartTime(left) - matchStartTime(right));
     return NextResponse.json({ matches: serializeMatchesLegacy(matches) }, { status: 200 });
   } catch (error) {
+    if (error instanceof Response) return error;
     if (error instanceof Error && error.message === 'Event not found') {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }

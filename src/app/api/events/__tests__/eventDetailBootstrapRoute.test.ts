@@ -3,6 +3,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const prismaMock = {
+  events: {
+    findUnique: jest.fn(),
+  },
   fields: {
     findMany: jest.fn(),
   },
@@ -97,6 +100,14 @@ describe('GET /api/events/[eventId]/detail', () => {
     getUserComplianceMock.mockResolvedValue(okJson({ users: [] }));
     getOptionalSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      state: 'PUBLISHED',
+      archivedAt: null,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
     loadEventWithRelationsMock.mockResolvedValue({
       matches: {
         match_late: { id: 'match_late', start: new Date('2026-01-01T12:00:00.000Z') },
@@ -160,4 +171,47 @@ describe('GET /api/events/[eventId]/detail', () => {
     expect(getParticipantsMock.mock.calls[0][0].nextUrl.searchParams.get('manage')).toBeNull();
     expect(getTeamComplianceMock).not.toHaveBeenCalled();
   });
+
+  it.each(['PRIVATE', 'DRAFT', 'UNPUBLISHED', 'TEMPLATE'])(
+    'does not disclose schedule relations to an anonymous direct-link viewer of a %s event',
+    async (state) => {
+      getEventMock.mockResolvedValueOnce(okJson({
+        id: 'event_1',
+        name: 'Restricted Event',
+        state,
+        hostId: 'host_1',
+        teamSignup: true,
+        fieldIds: ['field_2', 'field_1'],
+        timeSlotIds: ['slot_1'],
+        leagueScoringConfigId: 'league_config_1',
+        staffInvites: [],
+        assistantHostIds: [],
+        organizationId: null,
+      }));
+      prismaMock.events.findUnique.mockResolvedValueOnce({
+        id: 'event_1',
+        state,
+        archivedAt: null,
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: null,
+      });
+      getOptionalSessionMock.mockResolvedValueOnce(null);
+
+      const response = await GET(requestFor(), { params: Promise.resolve({ eventId: 'event_1' }) });
+      const payload = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(payload.event.state).toBe(state);
+      expect(payload.matches).toEqual([]);
+      expect(payload.fields).toEqual([]);
+      expect(payload.timeSlots).toEqual([]);
+      expect(payload.leagueScoringConfig).toBeNull();
+      expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+      expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.timeSlots.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.leagueScoringConfigs.findUnique).not.toHaveBeenCalled();
+      expect(serializeMatchesLegacyMock).not.toHaveBeenCalled();
+    },
+  );
 });
