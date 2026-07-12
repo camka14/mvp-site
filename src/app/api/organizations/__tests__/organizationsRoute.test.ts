@@ -9,6 +9,7 @@ const organizationTagAssignmentsFindManyMock = jest.fn();
 const createMock = jest.fn();
 const authUserFindUniqueMock = jest.fn();
 const staffMembersFindManyMock = jest.fn();
+const divisionsFindManyMock = jest.fn();
 const prismaMock = {
   authUser: {
     findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
@@ -24,6 +25,9 @@ const prismaMock = {
   },
   staffMembers: {
     findMany: (...args: any[]) => staffMembersFindManyMock(...args),
+  },
+  divisions: {
+    findMany: (...args: any[]) => divisionsFindManyMock(...args),
   },
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
@@ -54,6 +58,7 @@ describe('/api/organizations', () => {
     organizationTagsFindManyMock.mockResolvedValue([]);
     organizationTagAssignmentsFindManyMock.mockResolvedValue([]);
     staffMembersFindManyMock.mockResolvedValue([]);
+    divisionsFindManyMock.mockResolvedValue([]);
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
@@ -107,6 +112,53 @@ describe('/api/organizations', () => {
       nextOffset: 0,
       hasMore: false,
     });
+  });
+
+  it('applies all division filters to one organization division row before pagination', async () => {
+    divisionsFindManyMock
+      .mockResolvedValueOnce([{ organizationId: 'org_club' }])
+      .mockResolvedValueOnce([{
+        id: 'division_1',
+        organizationId: 'org_club',
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+        gender: 'F',
+        skillDivisionTypeId: 'competitive',
+        ageDivisionTypeId: 'u16',
+        price: 12500,
+      }]);
+    findManyMock.mockResolvedValue([{ id: 'org_club', name: 'Club Org', status: 'LISTED' }]);
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?divisionGenders=F&skillDivisionTypeIds=competitive&ageDivisionTypeIds=u16&divisionPriceMin=10000&divisionPriceMax=15000',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(divisionsFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+        organizationId: { not: null },
+        gender: { in: ['F'] },
+        skillDivisionTypeId: { in: ['competitive'] },
+        ageDivisionTypeId: { in: ['u16'] },
+        price: { gte: 10000, lte: 15000 },
+      },
+      select: { organizationId: true },
+    });
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { status: 'LISTED' },
+          { id: { in: ['org_club'] } },
+        ],
+      },
+    }));
+    expect(payload.organizations[0]).toEqual(expect.objectContaining({
+      id: 'org_club',
+      divisions: [expect.objectContaining({ id: 'division_1', price: 12500 })],
+    }));
   });
 
   it('filters discover organization lists by curated system tag slugs', async () => {

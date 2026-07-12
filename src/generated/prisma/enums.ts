@@ -119,10 +119,37 @@ export const EventsEventTypeEnum = {
   EVENT: 'EVENT',
   LEAGUE: 'LEAGUE',
   WEEKLY_EVENT: 'WEEKLY_EVENT',
+  TRYOUT: 'TRYOUT',
   AFFILIATE: 'AFFILIATE'
 } as const
 
 export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof EventsEventTypeEnum]
+
+
+export const OrganizationFeatureEnum = {
+  CLUB_TEAMS: 'CLUB_TEAMS',
+  FACILITIES_RENTALS: 'FACILITIES_RENTALS',
+  EVENT_MANAGEMENT: 'EVENT_MANAGEMENT'
+} as const
+
+export type OrganizationFeatureEnum = (typeof OrganizationFeatureEnum)[keyof typeof OrganizationFeatureEnum]
+
+
+export const DivisionScopeEnum = {
+  ORGANIZATION: 'ORGANIZATION',
+  EVENT: 'EVENT'
+} as const
+
+export type DivisionScopeEnum = (typeof DivisionScopeEnum)[keyof typeof DivisionScopeEnum]
+
+
+export const DivisionStatusEnum = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  ARCHIVED: 'ARCHIVED'
+} as const
+
+export type DivisionStatusEnum = (typeof DivisionStatusEnum)[keyof typeof DivisionStatusEnum]
 
 
 export const RegistrationPaymentModeEnum = {

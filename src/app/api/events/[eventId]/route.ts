@@ -33,6 +33,7 @@ import {
   inferDivisionDetails,
   normalizeDivisionGender,
   normalizeDivisionRatingType,
+  normalizeDivisionTypeIds,
 } from '@/lib/divisionTypes';
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps } from '@/lib/taxPolicy';
@@ -362,6 +363,11 @@ const buildEventOfficialResponse = async (event: any) => {
 const isSchedulableEventType = (value: unknown): boolean => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
   return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
+};
+
+const supportsScheduleSlots = (value: unknown): boolean => {
+  const normalized = typeof value === 'string' ? value.toUpperCase() : '';
+  return isSchedulableEventType(normalized) || normalized === 'TRYOUT';
 };
 
 const buildContext = (): SchedulerContext => {
@@ -887,11 +893,6 @@ const normalizeDivisionDetailsInput = (
       sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
       fallbackName: typeof row.name === 'string' ? row.name : undefined,
     });
-    const ageEligibility = evaluateDivisionAgeEligibility({
-      divisionTypeId: inferred.divisionTypeId,
-      sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
-      referenceDate: eventStart ?? null,
-    });
     const parsedPrice = normalizeInputNullableNumber(row.price);
     const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
     const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
@@ -941,18 +942,32 @@ const normalizeDivisionDetailsInput = (
     const divisionTypeId = normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId;
     const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
     const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
+    const normalizedTypeIds = normalizeDivisionTypeIds({
+      divisionTypeId,
+      skillDivisionTypeId: normalizeDivisionKey(row.skillDivisionTypeId),
+      ageDivisionTypeId: normalizeDivisionKey(row.ageDivisionTypeId),
+      ratingType,
+    });
+    const ageEligibility = evaluateDivisionAgeEligibility({
+      divisionTypeId: normalizedTypeIds.ageDivisionTypeId,
+      sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
+      referenceDate: eventStart ?? null,
+    });
     const divisionTypeName = deriveDivisionTypeDisplayName({
       sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
       gender,
       ratingType,
-      divisionTypeId,
+      divisionTypeId: normalizedTypeIds.divisionTypeId,
     });
     details.push({
       id,
+      sourceDivisionId: normalizeDivisionKey(row.sourceDivisionId),
       key: normalizeDivisionKey(row.key) ?? inferred.token,
       name: cleanDivisionDisplayName(row.name, inferred.defaultName),
       kind: parsedKind,
-      divisionTypeId,
+      divisionTypeId: normalizedTypeIds.divisionTypeId,
+      skillDivisionTypeId: normalizedTypeIds.skillDivisionTypeId,
+      ageDivisionTypeId: normalizedTypeIds.ageDivisionTypeId,
       divisionTypeName,
       ratingType,
       gender,
@@ -2074,6 +2089,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const targetEventType = typeof targetEventTypeRaw === 'string'
         ? targetEventTypeRaw.toUpperCase()
         : targetEventTypeRaw;
+      if (targetEventType === 'TRYOUT') {
+        const organizationId = normalizeEntityId(data.organizationId ?? existing.organizationId);
+        if (!organizationId) {
+          throw new Response('Tryout events must belong to an organization.', { status: 400 });
+        }
+        const organization = await tx.organizations.findUnique({
+          where: { id: organizationId },
+          select: { enabledFeatures: true },
+        });
+        if (!organization?.enabledFeatures.includes('CLUB_TEAMS')) {
+          throw new Response('Enable club and team features before creating tryout events.', { status: 400 });
+        }
+        const tryoutDivisions = hasDivisionDetailsInput
+          ? incomingDivisionDetails
+          : await tx.divisions.findMany({
+              where: { eventId, scope: 'EVENT', status: { not: 'ARCHIVED' } },
+              select: { sourceDivisionId: true },
+            });
+        const sourceDivisionIds = Array.from(new Set(
+          tryoutDivisions
+            .map((division) => normalizeEntityId(division.sourceDivisionId))
+            .filter((divisionId): divisionId is string => Boolean(divisionId)),
+        ));
+        if (!tryoutDivisions.length || sourceDivisionIds.length !== tryoutDivisions.length) {
+          throw new Response('Select at least one club division for this tryout.', { status: 400 });
+        }
+        const sourceDivisions = await tx.divisions.findMany({
+          where: {
+            id: { in: sourceDivisionIds },
+            organizationId,
+            scope: 'ORGANIZATION',
+            status: { not: 'ARCHIVED' },
+          },
+          select: { id: true },
+        });
+        if (sourceDivisions.length !== sourceDivisionIds.length) {
+          throw new Response('One or more selected club divisions are unavailable.', { status: 400 });
+        }
+        data.teamSignup = false;
+        data.singleDivision = false;
+        data.noFixedEndDateTime = true;
+        data.doTeamsOfficiate = false;
+        data.teamOfficialsMaySwap = false;
+        data.teamCheckInMode = 'OFF';
+        data.allowMatchRosterEdits = false;
+        data.allowTemporaryMatchPlayers = false;
+      }
       const targetParentEvent = normalizeEntityId(data.parentEvent ?? existing.parentEvent ?? null);
       const targetIsWeeklyParent = targetEventType === 'WEEKLY_EVENT' && !targetParentEvent;
       if (Object.prototype.hasOwnProperty.call(payload, 'installmentDueRelativeDays')) {
@@ -2376,7 +2438,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextNoFixedEndDateTime = typeof data.noFixedEndDateTime === 'boolean'
         ? data.noFixedEndDateTime
         : existingNoFixedEndDateTime;
-      if (isSchedulableEventType(nextEventType) && nextNoFixedEndDateTime && data.end == null) {
+      if (supportsScheduleSlots(nextEventType) && nextNoFixedEndDateTime && data.end == null) {
         const preservedComputedEnd = existing.end instanceof Date
           ? existing.end
           : parseDateInput(existing.end);
@@ -2384,7 +2446,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           data.end = preservedComputedEnd;
         }
       }
-      if (isSchedulableEventType(nextEventType) && !nextNoFixedEndDateTime) {
+      if (supportsScheduleSlots(nextEventType) && !nextNoFixedEndDateTime) {
         if (!(nextStart instanceof Date) || !(nextEnd instanceof Date)) {
           throw new Response('Start and end date/time are required when no fixed end datetime scheduling is disabled.', { status: 400 });
         }

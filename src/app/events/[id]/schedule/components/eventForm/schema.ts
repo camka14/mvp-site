@@ -129,7 +129,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             .transform((value) => value ?? ''),
         timeZone: z.string().trim().default('UTC'),
         state: z.string().default('DRAFT'),
-        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE']),
+        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE']),
         parentEvent: z.string().optional().nullable(),
         sportId: z.string().trim(),
         sportConfig: z.any().nullable(),
@@ -152,6 +152,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         divisionDetails: z.array(
             z.object({
                 id: z.string().trim().min(1),
+                sourceDivisionId: z.string().trim().min(1).optional(),
                 key: z.string().trim().min(1),
                 kind: z.enum(['LEAGUE', 'PLAYOFF']).optional(),
                 name: z.string().trim().min(1),
@@ -290,7 +291,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             });
         }
 
-        if (values.teamSizeLimit == null) {
+        if (values.eventType !== 'TRYOUT' && values.teamSizeLimit == null) {
             ctx.addIssue({
                 code: 'custom',
                 message: 'Team size is required',
@@ -319,6 +320,31 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 code: "custom",
                 message: 'Add at least one division',
                 path: ['divisionDetails'],
+            });
+        }
+        if (values.eventType === 'TRYOUT') {
+            if (!values.organizationId) {
+                ctx.addIssue({
+                    code: 'custom',
+                    message: 'Tryout events must belong to an organization.',
+                    path: ['organizationId'],
+                });
+            }
+            if (values.singleDivision) {
+                ctx.addIssue({
+                    code: 'custom',
+                    message: 'Tryout events use the selected club divisions.',
+                    path: ['singleDivision'],
+                });
+            }
+            values.divisionDetails.forEach((division, index) => {
+                if (!division.sourceDivisionId) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Choose this division from the organization club divisions.',
+                        path: ['divisionDetails', index, 'sourceDivisionId'],
+                    });
+                }
             });
         }
 

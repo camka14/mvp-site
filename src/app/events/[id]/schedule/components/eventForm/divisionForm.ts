@@ -367,6 +367,7 @@ export const getSingleDivisionEditorNotice = (
 
 export type DivisionDetailForm = {
     id: string;
+    sourceDivisionId?: string;
     key: string;
     kind?: 'LEAGUE' | 'PLAYOFF';
     name: string;
@@ -543,6 +544,7 @@ export const normalizeDivisionDetailEntry = (
 
     const baseDetail: DivisionDetailForm = {
         id,
+        sourceDivisionId: typeof row.sourceDivisionId === 'string' ? row.sourceDivisionId : undefined,
         key,
         kind: typeof row.kind === 'string' && row.kind.toUpperCase() === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
         name,
@@ -925,6 +927,62 @@ export const buildDefaultDivisionDetailsForSport = (
         fieldIds: [],
     };
     return [applyDivisionAgeCutoff(detail, sport, referenceDate)];
+};
+
+export const buildTryoutDivisionSnapshot = (params: {
+    sourceDivision: CoreDivision;
+    eventId: string;
+    existingDivisionIds: string[];
+    referenceDate?: Date | null;
+}): DivisionDetailForm => {
+    const source = params.sourceDivision;
+    const sportInput = source.sportId ?? undefined;
+    const defaults = getDefaultDivisionTypeSelectionsForSport(sportInput);
+    const skillDivisionTypeId = source.skillDivisionTypeId ?? defaults.skillDivisionTypeId;
+    const ageDivisionTypeId = source.ageDivisionTypeId ?? defaults.ageDivisionTypeId;
+    const skillDivisionTypeName = getDivisionTypeById(sportInput ?? null, skillDivisionTypeId, 'SKILL')?.name
+        ?? defaults.skillDivisionTypeName;
+    const ageDivisionTypeName = getDivisionTypeById(sportInput ?? null, ageDivisionTypeId, 'AGE')?.name
+        ?? defaults.ageDivisionTypeName;
+    const gender = source.gender ?? 'C';
+    const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+    const token = buildDivisionToken({ gender, ratingType: 'SKILL', divisionTypeId });
+    const divisionTypeName = buildDivisionName({
+        gender,
+        sportInput,
+        skillDivisionTypeId,
+        ageDivisionTypeId,
+    });
+    const detail: DivisionDetailForm = {
+        id: buildUniqueDivisionIdForToken({
+            eventId: params.eventId,
+            token,
+            existingDivisionIds: params.existingDivisionIds,
+        }),
+        sourceDivisionId: source.id,
+        key: token,
+        kind: 'LEAGUE',
+        name: source.name || divisionTypeName,
+        divisionTypeId,
+        divisionTypeName,
+        ratingType: 'SKILL',
+        gender,
+        skillDivisionTypeId,
+        skillDivisionTypeName,
+        ageDivisionTypeId,
+        ageDivisionTypeName,
+        price: 0,
+        maxParticipants: Math.max(2, Math.trunc(source.maxParticipants ?? 10)),
+        playoffPlacementDivisionIds: [],
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentDueDates: [],
+        installmentDueRelativeDays: [],
+        installmentAmounts: [],
+        sportId: source.sportId,
+        fieldIds: [],
+    };
+    return applyDivisionAgeCutoff(detail, sportInput, params.referenceDate);
 };
 
 export const normalizeDivisionFieldIds = (

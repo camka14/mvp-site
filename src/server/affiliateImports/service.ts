@@ -2,9 +2,9 @@ import { createHash } from 'crypto';
 import path from 'path';
 import sharp from 'sharp';
 import {
-  buildCompositeDivisionTypeId,
   buildDivisionToken,
   deriveDivisionTypeDisplayName,
+  normalizeDivisionTypeIds,
   type DivisionGender,
   type DivisionRatingType,
 } from '@/lib/divisionTypes';
@@ -685,10 +685,12 @@ const buildAffiliateDivisionDetailFromLabel = (sourceLabel: string, candidate: a
       .join(' '),
   );
   const ratingType: DivisionRatingType = 'SKILL';
-  const skillDivisionTypeId = inferSkillDivisionTypeId(sourceLabel);
-  const divisionTypeId = ageRange.ageDivisionTypeId
-    ? buildCompositeDivisionTypeId(skillDivisionTypeId, ageRange.ageDivisionTypeId)
-    : skillDivisionTypeId;
+  const normalizedTypeIds = normalizeDivisionTypeIds({
+    skillDivisionTypeId: inferSkillDivisionTypeId(sourceLabel),
+    ageDivisionTypeId: ageRange.ageDivisionTypeId,
+    ratingType,
+  });
+  const { divisionTypeId, skillDivisionTypeId, ageDivisionTypeId } = normalizedTypeIds;
   const key = buildDivisionToken({
     gender,
     ratingType,
@@ -706,6 +708,8 @@ const buildAffiliateDivisionDetailFromLabel = (sourceLabel: string, candidate: a
     name: sourceLabel,
     kind: 'LEAGUE',
     divisionTypeId,
+    skillDivisionTypeId,
+    ageDivisionTypeId,
     divisionTypeName,
     ratingType,
     gender,
@@ -763,7 +767,13 @@ const buildAffiliateDivisionDetailsFromSourceRows = (candidate: any, sportId?: s
       const inferred = buildAffiliateDivisionDetailFromLabel(name, candidate, sportId);
       const gender = normalizeDivisionGenderValue(row.gender) ?? inferred.gender;
       const ratingType = normalizeDivisionRatingTypeValue(row.ratingType) ?? inferred.ratingType;
-      const divisionTypeId = nullableString(row.divisionTypeId) ?? inferred.divisionTypeId;
+      const normalizedTypeIds = normalizeDivisionTypeIds({
+        divisionTypeId: nullableString(row.divisionTypeId) ?? inferred.divisionTypeId,
+        skillDivisionTypeId: nullableString(row.skillDivisionTypeId),
+        ageDivisionTypeId: nullableString(row.ageDivisionTypeId),
+        ratingType,
+      });
+      const { divisionTypeId, skillDivisionTypeId, ageDivisionTypeId } = normalizedTypeIds;
       const key =
         nullableString(row.key) ??
         buildDivisionToken({
@@ -779,6 +789,9 @@ const buildAffiliateDivisionDetailsFromSourceRows = (candidate: any, sportId?: s
         gender,
         ratingType,
         divisionTypeId,
+        skillDivisionTypeId,
+        ageDivisionTypeId,
+        sourceDivisionId: nullableString(row.sourceDivisionId),
         divisionTypeName: deriveDivisionTypeDisplayName({
           sportInput: sportId ?? nullableString(candidate.sportName),
           gender,

@@ -165,10 +165,14 @@ export interface EventFilters {
   userLocation?: LocationCoordinates;
   dateFrom?: string;
   dateTo?: string;
+  priceMin?: number;
   priceMax?: number;
   eventTypes?: EventType[];
   sports?: string[];
   divisions?: string[];
+  divisionGenders?: Array<'M' | 'F' | 'C'>;
+  skillDivisionTypeIds?: string[];
+  ageDivisionTypeIds?: string[];
   tags?: string[];
 }
 

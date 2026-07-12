@@ -31,6 +31,7 @@ import { Event, EventTag, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { trackEventClicked } from '@/lib/analytics/eventAnalytics';
 import DiscoverSearchControls from './DiscoverSearchControls';
+import DivisionDiscoveryFilters, { type DivisionDiscoveryFilterValue } from './DivisionDiscoveryFilters';
 
 const EVENT_SORT_OPTIONS = [
   { value: 'soonest', label: 'Soonest' },
@@ -50,6 +51,13 @@ const DISTANCE_SLIDER_MARKS = [
   { value: 75, label: '75' },
   { value: DISTANCE_SLIDER_MAX_MILES, label: String(DISTANCE_SLIDER_MAX_MILES) },
 ];
+const EMPTY_DIVISION_FILTERS: DivisionDiscoveryFilterValue = {
+  genders: [],
+  skillDivisionTypeIds: [],
+  ageDivisionTypeIds: [],
+  priceMinDollars: null,
+  priceMaxDollars: null,
+};
 
 const kmToMiles = (value: number): number => value / KM_PER_MILE;
 const milesToKm = (value: number): number => value * KM_PER_MILE;
@@ -78,6 +86,8 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   setSelectedStartDate: (value: Date | null) => void;
   selectedEndDate: Date | null;
   setSelectedEndDate: (value: Date | null) => void;
+  divisionFilters?: DivisionDiscoveryFilterValue;
+  setDivisionFilters?: (value: DivisionDiscoveryFilterValue) => void;
   sports: string[];
   sportsLoading: boolean;
   sportsError: string | null;
@@ -124,6 +134,8 @@ export default function EventsTabContent<TEventType extends string = Event['even
     setSelectedStartDate,
     selectedEndDate,
     setSelectedEndDate,
+    divisionFilters = EMPTY_DIVISION_FILTERS,
+    setDivisionFilters = () => {},
     sports,
     sportsLoading,
     sportsError,
@@ -182,6 +194,13 @@ export default function EventsTabContent<TEventType extends string = Event['even
     setMaxDistance(null);
     setSelectedStartDate(null);
     setSelectedEndDate(null);
+    setDivisionFilters({
+      genders: [],
+      skillDivisionTypeIds: [],
+      ageDivisionTypeIds: [],
+      priceMinDollars: null,
+      priceMaxDollars: null,
+    });
     setSearchTerm('');
   }, [
     eventTypeOptions,
@@ -190,6 +209,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
     setSelectedStartDate,
     setSelectedEndDate,
     setSelectedEventTypes,
+    setDivisionFilters,
     setSelectedSports,
     setSelectedTags,
   ]);
@@ -316,6 +336,25 @@ export default function EventsTabContent<TEventType extends string = Event['even
       key: 'date-to',
       label: `Until ${selectedEndDate.toLocaleDateString()}`,
       onRemove: () => setSelectedEndDate(null),
+    });
+  }
+
+  const hasDivisionFilters = divisionFilters.genders.length > 0
+    || divisionFilters.skillDivisionTypeIds.length > 0
+    || divisionFilters.ageDivisionTypeIds.length > 0
+    || divisionFilters.priceMinDollars !== null
+    || divisionFilters.priceMaxDollars !== null;
+  if (hasDivisionFilters) {
+    activeFilters.push({
+      key: 'division-filters',
+      label: 'Division filters',
+      onRemove: () => setDivisionFilters({
+        genders: [],
+        skillDivisionTypeIds: [],
+        ageDivisionTypeIds: [],
+        priceMinDollars: null,
+        priceMaxDollars: null,
+      }),
     });
   }
 
@@ -499,6 +538,8 @@ export default function EventsTabContent<TEventType extends string = Event['even
           />
         </div>
       </div>
+
+      <DivisionDiscoveryFilters value={divisionFilters} onChange={setDivisionFilters} />
 
       {setHideWeeklyChildren && (
         <div>

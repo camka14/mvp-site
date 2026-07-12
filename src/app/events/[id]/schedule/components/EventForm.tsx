@@ -3,7 +3,7 @@ import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { eventService } from '@/lib/eventService';
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag, Division } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -57,6 +57,7 @@ import {
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
+import { organizationHasFeature } from '@/lib/organizationFeatures';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents } from '@/lib/priceUtils';
 import {
@@ -72,6 +73,7 @@ import {
 import {
     buildCompositeDivisionTypeId,
     buildDefaultDivisionDetailsForSport,
+    buildTryoutDivisionSnapshot,
     buildDivisionTypeOptionsForEvent,
     buildDivisionTypeSelectOptions,
     buildPlayoffDivisionCapacityWarnings,
@@ -232,6 +234,7 @@ import {
     getVisibleSectionNavigationItems,
 } from './eventForm/components/SectionNavigation';
 import { EventFormShell } from './eventForm/components/EventFormShell';
+import { TryoutDivisionSelector } from './eventForm/components/TryoutDivisionSelector';
 import { BasicInformationSection } from './eventForm/sections/BasicInformationSection';
 import { DivisionEditorActionsAndErrors } from './eventForm/sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorHeader } from './eventForm/sections/DivisionEditorHeader';
@@ -546,6 +549,38 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const isTryoutEvent = eventData.eventType === 'TRYOUT';
+    const selectedTryoutSourceDivisionIds = useMemo(
+        () => (eventData.divisionDetails ?? [])
+            .map((division) => division.sourceDivisionId)
+            .filter((divisionId): divisionId is string => Boolean(divisionId)),
+        [eventData.divisionDetails],
+    );
+    const handleTryoutDivisionSelection = useCallback((sourceDivisions: Division[]) => {
+        const existingDetails = eventData.divisionDetails ?? [];
+        const existingBySourceId = new Map(
+            existingDetails
+                .filter((division) => Boolean(division.sourceDivisionId))
+                .map((division) => [division.sourceDivisionId as string, division] as const),
+        );
+        const nextDetails: DivisionDetailForm[] = [];
+        const usedIds: string[] = [];
+        sourceDivisions.forEach((sourceDivision) => {
+            const existing = existingBySourceId.get(sourceDivision.id);
+            const detail = existing ?? buildTryoutDivisionSnapshot({
+                sourceDivision,
+                eventId: eventData.$id,
+                existingDivisionIds: usedIds,
+                referenceDate: parseLocalDateTime(eventData.start),
+            });
+            nextDetails.push(detail);
+            usedIds.push(detail.id);
+        });
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        setValue('divisions', nextDetails.map((division) => division.id), { shouldDirty: true, shouldValidate: true });
+        setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
+        setValue('teamSignup', false, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.$id, eventData.divisionDetails, eventData.start, setValue]);
     const lockedEventTypeTagSlugs = useMemo(
         () => getLockedEventTypeTagSlugs(eventData.eventType),
         [eventData.eventType],
@@ -3202,8 +3237,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     const eventTypeOptions = useMemo(
-        () => buildEventTypeOptions(isRentalCreateFlow, Boolean(resolvedOrganizationId)),
-        [isRentalCreateFlow, resolvedOrganizationId],
+        () => buildEventTypeOptions(
+            isRentalCreateFlow,
+            Boolean(resolvedOrganizationId),
+            organizationHasFeature(resolvedOrganization?.enabledFeatures, 'CLUB_TEAMS') || eventData.eventType === 'TRYOUT',
+        ),
+        [eventData.eventType, isRentalCreateFlow, resolvedOrganization, resolvedOrganizationId],
     );
     const supportsNoFixedEndDateTime = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEffect(() => {
@@ -3617,8 +3656,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             error={errors.fieldCount?.message as string | undefined}
         />
     ) : null;
-    const showMatchRulesSection = !isAffiliateEvent && eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
-    const showStaffSection = !isAffiliateEvent;
+    const showMatchRulesSection = !isAffiliateEvent && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
+    const showStaffSection = !isAffiliateEvent && !isTryoutEvent;
     const showScoringConfigSection = !isAffiliateEvent && (
         eventData.eventType === 'LEAGUE'
         || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs)
@@ -3812,6 +3851,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onEventTypeChange={(nextType, applyValue) => {
                                 clearErrors('leagueSlots');
                                 const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
+                                const enforcingTryoutSettings = !isAffiliateEvent && nextType === 'TRYOUT';
                                 applyValue(nextType);
                                 setValue(
                                     'tags',
@@ -3822,6 +3862,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     setValue('teamSignup', true, { shouldDirty: true });
                                     setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
                                     setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                } else if (enforcingTryoutSettings) {
+                                    setValue('teamSignup', false, { shouldDirty: true });
+                                    setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
+                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                    setValue('divisionDetails', [], { shouldDirty: true, shouldValidate: true });
+                                    setValue('divisions', [], { shouldDirty: true, shouldValidate: true });
                                 } else {
                                     setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
                                     const parsedStart = parseLocalDateTime(getValues('start'));
@@ -4076,6 +4122,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-division-settings')}
                         >
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
+                                {isTryoutEvent ? (
+                                    <TryoutDivisionSelector
+                                        organizationId={organizationHostedEventId || undefined}
+                                        selectedSourceDivisionIds={selectedTryoutSourceDivisionIds}
+                                        disabled={isImmutableField('divisions')}
+                                        onChange={handleTryoutDivisionSelection}
+                                    />
+                                ) : (
                                 <DivisionModeControls
                                     control={control}
                                     supportsEditableTeamSignup={supportsEditableTeamSignup}
@@ -4088,6 +4142,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     hasExternalRentalField={hasExternalRentalField}
                                     isImmutableField={isImmutableField}
                                 />
+                                )}
                                 {!isAffiliateEvent && eventData.singleDivision ? (
                                     <SingleDivisionDefaultsPanel
                                         control={control}
@@ -4137,15 +4192,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 ) : null}
                                 <>
-                                    <DivisionEditorHeader
+                                    {!isTryoutEvent ? <DivisionEditorHeader
                                         editing={Boolean(divisionEditor.editingId)}
                                         splitDivisionEditorEnabled={!isAffiliateEvent && splitDivisionEditorEnabled}
                                         divisionKind={divisionEditor.divisionKind}
                                         disabled={isImmutableField('divisions')}
                                         comboboxProps={sharedComboboxProps}
                                         onDivisionKindChange={handleDivisionEditorKindChange}
-                                    />
-                                    <DivisionEditorLeaguePanel
+                                    /> : null}
+                                    {!isTryoutEvent || divisionEditor.editingId ? <DivisionEditorLeaguePanel
                                         divisionEditor={divisionEditor}
                                         eventData={isAffiliateEvent ? {
                                             ...eventData,
@@ -4154,7 +4209,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         } : eventData}
                                         leagueData={leagueData}
                                         eventTaxableForPreview={eventTaxableForPreview}
-                                        splitDivisionEditorEnabled={!isAffiliateEvent && splitDivisionEditorEnabled}
+                                        splitDivisionEditorEnabled={!isAffiliateEvent && !isTryoutEvent && splitDivisionEditorEnabled}
                                         divisionEditorReady={divisionEditorReady}
                                         divisionMaxParticipantsWarning={isAffiliateEvent ? null : divisionMaxParticipantsWarning}
                                         hasStripeAccount={pricingControlsEnabled}
@@ -4162,12 +4217,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         maxPriceCents={MAX_PRICE_CENTS}
                                         maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
                                         numberInputStyles={alignedDetailsFieldStyles}
-                                        simplePriceInput={isAffiliateEvent}
-                                        showCapacityForSingleDivision={isAffiliateEvent}
-                                        showPriceForSingleDivision={isAffiliateEvent}
-                                        showPaymentPlanControls={!isAffiliateEvent}
-                                        showOperationalControls={!isAffiliateEvent}
-                                        showSingleDivisionNotice={!isAffiliateEvent}
+                                        simplePriceInput={isAffiliateEvent || isTryoutEvent}
+                                        showCapacityForSingleDivision={isAffiliateEvent || isTryoutEvent}
+                                        showPriceForSingleDivision={isAffiliateEvent || isTryoutEvent}
+                                        showPaymentPlanControls={!isAffiliateEvent && !isTryoutEvent}
+                                        showOperationalControls={!isAffiliateEvent && !isTryoutEvent}
+                                        showSingleDivisionNotice={!isAffiliateEvent && !isTryoutEvent}
                                         genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
                                         skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
                                         ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
@@ -4183,10 +4238,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         onInstallmentDueDateChange={setDivisionInstallmentDueDate}
                                         onInstallmentAmountChange={setDivisionInstallmentAmount}
                                         onRemoveInstallment={removeDivisionInstallment}
-                                    />
+                                    /> : null}
                                     {!isAffiliateEvent ? (
                                         <>
-                                        <DivisionEditorPlayoffDivisionControls
+                                        {!isTryoutEvent ? <DivisionEditorPlayoffDivisionControls
                                             visible={splitDivisionEditorEnabled && divisionEditor.divisionKind === 'PLAYOFF'}
                                             name={divisionEditor.name}
                                             maxParticipants={divisionEditor.maxParticipants}
@@ -4212,8 +4267,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 }));
                                             }}
                                             onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
-                                        />
-                                        <DivisionEditorActionsAndErrors
+                                        /> : null}
+                                        {!isTryoutEvent || divisionEditor.editingId ? <DivisionEditorActionsAndErrors
                                             isEditing={Boolean(divisionEditor.editingId)}
                                             disabled={isImmutableField('divisions')}
                                             editorError={divisionEditor.error}
@@ -4223,7 +4278,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             showMissingPlayoffDivisionWarning={splitDivisionEditorEnabled && (eventData.playoffDivisionDetails || []).length === 0}
                                             onSave={handleSaveDivisionDetail}
                                             onCancelEdit={resetDivisionEditor}
-                                        />
+                                        /> : null}
                                         <DivisionSummaryList
                                             divisionDetails={eventData.divisionDetails || []}
                                             playoffDivisionDetails={eventData.playoffDivisionDetails || []}
@@ -4240,6 +4295,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             leaguePlayoffTeamCount={leagueData.playoffTeamCount}
                                             disabled={isImmutableField('divisions')}
                                             playoffDivisionCapacityWarnings={playoffDivisionCapacityWarnings}
+                                            hidePaymentPlanDetails={isTryoutEvent}
+                                            hideOperationalDetails={isTryoutEvent}
                                             derivePoolTeamCount={derivePoolTeamCount}
                                             buildTournamentConfig={buildTournamentConfig}
                                             onEditDivision={handleEditDivisionDetail}

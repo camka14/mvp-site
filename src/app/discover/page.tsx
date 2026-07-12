@@ -43,6 +43,7 @@ import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
+import DivisionDiscoveryFilters, { type DivisionDiscoveryFilterValue } from './components/DivisionDiscoveryFilters';
 import {
   buildTeamDivisionFilterOptions,
   filterOpenRegistrationTeams,
@@ -81,6 +82,13 @@ type DiscoverTab = 'events' | 'organizations' | 'rentals' | 'teams';
 const EVENTS_LIMIT = 18;
 const DISCOVERY_PAGE_SIZE = 100;
 const DEFAULT_MAX_DISTANCE = 50;
+const EMPTY_DIVISION_FILTERS: DivisionDiscoveryFilterValue = {
+  genders: [],
+  skillDivisionTypeIds: [],
+  ageDivisionTypeIds: [],
+  priceMinDollars: null,
+  priceMaxDollars: null,
+};
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
 const DISTANCE_SLIDER_MAX_MILES = 100;
@@ -135,15 +143,17 @@ function DiscoverPageContent() {
   const isLoadMoreRequestInFlightRef = useRef(false);
   const visibleEventIdsRef = useRef<Set<string>>(new Set());
 
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE']);
   const [selectedSports, setSelectedSports] = useState<string[]>(() => urlSelectedSports);
   const [selectedEventTags, setSelectedEventTags] = useState<string[]>([]);
+  const [eventDivisionFilters, setEventDivisionFilters] = useState<DivisionDiscoveryFilterValue>(EMPTY_DIVISION_FILTERS);
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
   const [eventTagsLoading, setEventTagsLoading] = useState(false);
   const [eventTagsError, setEventTagsError] = useState<string | null>(null);
   const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>([]);
+  const [organizationDivisionFilters, setOrganizationDivisionFilters] = useState<DivisionDiscoveryFilterValue>(EMPTY_DIVISION_FILTERS);
   const [organizationTags, setOrganizationTags] = useState<OrganizationTag[]>([]);
   const [organizationTagsLoading, setOrganizationTagsLoading] = useState(false);
   const [organizationTagsError, setOrganizationTagsError] = useState<string | null>(null);
@@ -404,6 +414,11 @@ function DiscoverPageContent() {
         eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
         sports: selectedSports.length > 0 ? selectedSports : undefined,
         tags: selectedEventTags.length > 0 ? selectedEventTags : undefined,
+        divisionGenders: eventDivisionFilters.genders.length ? eventDivisionFilters.genders as Array<'M' | 'F' | 'C'> : undefined,
+        skillDivisionTypeIds: eventDivisionFilters.skillDivisionTypeIds.length ? eventDivisionFilters.skillDivisionTypeIds : undefined,
+        ageDivisionTypeIds: eventDivisionFilters.ageDivisionTypeIds.length ? eventDivisionFilters.ageDivisionTypeIds : undefined,
+        priceMin: eventDivisionFilters.priceMinDollars === null ? undefined : Math.round(eventDivisionFilters.priceMinDollars * 100),
+        priceMax: eventDivisionFilters.priceMaxDollars === null ? undefined : Math.round(eventDivisionFilters.priceMaxDollars * 100),
         userLocation: location || undefined,
         maxDistance: location && typeof maxDistance === 'number' ? maxDistance : undefined,
         dateFrom,
@@ -415,6 +430,7 @@ function DiscoverPageContent() {
       selectedEventTypes,
       selectedSports,
       selectedEventTags,
+      eventDivisionFilters,
       location,
       maxDistance,
       debouncedSearch,
@@ -580,6 +596,12 @@ function DiscoverPageContent() {
       const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
         hydrateRelations: false,
         tagSlugs: selectedOrganizationTags,
+        sports: selectedSports,
+        divisionGenders: organizationDivisionFilters.genders,
+        skillDivisionTypeIds: organizationDivisionFilters.skillDivisionTypeIds,
+        ageDivisionTypeIds: organizationDivisionFilters.ageDivisionTypeIds,
+        divisionPriceMin: organizationDivisionFilters.priceMinDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMinDollars * 100),
+        divisionPriceMax: organizationDivisionFilters.priceMaxDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMaxDollars * 100),
       });
       setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
       setOrganizationOffset(page.pagination.nextOffset);
@@ -600,6 +622,8 @@ function DiscoverPageContent() {
     organizationsLoading,
     organizationsLoadingMore,
     selectedOrganizationTags,
+    selectedSports,
+    organizationDivisionFilters,
   ]);
 
   const loadMoreOrganizations = useCallback(() => {
@@ -1060,6 +1084,8 @@ function DiscoverPageContent() {
               setSelectedStartDate={setSelectedStartDate}
               selectedEndDate={selectedEndDate}
               setSelectedEndDate={setSelectedEndDate}
+              divisionFilters={eventDivisionFilters}
+              setDivisionFilters={setEventDivisionFilters}
               sports={sportOptions}
               sportsLoading={sportsLoading}
               sportsError={sportsError?.message ?? null}
@@ -1088,6 +1114,8 @@ function DiscoverPageContent() {
               setSelectedSports={setSelectedSports}
               selectedTags={selectedOrganizationTags}
               setSelectedTags={setSelectedOrganizationTags}
+              divisionFilters={organizationDivisionFilters}
+              setDivisionFilters={setOrganizationDivisionFilters}
               organizationTags={organizationTags}
               organizationTagsLoading={organizationTagsLoading}
               organizationTagsError={organizationTagsError}
@@ -1212,6 +1240,8 @@ function OrganizationsTabContent(props: {
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
   selectedTags: string[];
   setSelectedTags: Dispatch<SetStateAction<string[]>>;
+  divisionFilters: DivisionDiscoveryFilterValue;
+  setDivisionFilters: (value: DivisionDiscoveryFilterValue) => void;
   organizationTags: OrganizationTag[];
   organizationTagsLoading: boolean;
   organizationTagsError: string | null;
@@ -1239,6 +1269,8 @@ function OrganizationsTabContent(props: {
     setSelectedSports,
     selectedTags,
     setSelectedTags,
+    divisionFilters,
+    setDivisionFilters,
     organizationTags,
     organizationTagsLoading,
     organizationTagsError,
@@ -1312,6 +1344,19 @@ function OrganizationsTabContent(props: {
     });
   });
 
+  const hasDivisionFilters = divisionFilters.genders.length > 0
+    || divisionFilters.skillDivisionTypeIds.length > 0
+    || divisionFilters.ageDivisionTypeIds.length > 0
+    || divisionFilters.priceMinDollars !== null
+    || divisionFilters.priceMaxDollars !== null;
+  if (hasDivisionFilters) {
+    activeFilters.push({
+      key: 'division-filters',
+      label: 'Division filters',
+      onRemove: () => setDivisionFilters(EMPTY_DIVISION_FILTERS),
+    });
+  }
+
   if (location && typeof maxDistance === 'number') {
     activeFilters.push({
       key: 'distance',
@@ -1324,8 +1369,9 @@ function OrganizationsTabContent(props: {
     setSearchTerm('');
     setSelectedSports([]);
     setSelectedTags([]);
+    setDivisionFilters(EMPTY_DIVISION_FILTERS);
     setMaxDistance(null);
-  }, [setSearchTerm, setSelectedSports, setSelectedTags, setMaxDistance]);
+  }, [setDivisionFilters, setSearchTerm, setSelectedSports, setSelectedTags, setMaxDistance]);
 
   const activeFilterCount = activeFilters.length;
 
@@ -1615,6 +1661,8 @@ function OrganizationsTabContent(props: {
           )}
         </div>
       </div>
+
+      <DivisionDiscoveryFilters value={divisionFilters} onChange={setDivisionFilters} />
     </div>
   );
 }

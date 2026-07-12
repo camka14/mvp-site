@@ -25,6 +25,7 @@ import {
   getOrganizationTagsForOrganizationIds,
   syncOrganizationTags,
 } from '@/server/organizationTags';
+import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -38,6 +39,7 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'logoId',
   'website',
   'sports',
+  'enabledFeatures',
   'status',
   'coordinates',
   'productIds',
@@ -89,6 +91,7 @@ const toPublicOrganizationSummary = (organization: Record<string, any>) => ({
   logoId: organization.logoId ?? null,
   website: organization.website ?? null,
   sports: Array.isArray(organization.sports) ? organization.sports : [],
+  enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
   status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
   coordinates: organization.coordinates ?? null,
   publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
@@ -312,6 +315,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'sports')) {
     updateData.sports = sanitizeStringArray(updateData.sports);
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'enabledFeatures')) {
+    const enabledFeatures = normalizeOrganizationFeatures(updateData.enabledFeatures, []);
+    if (enabledFeatures.length === 0) {
+      return NextResponse.json(
+        { error: 'Select at least one organization tool.' },
+        { status: 400 },
+      );
+    }
+    updateData.enabledFeatures = enabledFeatures;
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'status')) {
     try {

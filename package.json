@@ -18,6 +18,8 @@
     "test:watch": "jest --watch",
     "test:ci": "jest --runInBand --coverage",
     "cleanup:user-teamids": "tsx scripts/cleanup-user-teamids-canonical.ts",
+    "divisions:normalize": "tsx scripts/normalize-division-type-fields.ts",
+    "organizations:features:backfill": "tsx scripts/backfill-organization-features.ts",
     "reconcile:team-chats": "tsx scripts/reconcile-team-chats.ts",
     "backfill:event-templates": "tsx scripts/backfill-event-template-records.ts",
     "affiliate:scrape:due": "tsx scripts/run-due-affiliate-scrapes.ts",

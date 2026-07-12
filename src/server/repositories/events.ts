@@ -18,6 +18,8 @@ import {
   inferDivisionDetails,
   normalizeDivisionGender,
   normalizeDivisionRatingType,
+  normalizeDivisionTypeIds,
+  parseCompositeDivisionTypeId,
   type DivisionGender,
   type DivisionRatingType,
 } from '@/lib/divisionTypes';
@@ -197,7 +199,7 @@ const ensureNumberArray = (value: unknown): number[] =>
     .filter((item) => Number.isFinite(item));
 const isSchedulableEventType = (value: unknown): boolean => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
-  return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
+  return normalized === 'LEAGUE' || normalized === 'TOURNAMENT' || normalized === 'TRYOUT';
 };
 const FIELD_CONFLICT_LOOKAHEAD_WEEKS = 52;
 const FIELD_MATCH_BLOCK_PREFIX = '__field_match_block__';
@@ -1124,10 +1126,13 @@ const normalizePlacementDivisionIdentifierList = (
 
 type DivisionDetailPayload = {
   id: string;
+  sourceDivisionId?: string | null;
   key: string;
   name: string;
   kind: 'LEAGUE' | 'PLAYOFF';
   divisionTypeId: string;
+  skillDivisionTypeId: string;
+  ageDivisionTypeId: string;
   divisionTypeName: string;
   ratingType: DivisionRatingType;
   gender: DivisionGender;
@@ -1185,7 +1190,25 @@ const normalizeDivisionDetailsPayload = (
 
       const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
       const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
-      const divisionTypeId = normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId;
+      const rawComposite = parseCompositeDivisionTypeId(normalizeDivisionKey(row.divisionTypeId));
+      const rawSkillDivisionTypeId = normalizeDivisionKey(row.skillDivisionTypeId);
+      const rawAgeDivisionTypeId = normalizeDivisionKey(row.ageDivisionTypeId);
+      if (
+        rawComposite
+        && (
+          (rawSkillDivisionTypeId && rawSkillDivisionTypeId !== rawComposite.skillDivisionTypeId)
+          || (rawAgeDivisionTypeId && rawAgeDivisionTypeId !== rawComposite.ageDivisionTypeId)
+        )
+      ) {
+        throw new Error('Division age and skill values do not match the composite division type.');
+      }
+      const normalizedTypeIds = normalizeDivisionTypeIds({
+        divisionTypeId: normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId,
+        skillDivisionTypeId: rawSkillDivisionTypeId,
+        ageDivisionTypeId: rawAgeDivisionTypeId,
+        ratingType,
+      });
+      const { divisionTypeId, skillDivisionTypeId, ageDivisionTypeId } = normalizedTypeIds;
       const key = normalizeDivisionKey(row.key)
         ?? buildDivisionToken({
           gender,
@@ -1248,10 +1271,13 @@ const normalizeDivisionDetailsPayload = (
 
       const detail: DivisionDetailPayload = {
         id,
+        sourceDivisionId: normalizeDivisionKey(row.sourceDivisionId),
         key,
         name: cleanDivisionDisplayName(row.name, defaultName),
         kind: rawKind,
         divisionTypeId,
+        skillDivisionTypeId,
+        ageDivisionTypeId,
         divisionTypeName,
         ratingType,
         gender,
@@ -1872,6 +1898,7 @@ const buildDivisions = (
 const serializeDivisionDetailsForTemplate = (divisionRows: any[]): Array<Record<string, unknown>> => (
   divisionRows.map((row, index) => ({
     id: row.id,
+    sourceDivisionId: row.sourceDivisionId ?? null,
     key: row.key ?? extractDivisionTokenFromId(row.id) ?? row.id,
     name: row.name,
     kind: normalizeDivisionKind(row.kind, 'LEAGUE'),
@@ -1902,6 +1929,8 @@ const serializeDivisionDetailsForTemplate = (divisionRows: any[]): Array<Record<
     installmentDueRelativeDays: ensureNumberArray(row.installmentDueRelativeDays),
     installmentAmounts: ensureNumberArray(row.installmentAmounts),
     divisionTypeId: row.divisionTypeId ?? null,
+    skillDivisionTypeId: row.skillDivisionTypeId ?? null,
+    ageDivisionTypeId: row.ageDivisionTypeId ?? null,
     ratingType: row.ratingType ?? null,
     gender: row.gender ?? null,
     ageCutoffDate: row.ageCutoffDate instanceof Date
@@ -3759,6 +3788,7 @@ export const syncEventDivisions = async (
     },
     select: {
       id: true,
+      sourceDivisionId: true,
       key: true,
       name: true,
       sportId: true,
@@ -3771,6 +3801,8 @@ export const syncEventDivisions = async (
       installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
+      skillDivisionTypeId: true,
+      ageDivisionTypeId: true,
       ratingType: true,
       gender: true,
       ageCutoffDate: true,
@@ -3982,7 +4014,13 @@ export const syncEventDivisions = async (
 
     const gender = detail?.gender ?? inferred.gender;
     const ratingType = detail?.ratingType ?? inferred.ratingType;
-    const divisionTypeId = detail?.divisionTypeId ?? inferred.divisionTypeId;
+    const normalizedTypeIds = normalizeDivisionTypeIds({
+      divisionTypeId: detail?.divisionTypeId ?? inferred.divisionTypeId,
+      skillDivisionTypeId: detail?.skillDivisionTypeId ?? existing?.skillDivisionTypeId,
+      ageDivisionTypeId: detail?.ageDivisionTypeId ?? existing?.ageDivisionTypeId,
+      ratingType,
+    });
+    const { divisionTypeId, skillDivisionTypeId, ageDivisionTypeId } = normalizedTypeIds;
     const key = detail?.key ?? buildDivisionToken({
       gender,
       ratingType,
@@ -4190,11 +4228,14 @@ export const syncEventDivisions = async (
 
     return {
       id: persistedId,
+      sourceDivisionId: detail?.sourceDivisionId ?? existing?.sourceDivisionId ?? null,
       key,
       name,
       kind,
       sortOrder,
       divisionTypeId,
+      skillDivisionTypeId,
+      ageDivisionTypeId,
       divisionTypeName,
       ratingType,
       gender,
@@ -4287,6 +4328,9 @@ export const syncEventDivisions = async (
         kind: entry.kind,
         sortOrder: entry.sortOrder,
         eventId: params.eventId,
+        scope: 'EVENT',
+        status: 'ACTIVE',
+        sourceDivisionId: entry.sourceDivisionId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
         price: entry.price,
@@ -4321,6 +4365,8 @@ export const syncEventDivisions = async (
         installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
+        skillDivisionTypeId: entry.skillDivisionTypeId,
+        ageDivisionTypeId: entry.ageDivisionTypeId,
         ratingType: entry.ratingType,
         gender: entry.gender,
         ageCutoffDate: entry.ageCutoffDate ? new Date(entry.ageCutoffDate) : null,
@@ -4339,6 +4385,9 @@ export const syncEventDivisions = async (
         kind: entry.kind,
         sortOrder: entry.sortOrder,
         eventId: params.eventId,
+        scope: 'EVENT',
+        status: 'ACTIVE',
+        sourceDivisionId: entry.sourceDivisionId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
         price: entry.price,
@@ -4373,6 +4422,8 @@ export const syncEventDivisions = async (
         installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
+        skillDivisionTypeId: entry.skillDivisionTypeId,
+        ageDivisionTypeId: entry.ageDivisionTypeId,
         ratingType: entry.ratingType,
         gender: entry.gender,
         ageCutoffDate: entry.ageCutoffDate ? new Date(entry.ageCutoffDate) : null,
@@ -4431,6 +4482,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       select: {
         ownerId: true,
         coordinates: true,
+        enabledFeatures: true,
       } as any,
     })
     : null;
@@ -4758,6 +4810,38 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? existingEvent.eventType.toUpperCase()
     : null;
   const nextEventType = payloadEventType ?? existingEventType;
+  if (nextEventType === 'TRYOUT') {
+    if (!resolvedOrganizationId || !organizationAccess) {
+      throw new Error('Tryout events must belong to an organization.');
+    }
+    const enabledFeatures = ensureStringArray((organizationAccess as any).enabledFeatures);
+    if (!enabledFeatures.includes('CLUB_TEAMS')) {
+      throw new Error('Enable club and team features before creating tryout events.');
+    }
+    if (singleDivisionEnabled) {
+      throw new Error('Tryout events must use their selected club divisions.');
+    }
+    if (!normalizedDivisionDetails.length || normalizedDivisionDetails.some((detail) => !detail.sourceDivisionId)) {
+      throw new Error('Select at least one club division for this tryout.');
+    }
+    const sourceDivisionIds = Array.from(new Set(
+      normalizedDivisionDetails
+        .map((detail) => detail.sourceDivisionId)
+        .filter((divisionId): divisionId is string => Boolean(divisionId)),
+    ));
+    const sourceDivisions = await client.divisions.findMany({
+      where: {
+        id: { in: sourceDivisionIds },
+        organizationId: resolvedOrganizationId,
+        scope: 'ORGANIZATION',
+        status: { not: 'ARCHIVED' },
+      } as any,
+      select: { id: true },
+    });
+    if (sourceDivisions.length !== sourceDivisionIds.length) {
+      throw new Error('One or more selected club divisions are unavailable.');
+    }
+  }
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;

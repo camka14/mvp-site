@@ -970,7 +970,7 @@ export const buildDivisionToken = (params: {
   return `${params.gender.toLowerCase()}_${params.ratingType.toLowerCase()}_${divisionTypeId}`;
 };
 
-const parseCompositeDivisionTypeId = (
+export const parseCompositeDivisionTypeId = (
   divisionTypeId: unknown,
 ): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
   const normalizedDivisionTypeId = normalizeDivisionIdToken(divisionTypeId);
@@ -984,6 +984,36 @@ const parseCompositeDivisionTypeId = (
   return {
     skillDivisionTypeId: match[1],
     ageDivisionTypeId: match[2],
+  };
+};
+
+export const normalizeDivisionTypeIds = (params: {
+  divisionTypeId?: string | null;
+  skillDivisionTypeId?: string | null;
+  ageDivisionTypeId?: string | null;
+  ratingType?: DivisionRatingType | null;
+}): {
+  divisionTypeId: string;
+  skillDivisionTypeId: string;
+  ageDivisionTypeId: string;
+} => {
+  const normalizedComposite = parseCompositeDivisionTypeId(params.divisionTypeId);
+  const normalizedLegacyId = normalizeDivisionIdToken(params.divisionTypeId);
+  const explicitSkill = normalizeDivisionIdToken(params.skillDivisionTypeId);
+  const explicitAge = normalizeDivisionIdToken(params.ageDivisionTypeId);
+  const skillDivisionTypeId = explicitSkill
+    ?? normalizedComposite?.skillDivisionTypeId
+    ?? (params.ratingType === 'SKILL' ? normalizedLegacyId : null)
+    ?? DEFAULT_SKILL_DIVISION_TYPE_ID;
+  const ageDivisionTypeId = explicitAge
+    ?? normalizedComposite?.ageDivisionTypeId
+    ?? (params.ratingType === 'AGE' ? normalizedLegacyId : null)
+    ?? DEFAULT_AGE_DIVISION_TYPE_ID;
+
+  return {
+    divisionTypeId: buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId),
+    skillDivisionTypeId,
+    ageDivisionTypeId,
   };
 };
 

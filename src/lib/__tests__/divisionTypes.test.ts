@@ -3,6 +3,7 @@ import {
   getDivisionTypeOptionsForSport,
   getSportAgeCutoffRule,
   inferDivisionDetails,
+  normalizeDivisionTypeIds,
 } from '@/lib/divisionTypes';
 
 describe('divisionTypes age alignment', () => {
@@ -93,5 +94,25 @@ describe('divisionTypes age alignment', () => {
   it('normalizes legacy composite separators to spaces', () => {
     expect(cleanDivisionDisplayName('Open / 18+', 'fallback')).toBe('Open 18+');
     expect(cleanDivisionDisplayName('Open • 18+', 'fallback')).toBe('Open 18+');
+  });
+
+  it('normalizes explicit and legacy division type ids into persisted age and skill ids', () => {
+    expect(normalizeDivisionTypeIds({
+      divisionTypeId: 'skill_competitive_age_u14',
+    })).toEqual({
+      divisionTypeId: 'skill_competitive_age_u14',
+      skillDivisionTypeId: 'competitive',
+      ageDivisionTypeId: 'u14',
+    });
+
+    expect(normalizeDivisionTypeIds({
+      divisionTypeId: 'u12',
+      ratingType: 'AGE',
+      skillDivisionTypeId: 'rec',
+    })).toEqual({
+      divisionTypeId: 'skill_rec_age_u12',
+      skillDivisionTypeId: 'rec',
+      ageDivisionTypeId: 'u12',
+    });
   });
 });
