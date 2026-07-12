@@ -62,6 +62,38 @@ describe('POST /api/users/invite authorization', () => {
     expect(prismaMock.invites.create).not.toHaveBeenCalled();
   });
 
+  it('rejects an official invite to an event the caller does not manage', async () => {
+    prismaMock.events.findUnique.mockResolvedValue({
+      hostId: 'host_2',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    canManageEventMock.mockResolvedValue(false);
+
+    const response = await POST(request({
+      inviterId: 'spoofed_actor',
+      invites: [{ email: 'official@test.com', type: 'official', eventId: 'event_2' }],
+    }));
+    const payload = await response.json();
+
+    expect(payload.failed).toEqual([{ email: 'official@test.com', reason: 'forbidden_scope' }]);
+    expect(prismaMock.invites.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an official invite to an organization the caller does not manage', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_2', ownerId: 'owner_2' });
+    canManageOrganizationMock.mockResolvedValue(false);
+
+    const response = await POST(request({
+      inviterId: 'spoofed_actor',
+      invites: [{ email: 'official@test.com', type: 'official', organizationId: 'org_2' }],
+    }));
+    const payload = await response.json();
+
+    expect(payload.failed).toEqual([{ email: 'official@test.com', reason: 'forbidden_scope' }]);
+    expect(prismaMock.invites.create).not.toHaveBeenCalled();
+  });
+
   it('uses the authenticated caller as createdBy for an authorized team invite', async () => {
     prismaMock.teams.findUnique.mockResolvedValue({
       captainId: 'captain_1',

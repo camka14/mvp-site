@@ -62,6 +62,11 @@ describe('sendInviteEmails', () => {
     expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
       userIds: ['user_1'],
       title: 'You are invited',
+      data: {
+        notificationType: 'invitations',
+        deepLink: 'mvp://profile/invites',
+        inviteId: 'invite_1',
+      },
     }));
     expect(invites).toEqual([expect.objectContaining({
       id: 'invite_1',
