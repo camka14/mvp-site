@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (11)** | `SEC-002`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Completed — high (12)** | `SEC-002`, `SEC-003`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
 | **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
-| **Remaining / not yet reconciled (181)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Remaining / not yet reconciled (180)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **46 completed, 181 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **47 completed, 180 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -150,7 +150,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - Authorized billing output constructs the same public generic URL at `src/app/api/events/[eventId]/teams/[teamId]/billing/route.ts:207-213`.
   - `src/app/api/files/__tests__/fileRoutes.test.ts:171-194` intentionally asserts unauthenticated serving, so this is current behavior rather than an untested omission.
 - Impact: receipts, payment screenshots, or other private proof images can be retrieved without a session when a file ID leaks.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `36e1afd6` adds `assertFileReadAccess` to generic download and preview handlers. It keeps ordinary public media readable but requires the proof uploader or an authorized bill manager for a `BillPaymentProofs.fileId`, before storage is read. The focused access and route suites passed 20 tests, including anonymous denial, unrelated-user denial, authorized-manager access, and both download/preview short-circuit checks.
 
 ### SEC-004 — Time-slot create/update/delete checks identity but not ownership
 
@@ -2170,3 +2170,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Completed DATA-006. Added deterministic 1.6.13/1.6.14 AppReleases seeds for Android and iOS, verified a fresh full migration-chain replay and repeat application, passed Android/iOS update-contract tests, deployed all pending live migrations, and verified the public app-version contract at both old and current build boundaries.
 - 2026-07-12: Completed DATA-010. Enforced unique SensitiveUserData identity keys, moved auth/invite/MFA lookups to deterministic unique keys, protected Google-linked accounts from provider-email drift, validated the full migration chain and focused regression suite, and deployed the live uniqueness migration after a zero-duplicate preflight.
 - 2026-07-12: Revalidated existing SEC-001 remediation and reconciled SEC-002 in the audited branch. Focused billing authorization tests (17 total), TypeScript, and a fresh local production server confirmed creation/read/list denials. The public production endpoint still answered from an older deployment, so the source completion is explicitly marked deployment-pending.
+- 2026-07-12: Reconciled SEC-003 in the audited branch. Verified generic file handlers consult the bill-payment-proof discriminator before storage reads; 20 focused access/download/preview tests passed. Production deployment remains pending with the rest of the audited branch.
