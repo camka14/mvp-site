@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (18)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Completed — high (19)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
 | **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
-| **Remaining / not yet reconciled (174)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Remaining / not yet reconciled (173)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **53 completed, 174 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **54 completed, 173 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -245,7 +245,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - `exists`, `exists-by-email`, and `lookup-by-email` re-export the same lookup behavior.
 - Impact: the API supports bulk database/account bloat and authenticated email/account identifier enumeration; aliases expand the surface and obscure the canonical contract.
 - Legacy relevance: determine which aliases/callers remain at the `1.6.13` compatibility floor and retire older universal flows in favor of scoped invitations/search.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` retires the arbitrary-email ensure endpoint and the lookup endpoint plus `exists`, `exists-by-email`, and `lookup-by-email` aliases with HTTP 410, leaving account resolution to authorized scoped invitation flows. The focused alias suite passed all 10 cases and verifies no persistence or identity lookup occurs.
 
 ### SEC-014 — Event creation trusts caller-supplied host and organization scope
 
@@ -2177,3 +2177,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-007 in the audited branch. Verified private/unpublished event schedule and realtime-token visibility across five suites (16 tests), including a new standalone field-match regression. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-008 in the audited branch. Confirmed no E2E auth state remains tracked, the path is ignored, and current session verification rejects non-expiring historical tokens; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-010 in the audited branch. Confirmed typed session JWTs include a bounded expiry and verification rejects missing/invalid expiry claims; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-013 in the audited branch. Confirmed arbitrary account ensure and all generic email-lookup aliases return 410 without database access; all 10 focused tests passed. Production deployment remains pending with the rest of the audited branch.
