@@ -1,17 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { setAuthCookie } from '@/lib/authServer';
+import { setAuthCookie, verifyPassword } from '@/lib/authServer';
 import { revokeAppleRefreshToken } from '@/lib/appleAuth';
 import { requireSession } from '@/lib/permissions';
+import { AuthMfaChallengePurpose } from '@/server/authMfaPurpose';
+import {
+  confirmTotpMfaChallenge,
+  createAccountDeletionMfaChallenge,
+  isTotpMfaError,
+  readTotpMfaRequestMetadata,
+} from '@/server/authTotpMfa';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 const DELETE_CONFIRMATION_TEXT = 'delete my account';
 const REDACTED_DATE_OF_BIRTH = new Date('1900-01-01T00:00:00.000Z');
+const OAUTH_REAUTH_MAX_AGE_SECONDS = 10 * 60;
 
 const requestSchema = z.object({
   confirmationText: z.string(),
+  currentPassword: z.string().min(8).optional(),
+  mfaChallengeId: z.string().min(1).max(200).optional(),
+  mfaCode: z.string().min(6).max(16).optional(),
 }).passthrough();
 
 const normalizeId = (value: unknown): string | null => {
@@ -71,6 +83,20 @@ const isOutstandingUserBill = (bill: {
   return !['PAID', 'CANCELLED'].includes((bill.status ?? 'OPEN').toUpperCase());
 };
 
+const hasRecentOauthReauthentication = (
+  issuedAtSeconds: number | null | undefined,
+  now: Date,
+): boolean => {
+  if (!Number.isInteger(issuedAtSeconds)) return false;
+  const ageSeconds = Math.floor(now.getTime() / 1000) - Number(issuedAtSeconds);
+  return ageSeconds >= -60 && ageSeconds <= OAUTH_REAUTH_MAX_AGE_SECONDS;
+};
+
+const isProviderLinkedAccount = (authUser: {
+  googleSubject?: string | null;
+  appleSubject?: string | null;
+}): boolean => Boolean(authUser.googleSubject || authUser.appleSubject);
+
 export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = requestSchema.safeParse(body ?? {});
@@ -89,23 +115,16 @@ export async function DELETE(req: NextRequest) {
   const userId = session.userId.trim();
   const now = new Date();
 
-  const [user, authUser, sensitiveUser, userBills, inboundRefunds, outboundRefunds] = await Promise.all([
-    prisma.userData.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        userName: true,
-        dateOfBirth: true,
-      },
-    }),
+  const [authUser, sensitiveUser] = await Promise.all([
     prisma.authUser.findUnique({
       where: { id: userId },
       select: {
         id: true,
         email: true,
+        passwordHash: true,
+        googleSubject: true,
         appleSubject: true,
+        sessionVersion: true,
       },
     }),
     prisma.sensitiveUserData.findFirst({
@@ -114,6 +133,87 @@ export async function DELETE(req: NextRequest) {
         id: true,
         email: true,
         appleRefreshToken: true,
+        totpSecretEncrypted: true,
+        totpEnabledAt: true,
+      },
+    }),
+  ]);
+
+  if (!authUser) {
+    return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
+  }
+
+  const hasCurrentPassword = Boolean(parsed.data.currentPassword);
+  if (hasCurrentPassword) {
+    const passwordMatches = await verifyPassword(parsed.data.currentPassword!, authUser.passwordHash);
+    if (!passwordMatches) {
+      return NextResponse.json({ error: 'Current password is incorrect.', code: 'REAUTH_REQUIRED' }, { status: 401 });
+    }
+  } else if (!isProviderLinkedAccount(authUser)) {
+    return NextResponse.json(
+      { error: 'Current password is required before deleting your account.', code: 'REAUTH_REQUIRED' },
+      { status: 401 },
+    );
+  } else if (!hasRecentOauthReauthentication(session.issuedAtSeconds, now)) {
+    return NextResponse.json(
+      { error: 'Sign in again with your identity provider before deleting this account.', code: 'RECENT_AUTH_REQUIRED' },
+      { status: 401 },
+    );
+  }
+
+  const hasTotpMfa = Boolean(sensitiveUser?.totpSecretEncrypted && sensitiveUser.totpEnabledAt);
+  if (hasTotpMfa) {
+    const challengeId = parsed.data.mfaChallengeId?.trim() || null;
+    const code = parsed.data.mfaCode?.trim() || null;
+    if (!challengeId && !code) {
+      const challenge = await createAccountDeletionMfaChallenge({
+        userId,
+        sessionVersion: session.sessionVersion,
+        metadata: readTotpMfaRequestMetadata(req),
+        client: prisma,
+      });
+      if (!challenge) {
+        return NextResponse.json({ error: 'Authenticator verification is unavailable.' }, { status: 503 });
+      }
+      return NextResponse.json({
+        error: 'Authenticator verification is required before deleting this account.',
+        code: 'MFA_REQUIRED',
+        mfa: challenge,
+      }, { status: 403 });
+    }
+    if (!challengeId || !code) {
+      return NextResponse.json({ error: 'Authenticator challenge and code are required.' }, { status: 400 });
+    }
+
+    const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.authMfaVerification, `${userId}:${challengeId}`);
+    if (rateLimited) {
+      return rateLimited;
+    }
+    try {
+      await confirmTotpMfaChallenge({
+        challengeId,
+        code,
+        purpose: AuthMfaChallengePurpose.ACCOUNT_DELETION,
+        expectedUserId: userId,
+        client: prisma,
+      });
+    } catch (error) {
+      if (isTotpMfaError(error)) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+
+  const [user, userBills, inboundRefunds, outboundRefunds] = await Promise.all([
+    prisma.userData.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        userName: true,
+        dateOfBirth: true,
       },
     }),
     prisma.bills.findMany({

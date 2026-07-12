@@ -64,11 +64,28 @@ const permissionsMock = {
 
 const authServerMock = {
   setAuthCookie: jest.fn(),
+  verifyPassword: jest.fn(),
+};
+
+const authTotpMfaMock = {
+  createAccountDeletionMfaChallenge: jest.fn(),
+  confirmTotpMfaChallenge: jest.fn(),
+  isTotpMfaError: jest.fn(),
+  readTotpMfaRequestMetadata: jest.fn(),
+};
+
+const rateLimitMock = {
+  applyRateLimit: jest.fn(),
+  RATE_LIMIT_POLICIES: {
+    authMfaVerification: { name: 'auth:mfa-verification', limit: 10, windowSeconds: 600 },
+  },
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => permissionsMock);
 jest.mock('@/lib/authServer', () => authServerMock);
+jest.mock('@/server/authTotpMfa', () => authTotpMfaMock);
+jest.mock('@/server/rateLimit', () => rateLimitMock);
 
 import { DELETE } from '@/app/api/auth/account/route';
 
@@ -97,7 +114,19 @@ describe('DELETE /api/auth/account', () => {
       userId: 'user_1',
       isAdmin: false,
       rawToken: 'token_1',
+      sessionVersion: 0,
+      issuedAtSeconds: Math.floor(Date.now() / 1000),
     });
+    authServerMock.verifyPassword.mockResolvedValue(true);
+    authTotpMfaMock.createAccountDeletionMfaChallenge.mockResolvedValue({
+      challengeId: 'mfa_delete_1',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      method: 'totp',
+    });
+    authTotpMfaMock.confirmTotpMfaChallenge.mockResolvedValue({ userId: 'user_1', sessionVersion: 0 });
+    authTotpMfaMock.isTotpMfaError.mockReturnValue(false);
+    authTotpMfaMock.readTotpMfaRequestMetadata.mockReturnValue({ ipHash: null, userAgent: null });
+    rateLimitMock.applyRateLimit.mockResolvedValue(null);
 
     prismaMock.$transaction.mockImplementation(async (callback: any) => callback(prismaMock));
     prismaMock.userData.findUnique.mockResolvedValue({
@@ -110,12 +139,17 @@ describe('DELETE /api/auth/account', () => {
     prismaMock.authUser.findUnique.mockResolvedValue({
       id: 'user_1',
       email: 'user@example.com',
+      passwordHash: 'hash',
+      googleSubject: null,
       appleSubject: null,
+      sessionVersion: 0,
     });
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
       id: 'sensitive_1',
       email: 'user@example.com',
       appleRefreshToken: null,
+      totpSecretEncrypted: null,
+      totpEnabledAt: null,
     });
     prismaMock.bills.findMany.mockResolvedValue([]);
     prismaMock.refundRequests.findMany
@@ -176,7 +210,10 @@ describe('DELETE /api/auth/account', () => {
       },
     ]);
 
-    const response = await DELETE(buildDeleteRequest({ confirmationText: 'delete my account' }));
+    const response = await DELETE(buildDeleteRequest({
+      confirmationText: 'delete my account',
+      currentPassword: 'correct-password',
+    }));
     const json = await response.json();
 
     expect(response.status).toBe(409);
@@ -185,7 +222,10 @@ describe('DELETE /api/auth/account', () => {
   });
 
   it('scrubs account access, cancels active records, and clears the auth cookie on success', async () => {
-    const response = await DELETE(buildDeleteRequest({ confirmationText: 'delete my account' }));
+    const response = await DELETE(buildDeleteRequest({
+      confirmationText: 'delete my account',
+      currentPassword: 'correct-password',
+    }));
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -215,6 +255,109 @@ describe('DELETE /api/auth/account', () => {
     expect(prismaMock.authUser.deleteMany).toHaveBeenCalledWith({ where: { id: 'user_1' } });
     expect(prismaMock.sensitiveUserData.deleteMany).toHaveBeenCalled();
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(response, '');
+  });
+
+  it('rejects a standard account deletion that has only a session and confirmation phrase', async () => {
+    const response = await DELETE(buildDeleteRequest({ confirmationText: 'delete my account' }));
+    const json = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(json).toMatchObject({ code: 'REAUTH_REQUIRED' });
+    expect(String(json.error)).toContain('Current password is required');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incorrect password before reading deletion blockers or mutating data', async () => {
+    authServerMock.verifyPassword.mockResolvedValueOnce(false);
+
+    const response = await DELETE(buildDeleteRequest({
+      confirmationText: 'delete my account',
+      currentPassword: 'wrong-password',
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(json).toMatchObject({ code: 'REAUTH_REQUIRED' });
+    expect(prismaMock.bills.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('requires a purpose-scoped authenticator challenge for TOTP-enabled accounts', async () => {
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+      id: 'sensitive_1',
+      email: 'user@example.com',
+      appleRefreshToken: null,
+      totpSecretEncrypted: 'encrypted_secret',
+      totpEnabledAt: new Date('2026-07-11T12:00:00.000Z'),
+    });
+
+    const response = await DELETE(buildDeleteRequest({
+      confirmationText: 'delete my account',
+      currentPassword: 'correct-password',
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json).toMatchObject({
+      code: 'MFA_REQUIRED',
+      mfa: { challengeId: 'mfa_delete_1', method: 'totp' },
+    });
+    expect(authTotpMfaMock.createAccountDeletionMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user_1',
+      sessionVersion: 0,
+    }));
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('consumes the account-deletion MFA challenge before deleting a TOTP-enabled account', async () => {
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+      id: 'sensitive_1',
+      email: 'user@example.com',
+      appleRefreshToken: null,
+      totpSecretEncrypted: 'encrypted_secret',
+      totpEnabledAt: new Date('2026-07-11T12:00:00.000Z'),
+    });
+
+    const response = await DELETE(buildDeleteRequest({
+      confirmationText: 'delete my account',
+      currentPassword: 'correct-password',
+      mfaChallengeId: 'mfa_delete_1',
+      mfaCode: '123456',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(authTotpMfaMock.confirmTotpMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({
+      challengeId: 'mfa_delete_1',
+      code: '123456',
+      purpose: 'ACCOUNT_DELETION',
+      expectedUserId: 'user_1',
+    }));
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('requires a recent provider login when an OAuth account has no password reauthentication', async () => {
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      id: 'user_1',
+      email: 'user@example.com',
+      passwordHash: 'provider-password-hash',
+      googleSubject: 'google-user-1',
+      appleSubject: null,
+      sessionVersion: 0,
+    });
+    permissionsMock.requireSession.mockResolvedValue({
+      userId: 'user_1',
+      isAdmin: false,
+      rawToken: 'token_1',
+      sessionVersion: 0,
+      issuedAtSeconds: Math.floor(Date.now() / 1000) - 601,
+    });
+
+    const response = await DELETE(buildDeleteRequest({ confirmationText: 'delete my account' }));
+    const json = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(json).toMatchObject({ code: 'RECENT_AUTH_REQUIRED' });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('blocks Apple-linked deletion when no refresh token is stored', async () => {

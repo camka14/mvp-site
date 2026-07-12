@@ -385,6 +385,45 @@ export const createWebLoginMfaChallenge = async ({
   };
 };
 
+/**
+ * Account deletion is a destructive action, so it gets a purpose-scoped MFA
+ * challenge instead of accepting a login challenge that may have been started
+ * for a different workflow. The challenge remains bound to the current
+ * session version and expires after the normal ten-minute MFA window.
+ */
+export const createAccountDeletionMfaChallenge = async ({
+  userId,
+  sessionVersion,
+  metadata,
+  client = prisma,
+}: {
+  userId: string;
+  sessionVersion?: number | null;
+  metadata: RequestMetadata;
+  client?: TotpMfaClient;
+}): Promise<MfaChallengeResponse | null> => {
+  const now = new Date();
+  if (!(await isTotpMfaEnabledForUser(userId, client))) {
+    return null;
+  }
+
+  await consumeExistingChallenges(client, userId, [AuthMfaChallengePurpose.ACCOUNT_DELETION], now);
+  const challenge = await createChallenge({
+    client,
+    userId,
+    purpose: AuthMfaChallengePurpose.ACCOUNT_DELETION,
+    sessionVersion,
+    metadata,
+    now,
+  });
+
+  return {
+    challengeId: challenge.id,
+    expiresAt: challenge.expiresAt.toISOString(),
+    method: 'totp',
+  };
+};
+
 const loadActiveChallenge = async (
   client: TotpMfaClient,
   challengeId: string,

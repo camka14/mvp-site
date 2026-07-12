@@ -6,6 +6,7 @@ import { AuthMfaChallengePurpose } from '@/server/authMfaPurpose';
 import { decryptSecret, encryptSecret } from '@/server/integrations/secretCrypto';
 import {
   confirmTotpMfaChallenge,
+  createAccountDeletionMfaChallenge,
   createTotpCodeForTest,
   createWebLoginMfaChallenge,
   encodeBase32,
@@ -66,6 +67,57 @@ describe('authTotpMfa', () => {
       metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
       client,
     })).resolves.toBeNull();
+  });
+
+  it('creates a purpose-scoped account-deletion challenge without consuming login challenges', async () => {
+    const expiresAt = new Date(systemTime.getTime() + 10 * 60 * 1000);
+    const client = {
+      sensitiveUserData: {
+        findFirst: jest.fn().mockResolvedValue({
+          totpSecretEncrypted: 'encrypted-secret',
+          totpEnabledAt: new Date(systemTime.getTime() - 60_000),
+        }),
+      },
+      authMfaChallenges: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({
+          id: 'mfa_delete_1',
+          expiresAt,
+        }),
+      },
+    };
+
+    await expect(createAccountDeletionMfaChallenge({
+      userId: 'user_1',
+      sessionVersion: 2,
+      metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
+      client,
+    })).resolves.toEqual({
+      challengeId: 'mfa_delete_1',
+      expiresAt: expiresAt.toISOString(),
+      method: 'totp',
+    });
+
+    expect(client.authMfaChallenges.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user_1',
+        purpose: { in: [AuthMfaChallengePurpose.ACCOUNT_DELETION] },
+        consumedAt: null,
+      },
+      data: {
+        consumedAt: systemTime,
+        updatedAt: systemTime,
+      },
+    });
+    expect(client.authMfaChallenges.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user_1',
+        purpose: AuthMfaChallengePurpose.ACCOUNT_DELETION,
+        sessionVersion: 2,
+        verificationIpHash: 'ip_hash',
+        verificationUserAgent: 'jest',
+      }),
+    });
   });
 
   it('requires an explicit non-production configuration for the local MFA bypass', () => {

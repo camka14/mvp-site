@@ -391,6 +391,7 @@ enum AuthMfaChallengePurposeEnum {
   LOGIN_SETUP
   PROFILE_PHONE_SETUP
   PROFILE_TOTP_SETUP
+  ACCOUNT_DELETION
 }
 
 model AppReleases {
