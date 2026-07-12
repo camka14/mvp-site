@@ -14,6 +14,7 @@ The comprehensive code audit identified critical authorization, privacy, payment
 - [x] (2026-07-11) Closed the immediate Android scoring, notification, required-signature, logout-ordering, and generic user-update contract defects (APP-119, APP-120, APP-122, SEC-044, DATA-027). The Android production compile is green; JVM test-fixture and manifest configuration follow-up remains before the full mobile suite can be accepted.
 - [x] (2026-07-11) Started the next severity tier with fail-closed Stripe configuration, organization and field/time-slot privacy boundaries, rental lock canonicalization, email-membership scoping, and message payload hardening.
 - [x] (2026-07-11) Completed the combined automated validation pass: `npx tsc --noEmit`, 414 serial Jest suites / 2,635 tests, Prisma schema validation, a clean 148-migration isolated PostgreSQL replay, and 117 Android unit suites / 835 tests (3 skipped, zero failures).
+- [x] (2026-07-11) Established Android Room v3 as the earliest evidence-backed supported source version. Versions 1 and 2 remain fail-closed rather than receiving a fabricated migration path.
 - [ ] Trace and implement the 16 Android/shared critical fixes, including cross-repository DTO/schema changes.
 - [x] Run targeted tests for every changed site cluster, then the broad TypeScript, Jest, Gradle, and Android build gates applicable to changed code.
 - [ ] Manually verify affected site behavior in the in-app browser and affected Android behavior on the configured emulator.
@@ -27,6 +28,8 @@ The comprehensive code audit identified critical authorization, privacy, payment
   Evidence: The first typecheck after adding chat access predicates caught the missing pre-existing `ensureUserHasAcceptedChatTerms` export; the functions were merged rather than replacing the module.
 - Observation: The mvp-app audit branch contains a complete Room migration graph, but the active checkout needs its dependent durable rental/outbox model types as part of the same integration.
   Evidence: The audited migration path raises the Room version through the historical schemas and includes pending-rental and payer-scoping tables; copying only the old destructive-delete removal would leave supported upgrades without a complete migration path.
+- Observation: Android database user versions 1 and 2 cannot be safely supported from repository evidence.
+  Evidence: `87e8eeed` changed the physical v1 schema without changing the Room version, `e2053fec` jumped directly from version 1 to 3, no committed version-2 annotation exists, and the later synthetic 1-to-2 bridge conflicts with the retained schema deltas. The registered and instrumented graph therefore begins at v3.
 
 ## Decision Log
 
@@ -39,6 +42,9 @@ The comprehensive code audit identified critical authorization, privacy, payment
 - Decision: Add schema changes only where durable scope or idempotency cannot be represented safely in existing canonical data.
   Rationale: Financial approval and outbox correctness require persisted authoritative identity, while unnecessary schema churn would increase migration risk.
   Date/Author: 2026-07-10 / Codex
+- Decision: Do not synthesize Room migrations for Android user versions 1 or 2; define v3 as the evidence-backed support floor.
+  Rationale: A guessed path could transform real user data according to the wrong one of two incompatible historical version-1 layouts. Failing closed is safer until a released database sample or committed schema provenance is recovered.
+  Date/Author: 2026-07-11 / Codex
 
 ## Outcomes & Retrospective
 
