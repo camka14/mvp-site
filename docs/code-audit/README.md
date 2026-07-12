@@ -254,7 +254,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the create schema accepts `event` as an arbitrary record (`src/app/api/events/route.ts:60-66`). After authentication/email verification (`:970-980`), the handler explicitly prefers payload `hostId` over `session.userId` (`:1045-1052`) and sends the payload into repository persistence (`:1081-1101`) without proving the caller can act for payload `organizationId`. Notifications use the resulting spoofed host (`:1103-1113`).
 - Impact: any verified account can create events/resources under another known user or organization and trigger externally visible notifications attributed to that host.
 - Source-of-truth concern: the persistence repository receives data but no actor/session, so authorization cannot be consistently enforced at that layer.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` derives a non-admin event host only from the authenticated session and requires `EVENTS_MANAGE` permission for the requested organization before opening the creation transaction. The focused event-save suite passed all six cases, including a spoofed `hostId` and an unauthorized organization-create attempt.
 
 ### SEC-015 — Public user privacy policy returns exact DOB, minor identity, and social metadata unchanged
 
@@ -285,7 +285,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Alias: `/billing/webhook` re-exports the same POST handler from `src/app/billing/webhook/route.ts`.
 - Impact: an unauthenticated forged `payment_intent.succeeded` can mark existing financial records paid, activate event/team registrations, or create new paid records without a Stripe charge.
 - Test gap: no negative test requires a signature or rejects a missing signature.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` fails closed when no webhook secret is configured, when a Stripe signature is absent, or when signature verification fails. The only unverified path requires the explicit non-production `STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV=true` escape hatch. The focused webhook suite passed all 18 cases, including unsigned-payload rejection before any payment transition.
 
 ### SEC-018 — Paid rentals fail open to arbitrary `pi_*` strings when Stripe is unconfigured
 
@@ -2184,3 +2184,5 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-022 in the audited branch. Verified scoped, paginated fields/time-slot reads and narrow anonymous discovery output; all 29 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-011 and SEC-015 in the audited branch. Verified the retired universal user mutation endpoint and contextual public user privacy projection; all 16 focused user-route tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-012 in the audited branch. Verified every invitation uses the authenticated actor and is checked against the exact team, event, or organization scope; all four focused invite-route tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-014 in the audited branch. Verified non-admin event creation cannot spoof the host and requires organization event-management permission; all six focused event-create tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-017 in the audited branch. Verified unsigned/unconfigured Stripe webhooks fail closed, with a narrowly explicit development-only bypass; all 18 focused webhook tests passed. Production deployment remains pending with the rest of the audited branch.
