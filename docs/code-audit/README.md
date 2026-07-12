@@ -384,7 +384,6 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: current Android mobile version is `1.6.14`/versionCode 67 while Wear OS is `0.1.0`/100001, but source-controlled `AppReleases` migrations seed only 1.5.6 and 1.5.12. `src/app/api/app-version/route.ts:28-36` trusts mutable DB rows, and no tracked manifest/upsert for 1.6.13 or 1.6.14 exists.
 - Impact: a fresh database cannot reproduce current update policy; release truth appears to live in manually mutated production data.
 - Fix status: **completed 2026-07-12**. `20260712160000_seed_app_releases_1_6_13_1_6_14` deterministically upserts Android and iOS 1.6.13/1.6.14 rows by platform, version, and build. Its regression test is deliberately outside the Prisma migrations directory (`9c294b38`) so Prisma sees only real migration history. A fresh full migration-chain replay and idempotency reapply passed; Android and iOS update-contract tests passed at their current 1.6.14 boundaries in `c03e8a94`. The live migration deployment completed successfully, status is up to date, and the public endpoint reports 1.6.13 → 1.6.14 as available while 1.6.14 is current on both platforms.
-- Fix status: **not changed; reporting only**.
 
 ### DATA-007 — Normalized ownership/membership coexist with mutable duplicate ID arrays
 
