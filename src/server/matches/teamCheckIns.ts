@@ -159,6 +159,7 @@ export const checkInTeam = async (
     event: EventAccessRow;
     eventTeamId: string;
     checkedInByUserId: string;
+    canCheckInAnyTeam?: boolean;
     match?: MatchAccessRow | null;
     now?: Date;
   },
@@ -172,9 +173,21 @@ export const checkInTeam = async (
   if (String(params.event.teamCheckInMode ?? 'OFF').toUpperCase() !== expectedMode) {
     throw new Response('Team check-in is not enabled for this scope.', { status: 400 });
   }
-  const canCheckIn = await isTeamManagerOrCoach(client, params.eventTeamId, params.checkedInByUserId);
+  const eventRegistration = await client.eventRegistrations.findFirst({
+    where: {
+      eventId: params.event.id,
+      eventTeamId: params.eventTeamId,
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+    },
+    select: { id: true },
+  });
+  if (!eventRegistration) {
+    throw new Response('Team is not registered for this event.', { status: 400 });
+  }
+  const canCheckIn = params.canCheckInAnyTeam === true ||
+    await isTeamManagerOrCoach(client, params.eventTeamId, params.checkedInByUserId);
   if (!canCheckIn) {
-    throw new Response('Only team managers and coaches can check in.', { status: 403 });
+    throw new Response('Only event staff, assigned officials, team managers, and coaches can check in.', { status: 403 });
   }
   assertCheckInWindowOpen(params.match?.start ?? params.event.start, params.event.teamCheckInOpenMinutesBefore, now);
   const checkInKey = buildTeamCheckInKey(params.event.id, params.eventTeamId, matchId);

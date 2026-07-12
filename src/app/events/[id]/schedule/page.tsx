@@ -109,6 +109,15 @@ import RentalCheckoutModals from './schedulePage/RentalCheckoutModals';
 import ScheduleTabPanel from './schedulePage/ScheduleTabPanel';
 import StandingsTabPanel from './schedulePage/StandingsTabPanel';
 import {
+  applyStandingsDraftPointsInOrder,
+  buildStandingsOverrideSave,
+  getStandingsDraftInputValue,
+  resolveStandingsDraftPoints,
+  standingsOverrideReadbackMatches,
+  type StandingsDraftOverrides,
+  updateStandingsDraftInput,
+} from './schedulePage/standingsOverrideDraft';
+import {
   buildScheduleLocationDefaults,
   getUserLocationCoordinates,
   getUserLocationLabel,
@@ -350,7 +359,12 @@ function EventScheduleContent() {
     direction: 'desc',
   });
   const [standingsDivisionData, setStandingsDivisionData] = useState<LeagueStandingsDivisionResponse | null>(null);
-  const [standingsDraftOverrides, setStandingsDraftOverrides] = useState<Record<string, number>>({});
+  const [standingsDraftOverrides, setStandingsDraftOverrides] = useState<StandingsDraftOverrides>({});
+  const standingsDraftOverridesRef = useRef<StandingsDraftOverrides>({});
+  const replaceStandingsDraftOverrides = useCallback((next: StandingsDraftOverrides) => {
+    standingsDraftOverridesRef.current = next;
+    setStandingsDraftOverrides(next);
+  }, []);
   const [standingsLoading, setStandingsLoading] = useState(false);
   const [savingStandings, setSavingStandings] = useState(false);
   const [confirmingStandings, setConfirmingStandings] = useState(false);
@@ -1334,7 +1348,7 @@ function EventScheduleContent() {
         setSelectedStandingsPool(null);
       }
       setStandingsDivisionData(null);
-      setStandingsDraftOverrides({});
+      replaceStandingsDraftOverrides({});
       return;
     }
 
@@ -1383,7 +1397,7 @@ function EventScheduleContent() {
   useEffect(() => {
     if (isCreateMode || !activeEventId || !standingsEventEnabled || !selectedStandingsDataDivision) {
       setStandingsDivisionData(null);
-      setStandingsDraftOverrides({});
+      replaceStandingsDraftOverrides({});
       setStandingsLoading(false);
       return;
     }
@@ -1399,7 +1413,7 @@ function EventScheduleContent() {
           return;
         }
         setStandingsDivisionData(division);
-        setStandingsDraftOverrides(division.standingsOverrides ? { ...division.standingsOverrides } : {});
+        replaceStandingsDraftOverrides(division.standingsOverrides ? { ...division.standingsOverrides } : {});
       })
       .catch((loadError) => {
         if (cancelled) {
@@ -1407,7 +1421,7 @@ function EventScheduleContent() {
         }
         console.error('Failed to load division standings:', loadError);
         setStandingsDivisionData(null);
-        setStandingsDraftOverrides({});
+        replaceStandingsDraftOverrides({});
         setStandingsActionError(loadError instanceof Error ? loadError.message : 'Failed to load division standings.');
       })
       .finally(() => {
@@ -1419,7 +1433,14 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEventId, activeEventType, isCreateMode, selectedStandingsDataDivision, standingsEventEnabled]);
+  }, [
+    activeEventId,
+    activeEventType,
+    isCreateMode,
+    replaceStandingsDraftOverrides,
+    selectedStandingsDataDivision,
+    standingsEventEnabled,
+  ]);
 
   const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup);
   const canUseUserCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup === false);
@@ -3652,17 +3673,21 @@ function EventScheduleContent() {
   const getDraftStandingsPoints = useCallback(
     (row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } => {
       const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
-      const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
-      const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
-      const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
-        ? draftOverride
-        : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
-      return {
+      return resolveStandingsDraftPoints({
+        teamId: row.teamId,
+        teamName: row.teamName,
         basePoints,
-        finalPoints,
-        pointsDelta: finalPoints - basePoints,
-      };
+        finalPoints: typeof row.finalPoints === 'number' ? row.finalPoints : row.points,
+      }, standingsDraftOverrides);
     },
+    [standingsDraftOverrides],
+  );
+
+  const getStandingsOverrideInputValue = useCallback(
+    (row: StandingsRow): string | number => getStandingsDraftInputValue({
+      teamId: row.teamId,
+      finalPoints: typeof row.finalPoints === 'number' ? row.finalPoints : row.points,
+    }, standingsDraftOverrides),
     [standingsDraftOverrides],
   );
 
@@ -3671,16 +3696,7 @@ function EventScheduleContent() {
       return [];
     }
 
-    const sorted = baseStandings.map((row) => {
-      const points = getDraftStandingsPoints(row);
-      return {
-        ...row,
-        points: points.finalPoints,
-        basePoints: points.basePoints,
-        finalPoints: points.finalPoints,
-        pointsDelta: points.pointsDelta,
-      };
-    });
+    const sorted = [...baseStandings];
     const modifier = standingsSort.direction === 'asc' ? 1 : -1;
 
     sorted.sort((a, b) => {
@@ -3725,11 +3741,11 @@ function EventScheduleContent() {
       return 0;
     });
 
-    return sorted.map((row, index) => ({
+    return applyStandingsDraftPointsInOrder(sorted, standingsDraftOverrides).map((row, index) => ({
       ...row,
       rank: index + 1,
     }));
-  }, [baseStandings, getDraftStandingsPoints, standingsSort]);
+  }, [baseStandings, standingsDraftOverrides, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
   const resolvedMatchTeams = useMemo(() => {
@@ -5420,16 +5436,9 @@ function EventScheduleContent() {
   );
 
   const handleStandingsOverrideChange = useCallback((teamId: string, value: string | number) => {
-    setStandingsDraftOverrides((prev) => {
-      const next = { ...prev };
-      const numeric = typeof value === 'number' ? value : Number(value);
-      if (!Number.isFinite(numeric)) {
-        delete next[teamId];
-      } else {
-        next[teamId] = numeric;
-      }
-      return next;
-    });
+    const next = updateStandingsDraftInput(standingsDraftOverridesRef.current, teamId, value);
+    standingsDraftOverridesRef.current = next;
+    setStandingsDraftOverrides(next);
     setStandingsActionError(null);
   }, []);
 
@@ -5446,32 +5455,21 @@ function EventScheduleContent() {
       return;
     }
 
-    const existingOverrides = standingsDivisionData.standingsOverrides ?? {};
-    const updates = standingsDivisionData.standings.reduce<Array<{ teamId: string; points: number | null }>>((acc, row) => {
-      const existing = existingOverrides[row.teamId];
-      const desired = standingsDraftOverrides[row.teamId];
-      const basePoints = Number.isFinite(row.basePoints) ? Number(row.basePoints) : 0;
-      const hasExisting = typeof existing === 'number' && Number.isFinite(existing);
-      const hasDesired = typeof desired === 'number' && Number.isFinite(desired);
+    const draftSnapshot = { ...standingsDraftOverridesRef.current };
+    const savePlan = buildStandingsOverrideSave({
+      rows: standingsDivisionData.standings,
+      existingOverrides: standingsDivisionData.standingsOverrides,
+      draftOverrides: draftSnapshot,
+    });
+    if (savePlan.invalidTeamIds.length > 0) {
+      const invalidNames = savePlan.invalidTeamIds.map((teamId) => (
+        standingsDivisionData.standings.find((row) => row.teamId === teamId)?.teamName ?? teamId
+      ));
+      setStandingsActionError(`Enter a whole-number final-points value for: ${invalidNames.join(', ')}.`);
+      return;
+    }
 
-      if (hasDesired) {
-        if (desired === basePoints) {
-          if (hasExisting) {
-            acc.push({ teamId: row.teamId, points: null });
-          }
-          return acc;
-        }
-        if (!hasExisting || desired !== existing) {
-          acc.push({ teamId: row.teamId, points: desired });
-        }
-        return acc;
-      }
-
-      if (hasExisting) {
-        acc.push({ teamId: row.teamId, points: null });
-      }
-      return acc;
-    }, []);
+    const { updates } = savePlan;
 
     if (!updates.length) {
       setInfoMessage('No standings adjustments to save.');
@@ -5489,8 +5487,11 @@ function EventScheduleContent() {
         standingsActionDivisionId,
         updates,
       );
+      if (!standingsOverrideReadbackMatches(savePlan.expectedOverrides, updatedDivision.standingsOverrides)) {
+        throw new Error('The saved standings did not match the submitted adjustments. Reload the pool before retrying.');
+      }
       setStandingsDivisionData(updatedDivision);
-      setStandingsDraftOverrides(updatedDivision.standingsOverrides ? { ...updatedDivision.standingsOverrides } : {});
+      replaceStandingsDraftOverrides(updatedDivision.standingsOverrides ? { ...updatedDivision.standingsOverrides } : {});
       setInfoMessage('Standings adjustments saved.');
     } catch (saveError) {
       console.error('Failed to save standings adjustments:', saveError);
@@ -5498,7 +5499,7 @@ function EventScheduleContent() {
     } finally {
       setSavingStandings(false);
     }
-  }, [activeEvent?.$id, standingsActionDivisionId, standingsDivisionData, standingsDraftOverrides]);
+  }, [activeEvent?.$id, replaceStandingsDraftOverrides, standingsActionDivisionId, standingsDivisionData]);
 
   const handleConfirmStandings = useCallback(async () => {
     if (!activeEvent?.$id || !standingsActionDivisionId) {
@@ -5524,7 +5525,7 @@ function EventScheduleContent() {
         ).size
         : 0;
       setStandingsDivisionData(result.division);
-      setStandingsDraftOverrides(result.division.standingsOverrides ? { ...result.division.standingsOverrides } : {});
+      replaceStandingsDraftOverrides(result.division.standingsOverrides ? { ...result.division.standingsOverrides } : {});
       if (applyStandingsReassignment) {
         await loadSchedule();
         if (result.reassignedPlayoffDivisionIds.length > 0) {
@@ -5545,7 +5546,13 @@ function EventScheduleContent() {
     } finally {
       setConfirmingStandings(false);
     }
-  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, standingsActionDivisionId]);
+  }, [
+    activeEvent?.$id,
+    applyStandingsReassignment,
+    loadSchedule,
+    replaceStandingsDraftOverrides,
+    standingsActionDivisionId,
+  ]);
 
   const standingsValidationMessages = useMemo(() => {
     if (!standingsDivisionData?.validation) {
@@ -5996,6 +6003,7 @@ function EventScheduleContent() {
               standingsSort={standingsSort}
               viewerTeamIds={viewerTeamIds}
               getDraftStandingsPoints={getDraftStandingsPoints}
+              getStandingsOverrideInputValue={getStandingsOverrideInputValue}
               onStandingsDivisionChange={setSelectedStandingsDivision}
               onStandingsPoolChange={setSelectedStandingsPool}
               onApplyStandingsReassignmentChange={setApplyStandingsReassignment}

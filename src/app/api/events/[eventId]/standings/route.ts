@@ -17,9 +17,22 @@ export const dynamic = 'force-dynamic';
 const patchSchema = z.object({
   divisionId: z.string().min(1),
   pointsOverrides: z.array(z.object({
-    teamId: z.string().min(1),
-    points: z.number().nullable(),
+    teamId: z.string().trim().min(1),
+    points: z.number().int().min(-9999).max(9999).nullable(),
   })).default([]),
+}).superRefine((value, ctx) => {
+  const seenTeamIds = new Set<string>();
+  value.pointsOverrides.forEach((override, index) => {
+    if (seenTeamIds.has(override.teamId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pointsOverrides', index, 'teamId'],
+        message: 'Each team may only appear once.',
+      });
+      return;
+    }
+    seenTeamIds.add(override.teamId);
+  });
 });
 
 const getDivisionIdFromRequest = (req: NextRequest): string | null => {
@@ -121,6 +134,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const division = getLeagueDivisionById(standingsEvent, parsed.data.divisionId);
       if (!division) {
         throw new Response('Division not found', { status: 404 });
+      }
+
+      const currentStandings = buildDivisionStandingsResponse(standingsEvent, division.id);
+      const divisionTeamIds = new Set(currentStandings.standings.map((row) => row.teamId));
+      const invalidTeamOverride = parsed.data.pointsOverrides.find((override) => !divisionTeamIds.has(override.teamId));
+      if (invalidTeamOverride) {
+        throw new Response(`Team is not part of the selected division: ${invalidTeamOverride.teamId}`, { status: 400 });
       }
 
       const nextOverrides = applyPointsOverrideUpdates(

@@ -107,6 +107,24 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
   try {
+    const [accessEvent, accessMatch] = await Promise.all([
+      prisma.events.findUnique({
+        where: { id: eventId },
+        select: {
+          id: true,
+          hostId: true,
+          assistantHostIds: true,
+          organizationId: true,
+        },
+      }),
+      prisma.matches.findFirst({
+        where: { id: matchId, eventId },
+        select: { officialId: true, officialIds: true },
+      }),
+    ]);
+    const canCheckInAnyTeam = accessEvent && accessMatch
+      ? await canViewMatchCheckIns(session, accessEvent, accessMatch)
+      : false;
     const checkIn = await prisma.$transaction(async (tx) => {
       const [event, match] = await Promise.all([
         tx.events.findUnique({
@@ -134,6 +152,7 @@ export async function POST(
         match,
         eventTeamId: parsed.data.eventTeamId,
         checkedInByUserId: session.userId,
+        canCheckInAnyTeam,
       });
     });
     return NextResponse.json({ checkIn });

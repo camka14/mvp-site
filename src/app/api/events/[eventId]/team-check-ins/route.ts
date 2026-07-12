@@ -46,6 +46,49 @@ const canViewCheckIns = async (
   return Boolean(official);
 };
 
+const loadManagedEventTeamIds = async (eventId: string, userId: string): Promise<Set<string>> => {
+  const registrations = await prisma.eventRegistrations.findMany({
+    where: {
+      eventId,
+      eventTeamId: { not: null },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+    },
+    select: { eventTeamId: true },
+  });
+  const eventTeamIds = Array.from(new Set(registrations
+    .map((registration) => registration.eventTeamId)
+    .filter((teamId): teamId is string => Boolean(teamId))));
+  if (eventTeamIds.length === 0) {
+    return new Set();
+  }
+  const [teams, assignments] = await Promise.all([
+    prisma.teams.findMany({
+      where: {
+        id: { in: eventTeamIds },
+        OR: [
+          { managerId: userId },
+          { headCoachId: userId },
+          { coachIds: { has: userId } },
+        ],
+      },
+      select: { id: true },
+    }),
+    prisma.eventTeamStaffAssignments.findMany({
+      where: {
+        eventTeamId: { in: eventTeamIds },
+        userId,
+        status: 'ACTIVE',
+        role: { in: ['MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'] },
+      },
+      select: { eventTeamId: true },
+    }),
+  ]);
+  return new Set([
+    ...teams.map((team) => team.id),
+    ...assignments.map((assignment) => assignment.eventTeamId),
+  ]);
+};
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> },
@@ -67,12 +110,18 @@ export async function GET(
   if (!event) {
     return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
   }
-  if (!await canViewCheckIns(session, event)) {
+  const canViewAll = await canViewCheckIns(session, event);
+  const managedEventTeamIds = canViewAll
+    ? null
+    : await loadManagedEventTeamIds(eventId, session.userId);
+  if (!canViewAll && managedEventTeamIds?.size === 0) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const checkIns = await loadTeamCheckIns(prisma, eventId, { matchId: null });
   return NextResponse.json({
-    checkIns,
+    checkIns: managedEventTeamIds
+      ? checkIns.filter((checkIn) => managedEventTeamIds.has(checkIn.eventTeamId))
+      : checkIns,
     teamCheckInMode: event.teamSignup ? event.teamCheckInMode ?? 'OFF' : 'OFF',
     teamCheckInOpenMinutesBefore: event.teamCheckInOpenMinutesBefore ?? 60,
   });
@@ -89,6 +138,16 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
   try {
+    const accessEvent = await prisma.events.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
+    });
+    const canCheckInAnyTeam = accessEvent ? await canViewCheckIns(session, accessEvent) : false;
     const checkIn = await prisma.$transaction(async (tx) => {
       const event = await tx.events.findUnique({
         where: { id: eventId },
@@ -107,6 +166,7 @@ export async function POST(
         event,
         eventTeamId: parsed.data.eventTeamId,
         checkedInByUserId: session.userId,
+        canCheckInAnyTeam,
       });
     });
     return NextResponse.json({ checkIn });

@@ -41,6 +41,7 @@ type StandingsTabPanelProps = {
   standingsSort: StandingsSort;
   viewerTeamIds: Iterable<string>;
   getDraftStandingsPoints: (row: RankedStandingsRow) => StandingsPoints;
+  getStandingsOverrideInputValue: (row: RankedStandingsRow) => string | number;
   onStandingsDivisionChange: (value: string | null) => void;
   onStandingsPoolChange: (value: string | null) => void;
   onApplyStandingsReassignmentChange: (checked: boolean) => void;
@@ -84,6 +85,7 @@ export default function StandingsTabPanel({
   standingsSort,
   viewerTeamIds,
   getDraftStandingsPoints,
+  getStandingsOverrideInputValue,
   onStandingsDivisionChange,
   onStandingsPoolChange,
   onApplyStandingsReassignmentChange,
@@ -281,11 +283,12 @@ export default function StandingsTabPanel({
                           {canManageStandings ? (
                             <Group justify="flex-end" gap="xs" wrap="nowrap">
                               <NumberInput
-                                value={points.finalPoints}
+                                value={getStandingsOverrideInputValue(row)}
                                 onChange={(value) => onStandingsOverrideChange(row.teamId, value as string | number)}
                                 min={-9999}
                                 max={9999}
                                 step={1}
+                                allowDecimal={false}
                                 w={96}
                                 size="xs"
                               />

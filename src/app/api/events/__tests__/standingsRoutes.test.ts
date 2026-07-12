@@ -428,6 +428,38 @@ describe('standings routes', () => {
     expect(team1.pointsDelta).toBe(7);
   });
 
+  it('PATCH rejects duplicate team overrides instead of applying the last value', async () => {
+    const res = await standingsPatch(
+      makePatchRequest({
+        divisionId: 'division_1',
+        pointsOverrides: [
+          { teamId: 'team_1', points: 10 },
+          { teamId: 'team_1', points: 0 },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(divisionsMock.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH rejects an override for a team outside the selected pool', async () => {
+    loadEventWithRelationsMock.mockResolvedValueOnce(buildTournamentPoolFixture());
+
+    const res = await standingsPatch(
+      makePatchRequest({
+        divisionId: 'pool_1',
+        pointsOverrides: [{ teamId: 'team_3', points: 12 }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('Team is not part of the selected division');
+    expect(divisionsMock.update).not.toHaveBeenCalled();
+  });
+
   it('POST confirm persists metadata and skips reassignment when disabled', async () => {
     const res = await standingsConfirm(
       makePostRequest({
