@@ -224,7 +224,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/users/route.ts:143-152` requires any session, then trusts caller-supplied `id` plus an arbitrary `data` record. `:183-205` creates that `UserData` row and `:213-232` updates an existing row. There is no `session.userId === id`/admin assertion and no mutable-field allowlist.
 - Impact: an authenticated caller can create or overwrite another user's profile, including canonical flags/arrays accepted by Prisma, rather than using the access-controlled resource route.
 - Legacy relevance: the safer `PATCH /api/users/[id]` path has explicit access/field handling; this broad POST is a strong pre-`1.6.13` compatibility cleanup candidate after callers are traced.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` retires the universal mutation endpoint: authenticated and unauthenticated callers can no longer create or overwrite an arbitrary `UserData` record through `POST /api/users`, and the route returns HTTP 410 without any persistence access. The focused user-route suite passed all 16 cases, including an attempted victim-profile overwrite.
 
 ### SEC-012 — Universal invite endpoint trusts scope and inviter identity
 
@@ -266,7 +266,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - Unauthenticated single and batch user reads invoke that function (`src/app/api/users/[id]/route.ts:113-138`, `src/app/api/users/route.ts:65-90`).
 - Impact: known user IDs reveal exact birth dates, minor identities, and social/account metadata to unauthenticated callers. Exact DOB is particularly sensitive and unnecessary for a public profile.
 - Test concern: user-route tests whose names describe hiding unrelated minors currently assert visible names and `isIdentityHidden=false`, indicating policy/implementation drift rather than protection.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` applies a contextual privacy projection: public viewers receive no DOB, verification state, social arrays, Stripe state, or home-organization data, while minor identity is masked unless the viewer has a documented parent/team/event/organization relationship. The focused user-route suite passed all 16 cases, including anonymous unrelated minor/adult privacy assertions.
 
 ### SEC-016 — Users can self-assert server-owned verification and payment flags
 
@@ -2182,3 +2182,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-019 in the audited branch. Verified missing Stripe credentials fail closed before payment, Stripe Connect, or team checkout mutations; all 33 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-021 in the audited branch. Verified organization list/detail public projections, selector authorization, and sensitive-field omission; all 28 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-022 in the audited branch. Verified scoped, paginated fields/time-slot reads and narrow anonymous discovery output; all 29 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-011 and SEC-015 in the audited branch. Verified the retired universal user mutation endpoint and contextual public user privacy projection; all 16 focused user-route tests passed. Production deployment remains pending with the rest of the audited branch.
