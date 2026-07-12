@@ -50,6 +50,7 @@ import {
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import {
   GOOGLE_MAP_OPTIONS_WITH_MAP_ID,
   GOOGLE_MAPS_LIBRARIES,
@@ -737,7 +738,7 @@ export default function DiscoverMapModal({
       orgs.forEach((organization) => {
         const orgCoordinates = getOrgCoordinates(organization);
         (organization.facilities ?? []).forEach((facility) => {
-          const affiliateUrl = typeof facility.affiliateUrl === 'string' ? facility.affiliateUrl.trim() : '';
+          const affiliateUrl = normalizeExternalHttpUrl(facility.affiliateUrl);
           if (!affiliateUrl) return;
           if (String(facility.status ?? 'ACTIVE').trim().toUpperCase() !== 'ACTIVE') return;
           const facilityCoordinates = getFacilityCoordinates(facility) ?? orgCoordinates;
@@ -1714,7 +1715,7 @@ export default function DiscoverMapModal({
                     type="button"
                     onClick={() => {
                       if (selectedRental.kind === 'affiliateFacility') {
-                        const affiliateUrl = selectedRental.facility?.affiliateUrl?.trim();
+                        const affiliateUrl = normalizeExternalHttpUrl(selectedRental.facility?.affiliateUrl);
                         if (affiliateUrl) {
                           window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
                           setSelected(null);

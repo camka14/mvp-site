@@ -54,6 +54,7 @@ import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, normalizeT
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
 import {
     buildDivisionToken,
@@ -1272,10 +1273,10 @@ const getOrganizationHostedByHref = (params: {
     const organization = params.organization && typeof params.organization === 'object'
         ? params.organization
         : null;
-    const affiliateUrl = typeof params.affiliateUrl === 'string' ? params.affiliateUrl.trim() : '';
+    const affiliateUrl = normalizeExternalHttpUrl(params.affiliateUrl) ?? '';
 
     if (params.isAffiliateEvent) {
-        const website = typeof organization?.website === 'string' ? organization.website.trim() : '';
+        const website = normalizeExternalHttpUrl(organization?.website) ?? '';
         return website || affiliateUrl || null;
     }
 
@@ -4599,7 +4600,7 @@ export default function EventDetailSheet({
     if (!isActive) return null;
 
     const { date, time } = getEventDateTime(currentEvent);
-    const affiliateActionUrl = typeof currentEvent.affiliateUrl === 'string' ? currentEvent.affiliateUrl.trim() : '';
+    const affiliateActionUrl = normalizeExternalHttpUrl(currentEvent.affiliateUrl) ?? '';
     const isAffiliateEvent = affiliateActionUrl.length > 0;
     const normalizedDateDisplayMode = typeof currentEvent.dateDisplayMode === 'string'
         ? currentEvent.dateDisplayMode.trim().toUpperCase()

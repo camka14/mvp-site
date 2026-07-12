@@ -193,6 +193,34 @@ describe('/api/teams/[id] PATCH', () => {
     expect(payload.headCoachId).toBeNull();
   });
 
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,external-registration',
+    'https://user:password@partner.example.com/register',
+  ])('rejects unsafe affiliate registration URL %s before updating a team', async (affiliateUrl) => {
+    const response = await PATCH(
+      patchJson({ team: { affiliateUrl } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.details.fieldErrors.affiliateUrl).toContain('Enter a valid external registration link.');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes a safe affiliate registration URL before updating a team', async () => {
+    const response = await PATCH(
+      patchJson({ team: { affiliateUrl: ' HTTPS://Partner.Example.com/register ' } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ affiliateUrl: 'https://partner.example.com/register' }),
+    }));
+  });
+
   it('accepts mobile roster registration metadata while removing a player', async () => {
     const response = await PATCH(
       patchJson({

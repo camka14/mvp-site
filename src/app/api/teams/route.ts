@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
+import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
@@ -69,7 +70,9 @@ const createSchema = z.object({
   joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
-  affiliateUrl: z.string().nullable().optional(),
+  affiliateUrl: z.string().nullable().optional().refine(isValidOptionalExternalHttpUrl, {
+    message: 'Enter a valid external registration link.',
+  }),
   requiredTemplateIds: z.array(z.string()).optional(),
   visibility: z.enum(['PUBLIC', 'ADMIN_ONLY']).optional(),
   playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
@@ -275,7 +278,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
-  const affiliateUrl = normalizeText(data.affiliateUrl);
+  const affiliateUrl = normalizeExternalHttpUrl(data.affiliateUrl);
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: organizationId },

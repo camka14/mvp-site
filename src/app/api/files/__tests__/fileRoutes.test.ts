@@ -28,6 +28,7 @@ const prismaMock = {
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: jest.fn() }));
 jest.mock('@/lib/storageProvider', () => ({ getStorageProvider: jest.fn() }));
+jest.mock('@/server/fileAccess', () => ({ assertFileReadAccess: jest.fn() }));
 
 import { POST } from '@/app/api/files/upload/route';
 import { GET, DELETE } from '@/app/api/files/[id]/route';
@@ -35,6 +36,7 @@ import { GET as PREVIEW_GET } from '@/app/api/files/[id]/preview/route';
 
 const requireSessionMock = jest.requireMock('@/lib/permissions').requireSession as jest.Mock;
 const getStorageProviderMock = jest.requireMock('@/lib/storageProvider').getStorageProvider as jest.Mock;
+const assertFileReadAccessMock = jest.requireMock('@/server/fileAccess').assertFileReadAccess as jest.Mock;
 
 const buildFormRequest = (file: File): NextRequest => {
   const form = new FormData();
@@ -48,6 +50,7 @@ const buildFormRequest = (file: File): NextRequest => {
 describe('file routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    assertFileReadAccessMock.mockResolvedValue(undefined);
   });
 
   describe('POST /api/files/upload', () => {
@@ -192,9 +195,68 @@ describe('file routes', () => {
       expect(res.status).toBe(200);
       expect(res.headers.get('Content-Disposition')).toContain('inline');
     });
+
+    it('does not fetch protected payment proofs after access is denied', async () => {
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'payment_proof',
+        path: 'path/proof.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'proof.png',
+      });
+      const storageProvider = { getObjectStream: jest.fn() };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+      assertFileReadAccessMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+
+      const request = new NextRequest('http://localhost/api/files/payment_proof');
+      const res = await GET(request, { params: Promise.resolve({ id: 'payment_proof' }) });
+
+      expect(res.status).toBe(403);
+      expect(storageProvider.getObjectStream).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/files/:id/preview', () => {
+    it('rejects oversized or malformed resize dimensions before reading storage', async () => {
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'file_preview_limits',
+        path: 'path/preview.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'preview.png',
+        sizeBytes: 100,
+      });
+      const storageProvider = { getObjectStream: jest.fn() };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      for (const query of ['w=2049', 'w=100&h=invalid', 'w=2000&h=2001']) {
+        const request = new NextRequest(`http://localhost/api/files/file_preview_limits/preview?${query}`);
+        const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'file_preview_limits' }) });
+        expect(res.status).toBe(400);
+      }
+
+      expect(storageProvider.getObjectStream).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized preview source before buffering it', async () => {
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'file_preview_source_limit',
+        path: 'path/large.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'large.png',
+        sizeBytes: 10 * 1024 * 1024 + 1,
+      });
+      const storageProvider = { getObjectStream: jest.fn() };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      const request = new NextRequest('http://localhost/api/files/file_preview_source_limit/preview?w=64&h=64');
+      const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'file_preview_source_limit' }) });
+
+      expect(res.status).toBe(413);
+      expect(storageProvider.getObjectStream).not.toHaveBeenCalled();
+    });
+
     it('resizes images with cover crop', async () => {
       const inputBuffer = await sharp({
         create: {
@@ -231,6 +293,25 @@ describe('file routes', () => {
       expect(res.status).toBe(200);
       expect(metadata.width).toBe(8);
       expect(metadata.height).toBe(8);
+    });
+
+    it('does not generate a protected proof preview after access is denied', async () => {
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'payment_proof_preview',
+        path: 'path/proof.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'proof.png',
+      });
+      const storageProvider = { getObjectStream: jest.fn() };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+      assertFileReadAccessMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+
+      const request = new NextRequest('http://localhost/api/files/payment_proof_preview/preview?w=8&h=8');
+      const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'payment_proof_preview' }) });
+
+      expect(res.status).toBe(403);
+      expect(storageProvider.getObjectStream).not.toHaveBeenCalled();
     });
 
     it('trims transparent padding before resizing when requested', async () => {

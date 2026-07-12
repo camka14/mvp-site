@@ -697,6 +697,36 @@ describe('publicOrganizationCatalog', () => {
     ]);
   });
 
+  it('does not publish an unsafe historic affiliate URL as a public registration link', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_unsafe_affiliate',
+        name: 'Unsafe Partner Academy',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Soccer',
+        profileImageId: null,
+        teamSize: 20,
+        openRegistration: true,
+        joinPolicy: 'OPEN_REGISTRATION',
+        registrationPriceCents: 0,
+        affiliateUrl: 'javascript:alert(1)',
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_unsafe_affiliate',
+        affiliateUrl: null,
+        registrationUrl: '/o/scsoccer/teams/team_unsafe_affiliate',
+      }),
+    ]);
+  });
+
   it('ignores stale started team registrations in public fullness counts', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-21T22:00:00.000Z'));
     prismaMock.canonicalTeams.findMany.mockResolvedValue([

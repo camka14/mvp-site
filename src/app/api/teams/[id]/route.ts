@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
+import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import {
@@ -85,7 +86,9 @@ const teamPatchSchema = z.object({
   joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
-  affiliateUrl: z.string().nullable().optional(),
+  affiliateUrl: z.string().nullable().optional().refine(isValidOptionalExternalHttpUrl, {
+    message: 'Enter a valid external registration link.',
+  }),
   requiredTemplateIds: z.array(z.string()).optional(),
   parentTeamId: z.string().nullable().optional(),
   playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
@@ -294,8 +297,8 @@ const buildTeamState = (
       )
       : existingJoinPolicy;
   const affiliateUrl = hasOwn(payload, 'affiliateUrl')
-    ? normalizeText(payload.affiliateUrl)
-    : normalizeText(existing.affiliateUrl);
+    ? normalizeExternalHttpUrl(payload.affiliateUrl)
+    : normalizeExternalHttpUrl(existing.affiliateUrl);
   const effectiveJoinPolicy = affiliateUrl ? TEAM_JOIN_POLICY_OPEN_REGISTRATION : joinPolicy;
   const registrationPriceCents = affiliateUrl
     ? 0

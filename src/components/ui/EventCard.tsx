@@ -14,6 +14,7 @@ import { locationService } from '@/lib/locationService';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { buildEventDivisionDisplayLabels } from '@/lib/eventDivisionDisplay';
 import { trackEventOutboundClicked } from '@/lib/analytics/eventAnalytics';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 
 interface EventCardProps {
   event: Event;
@@ -39,8 +40,8 @@ export default function EventCard({
   hostChangeDisabled = false,
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
-  const isAffiliateEvent = typeof event.affiliateUrl === 'string' && event.affiliateUrl.trim().length > 0;
-  const affiliateUrl = isAffiliateEvent ? event.affiliateUrl!.trim() : '';
+  const affiliateUrl = normalizeExternalHttpUrl(event.affiliateUrl) ?? '';
+  const isAffiliateEvent = affiliateUrl.length > 0;
   const normalizedDateDisplayMode = typeof event.dateDisplayMode === 'string'
     ? event.dateDisplayMode.trim().toUpperCase()
     : 'SCHEDULED';
@@ -217,7 +218,7 @@ export default function EventCard({
       return null;
     }
 
-    const organizationWebsite = typeof organization.website === 'string' ? organization.website.trim() : '';
+    const organizationWebsite = normalizeExternalHttpUrl(organization.website) ?? '';
     if (isAffiliateEvent) {
       return organizationWebsite || affiliateUrl || null;
     }

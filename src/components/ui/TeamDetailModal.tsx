@@ -24,6 +24,7 @@ import TeamRegistrationFlow from './TeamRegistrationFlow';
 import { type PaymentEventSummary } from './PaymentModal';
 import InvitePlayersModal from '@/app/teams/components/InvitePlayersModal';
 import { describeDeleteOutcome } from '@/lib/deleteOutcome';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 
 export type TeamDetailPageTab = 'roster' | 'schedule' | 'finance';
 
@@ -269,7 +270,7 @@ export default function TeamDetailModal({
     const canChargeForTeamRegistration = canChargeRegistration ?? Boolean(user?.hasStripeAccount || (currentTeam.registrationPriceCents ?? 0) > 0);
     const registrationPriceCents = Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0));
     const effectiveJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
-    const currentAffiliateUrl = typeof currentTeam.affiliateUrl === 'string' ? currentTeam.affiliateUrl.trim() : '';
+    const currentAffiliateUrl = normalizeExternalHttpUrl(currentTeam.affiliateUrl) ?? '';
     const draftRegistrationEnabled = draftJoinPolicy === 'OPEN_REGISTRATION' || draftJoinPolicy === 'REQUEST_TO_JOIN';
     const draftShowDivisionFields = draftRegistrationEnabled && draftAffiliateUrl.trim().length === 0 && draftSport.trim().length > 0;
     const draftRequestOnly = draftJoinPolicy === 'REQUEST_TO_JOIN';

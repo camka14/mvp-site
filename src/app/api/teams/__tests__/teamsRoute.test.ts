@@ -400,6 +400,52 @@ describe('/api/teams route', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,external-registration',
+    'https://user:password@partner.example.com/register',
+  ])('rejects unsafe affiliate registration URL %s before creating a team', async (affiliateUrl) => {
+    const response = await POST(postJson({
+      id: 'team_unsafe_affiliate_url',
+      name: 'Unsafe External Registration',
+      affiliateUrl,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Enter a valid external registration link.');
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes a safe affiliate registration URL before persisting it', async () => {
+    createMock.mockResolvedValue({
+      id: 'team_safe_affiliate_url',
+      name: 'Safe External Registration',
+      division: 'Open',
+      sport: 'Indoor Volleyball',
+      playerIds: ['user_1'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      coachIds: [],
+      pending: [],
+      teamSize: 6,
+      affiliateUrl: 'https://partner.example.com/register',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(postJson({
+      id: 'team_safe_affiliate_url',
+      name: 'Safe External Registration',
+      affiliateUrl: ' HTTPS://Partner.Example.com/register ',
+    }));
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ affiliateUrl: 'https://partner.example.com/register' }),
+    }));
+  });
+
   it('rejects requests with blank team names', async () => {
     const response = await POST(postJson({
       id: 'team_2',

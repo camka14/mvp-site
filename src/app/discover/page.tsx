@@ -39,6 +39,7 @@ import { createId } from '@/lib/id';
 import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
 import { DISCOVER_SPORT_PARAM, parseDiscoverSportFilters, resolveDiscoverSportFilters } from '@/lib/discoverFilters';
 import { formatDisplayTime } from '@/lib/dateUtils';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
@@ -728,7 +729,7 @@ function DiscoverPageContent() {
     (organization: Organization, listings: RentalListing[] = []) => {
       const affiliateFacilityListings = listings.filter((listing) => listing.kind === 'affiliateFacility');
       if (affiliateFacilityListings.length === listings.length && affiliateFacilityListings.length > 0) {
-        const affiliateUrl = affiliateFacilityListings[0]?.facility?.affiliateUrl?.trim();
+        const affiliateUrl = normalizeExternalHttpUrl(affiliateFacilityListings[0]?.facility?.affiliateUrl);
         if (affiliateUrl) {
           window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -811,7 +812,7 @@ function DiscoverPageContent() {
       const coordinates = getOrgCoordinates(organization);
 
       (organization.facilities || []).forEach((facility) => {
-        const affiliateUrl = typeof facility.affiliateUrl === 'string' ? facility.affiliateUrl.trim() : '';
+        const affiliateUrl = normalizeExternalHttpUrl(facility.affiliateUrl);
         if (!affiliateUrl) {
           return;
         }
@@ -1156,7 +1157,7 @@ function DiscoverPageContent() {
               setSelectedDivisionTypeValues={setTeamSelectedDivisionTypeValues}
               divisionTypeOptions={teamDivisionTypeOptions}
               onSelectTeam={(team) => {
-                const affiliateUrl = typeof team.affiliateUrl === 'string' ? team.affiliateUrl.trim() : '';
+                const affiliateUrl = normalizeExternalHttpUrl(team.affiliateUrl);
                 if (affiliateUrl) {
                   window.open(affiliateUrl, '_blank', 'noopener,noreferrer');
                   return;

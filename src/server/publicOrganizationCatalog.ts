@@ -10,6 +10,7 @@ import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistratio
 import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import { getFieldDisplayName, getFieldResolvedLocation } from '@/lib/fieldUtils';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 
@@ -1063,9 +1064,7 @@ export const listPublicOrganizationTeams = async (
   });
   const occupancyByTeamId = await getPublicTeamOccupancyByTeamId(rows.map((row: Record<string, any>) => String(row.id)));
   return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => {
-    const affiliateUrl = typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0
-      ? team.affiliateUrl.trim()
-      : null;
+    const affiliateUrl = normalizeExternalHttpUrl(team.affiliateUrl);
     const teamSize = normalizeNumber(team.teamSize);
     const currentSize = occupancyByTeamId.get(String(team.id)) ?? 0;
     const isFull = teamSize > 0 && currentSize >= teamSize;
@@ -1111,7 +1110,7 @@ const mapPublicTeamCard = (
     openRegistration: Boolean(team.openRegistration),
     joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
-    affiliateUrl: typeof team.affiliateUrl === 'string' && team.affiliateUrl.trim().length > 0 ? team.affiliateUrl.trim() : null,
+    affiliateUrl: normalizeExternalHttpUrl(team.affiliateUrl),
     requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
   };
 };
