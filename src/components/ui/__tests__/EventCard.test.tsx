@@ -123,7 +123,7 @@ describe('EventCard affiliate schedule display', () => {
 
     expect(screen.getByRole('link', { name: 'Hosted by Rose City Volleyball' })).toHaveAttribute(
       'href',
-      'https://rosecityvolleyball.com',
+      'https://rosecityvolleyball.com/',
     );
   });
 

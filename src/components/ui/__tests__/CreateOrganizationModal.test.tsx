@@ -6,6 +6,7 @@ import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
 const createOrganizationMock = jest.fn();
 const updateOrganizationMock = jest.fn();
+const originalFetch = globalThis.fetch;
 
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
@@ -59,6 +60,10 @@ jest.mock('../ImageUploader', () => ({
 
 describe('CreateOrganizationModal', () => {
   beforeEach(() => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ tags: [] }),
+    }) as unknown as typeof fetch;
     createOrganizationMock.mockReset();
     updateOrganizationMock.mockReset();
     createOrganizationMock.mockResolvedValue({
@@ -70,6 +75,10 @@ describe('CreateOrganizationModal', () => {
       name: 'Downtown Sports',
       status: 'UNLISTED',
     });
+  });
+
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it('submits tax setting checkbox values without relying on the event during state updates', async () => {

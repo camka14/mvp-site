@@ -244,7 +244,7 @@ describe('EventDetailSheet details layout', () => {
     expect(screen.getAllByText('Portland Metro Softball Association').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: /portland metro softball association/i })).toHaveAttribute(
       'href',
-      'https://www.portlandsoftball.com',
+      'https://www.portlandsoftball.com/',
     );
   });
 
