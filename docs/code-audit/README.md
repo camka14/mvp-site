@@ -233,7 +233,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/users/invite/route.ts:32-40` requires any session but accepts optional caller-controlled `inviterId`. `:60-71` validates only that exactly one team/event/organization scope ID is present, not that the caller manages it. `:88-114` provisions the email account and creates the invite with the spoofable actor at `createdBy`.
 - Alias amplification: `invite_by_email`, `invite-by-email`, and `invite-email` all re-export this POST handler.
 - Impact: any account can invite arbitrary emails as players/officials into known scopes and attribute the invite to another user.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `58466c56` derives `createdBy` exclusively from the authenticated session and requires team captain/manager/coach, event-manager, organization-manager, or admin authority for each exact invite scope. The focused invite suite passed all four cases, including spoofed-inviter and unauthorized team/event/organization attempts.
 
 ### SEC-013 — Generic ensure/lookup endpoints enable account creation and email enumeration
 
@@ -2183,3 +2183,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-021 in the audited branch. Verified organization list/detail public projections, selector authorization, and sensitive-field omission; all 28 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-022 in the audited branch. Verified scoped, paginated fields/time-slot reads and narrow anonymous discovery output; all 29 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-011 and SEC-015 in the audited branch. Verified the retired universal user mutation endpoint and contextual public user privacy projection; all 16 focused user-route tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-012 in the audited branch. Verified every invitation uses the authenticated actor and is checked against the exact team, event, or organization scope; all four focused invite-route tests passed. Production deployment remains pending with the rest of the audited branch.
