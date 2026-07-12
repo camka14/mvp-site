@@ -36,7 +36,6 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useApp } from '@/app/providers';
-import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
 import { ONBOARDING_PATH } from '@/lib/onboardingIntent';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
@@ -878,7 +877,7 @@ export default function LandingPage({
   anchorHrefPrefix = '',
   heroMediaLayout = 'stacked',
 }: LandingPageProps) {
-  const { user, isAuthenticated, isGuest } = useApp();
+  const { user, isAuthenticated, isGuest, startGuestSession } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
@@ -894,7 +893,7 @@ export default function LandingPage({
     setGuestError('');
     setStartingGuestSession(true);
     try {
-      await authService.guestLogin();
+      await startGuestSession();
       router.push(ONBOARDING_PATH);
     } catch (error: unknown) {
       setGuestError(error instanceof Error ? error.message : 'Unable to start guest session right now.');

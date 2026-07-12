@@ -3,15 +3,18 @@ import { Providers, useApp } from '@/app/providers';
 
 const fetchSessionMock = jest.fn();
 const isGuestMock = jest.fn();
+const guestLoginMock = jest.fn();
 const setCurrentAuthUserMock = jest.fn();
 const setCurrentUserDataMock = jest.fn();
 const getAllSportsMock = jest.fn();
 const getTeamsByUserIdMock = jest.fn();
+const getUserByIdMock = jest.fn();
 
 jest.mock('@/lib/auth', () => ({
   authService: {
     fetchSession: (...args: unknown[]) => fetchSessionMock(...args),
     isGuest: (...args: unknown[]) => isGuestMock(...args),
+    guestLogin: (...args: unknown[]) => guestLoginMock(...args),
     setCurrentAuthUser: (...args: unknown[]) => setCurrentAuthUserMock(...args),
     setCurrentUserData: (...args: unknown[]) => setCurrentUserDataMock(...args),
     getStoredUserData: () => null,
@@ -21,7 +24,7 @@ jest.mock('@/lib/auth', () => ({
 
 jest.mock('@/lib/userService', () => ({
   userService: {
-    getUserById: jest.fn().mockResolvedValue(null),
+    getUserById: (...args: unknown[]) => getUserByIdMock(...args),
   },
 }));
 
@@ -38,13 +41,24 @@ jest.mock('@/lib/teamService', () => ({
 }));
 
 function Probe() {
-  const { isGuest, isAuthenticated, setAuthUser, setUser, loading } = useApp();
+  const {
+    authUser,
+    user,
+    isGuest,
+    isAuthenticated,
+    setAuthUser,
+    setUser,
+    startGuestSession,
+    loading,
+  } = useApp();
 
   return (
     <div>
       <div data-testid="loading">{String(loading)}</div>
       <div data-testid="guest">{String(isGuest)}</div>
       <div data-testid="authenticated">{String(isAuthenticated)}</div>
+      <div data-testid="auth-user">{authUser?.$id ?? 'none'}</div>
+      <div data-testid="user">{user?.$id ?? 'none'}</div>
       <button
         type="button"
         onClick={() => setAuthUser({ $id: 'user_1', email: 'member@example.com' })}
@@ -57,6 +71,9 @@ function Probe() {
       >
         set-user
       </button>
+      <button type="button" onClick={() => void startGuestSession()}>
+        start-guest
+      </button>
     </div>
   );
 }
@@ -65,10 +82,12 @@ describe('Providers guest/auth state synchronization', () => {
   beforeEach(() => {
     fetchSessionMock.mockReset();
     isGuestMock.mockReset();
+    guestLoginMock.mockReset();
     setCurrentAuthUserMock.mockReset();
     setCurrentUserDataMock.mockReset();
     getAllSportsMock.mockReset();
     getTeamsByUserIdMock.mockReset();
+    getUserByIdMock.mockReset();
 
     fetchSessionMock.mockResolvedValue({
       user: null,
@@ -79,6 +98,8 @@ describe('Providers guest/auth state synchronization', () => {
       missingProfileFields: [],
     });
     isGuestMock.mockReturnValue(true);
+    guestLoginMock.mockResolvedValue(undefined);
+    getUserByIdMock.mockResolvedValue(null);
     getAllSportsMock.mockResolvedValue([]);
     getTeamsByUserIdMock.mockResolvedValue([]);
   });
@@ -123,5 +144,40 @@ describe('Providers guest/auth state synchronization', () => {
       expect(screen.getByTestId('guest')).toHaveTextContent('false');
     });
     expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+  });
+
+  it('enters guest mode in the mounted provider before client-side navigation', async () => {
+    isGuestMock.mockReturnValue(false);
+    fetchSessionMock.mockResolvedValue({
+      user: { $id: 'member_1', email: 'member@example.com' },
+      profile: { $id: 'member_1', homePageOrganizationId: null },
+      session: { token: 'session-token' },
+      token: 'session-token',
+      requiresProfileCompletion: false,
+      missingProfileFields: [],
+      requiresEmailVerification: false,
+    });
+    getUserByIdMock.mockResolvedValue({ $id: 'member_1', homePageOrganizationId: null });
+
+    render(
+      <Providers>
+        <Probe />
+      </Providers>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-user')).toHaveTextContent('member_1');
+      expect(screen.getByTestId('user')).toHaveTextContent('member_1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'start-guest' }));
+
+    await waitFor(() => {
+      expect(guestLoginMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('guest')).toHaveTextContent('true');
+      expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
+      expect(screen.getByTestId('auth-user')).toHaveTextContent('none');
+      expect(screen.getByTestId('user')).toHaveTextContent('none');
+    });
   });
 });

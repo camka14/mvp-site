@@ -30,6 +30,7 @@ interface AppContextType {
   updateUser: (updates: Partial<UserData>) => Promise<UserData | null>;
   refreshUser: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  startGuestSession: () => Promise<void>;
   isGuest: boolean;
   isAuthenticated: boolean;
   requiresProfileCompletion: boolean;
@@ -213,6 +214,22 @@ export function Providers({ children }: ProvidersProps) {
     await checkAuth();
   }, [checkAuth]);
 
+  const startGuestSession = useCallback(async () => {
+    await authService.guestLogin();
+
+    // Client-side navigation keeps this provider mounted. Reflect the guest
+    // transition here rather than waiting for a later storage-backed auth
+    // refresh, otherwise protected guest routes see stale signed-out state.
+    setAuthUserState(null);
+    setUserState(null);
+    setUserTeamsState([]);
+    setUserTeamsLoading(false);
+    setRequiresProfileCompletion(false);
+    setMissingProfileFields([]);
+    setRequiresEmailVerification(false);
+    setIsGuest(true);
+  }, []);
+
   const updateUser = async (updates: Partial<UserData>) => {
     if (!user) return null;
     try {
@@ -241,6 +258,7 @@ export function Providers({ children }: ProvidersProps) {
       updateUser,
       refreshUser,
       refreshSession,
+      startGuestSession,
       isGuest,
       isAuthenticated,
       requiresProfileCompletion,

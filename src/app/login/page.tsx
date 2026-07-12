@@ -59,6 +59,7 @@ function LoginPageContent() {
     setAuthUser,
     loading: authLoading,
     requiresProfileCompletion,
+    startGuestSession,
   } = useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -384,13 +385,7 @@ function LoginPageContent() {
     setLoading(true);
     setError('');
     try {
-      // If already in guest mode, skip creating a new session
-      if (authService.isGuest()) {
-        router.push(ONBOARDING_PATH);
-        return;
-      }
-
-      await authService.guestLogin();
+      await startGuestSession();
       router.push(ONBOARDING_PATH);
     } catch (e: any) {
       setError(e?.message || 'Failed to start guest session');

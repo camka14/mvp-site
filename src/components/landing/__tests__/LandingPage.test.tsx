@@ -11,22 +11,18 @@ jest.mock('@/app/providers', () => ({
   useApp: () => useAppMock(),
 }));
 
-const guestLoginMock = jest.fn();
-jest.mock('@/lib/auth', () => ({
-  authService: {
-    guestLogin: (...args: unknown[]) => guestLoginMock(...args),
-  },
-}));
+const startGuestSessionMock = jest.fn();
 
 describe('LandingPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
-    guestLoginMock.mockReset();
+    startGuestSessionMock.mockReset();
     useAppMock.mockReturnValue({
       user: null,
       loading: false,
       isGuest: false,
       isAuthenticated: false,
+      startGuestSession: (...args: unknown[]) => startGuestSessionMock(...args),
     });
   });
 
@@ -113,14 +109,14 @@ describe('LandingPage', () => {
   });
 
   it('starts a guest session and routes to onboarding when continue as guest is clicked', async () => {
-    guestLoginMock.mockResolvedValue(undefined);
+    startGuestSessionMock.mockResolvedValue(undefined);
 
     render(<LandingPage />);
 
     fireEvent.click(screen.getAllByRole('button', { name: /continue as guest/i })[0]);
 
     await waitFor(() => {
-      expect(guestLoginMock).toHaveBeenCalledTimes(1);
+      expect(startGuestSessionMock).toHaveBeenCalledTimes(1);
     });
     expect(pushMock).toHaveBeenCalledWith('/onboarding');
   });
