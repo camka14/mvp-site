@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257` and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (8)** | `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005` | `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Completed — high (9)** | `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006` | `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
 | **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
-| **Remaining / not yet reconciled (184)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Remaining / not yet reconciled (183)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **43 completed, 184 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **44 completed, 183 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -383,6 +383,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repositories: both
 - Evidence: current Android mobile version is `1.6.14`/versionCode 67 while Wear OS is `0.1.0`/100001, but source-controlled `AppReleases` migrations seed only 1.5.6 and 1.5.12. `src/app/api/app-version/route.ts:28-36` trusts mutable DB rows, and no tracked manifest/upsert for 1.6.13 or 1.6.14 exists.
 - Impact: a fresh database cannot reproduce current update policy; release truth appears to live in manually mutated production data.
+- Fix status: **completed 2026-07-12**. `20260712160000_seed_app_releases_1_6_13_1_6_14` deterministically upserts Android and iOS 1.6.13/1.6.14 rows by platform, version, and build. Its regression test is deliberately outside the Prisma migrations directory (`9c294b38`) so Prisma sees only real migration history. A fresh full migration-chain replay and idempotency reapply passed; Android and iOS update-contract tests passed at their current 1.6.14 boundaries in `c03e8a94`. The live migration deployment completed successfully, status is up to date, and the public endpoint reports 1.6.13 → 1.6.14 as available while 1.6.14 is current on both platforms.
 - Fix status: **not changed; reporting only**.
 
 ### DATA-007 — Normalized ownership/membership coexist with mutable duplicate ID arrays
@@ -2167,3 +2168,4 @@ These are not yet confirmed defects:
 - 2026-07-10: Built and installed the current Android debug APK successfully, reproduced a pre-activity cold-start ANR twice, and extracted the system ANR trace proving synchronous eager Koin/Ktor/SLF4J service discovery on the application main thread.
 - 2026-07-12: Completed DATA-004 schema-drift fail-closed remediation across web and mobile. Focused web regressions and `tsc --noEmit` passed; Android and iOS team-repository runs each passed 19 tests. A freshly installed Android build cold-launched to the Login UI with no app crash, Room migration, or illegal-state log.
 - 2026-07-12: Completed DATA-005 and reconciled DATA-013. Retired the stale shadow Prisma schema, added canonical schema/generated-client/version checks to the build preflight, refreshed the local dependency installation to the tracked 7.8.0 Prisma pair, and verified the guard test, TypeScript check, and build-command preflight.
+- 2026-07-12: Completed DATA-006. Added deterministic 1.6.13/1.6.14 AppReleases seeds for Android and iOS, verified a fresh full migration-chain replay and repeat application, passed Android/iOS update-contract tests, deployed all pending live migrations, and verified the public app-version contract at both old and current build boundaries.
