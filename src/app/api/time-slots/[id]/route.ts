@@ -12,6 +12,7 @@ import {
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
 import { deleteOrArchiveTimeSlot, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
+import { canManageScheduledFields, canManageTimeSlot } from '@/server/timeSlotAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -208,6 +209,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existingSlot) {
     return NextResponse.json({ error: 'Time slot not found' }, { status: 404 });
   }
+  if (!(await canManageTimeSlot(session, existingSlot))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const payload = stripLegacyFieldsDeep(parsed.payload) as Record<string, unknown>;
   const unknownPayloadKeys = findUnknownKeys(payload, [
@@ -252,6 +256,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? payload.scheduledFieldIds
       : ((existingSlot as any).scheduledFieldIds ?? ((existingSlot as any).scheduledFieldId ? [(existingSlot as any).scheduledFieldId] : [])),
   );
+  const changesScheduledFields = payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined;
+  if (changesScheduledFields && !(await canManageScheduledFields(session, effectiveScheduledFieldIds))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const effectiveTimeZone = await resolveSlotTimeZone(
     effectiveScheduledFieldIds,
     payload.timeZone,
@@ -365,10 +373,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const existing = await prisma.timeSlots.findUnique({
     where: { id },
-    select: { id: true, archivedAt: true, archivedByUserId: true, archiveReason: true },
+    select: {
+      id: true,
+      scheduledFieldId: true,
+      scheduledFieldIds: true,
+      archivedAt: true,
+      archivedByUserId: true,
+      archiveReason: true,
+    },
   });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  if (!(await canManageTimeSlot(session, existing))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const result = await deleteOrArchiveTimeSlot({

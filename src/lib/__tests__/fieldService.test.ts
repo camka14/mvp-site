@@ -110,6 +110,24 @@ describe('fieldService', () => {
     }));
   });
 
+  it('follows the bounded fields pagination contract for organization discovery', async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({
+        fields: [{ $id: 'field_1', name: 'Court A', rentalSlotIds: [] }],
+        pagination: { hasMore: true, nextOffset: 100 },
+      })
+      .mockResolvedValueOnce({
+        fields: [{ $id: 'field_2', name: 'Court B', rentalSlotIds: [] }],
+        pagination: { hasMore: false, nextOffset: 101 },
+      });
+
+    const fields = await fieldService.listFields({ organizationId: 'org_1' });
+
+    expect(apiRequestMock).toHaveBeenNthCalledWith(1, '/api/fields?organizationId=org_1');
+    expect(apiRequestMock).toHaveBeenNthCalledWith(2, '/api/fields?organizationId=org_1&offset=100');
+    expect(fields.map((field) => field.$id)).toEqual(['field_1', 'field_2']);
+  });
+
   it('hydrates events and matches when range provided', async () => {
     apiRequestMock
       .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A' }] })

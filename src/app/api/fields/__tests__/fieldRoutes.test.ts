@@ -42,6 +42,7 @@ const jsonRequest = (body: unknown) =>
 describe('field routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.facilities.findFirst.mockResolvedValue({
       id: 'facility_org_1',
@@ -245,7 +246,136 @@ describe('field routes', () => {
           organizationId: 'org_1',
           sportIds: { hasSome: ['Basketball', 'Indoor Soccer', 'Pickleball'] },
         },
+        take: 101,
+        skip: 0,
       }),
     );
+  });
+
+  it('rejects an anonymous unscoped fields request before querying inventory', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await GET(new NextRequest('http://localhost/api/fields'));
+
+    expect(response.status).toBe(401);
+    expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects anonymous field ID hydration outside a public organization scope', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await GET(new NextRequest('http://localhost/api/fields?ids=field_private'));
+
+    expect(response.status).toBe(401);
+    expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not treat public-page flags as anonymous access to an unlisted organization', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_unlisted',
+      status: 'UNLISTED',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+    });
+    prismaMock.facilities.findMany.mockResolvedValue([]);
+
+    const response = await GET(new NextRequest('http://localhost/api/fields?organizationId=org_unlisted'));
+
+    expect(response.status).toBe(404);
+    expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.facilities.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_unlisted',
+        status: 'ACTIVE',
+        affiliateUrl: { not: null },
+      },
+      select: { id: true, affiliateUrl: true },
+    });
+  });
+
+  it('limits the documented anonymous affiliate exception to affiliate-facility fields', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_affiliate', status: 'UNLISTED' });
+    prismaMock.facilities.findMany
+      .mockResolvedValueOnce([{ id: 'facility_affiliate', affiliateUrl: 'https://partner.example.com' }])
+      .mockResolvedValueOnce([{ id: 'facility_affiliate', name: 'Partner Facility' }]);
+    prismaMock.fields.findMany.mockResolvedValueOnce([{
+      id: 'field_affiliate',
+      facilityId: 'facility_affiliate',
+      name: 'Partner Court',
+      rentalSlotIds: [],
+    }]);
+
+    const response = await GET(new NextRequest('http://localhost/api/fields?organizationId=org_affiliate'));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.fields.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        archivedAt: null,
+        organizationId: 'org_affiliate',
+        facilityId: { in: ['facility_affiliate'] },
+      },
+    }));
+  });
+
+  it('returns a capped public projection for anonymous listed-organization discovery', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_public', status: 'LISTED' });
+    prismaMock.fields.findMany.mockResolvedValue([
+      {
+        id: 'field_public',
+        name: 'Court A',
+        location: 'River City',
+        lat: 45.52,
+        long: -122.67,
+        inUse: true,
+        organizationId: 'org_public',
+        createdBy: 'owner_1',
+        facilityId: 'facility_public',
+        rentalSlotIds: ['slot_public'],
+        sportIds: ['Volleyball'],
+      },
+    ]);
+    prismaMock.facilities.findMany.mockResolvedValue([
+      {
+        id: 'facility_public',
+        organizationId: 'org_public',
+        name: 'River City Sports Complex',
+        location: 'River City',
+        address: '123 Main St',
+        operatingHours: { monday: 'closed' },
+        affiliateUrl: 'https://internal.example.com',
+      },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/fields?organizationId=org_public&limit=1'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.fields.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { archivedAt: null, organizationId: 'org_public' },
+      take: 2,
+      skip: 0,
+    }));
+    expect(payload.pagination).toEqual({
+      limit: 1,
+      offset: 0,
+      nextOffset: 1,
+      hasMore: false,
+    });
+    expect(payload.fields[0]).toEqual(expect.objectContaining({
+      $id: 'field_public',
+      name: 'Court A',
+      rentalSlotIds: ['slot_public'],
+    }));
+    expect(payload.fields[0]).not.toHaveProperty('organizationId');
+    expect(payload.fields[0]).not.toHaveProperty('createdAt');
+    expect(payload.fields[0]).not.toHaveProperty('updatedAt');
+    expect(payload.fields[0]).not.toHaveProperty('createdBy');
+    expect(payload.fields[0]).not.toHaveProperty('inUse');
+    expect(payload.fields[0].facility).not.toHaveProperty('organizationId');
+    expect(payload.fields[0].facility).not.toHaveProperty('operatingHours');
+    expect(payload.fields[0].facility).not.toHaveProperty('affiliateUrl');
   });
 });

@@ -38,6 +38,8 @@ const createSchema = z.object({
 }).passthrough();
 
 const SELECTED_FIELD_LOCATION_ERROR = 'Resource location must be selected from suggestions or the map';
+const DEFAULT_FIELDS_PAGE_SIZE = 100;
+const MAX_FIELDS_PAGE_SIZE = 200;
 
 const hasFieldLocation = (value: unknown): boolean =>
   typeof value === 'string' && value.trim().length > 0;
@@ -60,12 +62,90 @@ const normalizeStringList = (values: unknown): string[] => (
     : []
 );
 
+const normalizePageSize = (value: string | null): number => {
+  const parsed = Number(value ?? DEFAULT_FIELDS_PAGE_SIZE);
+  if (!Number.isFinite(parsed)) return DEFAULT_FIELDS_PAGE_SIZE;
+  return Math.min(Math.max(Math.trunc(parsed), 1), MAX_FIELDS_PAGE_SIZE);
+};
+
+const normalizeOffset = (value: string | null): number => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(Math.trunc(parsed), 0);
+};
+
+const isPublicOrganization = (organization: { status?: string | null } | null): boolean => (
+  organization?.status === 'LISTED'
+);
+
+const toPublicFieldPayload = (field: Record<string, any>) => ({
+  id: field.id,
+  name: field.name ?? null,
+  location: field.location ?? null,
+  lat: field.lat ?? null,
+  long: field.long ?? null,
+  facilityId: field.facilityId ?? null,
+  sportIds: Array.isArray(field.sportIds) ? field.sportIds : [],
+  rentalSlotIds: Array.isArray(field.rentalSlotIds) ? field.rentalSlotIds : [],
+  facility: field.facility
+    ? {
+        id: field.facility.id,
+        name: field.facility.name ?? null,
+        location: field.facility.location ?? null,
+        address: field.facility.address ?? null,
+        coordinates: field.facility.coordinates ?? null,
+        status: field.facility.status ?? null,
+      }
+    : null,
+});
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const eventId = params.get('eventId');
   const organizationId = params.get('organizationId');
   const sportIds = normalizeStringList(params.getAll('sportId').concat(params.get('sportIds')?.split(',') ?? []));
+  const limit = normalizePageSize(params.get('limit'));
+  const offset = normalizeOffset(params.get('offset'));
+  let publicAffiliateFacilityIds: string[] | null = null;
+  let session: Awaited<ReturnType<typeof requireSession>> | null = null;
+  try {
+    session = await requireSession(req);
+  } catch (error) {
+    if (!(error instanceof Response)) throw error;
+  }
+
+  if (!session) {
+    // Anonymous discovery may only resolve the public inventory of one listed organization.
+    // Event- and ID-based field hydration remain authenticated application operations.
+    if (!organizationId || idsParam || eventId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const organization = await prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { status: true },
+    });
+    if (!isPublicOrganization(organization)) {
+      // A small, explicit exception supports public affiliate listings. It is
+      // deliberately limited to fields assigned to active affiliate facilities,
+      // so an UNLISTED organization cannot expose its regular field inventory.
+      const affiliateFacilities = await prisma.facilities.findMany({
+        where: {
+          organizationId,
+          status: 'ACTIVE',
+          affiliateUrl: { not: null },
+        },
+        select: { id: true, affiliateUrl: true },
+      });
+      publicAffiliateFacilityIds = affiliateFacilities
+        .filter((facility) => typeof facility.affiliateUrl === 'string' && facility.affiliateUrl.trim().length > 0)
+        .map((facility) => facility.id)
+        .filter((facilityId): facilityId is string => typeof facilityId === 'string' && facilityId.length > 0);
+      if (!publicAffiliateFacilityIds.length) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+    }
+  }
 
   let ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   if (!ids && eventId) {
@@ -80,6 +160,9 @@ export async function GET(req: NextRequest) {
   if (organizationId) {
     where.organizationId = organizationId;
   }
+  if (!session && publicAffiliateFacilityIds?.length) {
+    where.facilityId = { in: publicAffiliateFacilityIds };
+  }
   if (sportIds.length) {
     where.sportIds = { hasSome: sportIds };
   }
@@ -87,10 +170,24 @@ export async function GET(req: NextRequest) {
   const fields = await prisma.fields.findMany({
     where,
     orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    take: limit + 1,
+    skip: offset,
   });
-  const fieldsWithFacilities = await attachFacilitiesToFieldRows(fields);
+  const pageRows = fields.slice(0, limit);
+  const fieldsWithFacilities = await attachFacilitiesToFieldRows(pageRows);
+  const responseRows = session
+    ? fieldsWithFacilities.map(withLegacyFieldPayload)
+    : fieldsWithFacilities.map((field) => withLegacyFieldPayload(toPublicFieldPayload(field)));
 
-  return NextResponse.json({ fields: fieldsWithFacilities.map(withLegacyFieldPayload) }, { status: 200 });
+  return NextResponse.json({
+    fields: responseRows,
+    pagination: {
+      limit,
+      offset,
+      nextOffset: offset + pageRows.length,
+      hasMore: fields.length > limit,
+    },
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

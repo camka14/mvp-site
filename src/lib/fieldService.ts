@@ -118,8 +118,7 @@ class FieldService {
       for (const chunk of chunks) {
         const params = new URLSearchParams();
         params.set('ids', chunk.join(','));
-        const response = await apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
-        rows.push(...(response.fields ?? []));
+        rows.push(...await this.fetchFieldPages(params));
       }
     } else {
       const params = new URLSearchParams();
@@ -129,8 +128,7 @@ class FieldService {
       if (normalizedFilter.organizationId) {
         params.set('organizationId', normalizedFilter.organizationId);
       }
-      const response = await apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
-      rows.push(...(response.fields ?? []));
+      rows.push(...await this.fetchFieldPages(params));
     }
 
     const fields = rows.map((row: any) => this.mapRowToField(row));
@@ -319,6 +317,37 @@ class FieldService {
     return chunks;
   }
 
+  private async fetchFieldPages(params: URLSearchParams): Promise<any[]> {
+    const rows: any[] = [];
+    let offset = 0;
+
+    for (let page = 0; page < 100; page += 1) {
+      if (offset > 0) {
+        params.set('offset', String(offset));
+      } else {
+        params.delete('offset');
+      }
+      const response = await apiRequest<{
+        fields?: any[];
+        pagination?: { hasMore?: boolean; nextOffset?: number };
+      }>(`/api/fields?${params.toString()}`);
+      rows.push(...(response.fields ?? []));
+
+      const nextOffset = response.pagination?.nextOffset;
+      if (
+        !response.pagination?.hasMore
+        || typeof nextOffset !== 'number'
+        || !Number.isInteger(nextOffset)
+        || nextOffset <= offset
+      ) {
+        break;
+      }
+      offset = nextOffset;
+    }
+
+    return rows;
+  }
+
   private async hydrateFieldRentalSlots(fields: Field[]): Promise<void> {
     if (!fields.length) {
       return;
@@ -386,6 +415,7 @@ class FieldService {
       this.chunkIds(unique).map((batch) => {
         const params = new URLSearchParams();
         params.set('ids', batch.join(','));
+        params.set('rentalOnly', '1');
         return apiRequest<{ timeSlots?: any[] }>(`/api/time-slots?${params.toString()}`);
       }),
     );

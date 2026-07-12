@@ -11,6 +11,7 @@ const prismaMock = {
   },
   organizations: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
   },
   timeSlots: {
     findMany: jest.fn(),
@@ -40,9 +41,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const canManageScheduledFieldsMock = jest.fn();
+const canManageTimeSlotMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/timeSlotAccess', () => ({
+  canManageScheduledFields: (...args: unknown[]) => canManageScheduledFieldsMock(...args),
+  canManageTimeSlot: (...args: unknown[]) => canManageTimeSlotMock(...args),
+}));
 jest.mock('@/server/legacyFormat', () => ({
   parseDateInput: (value: unknown) => {
     if (value === null || value === undefined || value === '') {
@@ -81,9 +88,12 @@ describe('time-slots routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    canManageScheduledFieldsMock.mockResolvedValue(true);
+    canManageTimeSlotMock.mockResolvedValue(true);
     prismaMock.fields.findMany.mockResolvedValue([]);
     prismaMock.fields.update.mockResolvedValue({});
     prismaMock.organizations.findUnique.mockResolvedValue(null);
+    prismaMock.organizations.findMany.mockResolvedValue([]);
     prismaMock.timeSlots.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
       id: where.id,
       startDate: new Date('2026-01-05T00:00:00.000Z'),
@@ -143,6 +153,8 @@ describe('time-slots routes', () => {
             },
           ],
         },
+        take: 101,
+        skip: 0,
       }),
     );
     expect(json.timeSlots[0]).toEqual(expect.objectContaining({
@@ -173,6 +185,8 @@ describe('time-slots routes', () => {
             },
           ],
         },
+        take: 101,
+        skip: 0,
       }),
     );
   });
@@ -219,10 +233,110 @@ describe('time-slots routes', () => {
             { id: { in: ['slot_rental'] } },
           ],
         },
+        take: 101,
+        skip: 0,
       }),
     );
     expect(json.timeSlots).toHaveLength(1);
     expect(json.timeSlots[0].id).toBe('slot_rental');
+  });
+
+  it('rejects an unscoped time-slot read before querying the inventory', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await GET(new NextRequest('http://localhost/api/time-slots'));
+
+    expect(response.status).toBe(400);
+    expect(prismaMock.timeSlots.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an anonymous non-rental time-slot ID lookup before querying slots', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await GET(new NextRequest('http://localhost/api/time-slots?ids=slot_private'));
+
+    expect(response.status).toBe(401);
+    expect(prismaMock.timeSlots.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns only public rental slot fields for anonymous, scoped rental discovery', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.fields.findMany.mockResolvedValueOnce([{
+      organizationId: 'org_public',
+      rentalSlotIds: ['slot_public'],
+    }]);
+    prismaMock.organizations.findMany.mockResolvedValueOnce([{ id: 'org_public' }]);
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([{
+      id: 'slot_public',
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_public',
+      scheduledFieldIds: ['field_public'],
+      divisions: ['internal-division'],
+      requiredTemplateIds: ['document_internal'],
+      hostRequiredTemplateIds: ['host_document_internal'],
+      taxHandling: 'EXEMPT_PARTICIPANT_SPORTS',
+      startDate: new Date('2026-01-05T00:00:00.000Z'),
+      endDate: null,
+      repeating: true,
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      price: 1800,
+    }]);
+
+    const response = await GET(new NextRequest(
+      'http://localhost/api/time-slots?ids=slot_public&rentalOnly=1&limit=1',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.fields.findMany).toHaveBeenCalledWith({
+      where: {
+        archivedAt: null,
+        rentalSlotIds: { hasSome: ['slot_public'] },
+      },
+      select: {
+        organizationId: true,
+        rentalSlotIds: true,
+      },
+    });
+    expect(prismaMock.organizations.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['org_public'] },
+        status: 'LISTED',
+      },
+      select: { id: true },
+    });
+    expect(prismaMock.timeSlots.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { archivedAt: null },
+          { id: { in: ['slot_public'] } },
+          { id: { in: ['slot_public'] } },
+        ],
+      },
+      take: 2,
+      skip: 0,
+    }));
+    expect(payload.pagination).toEqual({
+      limit: 1,
+      offset: 0,
+      nextOffset: 1,
+      hasMore: false,
+    });
+    expect(payload.timeSlots[0]).toEqual(expect.objectContaining({
+      $id: 'slot_public',
+      price: 1800,
+      daysOfWeek: [1, 3],
+    }));
+    expect(payload.timeSlots[0]).not.toHaveProperty('scheduledFieldId');
+    expect(payload.timeSlots[0]).not.toHaveProperty('scheduledFieldIds');
+    expect(payload.timeSlots[0]).not.toHaveProperty('divisions');
+    expect(payload.timeSlots[0]).not.toHaveProperty('requiredTemplateIds');
+    expect(payload.timeSlots[0]).not.toHaveProperty('hostRequiredTemplateIds');
+    expect(payload.timeSlots[0]).not.toHaveProperty('taxHandling');
+    expect(payload.timeSlots[0]).not.toHaveProperty('createdAt');
+    expect(payload.timeSlots[0]).not.toHaveProperty('updatedAt');
   });
 
   it('POST persists canonical field/day arrays and keeps scalar aliases', async () => {
@@ -284,6 +398,21 @@ describe('time-slots routes', () => {
       requiredTemplateIds: ['tmpl_rental_doc'],
       hostRequiredTemplateIds: ['tmpl_host_contract'],
     }));
+  });
+
+  it('POST rejects a caller who cannot manage the requested field inventory', async () => {
+    canManageScheduledFieldsMock.mockResolvedValueOnce(false);
+
+    const res = await POST(jsonRequest('http://localhost/api/time-slots', {
+      id: 'slot_forbidden_create',
+      scheduledFieldId: 'field_other_org',
+      dayOfWeek: 1,
+      startDate: '2026-01-05T00:00:00.000Z',
+      repeating: true,
+    }));
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.create).not.toHaveBeenCalled();
   });
 
   it('POST converts offset-less rental slot times using the selected field timezone', async () => {
@@ -391,6 +520,34 @@ describe('time-slots routes', () => {
     }));
   });
 
+  it('PATCH rejects a caller who cannot manage the existing time slot', async () => {
+    canManageTimeSlotMock.mockResolvedValueOnce(false);
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_forbidden_patch', {
+        slot: { price: 2500 },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_forbidden_patch' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH rejects reassignment to a field the caller cannot manage', async () => {
+    canManageScheduledFieldsMock.mockResolvedValueOnce(false);
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_forbidden_reassignment', {
+        slot: { scheduledFieldId: 'field_other_org' },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_forbidden_reassignment' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
   it('PATCH strips legacy and immutable fields before prisma update', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: true });
     prismaMock.timeSlots.update.mockResolvedValueOnce({
@@ -469,6 +626,27 @@ describe('time-slots routes', () => {
       },
     });
     expect(prismaMock.timeSlots.delete).toHaveBeenCalledWith({ where: { id: 'slot_delete' } });
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
+  it('DELETE rejects a caller who cannot manage the time slot', async () => {
+    canManageTimeSlotMock.mockResolvedValueOnce(false);
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_forbidden_delete',
+      scheduledFieldId: 'field_other_org',
+      scheduledFieldIds: ['field_other_org'],
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+
+    const res = await DELETE(
+      new NextRequest('http://localhost/api/time-slots/slot_forbidden_delete', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'slot_forbidden_delete' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.delete).not.toHaveBeenCalled();
     expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
   });
 
