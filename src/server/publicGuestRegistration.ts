@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import type { Prisma } from '@/generated/prisma/client';
 import { getAuthSecret } from '@/lib/authServer';
+import { parseDateOfBirth } from '@/lib/dateOfBirth';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { prisma } from '@/lib/prisma';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
@@ -45,20 +46,7 @@ export const normalizeGuestText = (value: unknown): string | null => {
 };
 
 export const parseGuestDateOfBirth = (value: unknown): Date | null => {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
-    ? new Date(`${normalized}T00:00:00.000Z`)
-    : new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseDateOfBirth(value);
 };
 
 const buildGuestUserName = (prefix: string): string => {

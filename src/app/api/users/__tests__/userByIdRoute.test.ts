@@ -111,6 +111,18 @@ describe('PATCH /api/users/[id]', () => {
     expect(prismaMock.authUser.update).not.toHaveBeenCalled();
   });
 
+  it('rejects a future date of birth before updating the profile', async () => {
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { dateOfBirth: '2999-01-01' } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe('dateOfBirth cannot be in the future.');
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+  });
+
   it('syncs the auth display name when profile names change', async () => {
     prismaMock.userData.update.mockResolvedValue({
       id: 'user_1',

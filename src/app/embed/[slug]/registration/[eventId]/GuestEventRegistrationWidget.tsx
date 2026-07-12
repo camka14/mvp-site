@@ -356,6 +356,11 @@ export default function GuestEventRegistrationWidget({
   const [error, setError] = useState<string | null>(null);
   const [discountCode, setDiscountCode] = useState('');
 
+  const maxDateOfBirth = useMemo(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const selectedDivision = divisions.find((division) => division.id === divisionId) ?? divisions[0] ?? null;
   const requiresGuardian = selectedDivision?.requiresGuardian === true;
   const displayedPrice = selectedDivision?.priceCents ?? event.priceCents;
@@ -691,7 +696,7 @@ export default function GuestEventRegistrationWidget({
                 </label>
                 <label>
                   <FieldLabel label="Player date of birth" required />
-                  <input required type="date" value={child.dateOfBirth} onChange={(e) => setChild({ ...child, dateOfBirth: e.target.value })} />
+                  <input required type="date" max={maxDateOfBirth} value={child.dateOfBirth} onChange={(e) => setChild({ ...child, dateOfBirth: e.target.value })} />
                 </label>
                 <label>
                   <FieldLabel label="Relationship" />
@@ -783,7 +788,7 @@ export default function GuestEventRegistrationWidget({
                         <>
                           <label>
                             <FieldLabel label="Player date of birth" required />
-                            <input required type="date" value={player.dateOfBirth} onChange={(e) => updateTeamPlayer(index, { dateOfBirth: e.target.value })} />
+                            <input required type="date" max={maxDateOfBirth} value={player.dateOfBirth} onChange={(e) => updateTeamPlayer(index, { dateOfBirth: e.target.value })} />
                           </label>
                           <label>
                             <FieldLabel label="Player email" />

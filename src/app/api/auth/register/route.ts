@@ -24,6 +24,7 @@ import {
 } from '@/server/profileCompletion';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
+import { isFutureDateOfBirth, parseDateOfBirth } from '@/lib/dateOfBirth';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -76,14 +77,6 @@ const normalizeDateOnly = (value?: string | null): string | null => {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   return trimmed.split('T')[0] ?? null;
-};
-
-const parseDateOnly = (value?: string | null): Date | null => {
-  const normalized = normalizeDateOnly(value);
-  if (!normalized) return null;
-  const parsed = new Date(`${normalized}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
 };
 
 const dateToDateOnly = (value?: Date | null): string | null => {
@@ -264,9 +257,12 @@ export async function POST(req: NextRequest) {
       })
     : incomingSnapshot;
 
-  const parsedDateOfBirth = parseDateOnly(resolvedSnapshot.dateOfBirth);
+  const parsedDateOfBirth = parseDateOfBirth(resolvedSnapshot.dateOfBirth);
   if (resolvedSnapshot.dateOfBirth && !parsedDateOfBirth) {
     return NextResponse.json({ error: 'Invalid dateOfBirth' }, { status: 400 });
+  }
+  if (parsedDateOfBirth && isFutureDateOfBirth(parsedDateOfBirth)) {
+    return NextResponse.json({ error: 'dateOfBirth cannot be in the future' }, { status: 400 });
   }
 
   const existingUserName = normalizeUserName(existingProfile?.userName);

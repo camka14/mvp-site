@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
+import { isFutureDateOfBirth, parseDateOfBirth } from '@/lib/dateOfBirth';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,9 +36,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ch
     return NextResponse.json({ error: 'Child link not found' }, { status: 404 });
   }
 
-  const dob = new Date(parsed.data.dateOfBirth);
-  if (Number.isNaN(dob.getTime())) {
+  const dob = parseDateOfBirth(parsed.data.dateOfBirth);
+  if (!dob) {
     return NextResponse.json({ error: 'Invalid dateOfBirth' }, { status: 400 });
+  }
+  if (isFutureDateOfBirth(dob)) {
+    return NextResponse.json({ error: 'dateOfBirth cannot be in the future' }, { status: 400 });
   }
   const firstName = normalizeOptionalName(parsed.data.firstName);
   const lastName = normalizeOptionalName(parsed.data.lastName);

@@ -16,6 +16,7 @@ import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
+import { isFutureDateOfBirth, parseDateOfBirth } from '@/lib/dateOfBirth';
 
 const USER_MUTABLE_FIELDS = new Set<string>([
   'firstName',
@@ -55,18 +56,6 @@ const normalizeNameFields = (data: Record<string, unknown>) => {
   if (Object.prototype.hasOwnProperty.call(data, 'lastName')) {
     data.lastName = normalizeOptionalName(data.lastName);
   }
-};
-
-const parseDateValue = (value: unknown): Date | null => {
-  if (value == null || value === '') return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  return null;
 };
 
 const canSetHomePageOrganization = async (
@@ -217,9 +206,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   normalizeNameFields(nextData);
   if (Object.prototype.hasOwnProperty.call(nextData, 'dateOfBirth')) {
-    const parsedDate = parseDateValue(nextData.dateOfBirth);
+    const parsedDate = parseDateOfBirth(nextData.dateOfBirth);
     if (!parsedDate) {
       return NextResponse.json({ error: 'dateOfBirth must be a valid date.' }, { status: 400 });
+    }
+    if (isFutureDateOfBirth(parsedDate)) {
+      return NextResponse.json({ error: 'dateOfBirth cannot be in the future.' }, { status: 400 });
     }
     nextData.dateOfBirth = parsedDate;
   }

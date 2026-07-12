@@ -330,6 +330,25 @@ describe('auth routes', () => {
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
 
+    it('rejects a future date of birth before creating the account', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.userData.findUnique.mockResolvedValue(null);
+
+      const res = await REGISTER_POST(buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'future-dob@example.com',
+        password: 'password123',
+        firstName: 'Future',
+        lastName: 'Date',
+        dateOfBirth: '2999-01-01',
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toBe('dateOfBirth cannot be in the future');
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
     it('rejects duplicate usernames (case-insensitive)', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
       prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);

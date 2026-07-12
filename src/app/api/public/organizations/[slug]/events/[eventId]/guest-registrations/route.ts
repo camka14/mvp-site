@@ -48,6 +48,7 @@ import {
   upsertRegistrationQuestionResponse,
 } from '@/server/registrationQuestions';
 import { sendEventRegistrationHostNotification } from '@/server/registrationHostNotifications';
+import { isFutureDateOfBirth } from '@/lib/dateOfBirth';
 
 export const dynamic = 'force-dynamic';
 
@@ -554,6 +555,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
   const requiredTemplatesById = await loadRequiredEventTemplates(requiredTemplateIds);
   const parentDob = parseGuestDateOfBirth(payload.parent.dateOfBirth);
+  if (payload.parent.dateOfBirth && !parentDob) {
+    return responseError('Parent date of birth is invalid.');
+  }
+  if (parentDob && isFutureDateOfBirth(parentDob)) {
+    return responseError('Parent date of birth cannot be in the future.');
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -581,6 +588,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
           const childDob = parseGuestDateOfBirth(childPayload.dateOfBirth);
           if (!childDob) {
             throw Object.assign(new Error('Player date of birth is required.'), { status: 400 });
+          }
+          if (isFutureDateOfBirth(childDob)) {
+            throw Object.assign(new Error('Player date of birth cannot be in the future.'), { status: 400 });
           }
           const childAgeCheck = validateRegistrantAgeForSelection({
             dateOfBirth: childDob,
@@ -727,6 +737,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
           if (!childDob) {
             throw Object.assign(new Error('Player date of birth is required.'), { status: 400 });
           }
+          if (isFutureDateOfBirth(childDob)) {
+            throw Object.assign(new Error('Player date of birth cannot be in the future.'), { status: 400 });
+          }
           if (!guardianEmail) {
             throw Object.assign(new Error('Parent/guardian email is required for this division.'), { status: 400 });
           }
@@ -772,6 +785,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
         } else {
           if (!playerEmail) {
             throw Object.assign(new Error('Player email is required for adult division team registrations.'), { status: 400 });
+          }
+          if (player.dateOfBirth && !childDob) {
+            throw Object.assign(new Error('Player date of birth is invalid.'), { status: 400 });
+          }
+          if (childDob && isFutureDateOfBirth(childDob)) {
+            throw Object.assign(new Error('Player date of birth cannot be in the future.'), { status: 400 });
           }
           if (childDob) {
             const ageCheck = validateRegistrantAgeForSelection({

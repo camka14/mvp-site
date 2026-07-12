@@ -271,6 +271,32 @@ describe('public guest event registration route', () => {
     expect(payload.registrationToken).toBe('guest.jwt');
   });
 
+  it('rejects a future child date of birth before creating a participant', async () => {
+    const response = await POST(
+      requestFor({
+        mode: 'free_agent',
+        parent: {
+          email: 'parent@test.com',
+          firstName: 'Pat',
+          lastName: 'Parent',
+        },
+        child: {
+          firstName: 'Casey',
+          lastName: 'Parent',
+          dateOfBirth: '2999-01-01',
+        },
+        divisionId: 'division_1',
+        answers: [{ questionId: 'question_1', answer: 'Youth M' }],
+      }),
+      routeContext,
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Player date of birth cannot be in the future.');
+    expect(ensureGuestChildUserDataMock).not.toHaveBeenCalled();
+  });
+
   it('creates an adult free-agent registration without child fields', async () => {
     resolveEventDivisionSelectionMock.mockResolvedValueOnce({
       ok: true,
