@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (17)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `b3826149`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Completed — high (18)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
 | **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
-| **Remaining / not yet reconciled (175)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Remaining / not yet reconciled (174)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **52 completed, 175 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **53 completed, 174 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -215,7 +215,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/lib/authServer.ts:68-70` signs normal session JWTs with no `expiresIn`; `:72-84` verifies without an age policy. The browser cookie lasts 400 days (`:8`, `:115-124`), but copied bearer tokens are not bound to cookie expiry. Logout increments the account session version (`src/app/api/auth/logout/route.ts:5-11`), but a token remains valid indefinitely absent revocation/password-related session-version change.
 - Impact: stolen Authorization tokens can outlive the already-long cookie lifetime and compound the committed-storage-state exposure.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `79db2c13` signs typed, issuer/audience-bound session tokens with the 400-day session lifetime, and `b3826149` rejects missing/invalid expiry claims during verification. The seven focused auth-token tests passed, covering bounded issuance plus missing-expiry, expired, wrong-audience, and wrong-type rejection.
 
 ### SEC-011 — Legacy universal user POST permits arbitrary profile mass assignment
 
@@ -2176,3 +2176,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-006 in the audited branch. Verified every distinct registration-response scope is authorized before a batch returns; all 7 focused tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-007 in the audited branch. Verified private/unpublished event schedule and realtime-token visibility across five suites (16 tests), including a new standalone field-match regression. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-008 in the audited branch. Confirmed no E2E auth state remains tracked, the path is ignored, and current session verification rejects non-expiring historical tokens; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-010 in the audited branch. Confirmed typed session JWTs include a bounded expiry and verification rejects missing/invalid expiry claims; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
