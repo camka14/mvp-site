@@ -12,7 +12,7 @@ import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type 
 
 import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, MatchSegment, ResolvedMatchRules, Team, UserData } from '@/types';
 
-import ScoreUpdateModal from './ScoreUpdateModal';
+import ScoreUpdateModal, { type ScorePayload } from './ScoreUpdateModal';
 
 type ScoreUpdateModalComponentProps = ComponentProps<typeof ScoreUpdateModal>;
 type MatchStatusRules = Pick<ResolvedMatchRules, 'scoringModel' | 'segmentCount' | 'segmentLabel'>;
@@ -150,15 +150,22 @@ const resolveStatusRules = (match: Match, event: Event | null | undefined): Matc
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
   const configuredSegmentCount = scoringModel === 'SETS'
-    ? positiveIntOrNull((event as any)?.setsPerMatch)
-      ?? positiveIntOrNull(event?.leagueConfig?.setsPerMatch)
-      ?? positiveIntOrNull((event as any)?.winnerSetCount)
-      ?? 1
+    ? match.losersBracket
+      ? positiveIntOrNull((event as any)?.loserSetCount)
+        ?? positiveIntOrNull((event as any)?.loserBracketPointsToVictory?.length)
+        ?? positiveIntOrNull((event as any)?.setsPerMatch)
+        ?? 1
+      : positiveIntOrNull((event as any)?.setsPerMatch)
+        ?? positiveIntOrNull(event?.leagueConfig?.setsPerMatch)
+        ?? positiveIntOrNull((event as any)?.winnerSetCount)
+        ?? 1
     : 1;
   const segmentCount = scoringModel === 'POINTS_ONLY'
     ? 1
-    : match.matchRulesSnapshot && sourceSegmentCount
-      ? Math.max(sourceSegmentCount, statusExistingSegmentCount(match), 1)
+    : scoringModel === 'SETS'
+      ? match.matchRulesSnapshot && sourceSegmentCount
+        ? sourceSegmentCount
+        : Math.max(configuredSegmentCount, 1)
       : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
   const segmentLabel = source.segmentLabel
     || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Match' : 'Half');
@@ -551,6 +558,35 @@ export default function MatchEditModal({
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
   const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
+  const syncEmbeddedScoreState = useCallback((payload: ScorePayload) => {
+    const nextSegments = Array.isArray(payload.segments)
+      ? payload.segments.map((segment) => ({
+          ...segment,
+          scores: { ...(segment.scores ?? {}) },
+        }))
+      : [];
+    setStatusSegmentsValue(nextSegments);
+    setMatchStartedValue(nextSegments.some((segment) => (
+      segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'
+    )));
+  }, []);
+
+  const handleEmbeddedScoreChange = useCallback(async (payload: ScorePayload) => {
+    if (!onScoreChange) {
+      return;
+    }
+    await onScoreChange(payload);
+    syncEmbeddedScoreState(payload);
+  }, [onScoreChange, syncEmbeddedScoreState]);
+
+  const handleEmbeddedSetComplete = useCallback(async (payload: ScorePayload) => {
+    if (!onSetComplete) {
+      return;
+    }
+    await onSetComplete(payload);
+    syncEmbeddedScoreState(payload);
+  }, [onSetComplete, syncEmbeddedScoreState]);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!match || !opened) {
@@ -656,7 +692,7 @@ export default function MatchEditModal({
       || initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
     ));
     const policySource = resolveEditablePolicySource(match, tournament);
-    const initialSetCount = actualSetCount(match, initialStatusSegments);
+    const initialSetCount = Math.max(1, initialStatusRules.segmentCount);
     const initialTargets = pointsList((policySource as any).setPointTargets)
       ?? resolveStatusPointTargets(match, tournament)
       ?? [];
@@ -1332,7 +1368,7 @@ export default function MatchEditModal({
       (tournament?.usesSets || tournament?.leagueConfig?.usesSets) ? 'SETS' : 'POINTS_ONLY',
     );
     const parsedPolicySegmentCount = policyScoringModel === 'SETS'
-      ? actualSetCount(match, statusSegments)
+      ? Math.max(1, statusRules?.segmentCount ?? actualSetCount(match, statusSegments))
       : policyScoringModel === 'POINTS_ONLY'
         ? 1
         : Math.max(1, statusRules?.segmentCount ?? positiveIntOrNull(policySource.segmentCount) ?? 1);
@@ -1980,8 +2016,8 @@ export default function MatchEditModal({
                   tournament={tournament}
                   participantTeams={participantTeams}
                   canManage={canManageOperations}
-                  onScoreChange={onScoreChange}
-                  onSetComplete={onSetComplete}
+                  onScoreChange={onScoreChange ? handleEmbeddedScoreChange : undefined}
+                  onSetComplete={onSetComplete ? handleEmbeddedSetComplete : undefined}
                   onSubmit={onScoreSubmit}
                   onMatchComplete={onMatchComplete}
                   onClose={() => undefined}

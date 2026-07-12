@@ -8,6 +8,11 @@ dotenv.config({ path: '.env.local', override: false, quiet: true });
 const useLive = process.argv.includes('--live');
 const dryRun = process.argv.includes('--dry-run');
 const force = process.argv.includes('--force');
+const fillMissingDirectoryTextLogos = process.argv.includes('--fill-missing-directory-text-logos');
+const orgArg = process.argv.find((arg) => arg.startsWith('--org='));
+const orgFilter = orgArg ? orgArg.split('=').slice(1).join('=').toLowerCase() : '';
+const normalizeFilterText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const normalizedOrgFilter = normalizeFilterText(orgFilter);
 
 if (useLive) {
   const liveUrl = process.env.DATABASE_URL_LIVE;
@@ -46,6 +51,36 @@ const OWNER_EMAIL = 'samuel.r@razumly.com';
 const SIZE = 1024;
 
 const definitions: LogoDefinition[] = [
+  {
+    orgId: '412836ee-2bcb-4b89-a9b8-d8e8a8ad17a6',
+    sourceLabel: 'CARRILLO local organization text mark; no official website or source logo available in local DB',
+    originalName: 'carrillo-local-org-logo-square.png',
+    background: '#172033',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 900 },
+    textLogo: { lines: ['CARRILLO'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'C',
+  },
+  {
+    orgId: 'a148bd3a-ecda-4905-8830-44b862dc672c',
+    sourceLabel: 'Razumly local facility text mark; official site currently exposes only an under-construction page',
+    originalName: 'razumly-facility-local-org-logo-square.png',
+    background: '#172033',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 900 },
+    textLogo: { lines: ['Razumly', 'Facility'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'RF',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_abc_apollo_vbc',
+    sourceLabel: 'ABC Apollo official site header text mark; no clean standalone logo asset found',
+    originalName: 'abc-apollo-vbc-logo-square.png',
+    background: '#2f1438',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    textLogo: { lines: ['ABC Apollo', 'Volleyball Club'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'ABC',
+  },
   {
     orgId: 'affiliate_org_03_international_badminton',
     sourceUrl: 'https://static1.squarespace.com/static/5af29b55620b85c15c132b97/t/68a7cea06babfb25e0ba778f/1755827872692/64891aa44c574793a913741724f6b3b4.jpg?format=1500w',
@@ -119,6 +154,16 @@ const definitions: LogoDefinition[] = [
     fallbackInitials: 'MPS',
   },
   {
+    orgId: 'affiliate_org_ceva_club_directory_metro_vb_academy',
+    sourceUrl: 'https://www.metrovolleyball.club/images/metro-logo-pink.jpg',
+    sourceLabel: 'Metro VB Academy official site header logo; skipped generic JVA member badge candidate',
+    originalName: 'metro-vb-academy-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 700 },
+    fallbackInitials: 'MVA',
+  },
+  {
     orgId: 'affiliate_org_mjcc_sportsplex',
     sourceUrl: 'https://www.oregonjcc.org/uploaded/themes/MJCC_2015_default/images/mjcc_logo.png',
     sourceLabel: 'MJCC official site logo',
@@ -151,6 +196,156 @@ const definitions: LogoDefinition[] = [
     originalName: 'nwibl-logo-square.png',
     background: '#ffffff',
     fallbackInitials: 'NWIBL',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_adventist_vbc',
+    sourceLabel: 'Adventist VBC official site header text mark; no clean standalone logo asset found',
+    originalName: 'adventist-vbc-logo-square.png',
+    background: '#172033',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    textLogo: { lines: ['Adventist', 'Volleyball Club'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'AVC',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_blues_vbc',
+    sourceUrl: 'https://d36m266ykvepgv.cloudfront.net/uploads/media/3TX4HKNOZt/s-600-294/4d2ae2-d8d74daaaf6846e790717ede5d9850demv2.png',
+    sourceLabel: 'Blues VBC official TopScore/UltimateCentral header logo',
+    originalName: 'blues-vbc-logo-square.png',
+    background: '#253a92',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 700 },
+    fallbackInitials: 'BLU',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_a_g_i_l_e_vbc',
+    sourceUrl: 'https://graph.facebook.com/agilesheridan/picture?type=large',
+    sourceLabel: 'A.G.I.L.E. VBC official Facebook profile logo',
+    originalName: 'agile-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'AG',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_axiom_vbc',
+    sourceUrl: 'https://graph.facebook.com/AxiomVolleyballClub/picture?type=large',
+    sourceLabel: 'Axiom VBC official Facebook profile logo; official website currently times out',
+    originalName: 'axiom-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 760 },
+    fallbackInitials: 'AX',
+  },
+  {
+    orgId: 'affiliate_org_oregon_youth_soccer_find_a_club_coast_to_coast_futbol_academy',
+    sourceUrl: 'https://img1.wsimg.com/isteam/ip/77e1581f-7e03-4361-8899-82d4a55b24d6/Coast%20to%20Coast%20Logo%20Designs%20%281%29.jpg',
+    sourceLabel: 'Coast to Coast Futbol Academy official site logo',
+    originalName: 'coast-to-coast-futbol-academy-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'C2C',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_eastern_oregon_vbc',
+    sourceUrl: 'https://d36m266ykvepgv.cloudfront.net/uploads/media/mFmBvc1GaJ/s-700-574/image-removebg-preview-35.png',
+    sourceLabel: 'Eastern Oregon VBC official UltimateCentral header logo',
+    originalName: 'eastern-oregon-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 760 },
+    fallbackInitials: 'EOV',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_gorge_juniors_vbc',
+    sourceUrl: 'https://d36m266ykvepgv.cloudfront.net/uploads/media/N8khBKiVJp/s-900-900/7f378d575fb051253936777f60e27e1b-removebg-preview-1.png',
+    sourceLabel: 'Gorge Juniors Volleyball Club official UltimateCentral header logo',
+    originalName: 'gorge-juniors-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'GJV',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_lower_columbia_elite_vbc',
+    sourceUrl: 'https://graph.facebook.com/lowercolumbiaelitevb/picture?type=large',
+    sourceLabel: 'Lower Columbia Elite VBC official Facebook profile logo; official website DNS currently fails',
+    originalName: 'lower-columbia-elite-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'LCE',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_pirate_vbc',
+    sourceUrl: 'https://graph.facebook.com/PirateVbc/picture?type=large',
+    sourceLabel: 'Pirate VBC official Facebook profile logo',
+    originalName: 'pirate-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'PVBC',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_rose_city_vbc',
+    sourceUrl: 'https://graph.facebook.com/rosecityvb/picture?type=large',
+    sourceLabel: 'Rose City VBC official Facebook profile logo',
+    originalName: 'rose-city-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'RCV',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_south_coast_vbc',
+    sourceUrl: 'https://graph.facebook.com/SCVCvolleyball/picture?type=large',
+    sourceLabel: 'South Coast VBC official Facebook profile logo',
+    originalName: 'south-coast-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'SCV',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_tillamook_vbc',
+    sourceUrl: 'https://graph.facebook.com/tillamookvolleyballclub/picture?type=large',
+    sourceLabel: 'Tillamook VBC official Facebook profile logo',
+    originalName: 'tillamook-vbc-logo-square.png',
+    background: '#111111',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'TVC',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_wildcats_vbc',
+    sourceUrl: 'https://graph.facebook.com/wildcatsvbc/picture?type=large',
+    sourceLabel: 'Wildcats VBC official Facebook profile logo',
+    originalName: 'wildcats-vbc-logo-square.png',
+    background: '#0f1d4a',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'WVC',
+  },
+  {
+    orgId: 'affiliate_org_oregon_youth_soccer_find_a_club_north_marion_youth_athletics',
+    sourceUrl: 'https://static.wixstatic.com/media/1a2359_ea471f8d509d462f98f019151b9894d9~mv2_d_2956_1853_s_2.png',
+    sourceLabel: 'North Marion Youth Athletics official site icon mark',
+    originalName: 'north-marion-youth-athletics-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 900, height: 620 },
+    fallbackInitials: 'NMYA',
+  },
+  {
+    orgId: 'affiliate_org_oregon_youth_soccer_find_a_club_rainier_clatskanie_youth_soccer_association',
+    sourceLabel: 'Rainier Clatskanie Youth Soccer Club official SportsAffinity masthead text mark; no clean standalone logo asset found',
+    originalName: 'rainier-clatskanie-youth-soccer-logo-square.png',
+    background: '#172033',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    textLogo: { lines: ['Rainier', 'Clatskanie', 'Youth Soccer'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'RCY',
   },
   {
     orgId: 'affiliate_org_northwest_united_womens_soccer',
@@ -238,6 +433,16 @@ const definitions: LogoDefinition[] = [
     fallbackInitials: 'SCA',
   },
   {
+    orgId: 'affiliate_org_ceva_club_directory_spiketown_vbc',
+    sourceLabel: 'Spiketown official site header text mark; no clean standalone logo asset found',
+    originalName: 'spiketown-vbc-logo-square.png',
+    background: '#1f5f9f',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    textLogo: { lines: ['Spiketown', 'Volleyball Club'], color: '#ffffff', weight: 800 },
+    fallbackInitials: 'SVBC',
+  },
+  {
     orgId: 'affiliate_org_the_courts_at_clear_creek',
     sourceUrl: 'https://a9skwjxw27dk-u6814.pressidiumcdn.com/wp-content/uploads/2017/06/COURTS-Color.png',
     sourceLabel: 'The Courts at Clear Creek official site logo',
@@ -288,6 +493,16 @@ const definitions: LogoDefinition[] = [
     originalName: 'united-pdx-logo-square.png',
     background: '#ffffff',
     fallbackInitials: 'UP',
+  },
+  {
+    orgId: 'affiliate_org_ceva_club_directory_vancouver_vbc',
+    sourceUrl: 'https://vancouvervolleyballclub.teamsnapsites.com/wp-content/uploads/sites/3662/2024/08/cropped-Vancouver_Volleyball_Club_medium-192x192.jpg',
+    sourceLabel: 'Vancouver Volleyball Club official site icon mark',
+    originalName: 'vancouver-vbc-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'VVC',
   },
   {
     orgId: 'affiliate_org_winterhawks_ice_adult_hockey',
@@ -427,6 +642,16 @@ const definitions: LogoDefinition[] = [
     fallbackInitials: 'OYSA',
   },
   {
+    orgId: 'affiliate_org_oregon_youth_soccer_find_a_club_oregon_surf',
+    sourceUrl: 'https://oregonsurf.org/wp-content/uploads/2024/03/Oregon-Surf-Logo_3D-shield-black-outline.png',
+    sourceLabel: 'Oregon Surf official club shield; skipped Friendship Cup event logo candidate',
+    originalName: 'oregon-surf-logo-square.png',
+    background: '#ffffff',
+    backgroundStyle: 'flat',
+    targetBox: { width: 860, height: 860 },
+    fallbackInitials: 'OS',
+  },
+  {
     orgId: 'affiliate_org_portland_community_college',
     sourceUrl: 'https://www.pcc.edu/_source/homepage/images/logo-trademark.svg',
     sourceLabel: 'PCC official homepage trademark logo',
@@ -545,6 +770,31 @@ const escapeSvgText = (value: string): string => (
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 );
+
+const slugify = (value: string): string => (
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+);
+
+const splitTextLogoLines = (value: string): string[] => {
+  const words = value
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\bVBC\b/gi, 'Volleyball Club')
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines: string[] = [];
+  for (const word of words) {
+    const last = lines[lines.length - 1] ?? '';
+    if (!last || `${last} ${word}`.length > 18) {
+      lines.push(word);
+    } else {
+      lines[lines.length - 1] = `${last} ${word}`;
+    }
+  }
+  return lines.slice(0, 4);
+};
 
 const buildTextLogo = (definition: LogoDefinition): Buffer | null => {
   if (!definition.textLogo) return null;
@@ -730,7 +980,10 @@ const updateLogo = async (ownerId: string, definition: LogoDefinition) => {
   const image = await normalizeLogo(definition);
   const fileId = `${definition.orgId}_logo_square_${crypto.createHash('sha1').update(image).digest('hex').slice(0, 12)}`;
   console.log(`${dryRun ? '[dry-run] ' : ''}${org.name}: ${org.logoId ?? 'no logo'} -> ${fileId} (${definition.sourceLabel})`);
-  if (dryRun) return;
+  if (dryRun) {
+    updatedOrgIds.add(definition.orgId);
+    return;
+  }
   const stored = await storage!.putObject({
     data: image,
     originalName: definition.originalName,
@@ -793,9 +1046,49 @@ const copyDuplicateLogo = async (orgId: string, sourceOrgId: string) => {
   });
 };
 
+const fillMissingCevaDirectoryTextLogos = async (ownerId: string) => {
+  if (!fillMissingDirectoryTextLogos) return;
+  const orgs = await (prisma as any).organizations.findMany({
+    where: {
+      id: { startsWith: 'affiliate_org_ceva_club_directory_' },
+      OR: [
+        { logoId: null },
+        { logoId: '' },
+      ],
+    },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  for (const org of orgs as Array<{ id: string; name: string }>) {
+    if (
+      orgFilter
+      && !org.id.toLowerCase().includes(orgFilter)
+      && !org.name.toLowerCase().includes(orgFilter)
+      && !normalizeFilterText(org.id).includes(normalizedOrgFilter)
+      && !normalizeFilterText(org.name).includes(normalizedOrgFilter)
+    ) {
+      continue;
+    }
+    await updateLogo(ownerId, {
+      orgId: org.id,
+      sourceLabel: `${org.name} CEVA directory text mark; no official site/social logo found in current audit`,
+      originalName: `${slugify(org.name)}-ceva-directory-logo-square.png`,
+      background: '#172033',
+      backgroundStyle: 'flat',
+      targetBox: { width: 900, height: 900 },
+      textLogo: { lines: splitTextLogoLines(org.name), color: '#ffffff', weight: 800 },
+      fallbackInitials: org.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 4).toUpperCase(),
+    });
+  }
+};
+
 const repairMissingLogoObjects = async () => {
   const orgs = await (prisma as any).organizations.findMany({
-    where: { id: { startsWith: 'affiliate_org_' } },
+    where: {
+      id: orgFilter
+        ? { contains: orgFilter }
+        : { startsWith: 'affiliate_org_' },
+    },
     select: { id: true, name: true, logoId: true },
     orderBy: { name: 'asc' },
   });
@@ -834,12 +1127,25 @@ const repairMissingLogoObjects = async () => {
 const main = async () => {
   await loadAppModules();
   const owner = await requireOwner();
-  for (const definition of definitions) {
+  const selectedDefinitions = definitions.filter((definition) => (
+    !orgFilter
+    || definition.orgId.toLowerCase().includes(orgFilter)
+    || definition.originalName.toLowerCase().includes(orgFilter)
+    || normalizeFilterText(definition.orgId).includes(normalizedOrgFilter)
+    || normalizeFilterText(definition.originalName).includes(normalizedOrgFilter)
+  ));
+  for (const definition of selectedDefinitions) {
     await updateLogo(owner.id, definition);
   }
-  for (const row of duplicateLogoSources) {
+  const selectedDuplicateSources = duplicateLogoSources.filter((row) => (
+    !orgFilter
+    || row.orgId.toLowerCase().includes(orgFilter)
+    || row.sourceOrgId.toLowerCase().includes(orgFilter)
+  ));
+  for (const row of selectedDuplicateSources) {
     await copyDuplicateLogo(row.orgId, row.sourceOrgId);
   }
+  await fillMissingCevaDirectoryTextLogos(owner.id);
   await repairMissingLogoObjects();
 };
 

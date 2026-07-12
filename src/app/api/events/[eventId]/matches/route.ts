@@ -261,6 +261,66 @@ const normalizeOptionalString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const matchParticipantId = (match: SchedulerMatch, side: 'team1' | 'team2'): string | null => {
+  const participant = match[side] as unknown as { id?: unknown; $id?: unknown } | null | undefined;
+  return normalizeOptionalString(participant?.id ?? participant?.$id);
+};
+
+const hasNonZeroScore = (values: unknown): boolean => (
+  Array.isArray(values) && values.some((value) => Number(value) !== 0)
+);
+
+const hasStartedOrScoredSegment = (match: SchedulerMatch): boolean => (
+  Array.isArray(match.segments) && match.segments.some((segment) => {
+    const status = String(segment.status ?? '').trim().toUpperCase();
+    return status === 'IN_PROGRESS'
+      || status === 'COMPLETE'
+      || Boolean(segment.startedAt)
+      || Boolean(segment.endedAt)
+      || Boolean(segment.winnerEventTeamId)
+      || Object.values(segment.scores ?? {}).some((score) => Number(score) !== 0);
+  })
+);
+
+const hasProtectedParticipantState = (match: SchedulerMatch): boolean => {
+  const status = String(match.status ?? '').trim().toUpperCase();
+  return Boolean(match.locked)
+    || Boolean(match.actualStart)
+    || Boolean(match.actualEnd)
+    || ['IN_PROGRESS', 'COMPLETE', 'SUSPENDED', 'CANCELLED'].includes(status)
+    || Boolean(match.winnerEventTeamId)
+    || hasNonZeroScore(match.team1Points)
+    || hasNonZeroScore(match.team2Points)
+    || hasNonZeroScore(match.setResults)
+    || hasStartedOrScoredSegment(match);
+};
+
+const assertBulkParticipantUpdateAllowed = (
+  event: Awaited<ReturnType<typeof loadEventWithRelations>>,
+  target: SchedulerMatch,
+  entry: BulkMatchUpdateInput,
+  matchId: string,
+): void => {
+  const currentTeam1Id = matchParticipantId(target, 'team1');
+  const currentTeam2Id = matchParticipantId(target, 'team2');
+  const team1Id = hasOwn(entry, 'team1Id') ? normalizeOptionalString(entry.team1Id) : currentTeam1Id;
+  const team2Id = hasOwn(entry, 'team2Id') ? normalizeOptionalString(entry.team2Id) : currentTeam2Id;
+
+  for (const [side, teamId] of [['team1Id', team1Id], ['team2Id', team2Id]] as const) {
+    if (teamId && !event.teams[teamId]) {
+      throw new Response(`Match ${matchId} references an unknown ${side}.`, { status: 400 });
+    }
+  }
+  if (team1Id && team1Id === team2Id) {
+    throw new Response(`Match ${matchId} cannot use the same team for both participants.`, { status: 400 });
+  }
+
+  const participantsChanged = team1Id !== currentTeam1Id || team2Id !== currentTeam2Id;
+  if (participantsChanged && hasProtectedParticipantState(target)) {
+    throw new Response(`Match ${matchId} participants cannot be changed after scoring, start, or lock.`, { status: 409 });
+  }
+};
+
 const normalizeMatchRef = (value: unknown): string | null => {
   if (value == null) {
     return null;
@@ -472,6 +532,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (!target) {
           throw new Response(`Match ${matchId} not found.`, { status: 404 });
         }
+
+        assertBulkParticipantUpdateAllowed(event, target, entry, matchId);
 
         const node = canonicalNodes.get(matchId) as BracketNode;
         if (hasOwn(entry, 'winnerNextMatchId')) {

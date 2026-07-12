@@ -16,6 +16,11 @@ import {
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
 import { sendAdminOrganizationCreatedNotification } from '@/server/adminNotifications';
+import {
+  getOrganizationTagsForOrganizationIds,
+  resolveSystemOrganizationTagIdsBySlugs,
+  syncOrganizationTags,
+} from '@/server/organizationTags';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -39,6 +44,7 @@ const createSchema = z.object({
   defaultEventTaxHandling: z.string().optional(),
   defaultRentalTaxHandling: z.string().optional(),
   taxResponsibilityAgreementAccepted: z.boolean().optional(),
+  tags: z.array(z.any()).optional(),
 }).passthrough();
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
@@ -141,6 +147,33 @@ const shouldApplyListedOnlyFilter = (params: {
   !params.ids?.length && !params.ownerId && !params.userId
 );
 
+const appendAndClause = (where: Record<string, any>, clause: Record<string, any>) => {
+  if (Array.isArray(where.AND)) {
+    where.AND.push(clause);
+    return;
+  }
+  if (where.AND) {
+    where.AND = [where.AND, clause];
+    return;
+  }
+  where.AND = [clause];
+};
+
+const parseTagSlugsParam = (params: URLSearchParams): string[] => {
+  const values = [
+    ...params.getAll('tags'),
+    ...params.getAll('tag'),
+  ];
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const baseUrl = req.nextUrl.origin;
@@ -152,6 +185,7 @@ export async function GET(req: NextRequest) {
   const query = normalizeSearchQuery(params.get('query'));
   const normalizedQuery = query.toLowerCase();
   const includeAffiliateRentals = params.get('includeAffiliateRentals') === 'true';
+  const tagSlugs = parseTagSlugsParam(params);
 
   if (userId) {
     const session = await requireSession(req);
@@ -174,6 +208,25 @@ export async function GET(req: NextRequest) {
       ),
     )
     : [];
+  let tagFilteredOrganizationIds: string[] | null = null;
+  if (tagSlugs.length) {
+    const tagIds = await resolveSystemOrganizationTagIdsBySlugs(tagSlugs);
+    if (tagIds.length) {
+      const assignments = await (prisma as any).organizationTagAssignments.findMany({
+        where: { tagId: { in: tagIds } },
+        select: { organizationId: true },
+      });
+      tagFilteredOrganizationIds = Array.from(
+        new Set(
+          assignments
+            .map((assignment: any) => String(assignment.organizationId ?? '').trim())
+            .filter(Boolean),
+        ),
+      );
+    } else {
+      tagFilteredOrganizationIds = [];
+    }
+  }
 
   const applyListedOnlyFilter = shouldApplyListedOnlyFilter({ ids, ownerId, userId });
   const affiliateRentalOrganizationIds = includeAffiliateRentals && applyListedOnlyFilter
@@ -211,6 +264,9 @@ export async function GET(req: NextRequest) {
       ...(accessibleOrganizationIds.length > 0 ? [{ id: { in: accessibleOrganizationIds } }] : []),
     ];
   }
+  if (tagFilteredOrganizationIds) {
+    appendAndClause(where, { id: { in: tagFilteredOrganizationIds } });
+  }
   if (query.length > 0) {
     const queryWhere = [
       { name: { contains: query, mode: 'insensitive' } },
@@ -219,11 +275,19 @@ export async function GET(req: NextRequest) {
       { description: { contains: query, mode: 'insensitive' } },
     ];
     if (where.OR) {
+      const existingAnd = Array.isArray(where.AND)
+        ? where.AND
+        : where.AND
+          ? [where.AND]
+          : [];
       where.AND = [
+        ...existingAnd,
         { OR: where.OR },
         { OR: queryWhere },
       ];
       delete where.OR;
+    } else if (where.AND) {
+      appendAndClause(where, { OR: queryWhere });
     } else {
       where.OR = queryWhere;
     }
@@ -258,6 +322,7 @@ export async function GET(req: NextRequest) {
   const pageRows = organizations.slice(0, normalizedLimit);
   const hasMore = organizations.length > normalizedLimit;
   const affiliateFacilitiesByOrganizationId = new Map<string, any[]>();
+  const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds(pageRows.map((organization) => organization.id));
 
   if (includeAffiliateRentals && pageRows.length > 0) {
     const affiliateFacilities = await (prisma as any).facilities.findMany({
@@ -279,9 +344,13 @@ export async function GET(req: NextRequest) {
   const responseRows = includeAffiliateRentals
     ? pageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
+        tags: tagsByOrganizationId.get(organization.id) ?? [],
         facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
       }))
-    : pageRows.map((organization) => withOrganizationDisplayFields(organization, baseUrl));
+    : pageRows.map((organization) => ({
+        ...withOrganizationDisplayFields(organization, baseUrl),
+        tags: tagsByOrganizationId.get(organization.id) ?? [],
+      }));
 
   return NextResponse.json({
     organizations: withLegacyList(responseRows),
@@ -355,6 +424,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+  const tags = await syncOrganizationTags(organization.id, data.tags);
   await ensureDefaultOrganizationRoles(prisma, organization.id);
   await sendAdminOrganizationCreatedNotification({
     organization,
@@ -366,5 +436,5 @@ export async function POST(req: NextRequest) {
     });
   });
 
-  return NextResponse.json(withLegacyFields(organization), { status: 201 });
+  return NextResponse.json(withLegacyFields({ ...organization, tags }), { status: 201 });
 }

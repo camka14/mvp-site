@@ -184,7 +184,6 @@ export const inferAffiliateEventTagNames = (
     || /\bcoaching\s+programs?\b/.test(text)
     || /\bbeginner\s+programs?\b/.test(text)
     || /\byda\b/.test(text)
-    || /\b(?:class|training)\b/.test(text)
     || /\bclass\b/.test(supplementalText)
   );
   if (!socialLike && clinicLike) {

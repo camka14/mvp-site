@@ -433,12 +433,16 @@ export const resolveMatchRulesForContext = (params: {
 
   return {
     ...params.baseRules,
-    segmentCount: Math.max(
-      positiveIntOrZero(params.baseRules.segmentCount),
-      contextualSetCount,
-      fallbackSegmentCount,
-      1,
-    ),
+    // Bracket-specific set counts are authoritative. A winner-bracket
+    // best-of-three base rule must not turn a configured one-set loser match
+    // back into best-of-three merely because legacy rows still have slots.
+    segmentCount: contextualSetCount > 0
+      ? contextualSetCount
+      : Math.max(
+          positiveIntOrZero(params.baseRules.segmentCount),
+          fallbackSegmentCount,
+          1,
+        ),
   };
 };
 

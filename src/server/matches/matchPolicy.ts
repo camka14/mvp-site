@@ -167,7 +167,12 @@ export const buildMatchRulesSnapshot = (params: {
   const scoringModel = normalizeScoringModel(policy.scoringModel)
     ?? normalizeScoringModel(source.scoringModel)
     ?? 'POINTS_ONLY';
-  const requestedSegmentCount = positiveIntOrNull(policy.segmentCount)
+  const explicitPolicySegmentCount = positiveIntOrNull(policy.segmentCount);
+  const explicitIncomingSnapshotSegmentCount = positiveIntOrNull(
+    (params.incomingSnapshot as Partial<ResolvedMatchRules> | null | undefined)?.segmentCount,
+  );
+  const requestedSegmentCount = explicitPolicySegmentCount
+    ?? explicitIncomingSnapshotSegmentCount
     ?? positiveIntOrNull(source.segmentCount);
   const targetFallbackCount = positiveIntArray(policy.setPointTargets)?.length
     ?? positiveIntArray(source.setPointTargets)?.length
@@ -180,7 +185,9 @@ export const buildMatchRulesSnapshot = (params: {
   );
   const segmentCount = scoringModel === 'POINTS_ONLY'
     ? 1
-    : Math.max(requestedSegmentCount ?? 0, fallbackSegmentCount);
+    : explicitPolicySegmentCount
+      ?? explicitIncomingSnapshotSegmentCount
+      ?? Math.max(requestedSegmentCount ?? 0, fallbackSegmentCount);
   const setPointTargets = scoringModel === 'SETS'
     ? resizePointTargets(policy.setPointTargets ?? source.setPointTargets, segmentCount, params.fallbackSetPointTargets)
     : [];

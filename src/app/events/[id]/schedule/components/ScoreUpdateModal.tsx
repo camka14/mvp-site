@@ -615,14 +615,13 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const supportsShootout = source.supportsShootout === true;
   const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
-  const fallbackSegmentCount = Math.max(configuredSegmentCount, existingSegmentCount(match), 1);
   const segmentCount = scoringModel === 'SETS'
     ? match.matchRulesSnapshot && sourceSegmentCount
-      ? Math.max(sourceSegmentCount, existingSegmentCount(match), 1)
-      : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1)
+      ? sourceSegmentCount
+      : Math.max(configuredSegmentCount, 1)
     : scoringModel === 'POINTS_ONLY'
       ? 1
-      : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1);
+      : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, existingSegmentCount(match), 1);
   const usesPlayerRecordedScoring = matchResolvedRules.pointIncidentRequiresParticipant === true
     || eventRules.pointIncidentRequiresParticipant === true
     || matchSnapshotRules.pointIncidentRequiresParticipant === true;

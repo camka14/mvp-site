@@ -8,7 +8,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import {
   applyMatchUpdates,
   applyPersistentAutoLock,
-  finalizeMatch,
+  finalizeMatchWithTeamOfficialCapacityFallback,
   isScheduleWindowExceededError,
   type MatchUpdate,
 } from '@/server/scheduler/updateMatch';
@@ -35,6 +35,7 @@ import {
   OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
   assertWindowOpen,
 } from '@/server/matches/matchWindows';
+import { normalizeLegacyOfficialCheckIn } from '@/server/matches/legacyOfficialCheckIn';
 import {
   buildMatchRulesSnapshot,
   resolveMatchSetPointTargets,
@@ -1328,13 +1329,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Forbidden', { status: 403 });
       }
 
+      let matchUpdate: z.infer<typeof updateSchema> = normalizeLegacyOfficialCheckIn(parsed.data, {
+        isHostOrAdmin,
+        isOfficial,
+      });
+
+      // v1.6.14 mobile serializes its cached match snapshot with a normal,
+      // non-final set confirmation. The snapshot is frozen by the server when
+      // the match starts, so an official must be able to confirm the set
+      // without that stale client field being interpreted as a policy edit.
+      // Keep this compatibility path narrow and never apply the submitted
+      // snapshot; all score and set validation still uses the persisted rules.
+      const isLegacyMobileSetConfirmation = (
+        !isHostOrAdmin
+        && isOfficial
+        && matchUpdate.officialCheckIn === undefined
+        && matchUpdate.officialCheckedIn === true
+        && matchUpdate.matchPolicy === undefined
+        && matchUpdate.matchRulesSnapshot !== null
+        && hasOwn(matchUpdate, 'matchRulesSnapshot')
+        && Array.isArray(matchUpdate.segmentOperations)
+        && matchUpdate.segmentOperations.some((operation) => (
+          String(operation.status ?? '').trim().toUpperCase() === 'COMPLETE'
+          || Boolean(operation.winnerEventTeamId)
+        ))
+      );
+      if (isLegacyMobileSetConfirmation) {
+        const { matchRulesSnapshot: _staleSnapshot, ...withoutSnapshot } = matchUpdate;
+        matchUpdate = withoutSnapshot;
+      }
+
       const operationClaim = await claimMatchOperationReceipts({
         client: tx,
         eventId,
         matchId,
         actorUserId: session.userId,
         operationKind: 'MATCH_UPDATE',
-        payload: parsed.data as Record<string, unknown>,
+        payload: matchUpdate as Record<string, unknown>,
       });
       if (operationClaim.replayed) {
         return {
@@ -1344,7 +1375,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         };
       }
 
-      if (parsed.data.officialCheckIn) {
+      if (matchUpdate.officialCheckIn) {
         assertWindowOpen(
           targetMatch.start,
           OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
@@ -1364,20 +1395,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Unsupported event type', { status: 400 });
       }
 
-      if (!targetMatch.actualStart && hasScoreWrite(parsed.data) && !startsMatch(parsed.data.lifecycle)) {
+      if (!targetMatch.actualStart && hasScoreWrite(matchUpdate) && !startsMatch(matchUpdate.lifecycle)) {
         throw new Response('Scoring is disabled until the match is started.', { status: 409 });
       }
 
-      const hasMatchPolicyUpdate = hasOwn(parsed.data, 'matchPolicy') || hasOwn(parsed.data, 'matchRulesSnapshot');
+      const hasMatchPolicyUpdate = hasOwn(matchUpdate, 'matchPolicy') || hasOwn(matchUpdate, 'matchRulesSnapshot');
       if (hasMatchPolicyUpdate && !isHostOrAdmin) {
         throw new Response('Only hosts can update match policy.', { status: 403 });
       }
 
       let updates: MatchUpdate & { finalize?: boolean; time?: string };
       if (isHostOrAdmin) {
-        updates = { ...parsed.data };
+        updates = { ...matchUpdate };
       } else if (canEventTeamSwap) {
-        const requestedKeys = Object.entries(parsed.data)
+        const requestedKeys = Object.entries(matchUpdate)
           .filter(([, value]) => value !== undefined)
           .map(([key]) => key);
         const swapOnlyKeys = new Set(['teamOfficialId', 'officialCheckedIn']);
@@ -1385,7 +1416,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           throw new Response('Forbidden', { status: 403 });
         }
 
-        const requestedTeamOfficialId = normalizeIdToken(parsed.data.teamOfficialId);
+        const requestedTeamOfficialId = normalizeIdToken(matchUpdate.teamOfficialId);
         const isEventTeamOfficialId = eventTeams.some((team) => {
           if (!team || typeof team !== 'object') {
             return false;
@@ -1409,19 +1440,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         };
       } else {
         updates = {
-          team1Points: parsed.data.team1Points,
-          team2Points: parsed.data.team2Points,
-          setResults: parsed.data.setResults,
-          officialCheckedIn: parsed.data.officialCheckedIn,
-          officialAssignments: Object.prototype.hasOwnProperty.call(parsed.data, 'officialIds')
-            ? normalizeOfficialAssignmentsOrThrow(parsed.data.officialIds, {
+          team1Points: matchUpdate.team1Points,
+          team2Points: matchUpdate.team2Points,
+          setResults: matchUpdate.setResults,
+          officialCheckedIn: matchUpdate.officialCheckedIn,
+          officialAssignments: Object.prototype.hasOwnProperty.call(matchUpdate, 'officialIds')
+            ? normalizeOfficialAssignmentsOrThrow(matchUpdate.officialIds, {
                 positionCountsById,
                 eventOfficialsById,
               })
             : undefined,
-          teamOfficialId: parsed.data.teamOfficialId ?? assignedTeamOfficialId ?? null,
-          finalize: parsed.data.finalize,
-          time: parsed.data.time,
+          teamOfficialId: matchUpdate.teamOfficialId ?? assignedTeamOfficialId ?? null,
+          finalize: matchUpdate.finalize,
+          time: matchUpdate.time,
         };
       }
 
@@ -1429,23 +1460,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         delete (updates as Record<string, unknown>).officialIds;
       }
 
-      if (Object.prototype.hasOwnProperty.call(parsed.data, 'officialIds') && isHostOrAdmin) {
-        updates.officialAssignments = normalizeOfficialAssignmentsOrThrow(parsed.data.officialIds, {
+      if (Object.prototype.hasOwnProperty.call(matchUpdate, 'officialIds') && isHostOrAdmin) {
+        updates.officialAssignments = normalizeOfficialAssignmentsOrThrow(matchUpdate.officialIds, {
           positionCountsById,
           eventOfficialsById,
         });
       }
 
       if (hasMatchPolicyUpdate && isHostOrAdmin) {
-        if (parsed.data.matchRulesSnapshot === null && !parsed.data.matchPolicy) {
+        if (matchUpdate.matchRulesSnapshot === null && !matchUpdate.matchPolicy) {
           targetMatch.matchRulesSnapshot = null;
           targetMatch.resolvedMatchRules = (event as any).resolvedMatchRules ?? targetMatch.resolvedMatchRules ?? null;
         } else {
           const snapshot = buildMatchRulesSnapshot({
             baseRules: (event as any).resolvedMatchRules ?? targetMatch.resolvedMatchRules ?? null,
             existingSnapshot: targetMatch.matchRulesSnapshot,
-            incomingSnapshot: parsed.data.matchRulesSnapshot ?? null,
-            policy: parsed.data.matchPolicy as MatchPolicyOverrideInput | null,
+            incomingSnapshot: matchUpdate.matchRulesSnapshot ?? null,
+            policy: matchUpdate.matchPolicy as MatchPolicyOverrideInput | null,
             fallbackSetPointTargets: resolveMatchSetPointTargets(event, targetMatch),
             existingSegmentCount: Math.max(
               Array.isArray(targetMatch.segments) ? targetMatch.segments.length : 0,
@@ -1460,27 +1491,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const sanitizedIncidentOperations = sanitizeIncidentOperationsOrThrow({
-        operations: parsed.data.incidentOperations,
+        operations: matchUpdate.incidentOperations,
         matchId: targetMatch.id,
         matchRules: { pointIncidentRequiresParticipant: matchRequiresPlayerRecordedScoring(targetMatch, event) },
         validationState: buildIncidentValidationState({
           matchId: targetMatch.id,
           match: targetMatch,
           participantRegistrationRows,
-          pendingSegmentOperations: parsed.data.segmentOperations,
+          pendingSegmentOperations: matchUpdate.segmentOperations,
         }),
         sessionUserId: session.userId,
         isHostOrAdmin,
       });
 
-      assertLegacyScoreArraysAllowed(targetMatch, event, parsed.data);
-      assertLegacySetScoreUpdateAllowed(event, targetMatch, parsed.data);
+      assertLegacyScoreArraysAllowed(targetMatch, event, matchUpdate);
+      assertLegacySetScoreUpdateAllowed(event, targetMatch, matchUpdate);
       applyMatchUpdates(event, targetMatch, updates);
-      if (parsed.data.matchAction) {
-        applyMatchActionOperation(targetMatch, parsed.data.matchAction, isHostOrAdmin || isOfficial);
+      if (matchUpdate.matchAction) {
+        applyMatchActionOperation(targetMatch, matchUpdate.matchAction, isHostOrAdmin || isOfficial);
       }
       if (shouldFreezeMatchRulesSnapshot({
-        segmentOperations: parsed.data.segmentOperations,
+        segmentOperations: matchUpdate.segmentOperations,
         incidentOperations: sanitizedIncidentOperations,
       }) && !targetMatch.matchRulesSnapshot) {
         const contextualMatchRules = resolveMatchRulesForContext({
@@ -1503,14 +1534,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         targetMatch.matchRulesSnapshot = contextualMatchRules;
         targetMatch.resolvedMatchRules = contextualMatchRules;
       }
-      if (parsed.data.lifecycle) {
+      if (matchUpdate.lifecycle) {
         if (!isHostOrAdmin) {
-          const lifecycleKeys = Object.entries(parsed.data.lifecycle)
+          const lifecycleKeys = Object.entries(matchUpdate.lifecycle)
             .filter(([, value]) => value !== undefined)
             .map(([key]) => key);
           const officialAllowedKeys = new Set(['actualStart', 'actualEnd', 'status']);
-          const requestedStatus = typeof parsed.data.lifecycle.status === 'string'
-            ? parsed.data.lifecycle.status.trim().toUpperCase()
+          const requestedStatus = typeof matchUpdate.lifecycle.status === 'string'
+            ? matchUpdate.lifecycle.status.trim().toUpperCase()
             : null;
           const officialAllowedStatuses = new Set(['SCHEDULED', 'READY', 'IN_PROGRESS', 'DELAYED']);
           const allowedOfficialLifecycleUpdate = isOfficial
@@ -1520,15 +1551,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             throw new Response('Only hosts can update match lifecycle status.', { status: 403 });
           }
         }
-        applyLifecycleOperation(targetMatch, parsed.data.lifecycle);
+        applyLifecycleOperation(targetMatch, matchUpdate.lifecycle);
       }
-      if (parsed.data.officialCheckIn) {
-        applyOfficialCheckInOperation(targetMatch, parsed.data.officialCheckIn, session.userId);
+      if (matchUpdate.officialCheckIn) {
+        applyOfficialCheckInOperation(targetMatch, matchUpdate.officialCheckIn, session.userId);
       }
       applyIncidentOperations(targetMatch, event, sanitizedIncidentOperations);
-      assertSegmentScoreOperationsAllowed(targetMatch, event, parsed.data.segmentOperations);
-      assertSetSegmentOperationsAllowed(event, targetMatch, parsed.data.segmentOperations);
-      applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
+      assertSegmentScoreOperationsAllowed(targetMatch, event, matchUpdate.segmentOperations);
+      assertSetSegmentOperationsAllowed(event, targetMatch, matchUpdate.segmentOperations);
+      applySegmentOperations(targetMatch, event, matchUpdate.segmentOperations);
 
       if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {
         targetMatch.locked = true;
@@ -1550,7 +1581,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           throw new Response('Invalid time', { status: 400 });
         }
         try {
-          finalizeMatch(event, targetMatch, context, currentTime);
+          finalizeMatchWithTeamOfficialCapacityFallback(event, targetMatch, context, currentTime);
         } catch (error) {
           const noFixedEndDateTime = typeof event.noFixedEndDateTime === 'boolean'
             ? event.noFixedEndDateTime

@@ -74,6 +74,11 @@ export const isScheduleWindowExceededError = (error: unknown): boolean => {
   return message.includes('No available time slots remaining for scheduling');
 };
 
+export const isTeamOfficialSchedulingCapacityError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Not enough teams are available to cover match and team-official slots.');
+};
+
 const ensureMatchesArray = (participant?: { matches?: Match[] } | null) => {
   if (!participant) return [] as Match[];
   if (!participant.matches) participant.matches = [];
@@ -230,6 +235,87 @@ const attachMatchToParticipants = (match: Match) => {
 const syncMatchParticipants = (matches: Iterable<Match>) => {
   for (const match of matches) {
     attachMatchToParticipants(match);
+  }
+};
+
+type FinalizationSnapshot = {
+  matches: Array<{
+    match: Match;
+    team1: Team | null;
+    team2: Team | null;
+    team1Seed: number | null;
+    team2Seed: number | null;
+    teamOfficial: Team | null;
+    official: UserData | null;
+    field: PlayingField | null;
+    start: Date;
+    end: Date;
+    locked: boolean;
+    status: string | null;
+    resultStatus: string | null;
+    actualEnd: Date | null;
+    winnerEventTeamId: string | null;
+    requiresTeamOfficial: boolean;
+  }>;
+  fieldMatches: Array<{ field: PlayingField; matches: Match[] }>;
+  participantMatches: Array<{ participant: Team | UserData; matches: Match[] }>;
+};
+
+const captureFinalizationSnapshot = (event: Tournament | League): FinalizationSnapshot => {
+  const matches = Object.values(event.matches);
+  const participants = [
+    ...Object.values(event.teams),
+    ...event.officials,
+  ];
+  return {
+    matches: matches.map((match) => ({
+      match,
+      team1: match.team1,
+      team2: match.team2,
+      team1Seed: match.team1Seed,
+      team2Seed: match.team2Seed,
+      teamOfficial: match.teamOfficial,
+      official: match.official,
+      field: match.field,
+      start: match.start,
+      end: match.end,
+      locked: match.locked,
+      status: match.status,
+      resultStatus: match.resultStatus,
+      actualEnd: match.actualEnd,
+      winnerEventTeamId: match.winnerEventTeamId,
+      requiresTeamOfficial: match.requiresTeamOfficial,
+    })),
+    fieldMatches: Object.values(event.fields).map((field) => ({ field, matches: [...field.matches] })),
+    participantMatches: participants.map((participant) => ({ participant, matches: [...participant.matches] })),
+  };
+};
+
+const restoreFinalizationSnapshot = (snapshot: FinalizationSnapshot): void => {
+  for (const state of snapshot.matches) {
+    Object.assign(state.match, {
+      team1: state.team1,
+      team2: state.team2,
+      team1Seed: state.team1Seed,
+      team2Seed: state.team2Seed,
+      teamOfficial: state.teamOfficial,
+      official: state.official,
+      field: state.field,
+      start: state.start,
+      end: state.end,
+      locked: state.locked,
+      status: state.status,
+      resultStatus: state.resultStatus,
+      actualEnd: state.actualEnd,
+      winnerEventTeamId: state.winnerEventTeamId,
+      requiresTeamOfficial: state.requiresTeamOfficial,
+    });
+  }
+  for (const state of snapshot.fieldMatches) {
+    state.field.matches = [...state.matches];
+  }
+  for (const state of snapshot.participantMatches) {
+    state.participant.matches = [...state.matches];
   }
 };
 
@@ -481,6 +567,10 @@ export const finalizeMatch = (
   }
   const loser = winner === teamOne ? teamTwo : teamOne;
 
+  if (updatedMatch.status === 'COMPLETE' && updatedMatch.winnerEventTeamId === winner.id) {
+    return { updatedMatch, seededTeamIds };
+  }
+
   updatedMatch.winnerEventTeamId = winner.id;
   updatedMatch.status = 'COMPLETE';
   updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
@@ -634,6 +724,72 @@ export const finalizeMatch = (
     updatedMatch.locked = false;
   }
   return { updatedMatch, seededTeamIds };
+};
+
+/**
+ * Records a valid result and advances its bracket dependencies while retaining
+ * the existing schedule. Used only when an automatic rebuild cannot find a
+ * team official for a future, not-yet-playable match.
+ */
+export const finalizeMatchWithoutRescheduling = (
+  event: Tournament | League,
+  updatedMatch: Match,
+  currentTime: Date,
+): FinalizeResult => {
+  syncMatchParticipants(Object.values(event.matches));
+  for (const match of Object.values(event.matches)) {
+    match.requiresTeamOfficial = usesTeamOfficialScheduling(event);
+  }
+
+  const seededTeamIds: string[] = [];
+  const teamOne = updatedMatch.team1;
+  const teamTwo = updatedMatch.team2;
+  if (!teamOne || !teamTwo) {
+    return { updatedMatch, seededTeamIds };
+  }
+
+  const winner = resolveMatchWinner(updatedMatch);
+  if (!winner) {
+    return { updatedMatch, seededTeamIds };
+  }
+  const loser = winner === teamOne ? teamTwo : teamOne;
+
+  if (updatedMatch.status === 'COMPLETE' && updatedMatch.winnerEventTeamId === winner.id) {
+    return { updatedMatch, seededTeamIds };
+  }
+
+  updatedMatch.winnerEventTeamId = winner.id;
+  updatedMatch.status = 'COMPLETE';
+  updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
+  updatedMatch.actualEnd = updatedMatch.actualEnd ?? currentTime;
+  const preserveCompletedWindow = syncUnlockedCompletedMatchScheduleWindow(updatedMatch, updatedMatch.actualEnd);
+  updatedMatch.advanceTeams(winner, loser);
+
+  if (preserveCompletedWindow) {
+    updatedMatch.locked = false;
+  }
+  return { updatedMatch, seededTeamIds };
+};
+
+export const finalizeMatchWithTeamOfficialCapacityFallback = (
+  event: Tournament | League,
+  updatedMatch: Match,
+  context: SchedulerContext = noopContext,
+  currentTime: Date,
+): FinalizeResult => {
+  const snapshot = captureFinalizationSnapshot(event);
+  try {
+    return finalizeMatch(event, updatedMatch, context, currentTime);
+  } catch (error) {
+    if (!isTeamOfficialSchedulingCapacityError(error)) {
+      throw error;
+    }
+    restoreFinalizationSnapshot(snapshot);
+    context.error(
+      'Automatic rescheduling could not staff every future team-official slot; preserving the existing schedule while advancing the confirmed result.',
+    );
+    return finalizeMatchWithoutRescheduling(event, updatedMatch, currentTime);
+  }
 };
 
 

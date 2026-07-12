@@ -17,14 +17,19 @@ type EventTagsInputProps = {
 const normalizeTagName = (value: string): string => value.replace(/\s+/g, ' ').trim().slice(0, 40);
 const tagIdentity = (tag: EventTag): string => getEventTagIdentity(tag);
 const tagLabel = (tag: EventTag): string => `${tag.name} (${tag.eventCount ?? 0})`;
-const tagPillStyles = {
-  root: {
-    backgroundColor: 'var(--mantine-color-green-0)',
-    color: 'var(--mantine-color-green-8)',
-  },
-  remove: {
-    color: 'var(--mantine-color-green-7)',
-  },
+const isSystemTag = (tag: EventTag): boolean => tag.isSystem === true || isEventTypeTag(tag);
+const tagColor = (tag: EventTag): 'blue' | 'green' => isSystemTag(tag) ? 'blue' : 'green';
+const tagPillStyles = (tag: EventTag) => {
+  const color = tagColor(tag);
+  return {
+    root: {
+      backgroundColor: `var(--mantine-color-${color}-0)`,
+      color: `var(--mantine-color-${color}-8)`,
+    },
+    remove: {
+      color: `var(--mantine-color-${color}-7)`,
+    },
+  };
 };
 
 export function EventTagsInput({ value, options, disabled = false, error, lockedTagSlugs = [], onChange }: EventTagsInputProps) {
@@ -83,7 +88,7 @@ export function EventTagsInput({ value, options, disabled = false, error, locked
       return;
     }
     const exactMatch = options.find((option) => tagIdentity(option) === typedIdentity);
-    addTag(exactMatch ?? { name: normalizedSearch, slug: typedIdentity });
+    addTag(exactMatch ?? { name: normalizedSearch, slug: typedIdentity, isSystem: false });
   };
 
   const removeTag = (identity: string) => {
@@ -120,7 +125,7 @@ export function EventTagsInput({ value, options, disabled = false, error, locked
               return (
                 <Pill
                   key={identity}
-                  styles={tagPillStyles}
+                  styles={tagPillStyles(tag)}
                   withRemoveButton={!disabled && !lockedIdentities.has(identity)}
                   onRemove={() => removeTag(identity)}
                 >
@@ -179,7 +184,7 @@ export function EventTagsInput({ value, options, disabled = false, error, locked
               <Button
                 key={tagIdentity(option)}
                 type="button"
-                color="green"
+                color={tagColor(option)}
                 variant="light"
                 radius="xl"
                 size="compact-sm"

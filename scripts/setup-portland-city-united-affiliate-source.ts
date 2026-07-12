@@ -470,6 +470,45 @@ const upsertSourceAndMapping = async () => {
   });
 };
 
+const relinkClubCandidateToSourceOrganization = async () => {
+  const duplicateRows = await (prisma as any).affiliateImportCandidates.findMany({
+    where: {
+      sourceId: SOURCE_ID,
+      listingKind: 'CLUB',
+      title: ORGANIZER_NAME,
+      publishedOrganizationId: { not: null },
+    },
+    select: { publishedOrganizationId: true },
+  });
+  const duplicateOrgIds = Array.from(new Set(
+    duplicateRows
+      .map((row: { publishedOrganizationId: string | null }) => row.publishedOrganizationId)
+      .filter((id: string | null): id is string => Boolean(id) && id !== ORG_ID),
+  ));
+
+  await (prisma as any).affiliateImportCandidates.updateMany({
+    where: {
+      sourceId: SOURCE_ID,
+      listingKind: 'CLUB',
+      title: ORGANIZER_NAME,
+    },
+    data: {
+      publishedOrganizationId: ORG_ID,
+      updatedAt: new Date(),
+    },
+  });
+
+  if (duplicateOrgIds.length > 0) {
+    await (prisma as any).organizations.deleteMany({
+      where: {
+        id: { in: duplicateOrgIds },
+        name: ORGANIZER_NAME,
+        website: HOME_URL,
+      },
+    });
+  }
+};
+
 const main = async () => {
   await loadAppModules();
   const owner = await requireOwner();
@@ -480,6 +519,7 @@ const main = async () => {
   const shouldScrape = process.argv.includes('--scrape');
   if (shouldScrape) {
     const result = await runAffiliateSourceScrape(SOURCE_ID);
+    await relinkClubCandidateToSourceOrganization();
     const logs = (result.run as any).logs ?? {};
     console.log(`Scrape run ${result.run.id}: ${result.candidates.length} candidate(s) saved (created ${logs.createdCandidateCount ?? 0}, updated ${logs.updatedCandidateCount ?? 0}, rejected ${logs.rejectedCount ?? 0}).`);
     for (const candidate of result.candidates) {

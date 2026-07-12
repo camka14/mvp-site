@@ -235,4 +235,108 @@ describe('loadEventForMatchMutation', () => {
       where: { matchId: { in: ['match_target'] } },
     });
   });
+
+  it('keeps a tied best-of-three match unresolved after two completed sets', async () => {
+    const client = createClient();
+    const event = await client.events.findUnique();
+    Object.assign(event, {
+      usesSets: true,
+      winnerSetCount: 3,
+      winnerBracketPointsToVictory: [21, 21, 15],
+    });
+    const matches = await client.matches.findMany({ where: { eventId: 'event_1' } });
+    Object.assign(matches[0], {
+      winnerEventTeamId: null,
+      team1Points: [19, 28, 0],
+      team2Points: [21, 26, 0],
+      setResults: [2, 1, 0],
+      matchRulesSnapshot: {
+        scoringModel: 'SETS',
+        segmentCount: 3,
+        setPointTargets: [21, 21, 15],
+      },
+    });
+    client.matchSegments.findMany.mockResolvedValue([
+      {
+        id: 'segment_target_1',
+        matchId: 'match_target',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: { team_1: 19, team_2: 21 },
+        winnerEventTeamId: 'team_2',
+      },
+      {
+        id: 'segment_target_2',
+        matchId: 'match_target',
+        sequence: 2,
+        status: 'COMPLETE',
+        scores: { team_1: 28, team_2: 26 },
+        winnerEventTeamId: 'team_1',
+      },
+      {
+        id: 'segment_target_3',
+        matchId: 'match_target',
+        sequence: 3,
+        status: 'NOT_STARTED',
+        scores: {},
+        winnerEventTeamId: null,
+      },
+    ]);
+
+    const loaded = await loadEventForMatchMutation('event_1', 'match_target', client as any);
+
+    expect(loaded.matches.match_target.winnerEventTeamId).toBeNull();
+  });
+
+  it('derives a best-of-three winner after a team wins two sets', async () => {
+    const client = createClient();
+    const event = await client.events.findUnique();
+    Object.assign(event, {
+      usesSets: true,
+      winnerSetCount: 3,
+      winnerBracketPointsToVictory: [21, 21, 15],
+    });
+    const matches = await client.matches.findMany({ where: { eventId: 'event_1' } });
+    Object.assign(matches[0], {
+      winnerEventTeamId: null,
+      team1Points: [19, 28, 15],
+      team2Points: [21, 26, 10],
+      setResults: [2, 1, 1],
+      matchRulesSnapshot: {
+        scoringModel: 'SETS',
+        segmentCount: 3,
+        setPointTargets: [21, 21, 15],
+      },
+    });
+    client.matchSegments.findMany.mockResolvedValue([
+      {
+        id: 'segment_target_1',
+        matchId: 'match_target',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: { team_1: 19, team_2: 21 },
+        winnerEventTeamId: 'team_2',
+      },
+      {
+        id: 'segment_target_2',
+        matchId: 'match_target',
+        sequence: 2,
+        status: 'COMPLETE',
+        scores: { team_1: 28, team_2: 26 },
+        winnerEventTeamId: 'team_1',
+      },
+      {
+        id: 'segment_target_3',
+        matchId: 'match_target',
+        sequence: 3,
+        status: 'COMPLETE',
+        scores: { team_1: 15, team_2: 10 },
+        winnerEventTeamId: 'team_1',
+      },
+    ]);
+
+    const loaded = await loadEventForMatchMutation('event_1', 'match_target', client as any);
+
+    expect(loaded.matches.match_target.winnerEventTeamId).toBe('team_1');
+  });
 });

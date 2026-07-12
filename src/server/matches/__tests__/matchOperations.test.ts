@@ -180,4 +180,27 @@ describe('resolveMatchRules', () => {
       segmentCount: 1,
     }));
   });
+
+  it('overrides stale winner-bracket segment rows with the configured loser set count', () => {
+    expect(resolveMatchRulesForContext({
+      baseRules: resolveMatchRules({
+        usesSets: true,
+        setsPerMatch: 3,
+        winnerSetCount: 3,
+      }),
+      eventType: 'TOURNAMENT',
+      usesSets: true,
+      setsPerMatch: 3,
+      winnerSetCount: 3,
+      loserSetCount: 1,
+      losersBracket: true,
+      existingSegmentCount: 3,
+      existingTeam1PointCount: 3,
+      existingTeam2PointCount: 3,
+      existingResultCount: 3,
+    })).toEqual(expect.objectContaining({
+      scoringModel: 'SETS',
+      segmentCount: 1,
+    }));
+  });
 });

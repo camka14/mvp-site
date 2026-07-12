@@ -21,6 +21,10 @@ import {
   normalizeOrganizationTaxClassification,
   normalizeRentalTaxHandling,
 } from '@/lib/taxPolicy';
+import {
+  getOrganizationTagsForOrganizationIds,
+  syncOrganizationTags,
+} from '@/server/organizationTags';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -54,6 +58,7 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
 ]);
 const ORGANIZATION_TRANSIENT_FIELDS = new Set<string>([
   'taxResponsibilityAgreementAccepted',
+  'tags',
 ]);
 const ORGANIZATION_TAX_PROFILE_FIELDS = new Set<string>([
   'taxOrganizationType',
@@ -190,10 +195,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .filter((row) => typeof row.userId === 'string' && typeof row.email === 'string' && row.email.length > 0)
       .map((row) => [row.userId, row.email] as const),
   );
+  const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds([org.id]);
 
   return NextResponse.json(
     withLegacyFields({
       ...org,
+      tags: tagsByOrganizationId.get(org.id) ?? [],
       staffMembers: viewerCanManageStaffRoster
         ? staffMembers.map((staffMember) => ({
           ...staffMember,
@@ -369,6 +376,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   updateData.updatedAt = new Date();
 
   const updated = await updateOrganizationWithUnknownArgFallback(id, updateData);
+  const tags = Object.prototype.hasOwnProperty.call(payload, 'tags')
+    ? await syncOrganizationTags(id, payload.tags)
+    : (await getOrganizationTagsForOrganizationIds([id])).get(id) ?? [];
 
-  return NextResponse.json(withLegacyFields(updated), { status: 200 });
+  return NextResponse.json(withLegacyFields({ ...updated, tags }), { status: 200 });
 }

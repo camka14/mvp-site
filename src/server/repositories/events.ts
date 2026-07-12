@@ -245,6 +245,60 @@ const normalizeEntityId = (value: unknown): string | null => {
   return trimmed.length ? trimmed : null;
 };
 
+const resolveHydratedWinnerEventTeamId = (params: {
+  persistedWinnerEventTeamId: unknown;
+  shouldHydrateSegments: boolean;
+  segments: Array<{ status?: unknown; winnerEventTeamId?: unknown }>;
+  resolvedMatchRules: { scoringModel?: unknown; segmentCount?: unknown } | null | undefined;
+  team1Id: unknown;
+  team2Id: unknown;
+}): string | null => {
+  const persistedWinnerEventTeamId = normalizeEntityId(params.persistedWinnerEventTeamId);
+  if (persistedWinnerEventTeamId) {
+    return persistedWinnerEventTeamId;
+  }
+  if (!params.shouldHydrateSegments) {
+    return null;
+  }
+
+  const scoringModel = typeof params.resolvedMatchRules?.scoringModel === 'string'
+    ? params.resolvedMatchRules.scoringModel.trim().toUpperCase()
+    : '';
+  if (scoringModel !== 'SETS') {
+    const completedSegment = params.segments.find((segment) => (
+      String(segment.status ?? '').trim().toUpperCase() === 'COMPLETE'
+      && normalizeEntityId(segment.winnerEventTeamId)
+    ));
+    return normalizeEntityId(completedSegment?.winnerEventTeamId);
+  }
+
+  const team1Id = normalizeEntityId(params.team1Id);
+  const team2Id = normalizeEntityId(params.team2Id);
+  if (!team1Id || !team2Id) {
+    return null;
+  }
+  const configuredSegmentCount = Number(params.resolvedMatchRules?.segmentCount);
+  const segmentCount = Number.isFinite(configuredSegmentCount) && configuredSegmentCount > 0
+    ? Math.trunc(configuredSegmentCount)
+    : Math.max(params.segments.length, 1);
+  const winsNeeded = Math.max(1, Math.ceil(segmentCount / 2));
+  const completedWinnerIds = params.segments
+    .filter((segment) => (
+      String(segment.status ?? '').trim().toUpperCase() === 'COMPLETE'
+      || Boolean(normalizeEntityId(segment.winnerEventTeamId))
+    ))
+    .map((segment) => normalizeEntityId(segment.winnerEventTeamId));
+  const team1Wins = completedWinnerIds.filter((winnerId) => winnerId === team1Id).length;
+  const team2Wins = completedWinnerIds.filter((winnerId) => winnerId === team2Id).length;
+  if (team1Wins >= winsNeeded) {
+    return team1Id;
+  }
+  if (team2Wins >= winsNeeded) {
+    return team2Id;
+  }
+  return null;
+};
+
 const normalizeOptionalText = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -2632,11 +2686,14 @@ const buildMatches = (
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
         .map(serializeMatchIncidentRow)
       : [];
-    const winnerEventTeamId = normalizeEntityId(row.winnerEventTeamId)
-      ?? (shouldHydrateSegments
-        ? segments.find((segment) => segment.status === 'COMPLETE' && segment.winnerEventTeamId)?.winnerEventTeamId
-        : null)
-      ?? null;
+    const winnerEventTeamId = resolveHydratedWinnerEventTeamId({
+      persistedWinnerEventTeamId: row.winnerEventTeamId,
+      shouldHydrateSegments,
+      segments,
+      resolvedMatchRules: contextualResolvedMatchRules,
+      team1Id: row.team1Id,
+      team2Id: row.team2Id,
+    });
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,

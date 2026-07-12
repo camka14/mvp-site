@@ -162,7 +162,7 @@ describe('event tag helpers', () => {
       where: { slug: 'pickup-game' },
     });
     expect(tags).toEqual([
-      { id: 'tag_pickup', name: 'Pickup Game', slug: 'pickup-game' },
+      { id: 'tag_pickup', name: 'Pickup Game', slug: 'pickup-game', isSystem: false },
     ]);
     expect(client.eventTagAssignments.createMany).toHaveBeenCalledWith(expect.objectContaining({
       data: [

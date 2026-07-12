@@ -824,6 +824,16 @@ export interface EventTag {
   name: string;
   slug?: string;
   eventCount?: number;
+  isSystem?: boolean;
+}
+
+export interface OrganizationTag {
+  id?: string;
+  $id?: string;
+  name: string;
+  slug?: string;
+  organizationCount?: number;
+  isSystem?: boolean;
 }
 
 // Core Event interface with relationships
@@ -1019,6 +1029,7 @@ export interface Organization {
   viewerCanManageOrganization?: boolean;
   viewerCanAccessUsers?: boolean;
   viewerPermissions?: string[];
+  tags?: OrganizationTag[];
   $createdAt?: string;
   $updatedAt?: string;
 

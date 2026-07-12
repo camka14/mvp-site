@@ -2,9 +2,10 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text, Select, Checkbox } from '@mantine/core';
-import type { Organization, UserData } from '@/types';
+import type { Organization, OrganizationTag, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
+import { OrganizationTagsInput } from './OrganizationTagsInput';
 import { notifications } from '@mantine/notifications';
 import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -69,6 +70,8 @@ export default function CreateOrganizationModal({
   const [submitting, setSubmitting] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [tagOptions, setTagOptions] = useState<OrganizationTag[]>([]);
+  const [tagOptionsError, setTagOptionsError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -82,6 +85,7 @@ export default function CreateOrganizationModal({
     operatesAthleticFacility: false,
     defaultEventTaxHandling: 'STRIPE_TAX' as OrganizationDefaultEventTaxHandling,
     taxResponsibilityAgreementAccepted: false,
+    tags: [] as OrganizationTag[],
   });
 
   const sportOptions = useMemo(() => {
@@ -155,6 +159,7 @@ export default function CreateOrganizationModal({
         operatesAthleticFacility: Boolean(organization.operatesAthleticFacility),
         defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(organization.defaultEventTaxHandling),
         taxResponsibilityAgreementAccepted: Boolean(organization.taxResponsibilityAcceptedAt),
+        tags: Array.isArray(organization.tags) ? organization.tags : [],
       });
       setCoordinates(editingCoords);
 
@@ -193,12 +198,34 @@ export default function CreateOrganizationModal({
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'STRIPE_TAX',
       taxResponsibilityAgreementAccepted: false,
+      tags: [],
     });
     setCoordinates(baseCoords);
     setLogoUrl('');
     initializedRef.current = true;
     initializedOrganizationIdRef.current = null;
   }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const controller = new AbortController();
+    setTagOptionsError(null);
+    fetch('/api/organization-tags', { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load organization tags')))
+      .then((body) => {
+        const tags = Array.isArray(body?.tags) ? body.tags : [];
+        setTagOptions(tags);
+      })
+      .catch((loadError) => {
+        if (loadError.name !== 'AbortError') {
+          setTagOptionsError('Unable to load organization tags.');
+        }
+      });
+
+    return () => controller.abort();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || isEditing || !userLocation) {
@@ -265,6 +292,7 @@ export default function CreateOrganizationModal({
           defaultEventTaxHandling: form.defaultEventTaxHandling,
           defaultRentalTaxHandling: 'STRIPE_TAX',
           taxResponsibilityAgreementAccepted: form.taxResponsibilityAgreementAccepted,
+          tags: form.tags,
         };
 
         if (coordinatesPayload) {
@@ -291,6 +319,7 @@ export default function CreateOrganizationModal({
           defaultEventTaxHandling: form.defaultEventTaxHandling,
           defaultRentalTaxHandling: 'STRIPE_TAX',
           taxResponsibilityAgreementAccepted: form.taxResponsibilityAgreementAccepted,
+          tags: form.tags,
         });
         onCreated?.(created);
         notifications.show({ color: 'teal', message: 'Organization created successfully.' });
@@ -307,6 +336,7 @@ export default function CreateOrganizationModal({
           operatesAthleticFacility: false,
           defaultEventTaxHandling: 'STRIPE_TAX',
           taxResponsibilityAgreementAccepted: false,
+          tags: [],
         });
         setLogoUrl('');
         setCoordinates(null);
@@ -377,6 +407,15 @@ export default function CreateOrganizationModal({
           data={ORGANIZATION_STATUS_OPTIONS}
           required
         />
+        <div>
+          <OrganizationTagsInput
+            value={form.tags}
+            options={tagOptions}
+            disabled={submitting}
+            error={tagOptionsError ?? undefined}
+            onChange={(tags) => setForm((prev) => ({ ...prev, tags }))}
+          />
+        </div>
         <div>
           <MultiSelect
             label="Sports covered"

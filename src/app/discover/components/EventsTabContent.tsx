@@ -353,7 +353,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
         />
         <Group gap="xs">
           <Chip
-            color="green"
+            color="blue"
             radius="xl"
             checked={allTagsSelected}
             disabled={eventTagsLoading || !eventTags.length}
@@ -371,7 +371,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
             visibleEventTags.map((tag) => (
               <Chip
                 key={tag.slug || tag.name}
-                color="green"
+                color="blue"
                 radius="xl"
                 checked={selectedTags.includes(tag.name)}
                 onChange={(checked) => {

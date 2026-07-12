@@ -7,7 +7,7 @@ import {
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
 import { getOrganizationStatus } from '@/lib/organizationStatus';
-import type { Event, Field, Invite, Organization, OrganizationRole, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
+import type { Event, Field, Invite, Organization, OrganizationRole, OrganizationTag, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
@@ -181,6 +181,17 @@ class OrganizationService {
     };
   }
 
+  private mapOrganizationTag(row: Record<string, unknown>): OrganizationTag {
+    return {
+      id: typeof row.id === 'string' ? row.id : undefined,
+      $id: typeof row.$id === 'string' ? row.$id : typeof row.id === 'string' ? row.id : undefined,
+      name: typeof row.name === 'string' ? row.name : '',
+      slug: typeof row.slug === 'string' ? row.slug : undefined,
+      organizationCount: typeof row.organizationCount === 'number' ? row.organizationCount : undefined,
+      isSystem: row.isSystem === true,
+    };
+  }
+
   private resolveCoordinates(row: AnyRow): [number, number] | undefined {
     if (Array.isArray(row.coordinates) && row.coordinates.length >= 2) {
       const [lngRaw, latRaw] = row.coordinates;
@@ -304,6 +315,11 @@ class OrganizationService {
       viewerCanAccessUsers: Boolean(row.viewerCanAccessUsers),
       viewerPermissions: Array.isArray(row.viewerPermissions)
         ? row.viewerPermissions.filter((permission): permission is string => typeof permission === 'string')
+        : [],
+      tags: Array.isArray(row.tags)
+        ? row.tags
+          .map((value: unknown) => this.mapOrganizationTag(value as Record<string, unknown>))
+          .filter((tag) => tag.name.trim().length > 0)
         : [],
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
@@ -510,7 +526,7 @@ class OrganizationService {
   async listOrganizationsWithFieldsPage(
     limit: number = 100,
     offset: number = 0,
-    options: { includeAffiliateRentals?: boolean; hydrateRelations?: boolean } = {},
+    options: { includeAffiliateRentals?: boolean; hydrateRelations?: boolean; tagSlugs?: string[] } = {},
   ): Promise<{
     organizations: Organization[];
     pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
@@ -522,6 +538,10 @@ class OrganizationService {
       if (options.includeAffiliateRentals) {
         params.set('includeAffiliateRentals', 'true');
       }
+      (options.tagSlugs ?? [])
+        .map((slug) => slug.trim())
+        .filter(Boolean)
+        .forEach((slug) => params.append('tags', slug));
       const response = await apiRequest<{
         organizations?: AnyRow[];
         pagination?: { limit?: number; offset?: number; nextOffset?: number; hasMore?: boolean };
@@ -554,7 +574,7 @@ class OrganizationService {
 
   async listOrganizationsWithFields(
     limit: number = 100,
-    options: { includeAffiliateRentals?: boolean } = {},
+    options: { includeAffiliateRentals?: boolean; tagSlugs?: string[] } = {},
   ): Promise<Organization[]> {
     const page = await this.listOrganizationsWithFieldsPage(limit, 0, options);
     return page.organizations;

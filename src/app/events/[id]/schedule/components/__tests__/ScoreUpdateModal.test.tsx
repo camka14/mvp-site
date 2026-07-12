@@ -180,6 +180,51 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getByText(/Best of 3 sets \| Rally to 25\/15 \| Win by 2/i)).toBeInTheDocument();
   });
 
+  it('keeps a frozen one-set snapshot authoritative over stale trailing segment rows', () => {
+    const oneSetRules = buildRules({
+      scoringModel: 'SETS',
+      segmentCount: 1,
+      segmentLabel: 'Set',
+      setPointTargets: [21],
+    });
+    const staleSegments = [
+      ...buildSegments(),
+      {
+        id: 'match_1_segment_3',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        sequence: 3,
+        status: 'NOT_STARTED',
+        scores: { team_a: 0, team_b: 0 },
+        winnerEventTeamId: null,
+      },
+    ];
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0, 0],
+          team2Points: [0, 0, 0],
+          setResults: [0, 0, 0],
+          matchRulesSnapshot: oneSetRules as Match['matchRulesSnapshot'],
+          resolvedMatchRules: oneSetRules as Match['resolvedMatchRules'],
+          segments: staleSegments as Match['segments'],
+        })}
+        tournament={buildEvent({ usesSets: true, winnerSetCount: 3, loserSetCount: 1 })}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByText(/Best of 1/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set 2' })).not.toBeInTheDocument();
+  });
+
   it('truncates long team names in score card headers', () => {
     const longTeamName = 'Test Soccer League Team 5 With An Extra Long Club Name';
 

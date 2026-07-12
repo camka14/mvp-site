@@ -38,7 +38,7 @@ if (useLive) {
 }
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
-const USER_AGENT = 'BracketIQ club logo review bot; contact samuel.r@razumly.com';
+const USER_AGENT = 'Mozilla/5.0 (compatible; BracketIQ club logo review; +mailto:samuel.r@razumly.com)';
 const SIZE = 1024;
 const OUTPUT_DIR = path.resolve(process.cwd(), 'output/affiliate-club-logo-discovery');
 const FETCH_TIMEOUT_MS = 12_000;
@@ -212,6 +212,49 @@ const fetchBuffer = async (url: string): Promise<Buffer | null> => {
   return Buffer.from(await response.arrayBuffer());
 };
 
+const imageFetchVariants = (candidateUrl: string): string[] => {
+  const variants: string[] = [];
+  try {
+    const url = new URL(candidateUrl);
+    if (url.hostname === 'static.wixstatic.com' && url.pathname.includes('/media/') && url.pathname.includes('/v1/')) {
+      const fullSize = new URL(url.toString());
+      fullSize.pathname = url.pathname.split('/v1/')[0] ?? url.pathname;
+      fullSize.search = '';
+      variants.push(fullSize.toString());
+    }
+    if (url.hostname === 'resized-images.azureedge.net') {
+      const fullWidth = new URL(url.toString());
+      fullWidth.search = '';
+      fullWidth.searchParams.set('w', '1024');
+      variants.push(fullWidth.toString());
+    }
+    if (url.hostname === 'd36m266ykvepgv.cloudfront.net') {
+      const sizeMatch = url.pathname.match(/\/s-(\d+)-(\d+)\//);
+      if (sizeMatch) {
+        const sourceWidth = Number(sizeMatch[1]);
+        const sourceHeight = Number(sizeMatch[2]);
+        if (sourceWidth > 0 && sourceHeight > 0) {
+          const width = 900;
+          const height = Math.max(1, Math.round((width * sourceHeight) / sourceWidth));
+          const fullWidth = new URL(url.toString());
+          fullWidth.pathname = url.pathname.replace(/\/s-\d+-\d+\//, `/s-${width}-${height}/`);
+          variants.push(fullWidth.toString());
+        }
+      }
+    }
+    if (/\.wsimg\.com$/.test(url.hostname) && url.pathname.includes('/:')) {
+      const original = new URL(url.toString());
+      original.pathname = url.pathname.split('/:')[0] ?? url.pathname;
+      original.search = '';
+      variants.push(original.toString());
+    }
+  } catch {
+    // Fall back to the source URL below.
+  }
+  variants.push(candidateUrl);
+  return [...new Set(variants)];
+};
+
 const robotsAllows = async (targetUrl: string): Promise<boolean> => {
   try {
     const url = new URL(targetUrl);
@@ -263,6 +306,7 @@ const imagePenalty = (url: string, label: string): number => {
   if (/(hero|banner|background|bg-|photo|gallery|team-photo|player|coach|field|court|camp|clinic)/.test(value)) penalty -= 30;
   if (/(facebook|instagram|youtube|twitter|x-logo|linkedin|social|avatar|profile)/.test(value)) penalty -= 45;
   if (/(favicon|touch-icon|apple-touch-icon)/.test(value)) penalty -= 8;
+  if (/(logo-default|default-logo|placeholder|pwa-app\/logo-default|generic-logo)/.test(value)) penalty -= 80;
   if (/\.(ico)(\?|$)/.test(value)) penalty -= 20;
   return penalty;
 };
@@ -411,30 +455,55 @@ const extractCandidates = (html: string, baseUrl: string, orgName: string): Imag
 
 const bestUsableImage = async (candidates: ImageCandidate[]): Promise<{ candidate: ImageCandidate; source: Buffer } | null> => {
   for (const candidate of candidates) {
-    const source = await fetchBuffer(candidate.url).catch(() => null);
-    if (!source) continue;
-    const metadata = await sharp(source, { animated: false }).metadata().catch(() => null);
-    if (!metadata?.width || !metadata?.height) continue;
-    const maxSide = Math.max(metadata.width, metadata.height);
-    if (maxSide < 64) continue;
-    const area = metadata.width * metadata.height;
-    if (area < 4096) continue;
-    const scoreWithSize = candidate.score + Math.min(25, Math.floor(maxSide / 80));
-    if (scoreWithSize < 45) continue;
-    return { candidate: { ...candidate, score: scoreWithSize }, source };
+    for (const imageUrl of imageFetchVariants(candidate.url)) {
+      const source = await fetchBuffer(imageUrl).catch(() => null);
+      if (!source) continue;
+      const metadata = await sharp(source, { animated: false }).metadata().catch(() => null);
+      if (!metadata?.width || !metadata?.height) continue;
+      const maxSide = Math.max(metadata.width, metadata.height);
+      if (maxSide < 64) continue;
+      const area = metadata.width * metadata.height;
+      if (area < 4096) continue;
+      const scoreWithSize = candidate.score + Math.min(25, Math.floor(maxSide / 80));
+      if (scoreWithSize < 45) continue;
+      const reason = imageUrl === candidate.url
+        ? candidate.reason
+        : [...candidate.reason, 'used full-size official asset variant'];
+      return { candidate: { ...candidate, url: imageUrl, score: scoreWithSize, reason }, source };
+    }
   }
   return null;
 };
 
-const colorFromOrg = (orgId: string): string => {
-  const palette = ['#172033', '#1f4f75', '#123c34', '#211d1e', '#f6f8fb', '#ffffff'];
-  const byte = crypto.createHash('sha1').update(orgId).digest()[0] ?? 0;
-  return palette[byte % palette.length];
+const chooseLogoBackground = async (base: Buffer): Promise<string> => {
+  const { data, info } = await sharp(base, { animated: false })
+    .ensureAlpha()
+    .resize({ width: 96, height: 96, fit: 'inside', withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let visible = 0;
+  let luminanceTotal = 0;
+  let darkPixels = 0;
+  for (let index = 0; index < data.length; index += info.channels) {
+    const alpha = data[index + 3] ?? 255;
+    if (alpha < 32) continue;
+    const red = data[index] ?? 0;
+    const green = data[index + 1] ?? 0;
+    const blue = data[index + 2] ?? 0;
+    const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    visible += 1;
+    luminanceTotal += luminance;
+    if (luminance < 96) darkPixels += 1;
+  }
+  if (!visible) return '#ffffff';
+  const averageLuminance = luminanceTotal / visible;
+  const darkRatio = darkPixels / visible;
+  return averageLuminance > 210 && darkRatio < 0.15 ? '#172033' : '#ffffff';
 };
 
 const normalizeLogo = async (org: ClubOrg, source: Buffer): Promise<Buffer> => {
-  const background = colorFromOrg(org.id);
   const base = await sharp(source, { animated: false }).rotate().png().toBuffer();
+  const background = await chooseLogoBackground(base);
   const trimmed = await sharp(base)
     .trim({ threshold: 12 })
     .flatten({ background })
@@ -567,19 +636,10 @@ const processOrg = async (ownerId: string, org: ClubOrg): Promise<ReportRow> => 
       reason: 'robots.txt disallows the official website path.',
     };
   }
-  const html = await fetchText(website!);
-  if (!html) {
-    return {
-      orgId: org.id,
-      name: org.name,
-      website,
-      status: 'failed',
-      reason: 'Official website did not return HTML.',
-    };
-  }
-  let candidates = extractCandidates(html, website!, org.name);
-  let best = await bestUsableImage(candidates);
-  if (!best) {
+  const html = await fetchText(website!).catch(() => null);
+  let candidates = html ? extractCandidates(html, website!, org.name) : [];
+  let best = candidates.length ? await bestUsableImage(candidates) : null;
+  if (!best || !html) {
     const renderedCandidates = await fetchRenderedCandidates(website!, org.name);
     const combined = new Map<string, ImageCandidate>();
     for (const candidate of [...candidates, ...renderedCandidates]) {
@@ -596,8 +656,10 @@ const processOrg = async (ownerId: string, org: ClubOrg): Promise<ReportRow> => 
       orgId: org.id,
       name: org.name,
       website,
-      status: 'skipped',
-      reason: 'No usable official logo/image candidate found.',
+      status: html ? 'skipped' : 'failed',
+      reason: html
+        ? 'No usable official logo/image candidate found.'
+        : 'Official website did not return HTML and rendered fallback found no usable candidate.',
       candidates,
     };
   }
