@@ -93,7 +93,13 @@ export const verifySessionToken = (token: string): VerifiedSessionToken | null =
     if (typeof decoded.userId !== 'string' || decoded.userId.trim().length === 0) return null;
     if (!Number.isInteger(decoded.sessionVersion)) return null;
     if (typeof decoded.isAdmin !== 'boolean') return null;
-    if (!Number.isInteger(decoded.iat) || !Number.isInteger(decoded.exp) || decoded.exp <= decoded.iat) {
+    if (
+      typeof decoded.iat !== 'number'
+      || typeof decoded.exp !== 'number'
+      || !Number.isInteger(decoded.iat)
+      || !Number.isInteger(decoded.exp)
+      || decoded.exp <= decoded.iat
+    ) {
       return null;
     }
     return {
