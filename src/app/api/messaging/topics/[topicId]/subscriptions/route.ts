@@ -256,20 +256,29 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
       ? existing.userIds ?? []
       : (existing.userIds ?? []).filter((id) => !removeIds.has(id));
 
+    try {
+      await unregisterPushDeviceTarget({
+        userIds: requestUserIds,
+        pushToken: parsed.data.pushToken?.trim() || null,
+        pushTarget: topicId,
+      });
+    } catch (error) {
+      console.error('Failed to unregister push device target', { topicId, error });
+      return NextResponse.json(
+        {
+          error: 'Unable to remove the device notification target. Please retry.',
+          code: 'PUSH_TARGET_CLEANUP_FAILED',
+        },
+        { status: 503 },
+      );
+    }
+
     const record = isTeamChatGroup(existing)
       ? existing
       : await prisma.chatGroup.update({
         where: { id: topicId },
         data: { userIds: nextUserIds, updatedAt: new Date() },
       });
-
-    await unregisterPushDeviceTarget({
-      userIds: requestUserIds,
-      pushToken: parsed.data.pushToken?.trim() || null,
-      pushTarget: topicId,
-    }).catch((error) => {
-      console.warn('Failed to unregister push device target', { topicId, error });
-    });
 
     return NextResponse.json({ topicId, topic: withLegacyFields(record) }, { status: 200 });
   } catch (error) {

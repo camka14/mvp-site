@@ -229,6 +229,64 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     });
   });
 
+  it('surfaces a push target cleanup failure instead of reporting an unsubscribe success', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'user_user_1', userIds: ['user_1', 'user_2'], hostId: 'user_1', teamId: null,
+    });
+    prismaMock.chatGroup.update.mockResolvedValue({
+      id: 'user_user_1',
+      name: null,
+      userIds: ['user_2'],
+      hostId: 'user_1',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+    });
+    unregisterPushDeviceTargetMock.mockRejectedValue(new Error('database unavailable'));
+
+    const res = await DELETE(deleteRequest({
+      userIds: ['user_1'],
+      pushToken: 'push_token_1',
+      pushTarget: 'user_user_1',
+    }), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(json.code).toBe('PUSH_TARGET_CLEANUP_FAILED');
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+    expect(unregisterPushDeviceTargetMock).toHaveBeenCalledWith({
+      userIds: ['user_1'],
+      pushToken: 'push_token_1',
+      pushTarget: 'user_user_1',
+    });
+  });
+
+  it('keeps team-chat membership roster-managed while removing the current device target', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'team:team_1',
+      userIds: ['user_1', 'user_2'],
+      hostId: 'user_1',
+      teamId: 'team_1',
+    });
+
+    const res = await DELETE(deleteRequest({
+      userIds: ['user_1'],
+      pushToken: 'push_token_1',
+      pushTarget: 'team:team_1',
+    }), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+    expect(unregisterPushDeviceTargetMock).toHaveBeenCalledWith({
+      userIds: ['user_1'],
+      pushToken: 'push_token_1',
+      pushTarget: 'team:team_1',
+    });
+  });
+
   it('returns push target debug status for the current user', async () => {
     prismaMock.pushDeviceTarget.count
       .mockResolvedValueOnce(1)

@@ -28,6 +28,12 @@ export interface UnregisterPushDeviceTargetInput {
   pushTarget?: string | null;
 }
 
+export interface UnregisterUserPushDeviceTargetInput {
+  userId: string;
+  pushToken: string;
+  pushTarget?: string | null;
+}
+
 export interface SendPushToUsersInput {
   userIds: string[];
   title: string;
@@ -174,10 +180,11 @@ export const unregisterPushDeviceTarget = async ({
   const normalizedPushToken = normalizeOptional(pushToken);
   const normalizedPushTarget = normalizeOptional(pushTarget);
 
-  if (normalizedPushToken) {
+  if (normalizedPushToken && normalizedUserIds.length) {
     await prisma.$executeRaw`
       DELETE FROM "PushDeviceTarget"
       WHERE "pushToken" = ${normalizedPushToken}
+      AND "userId" = ANY(${normalizedUserIds}::text[])
     `;
     return;
   }
@@ -207,6 +214,36 @@ export const unregisterPushDeviceTarget = async ({
     DELETE FROM "PushDeviceTarget"
     WHERE "userId" = ANY(${normalizedUserIds}::text[])
   `;
+};
+
+/**
+ * Removes a token only when it is still owned by the authenticated account.
+ *
+ * Logout uses this narrower variant rather than the generic topic helper so a
+ * caller cannot remove another account's target by supplying its push token.
+ * A zero-row delete is intentionally successful: the operation is idempotent
+ * when a previous request already removed or reassigned the token.
+ */
+export const unregisterPushDeviceTargetForUser = async ({
+  userId,
+  pushToken,
+  pushTarget,
+}: UnregisterUserPushDeviceTargetInput): Promise<{ count: number }> => {
+  const normalizedUserId = userId.trim();
+  const normalizedPushToken = pushToken.trim();
+  const normalizedPushTarget = normalizeOptional(pushTarget);
+
+  if (!normalizedUserId || !normalizedPushToken) {
+    return { count: 0 };
+  }
+
+  return prisma.pushDeviceTarget.deleteMany({
+    where: {
+      userId: normalizedUserId,
+      pushToken: normalizedPushToken,
+      ...(normalizedPushTarget ? { pushTarget: normalizedPushTarget } : {}),
+    },
+  });
 };
 
 const getPushTokensForUsers = async (userIds: string[], deviceTypes?: PushDeviceType[]): Promise<string[]> => {

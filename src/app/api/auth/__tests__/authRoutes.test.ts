@@ -45,6 +45,9 @@ const authSessionsMock = {
   revokeAuthUserSessions: jest.fn(),
   isSessionTokenCurrent: jest.fn(),
 };
+const pushNotificationsMock = {
+  unregisterPushDeviceTargetForUser: jest.fn(),
+};
 const authEmailVerificationMock = {
   isInitialEmailVerificationAvailable: jest.fn(),
   sendInitialEmailVerification: jest.fn(),
@@ -65,6 +68,9 @@ jest.mock('@/lib/authServer', () => authServerMock);
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/lib/requestOrigin', () => ({ getRequestOrigin: (...args: any[]) => getRequestOriginMock(...args) }));
 jest.mock('@/server/authSessions', () => authSessionsMock);
+jest.mock('@/server/pushNotifications', () => ({
+  unregisterPushDeviceTargetForUser: (...args: any[]) => pushNotificationsMock.unregisterPushDeviceTargetForUser(...args),
+}));
 jest.mock('@/server/authEmailVerification', () => ({
   isInitialEmailVerificationAvailable: () => authEmailVerificationMock.isInitialEmailVerificationAvailable(),
   sendInitialEmailVerification: (...args: any[]) => authEmailVerificationMock.sendInitialEmailVerification(...args),
@@ -120,6 +126,7 @@ describe('auth routes', () => {
     getRequestOriginMock.mockReturnValue('http://localhost');
     authSessionsMock.revokeAuthUserSessions.mockResolvedValue(1);
     authSessionsMock.isSessionTokenCurrent.mockReturnValue(true);
+    pushNotificationsMock.unregisterPushDeviceTargetForUser.mockResolvedValue({ count: 1 });
     authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
     authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
     authTotpMfaMock.isWebLoginClient.mockImplementation((value: unknown) => value === 'web');
@@ -1089,7 +1096,7 @@ describe('auth routes', () => {
   });
 
   describe('POST /api/auth/logout', () => {
-    it('clears auth cookie', async () => {
+    it('preserves legacy no-body logout behavior', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
       authServerMock.verifySessionToken.mockReturnValue({
         userId: 'user_1',
@@ -1102,6 +1109,73 @@ describe('auth routes', () => {
       expect(res.status).toBe(200);
       expect(authSessionsMock.revokeAuthUserSessions).toHaveBeenCalledWith('user_1');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
+      expect(pushNotificationsMock.unregisterPushDeviceTargetForUser).not.toHaveBeenCalled();
+    });
+
+    it('removes an authenticated device target before revoking the session', async () => {
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+      const calls: string[] = [];
+      pushNotificationsMock.unregisterPushDeviceTargetForUser.mockImplementation(async () => {
+        calls.push('device-target');
+        expect(authSessionsMock.revokeAuthUserSessions).not.toHaveBeenCalled();
+        return { count: 1 };
+      });
+      authSessionsMock.revokeAuthUserSessions.mockImplementation(async () => {
+        calls.push('session');
+        return 1;
+      });
+
+      const res = await LOGOUT_POST(buildJsonRequest('http://localhost/api/auth/logout', {
+        deviceTarget: {
+          pushToken: 'push_token_1',
+          pushTarget: 'user_user_1',
+        },
+      }));
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ ok: true, deviceTargetRemoved: true });
+      expect(pushNotificationsMock.unregisterPushDeviceTargetForUser).toHaveBeenCalledWith({
+        userId: 'user_1',
+        pushToken: 'push_token_1',
+        pushTarget: 'user_user_1',
+      });
+      expect(authSessionsMock.revokeAuthUserSessions).toHaveBeenCalledWith('user_1');
+      expect(calls).toEqual(['device-target', 'session']);
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
+    });
+
+    it('does not revoke or clear the session when authenticated device cleanup fails', async () => {
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+      pushNotificationsMock.unregisterPushDeviceTargetForUser.mockRejectedValue(new Error('database unavailable'));
+
+      const res = await LOGOUT_POST(buildJsonRequest('http://localhost/api/auth/logout', {
+        deviceTarget: {
+          pushToken: 'push_token_1',
+        },
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(json.code).toBe('PUSH_TARGET_CLEANUP_FAILED');
+      expect(authSessionsMock.revokeAuthUserSessions).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    });
+
+    it('requires an authenticated current session for device-target-aware logout', async () => {
+      requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+      const res = await LOGOUT_POST(buildJsonRequest('http://localhost/api/auth/logout', {
+        deviceTarget: {
+          pushToken: 'push_token_1',
+        },
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(401);
+      expect(json.code).toBe('PUSH_TARGET_CLEANUP_AUTH_REQUIRED');
+      expect(pushNotificationsMock.unregisterPushDeviceTargetForUser).not.toHaveBeenCalled();
+      expect(authSessionsMock.revokeAuthUserSessions).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
   });
 
