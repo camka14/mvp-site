@@ -18,11 +18,13 @@ const isChatGroupMemberMock = jest.fn();
 const isTeamChatGroupMock = jest.fn((group: { id?: string | null; teamId?: string | null }) => (
   Boolean(group.teamId) || Boolean(group.id?.startsWith('team:'))
 ));
+const ensureUserHasAcceptedChatTermsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/pushNotifications', () => ({ sendPushToUsers: (...args: any[]) => sendPushToUsersMock(...args) }));
 jest.mock('@/server/chatAccess', () => ({
+  ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
   getChatGroupMemberIds: (...args: any[]) => getChatGroupMemberIdsMock(...args),
   isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
   isTeamChatGroup: (...args: any[]) => isTeamChatGroupMock(...args),
@@ -40,6 +42,7 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     isChatGroupMemberMock.mockResolvedValue(true);
+    ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
     getChatGroupMemberIdsMock.mockImplementation(async (group: { userIds?: string[] | null }) => group.userIds ?? []);
     sendPushToUsersMock.mockResolvedValue({
       attempted: true,
@@ -124,15 +127,20 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
     expect(json.recipientUserIds).toEqual(['user_2']);
   });
 
-  it('rejects reserved sender fields and never relays caller-controlled identity', async () => {
+  it('ignores legacy caller-controlled sender fields and derives identity from the session', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      userIds: ['user_1', 'user_2'], mutedUserIds: [], hostId: 'user_1', teamId: null,
+    });
 
     const res = await POST(requestFor({ title: 'x', body: 'y', senderId: 'user_999' }), {
       params: Promise.resolve({ topicId: 'topic_1' }),
     });
 
-    expect(res.status).toBe(400);
-    expect(sendPushToUsersMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ senderId: 'user_1' }),
+    }));
   });
 
   it('rejects callers who are not topic members', async () => {
@@ -178,7 +186,7 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
     expect(sendPushToUsersMock).not.toHaveBeenCalled();
   });
 
-  it('prevents data fields from overriding canonical sender and topic ids', async () => {
+  it('strips caller domain data and emits only canonical chat metadata', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.chatGroup.findUnique.mockResolvedValue({
       userIds: ['user_1', 'user_2'], mutedUserIds: [], hostId: 'user_1', teamId: null,
@@ -186,13 +194,56 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
 
     const res = await POST(requestFor({
       body: 'Hello',
-      data: { senderId: 'spoofed', topicId: 'other', inviteId: 'invite_1' },
+      data: {
+        senderId: 'spoofed',
+        topicId: 'other',
+        inviteId: 'invite_1',
+        eventId: 'event_1',
+        organizationId: 'organization_1',
+        teamId: 'team_1',
+        deepLink: 'mvp://profile/invites',
+      },
     }), { params: Promise.resolve({ topicId: 'topic_1' }) });
 
     expect(res.status).toBe(200);
     expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
-      data: { inviteId: 'invite_1', topicId: 'topic_1', senderId: 'user_1' },
+      data: {
+        notificationType: 'chatMessages',
+        topicId: 'topic_1',
+        senderId: 'user_1',
+      },
     }));
+  });
+
+  it('rejects oversized legacy metadata before loading a topic', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const res = await POST(requestFor({
+      body: 'Hello',
+      data: { ignored: 'x'.repeat(16_385) },
+    }), { params: Promise.resolve({ topicId: 'topic_1' }) });
+
+    expect(res.status).toBe(413);
+    expect(prismaMock.chatGroup.findUnique).not.toHaveBeenCalled();
+    expect(sendPushToUsersMock).not.toHaveBeenCalled();
+  });
+
+  it('requires chat terms before relaying a topic notification', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    ensureUserHasAcceptedChatTermsMock.mockRejectedValue(new Response(null, { status: 403 }));
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const res = await POST(requestFor({ body: 'Hello' }), {
+        params: Promise.resolve({ topicId: 'topic_1' }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(prismaMock.chatGroup.findUnique).not.toHaveBeenCalled();
+      expect(sendPushToUsersMock).not.toHaveBeenCalled();
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
   });
 
   it('does not relay a message across a blocked relationship in a non-team topic', async () => {

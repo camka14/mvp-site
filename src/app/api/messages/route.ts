@@ -2,25 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
 import {
   ensureUserHasAcceptedChatTerms,
   getChatGroupMemberIds,
   isChatGroupMember,
 } from '@/server/chatAccess';
 import { handleRouteError } from '@/server/http/routeErrors';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
-  id: z.string(),
-  body: z.string(),
-  userId: z.string(),
-  chatId: z.string(),
+  id: z.string().trim().min(1).max(128),
+  body: z.string().trim().min(1).max(2_000),
+  userId: z.string().trim().min(1).max(128).optional(),
+  chatId: z.string().trim().min(1).max(128),
   sentTime: z.string().optional(),
-  readByIds: z.array(z.string()).optional(),
-  attachmentUrls: z.array(z.string()).optional(),
-}).passthrough();
+  readByIds: z.array(z.string().trim().min(1).max(128)).max(50).optional(),
+  attachmentUrls: z.array(z.string().trim().min(1).max(2_048)).max(10).optional(),
+}).strict();
+
+const normalizeManagedAttachmentUrls = (
+  req: NextRequest,
+  values: string[] | undefined,
+): string[] | null => {
+  const normalized = Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+  for (const value of normalized) {
+    let url: URL;
+    try {
+      url = new URL(value, req.nextUrl.origin);
+    } catch {
+      return null;
+    }
+    if (url.origin !== req.nextUrl.origin || !/^\/api\/files\/[^/]+(?:\/preview)?$/.test(url.pathname)) {
+      return null;
+    }
+  }
+  return normalized;
+};
 
 const normalizeIds = (value: string[] | null | undefined): string[] => (
   Array.from(new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)))
@@ -48,6 +68,10 @@ const hasBlockingRelationship = (
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession(req);
+    const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.chatMessage, session.userId);
+    if (rateLimited) {
+      return rateLimited;
+    }
     if (!session.isAdmin) {
       await ensureUserHasAcceptedChatTerms(session.userId);
     }
@@ -57,11 +81,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    if (!session.isAdmin && parsed.data.userId !== session.userId) {
+    if (!session.isAdmin && parsed.data.userId && parsed.data.userId !== session.userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const sentTime = parseDateInput(parsed.data.sentTime) ?? new Date();
+    const senderId = session.isAdmin
+      ? parsed.data.userId ?? session.userId
+      : session.userId;
+    const attachmentUrls = normalizeManagedAttachmentUrls(req, parsed.data.attachmentUrls);
+    if (!attachmentUrls) {
+      return NextResponse.json({ error: 'Attachments must reference a BracketIQ file.' }, { status: 400 });
+    }
+
+    const sentTime = new Date();
     const group = await prisma.chatGroup.findUnique({
       where: { id: parsed.data.chatId },
       select: { id: true, teamId: true, hostId: true, userIds: true, archivedAt: true },
@@ -85,7 +117,7 @@ export async function POST(req: NextRequest) {
         where: { id: { in: memberIds } },
         select: { id: true, blockedUserIds: true },
       });
-      if (hasBlockingRelationship(parsed.data.userId, participants)) {
+      if (hasBlockingRelationship(senderId, participants)) {
         return NextResponse.json(
           { error: 'Messaging is unavailable because one of the chat participants has blocked the other.' },
           { status: 403 },
@@ -97,11 +129,11 @@ export async function POST(req: NextRequest) {
       data: {
         id: parsed.data.id,
         body: parsed.data.body,
-        userId: parsed.data.userId,
+        userId: senderId,
         chatId: parsed.data.chatId,
         sentTime,
-        readByIds: parsed.data.readByIds ?? [],
-        attachmentUrls: parsed.data.attachmentUrls ?? [],
+        readByIds: [senderId],
+        attachmentUrls,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

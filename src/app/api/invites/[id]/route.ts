@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { listActiveChildIdsForParent } from '@/server/teams/teamGuardianInvites';
 import {
   removeCanonicalPendingInvitee,
   rollbackTeamInviteEventSyncs,
@@ -11,6 +13,38 @@ import {
 export const dynamic = 'force-dynamic';
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+
+/**
+ * Returns one invitation only to its recipient (or a linked guardian for an
+ * active child TEAM invite). This is intentionally narrower than management
+ * APIs so a push ID cannot become an invitation-enumeration primitive.
+ */
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession(_req);
+  const { id } = await params;
+  const invite = await prisma.invites.findUnique({ where: { id } });
+  if (!invite) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const inviteeId = invite.userId?.trim() || null;
+  const isDirectRecipient = inviteeId === session.userId;
+  const isPendingChildTeamInvite = normalizeInviteType(invite.type) === 'TEAM'
+    && String(invite.status ?? '').toUpperCase() === 'PENDING'
+    && !!inviteeId;
+  const childInviteeIds = !session.isAdmin && !isDirectRecipient && isPendingChildTeamInvite
+    ? await listActiveChildIdsForParent(prisma, session.userId)
+    : [];
+  const isLinkedGuardian = !!inviteeId && childInviteeIds.includes(inviteeId);
+
+  // Use the same result for absent and unauthorized rows so a caller cannot
+  // probe invitation identifiers from notification payloads.
+  if (!session.isAdmin && !isDirectRecipient && !isLinkedGuardian) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  return NextResponse.json({ invite: withLegacyFields(invite) }, { status: 200 });
+}
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);

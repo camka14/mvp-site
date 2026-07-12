@@ -101,15 +101,6 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
           notificationType: 'invitations',
           deepLink: 'mvp://profile/invites',
           inviteId: invite.id,
-          inviteType: invite.type ?? '',
-          email,
-          status: invite.status ?? 'PENDING',
-          userId: inviteUserId,
-          eventId: invite.eventId ?? '',
-          organizationId: invite.organizationId ?? '',
-          teamId: invite.teamId ?? '',
-          firstName: invite.firstName ?? '',
-          lastName: invite.lastName ?? '',
         },
       }).catch((error) => {
         console.warn('Failed to send invite push notification', { inviteId: invite.id, error });

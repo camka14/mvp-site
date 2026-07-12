@@ -198,7 +198,6 @@ class ChatService {
                         title: '',
                         body,
                         userIds: [],
-                        senderId: userId
                     },
                 });
             } catch (error) {

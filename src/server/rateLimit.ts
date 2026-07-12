@@ -82,6 +82,18 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 60,
     message: 'Too many realtime token requests. Please wait before trying again.',
   },
+  chatMessage: {
+    name: 'chat:message',
+    limit: 60,
+    windowSeconds: 60,
+    message: 'Too many messages. Please wait before sending another message.',
+  },
+  chatPushRelay: {
+    name: 'chat:push-relay',
+    limit: 60,
+    windowSeconds: 60,
+    message: 'Too many message notifications. Please wait before sending another message.',
+  },
 } satisfies Record<string, RateLimitPolicy>;
 
 const normalizeLimit = (limit: number): number => (

@@ -126,4 +126,61 @@ describe('/api/messages POST', () => {
     });
     expect(messagesCreateMock).toHaveBeenCalled();
   });
+
+  it('derives the sender and read receipt from the authenticated session', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
+    chatGroupFindUniqueMock.mockResolvedValue({
+      id: 'chat_1',
+      teamId: null,
+      hostId: 'captain_1',
+      userIds: ['captain_1', 'player_1'],
+      archivedAt: null,
+    });
+    messagesCreateMock.mockResolvedValue({
+      id: 'message_1',
+      chatId: 'chat_1',
+      userId: 'player_1',
+      body: 'Practice update',
+    });
+
+    const response = await POST(createRequest({
+      id: 'message_1',
+      body: 'Practice update',
+      userId: 'player_1',
+      chatId: 'chat_1',
+      sentTime: '2000-01-01T00:00:00.000Z',
+      readByIds: ['captain_1', 'player_1'],
+    }));
+
+    expect(response.status).toBe(201);
+    expect(messagesCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 'player_1',
+        readByIds: ['player_1'],
+        sentTime: expect.any(Date),
+      }),
+    }));
+    const createData = messagesCreateMock.mock.calls[0][0].data;
+    expect(createData.sentTime.toISOString()).not.toBe('2000-01-01T00:00:00.000Z');
+  });
+
+  it('rejects external attachment URLs and oversized message payloads before writing', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
+
+    const externalAttachmentResponse = await POST(createRequest({
+      id: 'message_1',
+      body: 'Practice update',
+      chatId: 'chat_1',
+      attachmentUrls: ['https://attacker.example.invalid/file.pdf'],
+    }));
+    const oversizedBodyResponse = await POST(createRequest({
+      id: 'message_2',
+      body: 'x'.repeat(2_001),
+      chatId: 'chat_1',
+    }));
+
+    expect(externalAttachmentResponse.status).toBe(400);
+    expect(oversizedBodyResponse.status).toBe(400);
+    expect(messagesCreateMock).not.toHaveBeenCalled();
+  });
 });
