@@ -433,6 +433,18 @@ describe('GET /api/billing/bills', () => {
     prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
+  it('returns 401 before resolving an unauthenticated TEAM bill list', async () => {
+    requireSessionMock.mockRejectedValueOnce(new Response('Unauthorized', { status: 401 }));
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/billing/bills?ownerType=TEAM&ownerId=team_1'),
+    );
+
+    expect(response.status).toBe(401);
+    expect(prismaMock.teams.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.bills.findMany).not.toHaveBeenCalled();
+  });
+
   it('includes event-team bills when listing bills for a parent team', async () => {
     prismaMock.teams.findUnique
       .mockResolvedValueOnce({

@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
+import { handleApiRouteError } from '@/server/http/routeErrors';
 import {
   isWeeklyParentEvent,
   resolveWeeklyOccurrence,
@@ -105,7 +106,12 @@ const canManageBillOwner = async (
 };
 
 export async function GET(req: NextRequest) {
-  const session = await requireSession(req);
+  let session: Awaited<ReturnType<typeof requireSession>>;
+  try {
+    session = await requireSession(req);
+  } catch (error) {
+    return handleApiRouteError(error, 'Failed to load bills');
+  }
   const params = req.nextUrl.searchParams;
   const ownerType = params.get('ownerType') as 'USER' | 'TEAM' | 'ORGANIZATION' | null;
   const ownerId = normalizeId(params.get('ownerId'));
