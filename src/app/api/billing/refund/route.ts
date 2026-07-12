@@ -238,7 +238,11 @@ export async function POST(req: NextRequest) {
     let stripeRefundAttempts: StripeRefundAttempt[] = [];
     let refundRequest: RefundRequestRow;
     try {
-      const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, baseRefundRequest);
+      const refundablePayments = await resolveRefundablePaymentsForRequest(
+        prisma,
+        baseRefundRequest,
+        { scopeMode: 'INDIVIDUAL' },
+      );
       if (existingAutoRefund && hasRefundScopeDrift(baseRefundRequest, refundablePayments)) {
         return NextResponse.json(
           { error: 'The payment scope changed after this automatic refund was created. Submit a new refund request.' },
@@ -357,7 +361,11 @@ export async function POST(req: NextRequest) {
   }
 
   const waitingRequest = buildRefundRequestRow(crypto.randomUUID(), 'WAITING');
-  const waitingPayments = await resolveRefundablePaymentsForRequest(prisma, waitingRequest);
+  const waitingPayments = await resolveRefundablePaymentsForRequest(
+    prisma,
+    waitingRequest,
+    { scopeMode: 'INDIVIDUAL' },
+  );
   const waitingScope = buildRefundScopeSnapshot(waitingRequest, waitingPayments, 'HOST_REVIEW_REQUIRED');
 
   const result = await prisma.$transaction(async (tx) => {

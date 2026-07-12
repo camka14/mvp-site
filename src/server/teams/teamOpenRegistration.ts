@@ -1134,7 +1134,11 @@ export const requestTeamRegistrationRefund = async ({
         reason: normalizedReason,
         status: 'WAITING',
       };
-      const payments = await resolveRefundablePaymentsForRequest(tx, newRefundRequest);
+      const payments = await resolveRefundablePaymentsForRequest(
+        tx,
+        newRefundRequest,
+        { scopeMode: 'INDIVIDUAL' },
+      );
       if (!payments.length) {
         return {
           ok: false,

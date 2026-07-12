@@ -280,6 +280,110 @@ describe('POST /api/billing/refund-all', () => {
     expect(prismaMock.refundRequests.createMany).not.toHaveBeenCalled();
   });
 
+  it('creates one explicit team-wide event-deletion request using the event team and parent-team payer roster', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1__team__event_team_1',
+        eventId: 'event_1',
+        registrantId: 'event_team_1',
+        eventTeamId: 'event_team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        status: 'ACTIVE',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    prismaMock.teams.findMany.mockImplementation(({ where, select }: {
+      where: { id: { in: string[] } };
+      select: Record<string, unknown>;
+    }) => {
+      const ids = where.id.in;
+      if (select.kind) {
+        return Promise.resolve([
+          {
+            id: 'event_team_1',
+            kind: 'REGISTERED',
+            captainId: 'event_captain_1',
+            parentTeamId: 'parent_team_1',
+          },
+        ].filter((team) => ids.includes(team.id)));
+      }
+      if (ids.includes('event_team_1')) {
+        return Promise.resolve([{
+          id: 'event_team_1',
+          parentTeamId: 'parent_team_1',
+          captainId: 'event_captain_1',
+          managerId: 'event_manager_1',
+          headCoachId: null,
+          coachIds: [],
+          playerIds: ['event_player_1'],
+        }]);
+      }
+      return Promise.resolve([{
+        id: 'parent_team_1',
+        captainId: 'parent_captain_1',
+        managerId: 'parent_manager_1',
+        headCoachId: null,
+        coachIds: ['parent_coach_1'],
+        playerIds: ['parent_player_1'],
+      }].filter((team) => ids.includes(team.id)));
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'event_team_1',
+      parentTeamId: 'parent_team_1',
+      captainId: 'event_captain_1',
+      managerId: 'event_manager_1',
+      headCoachId: null,
+      coachIds: [],
+      playerIds: ['event_player_1'],
+    });
+    prismaMock.refundRequests.findMany.mockResolvedValueOnce([]);
+    prismaMock.bills.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+      if (where.ownerType === 'TEAM') {
+        return Promise.resolve([{ id: 'team_bill_1' }]);
+      }
+      return Promise.resolve([]);
+    });
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([
+      {
+        id: 'team_payment_1',
+        billId: 'team_bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        paymentIntentId: 'pi_team_1',
+        payerUserId: 'parent_manager_1',
+      },
+    ]);
+
+    const response = await POST(jsonPost('http://localhost/api/billing/refund-all', {
+      eventId: 'event_1',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'host_1',
+          requestedByUserId: 'host_1',
+          teamId: 'event_team_1',
+          billIds: ['team_bill_1'],
+          paymentIds: ['team_payment_1'],
+        }),
+      }),
+    );
+    expect(prismaMock.refundRequests.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'event_captain_1',
+          teamId: null,
+        }),
+      }),
+    );
+  });
+
   it('rejects team-level requests from non-admins who are not the team manager', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'random_user', isAdmin: false });
 

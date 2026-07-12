@@ -26,11 +26,23 @@ export type RefundRequestRow = {
   scopeVersion?: number;
   scopeHash?: string | null;
   /**
-   * Transient authorization context used while the immutable payment scope is
-   * created. It is intentionally not persisted: the resulting bill/payment
-   * snapshot is the durable authorization boundary for later approval.
+   * Transient payer/allocation context for an explicit team-wide refund while
+   * its immutable payment scope is created. It is intentionally not persisted:
+   * the resulting bill/payment snapshot is the durable authorization boundary
+   * for later approval.
    */
   authorizedPayerUserIds?: string[];
+};
+
+export type RefundScopeResolutionMode = 'INDIVIDUAL' | 'TEAM_WIDE';
+
+type RefundScopeResolutionOptions = {
+  /**
+   * Individual is deliberately the default. A team-wide caller must opt in so
+   * a parent or administrator requesting one participant's refund cannot
+   * expand the candidate scope to their own payments.
+   */
+  scopeMode?: RefundScopeResolutionMode;
 };
 
 const TEAM_REGISTRATION_REFUND_EVENT_PREFIX = 'team_registration:';
@@ -345,6 +357,7 @@ export const buildRefundApprovalPreview = (request: RefundRequestRow) => {
 export const resolveRefundablePaymentsForRequest = async (
   client: PrismaLike,
   request: RefundRequestRow,
+  options: RefundScopeResolutionOptions = {},
 ): Promise<Array<RefundablePaymentRow & { refundableAmountCents: number }>> => {
   const snapshotPaymentIds = normalizeIdList(request.paymentIds);
   const snapshotBillIds = normalizeIdList(request.billIds);
@@ -391,11 +404,13 @@ export const resolveRefundablePaymentsForRequest = async (
     normalizedTeamId
       && request.eventId === buildTeamRegistrationRefundEventId(normalizedTeamId),
   );
-  const authorizedPayerUserIds = normalizeIdList([
-    request.userId,
-    request.requestedByUserId,
-    ...(request.authorizedPayerUserIds ?? []),
-  ]);
+  const scopeMode = options.scopeMode ?? 'INDIVIDUAL';
+  const isTeamWideScope = scopeMode === 'TEAM_WIDE';
+  const targetUserIds = normalizeIdList([request.userId]);
+  const teamWidePayerUserIds = normalizeIdList(request.authorizedPayerUserIds);
+  const splitBillOwnerUserIds = isTeamWideScope
+    ? teamWidePayerUserIds
+    : targetUserIds;
 
   if (normalizedTeamId) {
     const team = await client.teams.findUnique({
@@ -424,29 +439,17 @@ export const resolveRefundablePaymentsForRequest = async (
         })
         : [];
       const teamBillIds = teamBills.map((bill) => bill.id);
-      teamOwnedBillIds = new Set(teamBillIds);
-      const splitUserBills = teamBillIds.length
+      const includesTeamBills = isTeamRegistrationRefund || isTeamWideScope;
+      teamOwnedBillIds = includesTeamBills ? new Set(teamBillIds) : new Set();
+      const splitUserBills = teamBillIds.length && splitBillOwnerUserIds.length
         ? await client.bills.findMany({
           where: {
             eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
             parentBillId: { in: teamBillIds },
-            ownerId: authorizedPayerUserIds.length === 1
-              ? authorizedPayerUserIds[0]
-              : { in: authorizedPayerUserIds },
-            ...occurrenceBillWhere,
-          },
-          select: { id: true },
-        })
-        : [];
-      const directUserBills = authorizedPayerUserIds.length
-        ? await client.bills.findMany({
-          where: {
-            eventId: isTeamRegistrationRefund ? null : request.eventId,
-            ownerType: 'USER',
-            ownerId: authorizedPayerUserIds.length === 1
-              ? authorizedPayerUserIds[0]
-              : { in: authorizedPayerUserIds },
+            ownerId: splitBillOwnerUserIds.length === 1
+              ? splitBillOwnerUserIds[0]
+              : { in: splitBillOwnerUserIds },
             ...occurrenceBillWhere,
           },
           select: { id: true },
@@ -454,9 +457,8 @@ export const resolveRefundablePaymentsForRequest = async (
         : [];
 
       bills = dedupeById([
-        ...teamBills,
+        ...(includesTeamBills ? teamBills : []),
         ...splitUserBills,
-        ...directUserBills,
       ]);
     }
   } else {
@@ -512,7 +514,13 @@ export const resolveRefundablePaymentsForRequest = async (
     .filter((payment) => {
       if (payment.refundableAmountCents <= 0 || !normalizeId(payment.paymentIntentId)) return false;
       if (!teamOwnedBillIds.has(payment.billId)) return true;
-      return Boolean(payment.payerUserId && authorizedPayerUserIds.includes(payment.payerUserId));
+      const allowedTeamPaymentPayerIds = isTeamRegistrationRefund
+        ? targetUserIds
+        : teamWidePayerUserIds;
+      return Boolean(
+        payment.payerUserId
+          && allowedTeamPaymentPayerIds.includes(payment.payerUserId),
+      );
     });
 };
 

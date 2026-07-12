@@ -27,6 +27,39 @@ const normalizeId = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
+type TeamRefundPayerSource = {
+  id: string;
+  captainId?: string | null;
+  managerId?: string | null;
+  headCoachId?: string | null;
+  coachIds?: string[] | null;
+  playerIds?: string[] | null;
+};
+
+const getTeamWidePayerUserIds = (
+  actorUserId: string,
+  teams: Array<TeamRefundPayerSource | null | undefined>,
+): string[] => {
+  const payerIds: unknown[] = [actorUserId];
+  teams.forEach((team) => {
+    if (!team) {
+      return;
+    }
+    payerIds.push(
+      team.captainId,
+      team.managerId,
+      team.headCoachId,
+      ...(Array.isArray(team.coachIds) ? team.coachIds : []),
+      ...(Array.isArray(team.playerIds) ? team.playerIds : []),
+    );
+  });
+  return Array.from(new Set(
+    payerIds
+      .map((id) => normalizeId(id))
+      .filter((id): id is string => Boolean(id)),
+  ));
+};
+
 const refundRequestScopeSelect = {
   id: true,
   eventId: true,
@@ -129,16 +162,13 @@ export async function POST(req: NextRequest) {
       teamId: normalizedTeamId,
       reason: normalizeId(parsed.data.reason) ?? 'team_refund_requested',
       status: 'WAITING',
-      authorizedPayerUserIds: Array.from(new Set([
-        session.userId,
-        normalizeId(team.captainId),
-        normalizeId(team.managerId),
-        normalizeId(team.headCoachId),
-        ...(Array.isArray(team.coachIds) ? team.coachIds : []),
-        ...(Array.isArray(team.playerIds) ? team.playerIds : []),
-      ].filter((id): id is string => Boolean(id)))),
+      authorizedPayerUserIds: getTeamWidePayerUserIds(session.userId, [team]),
     };
-    const payments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+    const payments = await resolveRefundablePaymentsForRequest(
+      prisma,
+      refundRequest,
+      { scopeMode: 'TEAM_WIDE' },
+    );
     if (!payments.length) {
       return NextResponse.json(
         { error: 'No refundable payment found for this team.' },
@@ -189,18 +219,54 @@ export async function POST(req: NextRequest) {
   for (const id of participantIds.freeAgentIds) refundUserIds.add(id);
 
   const eventTeamIds = participantIds.teamIds;
-  if (eventTeamIds.length) {
-    const teams = await prisma.teams.findMany({
+  const eventTeams = eventTeamIds.length
+    ? await prisma.teams.findMany({
       where: { id: { in: eventTeamIds } },
-      select: { captainId: true },
-    });
-    for (const team of teams) {
-      const captainId = normalizeId(team.captainId);
-      if (captainId) {
-        refundUserIds.add(captainId);
-      }
-    }
-  }
+      select: {
+        id: true,
+        parentTeamId: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        coachIds: true,
+        playerIds: true,
+      },
+    })
+    : [];
+  const parentTeamIds = Array.from(new Set(
+    eventTeams
+      .map((team) => normalizeId(team.parentTeamId))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  ));
+  const parentTeams = parentTeamIds.length
+    ? await prisma.teams.findMany({
+      where: { id: { in: parentTeamIds } },
+      select: {
+        id: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        coachIds: true,
+        playerIds: true,
+      },
+    })
+    : [];
+  const parentTeamsById = new Map(parentTeams.map((team) => [team.id, team]));
+  const teamRefundCandidates = eventTeams.map((eventTeam) => {
+    const parentTeamId = normalizeId(eventTeam.parentTeamId);
+    const parentTeam = parentTeamId ? parentTeamsById.get(parentTeamId) : null;
+    return {
+      teamId: eventTeam.id,
+      equivalentTeamIds: Array.from(new Set(
+        [eventTeam.id, parentTeamId, parentTeam?.id]
+          .filter((teamId): teamId is string => Boolean(teamId)),
+      )),
+      authorizedPayerUserIds: getTeamWidePayerUserIds(
+        session.userId,
+        [eventTeam, parentTeam],
+      ),
+    };
+  });
 
   // Host doesn't need a refund request for their own event deletion.
   if (event.hostId) {
@@ -208,7 +274,7 @@ export async function POST(req: NextRequest) {
   }
 
   const targets = Array.from(refundUserIds);
-  if (!targets.length) {
+  if (!targets.length && !teamRefundCandidates.length) {
     return NextResponse.json({ success: true, emailSent: false }, { status: 200 });
   }
 
@@ -218,18 +284,87 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.refundRequests.findMany({
     where: {
       eventId: event.id,
-      userId: { in: targets },
-      teamId: null,
       status: { in: ['WAITING', 'APPROVED'] },
+      OR: [
+        {
+          userId: { in: targets },
+          teamId: null,
+        },
+        {
+          teamId: {
+            in: Array.from(new Set(
+              teamRefundCandidates.flatMap((candidate) => candidate.equivalentTeamIds),
+            )),
+          },
+        },
+      ],
     },
     select: refundRequestScopeSelect,
   });
-  const existingSet = new Set(
-    existing
-      .filter((row) => isRefundScopeSnapshotValid(row as RefundRequestRow))
+  const verifiedExisting = existing.filter((row) => (
+    isRefundScopeSnapshotValid(row as RefundRequestRow)
+  ));
+  const existingUserIds = new Set(
+    verifiedExisting
+      .filter((row) => !normalizeId(row.teamId))
       .map((row) => row.userId),
   );
-  const toCreate = targets.filter((id) => !existingSet.has(id));
+  const existingTeamIds = new Set(
+    verifiedExisting
+      .map((row) => normalizeId(row.teamId))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  );
+  const toCreate = targets.filter((id) => !existingUserIds.has(id));
+  const teamsToCreate = teamRefundCandidates.filter((candidate) => (
+    !candidate.equivalentTeamIds.some((teamId) => existingTeamIds.has(teamId))
+  ));
+
+  for (const team of teamsToCreate) {
+    const refundRequest: RefundRequestRow = {
+      id: crypto.randomUUID(),
+      eventId: event.id,
+      userId: session.userId,
+      requestedByUserId: session.userId,
+      hostId: event.hostId,
+      organizationId: event.organizationId,
+      teamId: team.teamId,
+      reason: 'event_deleted_by_host',
+      status: 'WAITING',
+      authorizedPayerUserIds: team.authorizedPayerUserIds,
+    };
+    const payments = await resolveRefundablePaymentsForRequest(
+      prisma,
+      refundRequest,
+      { scopeMode: 'TEAM_WIDE' },
+    );
+    if (!payments.length) {
+      continue;
+    }
+    const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
+    await prisma.refundRequests.create({
+      data: {
+        id: refundRequest.id,
+        eventId: refundRequest.eventId,
+        userId: refundRequest.userId,
+        requestedByUserId: refundRequest.requestedByUserId,
+        hostId: refundRequest.hostId,
+        organizationId: refundRequest.organizationId,
+        teamId: refundRequest.teamId,
+        billIds: scope.billIds,
+        paymentIds: scope.paymentIds,
+        paymentScope: scope.paymentScope,
+        requestedAmountCents: scope.requestedAmountCents,
+        currency: scope.currency,
+        policyDecision: scope.policyDecision,
+        scopeVersion: scope.scopeVersion,
+        scopeHash: scope.scopeHash,
+        reason: refundRequest.reason,
+        status: 'WAITING',
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }
 
   for (const userId of toCreate) {
     const refundRequest: RefundRequestRow = {
@@ -243,7 +378,11 @@ export async function POST(req: NextRequest) {
       reason: 'event_deleted_by_host',
       status: 'WAITING',
     };
-    const payments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+    const payments = await resolveRefundablePaymentsForRequest(
+      prisma,
+      refundRequest,
+      { scopeMode: 'INDIVIDUAL' },
+    );
     if (!payments.length) {
       continue;
     }

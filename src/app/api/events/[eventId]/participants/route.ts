@@ -1135,7 +1135,11 @@ const ensureTeamRefundRequest = async (
     status: 'WAITING',
     authorizedPayerUserIds: params.participantUserIds,
   };
-  const payments = await resolveRefundablePaymentsForRequest(client, refundRequest);
+  const payments = await resolveRefundablePaymentsForRequest(
+    client,
+    refundRequest,
+    { scopeMode: 'TEAM_WIDE' },
+  );
   if (!payments.length) {
     return;
   }
@@ -1718,7 +1722,11 @@ async function updateParticipants(
         };
 
       try {
-        const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, autoRefundRequest);
+        const refundablePayments = await resolveRefundablePaymentsForRequest(
+          prisma,
+          autoRefundRequest,
+          { scopeMode: 'TEAM_WIDE' },
+        );
         if (existingAutoRefundRequest && hasRefundScopeDrift(existingAutoRefundRequest, refundablePayments)) {
           return NextResponse.json(
             { error: 'The payment scope changed after this automatic refund was created. Submit a new refund request.' },
