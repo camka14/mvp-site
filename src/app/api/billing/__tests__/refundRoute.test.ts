@@ -337,6 +337,93 @@ describe('POST /api/billing/refund', () => {
     expect(mockStripeRefundCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('persists the exact weekly occurrence and payment scope for a manual refund review', async () => {
+    const futureOccurrence = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const occurrenceDate = futureOccurrence.toISOString().slice(0, 10);
+    const occurrenceDay = (futureOccurrence.getUTCDay() + 6) % 7;
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'weekly_parent',
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      cancellationRefundHours: null,
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      timeSlotIds: ['slot_1'],
+      divisions: [],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      startTimeMinutes: 12 * 60,
+      daysOfWeek: [occurrenceDay],
+      startDate: occurrenceDate,
+      endDate: occurrenceDate,
+      divisions: [],
+    });
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: `weekly_parent__self__user_1__slot_1__${occurrenceDate}`,
+        eventId: 'weekly_parent',
+        registrantId: 'user_1',
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    prismaMock.bills.findMany.mockResolvedValueOnce([{ id: 'bill_weekly_1' }]);
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([
+      {
+        id: 'payment_weekly_1',
+        billId: 'bill_weekly_1',
+        amountCents: 2500,
+        refundedAmountCents: 0,
+        paymentIntentId: 'pi_weekly_1',
+        status: 'PAID',
+      },
+    ]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/refund', {
+        payloadEvent: { id: 'weekly_parent' },
+        reason: 'Need host approval for this session',
+        slotId: 'slot_1',
+        occurrenceDate,
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      success: true,
+      refundAlreadyPending: false,
+    }));
+    expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventId: 'weekly_parent',
+        userId: 'user_1',
+        slotId: 'slot_1',
+        occurrenceDate,
+        billIds: ['bill_weekly_1'],
+        paymentIds: ['payment_weekly_1'],
+        requestedAmountCents: 2500,
+        currency: 'usd',
+        policyDecision: 'HOST_REVIEW_REQUIRED',
+        scopeVersion: 1,
+        scopeHash: expect.any(String),
+        status: 'WAITING',
+      }),
+    }));
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'weekly_parent',
+        registrantId: 'user_1',
+        slotId: 'slot_1',
+        occurrenceDate,
+      }),
+    }));
+  });
+
   it('allows a parent to request refund for a linked child target', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
     prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ id: 'link_1' });

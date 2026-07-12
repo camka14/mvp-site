@@ -286,6 +286,12 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
       }),
     }));
     expect(txBillsCreateMock).not.toHaveBeenCalled();
+    expect(assertNoEventFieldSchedulingConflictsMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: expect.stringMatching(/^rental-booking-conflict:/),
+    }));
+    expect(assertNoEventFieldSchedulingConflictsMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+    }));
   });
 
   it('rejects paid rental creation when Stripe verification is unavailable', async () => {

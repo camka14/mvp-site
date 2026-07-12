@@ -243,6 +243,42 @@ describe('POST /api/billing/bills/[id]/split', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it('returns a conflict instead of creating duplicate children when a split already completed', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_already_split',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      allowSplit: true,
+    });
+    const txMock = {
+      billPayments: {
+        findMany: jest.fn(),
+        updateMany: jest.fn(),
+        create: jest.fn(),
+      },
+      bills: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'existing_child_bill' }),
+        create: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_already_split/split', {
+        playerIds: ['player_1', 'player_2'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_already_split' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe('Bill has already been split.');
+    expect(txMock.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(txMock.billPayments.updateMany).not.toHaveBeenCalled();
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+  });
+
   it('rejects a split while a parent installment has an active checkout', async () => {
     prismaMock.bills.findUnique.mockResolvedValue({
       id: 'bill_team_4',

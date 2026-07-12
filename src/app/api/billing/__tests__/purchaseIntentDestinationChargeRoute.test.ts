@@ -115,6 +115,22 @@ describe('POST /api/billing/purchase-intent destination charges', () => {
     });
   });
 
+  it('fails closed before resolving or reserving a purchase when Stripe is not configured', async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+
+    const response = await POST(jsonPost({
+      productId: 'product_1',
+      organization: { $id: 'org_1', name: 'Summit Indoor Volleyball Facility' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload.error).toBe('Payment processing is temporarily unavailable. Please try again later.');
+    expect(resolvePurchaseContextMock).not.toHaveBeenCalled();
+    expect(upsertUserBillingAddressMock).not.toHaveBeenCalled();
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
+  });
+
   it('routes the product subtotal to the connected account and keeps taxes plus fees on the platform', async () => {
     prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_connected_123' });
 

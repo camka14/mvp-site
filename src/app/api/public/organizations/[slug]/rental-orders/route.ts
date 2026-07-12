@@ -625,6 +625,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   const fieldIds = Array.from(new Set(validation.selections.flatMap((selection) => selection.fieldIds)));
   const bookingId = parsed.data.eventId;
+  // A rental booking is not an Event yet. Never feed its client-provided
+  // booking id into the scheduler's "exclude current event" parameter, or a
+  // caller can name an occupied event and hide that event's conflicts.
+  const conflictSubjectId = `rental-booking-conflict:${crypto.randomUUID()}`;
 
   try {
     const booking = await (prisma as any).$transaction(async (tx: any) => {
@@ -659,7 +663,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
       await assertNoEventFieldSchedulingConflicts({
         client: tx,
-        eventId: bookingId,
+        eventId: conflictSubjectId,
         organizationId: null,
         fieldIds,
         timeSlotIds: [],
