@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   ORG_TAX_AGREEMENT_VERSION,
@@ -23,8 +24,6 @@ import {
 } from '@/server/organizationTags';
 
 export const dynamic = 'force-dynamic';
-const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
-const warnedMissingOrganizationArguments = new Set<string>();
 
 const createSchema = z.object({
   id: z.string(),
@@ -47,42 +46,10 @@ const createSchema = z.object({
   tags: z.array(z.any()).optional(),
 }).passthrough();
 
-const extractUnknownPrismaArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
-  return match?.[1] ?? null;
-};
-
-const createOrganizationWithUnknownArgFallback = async (organizationData: Record<string, unknown>) => {
-  const removedArguments = new Set<string>();
-
-  while (true) {
-    const createData: Record<string, unknown> = { ...organizationData };
-    for (const argumentName of removedArguments) {
-      delete createData[argumentName];
-    }
-    try {
-      return await prisma.organizations.create({
-        data: createData as any,
-      });
-    } catch (error) {
-      const unknownArgument = extractUnknownPrismaArgument(error);
-      const hasArgument = unknownArgument
-        ? Object.prototype.hasOwnProperty.call(createData, unknownArgument)
-        : false;
-      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
-        throw error;
-      }
-      removedArguments.add(unknownArgument);
-      if (!warnedMissingOrganizationArguments.has(unknownArgument)) {
-        warnedMissingOrganizationArguments.add(unknownArgument);
-        console.warn(
-          `[organizations] Prisma client is missing Organizations.${unknownArgument}; retrying without it. Regenerate Prisma client to restore this field.`,
-        );
-      }
-    }
-  }
-};
+const createOrganizationWithSchemaContract = async (organizationData: Record<string, unknown>) =>
+  requirePrismaSchemaContract('Organizations', () => prisma.organizations.create({
+    data: organizationData as any,
+  }));
 
 const normalizeSearchQuery = (value: string | null): string => (value ?? '').trim();
 
@@ -444,30 +411,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const organization = await createOrganizationWithUnknownArgFallback({
-    id: data.id,
-    name: data.name,
-    location: data.location ?? null,
-    address: data.address ?? null,
-    description: data.description ?? null,
-    logoId: data.logoId ?? null,
-    ownerId: data.ownerId,
-    website: data.website ?? null,
-    sports: Array.isArray(data.sports) ? data.sports : [],
-    status,
-    hasStripeAccount: false,
-    coordinates: data.coordinates ?? null,
-    productIds: Array.isArray(data.productIds) ? data.productIds : [],
-    taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
-    operatesAthleticFacility: data.operatesAthleticFacility === true,
-    defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
-    defaultRentalTaxHandling: normalizeRentalTaxHandling(data.defaultRentalTaxHandling),
-    taxResponsibilityAcceptedAt: taxAcceptedAt,
-    taxResponsibilityAcceptedByUserId: session.userId,
-    taxResponsibilityAgreementVersion: ORG_TAX_AGREEMENT_VERSION,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+  let organization;
+  try {
+    organization = await createOrganizationWithSchemaContract({
+      id: data.id,
+      name: data.name,
+      location: data.location ?? null,
+      address: data.address ?? null,
+      description: data.description ?? null,
+      logoId: data.logoId ?? null,
+      ownerId: data.ownerId,
+      website: data.website ?? null,
+      sports: Array.isArray(data.sports) ? data.sports : [],
+      status,
+      hasStripeAccount: false,
+      coordinates: data.coordinates ?? null,
+      productIds: Array.isArray(data.productIds) ? data.productIds : [],
+      taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
+      operatesAthleticFacility: data.operatesAthleticFacility === true,
+      defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
+      defaultRentalTaxHandling: normalizeRentalTaxHandling(data.defaultRentalTaxHandling),
+      taxResponsibilityAcceptedAt: taxAcceptedAt,
+      taxResponsibilityAcceptedByUserId: session.userId,
+      taxResponsibilityAgreementVersion: ORG_TAX_AGREEMENT_VERSION,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } catch (error) {
+    if (isPrismaSchemaContractError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
   const tags = await syncOrganizationTags(organization.id, data.tags);
   await ensureDefaultOrganizationRoles(prisma, organization.id);
   await sendAdminOrganizationCreatedNotification({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
@@ -61,8 +62,6 @@ import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deleti
 import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 
 export const dynamic = 'force-dynamic';
-const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
-const warnedMissingEventArguments = new Set<string>();
 const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'DRAFT']);
 const EVENT_FIELDS_REQUIRED_MESSAGE = 'Select or create at least one field for this event.';
 
@@ -185,49 +184,14 @@ const EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'parentEvent',
 ]);
 
-const extractUnknownPrismaArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
-  return match?.[1] ?? null;
-};
-
-const updateEventWithUnknownArgFallback = async (
+const updateEventWithSchemaContract = async (
   tx: any,
   eventId: string,
   updateData: Record<string, unknown>,
-): Promise<{ event: any; removedArguments: Set<string> }> => {
-  const removedArguments = new Set<string>();
-
-  while (true) {
-    const payload: Record<string, unknown> = { ...updateData };
-    for (const argumentName of removedArguments) {
-      delete payload[argumentName];
-    }
-
-    try {
-      const event = await tx.events.update({
-        where: { id: eventId },
-        data: payload,
-      });
-      return { event, removedArguments };
-    } catch (error) {
-      const unknownArgument = extractUnknownPrismaArgument(error);
-      const hasArgument = unknownArgument
-        ? Object.prototype.hasOwnProperty.call(payload, unknownArgument)
-        : false;
-      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
-        throw error;
-      }
-      removedArguments.add(unknownArgument);
-      if (!warnedMissingEventArguments.has(unknownArgument)) {
-        warnedMissingEventArguments.add(unknownArgument);
-        console.warn(
-          `[events] Prisma client is missing Events.${unknownArgument}; retrying without it. Regenerate Prisma client to restore this field.`,
-        );
-      }
-    }
-  }
-};
+): Promise<any> => requirePrismaSchemaContract<any>('Events', () => tx.events.update({
+  where: { id: eventId },
+  data: updateData as any,
+}));
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
@@ -2690,7 +2654,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
       }
 
-      const { event: updatedEvent, removedArguments } = await updateEventWithUnknownArgFallback(
+      const updatedEvent = await updateEventWithSchemaContract(
         tx,
         eventId,
         {
@@ -2702,24 +2666,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         await syncEventTags(eventId, incomingTags, tx, { eventType: data.eventType });
       } else if (Object.prototype.hasOwnProperty.call(data, 'eventType')) {
         await syncEventTypeTagsForEvent(eventId, data.eventType, tx);
-      }
-      const shouldFallbackAddressWrite = removedArguments.has('address')
-        && Object.prototype.hasOwnProperty.call(data, 'address');
-      const fallbackAddressValue = shouldFallbackAddressWrite
-        ? (data.address == null ? null : String(data.address))
-        : null;
-      if (shouldFallbackAddressWrite) {
-        if (typeof (tx as any).$executeRaw === 'function') {
-          await (tx as any).$executeRaw`
-            UPDATE "Events"
-            SET "address" = ${fallbackAddressValue}, "updatedAt" = ${new Date()}
-            WHERE "id" = ${eventId}
-          `;
-        } else {
-          console.warn(
-            '[events] Unable to persist fallback address because transaction client has no $executeRaw.',
-          );
-        }
       }
       const shouldPersistEventOfficials = (
         typeof (tx as any).eventOfficials?.deleteMany === 'function'
@@ -2864,9 +2810,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (!fresh) {
         throw new Error('Failed to update event');
       }
-      if (shouldFallbackAddressWrite) {
-        (fresh as Record<string, unknown>).address = fallbackAddressValue;
-      }
       return { event: fresh, didRebuildSchedule };
     });
     const { event: updated, didRebuildSchedule } = patchResult;
@@ -2924,6 +2867,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     );
   } catch (error) {
     if (error instanceof Response) return error;
+    if (isPrismaSchemaContractError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+        { status: 503 },
+      );
+    }
     if (isRentalBookingReservationError(error)) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

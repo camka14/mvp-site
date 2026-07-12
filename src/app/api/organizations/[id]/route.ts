@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization, hasOrgPermission } from '@/server/accessControl';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
@@ -27,8 +28,6 @@ import {
 } from '@/server/organizationTags';
 
 export const dynamic = 'force-dynamic';
-const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
-const warnedMissingOrganizationArguments = new Set<string>();
 
 const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'name',
@@ -105,46 +104,13 @@ const sanitizeStringArray = (value: unknown): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
-const extractUnknownPrismaArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
-  return match?.[1] ?? null;
-};
-
-const updateOrganizationWithUnknownArgFallback = async (
+const updateOrganizationWithSchemaContract = async (
   id: string,
   updateData: Record<string, unknown>,
-) => {
-  const removedArguments = new Set<string>();
-
-  while (true) {
-    const payload: Record<string, unknown> = { ...updateData };
-    for (const argumentName of removedArguments) {
-      delete payload[argumentName];
-    }
-    try {
-      return await prisma.organizations.update({
-        where: { id },
-        data: payload as any,
-      });
-    } catch (error) {
-      const unknownArgument = extractUnknownPrismaArgument(error);
-      const hasArgument = unknownArgument
-        ? Object.prototype.hasOwnProperty.call(payload, unknownArgument)
-        : false;
-      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
-        throw error;
-      }
-      removedArguments.add(unknownArgument);
-      if (!warnedMissingOrganizationArguments.has(unknownArgument)) {
-        warnedMissingOrganizationArguments.add(unknownArgument);
-        console.warn(
-          `[organizations] Prisma client is missing Organizations.${unknownArgument}; retrying without it. Regenerate Prisma client to restore this field.`,
-        );
-      }
-    }
-  }
-};
+) => requirePrismaSchemaContract('Organizations', () => prisma.organizations.update({
+  where: { id },
+  data: updateData as any,
+}));
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -403,7 +369,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   updateData.updatedAt = new Date();
 
-  const updated = await updateOrganizationWithUnknownArgFallback(id, updateData);
+  let updated;
+  try {
+    updated = await updateOrganizationWithSchemaContract(id, updateData);
+  } catch (error) {
+    if (isPrismaSchemaContractError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
   const tags = Object.prototype.hasOwnProperty.call(payload, 'tags')
     ? await syncOrganizationTags(id, payload.tags)
     : (await getOrganizationTagsForOrganizationIds([id])).get(id) ?? [];

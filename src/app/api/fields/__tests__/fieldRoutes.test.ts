@@ -186,6 +186,25 @@ describe('field routes', () => {
     );
   });
 
+  it('fails closed when Prisma rejects the requested field ownership value', async () => {
+    prismaMock.fields.create.mockRejectedValueOnce(
+      new Error('Unknown argument `createdBy` for type FieldsCreateInput.'),
+    );
+
+    const res = await POST(jsonRequest({ id: 'field_1', name: 'Court A' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(prismaMock.fields.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.fields.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ createdBy: 'user_1' }),
+    }));
+    expect(json).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'createdBy',
+    }));
+  });
+
   it('rejects field creation for non-owners when organization is provided', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_2', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({

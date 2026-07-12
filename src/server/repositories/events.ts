@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
+import { requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
@@ -85,8 +86,6 @@ import {
 import { syncEventTags, syncEventTypeTagsForEvent } from '@/server/eventTags';
 
 type PrismaLike = PrismaClient | any;
-const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
-const warnedMissingEventArguments = new Set<string>();
 
 export type EventFieldScheduleConflict = {
   fieldId: string;
@@ -134,53 +133,15 @@ export const isRentalBookingReservationError = (
 const EVENT_FIELDS_REQUIRED_MESSAGE =
   'Select or create at least one field for this event.';
 
-const extractUnknownPrismaArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
-  return match?.[1] ?? null;
-};
-
-const upsertEventWithUnknownArgFallback = async (
+const upsertEventWithSchemaContract = async (
   client: PrismaLike,
   id: string,
   eventData: Record<string, unknown>,
-): Promise<void> => {
-  const removedArguments = new Set<string>();
-
-  while (true) {
-    const createData: Record<string, unknown> = { ...eventData, createdAt: new Date() };
-    const updateData: Record<string, unknown> = { ...eventData };
-    for (const argumentName of removedArguments) {
-      delete createData[argumentName];
-      delete updateData[argumentName];
-    }
-
-    try {
-      await client.events.upsert({
-        where: { id },
-        create: createData as any,
-        update: updateData as any,
-      });
-      return;
-    } catch (error) {
-      const unknownArgument = extractUnknownPrismaArgument(error);
-      const hasArgument = unknownArgument
-        ? Object.prototype.hasOwnProperty.call(createData, unknownArgument)
-          || Object.prototype.hasOwnProperty.call(updateData, unknownArgument)
-        : false;
-      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
-        throw error;
-      }
-      removedArguments.add(unknownArgument);
-      if (!warnedMissingEventArguments.has(unknownArgument)) {
-        warnedMissingEventArguments.add(unknownArgument);
-        console.warn(
-          `[events] Prisma client is missing Events.${unknownArgument}; retrying event upsert without it. Regenerate Prisma client to restore this field.`,
-        );
-      }
-    }
-  }
-};
+) => requirePrismaSchemaContract('Events', () => client.events.upsert({
+  where: { id },
+  create: { ...eventData, createdAt: new Date() } as any,
+  update: eventData as any,
+}));
 
 const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
 const ensureStringArray = (value: unknown): string[] => ensureArray(value as string[]);
@@ -5073,7 +5034,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? normalizeInstallmentAmountList(payload.installmentAmounts)
     : [];
 
-  await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
+  await upsertEventWithSchemaContract(client, id, eventData as Record<string, unknown>);
   const hasIncomingTags = Object.prototype.hasOwnProperty.call(payload, 'tags');
   const hasIncomingEventType = Object.prototype.hasOwnProperty.call(payload, 'eventType');
   if (hasIncomingTags) {

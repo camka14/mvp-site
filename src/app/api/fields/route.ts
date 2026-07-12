@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { ensureDefaultFacilityForOrganization, getFacilityForOrganization } from '@/server/facilities';
@@ -16,11 +17,6 @@ const isUniqueConstraintError = (error: unknown): boolean => {
       && 'code' in error
       && (error as { code?: string }).code === 'P2002',
   );
-};
-
-const isUnknownPrismaCreatedByArgError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return /Unknown argument `createdBy`/i.test(message);
 };
 
 const createSchema = z.object({
@@ -259,24 +255,24 @@ export async function POST(req: NextRequest) {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    let record: any;
-    try {
-      record = await (prisma.fields as any).create({
+    const record = await requirePrismaSchemaContract<Record<string, any>>('Fields', () =>
+      (prisma.fields as any).create({
         data: {
           ...baseCreateData,
           createdBy: session.userId,
         },
-      });
-    } catch (error) {
-      if (!isUnknownPrismaCreatedByArgError(error)) {
-        throw error;
-      }
-      record = await (prisma.fields as any).create({ data: baseCreateData });
-    }
+      }),
+    );
 
     const [fieldWithFacility] = await attachFacilitiesToFieldRows([record]);
     return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? record), { status: 201 });
   } catch (error) {
+    if (isPrismaSchemaContractError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+        { status: 503 },
+      );
+    }
     if (isUniqueConstraintError(error)) {
       return NextResponse.json(
         {

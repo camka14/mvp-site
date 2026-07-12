@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { withLegacyFields } from '@/server/legacyFormat';
@@ -415,68 +416,17 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 };
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
-const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
-
-const extractUnknownArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_ARGUMENT_REGEX);
-  return match?.[1] ?? null;
-};
-
-const omitKeys = (data: Record<string, unknown>, keys: Set<string>): Record<string, unknown> => {
-  if (!keys.size) return data;
-  return Object.fromEntries(Object.entries(data).filter(([key]) => !keys.has(key)));
-};
-
-const updateTeamWithCompatibility = async (
+const updateTeamWithSchemaContract = async (
   teamsDelegate: any,
   where: Record<string, unknown>,
   data: Record<string, unknown>,
-): Promise<Record<string, unknown>> => {
-  const omittedKeys = new Set<string>();
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      return await teamsDelegate.update({
-        where,
-        data: omitKeys(data, omittedKeys),
-      });
-    } catch (error) {
-      lastError = error;
-      const unknownArgument = extractUnknownArgument(error);
-      if (!unknownArgument || omittedKeys.has(unknownArgument) || !Object.prototype.hasOwnProperty.call(data, unknownArgument)) {
-        throw error;
-      }
-      omittedKeys.add(unknownArgument);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Failed to update team with compatible schema.');
-};
-
-const createTeamWithCompatibility = async (
-  teamsDelegate: any,
-  data: Record<string, unknown>,
-): Promise<Record<string, unknown>> => {
-  const omittedKeys = new Set<string>();
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      return await teamsDelegate.create({
-        data: omitKeys(data, omittedKeys),
-      });
-    } catch (error) {
-      lastError = error;
-      const unknownArgument = extractUnknownArgument(error);
-      if (!unknownArgument || omittedKeys.has(unknownArgument) || !Object.prototype.hasOwnProperty.call(data, unknownArgument)) {
-        throw error;
-      }
-      omittedKeys.add(unknownArgument);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Failed to create team with compatible schema.');
-};
+): Promise<Record<string, unknown>> => requirePrismaSchemaContract<Record<string, unknown>>(
+  'Teams',
+  () => teamsDelegate.update({
+    where,
+    data: data as any,
+  }),
+);
 
 const hasOrganizationTeamManagementAccess = async (
   teamId: string,
@@ -736,13 +686,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  let updated: Record<string, unknown>;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
     const txTeams = getTeamsDelegate(tx);
     if (!txTeams?.update || !txTeams?.findMany) {
       throw new Error('Team storage is unavailable in transaction.');
     }
 
-    const canonical = await updateTeamWithCompatibility(
+    const canonical = await updateTeamWithSchemaContract(
       txTeams,
       { id },
         {
@@ -800,7 +752,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           if (previousTeam) {
             previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
           }
-          await updateTeamWithCompatibility(txTeams, { id: teamId }, updatePayload);
+          await updateTeamWithSchemaContract(txTeams, { id: teamId }, updatePayload);
           teamsToSync.add(teamId);
         }
       }
@@ -812,8 +764,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
-    return canonical;
-  });
+      return canonical;
+    });
+  } catch (error) {
+    if (isPrismaSchemaContractError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json(withTeamRoleAliases(updated as any), { status: 200 });
 }

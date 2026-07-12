@@ -178,6 +178,29 @@ describe('/api/teams/[id] PATCH', () => {
     expect(payload.managerId).toBe('');
   });
 
+  it('fails closed when legacy team storage rejects a requested patch field', async () => {
+    updateMock.mockRejectedValueOnce(
+      new Error('Unknown argument `name` for type VolleyBallTeamsUpdateInput.'),
+    );
+
+    const response = await PATCH(
+      patchJson({ team: { name: 'Renamed Team' } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({ name: 'Renamed Team' }),
+    }));
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'name',
+    }));
+  });
+
   it('clears head coach when headCoachId is patched to null', async () => {
     const response = await PATCH(
       patchJson({ team: { headCoachId: null } }),

@@ -1524,7 +1524,7 @@ describe('event PATCH route', () => {
     }
   });
 
-  it('persists address via SQL fallback when Prisma update input rejects address and returns address in response', async () => {
+  it('fails closed when Prisma update input rejects a requested address', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({
@@ -1545,17 +1545,9 @@ describe('event PATCH route', () => {
         fieldIds: [],
         eventType: 'EVENT',
       });
-    prismaMock.events.update
-      .mockRejectedValueOnce(new Error('Unknown argument `address` for type EventsUpdateInput.'))
-      .mockResolvedValueOnce({
-        id: 'event_1',
-        hostId: 'host_1',
-        start: new Date('2026-01-01T00:00:00.000Z'),
-        end: new Date('2026-01-01T01:00:00.000Z'),
-        divisions: [],
-        fieldIds: [],
-        eventType: 'EVENT',
-      });
+    prismaMock.events.update.mockRejectedValueOnce(
+      new Error('Unknown argument `address` for type EventsUpdateInput.'),
+    );
     divisionsMock.findMany.mockResolvedValue([]);
 
     const persistedAddress = '12001 Main St, Bellevue, WA 98005, USA';
@@ -1568,17 +1560,16 @@ describe('event PATCH route', () => {
       { params: Promise.resolve({ eventId: 'event_1' }) },
     );
 
-    expect(res.status).toBe(200);
-    expect(prismaMock.events.update).toHaveBeenCalledTimes(2);
-    expect(prismaMock.events.update.mock.calls[1][0].data.address).toBeUndefined();
-    expect(executeRawMock).toHaveBeenCalledTimes(1);
-    const rawQueryCall = executeRawMock.mock.calls[0];
-    expect(String(rawQueryCall[0])).toContain('UPDATE \"Events\"');
-    expect(rawQueryCall[1]).toBe(persistedAddress);
-    expect(rawQueryCall[3]).toBe('event_1');
+    expect(res.status).toBe(503);
+    expect(prismaMock.events.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.events.update.mock.calls[0][0].data.address).toBe(persistedAddress);
+    expect(executeRawMock).not.toHaveBeenCalled();
 
     const json = await res.json();
-    expect(json.address).toBe(persistedAddress);
+    expect(json).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'address',
+    }));
   });
 
   it('persists explicit official staffing fields on PATCH and returns normalized staffing response', async () => {
