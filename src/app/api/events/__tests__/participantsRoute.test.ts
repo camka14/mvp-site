@@ -1837,8 +1837,7 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     });
     prismaMock.bills.findMany
       .mockResolvedValueOnce([{ id: 'team_bill_1' }])
-      .mockResolvedValueOnce([{ id: 'split_bill_1' }])
-      .mockResolvedValueOnce([{ id: 'direct_bill_1' }]);
+      .mockResolvedValueOnce([{ id: 'split_bill_1' }]);
     prismaMock.billPayments.findMany.mockResolvedValueOnce([
       {
         id: 'payment_team_1',
@@ -1849,11 +1848,11 @@ describe('DELETE /api/events/[eventId]/participants', () => {
         payerUserId: 'user_1',
       },
       {
-        id: 'payment_direct_1',
-        billId: 'direct_bill_1',
+        id: 'payment_split_1',
+        billId: 'split_bill_1',
         amountCents: 2500,
         refundedAmountCents: 0,
-        paymentIntentId: 'pi_direct_1',
+        paymentIntentId: 'pi_split_1',
         payerUserId: 'user_1',
       },
       {
@@ -1867,7 +1866,7 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     ]);
     mockStripeRefundCreate
       .mockResolvedValueOnce({ id: 're_team_1' })
-      .mockResolvedValueOnce({ id: 're_direct_1' });
+      .mockResolvedValueOnce({ id: 're_split_1' });
     prismaMock.billPayments.findUnique
       .mockResolvedValueOnce({
         id: 'payment_team_1',
@@ -1875,13 +1874,13 @@ describe('DELETE /api/events/[eventId]/participants', () => {
         refundedAmountCents: 0,
       })
       .mockResolvedValueOnce({
-        id: 'payment_direct_1',
+        id: 'payment_split_1',
         amountCents: 2500,
         refundedAmountCents: 0,
       });
     prismaMock.billPayments.update
       .mockResolvedValueOnce({ id: 'payment_team_1', refundedAmountCents: 5000 })
-      .mockResolvedValueOnce({ id: 'payment_direct_1', refundedAmountCents: 2500 });
+      .mockResolvedValueOnce({ id: 'payment_split_1', refundedAmountCents: 2500 });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       teamIds: ['team_1', 'slot_1'],

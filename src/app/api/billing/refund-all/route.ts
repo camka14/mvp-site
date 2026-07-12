@@ -318,6 +318,15 @@ export async function POST(req: NextRequest) {
   const teamsToCreate = teamRefundCandidates.filter((candidate) => (
     !candidate.equivalentTeamIds.some((teamId) => existingTeamIds.has(teamId))
   ));
+  // Multiple event-team snapshots can point at one canonical parent team, and
+  // a malformed registration can also place a payer in both a team and an
+  // individual target. A payment may therefore enter exactly one immutable
+  // refund scope for this event-deletion request. Start with every verified
+  // existing scope so a replacement can never overlap an approval already
+  // pending for the same payment.
+  const claimedPaymentIds = new Set(
+    verifiedExisting.flatMap((request) => request.paymentIds ?? []),
+  );
 
   for (const team of teamsToCreate) {
     const refundRequest: RefundRequestRow = {
@@ -337,10 +346,18 @@ export async function POST(req: NextRequest) {
       refundRequest,
       { scopeMode: 'TEAM_WIDE' },
     );
-    if (!payments.length) {
+    const unclaimedPayments = payments.filter((payment) => (
+      !claimedPaymentIds.has(payment.id)
+    ));
+    if (!unclaimedPayments.length) {
       continue;
     }
-    const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
+    const scope = buildRefundScopeSnapshot(
+      refundRequest,
+      unclaimedPayments,
+      'HOST_REVIEW_REQUIRED',
+    );
+    scope.paymentIds.forEach((paymentId) => claimedPaymentIds.add(paymentId));
     await prisma.refundRequests.create({
       data: {
         id: refundRequest.id,
@@ -383,10 +400,14 @@ export async function POST(req: NextRequest) {
       refundRequest,
       { scopeMode: 'INDIVIDUAL' },
     );
-    if (!payments.length) {
+    const unclaimedPayments = payments.filter((payment) => (
+      !claimedPaymentIds.has(payment.id)
+    ));
+    if (!unclaimedPayments.length) {
       continue;
     }
-    const scope = buildRefundScopeSnapshot(refundRequest, payments, 'HOST_REVIEW_REQUIRED');
+    const scope = buildRefundScopeSnapshot(refundRequest, unclaimedPayments, 'HOST_REVIEW_REQUIRED');
+    scope.paymentIds.forEach((paymentId) => claimedPaymentIds.add(paymentId));
     await prisma.refundRequests.create({
       data: {
         id: refundRequest.id,
