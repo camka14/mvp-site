@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
-import { hashPassword, setAuthCookie, signSessionToken, type SessionToken } from '@/lib/authServer';
+import { hashPassword } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { getRequestOrigin } from '@/lib/requestOrigin';
@@ -428,53 +428,42 @@ export async function POST(req: NextRequest) {
       })
     : Promise.resolve();
 
+  let verificationEmailSent = false;
   if (!isInitialEmailVerificationAvailable()) {
-    await adminNotificationPromise;
-    return NextResponse.json(
-      { error: 'Email verification is unavailable because SMTP is not configured.', code: 'EMAIL_VERIFICATION_UNAVAILABLE' },
-      { status: 503 },
-    );
-  }
-
-  try {
-    await sendInitialEmailVerification({
-      userId: authUser.id,
-      email: authUser.email,
-      origin: getRequestOrigin(req),
-    });
-  } catch (error) {
-    console.error('Failed to send verification email during registration', error);
-    await adminNotificationPromise;
-    return NextResponse.json(
-      { error: 'Failed to send verification email. Please try again.', code: 'EMAIL_VERIFICATION_SEND_FAILED' },
-      { status: 500 },
-    );
+    console.warn('Email verification is unavailable during registration', { userId: authUser.id });
+  } else {
+    try {
+      await sendInitialEmailVerification({
+        userId: authUser.id,
+        email: authUser.email,
+        origin: getRequestOrigin(req),
+      });
+      verificationEmailSent = true;
+    } catch (error) {
+      // Account persistence is complete. Return its authenticated, unverified
+      // state so the client can offer a resend rather than treating signup as
+      // failed and retrying into a duplicate-email error.
+      console.error('Failed to send verification email during registration', error);
+    }
   }
   await adminNotificationPromise;
 
   const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
 
-  const session: SessionToken = {
-    userId: authUser.id,
-    isAdmin: false,
-    sessionVersion: authUser.sessionVersion ?? 0,
-  };
-  const token = signSessionToken(session);
   const response = NextResponse.json(
     {
-      error: 'Email not verified. We sent a verification link to your email.',
+      error: verificationEmailSent
+        ? 'Email not verified. We sent a verification link to your email.'
+        : 'Your account was created, but we could not send a verification email. You can resend it from the sign-in screen.',
       code: 'EMAIL_NOT_VERIFIED',
       email: authUser.email,
       requiresEmailVerification: true,
-      verificationEmailSent: true,
+      verificationEmailSent,
       user: toPublicUser(authUser),
-      session,
-      token,
       profile: applyNameCaseToUserFields(profileWithDerivedTeamIds),
       ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 202 },
   );
-  setAuthCookie(response, token);
   return response;
 }

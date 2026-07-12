@@ -170,12 +170,12 @@ describe('auth routes', () => {
       expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
-      expect(json.session).toEqual({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
-      expect(json.token).toBe('signed-token');
+      expect(json.session).toBeUndefined();
+      expect(json.token).toBeUndefined();
       expect(json.requiresEmailVerification).toBe(true);
       expect(json.verificationEmailSent).toBe(true);
-      expect(authServerMock.signSessionToken).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
       expect(prismaMock.authUser.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -200,6 +200,102 @@ describe('auth routes', () => {
       }));
       expect(prismaMock.userData.create).toHaveBeenCalled();
       expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
+    });
+
+    it('returns a persisted verification-pending account when delivery fails', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.userData.findUnique.mockResolvedValue(null);
+      prismaMock.authUser.create.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.create.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: new Date('2000-01-01'),
+      });
+      prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+      authEmailVerificationMock.sendInitialEmailVerification.mockRejectedValue(new Error('SMTP timeout'));
+
+      const res = await REGISTER_POST(buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: '2000-01-01',
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(202);
+      expect(json).toEqual(expect.objectContaining({
+        code: 'EMAIL_NOT_VERIFIED',
+        requiresEmailVerification: true,
+        verificationEmailSent: false,
+        user: expect.objectContaining({ id: 'user_1', email: 'test@example.com' }),
+      }));
+      expect(json.session).toBeUndefined();
+      expect(json.token).toBeUndefined();
+      expect(json.error).toMatch(/account was created/i);
+      expect(prismaMock.authUser.create).toHaveBeenCalled();
+      expect(prismaMock.userData.create).toHaveBeenCalled();
+      expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    });
+
+    it('returns a persisted verification-pending account when SMTP is unavailable', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.userData.findUnique.mockResolvedValue(null);
+      prismaMock.authUser.create.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.create.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: new Date('2000-01-01'),
+      });
+      prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+      authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(false);
+
+      const res = await REGISTER_POST(buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: '2000-01-01',
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(202);
+      expect(json).toEqual(expect.objectContaining({
+        code: 'EMAIL_NOT_VERIFIED',
+        requiresEmailVerification: true,
+        verificationEmailSent: false,
+      }));
+      expect(json.session).toBeUndefined();
+      expect(json.token).toBeUndefined();
+      expect(authEmailVerificationMock.sendInitialEmailVerification).not.toHaveBeenCalled();
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
 
     it('rejects duplicate emails', async () => {
@@ -718,7 +814,7 @@ describe('auth routes', () => {
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
 
-    it('allows login for unverified users and sends verification email', async () => {
+    it('rejects login for unverified users after requesting verification email', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
         email: 'test@example.com',
@@ -728,17 +824,6 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.authUser.update.mockResolvedValueOnce({
-        id: 'user_1',
-        email: 'test@example.com',
-        name: 'Tester',
-        emailVerifiedAt: null,
-        sessionVersion: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
-
       const req = buildJsonRequest('http://localhost/api/auth/login', {
         email: 'test@example.com',
         password: 'password123',
@@ -747,18 +832,22 @@ describe('auth routes', () => {
       const res = await LOGIN_POST(req);
       const json = await res.json();
 
-      expect(res.status).toBe(200);
-      expect(json.user.id).toBe('user_1');
+      expect(res.status).toBe(403);
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
       expect(json.requiresEmailVerification).toBe(true);
       expect(json.verificationEmailSent).toBe(true);
+      expect(json.user).toBeUndefined();
+      expect(json.session).toBeUndefined();
+      expect(json.token).toBeUndefined();
       expect(authEmailVerificationMock.sendInitialEmailVerification).toHaveBeenCalledWith({
         userId: 'user_1',
         email: 'test@example.com',
         origin: 'http://localhost',
       });
-      expect(prismaMock.authUser.update).toHaveBeenCalled();
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
+      expect(authTotpMfaMock.createWebLoginMfaChallenge).not.toHaveBeenCalled();
+      expect(prismaMock.authUser.update).not.toHaveBeenCalled();
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
   });
 
@@ -817,7 +906,7 @@ describe('auth routes', () => {
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
     });
 
-    it('returns session when session user email is not verified', async () => {
+    it('clears a pre-verification cookie instead of restoring a session', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
       authServerMock.verifySessionToken.mockReturnValue({
         userId: 'user_1',
@@ -825,8 +914,6 @@ describe('auth routes', () => {
         sessionVersion: 0,
         issuedAtSeconds: 1,
       });
-      authServerMock.signSessionToken.mockReturnValue('refreshed-token');
-
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
         email: 'test@example.com',
@@ -835,16 +922,17 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
-
       const req = new NextRequest('http://localhost/api/auth/me');
       const res = await ME_GET(req);
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.user.id).toBe('user_1');
+      expect(json.user).toBeNull();
+      expect(json.session).toBeNull();
+      expect(json.code).toBe('EMAIL_NOT_VERIFIED');
       expect(json.requiresEmailVerification).toBe(true);
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
     });
 
     it('clears cookies when the session user has been suspended', async () => {

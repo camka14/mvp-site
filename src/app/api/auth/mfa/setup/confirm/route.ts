@@ -44,6 +44,18 @@ export async function POST(req: NextRequest) {
     if ((authUser.sessionVersion ?? 0) !== confirmed.sessionVersion) {
       return NextResponse.json({ error: 'Verification challenge has expired.' }, { status: 401 });
     }
+    if (!authUser.emailVerifiedAt) {
+      return NextResponse.json(
+        {
+          error: 'Please verify your email before signing in.',
+          code: 'EMAIL_NOT_VERIFIED',
+          email: authUser.email,
+          requiresEmailVerification: true,
+          verificationEmailSent: false,
+        },
+        { status: 403 },
+      );
+    }
 
     const now = new Date();
     const updatedAuthUser = await prisma.authUser.update({

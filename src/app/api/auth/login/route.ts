@@ -69,6 +69,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (requiresEmailVerification) {
+    return NextResponse.json(
+      {
+        error: 'Please verify your email before signing in.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: authUser.email,
+        requiresEmailVerification: true,
+        verificationEmailSent,
+      },
+      { status: 403 },
+    );
+  }
+
   if (!isLocalAuthMfaBypassEnabled(req)) {
     try {
       const challenge = await createWebLoginMfaChallenge({

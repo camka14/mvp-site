@@ -47,7 +47,7 @@ describe('requireSession', () => {
     });
     expect(authUserFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'user_1' },
-      select: { disabledAt: true, disabledReason: true, sessionVersion: true },
+      select: { disabledAt: true, disabledReason: true, emailVerifiedAt: true, sessionVersion: true },
     });
     expect(isSessionTokenCurrentMock).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false, sessionVersion: 2 }, 2);
   });
@@ -68,6 +68,22 @@ describe('requireSession', () => {
       expect(error).toBeInstanceOf(Response);
       expect((error as Response).status).toBe(403);
     }
+  });
+
+  it('rejects a token for an account whose email has not been verified', async () => {
+    getTokenFromRequestMock.mockReturnValue('token_1');
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 1 });
+    authUserFindUniqueMock.mockResolvedValue({
+      disabledAt: null,
+      disabledReason: null,
+      emailVerifiedAt: null,
+      sessionVersion: 1,
+    });
+
+    await expect(requireSession(new NextRequest('http://localhost/api/secure'))).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(isSessionTokenCurrentMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale tokens after session revocation', async () => {

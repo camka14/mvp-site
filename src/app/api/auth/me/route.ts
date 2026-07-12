@@ -56,6 +56,22 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
+  if (!user.emailVerifiedAt) {
+    const res = NextResponse.json(
+      {
+        user: null,
+        session: null,
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+        requiresEmailVerification: true,
+        verificationEmailSent: false,
+      },
+      { status: 200 },
+    );
+    setAuthCookie(res, '');
+    return res;
+  }
+
   const profile = await prisma.userData.findUnique({ where: { id: user.id } });
   const [profileWithDerivedTeamIds] = profile
     ? await withDerivedCanonicalTeamIds([profile], prisma)
@@ -76,7 +92,7 @@ export async function GET(req: NextRequest) {
       token: refreshed,
       profile: profileWithDerivedTeamIds ? withLegacyFields(applyNameCaseToUserFields(profileWithDerivedTeamIds)) : null,
       ...buildProfileCompletionState({ authUser: user, profile }),
-      requiresEmailVerification: !user.emailVerifiedAt,
+      requiresEmailVerification: false,
       verificationEmailSent: false,
     },
     { status: 200 },

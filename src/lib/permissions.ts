@@ -1,10 +1,15 @@
 import { NextRequest } from 'next/server';
-import { getTokenFromRequest, verifySessionToken, SessionToken } from './authServer';
+import {
+  getTokenFromRequest,
+  verifySessionToken,
+  SessionToken,
+  type VerifiedSessionToken,
+} from './authServer';
 import { prisma } from '@/lib/prisma';
 import { assertAuthUserIsActive } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 
-export type AuthContext = SessionToken & { rawToken: string };
+export type AuthContext = VerifiedSessionToken & { rawToken: string };
 
 export const requireSession = async (req: NextRequest): Promise<AuthContext> => {
   const token = getTokenFromRequest(req);
@@ -17,12 +22,15 @@ export const requireSession = async (req: NextRequest): Promise<AuthContext> => 
   }
   const authUser = await prisma.authUser.findUnique({
     where: { id: decoded.userId },
-    select: { disabledAt: true, disabledReason: true, sessionVersion: true },
+    select: { disabledAt: true, disabledReason: true, emailVerifiedAt: true, sessionVersion: true },
   });
   if (!authUser) {
     throw new Response('Unauthorized', { status: 401 });
   }
   assertAuthUserIsActive(authUser);
+  if (authUser.emailVerifiedAt === null) {
+    throw new Response('Email verification required', { status: 403 });
+  }
   if (!isSessionTokenCurrent(decoded, authUser.sessionVersion)) {
     throw new Response('Unauthorized', { status: 401 });
   }
@@ -36,10 +44,11 @@ export const getOptionalSession = async (req: NextRequest): Promise<AuthContext 
   if (!decoded) return null;
   const authUser = await prisma.authUser.findUnique({
     where: { id: decoded.userId },
-    select: { disabledAt: true, disabledReason: true, sessionVersion: true },
+    select: { disabledAt: true, disabledReason: true, emailVerifiedAt: true, sessionVersion: true },
   });
   if (!authUser) return null;
   if (authUser.disabledAt) return null;
+  if (authUser.emailVerifiedAt === null) return null;
   if (!isSessionTokenCurrent(decoded, authUser.sessionVersion)) return null;
   return { ...decoded, rawToken: token };
 };
