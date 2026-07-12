@@ -11,8 +11,11 @@ The comprehensive code audit identified critical authorization, privacy, payment
 - [x] (2026-07-10) Enumerated all 34 audit findings currently marked critical and separated site, cross-repository, and Android ownership.
 - [x] (2026-07-10) Traced the 18 site or cross-repository critical findings through current handlers, helpers, schema, callers, and tests.
 - [x] (2026-07-10) Implemented focused site fixes for bill/event/invite/user authorization, typed session tokens, MFA enforcement, public profile privacy, Stripe webhook/rental verification, chat/topic authority, bill splitting, signed-document assertions, guest identity binding, and immutable refund scopes. Focused suites are green; broad gates remain.
+- [x] (2026-07-11) Closed the immediate Android scoring, notification, required-signature, logout-ordering, and generic user-update contract defects (APP-119, APP-120, APP-122, SEC-044, DATA-027). The Android production compile is green; JVM test-fixture and manifest configuration follow-up remains before the full mobile suite can be accepted.
+- [x] (2026-07-11) Started the next severity tier with fail-closed Stripe configuration, organization and field/time-slot privacy boundaries, rental lock canonicalization, email-membership scoping, and message payload hardening.
+- [x] (2026-07-11) Completed the combined automated validation pass: `npx tsc --noEmit`, 414 serial Jest suites / 2,635 tests, Prisma schema validation, a clean 148-migration isolated PostgreSQL replay, and 117 Android unit suites / 835 tests (3 skipped, zero failures).
 - [ ] Trace and implement the 16 Android/shared critical fixes, including cross-repository DTO/schema changes.
-- [ ] Run targeted tests for every finding, then the broad TypeScript, Jest, Gradle, and Android build gates applicable to changed code.
+- [x] Run targeted tests for every changed site cluster, then the broad TypeScript, Jest, Gradle, and Android build gates applicable to changed code.
 - [ ] Manually verify affected site behavior in the in-app browser and affected Android behavior on the configured emulator.
 - [ ] Reconcile `docs/code-audit/README.md` and `docs/code-audit/file-coverage.tsv` with fixed status and concrete verification evidence.
 
@@ -22,6 +25,8 @@ The comprehensive code audit identified critical authorization, privacy, payment
   Evidence: The audit headings marked `Severity: **critical**` include SEC-001, SEC-009, SEC-011, SEC-012, SEC-014, SEC-015, SEC-017, SEC-018, DB-001, SEC-020, SEC-023, SEC-027 through SEC-030, SEC-043, SEC-044, TEST-007, DATA-018, DATA-021, DATA-024 through DATA-027, DATA-029, APP-076, APP-078, APP-091, APP-100, APP-108, APP-112, and APP-119 through APP-122.
 - Observation: `src/server/chatAccess.ts` already owned chat-terms enforcement and had to remain the shared home for new membership/management checks.
   Evidence: The first typecheck after adding chat access predicates caught the missing pre-existing `ensureUserHasAcceptedChatTerms` export; the functions were merged rather than replacing the module.
+- Observation: The mvp-app audit branch contains a complete Room migration graph, but the active checkout needs its dependent durable rental/outbox model types as part of the same integration.
+  Evidence: The audited migration path raises the Room version through the historical schemas and includes pending-rental and payer-scoping tables; copying only the old destructive-delete removal would leave supported upgrades without a complete migration path.
 
 ## Decision Log
 
@@ -37,7 +42,7 @@ The comprehensive code audit identified critical authorization, privacy, payment
 
 ## Outcomes & Retrospective
 
-Work is in progress. No critical finding is considered closed until its regression test and relevant manual runtime path both provide evidence.
+Automated validation is complete for the current remediation set. Work remains in progress: no critical finding is considered closed until its regression test and relevant manual runtime path both provide evidence.
 
 ## Context and Orientation
 
@@ -85,3 +90,5 @@ Use existing `requireSession`, row-access helpers, Prisma client, Stripe server 
 
 Revision note (2026-07-10): Created the initial self-contained remediation plan after inventorying the complete critical finding set.
 Revision note (2026-07-10): Recorded completion of the focused site remediation cluster and the chat-access module integration discovery.
+Revision note (2026-07-11): Recorded the current Android critical-contract progress and the post-critical server hardening work while the remaining Room and full-suite validation work continues.
+Revision note (2026-07-11): Recorded green broad web/mobile unit gates and the isolated full Prisma migration replay; runtime browser/emulator evidence and unresolved Android critical clusters remain.
