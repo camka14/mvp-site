@@ -109,7 +109,7 @@ export const maskPhoneNumber = (phoneNumberE164?: string | null): string => {
 };
 
 const getSensitiveUserData = (client: PhoneMfaClient, userId: string) => (
-  client.sensitiveUserData.findFirst({ where: { userId } })
+  client.sensitiveUserData.findUnique({ where: { userId } })
 );
 
 const resolvePhoneMfaProvider = (): string => {

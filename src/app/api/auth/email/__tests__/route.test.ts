@@ -10,6 +10,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     updateMany: jest.fn(),
   },
   $transaction: jest.fn(),
@@ -74,7 +75,7 @@ describe('email change routes', () => {
         passwordHash: 'hash',
       })
       .mockResolvedValueOnce(null);
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
 
     const req = buildJsonRequest('http://localhost/api/auth/email', {
       newEmail: 'new@example.com',
@@ -86,6 +87,10 @@ describe('email change routes', () => {
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(prismaMock.sensitiveUserData.findUnique).toHaveBeenCalledWith({
+      where: { email: 'new@example.com' },
+      select: { userId: true },
+    });
 
     const payload = sendEmailMock.mock.calls[0][0];
     expect(payload.to).toBe('new@example.com');

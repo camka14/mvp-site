@@ -57,7 +57,7 @@ describe('authTotpMfa', () => {
   it('does not create a login challenge for a user without an authenticator', async () => {
     const client = {
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     };
 
@@ -73,7 +73,7 @@ describe('authTotpMfa', () => {
     const expiresAt = new Date(systemTime.getTime() + 10 * 60 * 1000);
     const client = {
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue({
+        findUnique: jest.fn().mockResolvedValue({
           totpSecretEncrypted: 'encrypted-secret',
           totpEnabledAt: new Date(systemTime.getTime() - 60_000),
         }),
@@ -148,7 +148,7 @@ describe('authTotpMfa', () => {
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const client = {
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue({
+        findUnique: jest.fn().mockResolvedValue({
           id: 'sensitive_1',
           totpSecretEncrypted: encryptSecret(encodeBase32(Buffer.from('12345678901234567890')), 'old-local-secret'),
           totpLastUsedCounter: null,
@@ -194,7 +194,7 @@ describe('authTotpMfa', () => {
     let savedChallenge: any = null;
     const client = {
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'user_1' }),
         update: jest.fn(),
       },

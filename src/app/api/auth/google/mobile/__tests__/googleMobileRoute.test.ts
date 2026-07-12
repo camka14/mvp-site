@@ -16,6 +16,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
   },
   $transaction: jest.fn(),
@@ -90,7 +91,7 @@ describe('google mobile oauth route', () => {
     (globalThis as any).fetch = fetchMock;
 
     prismaMock.authUser.findUnique.mockResolvedValue(null);
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
     prismaMock.authUser.create.mockResolvedValue({
       id: 'user_1',
       email: 'test@example.com',
@@ -119,6 +120,63 @@ describe('google mobile oauth route', () => {
       authProvider: 'google',
       wasInviteClaim: false,
     }));
+  });
+
+  it('keeps sensitive identity aligned to an existing Google account email', async () => {
+    process.env.GOOGLE_MOBILE_ANDROID_CLIENT_ID = 'android-client-id';
+    process.env.GOOGLE_MOBILE_IOS_CLIENT_ID = 'ios-client-id';
+
+    const futureExp = String(Math.floor(Date.now() / 1000) + 600);
+    (globalThis as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        aud: 'android-client-id',
+        iss: 'https://accounts.google.com',
+        sub: 'google-sub-1',
+        email: 'provider-new@example.com',
+        email_verified: 'true',
+        exp: futureExp,
+      }),
+    });
+
+    const existingAuth = {
+      id: 'user_1',
+      email: 'account-current@example.com',
+      googleSubject: 'google-sub-1',
+      name: 'Current User',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      emailVerifiedAt: new Date(),
+      sessionVersion: 0,
+    };
+    prismaMock.authUser.findUnique.mockResolvedValue(existingAuth);
+    prismaMock.authUser.update.mockResolvedValue(existingAuth);
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      firstName: 'Current',
+      lastName: 'User',
+      userName: 'current.user',
+      dateOfBirth: new Date('2000-01-01'),
+      requiredProfileFieldsCompletedAt: new Date(),
+    });
+    prismaMock.userData.update.mockResolvedValue({
+      id: 'user_1',
+      firstName: 'Current',
+      lastName: 'User',
+      userName: 'current.user',
+      dateOfBirth: new Date('2000-01-01'),
+    });
+    prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'sensitive_1' });
+
+    const res = await MOBILE_POST(buildJsonRequest('http://localhost/api/auth/google/mobile', { idToken: 'id-token-123' }));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user_1' },
+        update: expect.objectContaining({ email: 'account-current@example.com' }),
+      }),
+    );
   });
 
   it('POST /api/auth/google/mobile rejects token with disallowed audience', async () => {

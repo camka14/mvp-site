@@ -160,8 +160,11 @@ export async function POST(req: NextRequest) {
   }
   const existingSensitive = existingAuth
     ? null
-    : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
+    : await prisma.sensitiveUserData.findUnique({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
+  // Do not let a provider-returned address drift from the existing account's
+  // canonical email; explicit email changes update both identity records.
+  const canonicalEmail = existingAuth?.email.trim().toLowerCase() || normalizedEmail;
 
   const displayName = tokenInfo.name?.trim() || null;
   const firstName = normalizeOptionalName(tokenInfo.given_name);
@@ -255,9 +258,9 @@ export async function POST(req: NextRequest) {
         })();
 
     await tx.sensitiveUserData.upsert({
-      where: { id: existingSensitive?.id ?? createdAuth.id },
+      where: { userId: createdAuth.id },
       update: {
-        email: normalizedEmail,
+        email: canonicalEmail,
         userId: createdAuth.id,
         updatedAt: now,
       },

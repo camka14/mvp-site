@@ -16,6 +16,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
   },
   $transaction: jest.fn(),
@@ -132,7 +133,7 @@ describe('google oauth routes', () => {
     (globalThis as any).fetch = fetchMock;
 
     prismaMock.authUser.findUnique.mockResolvedValue(null);
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
     prismaMock.authUser.create.mockResolvedValue({
       id: 'user_1',
       email: 'test@example.com',
@@ -185,7 +186,7 @@ describe('google oauth routes', () => {
     (globalThis as any).fetch = fetchMock;
 
     prismaMock.authUser.findUnique.mockResolvedValue(null);
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
     prismaMock.authUser.create.mockResolvedValue({
       id: 'user_1',
       email: 'test@example.com',

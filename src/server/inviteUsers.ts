@@ -86,8 +86,8 @@ export const ensureAuthUserAndUserDataByEmail = async (
   }
 
   const existingAuth = await tx.authUser.findUnique({ where: { email: normalizedEmail } });
-  const existingSensitive = await tx.sensitiveUserData.findFirst({
-    where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+  const existingSensitive = await tx.sensitiveUserData.findUnique({
+    where: { email: normalizedEmail },
   });
 
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
@@ -157,7 +157,7 @@ export const ensureAuthUserAndUserDataByEmail = async (
   }
 
   await tx.sensitiveUserData.upsert({
-    where: { id: existingSensitive?.id ?? userId },
+    where: { userId },
     update: {
       email: normalizedEmail,
       userId,

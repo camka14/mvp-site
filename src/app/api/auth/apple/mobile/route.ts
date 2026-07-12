@@ -107,9 +107,9 @@ export async function POST(req: NextRequest) {
     );
   }
   const existingSensitive = existingAuth
-    ? await prisma.sensitiveUserData.findFirst({ where: { userId: existingAuth.id } })
+    ? await prisma.sensitiveUserData.findUnique({ where: { userId: existingAuth.id } })
     : candidateEmail
-      ? await prisma.sensitiveUserData.findFirst({ where: { email: candidateEmail } })
+      ? await prisma.sensitiveUserData.findUnique({ where: { email: candidateEmail } })
       : null;
   const normalizedEmail = existingAuth?.email?.trim().toLowerCase()
     || candidateEmail
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
         })();
 
     await tx.sensitiveUserData.upsert({
-      where: { id: existingSensitive?.id ?? createdAuth.id },
+      where: { userId: createdAuth.id },
       update: {
         email: normalizedEmail,
         userId: createdAuth.id,

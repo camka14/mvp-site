@@ -154,8 +154,12 @@ export async function GET(req: NextRequest) {
     clearOauthCookies(res);
     return res;
   }
-  const existingSensitive = existingAuth ? null : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
+  const existingSensitive = existingAuth ? null : await prisma.sensitiveUserData.findUnique({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
+  // A linked Google subject authenticates the existing account. Keep its
+  // verified application email authoritative until the explicit email-change
+  // flow updates both AuthUser and SensitiveUserData atomically.
+  const canonicalEmail = existingAuth?.email.trim().toLowerCase() || normalizedEmail;
 
   const displayName = userInfo.name?.trim() || null;
   const firstName = normalizeOptionalName(userInfo.given_name);
@@ -249,9 +253,9 @@ export async function GET(req: NextRequest) {
         })();
 
     await tx.sensitiveUserData.upsert({
-      where: { id: existingSensitive?.id ?? createdAuth.id },
+      where: { userId: createdAuth.id },
       update: {
-        email: normalizedEmail,
+        email: canonicalEmail,
         userId: createdAuth.id,
         updatedAt: now,
       },

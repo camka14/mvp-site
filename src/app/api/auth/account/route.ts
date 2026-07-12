@@ -127,7 +127,7 @@ export async function DELETE(req: NextRequest) {
         sessionVersion: true,
       },
     }),
-    prisma.sensitiveUserData.findFirst({
+    prisma.sensitiveUserData.findUnique({
       where: { userId },
       select: {
         id: true,

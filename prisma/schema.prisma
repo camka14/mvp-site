@@ -760,8 +760,8 @@ model SensitiveUserData {
   id                            String    @id
   createdAt                     DateTime?
   updatedAt                     DateTime?
-  userId                        String
-  email                         String
+  userId                        String    @unique
+  email                         String    @unique
   billingAddressLine1           String?
   billingAddressLine2           String?
   billingCity                   String?

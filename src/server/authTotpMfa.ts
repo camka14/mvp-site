@@ -111,7 +111,7 @@ export const readTotpMfaRequestMetadata = (req: NextRequest): RequestMetadata =>
 };
 
 const getSensitiveUserData = (client: TotpMfaClient, userId: string) => (
-  client.sensitiveUserData.findFirst({ where: { userId } })
+  client.sensitiveUserData.findUnique({ where: { userId } })
 );
 
 export const encodeBase32 = (buffer: Buffer): string => {
