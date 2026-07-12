@@ -100,7 +100,11 @@ export const normalizeNotificationSettings = (
     settings[type] = NOTIFICATION_CHANNELS.reduce((channels, channel) => {
       const supported = isNotificationChannelSupported(type, channel);
       const rawValue = typeSettings[channel];
-      channels[channel] = supported && (typeof rawValue === 'boolean' ? rawValue : true);
+      channels[channel] = supported && (
+        typeof rawValue === 'boolean'
+          ? rawValue
+          : DEFAULT_NOTIFICATION_SETTINGS[type][channel]
+      );
       return channels;
     }, {} as Record<NotificationChannel, boolean>);
     return settings;
