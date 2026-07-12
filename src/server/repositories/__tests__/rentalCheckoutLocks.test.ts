@@ -23,7 +23,10 @@ jest.mock('@/server/repositories/locks', () => ({
   advisoryLockId: jest.fn().mockReturnValue(1n),
 }));
 
-import { reserveRentalCheckoutLocks } from '@/server/repositories/rentalCheckoutLocks';
+import {
+  MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER,
+  reserveRentalCheckoutLocks,
+} from '@/server/repositories/rentalCheckoutLocks';
 
 type LockRow = {
   id: string;
@@ -35,8 +38,8 @@ type LockRow = {
 
 type LockFilesWhere = {
   id?: { in?: string[] };
-  docId?: string;
-  expires?: { lte?: Date };
+  docId?: string | { startsWith?: string };
+  expires?: { lte?: Date; gt?: Date };
 };
 
 const createClient = () => {
@@ -63,9 +66,14 @@ const createClient = () => {
     }),
     findMany: jest.fn(async ({ where }: { where?: LockFilesWhere }) => {
       const ids = Array.isArray(where?.id?.in) ? where.id.in : [];
-      return ids
-        .map((id) => lockRows.get(id))
-        .filter((row): row is LockRow => Boolean(row))
+      const rows = ids.length
+        ? ids.map((id) => lockRows.get(id)).filter((row): row is LockRow => Boolean(row))
+        : Array.from(lockRows.values());
+      const ownerPrefix = typeof where?.docId === 'object' ? where.docId.startsWith : null;
+      const expiresAfter = where?.expires?.gt instanceof Date ? where.expires.gt : null;
+      return rows
+        .filter((row) => !ownerPrefix || row.docId?.startsWith(ownerPrefix))
+        .filter((row) => !expiresAfter || row.expires.getTime() > expiresAfter.getTime())
         .map((row) => ({
           id: row.id,
           docId: row.docId,
@@ -171,5 +179,41 @@ describe('reserveRentalCheckoutLocks concurrency', () => {
     const lockId = 'rental-checkout:field_1:2026-03-18T12:00:00.000Z:2026-03-18T13:00:00.000Z';
     const persistedLock = lockRows.get(lockId);
     expect(persistedLock?.docId).toBe(successful[0].ownerToken);
+  });
+
+  it('bounds active lock rows for one user even when draft event ids change', async () => {
+    const { client, lockRows } = createClient();
+    const now = new Date('2026-03-18T11:55:00.000Z');
+    for (let index = 0; index < MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER; index += 1) {
+      lockRows.set(`existing_${index}`, {
+        id: `existing_${index}`,
+        docId: `rental:user_1:draft_${index}`,
+        expires: new Date(now.getTime() + 60_000),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const result = await reserveRentalCheckoutLocks({
+      client,
+      window: {
+        eventId: 'new_draft_id',
+        fieldIds: ['field_1'],
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        end: new Date('2026-03-18T13:00:00.000Z'),
+        noFixedEndDateTime: false,
+        organizationId: 'organization_1',
+        eventType: 'EVENT',
+        parentEvent: null,
+      },
+      userId: 'user_1',
+      now,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      status: 429,
+    }));
+    expect(lockRows.has('rental-checkout:field_1:2026-03-18T12:00:00.000Z:2026-03-18T13:00:00.000Z')).toBe(false);
   });
 });

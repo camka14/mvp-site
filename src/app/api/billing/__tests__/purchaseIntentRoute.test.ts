@@ -46,9 +46,9 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const extractRentalCheckoutWindowMock = jest.fn();
 const reserveRentalCheckoutLocksMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
+const resolveCanonicalRentalCheckoutMock = jest.fn();
 const loadUserBillingProfileMock = jest.fn();
 const resolveBillingAddressInputMock = jest.fn();
 const upsertUserBillingAddressMock = jest.fn();
@@ -66,9 +66,11 @@ jest.mock('stripe', () => ({
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
-  extractRentalCheckoutWindow: (...args: unknown[]) => extractRentalCheckoutWindowMock(...args),
   reserveRentalCheckoutLocks: (...args: unknown[]) => reserveRentalCheckoutLocksMock(...args),
   releaseRentalCheckoutLocks: (...args: unknown[]) => releaseRentalCheckoutLocksMock(...args),
+}));
+jest.mock('@/server/rentalCheckoutAccess', () => ({
+  resolveCanonicalRentalCheckout: (...args: unknown[]) => resolveCanonicalRentalCheckoutMock(...args),
 }));
 jest.mock('@/lib/billingAddress', () => ({
   loadUserBillingProfile: (...args: unknown[]) => loadUserBillingProfileMock(...args),
@@ -101,6 +103,34 @@ const jsonPost = (body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+const canonicalRentalResult = (options?: {
+  start?: Date;
+  end?: Date;
+  hostRequiredTemplateIds?: string[];
+  totalAmountCents?: number;
+}) => ({
+  ok: true as const,
+  checkout: {
+    window: {
+      eventId: 'event_1',
+      fieldIds: ['field_1'],
+      start: options?.start ?? new Date('2099-03-18T12:00:00.000Z'),
+      end: options?.end ?? new Date('2099-03-18T13:00:00.000Z'),
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      organizationId: 'organization_1',
+      eventType: 'EVENT',
+      parentEvent: null,
+    },
+    organization: { id: 'organization_1', ownerId: 'owner_1', publicPageEnabled: true },
+    totalAmountCents: options?.totalAmountCents ?? 2500,
+    availabilitySlotIds: ['availability_1'],
+    requiredTemplateIds: [],
+    hostRequiredTemplateIds: options?.hostRequiredTemplateIds ?? [],
+    event: null,
+  },
+});
 
 describe('POST /api/billing/purchase-intent', () => {
   beforeEach(() => {
@@ -168,19 +198,7 @@ describe('POST /api/billing/purchase-intent', () => {
       };
       return callback(tx);
     });
-    extractRentalCheckoutWindowMock.mockReturnValue({
-      ok: true,
-      window: {
-        eventId: 'event_1',
-        fieldIds: ['field_1'],
-        start: new Date('2099-03-18T12:00:00.000Z'),
-        end: new Date('2099-03-18T13:00:00.000Z'),
-        noFixedEndDateTime: false,
-        organizationId: null,
-        eventType: 'EVENT',
-        parentEvent: null,
-      },
-    });
+    resolveCanonicalRentalCheckoutMock.mockResolvedValue(canonicalRentalResult());
     reserveRentalCheckoutLocksMock.mockResolvedValue({
       ok: true,
       ownerToken: 'rental:user_1:event_1',
@@ -227,6 +245,9 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('blocks rental checkout when required rental document has not been signed', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonicalRentalResult({
+      hostRequiredTemplateIds: ['tmpl_rental_1'],
+    }));
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_rental_1',
@@ -248,6 +269,9 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('creates a payment intent when rental document is already signed', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonicalRentalResult({
+      hostRequiredTemplateIds: ['tmpl_rental_1'],
+    }));
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_rental_1',
@@ -340,20 +364,35 @@ describe('POST /api/billing/purchase-intent', () => {
     expect(data.conflictFieldIds).toEqual(['field_1']);
   });
 
-  it('rejects rental checkout payment intents for past start times', async () => {
-    extractRentalCheckoutWindowMock.mockReturnValueOnce({
-      ok: true,
-      window: {
-        eventId: 'event_1',
-        fieldIds: ['field_1'],
-        start: new Date('2001-03-18T12:00:00.000Z'),
-        end: new Date('2001-03-18T13:00:00.000Z'),
-        noFixedEndDateTime: false,
-        organizationId: null,
-        eventType: 'EVENT',
-        parentEvent: null,
-      },
+  it('does not let the direct payment endpoint bypass canonical rental inventory validation', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      error: 'One or more selected fields are unavailable for rental.',
     });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', hostId: 'user_1', price: 1, eventType: 'EVENT' },
+      timeSlot: {
+        $id: 'forged_slot',
+        price: 1,
+        scheduledFieldIds: ['forged_field'],
+      },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain('unavailable');
+    expect(reserveRentalCheckoutLocksMock).not.toHaveBeenCalled();
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects rental checkout payment intents for past start times', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonicalRentalResult({
+      start: new Date('2001-03-18T12:00:00.000Z'),
+      end: new Date('2001-03-18T13:00:00.000Z'),
+    }));
 
     const res = await POST(jsonPost({
       user: { $id: 'user_1' },
@@ -369,6 +408,9 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('blocks rental checkout when any required rental document template is unsigned', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonicalRentalResult({
+      hostRequiredTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2'],
+    }));
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_rental_1',
@@ -401,6 +443,9 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('uses host-required templates for rental checkout verification when provided', async () => {
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonicalRentalResult({
+      hostRequiredTemplateIds: ['tmpl_host_only'],
+    }));
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_host_only',

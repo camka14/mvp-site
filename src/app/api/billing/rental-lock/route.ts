@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 import {
-  extractRentalCheckoutWindow,
   releaseRentalCheckoutLocks,
   reserveRentalCheckoutLocks,
 } from '@/server/repositories/rentalCheckoutLocks';
+import { resolveCanonicalRentalCheckout } from '@/server/rentalCheckoutAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,22 +31,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
   }
 
-  const checkoutWindow = extractRentalCheckoutWindow({
+  const canonicalCheckout = await resolveCanonicalRentalCheckout({
+    session,
     event: payload.event,
     timeSlot: payload.timeSlot,
+    client: prisma,
   });
-  if (!checkoutWindow.ok) {
-    return NextResponse.json({ error: checkoutWindow.error }, { status: checkoutWindow.status });
+  if (!canonicalCheckout.ok) {
+    return NextResponse.json({ error: canonicalCheckout.error }, { status: canonicalCheckout.status });
   }
+  const checkoutWindow = canonicalCheckout.checkout.window;
 
   const now = new Date();
-  if (checkoutWindow.window.start.getTime() < now.getTime()) {
+  if (checkoutWindow.start.getTime() < now.getTime()) {
     return NextResponse.json({ error: 'Rental selections must start in the future.' }, { status: 400 });
   }
 
   const result = await reserveRentalCheckoutLocks({
     client: prisma,
-    window: checkoutWindow.window,
+    window: checkoutWindow,
     userId: session.userId,
     now,
   });
@@ -77,17 +80,20 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
   }
 
-  const checkoutWindow = extractRentalCheckoutWindow({
+  const canonicalCheckout = await resolveCanonicalRentalCheckout({
+    session,
     event: payload.event,
     timeSlot: payload.timeSlot,
+    client: prisma,
+    requireAvailability: false,
   });
-  if (!checkoutWindow.ok) {
-    return NextResponse.json({ error: checkoutWindow.error }, { status: checkoutWindow.status });
+  if (!canonicalCheckout.ok) {
+    return NextResponse.json({ error: canonicalCheckout.error }, { status: canonicalCheckout.status });
   }
 
   await releaseRentalCheckoutLocks({
     client: prisma,
-    window: checkoutWindow.window,
+    window: canonicalCheckout.checkout.window,
     userId: session.userId,
   });
 

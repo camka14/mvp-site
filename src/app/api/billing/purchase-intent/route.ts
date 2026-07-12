@@ -3,7 +3,6 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { calculateMvpAndStripeFeesWithTax, getPaymentMethodFeeLabel } from '@/lib/billingFees';
 import {
   type BillingAddress,
   loadUserBillingProfile,
@@ -40,11 +39,14 @@ import {
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
-  extractRentalCheckoutWindow,
   releaseRentalCheckoutLocks,
   reserveRentalCheckoutLocks,
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
+import {
+  resolveCanonicalRentalCheckout,
+  type CanonicalRentalCheckout,
+} from '@/server/rentalCheckoutAccess';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
   findTeamRegistration,
@@ -79,6 +81,7 @@ import {
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
 import { logBillingError } from '@/server/billing/errorLogging';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
 
@@ -918,10 +921,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const secretKey = getConfiguredStripeSecretKey();
+  if (!secretKey) {
+    return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
+  }
+
   const payload = parsed.data;
   const payloadRow = payload as Record<string, unknown>;
   const userId = extractEntityId(payload.user);
-  const eventId = extractEntityId(payload.event);
+  let eventId = extractEntityId(payload.event);
   const requestedPurchaseType = normalizeString(payload.purchaseType);
   const directTeamId = extractEntityId(payload.team);
   const teamCheckoutTarget = parseTeamRegistrationCheckoutTarget({
@@ -939,71 +947,7 @@ export async function POST(req: NextRequest) {
   const slotId = normalizeString(payload.slotId);
   const occurrenceDate = normalizeString(payload.occurrenceDate);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
-  const hostTemplateSource = (payload.timeSlot as Record<string, unknown> | undefined)?.hostRequiredTemplateIds;
-  const hostRequiredTemplateIds = Array.from(
-    new Set(
-      [
-        ...(
-          Array.isArray(hostTemplateSource)
-            ? hostTemplateSource.map((value) => normalizeString(value))
-            : []
-        ),
-      ].filter((value): value is string => Boolean(value)),
-    ),
-  );
-  const primaryRequiredTemplateId = hostRequiredTemplateIds[0] ?? null;
-
-  if (payload.timeSlot && hostRequiredTemplateIds.length > 0) {
-    if (!userId) {
-      return NextResponse.json({ error: 'Sign in to complete rental document signing before payment.' }, { status: 403 });
-    }
-    const templates = await prisma.templateDocuments.findMany({
-      where: { id: { in: hostRequiredTemplateIds } },
-      select: { id: true, title: true, signOnce: true },
-    });
-    const templateById = new Map(templates.map((template) => [template.id, template]));
-    const missingTemplateIds = hostRequiredTemplateIds.filter((templateId) => !templateById.has(templateId));
-    if (missingTemplateIds.length > 0) {
-      return NextResponse.json({
-        error: `Rental document templates not found: ${missingTemplateIds.join(', ')}`,
-      }, { status: 400 });
-    }
-    const unsignedTemplateLabels: string[] = [];
-    for (const templateId of hostRequiredTemplateIds) {
-      const template = templateById.get(templateId);
-      if (!template) {
-        continue;
-      }
-      if (!template.signOnce && !eventId) {
-        return NextResponse.json({ error: 'Event id is required to verify rental document signatures.' }, { status: 400 });
-      }
-
-      const signedRows = await prisma.signedDocuments.findMany({
-        where: {
-          templateId: template.id,
-          userId,
-          signerRole: 'participant',
-          ...(template.signOnce ? {} : { eventId }),
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: 20,
-        select: { status: true },
-      });
-      const hasSignedDocument = signedRows.some((row) => isSignedStatus(row.status));
-      if (!hasSignedDocument) {
-        unsignedTemplateLabels.push(template.title?.trim() || template.id);
-      }
-    }
-
-    if (unsignedTemplateLabels.length > 0) {
-      return NextResponse.json({
-        error: `Rental document must be signed before checkout: ${unsignedTemplateLabels.join(', ')}`,
-      }, { status: 403 });
-    }
-  }
-
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const secretKey = process.env.STRIPE_SECRET_KEY;
   let resolvedPurchase: Awaited<ReturnType<typeof resolvePurchaseContext>>;
 
   try {
@@ -1033,6 +977,80 @@ export async function POST(req: NextRequest) {
       },
     });
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  let canonicalRentalCheckout: CanonicalRentalCheckout | null = null;
+  let hostRequiredTemplateIds: string[] = [];
+  let primaryRequiredTemplateId: string | null = null;
+  if (resolvedPurchase.purchaseType === 'rental') {
+    const canonicalRental = await resolveCanonicalRentalCheckout({
+      session,
+      event: payload.event,
+      timeSlot: payload.timeSlot,
+      client: prisma,
+    });
+    if (!canonicalRental.ok) {
+      return NextResponse.json({ error: canonicalRental.error }, { status: canonicalRental.status });
+    }
+    canonicalRentalCheckout = canonicalRental.checkout;
+    eventId = canonicalRentalCheckout.window.eventId;
+    resolvedPurchase = {
+      ...resolvedPurchase,
+      amountCents: canonicalRentalCheckout.totalAmountCents,
+      organizationId: canonicalRentalCheckout.organization.id,
+      eventType: canonicalRentalCheckout.event?.eventType ?? 'EVENT',
+    };
+    hostRequiredTemplateIds = canonicalRentalCheckout.hostRequiredTemplateIds;
+    primaryRequiredTemplateId = hostRequiredTemplateIds[0] ?? null;
+
+    if (hostRequiredTemplateIds.length > 0) {
+      if (!userId) {
+        return NextResponse.json({ error: 'Sign in to complete rental document signing before payment.' }, { status: 403 });
+      }
+      const templates = await prisma.templateDocuments.findMany({
+        where: { id: { in: hostRequiredTemplateIds } },
+        select: { id: true, title: true, signOnce: true },
+      });
+      const templateById = new Map(templates.map((template) => [template.id, template]));
+      const missingTemplateIds = hostRequiredTemplateIds.filter((templateId) => !templateById.has(templateId));
+      if (missingTemplateIds.length > 0) {
+        return NextResponse.json({
+          error: `Rental document templates not found: ${missingTemplateIds.join(', ')}`,
+        }, { status: 400 });
+      }
+      const unsignedTemplateLabels: string[] = [];
+      for (const templateId of hostRequiredTemplateIds) {
+        const template = templateById.get(templateId);
+        if (!template) {
+          continue;
+        }
+        if (!template.signOnce && !eventId) {
+          return NextResponse.json({ error: 'Event id is required to verify rental document signatures.' }, { status: 400 });
+        }
+
+        const signedRows = await prisma.signedDocuments.findMany({
+          where: {
+            templateId: template.id,
+            userId,
+            signerRole: 'participant',
+            ...(template.signOnce ? {} : { eventId }),
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 20,
+          select: { status: true },
+        });
+        const hasSignedDocument = signedRows.some((row) => isSignedStatus(row.status));
+        if (!hasSignedDocument) {
+          unsignedTemplateLabels.push(template.title?.trim() || template.id);
+        }
+      }
+
+      if (unsignedTemplateLabels.length > 0) {
+        return NextResponse.json({
+          error: `Rental document must be signed before checkout: ${unsignedTemplateLabels.join(', ')}`,
+        }, { status: 403 });
+      }
+    }
   }
 
   let checkoutAmountCents = resolvedPurchase.amountCents;
@@ -1129,11 +1147,16 @@ export async function POST(req: NextRequest) {
   }
 
   const taxContext = await loadBillingTaxPolicyContext({
-    event: payload.event ?? null,
-    timeSlot: payload.timeSlot ?? null,
-    organization: payload.organization ?? null,
+    event: canonicalRentalCheckout?.event ? { id: canonicalRentalCheckout.event.id } : payload.event ?? null,
+    timeSlot: canonicalRentalCheckout
+      ? { id: canonicalRentalCheckout.availabilitySlotIds[0] }
+      : payload.timeSlot ?? null,
+    organization: canonicalRentalCheckout
+      ? { id: canonicalRentalCheckout.organization.id }
+      : payload.organization ?? null,
     organizationId:
-      resolvedPurchase.organizationId
+      canonicalRentalCheckout?.organization.id
+      ?? resolvedPurchase.organizationId
       ?? normalizeString(payload.event?.organizationId)
       ?? normalizeString(resolvedPurchase.product?.organizationId)
       ?? null,
@@ -1226,55 +1249,6 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  if (!secretKey) {
-    if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
-      const manualTaxQuote = buildOrganizerManualTaxQuote({
-        subtotalCents: checkoutAmountCents,
-        organizerManualTaxRateBps,
-        purchaseType: resolvedPurchase.purchaseType,
-        taxCategory: resolvedPurchase.taxCategory,
-        eventType: resolvedPurchase.eventType,
-      });
-      return NextResponse.json({
-        paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-        publishableKey,
-        checkoutMode: 'PAYMENT_INTENT',
-        taxCategory: resolvedPurchase.taxCategory,
-        ...taxPolicyResponseFields(taxPolicy),
-        feeBreakdown: buildFeeBreakdown(manualTaxQuote),
-      }, { status: 200 });
-    }
-    const fallbackFees = calculateMvpAndStripeFeesWithTax({
-      eventAmountCents: checkoutAmountCents,
-      eventType: resolvedPurchase.eventType,
-      taxAmountCents: 0,
-      stripeTaxServiceFeeCents: 0,
-    });
-    return NextResponse.json({
-      paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-      publishableKey,
-      checkoutMode: 'PAYMENT_INTENT',
-      taxCalculationId: taxPolicyRequiresStripeTaxCalculation(taxPolicy) ? `tax_mock_${crypto.randomUUID()}` : undefined,
-      taxCategory: resolvedPurchase.taxCategory,
-      ...taxPolicyResponseFields(taxPolicy),
-      feeBreakdown: {
-        eventPrice: checkoutAmountCents,
-        stripeFee: fallbackFees.stripeFeeCents,
-        stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
-        stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
-        processingFee: fallbackFees.mvpFeeCents,
-        mvpFee: fallbackFees.mvpFeeCents,
-        taxAmount: 0,
-        totalCharge: fallbackFees.totalChargeCents,
-        hostReceives: fallbackFees.hostReceivesCents,
-        feePercentage: fallbackFees.mvpFeePercentage * 100,
-        paymentMethodType: fallbackFees.paymentMethodType,
-        paymentMethodLabel: getPaymentMethodFeeLabel(fallbackFees.paymentMethodType),
-        purchaseType: resolvedPurchase.purchaseType,
-      },
-    }, { status: 200 });
-  }
-
   const inlineBillingAddress = resolveBillingAddressInput(payload.billingAddress);
   if (payload.billingAddress !== undefined && !inlineBillingAddress) {
     return NextResponse.json({ error: 'Invalid billing address.' }, { status: 400 });
@@ -1311,10 +1285,13 @@ export async function POST(req: NextRequest) {
       }
     }
   }
-  const eventIdForReference = taxContext.eventId ?? extractEntityId(payload.event);
-  const timeSlotIdForReference = taxContext.timeSlotId ?? extractEntityId(payload.timeSlot);
+  const eventIdForReference = taxContext.eventId ?? eventId;
+  const timeSlotIdForReference = taxContext.timeSlotId
+    ?? canonicalRentalCheckout?.availabilitySlotIds[0]
+    ?? extractEntityId(payload.timeSlot);
   const organizationId =
-    taxContext.organizationId
+    canonicalRentalCheckout?.organization.id
+    ?? taxContext.organizationId
     ?? extractEntityId(payload.organization)
     ?? resolvedPurchase.organizationId
     ?? normalizeString(payload.event?.organizationId)
@@ -1459,21 +1436,18 @@ export async function POST(req: NextRequest) {
     reservedRegistrationId = reservationResult.registrationId;
     reservedRegistrationHoldExpiresAt = reservationResult.registrationHoldExpiresAt ?? null;
   } else if (resolvedPurchase.purchaseType === 'rental') {
-    const rentalWindowResult = extractRentalCheckoutWindow({
-      event: payload.event,
-      timeSlot: payload.timeSlot,
-    });
-    if (!rentalWindowResult.ok) {
-      return NextResponse.json({ error: rentalWindowResult.error }, { status: rentalWindowResult.status });
+    const rentalWindow = canonicalRentalCheckout?.window;
+    if (!rentalWindow) {
+      return NextResponse.json({ error: 'Unable to verify the selected rental inventory.' }, { status: 400 });
     }
     const now = new Date();
-    if (rentalWindowResult.window.start.getTime() < now.getTime()) {
+    if (rentalWindow.start.getTime() < now.getTime()) {
       return NextResponse.json({ error: 'Rental selections must start in the future.' }, { status: 400 });
     }
 
     const lockReservation = await reserveRentalCheckoutLocks({
       client: prisma,
-      window: rentalWindowResult.window,
+      window: rentalWindow,
       userId: actorUserId,
       now,
     });
@@ -1487,7 +1461,7 @@ export async function POST(req: NextRequest) {
         { status: lockReservation.status },
       );
     }
-    reservedRentalWindow = rentalWindowResult.window;
+    reservedRentalWindow = rentalWindow;
   }
 
   const registrationHoldResponseFields = buildRegistrationHoldResponseFields(

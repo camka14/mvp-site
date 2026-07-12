@@ -9,6 +9,12 @@ import {
 } from '@/server/timeZones';
 
 export const RENTAL_CHECKOUT_LOCK_TTL_MS = 10 * 60 * 1000;
+/**
+ * A checkout can hold a small number of inventory rows while payment is in
+ * progress. Counting rows (rather than client-controlled event IDs) keeps one
+ * caller from manufacturing unbounded lock groups with fresh draft IDs.
+ */
+export const MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER = 12;
 
 type PrismaLike = any;
 
@@ -218,6 +224,27 @@ export const reserveRentalCheckoutLocks = async ({
         return conflictResponseFromError(error);
       }
       throw error;
+    }
+
+    const userLockId = advisoryLockId(`rental-checkout-user:${userId}`);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userLockId})`;
+
+    const activeUserLocks = await tx.lockFiles.findMany({
+      where: {
+        docId: { startsWith: `rental:${userId}:` },
+        expires: { gt: now },
+      },
+      select: { id: true },
+    });
+    const activeUserLockIds = new Set(activeUserLocks.map((lock: { id: string }) => lock.id));
+    const projectedActiveLockCount = activeUserLockIds.size
+      + lockIds.filter((lockId) => !activeUserLockIds.has(lockId)).length;
+    if (projectedActiveLockCount > MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER) {
+      return {
+        ok: false,
+        status: 429,
+        error: 'You have too many active rental checkout reservations. Complete or cancel an existing checkout first.',
+      };
     }
 
     const lockGroupId = advisoryLockId(`rental-checkout-group:${lockIds.slice().sort().join('|')}`);

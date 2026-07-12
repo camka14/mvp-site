@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/permissions';
 import { calculateIncludedFeesFromTotalPrice, getPaymentMethodFeeLabel, normalizePaymentMethodFeeType } from '@/lib/billingFees';
 import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,6 +119,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const secretKey = getConfiguredStripeSecretKey();
+  if (!secretKey) {
+    return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
+  }
+
   const bill = await prisma.bills.findUnique({ where: { id: parsed.data.billId } });
   if (!bill) {
     return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
@@ -183,26 +189,6 @@ export async function POST(req: NextRequest) {
   };
 
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-
-  if (!secretKey) {
-    if (canClaimTeamPayment) {
-      await prisma.billPayments.update({
-        where: { id: payment.id },
-        data: {
-          payerUserId: session.userId,
-          updatedAt: new Date(),
-        },
-      });
-    }
-    return NextResponse.json({
-      paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-      publishableKey,
-      feeBreakdown,
-      billId: bill.id,
-      billPaymentId: payment.id,
-    }, { status: 200 });
-  }
 
   const stripe = new Stripe(secretKey);
   try {

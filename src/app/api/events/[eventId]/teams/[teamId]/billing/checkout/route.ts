@@ -9,6 +9,7 @@ import { getRequestOrigin } from '@/lib/requestOrigin';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
 import { canManageEvent } from '@/server/accessControl';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,11 @@ export async function POST(
   const parsed = checkoutSchema.safeParse(body ?? {});
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const secretKey = getConfiguredStripeSecretKey();
+  if (!secretKey) {
+    return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
   }
 
   const event = await prisma.events.findUnique({
@@ -214,24 +220,6 @@ export async function POST(
   appendMetadata(metadata, 'team_name', teamName);
   appendMetadata(metadata, 'organization_id', event.organizationId);
   appendMetadata(metadata, 'division_id', parsed.data.divisionId);
-
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    const checkoutUrl = new URL('/billing/mock-checkout', origin);
-    checkoutUrl.searchParams.set('eventId', event.id);
-    checkoutUrl.searchParams.set('ownerType', billOwnerType);
-    checkoutUrl.searchParams.set('ownerId', billOwnerId);
-    return NextResponse.json({
-      checkoutUrl: checkoutUrl.toString(),
-      qrCodeUrl: buildQrCodeUrl(req, checkoutUrl.toString()),
-      amountCents: totalChargeCents,
-      eventAmountCents,
-      billOwnerType,
-      billOwnerId,
-      payerUserId,
-      feeBreakdown,
-    }, { status: 200 });
-  }
 
   const stripe = new Stripe(secretKey);
 	  const transferData = await buildDestinationTransferData({
