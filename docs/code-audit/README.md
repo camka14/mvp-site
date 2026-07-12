@@ -15,10 +15,10 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257` and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (6)** | `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003` | `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
-| **Remaining / not yet reconciled (187)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Completed — high (7)** | `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004` | `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Remaining / not yet reconciled (186)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **40 completed, 187 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **41 completed, 186 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -366,7 +366,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: organization/event/team writes catch Prisma `Unknown argument`, remove fields, and retry (`mvp-site/src/app/api/organizations/route.ts:44-78`, `organizations/[id]/route.ts:86-125`, `src/server/repositories/events.ts:137-182`, team routes). Mobile team update repeats a request after stripping backend-rejected fields (`mvp-app/core/repository-impl/.../TeamRepository.kt:552-565,829-851`).
 - Impact: APIs can return success while silently losing join policy, payment, registration, or event fields; deployment schema/client mismatch becomes hidden data corruption.
 - Legacy relevance: these broad compatibility loops are candidates for removal at the `1.6.13` contract floor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. Web organization, event, field, and legacy-team mutations now fail closed on Prisma `Unknown argument` errors, preserving the requested payload and returning an explicit schema-contract failure rather than retrying without it. The mobile team repository now returns the rejected PATCH as a failure without a second stripped request or a local save. `c5de7fbb` and `7ccf037a` add the regression coverage; 142 focused web assertions, the Android and iOS 19-test team-repository runs, and a fresh Android cold launch passed.
 
 ### DATA-005 — `mvp-site` has three schema surfaces and one is materially stale
 
@@ -2164,3 +2164,4 @@ These are not yet confirmed defects:
 - 2026-07-10: Completed the shared `core/ui` pass using full implementation review plus structural/reference inspection for vector payload files; recorded definition-only UI/theme assets and four-way branded-button source bloat. The focused Compose Android unit-test task was blocked before execution by the unresolved Maps manifest placeholder.
 - 2026-07-10: Reconciled every in-scope ledger row to a terminal review status, completed the site typecheck, and performed final desktop/mobile browser smoke tests. Confirmed the guest-auth state loop and duplicate sport filter identity failure while mapping local missing-schema errors to the existing stale-database finding.
 - 2026-07-10: Built and installed the current Android debug APK successfully, reproduced a pre-activity cold-start ANR twice, and extracted the system ANR trace proving synchronous eager Koin/Ktor/SLF4J service discovery on the application main thread.
+- 2026-07-12: Completed DATA-004 schema-drift fail-closed remediation across web and mobile. Focused web regressions and `tsc --noEmit` passed; Android and iOS team-repository runs each passed 19 tests. A freshly installed Android build cold-launched to the Login UI with no app crash, Room migration, or illegal-state log.
