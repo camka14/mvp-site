@@ -1,65 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const emailSchema = z.string().email();
+/**
+ * Email-to-account lookup is not a public application capability. Scoped
+ * invitation routes resolve accounts only after proving authority over the
+ * relevant team, event, or organization.
+ */
+const retired = () => NextResponse.json(
+  { error: 'This endpoint has been retired. Use an authorized scoped invitation flow.' },
+  { status: 410 },
+);
 
-const normalizeEmail = (value: unknown): string => {
-  if (typeof value !== 'string') return '';
-  return value.trim().toLowerCase();
-};
-
-const buildResponse = (exists: boolean, userId?: string | null, sensitiveUserId?: string | null) => {
-  return NextResponse.json(
-    {
-      exists,
-      userId: userId ?? undefined,
-      sensitiveUserId: sensitiveUserId ?? undefined,
-    },
-    { status: 200 },
-  );
-};
-
-export async function GET(req: NextRequest) {
-  await requireSession(req);
-  const email = normalizeEmail(req.nextUrl.searchParams.get('email'));
-  if (!emailSchema.safeParse(email).success) {
-    return buildResponse(false);
-  }
-
-  const authUser = await prisma.authUser.findUnique({ where: { email } });
-  if (authUser) {
-    const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
-    return buildResponse(true, authUser.id, sensitive?.id);
-  }
-
-  const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
-  if (!sensitive) {
-    return buildResponse(false);
-  }
-  return buildResponse(true, sensitive.userId, sensitive.id);
+export async function GET() {
+  return retired();
 }
 
-export async function POST(req: NextRequest) {
-  await requireSession(req);
-  const body = await req.json().catch(() => null);
-  const email = normalizeEmail(body?.email);
-  if (!emailSchema.safeParse(email).success) {
-    return buildResponse(false);
-  }
-
-  const authUser = await prisma.authUser.findUnique({ where: { email } });
-  if (authUser) {
-    const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
-    return buildResponse(true, authUser.id, sensitive?.id);
-  }
-
-  const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
-  if (!sensitive) {
-    return buildResponse(false);
-  }
-  return buildResponse(true, sensitive.userId, sensitive.id);
+export async function POST() {
+  return retired();
 }

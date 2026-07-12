@@ -672,7 +672,12 @@ export const useStaffOfficialController = ({
             return new Map<string, Set<string>>();
         }
 
-        const matches = await userService.lookupEmailMembership(pendingEmails, assignedStaffUserIds);
+        const eventId = normalizeEntityId(activeEditingEvent?.$id);
+        const matches = await userService.lookupEmailMembership(
+            pendingEmails,
+            assignedStaffUserIds,
+            eventId ? { eventId } : undefined,
+        );
         const membershipByEmail = new Map<string, Set<string>>();
         matches.forEach((match) => {
             const email = normalizeInviteEmail(match.email);
@@ -685,7 +690,7 @@ export const useStaffOfficialController = ({
             membershipByEmail.set(email, matchedUserIds);
         });
         return membershipByEmail;
-    }, [assignedStaffUserIds]);
+    }, [activeEditingEvent?.$id, assignedStaffUserIds]);
 
     const findPendingStaffInviteConflictMessage = useCallback((
         pendingInvites: PendingStaffInvite[],

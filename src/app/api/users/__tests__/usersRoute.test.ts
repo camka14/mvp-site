@@ -630,4 +630,47 @@ describe('users list route', () => {
       profileImageId: null,
     }));
   });
+
+  it('hides an unrelated adult\'s DOB and social metadata while preserving their public identity', async () => {
+    findManyMock.mockResolvedValue([{
+      id: 'adult_1',
+      firstName: 'Public',
+      lastName: 'Adult',
+      userName: 'public_adult',
+      dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      dobVerified: true,
+      dobVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+      ageVerificationProvider: 'provider',
+      teamIds: ['team_1'],
+      friendIds: ['friend_1'],
+      followingIds: ['follow_1'],
+      friendRequestIds: ['request_1'],
+      friendRequestSentIds: ['sent_1'],
+      uploadedImages: ['image_1'],
+      hasStripeAccount: true,
+      homePageOrganizationId: 'org_1',
+      profileImageId: 'profile_1',
+      accountVisibility: 'PUBLIC',
+    }]);
+
+    const res = await usersGet(new NextRequest('http://localhost/api/users?ids=adult_1'));
+    const [user] = (await res.json()).users;
+
+    expect(user).toEqual(expect.objectContaining({
+      displayName: 'Public Adult',
+      isMinor: false,
+      isIdentityHidden: false,
+      dateOfBirth: null,
+      dobVerified: false,
+      dobVerifiedAt: null,
+      ageVerificationProvider: null,
+      friendIds: [],
+      followingIds: [],
+      friendRequestIds: [],
+      friendRequestSentIds: [],
+      uploadedImages: [],
+      hasStripeAccount: false,
+      homePageOrganizationId: null,
+    }));
+  });
 });

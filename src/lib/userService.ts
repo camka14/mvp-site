@@ -62,6 +62,9 @@ export interface UserSocialGraph {
   blocked: UserData[];
 }
 
+const EMAIL_MEMBERSHIP_EMAIL_BATCH_SIZE = 50;
+const EMAIL_MEMBERSHIP_USER_BATCH_SIZE = 100;
+
 class UserService {
   private chunkIds(ids: string[], size: number = 100): string[][] {
     const chunks: string[][] = [];
@@ -120,20 +123,11 @@ class UserService {
     return normalizeUserDataList(response.users ?? []);
   }
 
-  async ensureUserByEmail(email: string): Promise<UserData> {
-    const normalized = email.trim().toLowerCase();
-    if (!normalized) {
-      throw new Error('Email is required');
-    }
-
-    const response = await apiFetch<{ user: UserData }>('/api/users/ensure', {
-      method: 'POST',
-      body: JSON.stringify({ email: normalized }),
-    });
-    return normalizeUserDataNames(response.user);
-  }
-
-  async lookupEmailMembership(emails: string[], userIds: string[]): Promise<Array<{ email: string; userId: string }>> {
+  async lookupEmailMembership(
+    emails: string[],
+    userIds: string[],
+    scope?: { eventId?: string },
+  ): Promise<Array<{ email: string; userId: string }>> {
     const normalizedEmails = Array.from(new Set(
       emails
         .map((email) => email.trim().toLowerCase())
@@ -149,18 +143,34 @@ class UserService {
       return [];
     }
 
-    const response = await apiFetch<{
-      matches?: Array<{ email?: string | null; userId?: string | null }>;
-    }>('/api/users/email-membership', {
-      method: 'POST',
-      body: JSON.stringify({ emails: normalizedEmails, userIds: normalizedUserIds }),
-    });
+    const responses = await Promise.all(
+      this.chunkIds(normalizedEmails, EMAIL_MEMBERSHIP_EMAIL_BATCH_SIZE).flatMap((emailBatch) => (
+        this.chunkIds(normalizedUserIds, EMAIL_MEMBERSHIP_USER_BATCH_SIZE).map((userIdBatch) => (
+          apiFetch<{
+            matches?: Array<{ email?: string | null; userId?: string | null }>;
+          }>('/api/users/email-membership', {
+            method: 'POST',
+            body: JSON.stringify({
+              emails: emailBatch,
+              userIds: userIdBatch,
+              ...(scope?.eventId ? { eventId: scope.eventId } : {}),
+            }),
+          })
+        ))
+      )),
+    );
 
-    return (response.matches ?? []).flatMap((match) => {
+    const seen = new Set<string>();
+    return responses.flatMap((response) => (response.matches ?? []).flatMap((match) => {
       const email = typeof match.email === 'string' ? match.email.trim().toLowerCase() : '';
       const userId = typeof match.userId === 'string' ? match.userId.trim() : '';
-      return email && userId ? [{ email, userId }] : [];
-    });
+      const key = email && userId ? `${email}:${userId}` : '';
+      if (!key || seen.has(key)) {
+        return [];
+      }
+      seen.add(key);
+      return [{ email, userId }];
+    }));
   }
 
   async updateUser(id: string, updates: Partial<UserData>): Promise<UserData> {

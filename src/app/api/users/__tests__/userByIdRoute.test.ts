@@ -279,4 +279,29 @@ describe('PATCH /api/users/[id]', () => {
     expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });
+
+  it('rejects client attempts to self-assert verification or Stripe connection state', async () => {
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', {
+        data: {
+          dobVerified: true,
+          dobVerifiedAt: '2026-07-11T00:00:00.000Z',
+          ageVerificationProvider: 'client',
+          hasStripeAccount: true,
+        },
+      }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.fields).toEqual([
+      'dobVerified',
+      'dobVerifiedAt',
+      'ageVerificationProvider',
+      'hasStripeAccount',
+    ]);
+    expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+  });
 });

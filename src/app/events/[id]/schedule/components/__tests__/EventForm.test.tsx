@@ -1638,6 +1638,7 @@ describe('EventForm dirty state', () => {
     expect(userService.lookupEmailMembership).toHaveBeenCalledWith(
       ['official@example.com'],
       expect.arrayContaining(['host_1', 'official_1']),
+      { eventId: 'event_1' },
     );
   });
 
@@ -1673,6 +1674,7 @@ describe('EventForm dirty state', () => {
     expect(userService.lookupEmailMembership).toHaveBeenCalledWith(
       ['assistant@example.com'],
       expect.arrayContaining(['assistant_1', 'host_1']),
+      { eventId: 'event_1' },
     );
   });
 
