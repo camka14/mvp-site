@@ -7,6 +7,8 @@ import {
   applyRefundAttempts,
   buildRefundScopeSnapshot,
   createStripeRefundAttempts,
+  hasRefundScopeDrift,
+  REFUND_SCOPE_VERSION,
   resolveRefundablePaymentsForRequest,
   isRefundScopeSnapshotValid,
   summarizeRefundAttempts,
@@ -185,6 +187,7 @@ export async function POST(req: NextRequest) {
     occurrenceDate: true,
     billIds: true,
     paymentIds: true,
+    paymentScope: true,
     requestedAmountCents: true,
     currency: true,
     policyDecision: true,
@@ -236,10 +239,17 @@ export async function POST(req: NextRequest) {
     let refundRequest: RefundRequestRow;
     try {
       const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, baseRefundRequest);
+      if (existingAutoRefund && hasRefundScopeDrift(baseRefundRequest, refundablePayments)) {
+        return NextResponse.json(
+          { error: 'The payment scope changed after this automatic refund was created. Submit a new refund request.' },
+          { status: 409 },
+        );
+      }
       const scopeSnapshot = existingAutoRefund
         ? {
           billIds: existingAutoRefund.billIds,
           paymentIds: existingAutoRefund.paymentIds,
+          paymentScope: existingAutoRefund.paymentScope,
           requestedAmountCents: existingAutoRefund.requestedAmountCents,
           currency: existingAutoRefund.currency,
           policyDecision: existingAutoRefund.policyDecision,
@@ -306,10 +316,11 @@ export async function POST(req: NextRequest) {
             occurrenceDate: refundRequest.occurrenceDate,
             billIds: refundRequest.billIds ?? [],
             paymentIds: refundRequest.paymentIds ?? [],
+            paymentScope: refundRequest.paymentScope ?? [],
             requestedAmountCents: refundRequest.requestedAmountCents ?? 0,
             currency: refundRequest.currency ?? 'usd',
             policyDecision: refundRequest.policyDecision,
-            scopeVersion: refundRequest.scopeVersion ?? 1,
+            scopeVersion: refundRequest.scopeVersion ?? REFUND_SCOPE_VERSION,
             scopeHash: refundRequest.scopeHash,
             reason: refundRequest.reason,
             status: 'APPROVED',
@@ -359,7 +370,8 @@ export async function POST(req: NextRequest) {
         occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         status: 'WAITING',
       },
-      select: { id: true },
+      orderBy: { updatedAt: 'desc' },
+      select: requestSelect,
     });
 
     await tx.eventRegistrations.updateMany({
@@ -377,7 +389,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (existingWaitingRequest) {
+    if (existingWaitingRequest && isRefundScopeSnapshotValid(existingWaitingRequest as RefundRequestRow)) {
       return {
         createdRefund: false,
         refundId: existingWaitingRequest.id,
@@ -397,6 +409,7 @@ export async function POST(req: NextRequest) {
         occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         billIds: waitingScope.billIds,
         paymentIds: waitingScope.paymentIds,
+        paymentScope: waitingScope.paymentScope,
         requestedAmountCents: waitingScope.requestedAmountCents,
         currency: waitingScope.currency,
         policyDecision: waitingScope.policyDecision,

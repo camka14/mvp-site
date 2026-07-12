@@ -271,9 +271,15 @@ describe('reserveTeamRegistrationSlot', () => {
         requestedByUserId: 'user_1',
         billIds: ['team_bill_1'],
         paymentIds: ['payment_1'],
+        paymentScope: [{
+          paymentId: 'payment_1',
+          billId: 'team_bill_1',
+          refundableAmountCents: 2500,
+          currency: 'usd',
+        }],
         requestedAmountCents: 2500,
         policyDecision: 'HOST_REVIEW_REQUIRED',
-        scopeVersion: 1,
+        scopeVersion: 2,
         scopeHash: expect.any(String),
       }),
     }));

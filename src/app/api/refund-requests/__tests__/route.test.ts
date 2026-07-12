@@ -65,6 +65,12 @@ const jsonPatch = (url: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const approvalPayload = (request: { scopeVersion: number; scopeHash: string }) => ({
+  status: 'APPROVED' as const,
+  expectedScopeVersion: request.scopeVersion,
+  expectedScopeHash: request.scopeHash,
+});
+
 describe('refund request routes', () => {
   const existingTeamRequest = {
     id: 'refund_1',
@@ -122,10 +128,16 @@ describe('refund request routes', () => {
       updatedAt: new Date('2026-02-25T12:00:00.000Z'),
       billIds: ['team_bill_1'],
       paymentIds: ['payment_team_1'],
+      paymentScope: [{
+        paymentId: 'payment_team_1',
+        billId: 'team_bill_1',
+        refundableAmountCents: 5000,
+        currency: 'usd',
+      }],
       requestedAmountCents: 5000,
       currency: 'usd',
       policyDecision: 'HOST_REVIEW_REQUIRED',
-      scopeVersion: 1,
+      scopeVersion: 2,
       scopeHash: 'scope_hash_1',
     });
     prismaMock.teams.findUnique.mockResolvedValue({
@@ -161,6 +173,84 @@ describe('refund request routes', () => {
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
 
+    it('requires the reviewed scope version and hash before approval', async () => {
+      const response = await PATCH(
+        jsonPatch('http://localhost/api/refund-requests/refund_1', { status: 'APPROVED' }),
+        { params: Promise.resolve({ id: 'refund_1' }) },
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(payload.error).toContain('scope version and hash');
+      expect(prismaMock.billPayments.findMany).not.toHaveBeenCalled();
+      expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an approval when the reviewed scope hash is stale', async () => {
+      const scopedPayment = {
+        id: 'payment_team_1',
+        billId: 'team_bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        refundableAmountCents: 5000,
+        paymentIntentId: 'pi_team_1',
+        payerUserId: 'requester_1',
+      };
+      const scopedRequest = {
+        ...existingTeamRequest,
+        ...buildRefundScopeSnapshot(existingTeamRequest as any, [scopedPayment], 'HOST_REVIEW_REQUIRED'),
+      };
+      prismaMock.refundRequests.findUnique.mockResolvedValueOnce(scopedRequest);
+
+      const response = await PATCH(
+        jsonPatch('http://localhost/api/refund-requests/refund_1', {
+          ...approvalPayload(scopedRequest),
+          expectedScopeHash: 'stale_scope_hash',
+        }),
+        { params: Promise.resolve({ id: 'refund_1' }) },
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(payload.error).toContain('stale');
+      expect(prismaMock.billPayments.findMany).not.toHaveBeenCalled();
+      expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an approval when the reviewed scope version is stale', async () => {
+      const scopedPayment = {
+        id: 'payment_team_1',
+        billId: 'team_bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        refundableAmountCents: 5000,
+        paymentIntentId: 'pi_team_1',
+        payerUserId: 'requester_1',
+      };
+      const scopedRequest = {
+        ...existingTeamRequest,
+        ...buildRefundScopeSnapshot(existingTeamRequest as any, [scopedPayment], 'HOST_REVIEW_REQUIRED'),
+      };
+      prismaMock.refundRequests.findUnique.mockResolvedValueOnce(scopedRequest);
+
+      const response = await PATCH(
+        jsonPatch('http://localhost/api/refund-requests/refund_1', {
+          ...approvalPayload(scopedRequest),
+          expectedScopeVersion: scopedRequest.scopeVersion + 1,
+        }),
+        { params: Promise.resolve({ id: 'refund_1' }) },
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(payload.error).toContain('stale');
+      expect(prismaMock.billPayments.findMany).not.toHaveBeenCalled();
+      expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
     it('approves only the request payer snapshot for a team refund', async () => {
       const scopedPayment = {
         id: 'payment_team_1',
@@ -186,7 +276,7 @@ describe('refund request routes', () => {
       prismaMock.billPayments.update.mockResolvedValueOnce({ id: 'payment_team_1', refundedAmountCents: 5000 });
 
       const response = await PATCH(
-        jsonPatch('http://localhost/api/refund-requests/refund_1', { status: 'APPROVED' }),
+        jsonPatch('http://localhost/api/refund-requests/refund_1', approvalPayload(scopedRequest)),
         { params: Promise.resolve({ id: 'refund_1' }) },
       );
       const payload = await response.json();
@@ -213,10 +303,16 @@ describe('refund request routes', () => {
           status: 'APPROVED',
           billIds: ['team_bill_1'],
           paymentIds: ['payment_team_1'],
+          paymentScope: [{
+            paymentId: 'payment_team_1',
+            billId: 'team_bill_1',
+            refundableAmountCents: 5000,
+            currency: 'usd',
+          }],
           requestedAmountCents: 5000,
           currency: 'usd',
           policyDecision: 'HOST_REVIEW_REQUIRED',
-          scopeVersion: 1,
+          scopeVersion: 2,
           scopeHash: 'scope_hash_1',
           refundedAmountCents: 5000,
           stripeRefundIds: ['re_team_1'],
@@ -228,6 +324,7 @@ describe('refund request routes', () => {
           select: expect.objectContaining({
             billIds: true,
             paymentIds: true,
+            paymentScope: true,
             requestedAmountCents: true,
             currency: true,
             policyDecision: true,
@@ -250,10 +347,11 @@ describe('refund request routes', () => {
         id: 'payment_1', billId: 'bill_1', amountCents: 5000, refundedAmountCents: 0,
         refundableAmountCents: 5000, paymentIntentId: 'pi_1', payerUserId: 'player_1',
       };
-      prismaMock.refundRequests.findUnique.mockResolvedValueOnce({
+      const scopedIndividualRequest = {
         ...individualRequest,
         ...buildRefundScopeSnapshot(individualRequest as any, [individualPayment], 'HOST_REVIEW_REQUIRED'),
-      });
+      };
+      prismaMock.refundRequests.findUnique.mockResolvedValueOnce(scopedIndividualRequest);
       prismaMock.billPayments.findMany.mockResolvedValueOnce([individualPayment]);
       mockStripeRefundCreate.mockResolvedValueOnce({ id: 're_1' });
       prismaMock.billPayments.findUnique.mockResolvedValueOnce({
@@ -267,7 +365,7 @@ describe('refund request routes', () => {
       });
 
       const response = await PATCH(
-        jsonPatch('http://localhost/api/refund-requests/refund_1', { status: 'APPROVED' }),
+        jsonPatch('http://localhost/api/refund-requests/refund_1', approvalPayload(scopedIndividualRequest)),
         { params: Promise.resolve({ id: 'refund_1' }) },
       );
       const payload = await response.json();
@@ -303,6 +401,47 @@ describe('refund request routes', () => {
           refundedPaymentIds: ['payment_1'],
         }),
       );
+    });
+
+    it('rejects payment-level drift even when the aggregate refund amount is unchanged', async () => {
+      const snapshotPayments = [
+        {
+          id: 'payment_1', billId: 'bill_1', amountCents: 1000, refundedAmountCents: 0,
+          refundableAmountCents: 1000, paymentIntentId: 'pi_1', payerUserId: 'requester_1',
+        },
+        {
+          id: 'payment_2', billId: 'bill_2', amountCents: 4000, refundedAmountCents: 0,
+          refundableAmountCents: 4000, paymentIntentId: 'pi_2', payerUserId: 'requester_1',
+        },
+      ];
+      const scopedRequest = {
+        ...existingTeamRequest,
+        ...buildRefundScopeSnapshot(existingTeamRequest as any, snapshotPayments, 'HOST_REVIEW_REQUIRED'),
+      };
+      prismaMock.refundRequests.findUnique.mockResolvedValueOnce(scopedRequest);
+      prismaMock.billPayments.findMany.mockResolvedValueOnce([
+        {
+          ...snapshotPayments[0],
+          amountCents: 2000,
+          refundableAmountCents: 2000,
+        },
+        {
+          ...snapshotPayments[1],
+          amountCents: 3000,
+          refundableAmountCents: 3000,
+        },
+      ]);
+
+      const response = await PATCH(
+        jsonPatch('http://localhost/api/refund-requests/refund_1', approvalPayload(scopedRequest)),
+        { params: Promise.resolve({ id: 'refund_1' }) },
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(payload.error).toContain('changed after the request was submitted');
+      expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
   });
 
@@ -374,19 +513,26 @@ describe('refund request routes', () => {
 
     it('returns the immutable refund scope needed for a mobile approval preview', async () => {
       requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
-      prismaMock.refundRequests.findMany.mockResolvedValueOnce([{
+      const previewRequest = {
         ...existingTeamRequest,
         createdAt: new Date('2026-07-10T10:00:00.000Z'),
         updatedAt: new Date('2026-07-10T10:05:00.000Z'),
-        billIds: ['bill_1'],
-        paymentIds: ['payment_1'],
-        requestedAmountCents: 5000,
-        currency: 'usd',
-        policyDecision: 'HOST_REVIEW_REQUIRED',
-        scopeVersion: 1,
-        scopeHash: 'scope_hash_1',
         slotId: 'slot_1',
         occurrenceDate: '2026-07-17',
+      };
+      const previewPayment = {
+        id: 'payment_1',
+        billId: 'bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        refundableAmountCents: 5000,
+        paymentIntentId: 'pi_1',
+        payerUserId: 'requester_1',
+      };
+      const previewScope = buildRefundScopeSnapshot(previewRequest as any, [previewPayment], 'HOST_REVIEW_REQUIRED');
+      prismaMock.refundRequests.findMany.mockResolvedValueOnce([{
+        ...previewRequest,
+        ...previewScope,
       }]);
 
       const response = await LIST_GET(
@@ -402,11 +548,38 @@ describe('refund request routes', () => {
         occurrenceDate: '2026-07-17',
         billIds: ['bill_1'],
         paymentIds: ['payment_1'],
+        paymentScope: [{
+          paymentId: 'payment_1',
+          billId: 'bill_1',
+          refundableAmountCents: 5000,
+          currency: 'usd',
+        }],
         requestedAmountCents: 5000,
         currency: 'usd',
         policyDecision: 'HOST_REVIEW_REQUIRED',
-        scopeVersion: 1,
-        scopeHash: 'scope_hash_1',
+        scopeVersion: 2,
+        scopeHash: previewScope.scopeHash,
+        approvalPreview: {
+          paymentScope: [{
+            paymentId: 'payment_1',
+            billId: 'bill_1',
+            refundableAmountCents: 5000,
+            currency: 'usd',
+          }],
+          paymentCount: 1,
+          billIds: ['bill_1'],
+          paymentIds: ['payment_1'],
+          refundableAmountCents: 5000,
+          currency: 'usd',
+          occurrence: {
+            slotId: 'slot_1',
+            occurrenceDate: '2026-07-17',
+          },
+          policyDecision: 'HOST_REVIEW_REQUIRED',
+          scopeVersion: 2,
+          scopeHash: previewScope.scopeHash,
+          isValid: true,
+        },
         $createdAt: '2026-07-10T10:00:00.000Z',
       }));
       expect(prismaMock.refundRequests.findMany).toHaveBeenCalledWith(
@@ -415,6 +588,7 @@ describe('refund request routes', () => {
             requestedByUserId: true,
             billIds: true,
             paymentIds: true,
+            paymentScope: true,
             requestedAmountCents: true,
             currency: true,
             policyDecision: true,

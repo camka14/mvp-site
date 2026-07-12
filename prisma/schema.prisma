@@ -1830,10 +1830,11 @@ model RefundRequests {
   occurrenceDate       String?
   billIds              String[]                  @default([])
   paymentIds           String[]                  @default([])
+  paymentScope         Json                      @default("[]")
   requestedAmountCents Int                       @default(0)
   currency             String                    @default("usd")
   policyDecision       String?
-  scopeVersion         Int                       @default(1)
+  scopeVersion         Int                       @default(2)
   scopeHash            String?
 
   @@index([eventId, userId, slotId, occurrenceDate])

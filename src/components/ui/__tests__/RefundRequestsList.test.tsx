@@ -97,6 +97,24 @@ describe('RefundRequestsList', () => {
         hostId: 'host_1',
         organizationId: 'org_1',
         status: 'WAITING',
+        approvalPreview: {
+          paymentScope: [{
+            paymentId: 'payment_1',
+            billId: 'bill_1',
+            refundableAmountCents: 5000,
+            currency: 'usd',
+          }],
+          paymentCount: 1,
+          billIds: ['bill_1'],
+          paymentIds: ['payment_1'],
+          refundableAmountCents: 5000,
+          currency: 'usd',
+          occurrence: { slotId: null, occurrenceDate: null },
+          policyDecision: 'HOST_REVIEW_REQUIRED',
+          scopeVersion: 2,
+          scopeHash: 'scope_hash_1',
+          isValid: true,
+        },
         $createdAt: '2024-01-01T00:00:00.000Z',
       },
     ]);
@@ -122,13 +140,24 @@ describe('RefundRequestsList', () => {
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
     expect(screen.getByText('Review refund requests submitted by participants for events you host.')).toBeInTheDocument();
+    expect(await screen.findByText('$50.00 · 1 payment')).toBeInTheDocument();
+    expect(screen.getByText('payment_1 · bill_1 · $50.00')).toBeInTheDocument();
+    expect(screen.getByText('HOST_REVIEW_REQUIRED')).toBeInTheDocument();
 
     const user = userEvent.setup();
     const approveButton = await screen.findByRole('button', { name: /approve/i });
     await user.click(approveButton);
 
     await waitFor(() =>
-      expect(refundRequestService.updateRefundStatus).toHaveBeenCalledWith('refund_1', 'APPROVED')
+      expect(refundRequestService.updateRefundStatus).toHaveBeenCalledWith(
+        'refund_1',
+        'APPROVED',
+        expect.objectContaining({
+          scopeVersion: 2,
+          scopeHash: 'scope_hash_1',
+          isValid: true,
+        }),
+      )
     );
 
     expect(await screen.findByText('APPROVED')).toBeInTheDocument();

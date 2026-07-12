@@ -1118,13 +1118,39 @@ export interface RefundRequest {
   occurrenceDate?: string;
   billIds?: string[];
   paymentIds?: string[];
+  paymentScope?: RefundRequestPaymentScope[];
   requestedAmountCents?: number;
   currency?: string;
   policyDecision?: string;
   scopeVersion?: number;
   scopeHash?: string;
+  approvalPreview?: RefundRequestApprovalPreview;
   $createdAt?: string;
   $updatedAt?: string;
+}
+
+export interface RefundRequestPaymentScope {
+  paymentId: string;
+  billId: string;
+  refundableAmountCents: number;
+  currency: string;
+}
+
+export interface RefundRequestApprovalPreview {
+  paymentScope: RefundRequestPaymentScope[];
+  paymentCount: number;
+  billIds: string[];
+  paymentIds: string[];
+  refundableAmountCents: number;
+  currency: string;
+  occurrence: {
+    slotId: string | null;
+    occurrenceDate: string | null;
+  };
+  policyDecision: string | null;
+  scopeVersion: number;
+  scopeHash: string | null;
+  isValid: boolean;
 }
 
 export enum Sports {

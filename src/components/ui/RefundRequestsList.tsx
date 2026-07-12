@@ -25,6 +25,19 @@ const displayUserName = (user: { firstName?: string; lastName?: string; userName
   return user.$id ?? 'User';
 };
 
+const formatRefundMoney = (amountCents: number, currency: string) => {
+  const normalizedCurrency = currency.trim().toUpperCase() || 'USD';
+  const amount = Math.max(0, amountCents) / 100;
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: normalizedCurrency,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${normalizedCurrency}`;
+  }
+};
+
 export default function RefundRequestsList({
   organizationId,
   userId,
@@ -172,11 +185,21 @@ export default function RefundRequestsList({
     return refunds;
   }, [refunds, hostId, organizationId, userId]);
 
-  const handleStatusChange = async (refundId: string, status: 'APPROVED' | 'REJECTED') => {
-    setProcessingId(refundId);
+  const handleStatusChange = async (refund: RefundRequest, status: 'APPROVED' | 'REJECTED') => {
+    const refundId = refund.$id;
     setActionError(null);
+    if (status === 'APPROVED' && !refund.approvalPreview?.isValid) {
+      setActionError('This refund request does not have a current immutable approval preview. Reload it or ask the customer to submit a new request.');
+      return;
+    }
+
+    setProcessingId(refundId);
     try {
-      const updated = await refundRequestService.updateRefundStatus(refundId, status);
+      const updated = await refundRequestService.updateRefundStatus(
+        refundId,
+        status,
+        status === 'APPROVED' ? refund.approvalPreview : undefined,
+      );
       setRefunds((prev) => prev.map((refund) => (refund.$id === refundId ? { ...refund, status: updated.status } : refund)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update refund request';
@@ -241,7 +264,7 @@ export default function RefundRequestsList({
 
       {!loading && !error && visibleRefunds.length > 0 && (
         <div className="org-tab-table-surface">
-          <Table.ScrollContainer minWidth={isRequesterView ? 900 : 1080}>
+          <Table.ScrollContainer minWidth={isRequesterView ? 1060 : 1240}>
             <Table highlightOnHover withTableBorder withColumnBorders>
             <Table.Thead>
               <Table.Tr>
@@ -251,6 +274,7 @@ export default function RefundRequestsList({
                 <Table.Th>Requested By</Table.Th>
                 <Table.Th>Host</Table.Th>
                 <Table.Th>Organization</Table.Th>
+                <Table.Th>Refund scope</Table.Th>
                 <Table.Th>Requested At</Table.Th>
                 <Table.Th>Status</Table.Th>
                 {!isRequesterView && <Table.Th>Actions</Table.Th>}
@@ -269,6 +293,7 @@ export default function RefundRequestsList({
                 const organizationName = refund.organizationId
                   ? organizationsById[refund.organizationId] ?? refund.organizationId
                   : null;
+                const approvalPreview = refund.approvalPreview;
 
                 return (
                   <Table.Tr key={refund.$id}>
@@ -319,6 +344,46 @@ export default function RefundRequestsList({
                       )}
                     </Table.Td>
                     <Table.Td>
+                      {approvalPreview?.isValid ? (
+                        <Stack gap={2} miw={220}>
+                          <Text size="sm" fw={500}>
+                            {formatRefundMoney(
+                              approvalPreview.refundableAmountCents,
+                              approvalPreview.currency,
+                            )}{' '}
+                            · {approvalPreview.paymentCount}{' '}
+                            {approvalPreview.paymentCount === 1 ? 'payment' : 'payments'}
+                          </Text>
+                          {approvalPreview.paymentScope.map((payment) => (
+                            <Text key={payment.paymentId} size="xs" c="dimmed">
+                              {payment.paymentId} · {payment.billId} · {formatRefundMoney(
+                                payment.refundableAmountCents,
+                                payment.currency,
+                              )}
+                            </Text>
+                          ))}
+                          <Text size="xs" c="dimmed">
+                            {approvalPreview.occurrence.occurrenceDate
+                              ? `Occurrence ${approvalPreview.occurrence.occurrenceDate}${
+                                approvalPreview.occurrence.slotId
+                                  ? ` · slot ${approvalPreview.occurrence.slotId}`
+                                  : ''
+                              }`
+                              : 'All payments in the immutable request scope'}
+                          </Text>
+                          {approvalPreview.policyDecision ? (
+                            <Text size="xs" c="dimmed">
+                              {approvalPreview.policyDecision}
+                            </Text>
+                          ) : null}
+                        </Stack>
+                      ) : (
+                        <Text size="sm" c="red">
+                          Approval preview unavailable
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
                       <Text size="sm">
                         {refund.$createdAt ? formatDisplayDateTime(refund.$createdAt) : 'Unknown'}
                       </Text>
@@ -336,9 +401,13 @@ export default function RefundRequestsList({
                               size="xs"
                               color="green"
                               variant="light"
-                              disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                              disabled={
+                                (refund.status && refund.status !== 'WAITING')
+                                || processingId === refund.$id
+                                || !refund.approvalPreview?.isValid
+                              }
                               loading={processingId === refund.$id}
-                              onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
+                              onClick={() => handleStatusChange(refund, 'APPROVED')}
                             >
                               Approve
                             </Button>
@@ -348,7 +417,7 @@ export default function RefundRequestsList({
                               variant="light"
                               disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
                               loading={processingId === refund.$id}
-                              onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
+                              onClick={() => handleStatusChange(refund, 'REJECTED')}
                             >
                               Deny
                             </Button>

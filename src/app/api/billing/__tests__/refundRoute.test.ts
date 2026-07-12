@@ -57,6 +57,7 @@ jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
 import { POST } from '@/app/api/billing/refund/route';
+import { buildRefundScopeSnapshot } from '@/server/refunds/refundExecution';
 
 const jsonPost = (url: string, body: unknown) =>
   new NextRequest(url, {
@@ -247,6 +248,66 @@ describe('POST /api/billing/refund', () => {
     );
   });
 
+  it('rejects an automatic retry when the stored payment scope has drifted', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      cancellationRefundHours: 24,
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      teamIds: [],
+      userIds: ['user_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+    const existingRequest = {
+      id: 'refund_existing',
+      eventId: 'event_1',
+      userId: 'user_1',
+      requestedByUserId: 'user_1',
+      hostId: 'host_1',
+      teamId: null,
+      organizationId: 'org_1',
+      reason: 'Need to cancel',
+      status: 'APPROVED' as const,
+      slotId: null,
+      occurrenceDate: null,
+    };
+    prismaMock.refundRequests.findFirst.mockResolvedValueOnce({
+      ...existingRequest,
+      ...buildRefundScopeSnapshot(existingRequest, [{
+        id: 'payment_1',
+        billId: 'bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        refundableAmountCents: 5000,
+        paymentIntentId: 'pi_1',
+        payerUserId: 'user_1',
+      }], 'AUTO_APPROVED'),
+    });
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([{
+      id: 'payment_1',
+      billId: 'bill_1',
+      amountCents: 4000,
+      refundedAmountCents: 0,
+      paymentIntentId: 'pi_1',
+      payerUserId: 'user_1',
+    }]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/refund', {
+        payloadEvent: { id: 'event_1' },
+        reason: 'Need to cancel',
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toContain('payment scope changed');
+    expect(mockStripeRefundCreate).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it('uses the weekly occurrence start and bill scope for automatic session refunds', async () => {
     const futureOccurrence = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     const occurrenceDate = futureOccurrence.toISOString().slice(0, 10);
@@ -406,10 +467,16 @@ describe('POST /api/billing/refund', () => {
         occurrenceDate,
         billIds: ['bill_weekly_1'],
         paymentIds: ['payment_weekly_1'],
+        paymentScope: [{
+          paymentId: 'payment_weekly_1',
+          billId: 'bill_weekly_1',
+          refundableAmountCents: 2500,
+          currency: 'usd',
+        }],
         requestedAmountCents: 2500,
         currency: 'usd',
         policyDecision: 'HOST_REVIEW_REQUIRED',
-        scopeVersion: 1,
+        scopeVersion: 2,
         scopeHash: expect.any(String),
         status: 'WAITING',
       }),
@@ -494,7 +561,31 @@ describe('POST /api/billing/refund', () => {
   });
 
   it('does not create duplicate waiting refunds for the same event and target user', async () => {
-    prismaMock.refundRequests.findFirst.mockResolvedValueOnce({ id: 'refund_existing' });
+    const existingRequest = {
+      id: 'refund_existing',
+      eventId: 'event_1',
+      userId: 'user_1',
+      requestedByUserId: 'user_1',
+      hostId: 'host_1',
+      teamId: null,
+      organizationId: 'org_1',
+      reason: 'requested_by_customer',
+      status: 'WAITING' as const,
+      slotId: null,
+      occurrenceDate: null,
+    };
+    prismaMock.refundRequests.findFirst.mockResolvedValueOnce({
+      ...existingRequest,
+      ...buildRefundScopeSnapshot(existingRequest, [{
+        id: 'payment_existing',
+        billId: 'bill_existing',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        refundableAmountCents: 5000,
+        paymentIntentId: 'pi_existing',
+        payerUserId: 'user_1',
+      }], 'HOST_REVIEW_REQUIRED'),
+    });
 
     const response = await POST(
       jsonPost('http://localhost/api/billing/refund', {
@@ -507,6 +598,61 @@ describe('POST /api/billing/refund', () => {
     expect(payload.refundAlreadyPending).toBe(true);
     expect(payload.refundId).toBe('refund_existing');
     expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
+  });
+
+  it('reissues an invalid legacy waiting request instead of leaving it unapprovable', async () => {
+    prismaMock.refundRequests.findFirst.mockResolvedValueOnce({
+      id: 'legacy_refund',
+      eventId: 'event_1',
+      userId: 'user_1',
+      requestedByUserId: 'user_1',
+      hostId: 'host_1',
+      teamId: null,
+      organizationId: 'org_1',
+      reason: 'requested_by_customer',
+      status: 'WAITING',
+      slotId: null,
+      occurrenceDate: null,
+      billIds: ['bill_legacy'],
+      paymentIds: ['payment_legacy'],
+      paymentScope: [],
+      requestedAmountCents: 5000,
+      currency: 'usd',
+      policyDecision: 'HOST_REVIEW_REQUIRED',
+      scopeVersion: 1,
+      scopeHash: 'legacy_scope_hash',
+    });
+    prismaMock.bills.findMany.mockResolvedValueOnce([{ id: 'bill_1' }]);
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([{
+      id: 'payment_1',
+      billId: 'bill_1',
+      amountCents: 5000,
+      refundedAmountCents: 0,
+      paymentIntentId: 'pi_1',
+      payerUserId: 'user_1',
+    }]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/refund', {
+        payloadEvent: { id: 'event_1' },
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.refundAlreadyPending).toBe(false);
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        paymentIds: ['payment_1'],
+        paymentScope: [{
+          paymentId: 'payment_1',
+          billId: 'bill_1',
+          refundableAmountCents: 5000,
+          currency: 'usd',
+        }],
+        scopeVersion: 2,
+      }),
+    }));
   });
 
   it('allows refund requests for users registered through an event team slot', async () => {

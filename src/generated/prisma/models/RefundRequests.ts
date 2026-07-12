@@ -94,6 +94,7 @@ export type RefundRequestsCountAggregateOutputType = {
   occurrenceDate: number
   billIds: number
   paymentIds: number
+  paymentScope: number
   requestedAmountCents: number
   currency: number
   policyDecision: number
@@ -171,6 +172,7 @@ export type RefundRequestsCountAggregateInputType = {
   occurrenceDate?: true
   billIds?: true
   paymentIds?: true
+  paymentScope?: true
   requestedAmountCents?: true
   currency?: true
   policyDecision?: true
@@ -281,6 +283,7 @@ export type RefundRequestsGroupByOutputType = {
   occurrenceDate: string | null
   billIds: string[]
   paymentIds: string[]
+  paymentScope: runtime.JsonValue
   requestedAmountCents: number
   currency: string
   policyDecision: string | null
@@ -327,6 +330,7 @@ export type RefundRequestsWhereInput = {
   occurrenceDate?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   billIds?: Prisma.StringNullableListFilter<"RefundRequests">
   paymentIds?: Prisma.StringNullableListFilter<"RefundRequests">
+  paymentScope?: Prisma.JsonFilter<"RefundRequests">
   requestedAmountCents?: Prisma.IntFilter<"RefundRequests"> | number
   currency?: Prisma.StringFilter<"RefundRequests"> | string
   policyDecision?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
@@ -350,6 +354,7 @@ export type RefundRequestsOrderByWithRelationInput = {
   occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   billIds?: Prisma.SortOrder
   paymentIds?: Prisma.SortOrder
+  paymentScope?: Prisma.SortOrder
   requestedAmountCents?: Prisma.SortOrder
   currency?: Prisma.SortOrder
   policyDecision?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -376,6 +381,7 @@ export type RefundRequestsWhereUniqueInput = Prisma.AtLeast<{
   occurrenceDate?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   billIds?: Prisma.StringNullableListFilter<"RefundRequests">
   paymentIds?: Prisma.StringNullableListFilter<"RefundRequests">
+  paymentScope?: Prisma.JsonFilter<"RefundRequests">
   requestedAmountCents?: Prisma.IntFilter<"RefundRequests"> | number
   currency?: Prisma.StringFilter<"RefundRequests"> | string
   policyDecision?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
@@ -399,6 +405,7 @@ export type RefundRequestsOrderByWithAggregationInput = {
   occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   billIds?: Prisma.SortOrder
   paymentIds?: Prisma.SortOrder
+  paymentScope?: Prisma.SortOrder
   requestedAmountCents?: Prisma.SortOrder
   currency?: Prisma.SortOrder
   policyDecision?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -430,6 +437,7 @@ export type RefundRequestsScalarWhereWithAggregatesInput = {
   occurrenceDate?: Prisma.StringNullableWithAggregatesFilter<"RefundRequests"> | string | null
   billIds?: Prisma.StringNullableListFilter<"RefundRequests">
   paymentIds?: Prisma.StringNullableListFilter<"RefundRequests">
+  paymentScope?: Prisma.JsonWithAggregatesFilter<"RefundRequests">
   requestedAmountCents?: Prisma.IntWithAggregatesFilter<"RefundRequests"> | number
   currency?: Prisma.StringWithAggregatesFilter<"RefundRequests"> | string
   policyDecision?: Prisma.StringNullableWithAggregatesFilter<"RefundRequests"> | string | null
@@ -453,6 +461,7 @@ export type RefundRequestsCreateInput = {
   occurrenceDate?: string | null
   billIds?: Prisma.RefundRequestsCreatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsCreatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: number
   currency?: string
   policyDecision?: string | null
@@ -476,6 +485,7 @@ export type RefundRequestsUncheckedCreateInput = {
   occurrenceDate?: string | null
   billIds?: Prisma.RefundRequestsCreatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsCreatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: number
   currency?: string
   policyDecision?: string | null
@@ -499,6 +509,7 @@ export type RefundRequestsUpdateInput = {
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billIds?: Prisma.RefundRequestsUpdatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsUpdatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   currency?: Prisma.StringFieldUpdateOperationsInput | string
   policyDecision?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -522,6 +533,7 @@ export type RefundRequestsUncheckedUpdateInput = {
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billIds?: Prisma.RefundRequestsUpdatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsUpdatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   currency?: Prisma.StringFieldUpdateOperationsInput | string
   policyDecision?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -545,6 +557,7 @@ export type RefundRequestsCreateManyInput = {
   occurrenceDate?: string | null
   billIds?: Prisma.RefundRequestsCreatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsCreatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: number
   currency?: string
   policyDecision?: string | null
@@ -568,6 +581,7 @@ export type RefundRequestsUpdateManyMutationInput = {
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billIds?: Prisma.RefundRequestsUpdatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsUpdatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   currency?: Prisma.StringFieldUpdateOperationsInput | string
   policyDecision?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -591,6 +605,7 @@ export type RefundRequestsUncheckedUpdateManyInput = {
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billIds?: Prisma.RefundRequestsUpdatebillIdsInput | string[]
   paymentIds?: Prisma.RefundRequestsUpdatepaymentIdsInput | string[]
+  paymentScope?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   requestedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   currency?: Prisma.StringFieldUpdateOperationsInput | string
   policyDecision?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -614,6 +629,7 @@ export type RefundRequestsCountOrderByAggregateInput = {
   occurrenceDate?: Prisma.SortOrder
   billIds?: Prisma.SortOrder
   paymentIds?: Prisma.SortOrder
+  paymentScope?: Prisma.SortOrder
   requestedAmountCents?: Prisma.SortOrder
   currency?: Prisma.SortOrder
   policyDecision?: Prisma.SortOrder
@@ -713,6 +729,7 @@ export type RefundRequestsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   occurrenceDate?: boolean
   billIds?: boolean
   paymentIds?: boolean
+  paymentScope?: boolean
   requestedAmountCents?: boolean
   currency?: boolean
   policyDecision?: boolean
@@ -736,6 +753,7 @@ export type RefundRequestsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   occurrenceDate?: boolean
   billIds?: boolean
   paymentIds?: boolean
+  paymentScope?: boolean
   requestedAmountCents?: boolean
   currency?: boolean
   policyDecision?: boolean
@@ -759,6 +777,7 @@ export type RefundRequestsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   occurrenceDate?: boolean
   billIds?: boolean
   paymentIds?: boolean
+  paymentScope?: boolean
   requestedAmountCents?: boolean
   currency?: boolean
   policyDecision?: boolean
@@ -782,6 +801,7 @@ export type RefundRequestsSelectScalar = {
   occurrenceDate?: boolean
   billIds?: boolean
   paymentIds?: boolean
+  paymentScope?: boolean
   requestedAmountCents?: boolean
   currency?: boolean
   policyDecision?: boolean
@@ -789,7 +809,7 @@ export type RefundRequestsSelectScalar = {
   scopeHash?: boolean
 }
 
-export type RefundRequestsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "userId" | "requestedByUserId" | "hostId" | "teamId" | "reason" | "organizationId" | "status" | "slotId" | "occurrenceDate" | "billIds" | "paymentIds" | "requestedAmountCents" | "currency" | "policyDecision" | "scopeVersion" | "scopeHash", ExtArgs["result"]["refundRequests"]>
+export type RefundRequestsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "userId" | "requestedByUserId" | "hostId" | "teamId" | "reason" | "organizationId" | "status" | "slotId" | "occurrenceDate" | "billIds" | "paymentIds" | "paymentScope" | "requestedAmountCents" | "currency" | "policyDecision" | "scopeVersion" | "scopeHash", ExtArgs["result"]["refundRequests"]>
 
 export type $RefundRequestsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "RefundRequests"
@@ -810,6 +830,7 @@ export type $RefundRequestsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     occurrenceDate: string | null
     billIds: string[]
     paymentIds: string[]
+    paymentScope: runtime.JsonValue
     requestedAmountCents: number
     currency: string
     policyDecision: string | null
@@ -1253,6 +1274,7 @@ export interface RefundRequestsFieldRefs {
   readonly occurrenceDate: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly billIds: Prisma.FieldRef<"RefundRequests", 'String[]'>
   readonly paymentIds: Prisma.FieldRef<"RefundRequests", 'String[]'>
+  readonly paymentScope: Prisma.FieldRef<"RefundRequests", 'Json'>
   readonly requestedAmountCents: Prisma.FieldRef<"RefundRequests", 'Int'>
   readonly currency: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly policyDecision: Prisma.FieldRef<"RefundRequests", 'String'>

@@ -7,6 +7,11 @@ type RefundRequestFilters = {
   hostId?: string;
 };
 
+type RefundApprovalScopeExpectation = {
+  scopeVersion?: number;
+  scopeHash?: string | null;
+};
+
 class RefundRequestService {
   private mapRowToRefundRequest(row: Record<string, any>): RefundRequest {
     return {
@@ -23,11 +28,13 @@ class RefundRequestService {
       occurrenceDate: row.occurrenceDate ?? undefined,
       billIds: Array.isArray(row.billIds) ? row.billIds : [],
       paymentIds: Array.isArray(row.paymentIds) ? row.paymentIds : [],
+      paymentScope: Array.isArray(row.paymentScope) ? row.paymentScope : [],
       requestedAmountCents: Number.isFinite(row.requestedAmountCents) ? row.requestedAmountCents : 0,
       currency: typeof row.currency === 'string' ? row.currency : 'usd',
       policyDecision: row.policyDecision ?? undefined,
       scopeVersion: Number.isFinite(row.scopeVersion) ? row.scopeVersion : 1,
       scopeHash: row.scopeHash ?? undefined,
+      approvalPreview: row.approvalPreview ?? undefined,
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
     };
@@ -51,10 +58,27 @@ class RefundRequestService {
     return rows.map((row) => this.mapRowToRefundRequest(row)).filter((row) => row.eventId && row.userId);
   }
 
-  async updateRefundStatus(refundId: string, status: 'WAITING' | 'APPROVED' | 'REJECTED'): Promise<RefundRequest> {
+  async updateRefundStatus(
+    refundId: string,
+    status: 'WAITING' | 'APPROVED' | 'REJECTED',
+    approvalScope?: RefundApprovalScopeExpectation,
+  ): Promise<RefundRequest> {
+    const expectedScopeVersion = Number(approvalScope?.scopeVersion);
+    const expectedScopeHash = typeof approvalScope?.scopeHash === 'string'
+      ? approvalScope.scopeHash.trim()
+      : '';
+    if (
+      status === 'APPROVED'
+      && (!Number.isInteger(expectedScopeVersion) || expectedScopeVersion <= 0 || !expectedScopeHash)
+    ) {
+      throw new Error('This refund request needs a current approval preview before it can be approved. Reload and review it first.');
+    }
+
     const response = await apiRequest<any>(`/api/refund-requests/${refundId}`, {
       method: 'PATCH',
-      body: { status },
+      body: status === 'APPROVED'
+        ? { status, expectedScopeVersion, expectedScopeHash }
+        : { status },
     });
 
     return this.mapRowToRefundRequest(response);

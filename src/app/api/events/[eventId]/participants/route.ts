@@ -39,7 +39,9 @@ import {
   applyRefundAttempts,
   buildRefundScopeSnapshot,
   createStripeRefundAttempts,
+  hasRefundScopeDrift,
   isRefundScopeSnapshotValid,
+  REFUND_SCOPE_VERSION,
   resolveRefundablePaymentsForRequest,
   type RefundRequestRow,
   type StripeRefundAttempt,
@@ -869,6 +871,7 @@ const refundRequestSelect = {
   occurrenceDate: true,
   billIds: true,
   paymentIds: true,
+  paymentScope: true,
   requestedAmountCents: true,
   currency: true,
   policyDecision: true,
@@ -1151,6 +1154,7 @@ const ensureTeamRefundRequest = async (
       occurrenceDate: refundRequest.occurrenceDate ?? null,
       billIds: scope.billIds,
       paymentIds: scope.paymentIds,
+      paymentScope: scope.paymentScope,
       requestedAmountCents: scope.requestedAmountCents,
       currency: scope.currency,
       policyDecision: scope.policyDecision,
@@ -1715,6 +1719,12 @@ async function updateParticipants(
 
       try {
         const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, autoRefundRequest);
+        if (existingAutoRefundRequest && hasRefundScopeDrift(existingAutoRefundRequest, refundablePayments)) {
+          return NextResponse.json(
+            { error: 'The payment scope changed after this automatic refund was created. Submit a new refund request.' },
+            { status: 409 },
+          );
+        }
         if (!existingAutoRefundRequest && !refundablePayments.length) {
           return NextResponse.json(
             { error: 'No refundable payment found for automatic refund.' },
@@ -1839,10 +1849,11 @@ async function updateParticipants(
               occurrenceDate: autoRefundRequest.occurrenceDate ?? null,
               billIds: autoRefundRequest.billIds ?? [],
               paymentIds: autoRefundRequest.paymentIds ?? [],
+              paymentScope: autoRefundRequest.paymentScope ?? [],
               requestedAmountCents: autoRefundRequest.requestedAmountCents ?? 0,
               currency: autoRefundRequest.currency ?? 'usd',
               policyDecision: autoRefundRequest.policyDecision,
-              scopeVersion: autoRefundRequest.scopeVersion ?? 1,
+              scopeVersion: autoRefundRequest.scopeVersion ?? REFUND_SCOPE_VERSION,
               scopeHash: autoRefundRequest.scopeHash,
               reason: autoRefundRequest.reason,
               status: 'APPROVED',

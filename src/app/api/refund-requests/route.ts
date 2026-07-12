@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
+import { buildRefundApprovalPreview, type RefundRequestRow } from '@/server/refunds/refundExecution';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,7 @@ const refundRequestSelect = {
   occurrenceDate: true,
   billIds: true,
   paymentIds: true,
+  paymentScope: true,
   requestedAmountCents: true,
   currency: true,
   policyDecision: true,
@@ -76,5 +78,10 @@ export async function GET(req: NextRequest) {
     select: refundRequestSelect,
   });
 
-  return NextResponse.json({ refunds: withLegacyList(refunds) }, { status: 200 });
+  const refundsWithApprovalPreview = refunds.map((refund) => ({
+    ...refund,
+    approvalPreview: buildRefundApprovalPreview(refund as RefundRequestRow),
+  }));
+
+  return NextResponse.json({ refunds: withLegacyList(refundsWithApprovalPreview) }, { status: 200 });
 }

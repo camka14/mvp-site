@@ -9,6 +9,7 @@ import {
   applyRefundAttempts,
   buildTeamRegistrationRefundEventId,
   createStripeRefundAttempts,
+  hasRefundScopeDrift,
   isRefundScopeSnapshotValid,
   resolveRefundablePaymentsForRequest,
   summarizeRefundAttempts,
@@ -20,6 +21,8 @@ export const dynamic = 'force-dynamic';
 
 const updateSchema = z.object({
   status: z.enum(['WAITING', 'APPROVED', 'REJECTED']),
+  expectedScopeVersion: z.number().int().positive().optional(),
+  expectedScopeHash: z.string().trim().min(1).optional(),
 }).passthrough();
 
 const refundRequestResponseSelect = {
@@ -38,6 +41,7 @@ const refundRequestResponseSelect = {
   occurrenceDate: true,
   billIds: true,
   paymentIds: true,
+  paymentScope: true,
   requestedAmountCents: true,
   currency: true,
   policyDecision: true,
@@ -120,23 +124,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const now = new Date();
   let stripeRefundAttempts: StripeRefundAttempt[] = [];
   if (parsed.data.status === 'APPROVED') {
+    if (
+      parsed.data.expectedScopeVersion == null
+      || !parsed.data.expectedScopeHash
+    ) {
+      return NextResponse.json(
+        { error: 'Approval requires the refund preview scope version and hash.' },
+        { status: 400 },
+      );
+    }
     if (!isRefundScopeSnapshotValid(existing as RefundRequestRow)) {
       return NextResponse.json(
         { error: 'Refund scope is missing or invalid. Ask the customer to submit a new request.' },
         { status: 409 },
       );
     }
+    if (
+      parsed.data.expectedScopeVersion !== existing.scopeVersion
+      || parsed.data.expectedScopeHash !== existing.scopeHash
+    ) {
+      return NextResponse.json(
+        { error: 'Refund preview is stale. Reload the request before approving it.' },
+        { status: 409 },
+      );
+    }
     const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, existing as RefundRequestRow);
-    const resolvedPaymentIds = new Set(refundablePayments.map((payment) => payment.id));
-    const resolvedBillIds = new Set(refundablePayments.map((payment) => payment.billId));
-    const currentRefundableAmountCents = refundablePayments.reduce(
-      (total, payment) => total + payment.refundableAmountCents,
-      0,
-    );
-    const hasScopeDrift = existing.paymentIds.some((paymentId) => !resolvedPaymentIds.has(paymentId))
-      || existing.billIds.some((billId) => !resolvedBillIds.has(billId))
-      || currentRefundableAmountCents !== existing.requestedAmountCents;
-    if (hasScopeDrift) {
+    if (hasRefundScopeDrift(existing as RefundRequestRow, refundablePayments)) {
       return NextResponse.json(
         { error: 'Refund scope changed after the request was submitted. Review a new request before refunding.' },
         { status: 409 },

@@ -19,6 +19,7 @@ export type RefundRequestRow = {
   requestedByUserId?: string | null;
   billIds?: string[];
   paymentIds?: string[];
+  paymentScope?: unknown;
   requestedAmountCents?: number;
   currency?: string;
   policyDecision?: string | null;
@@ -106,15 +107,78 @@ const dedupeById = <T extends { id: string }>(rows: T[]): T[] => {
   return Array.from(byId.values());
 };
 
-type RefundScopeSnapshot = {
+export type RefundScopePayment = {
+  paymentId: string;
+  billId: string;
+  refundableAmountCents: number;
+  currency: string;
+};
+
+export type RefundScopeSnapshot = {
   billIds: string[];
   paymentIds: string[];
+  paymentScope: RefundScopePayment[];
   requestedAmountCents: number;
   currency: string;
   policyDecision: string;
   scopeVersion: number;
   scopeHash: string;
 };
+
+export const REFUND_SCOPE_VERSION = 2;
+
+const normalizeCurrency = (value: unknown): string => (
+  normalizeId(value)?.toLowerCase() ?? 'usd'
+);
+
+/**
+ * Refund payment rows are stored verbatim in the request scope.  The host sees
+ * these exact rows before approving, and a later payment mutation must not be
+ * silently substituted into the Stripe refund.
+ */
+export const normalizeRefundScopePayments = (value: unknown): RefundScopePayment[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const payments = new Map<string, RefundScopePayment>();
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+    const candidate = entry as Record<string, unknown>;
+    const paymentId = normalizeId(candidate.paymentId);
+    const billId = normalizeId(candidate.billId);
+    const refundableAmountCents = Number(candidate.refundableAmountCents);
+    if (!paymentId || !billId || !Number.isFinite(refundableAmountCents)) {
+      return;
+    }
+    const normalizedAmount = Math.max(0, Math.round(refundableAmountCents));
+    if (normalizedAmount <= 0 || payments.has(paymentId)) {
+      return;
+    }
+    payments.set(paymentId, {
+      paymentId,
+      billId,
+      refundableAmountCents: normalizedAmount,
+      currency: normalizeCurrency(candidate.currency),
+    });
+  });
+
+  return Array.from(payments.values()).sort((left, right) => (
+    left.paymentId.localeCompare(right.paymentId)
+  ));
+};
+
+const buildRefundScopePayments = (
+  payments: Array<RefundablePaymentRow & { refundableAmountCents: number }>,
+  currency: string,
+): RefundScopePayment[] => normalizeRefundScopePayments(payments.map((payment) => ({
+  paymentId: payment.id,
+  billId: payment.billId,
+  refundableAmountCents: payment.refundableAmountCents,
+  currency,
+})));
 
 const calculateRefundScopeHash = (input: {
   requestId: string;
@@ -126,6 +190,7 @@ const calculateRefundScopeHash = (input: {
   occurrenceDate?: string | null;
   billIds: string[];
   paymentIds: string[];
+  paymentScope: RefundScopePayment[];
   requestedAmountCents: number;
   currency: string;
   policyDecision: string;
@@ -134,6 +199,14 @@ const calculateRefundScopeHash = (input: {
   ...input,
   billIds: [...input.billIds].sort(),
   paymentIds: [...input.paymentIds].sort(),
+  paymentScope: [...input.paymentScope]
+    .map((payment) => ({
+      paymentId: payment.paymentId,
+      billId: payment.billId,
+      refundableAmountCents: payment.refundableAmountCents,
+      currency: payment.currency,
+    }))
+    .sort((left, right) => left.paymentId.localeCompare(right.paymentId)),
 })).digest('hex');
 
 export const buildRefundScopeSnapshot = (
@@ -141,17 +214,19 @@ export const buildRefundScopeSnapshot = (
   payments: Array<RefundablePaymentRow & { refundableAmountCents: number }>,
   policyDecision: string,
 ): RefundScopeSnapshot => {
-  const billIds = normalizeIdList(payments.map((payment) => payment.billId));
-  const paymentIds = normalizeIdList(payments.map((payment) => payment.id));
-  const requestedAmountCents = payments.reduce(
+  const currency = 'usd';
+  const paymentScope = buildRefundScopePayments(payments, currency);
+  const billIds = normalizeIdList(paymentScope.map((payment) => payment.billId));
+  const paymentIds = normalizeIdList(paymentScope.map((payment) => payment.paymentId));
+  const requestedAmountCents = paymentScope.reduce(
     (total, payment) => total + Math.max(0, Math.round(payment.refundableAmountCents)),
     0,
   );
-  const currency = 'usd';
-  const scopeVersion = 1;
+  const scopeVersion = REFUND_SCOPE_VERSION;
   return {
     billIds,
     paymentIds,
+    paymentScope,
     requestedAmountCents,
     currency,
     policyDecision,
@@ -166,6 +241,7 @@ export const buildRefundScopeSnapshot = (
       occurrenceDate: request.occurrenceDate,
       billIds,
       paymentIds,
+      paymentScope,
       requestedAmountCents,
       currency,
       policyDecision,
@@ -177,11 +253,29 @@ export const buildRefundScopeSnapshot = (
 export const isRefundScopeSnapshotValid = (request: RefundRequestRow): boolean => {
   const billIds = normalizeIdList(request.billIds);
   const paymentIds = normalizeIdList(request.paymentIds);
+  const paymentScope = normalizeRefundScopePayments(request.paymentScope);
   const requestedAmountCents = Math.max(0, Math.round(Number(request.requestedAmountCents) || 0));
-  const currency = normalizeId(request.currency)?.toLowerCase() ?? 'usd';
+  const currency = normalizeCurrency(request.currency);
   const policyDecision = normalizeId(request.policyDecision) ?? '';
   const scopeVersion = Number(request.scopeVersion);
-  if (!billIds.length || !paymentIds.length || requestedAmountCents <= 0 || !policyDecision || scopeVersion !== 1) {
+  const scopedBillIds = normalizeIdList(paymentScope.map((payment) => payment.billId));
+  const scopedPaymentIds = normalizeIdList(paymentScope.map((payment) => payment.paymentId));
+  const scopedAmountCents = paymentScope.reduce(
+    (total, payment) => total + payment.refundableAmountCents,
+    0,
+  );
+  if (
+    !billIds.length
+    || !paymentIds.length
+    || !paymentScope.length
+    || requestedAmountCents <= 0
+    || !policyDecision
+    || scopeVersion !== REFUND_SCOPE_VERSION
+    || requestedAmountCents !== scopedAmountCents
+    || billIds.join('|') !== scopedBillIds.join('|')
+    || paymentIds.join('|') !== scopedPaymentIds.join('|')
+    || paymentScope.some((payment) => payment.currency !== currency)
+  ) {
     return false;
   }
   return request.scopeHash === calculateRefundScopeHash({
@@ -194,11 +288,58 @@ export const isRefundScopeSnapshotValid = (request: RefundRequestRow): boolean =
     occurrenceDate: request.occurrenceDate,
     billIds,
     paymentIds,
+    paymentScope,
     requestedAmountCents,
     currency,
     policyDecision,
     scopeVersion,
   });
+};
+
+/**
+ * Compare current payment state to the immutable request snapshot immediately
+ * before refunding.  Any previous partial refund, removed payment, or amount
+ * change requires a newly reviewed request instead of silently changing what
+ * the host approved.
+ */
+export const hasRefundScopeDrift = (
+  request: RefundRequestRow,
+  payments: Array<RefundablePaymentRow & { refundableAmountCents: number }>,
+): boolean => {
+  const snapshot = normalizeRefundScopePayments(request.paymentScope);
+  const current = buildRefundScopePayments(payments, normalizeCurrency(request.currency));
+  if (snapshot.length !== current.length) {
+    return true;
+  }
+  return snapshot.some((payment, index) => {
+    const resolved = current[index];
+    return !resolved
+      || payment.paymentId !== resolved.paymentId
+      || payment.billId !== resolved.billId
+      || payment.refundableAmountCents !== resolved.refundableAmountCents
+      || payment.currency !== resolved.currency;
+  });
+};
+
+export const buildRefundApprovalPreview = (request: RefundRequestRow) => {
+  const paymentScope = normalizeRefundScopePayments(request.paymentScope);
+  const currency = normalizeCurrency(request.currency);
+  return {
+    paymentScope,
+    paymentCount: paymentScope.length,
+    billIds: normalizeIdList(request.billIds),
+    paymentIds: normalizeIdList(request.paymentIds),
+    refundableAmountCents: Math.max(0, Math.round(Number(request.requestedAmountCents) || 0)),
+    currency,
+    occurrence: {
+      slotId: normalizeId(request.slotId),
+      occurrenceDate: normalizeId(request.occurrenceDate),
+    },
+    policyDecision: normalizeId(request.policyDecision),
+    scopeVersion: Number(request.scopeVersion) || 0,
+    scopeHash: normalizeId(request.scopeHash),
+    isValid: isRefundScopeSnapshotValid(request),
+  };
 };
 
 export const resolveRefundablePaymentsForRequest = async (

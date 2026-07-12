@@ -1463,6 +1463,7 @@ export const RefundRequestsScalarFieldEnum = {
   occurrenceDate: 'occurrenceDate',
   billIds: 'billIds',
   paymentIds: 'paymentIds',
+  paymentScope: 'paymentScope',
   requestedAmountCents: 'requestedAmountCents',
   currency: 'currency',
   policyDecision: 'policyDecision',
