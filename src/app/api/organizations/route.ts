@@ -147,16 +147,44 @@ const shouldApplyListedOnlyFilter = (params: {
   !params.ids?.length && !params.ownerId && !params.userId
 );
 
-const appendAndClause = (where: Record<string, any>, clause: Record<string, any>) => {
-  if (Array.isArray(where.AND)) {
-    where.AND.push(clause);
-    return;
-  }
-  if (where.AND) {
-    where.AND = [where.AND, clause];
-    return;
-  }
-  where.AND = [clause];
+type OrganizationListRow = {
+  id: string;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+  name?: string | null;
+  location?: string | null;
+  address?: string | null;
+  description?: string | null;
+  logoId?: string | null;
+  website?: string | null;
+  sports?: string[] | null;
+  status?: string | null;
+  coordinates?: unknown;
+  publicSlug?: string | null;
+  publicPageEnabled?: boolean | null;
+};
+
+const toPublicOrganizationListRow = (organization: OrganizationListRow): OrganizationListRow => ({
+  id: organization.id,
+  createdAt: organization.createdAt ?? null,
+  updatedAt: organization.updatedAt ?? null,
+  name: organization.name ?? null,
+  location: organization.location ?? null,
+  address: organization.address ?? null,
+  description: organization.description ?? null,
+  logoId: organization.logoId ?? null,
+  website: organization.website ?? null,
+  sports: Array.isArray(organization.sports) ? organization.sports : [],
+  status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
+  coordinates: organization.coordinates ?? null,
+  publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
+  publicPageEnabled: organization.publicPageEnabled === true,
+});
+
+const buildWhereFromConditions = (conditions: Array<Record<string, unknown>>): Record<string, unknown> => {
+  if (conditions.length === 0) return {};
+  if (conditions.length === 1) return conditions[0];
+  return { AND: conditions };
 };
 
 const parseTagSlugsParam = (params: URLSearchParams): string[] => {
@@ -186,15 +214,28 @@ export async function GET(req: NextRequest) {
   const normalizedQuery = query.toLowerCase();
   const includeAffiliateRentals = params.get('includeAffiliateRentals') === 'true';
   const tagSlugs = parseTagSlugsParam(params);
+  const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+  const hasPrivateSelector = Boolean(ids?.length || ownerId || userId);
+  let session: Awaited<ReturnType<typeof requireSession>> | null = null;
 
-  if (userId) {
-    const session = await requireSession(req);
+  if (hasPrivateSelector) {
+    try {
+      session = await requireSession(req);
+    } catch (error) {
+      if (error instanceof Response) return error;
+      throw error;
+    }
+  }
+
+  if (userId && session) {
     if (!session.isAdmin && session.userId !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
+  if (ownerId && session && !session.isAdmin && session.userId !== ownerId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
-  const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 200) : 100;
   const normalizedOffset = Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0;
 
@@ -245,53 +286,43 @@ export async function GET(req: NextRequest) {
     )
     : [];
 
-  const where: any = {};
-  if (ids?.length) where.id = { in: ids };
-  if (ownerId) where.ownerId = ownerId;
+  const whereConditions: Array<Record<string, unknown>> = [];
+  if (ids?.length) {
+    whereConditions.push({ id: { in: ids } });
+  }
+  if (ownerId) {
+    whereConditions.push({ ownerId });
+  }
   if (applyListedOnlyFilter) {
     if (affiliateRentalOrganizationIds.length) {
-      where.OR = [
-        { status: DEFAULT_ORGANIZATION_STATUS },
-        { id: { in: affiliateRentalOrganizationIds } },
-      ];
+      whereConditions.push({
+        OR: [
+          { status: DEFAULT_ORGANIZATION_STATUS },
+          { id: { in: affiliateRentalOrganizationIds } },
+        ],
+      });
     } else {
-      where.status = DEFAULT_ORGANIZATION_STATUS;
+      whereConditions.push({ status: DEFAULT_ORGANIZATION_STATUS });
     }
   }
   if (userId) {
-    where.OR = [
+    whereConditions.push({ OR: [
       { ownerId: userId },
       ...(accessibleOrganizationIds.length > 0 ? [{ id: { in: accessibleOrganizationIds } }] : []),
-    ];
+    ] });
   }
   if (tagFilteredOrganizationIds) {
-    appendAndClause(where, { id: { in: tagFilteredOrganizationIds } });
+    whereConditions.push({ id: { in: tagFilteredOrganizationIds } });
   }
   if (query.length > 0) {
-    const queryWhere = [
+    whereConditions.push({ OR: [
       { name: { contains: query, mode: 'insensitive' } },
       { location: { contains: query, mode: 'insensitive' } },
       { address: { contains: query, mode: 'insensitive' } },
       { description: { contains: query, mode: 'insensitive' } },
-    ];
-    if (where.OR) {
-      const existingAnd = Array.isArray(where.AND)
-        ? where.AND
-        : where.AND
-          ? [where.AND]
-          : [];
-      where.AND = [
-        ...existingAnd,
-        { OR: where.OR },
-        { OR: queryWhere },
-      ];
-      delete where.OR;
-    } else if (where.AND) {
-      appendAndClause(where, { OR: queryWhere });
-    } else {
-      where.OR = queryWhere;
-    }
+    ] });
   }
+  const where = buildWhereFromConditions(whereConditions);
 
   const requestedTake = normalizedLimit + 1;
   const candidateTake = query.length > 0
@@ -322,7 +353,9 @@ export async function GET(req: NextRequest) {
   const pageRows = organizations.slice(0, normalizedLimit);
   const hasMore = organizations.length > normalizedLimit;
   const affiliateFacilitiesByOrganizationId = new Map<string, any[]>();
-  const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds(pageRows.map((organization) => organization.id));
+  const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds(
+    pageRows.map((organization) => organization.id),
+  );
 
   if (includeAffiliateRentals && pageRows.length > 0) {
     const affiliateFacilities = await (prisma as any).facilities.findMany({
@@ -341,13 +374,24 @@ export async function GET(req: NextRequest) {
       affiliateFacilitiesByOrganizationId.set(organizationId, facilities);
     });
   }
+  const exposeInternalFields = Boolean(
+    session
+    && (
+      session.isAdmin
+      || (ownerId && session.userId === ownerId)
+      || (userId && session.userId === userId)
+    )
+  );
+  const visiblePageRows = exposeInternalFields
+    ? pageRows
+    : pageRows.map((organization) => toPublicOrganizationListRow(organization));
   const responseRows = includeAffiliateRentals
-    ? pageRows.map((organization) => ({
+    ? visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
         facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
       }))
-    : pageRows.map((organization) => ({
+    : visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
       }));

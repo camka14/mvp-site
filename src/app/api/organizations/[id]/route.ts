@@ -14,7 +14,7 @@ import {
   normalizePublicSlug,
   normalizePublicText,
 } from '@/server/organizationPublicSettings';
-import { normalizeOrganizationStatus } from '@/lib/organizationStatus';
+import { DEFAULT_ORGANIZATION_STATUS, normalizeOrganizationStatus } from '@/lib/organizationStatus';
 import {
   ORG_TAX_AGREEMENT_VERSION,
   normalizeOrganizationDefaultEventTaxHandling,
@@ -78,6 +78,23 @@ const ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'ownerId',
 ]);
 
+const toPublicOrganizationSummary = (organization: Record<string, any>) => ({
+  id: organization.id,
+  createdAt: organization.createdAt ?? null,
+  updatedAt: organization.updatedAt ?? null,
+  name: organization.name ?? null,
+  location: organization.location ?? null,
+  address: organization.address ?? null,
+  description: organization.description ?? null,
+  logoId: organization.logoId ?? null,
+  website: organization.website ?? null,
+  sports: Array.isArray(organization.sports) ? organization.sports : [],
+  status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
+  coordinates: organization.coordinates ?? null,
+  publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
+  publicPageEnabled: organization.publicPageEnabled === true,
+});
+
 const sanitizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -131,41 +148,52 @@ const updateOrganizationWithUnknownArgFallback = async (
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [org, staffMembers] = await Promise.all([
-    prisma.organizations.findUnique({ where: { id } }),
-    prisma.staffMembers.findMany({
-      where: { organizationId: id },
-      orderBy: { createdAt: 'asc' },
-    }),
-  ]);
+  let session: Awaited<ReturnType<typeof requireSession>> | null = null;
+  try {
+    session = await requireSession(_req);
+  } catch (error) {
+    if (!(error instanceof Response)) throw error;
+  }
+
+  const org = await prisma.organizations.findUnique({ where: { id } });
   if (!org) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const session = await requireSession(_req).catch(() => null);
-  const viewerPermissions = session
-    ? (
-      await Promise.all(ORGANIZATION_PERMISSION_OPTIONS.map(async (option) => (
-        await hasOrgPermission(session, { id: org.id, ownerId: org.ownerId }, option.value)
-          ? option.value
-          : null
-      )))
-    ).filter((permission): permission is OrganizationPermission => Boolean(permission))
-    : [];
+  if (!session) {
+    if (org.status !== DEFAULT_ORGANIZATION_STATUS || org.publicPageEnabled !== true) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    return NextResponse.json(withLegacyFields(toPublicOrganizationSummary(org)), { status: 200 });
+  }
+
+  const viewerPermissions = (
+    await Promise.all(ORGANIZATION_PERMISSION_OPTIONS.map(async (option) => (
+      await hasOrgPermission(session, { id: org.id, ownerId: org.ownerId }, option.value)
+        ? option.value
+        : null
+    )))
+  ).filter((permission): permission is OrganizationPermission => Boolean(permission));
+  if (viewerPermissions.length === 0) {
+    return NextResponse.json(withLegacyFields(toPublicOrganizationSummary(org)), { status: 200 });
+  }
+
   const viewerCanManageOrganization = viewerPermissions.includes(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
-  const viewerCanAccessUsers = session
-    ? await canAccessOrganizationUsers({
-      session,
-      organization: {
-        id: org.id,
-        ownerId: org.ownerId,
-      },
-      canManage: viewerCanManageOrganization,
-    })
-    : false;
+  const viewerCanAccessUsers = await canAccessOrganizationUsers({
+    session,
+    organization: {
+      id: org.id,
+      ownerId: org.ownerId,
+    },
+    canManage: viewerCanManageOrganization,
+  });
   const viewerCanManageStaffRoster = viewerCanManageOrganization
     || viewerPermissions.includes(ORG_PERMISSIONS.STAFF_MANAGE)
     || viewerPermissions.includes(ORG_PERMISSIONS.ROLES_MANAGE);
+  const staffMembers = await prisma.staffMembers.findMany({
+    where: { organizationId: id },
+    orderBy: { createdAt: 'asc' },
+  });
   const [staffInvites, staffEmails, staffRoles] = viewerCanManageStaffRoster
     ? await Promise.all([
       prisma.invites.findMany({
