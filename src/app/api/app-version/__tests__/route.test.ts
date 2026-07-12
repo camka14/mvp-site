@@ -35,6 +35,49 @@ const androidRelease = {
   createdAt: new Date('2026-05-17T19:23:27.000Z'),
 };
 
+const releaseBoundary = [
+  {
+    platform: 'ANDROID' as const,
+    olderBuild: 66,
+    latest: {
+      id: 'app_release_android_1_6_14_67',
+      platform: 'ANDROID' as const,
+      versionName: '1.6.14',
+      buildNumber: 67,
+      changes: [
+        'Adds organization reviews on organization profiles.',
+        'Improves Discover map searches and database-backed event tag filters.',
+        'Makes registration, discount-code, and bill pricing details clearer and more reliable.',
+        'Tags push tokens by platform for more reliable notifications.',
+      ],
+      hasBreakingChanges: false,
+      isActive: true,
+      updateUrl: 'https://play.google.com/store/apps/details?id=com.razumly.mvp',
+      createdAt: new Date('2026-07-11T14:52:11.475Z'),
+    },
+  },
+  {
+    platform: 'IOS' as const,
+    olderBuild: 77,
+    latest: {
+      id: 'app_release_ios_1_6_14_78',
+      platform: 'IOS' as const,
+      versionName: '1.6.14',
+      buildNumber: 78,
+      changes: [
+        'Adds organization reviews on organization profiles.',
+        'Improves Discover map searches and database-backed event tag filters.',
+        'Makes registration, discount-code, and bill pricing details clearer and more reliable.',
+        'Tags push tokens by platform for more reliable notifications.',
+      ],
+      hasBreakingChanges: false,
+      isActive: true,
+      updateUrl: 'https://apps.apple.com/us/app/bracketiq/id6746649739',
+      createdAt: new Date('2026-07-11T14:52:11.475Z'),
+    },
+  },
+];
+
 describe('GET /api/app-version', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -97,6 +140,39 @@ describe('GET /api/app-version', () => {
     expect(payload.latestVersion.versionName).toBe('1.5.6');
     expect(payload.releases).toEqual([]);
   });
+
+  it.each(releaseBoundary)(
+    'reproduces the current $platform 1.6.14 release policy for a 1.6.13 client',
+    async ({ platform, olderBuild, latest }) => {
+      prismaMock.appReleases.findMany.mockResolvedValue([latest]);
+
+      const olderResponse = await GET(new NextRequest(
+        `http://localhost/api/app-version?platform=${platform}&versionName=1.6.13&buildNumber=${olderBuild}`,
+      ));
+      const olderPayload = await olderResponse.json();
+
+      expect(olderResponse.status).toBe(200);
+      expect(olderPayload).toEqual(expect.objectContaining({
+        updateAvailable: true,
+        updateRequired: false,
+        latestVersion: expect.objectContaining({
+          versionName: '1.6.14',
+          buildNumber: latest.buildNumber,
+          changes: latest.changes,
+          updateUrl: latest.updateUrl,
+        }),
+      }));
+
+      const currentResponse = await GET(new NextRequest(
+        `http://localhost/api/app-version?platform=${platform}&versionName=1.6.14&buildNumber=${latest.buildNumber}`,
+      ));
+      const currentPayload = await currentResponse.json();
+
+      expect(currentResponse.status).toBe(200);
+      expect(currentPayload.updateAvailable).toBe(false);
+      expect(currentPayload.releases).toEqual([]);
+    },
+  );
 
   it('requires the update when any newer active release is breaking', async () => {
     prismaMock.appReleases.findMany.mockResolvedValue([
