@@ -182,7 +182,7 @@ const verifyPaymentIntent = async ({
 
   const stripe = new Stripe(secretKey);
   const intent = await stripe.paymentIntents.retrieve(normalizedIntentId);
-  if (intent.status !== 'succeeded' && intent.status !== 'processing') {
+  if (intent.status !== 'succeeded') {
     return { ok: false, status: 402, error: 'Payment has not completed yet.' };
   }
   const metadata = intent.metadata ?? {};

@@ -17,6 +17,17 @@ const txBillsCreateMock = jest.fn();
 const txBillsUpdateMock = jest.fn();
 const txBillPaymentsFindFirstMock = jest.fn();
 const txBillPaymentsCreateMock = jest.fn();
+const stripePaymentIntentsRetrieveMock = jest.fn();
+const StripeMock = jest.fn().mockImplementation(() => ({
+  paymentIntents: {
+    retrieve: (...args: unknown[]) => stripePaymentIntentsRetrieveMock(...args),
+  },
+}));
+
+jest.mock('stripe', () => ({
+  __esModule: true,
+  default: StripeMock,
+}));
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -70,6 +81,49 @@ const baseSelection = {
   scheduledFieldIds: ['field_1'],
   startDate: '2099-04-21T17:00:00.000Z',
   endDate: '2099-04-21T18:00:00.000Z',
+};
+
+const mockPaidRentalInventory = () => {
+  organizationsFindUniqueMock.mockResolvedValue({
+    id: 'org_1',
+    name: 'Summit',
+    logoId: 'file_logo_1',
+    sports: ['Indoor Volleyball'],
+    location: 'Main Gym',
+    address: '123 Main St',
+    coordinates: [-122.4, 37.8],
+    ownerId: 'owner_1',
+    publicPageEnabled: true,
+  });
+  fieldsFindManyMock.mockResolvedValue([
+    {
+      id: 'field_1',
+      name: 'Court 1',
+      rentalSlotIds: ['slot_1'],
+      location: '',
+      facilityId: 'facility_1',
+      long: -122.4,
+      lat: 37.8,
+    },
+  ]);
+  facilitiesFindManyMock.mockResolvedValue([
+    {
+      id: 'facility_1',
+      name: 'Main Gym',
+      location: 'Main Gym',
+    },
+  ]);
+  timeSlotsFindManyMock.mockResolvedValue([
+    {
+      id: 'slot_1',
+      startDate: '2099-04-21T16:00:00.000Z',
+      endDate: '2099-04-21T19:00:00.000Z',
+      repeating: false,
+      price: 2400,
+      requiredTemplateIds: [],
+      hostRequiredTemplateIds: [],
+    },
+  ]);
 };
 
 describe('/api/public/organizations/[slug]/rental-orders POST', () => {
@@ -295,46 +349,7 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
   });
 
   it('rejects paid rental creation when Stripe verification is unavailable', async () => {
-    organizationsFindUniqueMock.mockResolvedValue({
-      id: 'org_1',
-      name: 'Summit',
-      logoId: 'file_logo_1',
-      sports: ['Indoor Volleyball'],
-      location: 'Main Gym',
-      address: '123 Main St',
-      coordinates: [-122.4, 37.8],
-      ownerId: 'owner_1',
-      publicPageEnabled: true,
-    });
-    fieldsFindManyMock.mockResolvedValue([
-      {
-        id: 'field_1',
-        name: 'Court 1',
-        rentalSlotIds: ['slot_1'],
-        location: '',
-        facilityId: 'facility_1',
-        long: -122.4,
-        lat: 37.8,
-      },
-    ]);
-    facilitiesFindManyMock.mockResolvedValue([
-      {
-        id: 'facility_1',
-        name: 'Main Gym',
-        location: 'Main Gym',
-      },
-    ]);
-    timeSlotsFindManyMock.mockResolvedValue([
-      {
-        id: 'slot_1',
-        startDate: '2099-04-21T16:00:00.000Z',
-        endDate: '2099-04-21T19:00:00.000Z',
-        repeating: false,
-        price: 2400,
-        requiredTemplateIds: [],
-        hostRequiredTemplateIds: [],
-      },
-    ]);
+    mockPaidRentalInventory();
 
     const response = await POST(createRequest({
       eventId: 'booking_1',
@@ -349,5 +364,69 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     expect(txBillsCreateMock).not.toHaveBeenCalled();
     expect(txBillPaymentsCreateMock).not.toHaveBeenCalled();
     expect(txRentalBookingsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a processing PaymentIntent without creating paid rental state', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_rental';
+    mockPaidRentalInventory();
+    stripePaymentIntentsRetrieveMock.mockResolvedValue({ status: 'processing' });
+
+    const response = await POST(createRequest({
+      eventId: 'booking_1',
+      selections: [baseSelection],
+      sportId: null,
+      paymentIntentId: 'pi_rental_processing',
+    }), { params });
+    const json = await response.json();
+
+    expect(response.status).toBe(402);
+    expect(json.error).toBe('Payment has not completed yet.');
+    expect(stripePaymentIntentsRetrieveMock).toHaveBeenCalledWith('pi_rental_processing');
+    expect(txBillsCreateMock).not.toHaveBeenCalled();
+    expect(txBillPaymentsCreateMock).not.toHaveBeenCalled();
+    expect(txRentalBookingsCreateMock).not.toHaveBeenCalled();
+    expect(txRentalBookingItemsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('creates paid rental state only after a succeeded PaymentIntent', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_rental';
+    mockPaidRentalInventory();
+    stripePaymentIntentsRetrieveMock.mockResolvedValue({
+      status: 'succeeded',
+      amount: 2400,
+      amount_received: 2400,
+      metadata: {
+        purchase_type: 'rental',
+        event_id: 'booking_1',
+        organization_id: 'org_1',
+        user_id: 'user_1',
+        amount_cents: '2400',
+        total_charge_cents: '2400',
+      },
+    });
+
+    const response = await POST(createRequest({
+      eventId: 'booking_1',
+      selections: [baseSelection],
+      sportId: null,
+      paymentIntentId: 'pi_rental_succeeded',
+    }), { params });
+
+    expect(response.status).toBe(201);
+    expect(txBillsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'PAID',
+        paidAmountCents: 2400,
+      }),
+    }));
+    expect(txBillPaymentsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'PAID', paymentIntentId: 'pi_rental_succeeded' }),
+    }));
+    expect(txRentalBookingsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'CONFIRMED', paymentIntentId: 'pi_rental_succeeded' }),
+    }));
+    expect(txRentalBookingItemsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'CONFIRMED' }),
+    }));
   });
 });
