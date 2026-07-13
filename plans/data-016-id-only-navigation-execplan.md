@@ -12,10 +12,10 @@ The user-visible proof is that navigating to a detail destination and restoring 
 
 - [x] (2026-07-13 08:45 PDT) Located the affected serialized configurations in `composeApp/src/commonMain/kotlin/com/razumly/mvp/core/presentation/AppConfig.kt` and the object-shaped navigation interface in `INavigationHandler.kt`.
 - [x] (2026-07-13 08:45 PDT) Mapped child construction in `composeApp/src/commonMain/kotlin/com/razumly/mvp/app/RootComponent.kt`, Koin factories in `composeApp/src/commonMain/kotlin/com/razumly/mvp/di/ComponentModule.kt`, and existing repository flows for events, matches, and chats.
-- [ ] Replace the serialized AppConfig fields and INavigationHandler methods with IDs and primitive presentation arguments.
-- [ ] Make Event Detail, Match Detail, Chat, and Teams hydrate their initial state from IDs through their repositories.
-- [ ] Update call sites, test navigation fakes, and Koin parameter factories.
-- [ ] Add serialization and hydration regression coverage, run focused and full mobile tests, and perform an emulator navigation smoke test.
+- [x] (2026-07-13 09:32 PDT) Replaced the serialized `AppConfig` fields and `INavigationHandler` methods with IDs and primitive presentation arguments.
+- [x] (2026-07-13 09:32 PDT) Made Event Detail, Match Detail, Chat, and Teams hydrate their initial state from IDs through their repositories.
+- [x] (2026-07-13 09:32 PDT) Updated call sites, test navigation fakes, and Koin parameter factories.
+- [x] (2026-07-13 09:32 PDT) Added serialization and hydration regressions, ran the targeted mobile test batch, built and installed the debug APK, and completed a clean launcher/relaunch smoke test. Authenticated destination navigation is recorded as an environment limitation below because the supplied account was rejected by the backend.
 
 ## Surprises & Discoveries
 
@@ -27,6 +27,15 @@ The user-visible proof is that navigating to a detail destination and restoring 
 
 - Observation: Teams is the one affected component that exposed a fixed `Event?` value rather than a flow. Its public component contract must become a `StateFlow<Event?>` so Compose can recompose when the event row is hydrated.
   Evidence: `TeamManagementScreen.kt` reads `component.selectedEvent` once, while `CreateOrEditTeamScreen.kt` uses its sport and division data.
+
+- Observation: `getEventWithRelationsFlow` and the corresponding match flows can throw `NoSuchElementException` while a newly restored ID is absent from an empty Room cache before its remote refresh completes. This is an expected loading state, not an application failure.
+  Evidence: the changed Event Detail, Match Detail, and Teams components initially subscribe by ID; each now suppresses that transient cache-miss exception while retaining ordinary error reporting and waiting for the current repository emission.
+
+- Observation: the initial plan described Chat as constructing a minimal direct-message user or chat placeholder before asking its repository for data. The cleaner boundary is to make `IChatGroupRepository.getChatGroupFlow` itself accept `messageUserId` and `chatId`, so Chat never creates a navigation-derived domain snapshot at all.
+  Evidence: the repository implementation and all test fakes now resolve chat data directly from the two navigation IDs.
+
+- Observation: the wider affected Android test batch has three existing failures unrelated to this migration: `EventDetailMobileJoinFlowTest.startTeamRegistration_forPaidOpenTeam_createsTeamRegistrationPurchaseIntent` and two organization-checkout duplicate-intent tests. The same three failures reproduced in a detached clean worktree at the pre-change commit `728e63c3`.
+  Evidence: `/private/tmp/mvp-app-data016-baseline` was created from `728e63c3`; the failures match the audit worktree by class and test name after supplying only the local debug manifest placeholder needed to start Android tests.
 
 ## Decision Log
 
@@ -42,9 +51,23 @@ The user-visible proof is that navigating to a detail destination and restoring 
   Rationale: This keeps the remediation focused while removing every object cited by the audit finding.
   Date/Author: 2026-07-13 / Codex.
 
+- Decision: Change `IChatGroupRepository.getChatGroupFlow` to accept stable direct-message user and chat IDs instead of a temporary `UserData` or `ChatGroupWithRelations` object.
+  Rationale: The repository is the owner of current chat data. Taking IDs removes the final navigation-created domain snapshot and makes restored Chat destinations follow the same source-of-truth rule as Event Detail and Match Detail.
+  Date/Author: 2026-07-13 / Codex.
+
+- Decision: Treat an empty-Room `NoSuchElementException` during first ID hydration as an expected transient state instead of surfacing it as a user-visible component error.
+  Rationale: Process restoration can occur before the local cache has refreshed. Suppressing only this known cache-miss leaves the destination available for the current repository value without hiding other errors.
+  Date/Author: 2026-07-13 / Codex.
+
 ## Outcomes & Retrospective
 
-The implementation and validation evidence will be recorded here once the migration is complete. At this point the outcome is limited to a completed source and dependency map.
+Implementation landed in mobile commit `a9267179` (`fix: use id-only mobile navigation`). `AppConfig` and `INavigationHandler` now carry stable identifiers only for Event Detail, Match Detail, Chat, and Teams. `RootComponent`, Koin construction, all production call sites, and navigation test fakes pass those IDs. Event Detail, Match Detail, and Teams subscribe to their repository flows by ID; Teams exposes a `StateFlow<Event?>` for Compose; Chat resolves both direct-message and group data through the new ID-shaped repository flow.
+
+The targeted Android batch passed with 73 tests and zero failures/errors: one serialization test, one ID-hydration event-detail regression, 57 Match Content tests, two Chat List tests, nine Chat Terms/lifecycle tests, and three Team Management selection tests. The command was:
+
+    ANDROID_HOME=/Users/elesesy/Library/Android/sdk ANDROID_SDK_ROOT=/Users/elesesy/Library/Android/sdk JAVA_HOME=/Users/elesesy/Library/Java/JavaVirtualMachines/jbr-21.0.6/Contents/Home ./gradlew --no-daemon :composeApp:testDebugUnitTest --tests AppConfigSerializationTest --tests EventDetailMobileJoinFlowTest.id_only_event_detail_hydrates_current_event_relations_by_id --tests MatchContentComponentTest --tests ChatListComponentTest --tests ChatTermsGatingTest --tests TeamManagementSelectionTest --console=plain --warning-mode=none --quiet
+
+The debug application was installed on `emulator-5554`. After clearing test state and accepting its normal location/notification permission prompts, it reached the login UI and launched again cleanly after a force-stop/relaunch. Crash-buffer and app log inspection showed no app crash. The supplied account returned the visible backend response `Invalid credentials`, so the authenticated Event Detail, Match Detail, Chat, and Teams screens could not be navigated without creating or altering account data; the focused hydration tests remain the validation evidence for those routes. A wider relevant test batch was not counted as clean because its three failures were reproduced unchanged from detached clean baseline `728e63c3`, as documented above.
 
 ## Context and Orientation
 
