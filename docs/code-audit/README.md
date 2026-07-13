@@ -499,7 +499,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/documents/signed/route.ts:85-125` lets any authenticated session assert a signed-document row for caller-selected document and scope identifiers. It does not verify that the signer owns or manages that registration/event/team context before recording consent.
 - Impact: a user can fabricate waiver/consent completion and influence downstream registration eligibility.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` retires direct `POST /api/documents/signed` assertions with HTTP 410. The remaining scoped record-signature workflow only marks an existing server-issued text acknowledgement as signed, leaves PDF callbacks to their signed provider operation, and rejects caller-defined document IDs. The focused document suites passed all six cases, including direct forgery and never-issued-text-document denial.
 
 ### SEC-030 — Guest registration can impersonate an existing email owner and sign as that identity
 
@@ -2190,3 +2190,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-023 in the audited branch. Verified roster-authoritative team chat membership, stale-attacker denial for reads/writes/subscriptions, and self-scoped push cleanup; all 29 focused chat tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-027 in the audited branch. Verified topic mutation/deletion, team-topic reservation, and push-relay sender/recipient/data controls; all 18 focused topic-message tests passed, including two new direct-delete regressions. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-028 in the audited branch. Verified bill-split ownership, opt-in, roster, duplicate, active-payment, and race protections; all eight focused split tests passed, including two new opt-in/outsider-recipient regressions. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-029 in the audited branch. Verified direct signed-document assertions are retired and scoped signing only changes server-issued records; all six focused document tests passed. Production deployment remains pending with the rest of the audited branch.
