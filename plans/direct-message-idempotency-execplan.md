@@ -17,8 +17,8 @@ The behavior is observable through route tests that submit different client-gene
 - [x] (2026-07-13 22:06Z) Added the schema migration, migration contract test, server pair helper, atomic POST upsert, and archive/update lifecycle handling.
 - [x] (2026-07-13 22:06Z) Removed web and Android local uniqueness decisions and made Android consume the canonical row returned by the server.
 - [x] (2026-07-13) Ran the focused web regressions (10 suites, 58 tests), TypeScript compilation, Prisma validation/generation/checked-client checks, and the isolated full-chain migration/concurrency exercise.
-- [ ] Complete the final consolidated Android regression rerun after replacing test-scheduler races with explicit mock completion signals.
-- [ ] Commit the site and mobile changes separately, reconcile APP-069 in `docs/code-audit/README.md`, and record final evidence here.
+- [x] (2026-07-13) Passed the final consolidated Android regression rerun after replacing test-scheduler races with explicit mock completion signals; the direct-message case passed inside the 26-test batch.
+- [x] (2026-07-13) Committed the site and mobile changes separately, reconciled APP-069 in `docs/code-audit/README.md`, and recorded the final evidence here.
 
 ## Surprises & Discoveries
 
@@ -57,11 +57,13 @@ The behavior is observable through route tests that submit different client-gene
 
 ## Outcomes & Retrospective
 
-The web implementation and database proof are complete; final commits and Android evidence are still pending.
+The implementation is complete in audited commits `e98f676a` (web/server/database) and `537245bf` (Android); production migration and mobile release deployment remain pending.
 
 - Focused Jest validation passed 10 suites and 58 tests, `npx tsc --noEmit` passed, and the repository-owned Prisma validate, generate, and checked-client commands passed.
 - A clean PostgreSQL 16 database replayed all 152 migrations. The final migration keyed only `dm-winner` for `user-a,user-b`, left `dm-older`, `event_event-1`, and `team_team-1` active and unkeyed, and preserved the original message, moderation-report, and push-target references.
 - Two concurrent same-pair SQL upserts both returned `race-right`; the final keyed-row count for that pair was one.
+- The consolidated Android run passed all 26 focused cases, including canonical-ID replacement, one POST per collector despite Room emissions, and cached fallback after a failed canonical retry. `assembleDebug` also passed, and the freshly installed APK cold-launched to Login with Room open and no crash or ANR.
+- Local browser validation rendered the landing and login surfaces normally. The existing local browser session was signed out, so the authenticated chat drawer was not reachable without re-entering credentials; its state transition remains covered by the focused service/provider regressions.
 
 ## Context and Orientation
 
@@ -150,3 +152,5 @@ Plan revision note (2026-07-13 22:06Z): Recorded the completed implementation su
 Plan revision note (2026-07-13 22:14Z): Recorded the clean full-chain replay, seeded duplicate consolidation, and concurrent database upsert evidence. The temporary merge table now has explicit session lifetime so correctness does not depend on migration-runner transaction wrapping.
 
 Plan revision note (2026-07-13 22:33Z): Replaced the destructive legacy consolidation prototype after review showed that `ChatGroup` also stores notification topics and has no authoritative historical DM discriminator. The final design is transaction-wrapped, excludes reserved topic prefixes, keys one winner, and leaves every older row and reference untouched. Added lifecycle coverage for topic aliases, subscriptions, restore conflicts, web deduplication, and Android Room feedback-loop prevention.
+
+Plan revision note (2026-07-13): Recorded the final web and mobile commits, deterministic Android test-harness synchronization, complete focused validation, and the authenticated-browser limitation. APP-069 is reconciled in the audit ledger; deployment remains a separate operational step.
