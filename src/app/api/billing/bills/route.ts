@@ -14,6 +14,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const BILL_LIST_MAX_OFFSET = 1_000_000;
+
 const createSchema = z.object({
   ownerType: z.enum(['USER', 'TEAM', 'ORGANIZATION']),
   ownerId: z.string(),
@@ -116,9 +118,30 @@ export async function GET(req: NextRequest) {
   const ownerType = params.get('ownerType') as 'USER' | 'TEAM' | 'ORGANIZATION' | null;
   const ownerId = normalizeId(params.get('ownerId'));
   const limit = Number(params.get('limit') || '100');
+  const rawOffset = params.get('offset') ?? '0';
+  const offset = Number(rawOffset);
+  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 200) : 100;
+  if (
+    !Number.isSafeInteger(offset)
+    || offset < 0
+    || offset > BILL_LIST_MAX_OFFSET
+  ) {
+    return NextResponse.json({
+      error: `offset must be an integer between 0 and ${BILL_LIST_MAX_OFFSET}`,
+    }, { status: 400 });
+  }
+  const normalizedOffset = offset;
 
   if (!ownerType || !ownerId) {
-    return NextResponse.json({ bills: [] }, { status: 200 });
+    return NextResponse.json({
+      bills: [],
+      pagination: {
+        limit: normalizedLimit,
+        offset: normalizedOffset,
+        nextOffset: normalizedOffset,
+        hasMore: false,
+      },
+    }, { status: 200 });
   }
 
   if (ownerType === 'USER' && !session.isAdmin && ownerId !== session.userId) {
@@ -160,10 +183,15 @@ export async function GET(req: NextRequest) {
     where: ownerType === 'TEAM'
       ? { ownerType, ownerId: { in: ownerIds } }
       : { ownerType, ownerId },
-    take: Number.isFinite(limit) ? limit : 100,
-    orderBy: { createdAt: 'desc' },
+    take: normalizedLimit + 1,
+    skip: normalizedOffset,
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
   });
-  const billIds = bills.map((bill) => bill.id);
+  const pageRows = bills.slice(0, normalizedLimit);
+  const billIds = pageRows.map((bill) => bill.id);
   const billPayments = billIds.length
     ? await prisma.billPayments.findMany({
       where: { billId: { in: billIds } },
@@ -181,14 +209,20 @@ export async function GET(req: NextRequest) {
   });
   const discountAmountsByBillId = await loadBillDiscountSummaries(
     prisma,
-    bills.map((bill) => ({
+    pageRows.map((bill) => ({
       ...bill,
       payments: paymentsByBillId.get(bill.id) ?? [],
     })),
   );
 
   return NextResponse.json({
-    bills: withLegacyList(bills.map((bill) => withBillDiscountAmounts(bill, discountAmountsByBillId))),
+    bills: withLegacyList(pageRows.map((bill) => withBillDiscountAmounts(bill, discountAmountsByBillId))),
+    pagination: {
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      nextOffset: normalizedOffset + pageRows.length,
+      hasMore: bills.length > normalizedLimit,
+    },
   }, { status: 200 });
 }
 
