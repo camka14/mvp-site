@@ -225,4 +225,56 @@ describe('/api/organizations/[organizationId]/rental-availability', () => {
     expect(JSON.stringify(payload)).not.toContain('booking_secret');
     expect(JSON.stringify(payload)).not.toContain('match_secret');
   });
+
+  it('excludes unpriced slots while preserving an explicit free price', async () => {
+    prismaMock.fields.findMany.mockResolvedValueOnce([
+      {
+        id: 'field_1',
+        name: 'Court A',
+        organizationId: 'organization_1',
+        facilityId: 'facility_1',
+        rentalSlotIds: ['slot_unpriced', 'slot_free'],
+      },
+    ]);
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_unpriced',
+        archivedAt: null,
+        dayOfWeek: 0,
+        daysOfWeek: [0],
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 10 * 60,
+        startDate: new Date('2026-06-01T00:00:00.000Z'),
+        endDate: null,
+        timeZone: 'UTC',
+        repeating: true,
+        price: null,
+      },
+      {
+        id: 'slot_free',
+        archivedAt: null,
+        dayOfWeek: 0,
+        daysOfWeek: [0],
+        startTimeMinutes: 10 * 60,
+        endTimeMinutes: 11 * 60,
+        startDate: new Date('2026-06-01T00:00:00.000Z'),
+        endDate: null,
+        timeZone: 'UTC',
+        repeating: true,
+        price: 0,
+      },
+    ]);
+
+    const response = await GET(request(), routeParams());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.fields).toHaveLength(1);
+    expect(payload.fields[0].rentalSlots).toEqual([
+      expect.objectContaining({ id: 'slot_free', price: 0 }),
+    ]);
+    expect(prismaMock.timeSlots.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ price: { not: null } }),
+    }));
+  });
 });
