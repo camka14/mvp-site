@@ -40,7 +40,7 @@ function MySchedulePageContent() {
       <Navigation />
       <Container fluid py="xl">
         <ScheduleCalendarPanel
-          endpoint="/api/profile/schedule?limit=300"
+          endpoint="/api/profile/schedule?limit=200"
           title="My Schedule"
           description="Events and matches you or your teams are part of."
           loadingText="Loading your schedule..."

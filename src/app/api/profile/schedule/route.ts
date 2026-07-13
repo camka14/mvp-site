@@ -4,121 +4,144 @@ import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
-import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
+import {
+  getScheduleTeamsDelegate,
+  loadProfileScheduleScope,
+  uniqueScheduleIds,
+} from '@/server/profile/scheduleScope';
 
 export const dynamic = 'force-dynamic';
 
-const SCHEDULE_REGISTRATION_STATUSES = ['ACTIVE', 'PENDING', 'STARTED', 'BLOCKED'] as const;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const PROFILE_SCHEDULE_PAST_DAYS = 90;
+export const PROFILE_SCHEDULE_FUTURE_DAYS = 366;
+export const PROFILE_SCHEDULE_MAX_WINDOW_DAYS = 457;
+const PROFILE_SCHEDULE_DEFAULT_LIMIT = 200;
+const PROFILE_SCHEDULE_MAX_LIMIT = 200;
+const PROFILE_SCHEDULE_MAX_MATCHES_PER_PAGE = 5_000;
 
-const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
-  Array.from(
-    new Set(
-      values
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter(Boolean),
-    ),
-  )
+type ScheduleCursor = {
+  start: Date;
+  id: string;
+  windowFrom: Date;
+  windowTo: Date;
+};
+
+const encodeScheduleCursor = (
+  event: { start: Date; id: string },
+  window: { from: Date; to: Date },
+): string => (
+  Buffer.from(JSON.stringify({
+    start: event.start.toISOString(),
+    id: event.id,
+    windowFrom: window.from.toISOString(),
+    windowTo: window.to.toISOString(),
+  }), 'utf8').toString('base64url')
 );
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const decodeScheduleCursor = (value: string | null): ScheduleCursor | null | undefined => {
+  if (!value) return null;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as {
+      start?: unknown;
+      id?: unknown;
+      windowFrom?: unknown;
+      windowTo?: unknown;
+    };
+    const start = new Date(String(decoded.start ?? ''));
+    const windowFrom = new Date(String(decoded.windowFrom ?? ''));
+    const windowTo = new Date(String(decoded.windowTo ?? ''));
+    const id = typeof decoded.id === 'string' ? decoded.id.trim() : '';
+    if (
+      Number.isNaN(start.getTime())
+      || Number.isNaN(windowFrom.getTime())
+      || Number.isNaN(windowTo.getTime())
+      || !id
+    ) return undefined;
+    return { start, id, windowFrom, windowTo };
+  } catch {
+    return undefined;
+  }
+};
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
 
-  const from = parseDateInput(params.get('from'));
-  const to = parseDateInput(params.get('to'));
-  const rawLimit = Number(params.get('limit') || '200');
-  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(1000, Math.round(rawLimit))) : 200;
+  const cursor = decodeScheduleCursor(params.get('cursor'));
+  if (cursor === undefined) {
+    return NextResponse.json({ error: 'Invalid schedule cursor' }, { status: 400 });
+  }
+  const now = new Date();
+  const rawFrom = params.get('from');
+  const rawTo = params.get('to');
+  const parsedFrom = parseDateInput(rawFrom);
+  const parsedTo = parseDateInput(rawTo);
+  if ((rawFrom && !parsedFrom) || (rawTo && !parsedTo)) {
+    return NextResponse.json({ error: 'Invalid schedule date window' }, { status: 400 });
+  }
+  const from = parsedFrom ?? cursor?.windowFrom ?? new Date(now.getTime() - PROFILE_SCHEDULE_PAST_DAYS * DAY_MS);
+  const to = parsedTo ?? cursor?.windowTo ?? new Date(now.getTime() + PROFILE_SCHEDULE_FUTURE_DAYS * DAY_MS);
+  if (to < from || to.getTime() - from.getTime() > PROFILE_SCHEDULE_MAX_WINDOW_DAYS * DAY_MS) {
+    return NextResponse.json({ error: 'Schedule date window is too large or reversed' }, { status: 400 });
+  }
+  if (
+    cursor
+    && (
+      cursor.windowFrom.getTime() !== from.getTime()
+      || cursor.windowTo.getTime() !== to.getTime()
+    )
+  ) {
+    return NextResponse.json({ error: 'Schedule cursor does not match the requested date window' }, { status: 400 });
+  }
+  const rawLimit = Number(params.get('limit') || String(PROFILE_SCHEDULE_DEFAULT_LIMIT));
+  const limit = Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(PROFILE_SCHEDULE_MAX_LIMIT, Math.round(rawLimit)))
+    : PROFILE_SCHEDULE_DEFAULT_LIMIT;
 
-  const user = await prisma.userData.findUnique({
-    where: { id: session.userId },
-    select: {
-      id: true,
-    },
-  });
-  if (!user) {
+  const scheduleScope = await loadProfileScheduleScope(prisma, session.userId);
+  if (!scheduleScope) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
-
-  const teamIdsByUserId = await getCanonicalTeamIdsByUserIds([user.id], prisma);
-  const teamIds = teamIdsByUserId.get(user.id) ?? [];
-
-  const teamsDelegate = getTeamsDelegate(prisma);
-  const slotTeamRows = teamIds.length && teamsDelegate?.findMany
-    ? await teamsDelegate.findMany({
-        where: { parentTeamId: { in: teamIds } },
-        select: { id: true },
-      })
-    : [];
-  const slotTeamIds = uniqueStrings(slotTeamRows.map((row: { id?: unknown }) => String(row.id ?? '').trim()));
-  const relevantTeamIds = uniqueStrings([...teamIds, ...slotTeamIds]);
-  const registrationRows = await prisma.eventRegistrations.findMany({
-    where: {
-      status: { in: [...SCHEDULE_REGISTRATION_STATUSES] },
-      OR: [
-        {
-          registrantId: user.id,
-          registrantType: { in: ['SELF', 'CHILD'] },
-        },
-        ...(relevantTeamIds.length
-          ? [{
-              registrantId: { in: relevantTeamIds },
-              registrantType: 'TEAM' as const,
-            }]
-          : []),
-      ],
-    },
-    select: {
-      eventId: true,
-    },
-  });
-  const registeredEventIds = uniqueStrings(
-    registrationRows.map((row: { eventId?: unknown }) => String(row.eventId ?? '').trim()),
-  );
-  const officialRows = typeof (prisma as any).eventOfficials?.findMany === 'function'
-    ? await (prisma as any).eventOfficials.findMany({
-      where: {
-        userId: user.id,
-        isActive: { not: false },
-      },
-      select: { eventId: true },
-    })
-    : [];
-  const officialEventIds = uniqueStrings(
-    officialRows.map((row: { eventId?: unknown }) => String(row.eventId ?? '').trim()),
-  );
-  const involvedEventIds = uniqueStrings([...registeredEventIds, ...officialEventIds]);
-
-  const involvementFilters: Record<string, unknown>[] = [
-    { hostId: user.id },
-  ];
-  if (involvedEventIds.length) {
-    involvementFilters.push({ id: { in: involvedEventIds } });
-  }
+  const { userId, relevantTeamIds, involvementFilters } = scheduleScope;
+  const teamsDelegate = getScheduleTeamsDelegate(prisma);
 
   const where: Record<string, unknown> = {
     NOT: { state: 'TEMPLATE' },
     OR: involvementFilters,
   };
 
-  const dateConditions: Record<string, unknown>[] = [];
-  if (from) {
-    dateConditions.push({ end: { gte: from } });
+  const dateConditions: Record<string, unknown>[] = [
+    {
+      OR: [
+        { noFixedEndDateTime: true },
+        { end: null },
+        { end: { gte: from } },
+      ],
+    },
+    { start: { lte: to } },
+  ];
+  if (cursor) {
+    dateConditions.push({
+      OR: [
+        { start: { gt: cursor.start } },
+        { start: cursor.start, id: { gt: cursor.id } },
+      ],
+    });
   }
-  if (to) {
-    dateConditions.push({ start: { lte: to } });
-  }
-  if (dateConditions.length) {
-    where.AND = dateConditions;
-  }
+  where.AND = dateConditions;
 
-  const events = await prisma.events.findMany({
+  const eventRows = await prisma.events.findMany({
     where,
-    take: limit,
-    orderBy: { start: 'asc' },
+    take: limit + 1,
+    orderBy: [{ start: 'asc' }, { id: 'asc' }],
   });
+  const hasMore = eventRows.length > limit;
+  const events = hasMore ? eventRows.slice(0, limit) : eventRows;
+  const lastEvent = events[events.length - 1];
+  const nextCursor = hasMore && lastEvent ? encodeScheduleCursor(lastEvent, { from, to }) : null;
   const enrichedEvents = await withDerivedEventParticipantIds(events, prisma);
 
   const eventIds = events.map((event) => event.id);
@@ -127,7 +150,7 @@ export async function GET(req: NextRequest) {
     ...event,
     officialIds: officialIdsByEventId.get(event.id) ?? [],
   }));
-  const matchFilters: Record<string, unknown>[] = [{ officialId: user.id }];
+  const matchFilters: Record<string, unknown>[] = [{ officialId: userId }];
   if (relevantTeamIds.length) {
     matchFilters.push(
       { team1Id: { in: relevantTeamIds } },
@@ -136,22 +159,51 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const matches = eventIds.length
+  const matchRows = eventIds.length
     ? await prisma.matches.findMany({
         where: {
           eventId: { in: eventIds },
           OR: matchFilters,
+          AND: [
+            {
+              OR: [
+                {
+                  start: { lte: to },
+                  AND: [
+                    {
+                      OR: [
+                        { end: { gte: from } },
+                        { end: null, start: { gte: from } },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  start: null,
+                  actualStart: { gte: from, lte: to },
+                },
+              ],
+            },
+          ],
         },
-        orderBy: { start: 'asc' },
+        take: PROFILE_SCHEDULE_MAX_MATCHES_PER_PAGE + 1,
+        orderBy: [{ start: 'asc' }, { matchId: 'asc' }, { id: 'asc' }],
       })
     : [];
+  if (matchRows.length > PROFILE_SCHEDULE_MAX_MATCHES_PER_PAGE) {
+    return NextResponse.json({
+      error: 'Schedule page contains too many matches for one response. Narrow the requested date window.',
+      code: 'SCHEDULE_MATCH_WINDOW_TOO_LARGE',
+    }, { status: 413 });
+  }
+  const matches = matchRows;
 
-  const fieldIds = uniqueStrings([
+  const fieldIds = uniqueScheduleIds([
     ...events.flatMap((event) => (Array.isArray(event.fieldIds) ? event.fieldIds : [])),
     ...matches.map((match) => match.fieldId),
   ]);
 
-  const relatedTeamIds = uniqueStrings([
+  const relatedTeamIds = uniqueScheduleIds([
     ...eventDtos.flatMap((event) => event.teamIds),
     ...matches.flatMap((match) => [match.team1Id, match.team2Id, match.teamOfficialId]),
   ]);
@@ -176,5 +228,13 @@ export async function GET(req: NextRequest) {
     matches: serializeMatchRecordsLegacy(matches),
     fields: withLegacyList(fields),
     teams: withLegacyList(teams as Record<string, any>[]),
+    pagination: {
+      limit,
+      hasMore,
+      nextCursor,
+      isComplete: !hasMore,
+      windowFrom: from.toISOString(),
+      windowTo: to.toISOString(),
+    },
   });
 }

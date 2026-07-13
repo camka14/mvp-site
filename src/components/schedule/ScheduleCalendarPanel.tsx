@@ -26,13 +26,9 @@ import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
+import { loadCompleteSchedulePayload, type SchedulePage } from '@/lib/schedulePagination';
 
-type SchedulePayload = {
-  events?: Event[];
-  matches?: Match[];
-  fields?: Field[];
-  teams?: Team[];
-};
+type SchedulePayload = SchedulePage<Event, Match, Field, Team>;
 
 type ScheduleCalendarResource = {
   kind: 'match' | 'event';
@@ -224,14 +220,15 @@ export default function ScheduleCalendarPanel({
     if (mode === 'refresh') setRefreshing(true);
     setError(null);
     try {
-      const response = await fetch(endpoint, {
-        credentials: 'include',
+      const payload = await loadCompleteSchedulePayload(endpoint, async (pageEndpoint) => {
+        const response = await fetch(pageEndpoint, {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to load schedule (${response.status})`);
+        }
+        return (await response.json()) as SchedulePayload;
       });
-      if (!response.ok) {
-        throw new Error(`Failed to load schedule (${response.status})`);
-      }
-
-      const payload = (await response.json()) as SchedulePayload;
       const normalizedEvents = Array.isArray(payload.events)
         ? payload.events.map((event) => normalizeApiEvent(event)).filter((event): event is Event => Boolean(event))
         : [];
