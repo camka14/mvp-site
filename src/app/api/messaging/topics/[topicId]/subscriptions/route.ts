@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { registerPushDeviceTarget, unregisterPushDeviceTarget } from '@/server/pushNotifications';
 import {
+  getRetainedDirectMessagePair,
   getMinorChatParticipantIds,
   hasBlockingChatRelationship,
   loadChatParticipants,
@@ -177,11 +178,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
       && canManageChatGroup(session, existing)
       && mergedUserIds.some((userId) => !(existing.userIds ?? []).includes(userId))
     );
+    const retainedDirectPair = existing
+      ? getRetainedDirectMessagePair(existing, mergedUserIds)
+      : null;
     const record = existing
       ? shouldUpdateMembership
         ? await prisma.chatGroup.update({
         where: { id: topicId },
-        data: { userIds: mergedUserIds, updatedAt: now },
+        data: {
+          userIds: mergedUserIds,
+          directUserIdA: retainedDirectPair?.directUserIdA ?? null,
+          directUserIdB: retainedDirectPair?.directUserIdB ?? null,
+          updatedAt: now,
+        },
       })
         : existing
       : canCreateChatGroup
@@ -255,6 +264,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
     const nextUserIds = isTeamChatGroup(existing)
       ? existing.userIds ?? []
       : (existing.userIds ?? []).filter((id) => !removeIds.has(id));
+    const retainedDirectPair = getRetainedDirectMessagePair(existing, nextUserIds);
 
     try {
       await unregisterPushDeviceTarget({
@@ -277,7 +287,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
       ? existing
       : await prisma.chatGroup.update({
         where: { id: topicId },
-        data: { userIds: nextUserIds, updatedAt: new Date() },
+        data: {
+          userIds: nextUserIds,
+          directUserIdA: retainedDirectPair?.directUserIdA ?? null,
+          directUserIdB: retainedDirectPair?.directUserIdB ?? null,
+          updatedAt: new Date(),
+        },
       });
 
     return NextResponse.json({ topicId, topic: withLegacyFields(record) }, { status: 200 });

@@ -4,6 +4,10 @@ import { prisma } from '@/lib/prisma';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { archiveChatGroup } from '@/server/moderation';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
+import {
+  getCanonicalDirectMessagePair,
+  isDirectMessageCandidateGroupId,
+} from '@/server/chatSafety';
 
 const updateSchema = z.object({
   archived: z.boolean(),
@@ -35,12 +39,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json(withLegacyFields(archived), { status: 200 });
     }
 
+    const restoredDirectPair = !group.teamId && isDirectMessageCandidateGroupId(group.id)
+      ? getCanonicalDirectMessagePair(group.userIds)
+      : null;
+    if (restoredDirectPair) {
+      const activeCanonicalGroup = await prisma.chatGroup.findUnique({
+        where: { directUserIdA_directUserIdB: restoredDirectPair },
+      });
+      if (activeCanonicalGroup && activeCanonicalGroup.id !== group.id) {
+        return NextResponse.json({
+          error: 'A direct message for these participants is already active.',
+          code: 'DIRECT_MESSAGE_ALREADY_ACTIVE',
+          canonicalChatGroupId: activeCanonicalGroup.id,
+        }, { status: 409 });
+      }
+    }
+
     const restored = await prisma.chatGroup.update({
       where: { id },
       data: {
         archivedAt: null,
         archivedReason: null,
         archivedByUserId: null,
+        directUserIdA: restoredDirectPair?.directUserIdA ?? null,
+        directUserIdB: restoredDirectPair?.directUserIdB ?? null,
         updatedAt: new Date(),
       },
     });

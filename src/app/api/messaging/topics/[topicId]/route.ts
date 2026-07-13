@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import {
+  getRetainedDirectMessagePair,
   getMinorChatParticipantIds,
   hasBlockingChatRelationship,
   loadChatParticipants,
@@ -68,12 +69,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
     return NextResponse.json({ topicId, topic: null }, { status: 200 });
   }
 
+  const nextUserIds = existing
+    ? (userIds.length ? userIds : existing.userIds)
+    : userIds;
+  const retainedDirectPair = existing
+    ? getRetainedDirectMessagePair(existing, nextUserIds)
+    : null;
   const record = existing
     ? await prisma.chatGroup.update({
       where: { id: topicId },
       data: {
         name: name ?? existing.name,
-        userIds: userIds.length ? userIds : existing.userIds,
+        userIds: nextUserIds,
+        directUserIdA: retainedDirectPair?.directUserIdA ?? null,
+        directUserIdB: retainedDirectPair?.directUserIdB ?? null,
         updatedAt: now,
       },
     })

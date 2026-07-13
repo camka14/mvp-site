@@ -200,9 +200,44 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
   });
 
+  it('clears a direct pair when a subscription adds a third participant', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'chat_1',
+      userIds: ['user_1', 'user_2'],
+      hostId: 'user_1',
+      teamId: null,
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
+    });
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_3', dateOfBirth: new Date('1992-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+    prismaMock.chatGroup.update.mockResolvedValue({ id: 'chat_1' });
+
+    const response = await POST(postRequest({ userIds: ['user_3'] }), {
+      params: Promise.resolve({ topicId: 'chat_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.chatGroup.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userIds: ['user_1', 'user_2', 'user_3'],
+        directUserIdA: null,
+        directUserIdB: null,
+      }),
+    }));
+  });
+
   it('removes push token metadata when unsubscribing', async () => {
     prismaMock.chatGroup.findUnique.mockResolvedValue({
-      id: 'user_user_1', userIds: ['user_1', 'user_2'], hostId: 'user_1', teamId: null,
+      id: 'user_user_1',
+      userIds: ['user_1', 'user_2'],
+      hostId: 'user_1',
+      teamId: null,
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
     });
     prismaMock.chatGroup.update.mockResolvedValue({
       id: 'user_user_1',
@@ -227,6 +262,13 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
       pushToken: 'push_token_1',
       pushTarget: 'user_user_1',
     });
+    expect(prismaMock.chatGroup.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userIds: ['user_2'],
+        directUserIdA: null,
+        directUserIdB: null,
+      }),
+    }));
   });
 
   it('surfaces a push target cleanup failure instead of reporting an unsubscribe success', async () => {

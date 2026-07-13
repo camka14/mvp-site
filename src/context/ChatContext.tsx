@@ -11,6 +11,7 @@ import {
 } from '@/lib/chatService';
 import { useApp } from '@/app/providers';
 import { dedupeChatMessages } from '@/lib/chatMessages';
+import { upsertChatGroupById } from '@/context/chatGroupState';
 
 
 export interface ChatMessagePaginationState {
@@ -522,7 +523,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         try {
             const newGroup = await chatService.createChatGroup(name, [user.$id, ...userIds]);
-            setChatGroups(prev => [...prev, newGroup]);
+            setChatGroups((previous) => upsertChatGroupById(previous, newGroup));
         } catch (error) {
             console.error('Failed to create chat group:', error);
         }

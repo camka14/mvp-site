@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 const chatGroupFindManyMock = jest.fn();
 const chatGroupCreateMock = jest.fn();
+const chatGroupUpsertMock = jest.fn();
 const messagesGroupByMock = jest.fn();
 const messagesFindManyMock = jest.fn();
 const userDataFindManyMock = jest.fn();
@@ -19,6 +20,7 @@ jest.mock('@/lib/prisma', () => ({
     chatGroup: {
       findMany: (...args: any[]) => chatGroupFindManyMock(...args),
       create: (...args: any[]) => chatGroupCreateMock(...args),
+      upsert: (...args: any[]) => chatGroupUpsertMock(...args),
     },
     userData: {
       findMany: (...args: any[]) => userDataFindManyMock(...args),
@@ -176,35 +178,81 @@ describe('/api/chat/groups POST', () => {
     ));
   });
 
-  it('creates a chat group with normalized unique user ids', async () => {
+  it('atomically creates or returns the canonical direct chat for a sorted participant pair', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     userDataFindManyMock.mockResolvedValue([
       { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
       { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
     ]);
-    chatGroupCreateMock.mockResolvedValue({
-      id: 'chat_1',
-      name: null,
-      hostId: 'user_1',
-      userIds: ['user_1', 'user_2'],
+    chatGroupUpsertMock.mockResolvedValue({
+      id: 'existing_chat',
+      name: 'Existing direct chat',
+      hostId: 'user_2',
+      userIds: ['user_2', 'user_1'],
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
     });
 
     const response = await POST(createPostRequest({
       id: 'chat_1',
       hostId: ' user_1 ',
-      userIds: [' user_1 ', 'user_2', 'user_2'],
+      userIds: ['user_2', ' user_1 ', 'user_2'],
     }));
     const json = await response.json();
 
     expect(response.status).toBe(201);
     expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
-    expect(chatGroupCreateMock).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
+    expect(chatGroupUpsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        directUserIdA_directUserIdB: {
+          directUserIdA: 'user_1',
+          directUserIdB: 'user_2',
+        },
+      },
+      create: expect.objectContaining({
         hostId: 'user_1',
-        userIds: ['user_1', 'user_2'],
+        userIds: ['user_2', 'user_1'],
+        directUserIdA: 'user_1',
+        directUserIdB: 'user_2',
       }),
+      update: {
+        directUserIdA: 'user_1',
+        directUserIdB: 'user_2',
+      },
     }));
-    expect(json.$id).toBe('chat_1');
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
+    expect(json.$id).toBe('existing_chat');
+  });
+
+  it('creates a distinct ordinary group when more than two participants are supplied', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_3', dateOfBirth: new Date('1992-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+    chatGroupCreateMock.mockResolvedValue({
+      id: 'group_1',
+      name: 'Planning group',
+      hostId: 'user_1',
+      userIds: ['user_1', 'user_2', 'user_3'],
+    });
+
+    const response = await POST(createPostRequest({
+      id: 'group_1',
+      name: 'Planning group',
+      hostId: 'user_1',
+      userIds: ['user_1', 'user_2', 'user_3'],
+    }));
+
+    expect(response.status).toBe(201);
+    expect(chatGroupCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'group_1',
+        userIds: ['user_1', 'user_2', 'user_3'],
+      }),
+    });
+    expect(chatGroupUpsertMock).not.toHaveBeenCalled();
   });
 
   it('reserves deterministic team chat ids for roster synchronization', async () => {
@@ -219,6 +267,21 @@ describe('/api/chat/groups POST', () => {
 
     expect(response.status).toBe(403);
     expect(json.error).toContain('reserved');
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('reserves notification topic identifiers outside the direct-chat endpoint', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const response = await POST(createPostRequest({
+      id: 'event_event_1',
+      hostId: 'user_1',
+      userIds: ['user_1', 'user_2'],
+    }));
+
+    expect(response.status).toBe(403);
+    expect(userDataFindManyMock).not.toHaveBeenCalled();
+    expect(chatGroupUpsertMock).not.toHaveBeenCalled();
     expect(chatGroupCreateMock).not.toHaveBeenCalled();
   });
 

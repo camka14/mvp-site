@@ -6,6 +6,7 @@ import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/
 import { handleRouteError } from '@/server/http/routeErrors';
 import { archiveChatGroup } from '@/server/moderation';
 import {
+  getRetainedDirectMessagePair,
   getMinorChatParticipantIds,
   hasBlockingChatRelationship,
 } from '@/server/chatSafety';
@@ -25,6 +26,8 @@ const CHAT_GROUP_IMMUTABLE_FIELDS = new Set<string>([
   '$createdAt',
   'updatedAt',
   '$updatedAt',
+  'directUserIdA',
+  'directUserIdB',
 ]);
 
 const normalizeIds = (value: unknown): string[] => (
@@ -177,6 +180,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.hostId = normalizedUserIds.includes(existing.hostId)
         ? existing.hostId
         : normalizedUserIds[0] ?? existing.hostId;
+      const retainedDirectPair = getRetainedDirectMessagePair(existing, normalizedUserIds);
+      data.directUserIdA = retainedDirectPair?.directUserIdA ?? null;
+      data.directUserIdB = retainedDirectPair?.directUserIdB ?? null;
     }
 
     if (Array.isArray(data.userIds) && data.userIds.length < 2) {

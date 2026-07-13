@@ -115,6 +115,36 @@ describe('/api/messaging/topics POST', () => {
     expect(prismaMock.userData.findMany).not.toHaveBeenCalled();
     expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
   });
+
+  it('preserves a direct pair when the root topic alias keeps the same participants', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'chat_1',
+      name: 'Direct chat',
+      userIds: ['user_2', 'user_1'],
+      hostId: 'user_1',
+      teamId: null,
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
+    });
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+    prismaMock.chatGroup.update.mockResolvedValue({ id: 'chat_1' });
+
+    const response = await postTopic(postRequest({
+      topicId: 'chat_1',
+      userIds: ['user_1', 'user_2'],
+    }));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.chatGroup.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        directUserIdA: 'user_1',
+        directUserIdB: 'user_2',
+      }),
+    }));
+  });
 });
 
 describe('/api/messaging/topics/[topicId] POST', () => {
@@ -153,6 +183,39 @@ describe('/api/messaging/topics/[topicId] POST', () => {
     expect(response.status).toBe(403);
     expect(json.error).toContain('reserved');
     expect(prismaMock.chatGroup.create).not.toHaveBeenCalled();
+  });
+
+  it('clears a canonical direct pair when a topic update adds another participant', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'chat_1',
+      name: 'Direct chat',
+      userIds: ['user_1', 'user_2'],
+      hostId: 'user_1',
+      teamId: null,
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
+    });
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_3', dateOfBirth: new Date('1992-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+    prismaMock.chatGroup.update.mockResolvedValue({ id: 'chat_1' });
+
+    const response = await postTopicById(postRequest({
+      userIds: ['user_1', 'user_2', 'user_3'],
+    }), {
+      params: Promise.resolve({ topicId: 'chat_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.chatGroup.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userIds: ['user_1', 'user_2', 'user_3'],
+        directUserIdA: null,
+        directUserIdB: null,
+      }),
+    }));
   });
 });
 

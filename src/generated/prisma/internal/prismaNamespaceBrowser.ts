@@ -1081,6 +1081,8 @@ export const ChatGroupScalarFieldEnum = {
   updatedAt: 'updatedAt',
   name: 'name',
   teamId: 'teamId',
+  directUserIdA: 'directUserIdA',
+  directUserIdB: 'directUserIdB',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
   hostId: 'hostId',

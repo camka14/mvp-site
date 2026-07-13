@@ -30,6 +30,8 @@ export type ChatGroupMinAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   teamId: string | null
+  directUserIdA: string | null
+  directUserIdB: string | null
   hostId: string | null
   archivedAt: Date | null
   archivedReason: string | null
@@ -42,6 +44,8 @@ export type ChatGroupMaxAggregateOutputType = {
   updatedAt: Date | null
   name: string | null
   teamId: string | null
+  directUserIdA: string | null
+  directUserIdB: string | null
   hostId: string | null
   archivedAt: Date | null
   archivedReason: string | null
@@ -54,6 +58,8 @@ export type ChatGroupCountAggregateOutputType = {
   updatedAt: number
   name: number
   teamId: number
+  directUserIdA: number
+  directUserIdB: number
   userIds: number
   mutedUserIds: number
   hostId: number
@@ -70,6 +76,8 @@ export type ChatGroupMinAggregateInputType = {
   updatedAt?: true
   name?: true
   teamId?: true
+  directUserIdA?: true
+  directUserIdB?: true
   hostId?: true
   archivedAt?: true
   archivedReason?: true
@@ -82,6 +90,8 @@ export type ChatGroupMaxAggregateInputType = {
   updatedAt?: true
   name?: true
   teamId?: true
+  directUserIdA?: true
+  directUserIdB?: true
   hostId?: true
   archivedAt?: true
   archivedReason?: true
@@ -94,6 +104,8 @@ export type ChatGroupCountAggregateInputType = {
   updatedAt?: true
   name?: true
   teamId?: true
+  directUserIdA?: true
+  directUserIdB?: true
   userIds?: true
   mutedUserIds?: true
   hostId?: true
@@ -181,6 +193,8 @@ export type ChatGroupGroupByOutputType = {
   updatedAt: Date | null
   name: string | null
   teamId: string | null
+  directUserIdA: string | null
+  directUserIdB: string | null
   userIds: string[]
   mutedUserIds: string[]
   hostId: string
@@ -216,6 +230,8 @@ export type ChatGroupWhereInput = {
   updatedAt?: Prisma.DateTimeNullableFilter<"ChatGroup"> | Date | string | null
   name?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
   teamId?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
+  directUserIdA?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
+  directUserIdB?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
   userIds?: Prisma.StringNullableListFilter<"ChatGroup">
   mutedUserIds?: Prisma.StringNullableListFilter<"ChatGroup">
   hostId?: Prisma.StringFilter<"ChatGroup"> | string
@@ -230,6 +246,8 @@ export type ChatGroupOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrderInput | Prisma.SortOrder
   teamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  directUserIdA?: Prisma.SortOrderInput | Prisma.SortOrder
+  directUserIdB?: Prisma.SortOrderInput | Prisma.SortOrder
   userIds?: Prisma.SortOrder
   mutedUserIds?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
@@ -241,19 +259,22 @@ export type ChatGroupOrderByWithRelationInput = {
 export type ChatGroupWhereUniqueInput = Prisma.AtLeast<{
   id?: string
   teamId?: string
+  directUserIdA_directUserIdB?: Prisma.ChatGroupDirectUserIdADirectUserIdBCompoundUniqueInput
   AND?: Prisma.ChatGroupWhereInput | Prisma.ChatGroupWhereInput[]
   OR?: Prisma.ChatGroupWhereInput[]
   NOT?: Prisma.ChatGroupWhereInput | Prisma.ChatGroupWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"ChatGroup"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"ChatGroup"> | Date | string | null
   name?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
+  directUserIdA?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
+  directUserIdB?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
   userIds?: Prisma.StringNullableListFilter<"ChatGroup">
   mutedUserIds?: Prisma.StringNullableListFilter<"ChatGroup">
   hostId?: Prisma.StringFilter<"ChatGroup"> | string
   archivedAt?: Prisma.DateTimeNullableFilter<"ChatGroup"> | Date | string | null
   archivedReason?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
   archivedByUserId?: Prisma.StringNullableFilter<"ChatGroup"> | string | null
-}, "id" | "teamId">
+}, "id" | "teamId" | "directUserIdA_directUserIdB">
 
 export type ChatGroupOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -261,6 +282,8 @@ export type ChatGroupOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrderInput | Prisma.SortOrder
   teamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  directUserIdA?: Prisma.SortOrderInput | Prisma.SortOrder
+  directUserIdB?: Prisma.SortOrderInput | Prisma.SortOrder
   userIds?: Prisma.SortOrder
   mutedUserIds?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
@@ -281,6 +304,8 @@ export type ChatGroupScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"ChatGroup"> | Date | string | null
   name?: Prisma.StringNullableWithAggregatesFilter<"ChatGroup"> | string | null
   teamId?: Prisma.StringNullableWithAggregatesFilter<"ChatGroup"> | string | null
+  directUserIdA?: Prisma.StringNullableWithAggregatesFilter<"ChatGroup"> | string | null
+  directUserIdB?: Prisma.StringNullableWithAggregatesFilter<"ChatGroup"> | string | null
   userIds?: Prisma.StringNullableListFilter<"ChatGroup">
   mutedUserIds?: Prisma.StringNullableListFilter<"ChatGroup">
   hostId?: Prisma.StringWithAggregatesFilter<"ChatGroup"> | string
@@ -295,6 +320,8 @@ export type ChatGroupCreateInput = {
   updatedAt?: Date | string | null
   name?: string | null
   teamId?: string | null
+  directUserIdA?: string | null
+  directUserIdB?: string | null
   userIds?: Prisma.ChatGroupCreateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupCreatemutedUserIdsInput | string[]
   hostId: string
@@ -309,6 +336,8 @@ export type ChatGroupUncheckedCreateInput = {
   updatedAt?: Date | string | null
   name?: string | null
   teamId?: string | null
+  directUserIdA?: string | null
+  directUserIdB?: string | null
   userIds?: Prisma.ChatGroupCreateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupCreatemutedUserIdsInput | string[]
   hostId: string
@@ -323,6 +352,8 @@ export type ChatGroupUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdA?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdB?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   userIds?: Prisma.ChatGroupUpdateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupUpdatemutedUserIdsInput | string[]
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -337,6 +368,8 @@ export type ChatGroupUncheckedUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdA?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdB?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   userIds?: Prisma.ChatGroupUpdateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupUpdatemutedUserIdsInput | string[]
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -351,6 +384,8 @@ export type ChatGroupCreateManyInput = {
   updatedAt?: Date | string | null
   name?: string | null
   teamId?: string | null
+  directUserIdA?: string | null
+  directUserIdB?: string | null
   userIds?: Prisma.ChatGroupCreateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupCreatemutedUserIdsInput | string[]
   hostId: string
@@ -365,6 +400,8 @@ export type ChatGroupUpdateManyMutationInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdA?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdB?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   userIds?: Prisma.ChatGroupUpdateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupUpdatemutedUserIdsInput | string[]
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -379,6 +416,8 @@ export type ChatGroupUncheckedUpdateManyInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdA?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  directUserIdB?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   userIds?: Prisma.ChatGroupUpdateuserIdsInput | string[]
   mutedUserIds?: Prisma.ChatGroupUpdatemutedUserIdsInput | string[]
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
@@ -387,12 +426,19 @@ export type ChatGroupUncheckedUpdateManyInput = {
   archivedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
+export type ChatGroupDirectUserIdADirectUserIdBCompoundUniqueInput = {
+  directUserIdA: string
+  directUserIdB: string
+}
+
 export type ChatGroupCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   teamId?: Prisma.SortOrder
+  directUserIdA?: Prisma.SortOrder
+  directUserIdB?: Prisma.SortOrder
   userIds?: Prisma.SortOrder
   mutedUserIds?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
@@ -407,6 +453,8 @@ export type ChatGroupMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   teamId?: Prisma.SortOrder
+  directUserIdA?: Prisma.SortOrder
+  directUserIdB?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
   archivedAt?: Prisma.SortOrder
   archivedReason?: Prisma.SortOrder
@@ -419,6 +467,8 @@ export type ChatGroupMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
   teamId?: Prisma.SortOrder
+  directUserIdA?: Prisma.SortOrder
+  directUserIdB?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
   archivedAt?: Prisma.SortOrder
   archivedReason?: Prisma.SortOrder
@@ -451,6 +501,8 @@ export type ChatGroupSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   updatedAt?: boolean
   name?: boolean
   teamId?: boolean
+  directUserIdA?: boolean
+  directUserIdB?: boolean
   userIds?: boolean
   mutedUserIds?: boolean
   hostId?: boolean
@@ -465,6 +517,8 @@ export type ChatGroupSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   updatedAt?: boolean
   name?: boolean
   teamId?: boolean
+  directUserIdA?: boolean
+  directUserIdB?: boolean
   userIds?: boolean
   mutedUserIds?: boolean
   hostId?: boolean
@@ -479,6 +533,8 @@ export type ChatGroupSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   updatedAt?: boolean
   name?: boolean
   teamId?: boolean
+  directUserIdA?: boolean
+  directUserIdB?: boolean
   userIds?: boolean
   mutedUserIds?: boolean
   hostId?: boolean
@@ -493,6 +549,8 @@ export type ChatGroupSelectScalar = {
   updatedAt?: boolean
   name?: boolean
   teamId?: boolean
+  directUserIdA?: boolean
+  directUserIdB?: boolean
   userIds?: boolean
   mutedUserIds?: boolean
   hostId?: boolean
@@ -501,7 +559,7 @@ export type ChatGroupSelectScalar = {
   archivedByUserId?: boolean
 }
 
-export type ChatGroupOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "teamId" | "userIds" | "mutedUserIds" | "hostId" | "archivedAt" | "archivedReason" | "archivedByUserId", ExtArgs["result"]["chatGroup"]>
+export type ChatGroupOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "teamId" | "directUserIdA" | "directUserIdB" | "userIds" | "mutedUserIds" | "hostId" | "archivedAt" | "archivedReason" | "archivedByUserId", ExtArgs["result"]["chatGroup"]>
 
 export type $ChatGroupPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "ChatGroup"
@@ -512,6 +570,8 @@ export type $ChatGroupPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     updatedAt: Date | null
     name: string | null
     teamId: string | null
+    directUserIdA: string | null
+    directUserIdB: string | null
     userIds: string[]
     mutedUserIds: string[]
     hostId: string
@@ -946,6 +1006,8 @@ export interface ChatGroupFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"ChatGroup", 'DateTime'>
   readonly name: Prisma.FieldRef<"ChatGroup", 'String'>
   readonly teamId: Prisma.FieldRef<"ChatGroup", 'String'>
+  readonly directUserIdA: Prisma.FieldRef<"ChatGroup", 'String'>
+  readonly directUserIdB: Prisma.FieldRef<"ChatGroup", 'String'>
   readonly userIds: Prisma.FieldRef<"ChatGroup", 'String[]'>
   readonly mutedUserIds: Prisma.FieldRef<"ChatGroup", 'String[]'>
   readonly hostId: Prisma.FieldRef<"ChatGroup", 'String'>

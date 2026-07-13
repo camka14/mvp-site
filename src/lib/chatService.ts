@@ -308,33 +308,9 @@ class ChatService {
 
     async findOrCreateDirectMessage(currentUserId: string, otherUserId: string): Promise<ChatGroup> {
         try {
-            // First, try to find existing DM chat
-            const params = new URLSearchParams();
-            params.set('userId', currentUserId);
-            const response = await apiRequest<{ groups?: any[] }>(`/api/chat/groups?${params.toString()}`);
-
-            const existingDM = (response.groups ?? []).find((row: any) =>
-                Array.isArray(row.userIds) &&
-                row.userIds.length === 2 &&
-                row.userIds.includes(currentUserId) &&
-                row.userIds.includes(otherUserId)
-            );
-
-            if (existingDM) {
-                return {
-                    $id: existingDM.$id,
-                    name: existingDM.name,
-                    userIds: existingDM.userIds,
-                    hostId: existingDM.hostId,
-                    archivedAt: existingDM.archivedAt ?? null,
-                    archivedReason: existingDM.archivedReason ?? null,
-                    archivedByUserId: existingDM.archivedByUserId ?? null,
-                    displayName: existingDM.displayName,
-                    imageUrl: existingDM.imageUrl,
-                };
-            }
-
-            // Create new DM if not found
+            // The server atomically creates or returns the canonical row for
+            // this participant pair. A client-side list check is inherently
+            // stale when another device is opening the same conversation.
             const dmName = `DM_${currentUserId}_${otherUserId}`;
             return await this.createChatGroup(dmName, [currentUserId, otherUserId]);
         } catch (error) {
