@@ -491,7 +491,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/billing/bills/[id]/split/route.ts:19-127` requires only a session, then accepts arbitrary bill and player IDs. It does not require bill ownership, team/organization management, `allowSplit`, membership, or an idempotency key before creating split liabilities.
 - Impact: any account with known identifiers can repeatedly create financial debt records for other users.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` requires a team bill that explicitly opts into splitting, verified bill-payment management authority, and recipients in the current team roster. `e78d0f95` serializes the split under a bill lock, blocks existing child bills and in-flight parent payments, and conditionally voids parent installments before creating any child debt. The focused suite passed all eight cases, including unrelated caller, disabled split, outsider recipient, completed split, and intent-race denial.
 
 ### SEC-029 — Signed-document rows can be forged without scope authority
 
@@ -2189,3 +2189,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled SEC-020 in the audited branch. Verified generic session validation rejects signed scoped tokens and enforces issuer, audience, type, expiry, and strict claims; all nine focused auth/realtime token tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-023 in the audited branch. Verified roster-authoritative team chat membership, stale-attacker denial for reads/writes/subscriptions, and self-scoped push cleanup; all 29 focused chat tests passed. Production deployment remains pending with the rest of the audited branch.
 - 2026-07-12: Reconciled SEC-027 in the audited branch. Verified topic mutation/deletion, team-topic reservation, and push-relay sender/recipient/data controls; all 18 focused topic-message tests passed, including two new direct-delete regressions. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-028 in the audited branch. Verified bill-split ownership, opt-in, roster, duplicate, active-payment, and race protections; all eight focused split tests passed, including two new opt-in/outsider-recipient regressions. Production deployment remains pending with the rest of the audited branch.
