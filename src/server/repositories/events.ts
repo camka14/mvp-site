@@ -97,6 +97,27 @@ export type EventFieldScheduleConflict = {
   end: Date;
 };
 
+/**
+ * An opaque occupied interval for a field.  Unlike EventFieldScheduleConflict,
+ * this deliberately contains no event, match, booking, or participant data so
+ * it can be used by rental discovery responses without exposing schedule
+ * details.
+ */
+export type FieldSchedulingConflict = {
+  fieldId: string;
+  start: Date;
+  end: Date;
+};
+
+export type ListFieldSchedulingConflictsInput = {
+  client?: PrismaLike;
+  organizationId?: string | null;
+  fieldIds: string[];
+  windowStart: Date;
+  windowEnd: Date;
+  excludeEventId?: string | null;
+};
+
 export class EventFieldConflictError extends Error {
   readonly conflicts: EventFieldScheduleConflict[];
 
@@ -2218,40 +2239,42 @@ const appendBlockingEventsFromSlot = (params: {
   }
 };
 
-const attachFieldSchedulingConflicts = async (params: {
-  client: PrismaLike;
-  eventId: string;
-  organizationId?: string | null;
-  fields: Record<string, PlayingField>;
-  windowStart: Date;
-  windowEnd: Date;
-}): Promise<void> => {
-  const fieldIds = Object.keys(params.fields);
-  if (!fieldIds.length) {
-    return;
-  }
-  if (params.windowEnd.getTime() <= params.windowStart.getTime()) {
-    return;
+type FieldSchedulingConflictDetail = FieldSchedulingConflict & {
+  blockId: string;
+  parentId: string | null;
+};
+
+/**
+ * The scheduler and rental discovery both need the same conflict sources.
+ * Keep the source IDs private here; callers that need a public-safe result use
+ * listFieldSchedulingConflicts below.
+ */
+const listFieldSchedulingConflictDetails = async (
+  params: ListFieldSchedulingConflictsInput,
+): Promise<FieldSchedulingConflictDetail[]> => {
+  const client = params.client ?? prisma;
+  const fieldIds = normalizeFieldIds(params.fieldIds);
+  if (!fieldIds.length || params.windowEnd.getTime() <= params.windowStart.getTime()) {
+    return [];
   }
 
-  clearManagedFieldBlockingEvents(params.fields);
-
-  const shouldLookupCurrentEvent = !normalizeEntityId(params.organizationId);
+  const fields = buildConflictFieldMap(fieldIds);
+  const excludeEventId = normalizeEntityId(params.excludeEventId);
+  const shouldLookupCurrentEvent = !normalizeEntityId(params.organizationId) && Boolean(excludeEventId);
   const currentEventRow = shouldLookupCurrentEvent
-    ? await params.client.events.findUnique({
-      where: { id: params.eventId },
-      select: {
-        organizationId: true,
-      },
+    ? await client.events.findUnique({
+      where: { id: excludeEventId! },
+      select: { organizationId: true },
     })
     : null;
-  const scopedOrganizationId = normalizeEntityId(params.organizationId) ?? normalizeEntityId(currentEventRow?.organizationId);
+  const scopedOrganizationId = normalizeEntityId(params.organizationId)
+    ?? normalizeEntityId(currentEventRow?.organizationId);
 
   const [externalMatchRowsRaw, externalEventRowsRaw] = await Promise.all([
-    params.client.matches.findMany({
+    client.matches.findMany({
       where: {
         fieldId: { in: fieldIds },
-        eventId: { not: params.eventId },
+        ...(excludeEventId ? { eventId: { not: excludeEventId } } : {}),
         start: { not: null, lt: params.windowEnd },
         end: { not: null, gt: params.windowStart },
       } as any,
@@ -2263,9 +2286,9 @@ const attachFieldSchedulingConflicts = async (params: {
         end: true,
       },
     }),
-    params.client.events.findMany({
+    client.events.findMany({
       where: {
-        id: { not: params.eventId },
+        ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
         fieldIds: { hasSome: fieldIds },
         NOT: { state: 'TEMPLATE' },
         start: { lt: params.windowEnd },
@@ -2294,7 +2317,7 @@ const attachFieldSchedulingConflicts = async (params: {
       ),
     );
     if (matchEventIds.length) {
-      const allowedEventRows = await params.client.events.findMany({
+      const allowedEventRows = await client.events.findMany({
         where: {
           id: { in: matchEventIds },
           organizationId: scopedOrganizationId,
@@ -2313,7 +2336,7 @@ const attachFieldSchedulingConflicts = async (params: {
 
   for (const row of externalMatchRows) {
     const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
-    const field = fieldId ? params.fields[fieldId] : undefined;
+    const field = fieldId ? fields[fieldId] : undefined;
     if (!field) {
       continue;
     }
@@ -2330,7 +2353,7 @@ const attachFieldSchedulingConflicts = async (params: {
         participants: [],
         field,
         parentId: row.eventId ?? '',
-      })
+      }),
     );
   }
 
@@ -2354,10 +2377,8 @@ const attachFieldSchedulingConflicts = async (params: {
     ),
   );
   const externalEventSlotRows = externalEventSlotIds.length > 0
-    ? await params.client.timeSlots.findMany({
-      where: {
-        id: { in: externalEventSlotIds },
-      },
+    ? await client.timeSlots.findMany({
+      where: { id: { in: externalEventSlotIds } },
     })
     : [];
   const externalEventSlotById = new Map(externalEventSlotRows.map((slot: any) => [slot.id, slot]));
@@ -2369,7 +2390,7 @@ const attachFieldSchedulingConflicts = async (params: {
       continue;
     }
     const eventFieldIds = normalizeFieldIds(row.fieldIds);
-    const relevantFieldIds = eventFieldIds.filter((fieldId) => Boolean(params.fields[fieldId]));
+    const relevantFieldIds = eventFieldIds.filter((fieldId) => Boolean(fields[fieldId]));
     if (!relevantFieldIds.length) {
       continue;
     }
@@ -2384,7 +2405,7 @@ const attachFieldSchedulingConflicts = async (params: {
         continue;
       }
       for (const fieldId of relevantFieldIds) {
-        const field = params.fields[fieldId];
+        const field = fields[fieldId];
         if (!field) {
           continue;
         }
@@ -2403,9 +2424,9 @@ const attachFieldSchedulingConflicts = async (params: {
       .map((slotId) => externalEventSlotById.get(slotId))
       .filter((slot): slot is any => Boolean(slot));
     for (const slot of timeSlots) {
-      const slotFieldIds = normalizeBlockingSlotFieldIds(slot).filter((fieldId) => Boolean(params.fields[fieldId]));
+      const slotFieldIds = normalizeBlockingSlotFieldIds(slot).filter((fieldId) => Boolean(fields[fieldId]));
       for (const fieldId of slotFieldIds) {
-        const field = params.fields[fieldId];
+        const field = fields[fieldId];
         if (!field) {
           continue;
         }
@@ -2424,18 +2445,18 @@ const attachFieldSchedulingConflicts = async (params: {
     }
   }
 
-  if (typeof params.client.rentalBookingItems?.findMany === 'function') {
-    const rentalBookingRows = await params.client.rentalBookingItems.findMany({
+  if (typeof client.rentalBookingItems?.findMany === 'function') {
+    const rentalBookingRows = await client.rentalBookingItems.findMany({
       where: {
         fieldId: { in: fieldIds },
         status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] },
         start: { lt: params.windowEnd },
         end: { gt: params.windowStart },
-        ...(params.eventId
+        ...(excludeEventId
           ? {
               OR: [
                 { eventId: null },
-                { eventId: { not: params.eventId } },
+                { eventId: { not: excludeEventId } },
               ],
             }
           : {}),
@@ -2451,7 +2472,7 @@ const attachFieldSchedulingConflicts = async (params: {
 
     for (const row of rentalBookingRows) {
       const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
-      const field = fieldId ? params.fields[fieldId] : undefined;
+      const field = fieldId ? fields[fieldId] : undefined;
       if (!field) {
         continue;
       }
@@ -2465,9 +2486,74 @@ const attachFieldSchedulingConflicts = async (params: {
         id: `rental-booking:${row.bookingId}:${row.id}`,
         start,
         end,
-        parentId: row.bookingId ?? null,
+        parentId: row.bookingId ?? '',
       });
     }
+  }
+
+  return collectFieldScheduleConflicts({
+    fields,
+    start: params.windowStart,
+    end: params.windowEnd,
+  }).map((conflict) => ({
+    fieldId: conflict.fieldId,
+    blockId: conflict.blockId,
+    parentId: conflict.parentId,
+    start: conflict.start,
+    end: conflict.end,
+  }));
+};
+
+/**
+ * Read-only, public-safe scheduling conflict view. It uses exactly the same
+ * event, match, recurring-slot, and active-rental-booking checks as event
+ * scheduling validation but strips source metadata from the result.
+ */
+export const listFieldSchedulingConflicts = async (
+  params: ListFieldSchedulingConflictsInput,
+): Promise<FieldSchedulingConflict[]> => {
+  const conflicts = await listFieldSchedulingConflictDetails(params);
+  return conflicts
+    .map(({ fieldId, start, end }) => ({ fieldId, start, end }))
+    .sort((left, right) => (
+      left.fieldId.localeCompare(right.fieldId)
+      || left.start.getTime() - right.start.getTime()
+      || left.end.getTime() - right.end.getTime()
+    ));
+};
+
+const attachFieldSchedulingConflicts = async (params: {
+  client: PrismaLike;
+  eventId: string;
+  organizationId?: string | null;
+  fields: Record<string, PlayingField>;
+  windowStart: Date;
+  windowEnd: Date;
+}): Promise<void> => {
+  if (!Object.keys(params.fields).length || params.windowEnd.getTime() <= params.windowStart.getTime()) {
+    return;
+  }
+  clearManagedFieldBlockingEvents(params.fields);
+  const conflicts = await listFieldSchedulingConflictDetails({
+    client: params.client,
+    organizationId: params.organizationId,
+    fieldIds: Object.keys(params.fields),
+    windowStart: params.windowStart,
+    windowEnd: params.windowEnd,
+    excludeEventId: params.eventId,
+  });
+  for (const conflict of conflicts) {
+    const field = params.fields[conflict.fieldId];
+    if (!field) {
+      continue;
+    }
+    appendBlockingEvent({
+      field,
+      id: conflict.blockId,
+      start: conflict.start,
+      end: conflict.end,
+      parentId: conflict.parentId ?? '',
+    });
   }
 };
 

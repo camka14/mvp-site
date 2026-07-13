@@ -832,7 +832,7 @@ export const listCanonicalTeamsForUser = async (params: {
       where: Object.keys(where).length ? where : undefined,
       take: params.limit ?? 100,
       skip: params.offset ?? 0,
-      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
     });
     return Promise.all((rows as CanonicalTeamRow[]).map((row) => loadCanonicalTeamById(row.id, client))).then((items) => items.filter(Boolean));
   }

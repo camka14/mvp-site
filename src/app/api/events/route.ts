@@ -842,6 +842,13 @@ export async function GET(req: NextRequest) {
   const eventType = params.get('eventType') || undefined;
   const state = params.get('state') || undefined;
   const limit = Number(params.get('limit') || '100');
+  const offset = Number(params.get('offset') || '0');
+  const normalizedLimit = Number.isFinite(limit)
+    ? Math.min(Math.max(Math.trunc(limit), 1), 500)
+    : 100;
+  const normalizedOffset = Number.isFinite(offset)
+    ? Math.max(Math.trunc(offset), 0)
+    : 0;
   let templateSession: Awaited<ReturnType<typeof requireSession>> | null = null;
 
   const normalizedStateRaw = typeof state === 'string' ? state.toUpperCase() : undefined;
@@ -922,11 +929,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const events = await prisma.events.findMany({
+  const fetchedEvents = await prisma.events.findMany({
     where,
-    take: Number.isFinite(limit) ? limit : 100,
-    orderBy: { start: 'asc' },
+    skip: normalizedOffset,
+    take: normalizedLimit + 1,
+    orderBy: [{ start: 'asc' }, { id: 'asc' }],
   });
+  const events = fetchedEvents.slice(0, normalizedLimit);
 
   const eventsWithAttendees = await withEventAttendeeCounts(events).catch((error) => {
     console.error('Failed to enrich attendee counts for events list', error);
@@ -986,7 +995,15 @@ export async function GET(req: NextRequest) {
     });
   });
 
-  return NextResponse.json({ events: normalized }, { status: 200 });
+  return NextResponse.json({
+    events: normalized,
+    pagination: {
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      nextOffset: normalizedOffset + events.length,
+      hasMore: fetchedEvents.length > normalizedLimit,
+    },
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

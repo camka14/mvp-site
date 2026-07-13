@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (40)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-016`, `SEC-019`, `SEC-021`, `SEC-022`, `SEC-024`, `SEC-031`, `SEC-032`, `SEC-033`, `SEC-034`, `SEC-035`, `SEC-036`, `SEC-039`, `SEC-041`, `SEC-042`, `OPS-004`, `DB-002`, `DB-003`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010`, `APP-044`, `APP-065`, `APP-133`, `APP-134`, `APP-135` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `2401d0ee`, `eaca7349`, `bb1b1177`, `531ab0b5`, `68abaf75`, `7ee85fd8`, `5b06fffe`, `a00ff409`, `a2ba3569`, `de36f944`, `ca620ba4`, `f64bf8e2`, `2fd43b7b`, `2073720f`, `3ce1ffac`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Focused web suites passed 58 security/data tests plus 26 guest-entry tests and `npx tsc --noEmit`; focused Android suites passed 4 invitation-invalidation, 12 logout/retry, 9 Room migration/DAO tests, 8 payment-failure tests, 41 event-creation tests, and the startup-laziness regression. All 37 tracked Room schema snapshots are versioned; the on-device Room suite verified all supported historical sources through the current schema. Browser validation reached the guest onboarding choices without a redirect loop; the installed Android app launched without a migration failure or startup ANR. |
-| **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
-| **Remaining / not yet reconciled (152)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Completed — high (72)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-016`, `SEC-019`, `SEC-021`, `SEC-022`, `SEC-024`, `SEC-031`, `SEC-032`, `SEC-033`, `SEC-034`, `SEC-035`, `SEC-036`, `SEC-039`, `SEC-041`, `SEC-042`, `OPS-004`, `DB-002`, `DB-003`, `DATA-014`, `DATA-015`, `DATA-016`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010`, `APP-002`, `APP-004`, `APP-014`, `APP-017`, `APP-027`, `APP-028`, `APP-029`, `APP-044`, `APP-055`, `APP-061`, `APP-063`, `APP-065`, `APP-074`, `APP-080`, `APP-081`, `APP-083`, `APP-084`, `APP-089`, `APP-090`, `APP-098`, `APP-101`, `APP-103`, `APP-105`, `APP-116`, `APP-117`, `APP-121`, `APP-124`, `APP-130`, `APP-131`, `APP-132`, `APP-133`, `APP-134`, `APP-135`, `UI-001` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `2401d0ee`, `eaca7349`, `bb1b1177`, `531ab0b5`, `68abaf75`, `7ee85fd8`, `5b06fffe`, `a00ff409`, `a2ba3569`, `de36f944`, `86611865`, `28550b5c`, `ca620ba4`, `f64bf8e2`, `2fd43b7b`, `2073720f`, `c83b68c8`, `6786ca86`, `46c9c9c1`, `a095e272`, `d2b7cea8`, `38dc5780`, `5a47758f`, `bc4e2bf8`, `6cc4f89a`, `3cca9a9d`, `3ce1ffac`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`, `f2733976`, `04fbfc86`, `4f145d00`, `86f32971`, `a5872288`, `a8139fdf`, `ef180b3e`, `7ea8e5da`, `f0b5d826`, `0c4966c7`, `d0b50ac0`, `0c18e287`, `7a69e204`, `ac03fcb9`, `2fa82c2f`, `552427ff`, `21f5d85f`, `9aa056d1`, `8280ffd0`, `728e63c3`, and `a9267179`. Focused web suites passed 58 DOB route/validation tests, along with 58 security/data and 26 guest-entry tests and `npx tsc --noEmit`; focused Android suites passed 4 invitation-invalidation, 12 logout/retry, 9 Room migration/DAO tests, 8 payment-failure tests, 4 player-action tests, 2 controlled-search tests, 41 event-creation tests, the 56-test match-content suite, the 5-test rental-resource suite, the 6-test chat terms/send/lifecycle suite, the 4-test chat-list feedback suite, the 5-test match-team label suite, the 1-test roster-dialog suite, the 4-test DOB picker-policy suite, the 19-test Wear data/action/storage/reconciliation suite, the 3-test team-selection suite, the 1-test team-error-feedback UI suite, the 3-test money-display suite, the 10-test participant-management helper suite, the startup-laziness regression, the 2-test multi-day rental-slot suite, the 9-test profile-draft/password-validation suite, the 6-test rental-availability suite, and the focused 2-test request-generation, review-save suite and the 5-test image-coordinator, 7-test picker-feedback, and 42-test create-component suites. All 37 tracked Room schema snapshots are versioned; the on-device Room suite verified all supported historical sources through the current schema. Browser validation reached the guest onboarding choices without a redirect loop; the installed Android app launched without a migration failure or startup ANR. The focused DATA-016 ID-only-navigation batch passed 73 Android tests with zero failures/errors; its debug APK reached the login UI and a clean force-stop/relaunch without an app crash, while authenticated routes were unavailable because the supplied account was rejected by the backend. |
+| **Completed — other severity (15)** | `DATA-013`, `APP-003`, `APP-008`, `APP-015`, `APP-085`, `APP-086`, `APP-087`, `APP-093`, `APP-094`, `APP-104`, `APP-106`, `APP-107`, `APP-118`, `APP-125`, `APP-126` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. `af6d73f2` separates chat success/warning feedback from actionable errors, `24c34e3b` preserves the reader's chat position for unseen incoming messages, `1769abdc` renders explicit chat loading/unavailable states rather than a blank interactive composer, and `b77f6da1` aligns client-side Profile Details username validation with the server's trim/nonblank contract. `95a98de8` retries one transient match check-in read without duplicate startup traffic. `24faca6a` makes event-name validation authoritative and `752082f3` preserves custom match-incident definitions, both with focused regressions. `4c6b7dfc` caps Discover filters to their real positive viewport space and applies date-interval overlap to weekly events; the focused 3-test height and 10-test event-filter suites passed. `59b6d7a0` replaces Profile Details' legacy picker callbacks with a result-state flow that distinguishes user cancellation, empty selection, provider failure, conversion failure, and upload failure; each non-cancel failure supplies a Try again action. The focused 6-test picker-feedback and 9-test Profile Details draft suites passed. `cd528842` removes the obsolete subscription fallback so supported-endpoint 404s and transport failures stay visible while a true empty 200 remains valid; its focused three-case HTTP suite passed. `2928a31c` returns a successful empty field response as the authoritative list instead of resurrecting cached facilities; its focused HTTP regression passed. `7b6ef71f` cancels superseded connection requests and accepts a search or refresh result only when its request identity still matches the current state; the focused 4-test tracker suite passed. `ac3862e3` holds creation-form validation feedback until interaction or an invalid submit attempt; its focused three-test Compose UI suite passed. |
+| **Remaining / not yet reconciled (106)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **75 completed, 152 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **121 completed, 106 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -340,25 +340,25 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `withPreservedCachedDivisionState` restores cached `divisions`/`divisionDetails` whenever a fresh response omits a cached division (`core/repository-impl/src/commonMain/kotlin/com/razumly/mvp/core/data/repositories/EventRepository.kt:1152-1186`) and is applied to detail, mutation, list, and search responses. `:1189-1196` similarly replaces remote participant arrays with cached arrays.
+- Evidence: `c3be4fc1` removes the cache-overlay path from authoritative full event responses. `withCachedDivisionStateForPartialParticipantSnapshot` remains only for the explicitly narrow `/participants` response, which cannot represent full division configuration.
 - Impact: removed divisions, participants, pricing, or schedule configuration can remain indefinitely on mobile; Room becomes a conflicting authority instead of a convergent cache.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused `EventRepositoryHttpTest.getEvent_replaces_cached_divisions_and_participant_roster_with_authoritative_response` regression passed, proving authoritative responses replace stale cached divisions and participant rosters.
 
 ### DATA-002 — Generic refresh deletes Room rows but returns stale pre-delete objects
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `core/repository-api/src/commonMain/kotlin/com/razumly/mvp/core/data/repositories/IMVPRepository.kt:18-38` deletes local IDs absent from a remote response, saves remote rows, then returns raw remote data—or the captured pre-delete `localData` when remote is empty. Fields use this at `FieldRepository.kt:85-96`; the pattern also reaches users/chat.
+- Evidence: `99d84287` rewrites `multiResponse` so only explicit authoritative-ID responses can delete missing Room rows, upserts fresh remote values, and returns the converged Room state after each mutation rather than raw remote or pre-delete snapshots. Exact field/user reads provide authoritative IDs; partial, paged, and filtered reads do not delete unrelated cache entries.
 - Impact: callers render deleted objects once after Room has removed them, and partial/truncated responses can cause destructive cache deletion. The immediate return path also bypasses Room as local source of truth.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused three-test `IMVPRepositoryTest` suite passed the converged snapshot, authoritative-empty deletion, and non-authoritative-no-delete cases.
 
 ### DATA-003 — Collection APIs lack shared ID chunking and can truncate/delete records
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: users correctly chunk at 100 (`UserRepository.kt:812-825`), but organizations send all IDs with `limit=100` (`BillingRepository.kt:2097-2108`), teams use one request with `limit=200` (`TeamRepository.kt:1190-1195`), events/fields/time slots/products are also unchunked, and missing event results are later deleted (`EventRepository.kt:1233-1239,1867-1881`).
+- Evidence: `4b271007` adds a normalized, deduplicated, order-preserving 100-ID chunk helper and applies it to products, organizations, events, fields, time slots, teams, users, and match event/field filters. Per-chunk limits match the requested chunk size, and DATA-002 only deletes exact requested IDs after the complete batch aggregate.
 - Impact: URL-size failures and server limits silently omit entities; omission can then be interpreted as authoritative deletion.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Three core helper cases and five focused 201-ID repository integration cases passed, covering products/organizations, events, fields/time slots, teams, and event-by-field match filters.
 
 ### DATA-004 — Schema drift is treated as successful mutation by dropping unknown fields
 
@@ -595,9 +595,9 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: waiver/signature URLs supplied through API-backed prompt state are passed directly to `PlatformWebView` and the external-browser fallback (`EmbeddedWebModal.kt:39-50,121-124`). The WebView enables JavaScript, automatic/multiple windows, third-party cookies, compatibility mixed content, and dispatches every non-HTTP(S) navigation through unrestricted `ACTION_VIEW` (`PlatformWebView.android.kt:27-58,96-140,163-177`). The generic `UrlHandler` also launches any non-HTTP(S) scheme, and remote app-update URLs flow directly into it (`UrlHandler.android.kt:10-30`; `AppUpdateUrlOpener.android.kt:5-6`).
+- Evidence: `caab4a9c` centralizes external/navigation decisions in `TrustedUrlPolicy`. It permits ordinary unambiguous HTTPS, binds signing to `app.boldsign.com` signing routes, allows callback schemes only for explicit directions, and validates update URLs against the exact Play/App Store listing. `UrlHandler`, `PlatformWebView`, and update prompting all use the policy; WebView additionally disables popups/multi-window and mixed content, cancels TLS errors, and blocks third-party cookies.
 - Impact: a compromised or attacker-controlled document URL can navigate inside the trusted app surface, invoke arbitrary registered app schemes, or expose users to credential/phishing content with no origin boundary. Only known signing/document origins and explicitly required callback schemes should be accepted.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused `TrustedUrlPolicyTest` suite passed all four cases: normal HTTPS acceptance, dangerous-scheme rejection, signing-host enforcement, and update-store validation.
 
 ### SEC-040 — Registration drafts retain user answers across logout without a bounded lifetime
 
@@ -651,7 +651,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: current Android v1.6.14 signup's date-only picker allowed selecting `2026-07-11` on `2026-07-10`, and the UI retained that future value. The Add Child picker independently exposed the same future date as clickable. UI-tree evidence is in `android-current-dob.xml`, `android-current-future-dob.xml`, and `android-current-child-dob.xml` under the audit temp directory.
 - Code evidence: signup/profile/child DOB callers pass `canSelectPast=true`, whose Android implementation returns `true` for every date (`PlatformDatePicker.android.kt:141-160`). Web registration only parses the date and performs no past/today bound (`src/app/api/auth/register/route.ts:267-269,328-371`).
 - Impact: impossible future DOBs can become canonical profile data, corrupt age/minor policies, and undermine age verification.
-- Fix status: **not changed; reporting only**.
+- Fix status: **reconciled from current source; deployment status follows the existing mobile/web commits**. Mobile `ac03fcb9` disables future calendar dates for signup, profile completion, and child DOB pickers on Android and iOS. Web `2fa82c2f` rejects future DOB values before registration, user/child mutations, and public guest-registration writes. The current focused Android policy suites passed 4 tests, and the current focused web suites passed 58 tests with 0 failures.
 
 ### TEST-001 — CI coverage explicitly excludes every API route and enforces no threshold
 
@@ -799,7 +799,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `WearMatchOperationStore` implements sequence allocation, operation upsert/status changes, match caching, and schedule caching as independent read/modify/`SharedPreferences.apply()` cycles with no mutex, transaction, or single writer. `WearMatchRepository.patchMatch` and `incrementScore` launch a sync coroutine for every edit, `WearMatchNetworkSync` can drain concurrently, and `WearMatchOperationSyncService` imports phone changes from another service instance. JSON decode failures silently become an empty operation list/cache.
 - Impact: concurrent scoring, network callbacks, and phone-sync messages can allocate duplicate sequences, lose operations/status updates, overwrite newer cached matches, or silently discard the offline queue after one malformed preference value.
 - Source-of-truth relevance: a match has multiple racing serialized snapshots rather than one atomic local operation log.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-13**. `8280ffd0` replaces independent read/modify/`apply()` cycles with a process-wide serialized persistence boundary. Each queue or cache mutation reads one snapshot and commits all persisted keys in one editor transaction, and malformed JSON now remains observable rather than being silently reset to an empty queue/cache. The app, network sync, and phone-sync service all use the manifest's default process. `WearMatchOperationStoreTest` drives three store instances through 24 concurrent queue/cache writes and asserts unique sequences plus retained operations and cache entries; it also proves a corrupt queue is not discarded. `:wearApp:testDebugUnitTest` passed all 16 tests.
 
 ### DATA-015 — Phone-imported Wear operations permanently override later server state
 
@@ -808,7 +808,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `WearMatchRepository.importPhoneOperation` stores phone messages with status `IMPORTED` (`WearMatchRepository.kt:581-604`). `localOverlayOperations` explicitly includes `IMPORTED` (`WearMatchOperationStore.kt:108-121`), and every remote refresh reapplies all such overlays (`WearMatchRepository.kt:554-562,655-667`). `pendingOperations` excludes imported entries, so no sync/ack path ever removes them; only full logout clears the store.
 - Impact: a once-imported phone edit can indefinitely overwrite newer authoritative server match state on every watch refresh, while the retained operation list grows for the lifetime of the signed-in session.
 - Source-of-truth relevance: acknowledged server state never regains authority over the permanent phone overlay.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-13**. `728e63c3` treats an imported phone operation as a short-lived optimistic bridge: a successful authoritative schedule refresh discards imported overlays before composing the remote response, and an authoritative per-match mutation response discards imported overlays only for that match. The refreshed schedule is also copied into the per-match cache, and new phone imports now prefer that authoritative schedule over any older match cache. The three-case `WearScheduleReconciliationTest` proves server state wins in both response paths while local pending Wear operations remain overlaid; the full `:wearApp:testDebugUnitTest` suite passed 19 tests.
 
 ### DATA-016 — Mobile navigation serializes mutable domain snapshots instead of stable IDs
 
@@ -817,7 +817,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: Decompose navigation configuration stores complete `Event`, `MatchWithRelations`, `UserData`, and `ChatGroupWithRelations` objects, and the teams route can carry another full `Event` (`AppConfig.kt:27-89`). `INavigationHandler` exposes the same object-shaped contract rather than ID-shaped destinations. These models are also independently refreshed and persisted by repositories/Room.
 - Impact: navigation state and process restoration become another mutable source of truth. A destination can render stale event, match, user, chat, or team data after the authoritative Room/server row changes, while large relation graphs inflate serialized back-stack state.
 - Suggested direction: keep stable IDs and immutable presentation arguments in navigation state, then hydrate current domain state from the owning repository.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-13**. `a9267179` replaces mutable Event, Match, User, and Chat navigation snapshots with stable IDs and primitive presentation arguments; `RootComponent`, Koin, call sites, and navigation fakes pass those IDs through to repository-backed destinations. Event Detail, Match Detail, and Teams hydrate from their ID-keyed flows, while Chat resolves direct-message and group state from ID-shaped repository inputs. The focused Android batch passed 73 tests with zero failures/errors (serialization, ID hydration, Match Content, Chat List, Chat Terms/lifecycle, and Team Management). The installed debug build reached the login UI and survived a clean force-stop/relaunch with no app crash; the supplied account was rejected by the backend, so authenticated destination navigation could not be exercised without altering account data. A wider relevant suite's three failures were reproduced from detached clean baseline `728e63c3` and are not attributed to this change.
 
 ### DATA-017 — Mobile duplicates server-owned inclusive payment-fee policy and rounding
 
@@ -841,10 +841,9 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repositories: both
-- Evidence: both repos declare email disabled by default for `matchScheduleUpdates` and `chatMessages` (`src/lib/notificationSettings.ts:46-57`; mobile `NotificationSettings.kt:30-45`). Their normalizers then use `rawValue ?: true` for every supported channel (`notificationSettings.ts:92-109`; `NotificationSettings.kt:75-86`). Therefore `normalizeNotificationSettings(null/empty)` enables those two email channels even though each repo's `DEFAULT_NOTIFICATION_SETTINGS`/`defaultNotificationSettings()` says they are false.
+- Evidence: the web and mobile normalizers now preserve the declared channel defaults when a server object is absent or partial. In mobile `81bff7fa`, the fallback is `option.channels[channel] == true`, so the declared false defaults for schedule/chat email remain false.
 - Impact: an absent, old, or partially populated preferences object silently opts a user into schedule and chat email rather than applying the advertised defaults. Server delivery checks use the same normalizer, so this affects actual outbound notifications, not only Android display state.
-- Source-of-truth relevance: each repository contains two contradictory definitions of the default, and the server/mobile duplicated implementation repeats the same contradiction.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused `NotificationSettingsTest` suite passed all three null, empty, and partial-settings cases.
 
 ### DATA-020 — Room drops the facility relationship that Android later relies on
 
@@ -852,8 +851,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repositories: both
 - Evidence: the canonical `Fields` schema/API persists and returns `facilityId` (`prisma/schema.prisma:416-435`; `src/app/api/fields/route.ts:35,112-160`). Mobile `Field.kt:31-51` declares `facilityId` and the hydrated `Facility` as mutable `@Ignore` properties, so `FieldDao` upserts and subsequent Room reads cannot retain either. `FieldRepository.getFields` and `listFields` write remote fields to Room and can later return those cached rows; Android reads `field.facilityId`/`field.facility` for organization rental context and schedule labels (`OrganizationDetailScreen.kt:206-221`; `LeagueScheduleFields.kt:157-174`).
 - Impact: facility grouping/name/location can be correct immediately after a network response and disappear after a Room round trip, restart, offline read, or cache fallback. The same field then has different facility truth depending on which repository branch produced it.
-- Suggested direction: persist the canonical facility ID in the Room entity and hydrate facility details through an explicit relation/cache instead of mutable ignored properties.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `4ca35a13` persists `Field.facilityId` in Room, adds the v90-to-v91 migration, and keeps only the hydrated `Facility` relation ignored. The attached-emulator `RoomMigrationPathTest` suite passed all nine migration/DAO cases, including the v90 upgrade and facility-ID round trip.
 
 ### DATA-021 — Android patch DTOs cannot express clearing nullable server fields
 
@@ -970,7 +968,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: initial loading uses `showLoading=false` (`EventSearchComponent.kt:306-315`), while the effective in-flight flag is only set when `showLoading=true` (`:464-515`) and `_isLoading` is never assigned. Filter changes at `:560-570` can start a second offset-zero request; late old responses merge/reapply the old filter and increment shared offset. Organization-tag refresh has a related dropped-refresh race (`:584-596,933-970`).
 - Impact: users can see results from the previous filter and skip valid result pages. No component tests cover this concurrency.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `ef180b3e` assigns Discover event and organization requests a generation. Forced event refreshes cancel the active page job, and late event results/errors cannot mutate the visible list, offset, or error state. Organization tag refreshes now allow the newest forced query to proceed while older initial/load-more responses are discarded, so a second tag selection cannot be dropped behind the first. The focused request-generation suite passed 2/2, and the Android unit-test compile completed successfully.
 
 ### APP-003 — Empty field responses are replaced with stale cached facilities
 
@@ -978,7 +976,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `FieldRepository.kt:98-117` replaces a successful empty `/api/fields` response with all cached fields. Active organization-rental and Discover callers use it (`OrganizationDetailComponent.kt:1326-1334`, `EventSearchComponent.kt:1026-1045`).
 - Impact: deleted or newly inaccessible fields reappear in mobile rentals/discovery.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `2928a31c` treats a successful empty `/api/fields` response as authoritative and no longer falls back to every cached field. The focused HTTP regression seeds a stale cached field, returns an empty server response, and proves the repository returns an empty list (1 test passed).
 
 ### APP-004 — Wear OS silently falls back to plaintext token storage
 
@@ -986,7 +984,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: when `EncryptedSharedPreferences` initialization fails, Wear OS catches the error and falls back to ordinary unencrypted `SharedPreferences` for the bearer token (`wearApp/.../WearAuthTokenStore.kt:9-35`).
 - Impact: production authentication storage can silently downgrade rather than fail closed or surface a recoverable security error.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `1a28ca97` removes the plaintext fallback entirely: failed encrypted-storage initialization is fail-closed, token reads and writes surface a restart/sign-in error, and token-dependent background sync does not start. The retired plaintext preferences are removed during startup. Focused Wear storage tests passed (2 tests).
 
 ### APP-005 — Reviews and time-slot CRUD bypass the declared Room-first data flow
 
@@ -1019,7 +1017,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `BillingRepository.kt:1666-1692` calls the real `/api/subscriptions`, then a nonexistent legacy `/api/users/{id}/subscriptions`, and converts two 404 responses into success with an empty list.
 - Impact: deployment/contract drift is hidden from users and diagnostics as “no memberships.”
 - Legacy relevance: the nonexistent fallback is removable at the 1.6.13 contract floor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `cd528842` removes the nonexistent legacy subscription endpoint. A supported `200 { subscriptions: [] }` remains a successful empty membership list, while 404 contract drift and network failures remain failures for existing Profile error UI. The focused HTTP suite covers all three outcomes (3 tests passed).
 
 ### APP-009 — Team/chat membership has duplicate storage and partial-commit transactions
 
@@ -1068,7 +1066,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `ChatListComponent` exposes and populates `errorState` for refresh/create failures (`ChatListComponent.kt:33,89-111,169-198`), but `ChatListScreen.kt:56-130` never collects it. The new-chat dialog dismisses immediately after launching asynchronous creation (`ChatListScreen.kt:185-190`).
 - Impact: chat loading or creation can fail with no visible explanation, and a user can believe a dismissed dialog means the chat was created.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `d0b50ac0` renders list-operation failures in a retryable banner, keeps a failed new-chat dialog open with its draft intact, and closes it only after confirmed creation. The dialog cannot be dismissed while creation is in flight. The focused chat component and UI suites passed 4 tests with 0 failures/errors.
 
 ### APP-015 — Creation forms show validation errors before the user interacts
 
@@ -1077,7 +1075,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: opening Create Team immediately displayed “Team name is required.” Opening Create Event immediately displayed “Enter a Value”; expanding sections immediately showed sport, division, gender, skill, age, and max-team errors before submit/blur.
 - Code evidence: the create-team field derives the required message directly from blank state (`CreateOrEditTeamScreen.kt:882`). Event section components similarly render supporting/error text directly from invalid initial models (`EventDetailsBasicInfoSection.kt:179`; `EventDetailsDivisionsSection.kt:257,318`).
 - Impact: untouched forms present as already failed, creating noisy, punitive UX and making it harder to distinguish attempted-submit errors from setup guidance.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `ac3862e3` keeps untouched Create Team and Create Event validation feedback hidden, then surfaces it after field interaction or an invalid submit attempt. Create Team now blocks an invalid submit; Create Event preserves its existing invalid-submit prompt while gating the inline feedback. The focused Compose UI suites passed 3 tests with 0 failures/errors.
 
 ### APP-016 — Location search requires an unlabeled map-marker confirmation step
 
@@ -1095,7 +1093,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: the Android system photo picker returned to the event image dialog after a photo was selected, but no thumbnail appeared, no upload request was emitted, Confirm remained disabled, and no error was shown. Since event validation requires an image, the flow could not proceed.
 - Code evidence: `EventDetails.kt:2811-2824` silently does nothing when `photos` is empty; picker errors are written only to Napier, not the screen. The selector cannot confirm until a nonblank uploaded/selected image ID exists (`SelectEventImage.kt:121-143`).
 - Impact: provider, URI, or picker-result failures strand event creation with no recovery guidance even though the user completed the system selection UI.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `a8139fdf` moves event-image picker handling to a reactive result flow: dismissal remains silent, while empty selections and provider errors present a retryable user-facing error. Successful uploads are selected automatically so confirmation can proceed. Conversion, upload, and deletion failures now preserve retry context, and loading is always released. The focused image-coordinator (5), picker-feedback (7), and create-component (42) tests passed.
 
 ### APP-019 — Empty Event Templates gives no path or explanation for creating a template
 
@@ -1161,7 +1159,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `loadOfficialSchedule` hard-codes `usersById = emptyMap()` before hydrating teams (`WearMatchRepository.kt:108-111`). `toWearTeam` falls back to the raw participant user ID whenever that map lacks a profile (`:1023-1048`). A chunked `fetchUsers` implementation exists at `:978-989` but has no caller.
 - Impact: real roster pickers and incident details show opaque IDs where officials need to identify a player quickly; the debug demo masks the defect by injecting names directly.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `552427ff` uses the existing chunked `/api/users?ids=` profile lookup before hydrating Wear teams, so roster and incident pickers receive display names rather than raw IDs while retaining the existing ID fallback for an unavailable profile lookup. The complete `:wearApp:testDebugUnitTest` suite passed all 10 tests, including the new roster-hydration regression that verifies normalized, deduplicated profile lookups and labels from registrations and legacy player IDs. A round Wear OS runtime check remains pending because no Wear OS AVD is configured.
 
 ### APP-028 — Wear match actions remain re-entrant while mutations are in flight
 
@@ -1169,7 +1167,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: Android's `MvpWearViewModel.runMatchAction` sets `isLoading = false` immediately before launching check-in, start, reset, end-segment, and end-match mutations (`MvpWearViewModel.kt:548-579`). Incident Finish changes its label to the already-complete word `Finished` but remains enabled.
 - Impact: repeated taps can enqueue multiple lifecycle or score-adjacent offline operations while the first is still running, compounding the unsynchronized operation-store race and producing misleading completion UI.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `21f5d85f` synchronously marks a schedule refresh, lifecycle action, or incident save as loading only after acquiring an atomic action gate; exactly one operation can enter until its `finally` block releases the gate. The Wear UI now places an input-blocking loading scrim above all routes, disables the affected chips (including Incident Finish), and blocks system Back while the operation is active. The complete `:wearApp:testDebugUnitTest` suite passed all 11 tests, including a new 16-way concurrent-tap regression that permits one start and confirms the gate releases after completion. A round Wear OS runtime check remains pending because no Wear OS AVD is configured.
 
 ### APP-029 — Wear set-scoring UI displays cumulative points while editing the active segment
 
@@ -1177,7 +1175,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: both score pickers sum scores across every segment (`MvpWearApp.kt:391-403,1470-1473`; `WatchOfficialAppView.swift:236-267,1097-1102`) while a tap writes only the active/next segment's current points (`WearMatchRepository.kt:494-521`; `WatchMatchRepository.swift:429-455`). Neither UI branch accounts for `scoringModel == "SETS"`.
 - Impact: after a completed 25–20 set, the next set begins visually at 25–20; adding its first point displays 26–20 even though the active set is 1–0. Officials can enter or trust the wrong score in volleyball, tennis, and other segment/set sports.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed for the audited Android/Wear scope; release deployment pending**. `9aa056d1` moves score display into a tested match helper: `SETS` displays the active segment (or the next playable segment before it starts), while points-based scoring remains cumulative. The Wear score and incident-team pickers now use that helper. The focused three-case regression proves a completed 25–20 set plus an active 1–0 set renders 1–0, points mode still renders 26–20, and the next unstarted set begins at 0–0; the complete Wear suite passed all 14 tests. `10197e73` adds a debug-only equivalent fixture, which was built, installed, and launched on the round Wear OS emulator: it visibly rendered Harbor FC 1 and Summit 0 with no app crash. The watchOS implementation cited in the original evidence is platform-only and excluded from this audit/remediation scope, so it is not represented as changed here.
 
 ### APP-030 — The empty Wear match list renders duplicate Refresh actions
 
@@ -1267,7 +1265,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `PlayerInteractionComponent.kt:38-90` stores its loading handler in a `lateinit` property, then every friend/follow/block action dereferences it before and after the repository call. There is no constructor requirement, initialized guard, or `try/finally`; the injected `chatRepository` is unused.
 - Impact: a fast interaction before composition-side handler injection, or any caller that omits injection, throws `UninitializedPropertyAccessException`. An unexpected repository exception or cancellation after `showLoading` leaves the global loading surface visible indefinitely.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `86611865` snapshots an optional injected handler for each action and tears it down in `finally`; the component now reports repository exceptions rather than crashing if injection has not happened, and the unused chat dependency was removed. The focused Android suite passed all four cases: no handler, returned failure, thrown exception, and cancellation failure.
 
 ### APP-056 — The global loading state has no operation ownership or overlap accounting
 
@@ -1315,7 +1313,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `TeamDetailsDialog.kt:109-363` places an unconstrained `LazyColumn` for members (`:245-313`) inside a non-scrollable outer column, followed by join/leave actions and Close (`:315-363`). The roster has no weight, maximum height, or reserved action area.
 - Impact: a sufficiently long roster can consume the dialog's vertical constraint and clip or push the only dismissal and membership actions beyond the reachable viewport.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `7a69e204` gives the roster a bounded scrollable region and reserves the join/leave and close actions outside it. The focused 360×640dp, 40-member Compose UI regression passed 1 test with 0 failures/errors.
 
 ### APP-062 — Team member rows compose conflicting click handlers
 
@@ -1331,7 +1329,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `SearchBox.kt:74-145` accepts `onSearch` but never invokes it; edits only call `onChange`, and the field owns a parameterless remembered `searchInput`. `SearchPlayerDialog.kt:93-140` resets its parent `searchQuery` when switching invite mode, but cannot reset the visible child value. The field also has no search IME action.
 - Impact: callers cannot distinguish editing from submission, keyboard submit is unreachable, and parent state can say the query is empty while the user still sees and edits the prior value.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `28550b5c` makes `SearchBox` controlled by an explicit caller-owned query, updates both current call sites, and invokes `onSearch` through the Search IME action. The focused Android UI suite passed the parent-reset and keyboard-submit regressions.
 
 ### APP-064 — Event filters can apply contradictory or invisible state
 
@@ -1402,7 +1400,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: when a related team name is null, both team labels join player names with `it.lastName.first()` (`MatchDetailScreen.kt:871-895`). `UserData.lastName` is a non-null `String`, not a non-empty type, and incomplete/legacy profiles can decode/cache an empty string; there is no `firstOrNull`, trim, or fallback in this rendering path.
 - Impact: opening match detail for that valid-but-incomplete relation throws `NoSuchElementException` during composition, making the match/officiating screen unreachable instead of showing a fallback participant label.
 - Suggested direction: centralize safe display-name/initial formatting, treat blank names explicitly, and test empty/whitespace/one-name legacy profiles in team and match UI.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `0c18e287` centralizes safe labels for related teams and replaces Match Detail’s direct `lastName.first()` calls. Empty and whitespace legacy names now fall back safely without crashing composition. The focused match-label suites passed 5 tests with 0 failures/errors.
 
 ### APP-075 — Refund refreshes race and its component work survives navigation
 
@@ -1453,19 +1451,17 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: while a team is selected, the `currentTeams` collector replaces it when an updated row is found; when that ID disappears, it deliberately keeps the old `selectedTeam` and only refreshes its staff users (`TeamManagementComponent.kt:264-275`). `deleteTeam` does not deselect on success (`:435-440`), and external deletion/removal reaches the same missing-ID branch. The screen renders the editor whenever `selectedTeam` is non-null (`TeamManagementScreen.kt:89-160`).
+- Evidence: `6cc4f89a` keeps the authoritative team-flow result separate from display fallback state, so a failed refresh cannot close the editor. On successful refresh, an existing selected team is replaced with the current row or cleared if its ID disappeared; an unsaved Create Team draft remains open.
 - Impact: after server/local deletion or membership removal, Android can continue displaying and editing a team that no longer exists or is no longer authorized. Subsequent actions fail against a stale snapshot and navigation/back state remains in editor mode.
-- Suggested direction: clear selection (or surface an explicit archived/read-only state) when the authoritative team flow loses the ID; wait for mutation acknowledgement before closing or retaining the editor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused three-test `TeamManagementSelectionTest` suite passed the removed-team, refreshed-snapshot, and unsaved-draft cases.
 
 ### APP-081 — Most Team Management failures are written to an unobservable private state
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: the implementation writes repository failures into `_errorState` across team loading, friends/sports, join, leave, delete, search, invite, compliance, and staff hydration (`TeamManagementComponent.kt:106,135-139,224-262,335-470,498-505`). `TeamManagementComponent` does not expose `errorState`, and `TeamManagementScreen` has no collector/popup for it (`TeamManagementComponent.kt:42-81`; `TeamManagementScreen.kt:49-289`). Only create/update/refund callbacks separately populate the screen's local `saveError`.
+- Evidence: `3cca9a9d` exposes the component's existing error state and clear action. `TeamManagementScreen` collects it, renders a dismissible feedback card on the list surface, and routes it through the editor's existing save-error display when a team is open.
 - Impact: failed leave/delete/invite/join/refresh/search actions appear to succeed or do nothing. Delete closes the editor immediately (`TeamManagementScreen.kt:139-142`), so a rejected deletion is especially misleading and the user receives no recovery guidance.
-- Suggested direction: expose one typed UI event/error flow and consume it once in the screen; keep mutation-specific busy/error state beside each action and close editors only after acknowledged success.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused Robolectric `TeamManagementErrorFeedbackUiTest` passed: a component error is visible and can be dismissed.
 
 ### APP-082 — Team and chat invite searches can replace a newer query with stale results
 
@@ -1480,37 +1476,33 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: the component sets the singleton push repository's `activeChatId` whenever its chat flow resolves (`ChatGroupComponent.kt:134-150`). It clears that global only in explicit `onBack`, successful delete/leave, or report-and-leave paths (`:196-199,239-268,326-344`). There is no lifecycle-destroy cleanup, so logout, root replacement, deep-link navigation, or component removal through another navigation path can leave the old ID active after the lifecycle scope stops.
+- Evidence: `c83b68c8` makes chat ownership explicit. `DefaultChatGroupComponent` registers lifecycle destruction cleanup, and the push repository clears the active marker only when it still matches the destroyed component's chat ID.
 - Impact: foreground pushes for that chat are suppressed by `PushNotificationsRepository` because it still believes the off-screen conversation is active. The user can miss notification UI indefinitely until another chat/back action overwrites the singleton state.
-- Suggested direction: derive active destination from root navigation state or register lifecycle cleanup that conditionally clears only the ID owned by this component.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused six-test chat terms/send/lifecycle suite passed both destruction cleanup and newer-chat ownership regressions.
 
 ### APP-084 — A failed send permanently discards the user's message draft
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `sendMessage` trims the text and immediately sets `_messageInput` to empty before launching `createMessage` (`ChatGroupComponent.kt:205-226`). On failure it only sets an error string and never restores the draft or creates a retryable pending message (`:227-230`).
+- Evidence: `6786ca86` leaves `_messageInput` intact while `createMessage` is pending, then clears it only after a successful result and only when the user has not replaced the draft in the meantime.
 - Impact: network, authorization, terms, or validation failures erase what the user typed—potentially a long message—with no Retry action or recoverable local outbox.
-- Suggested direction: keep the draft until acknowledged or persist a pending/failed message row with retry/copy/edit actions; clear the composer only after ownership transfers to that durable state.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused four-test chat terms/send suite passed, including a network-failure regression that preserves the exact draft text.
 
 ### APP-085 — Chat success and partial-success states are rendered as persistent errors
 
 - Severity: **medium-high**
 - Repository: `mvp-app`
-- Evidence: after a message is successfully stored, failure of the separate notification relay writes to the same `_errorState`, making the UI imply the message failed (`ChatGroupComponent.kt:225-235`). A successful report without leaving sets the literal success text `Chat reported.` into `_errorState` (`:326-343`). `ChatGroupScreen` renders every nonblank value permanently in error color and exposes no clear/consume action (`ChatGroupScreen.kt:78-86,209-216`).
+- Evidence: `af6d73f2` introduces typed chat feedback. Message persistence failures remain actionable errors; a post-persistence notification relay failure emits a warning that the message was sent, and a report that does not leave the chat emits success feedback. The screen renders that feedback in a themed dismissible card, separate from error state.
 - Impact: users can resend an already-created message after seeing an apparent error, and a successful report remains styled as a failure for the life of the screen. Distinct domain outcomes collapse into one sticky string.
-- Suggested direction: model send acknowledgement, notification warning, report confirmation, and actionable errors as separate consumable UI events/states; do not treat relay failure as message-send failure.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused eight-test chat terms/send/lifecycle suite passed the persisted-message warning and report-success regressions, and the focused Robolectric feedback-banner test passed dismissal behavior.
 
 ### APP-086 — Incoming messages always yank the conversation to the bottom
 
 - Severity: **medium-high**
 - Repository: `mvp-app`
-- Evidence: `ChatGroupScreen` calls `animateScrollToItem(last)` whenever `messages.size` changes, without checking the user's current position or who sent the message (`ChatGroupScreen.kt:101-127`). A tested `shouldAutoScrollToLatest` policy exists that scrolls only near the bottom, on initial load, or for the current user's message (`ChatScrollPolicy.kt:3-12`), but it has no production caller.
+- Evidence: `24c34e3b` wires the scroll policy into the production screen. It retains the pre-update near-bottom state, scrolls only on initial load/near-bottom/current-user posts, and accumulates unseen incoming messages for an explicit scroll-to-latest action without treating message edits as arrivals.
 - Impact: while reading older messages, any incoming message forcibly moves the user away from their context. This becomes worse once proper history pagination is added; the existing policy/tests give false confidence because the live screen bypasses them.
-- Suggested direction: wire the tested policy to list-state visibility/message ownership and show a “new messages” affordance when the user is away from the bottom.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused five-test `ChatScrollPolicyTest` suite passed, including multiple unseen incoming messages accumulating without scrolling and a current-user message clearing the unseen count.
 
 ### APP-087 — Chat loading is rendered as an empty, interactive conversation
 
@@ -1519,7 +1511,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `chatGroup` starts as null while direct-message creation/cache/network work runs (`ChatGroupComponent.kt:87-95`). The screen substitutes `ChatGroup.empty()`, an empty user/message list, and the title `Chat`, but still renders enabled options and composer controls (`ChatGroupScreen.kt:78-100,135-295`). `sendMessage` silently returns when the underlying group is still null (`ChatGroupComponent.kt:205-213`).
 - Impact: users see a blank chat that looks ready, can type and tap Send, and receive no feedback because the action is dropped. Load failure is visually close to a genuinely empty chat and only a small error line may appear later.
 - Suggested direction: render explicit loading/error/not-found states and disable all group actions until a real group ID is available; preserve any draft typed during transition.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `1769abdc` exposes a loading state until the chat stream resolves, then renders an unavailable/error state instead of substituting `ChatGroup.empty()` and enabling the composer. The focused nine-test chat component suite passed, including the non-emitting loading/draft regression, and the two-test Robolectric availability-screen suite verified that loading has no Send control and unavailable chat exposes an error/back action.
 
 ### APP-088 — Rental conflict discovery silently stops after 300 organization events
 
@@ -1537,7 +1529,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `RentalAvailabilityLoader` handles `EVENT` and `WEEKLY_EVENT` identically by creating one busy block from `event.start` through `event.end` for every field (`RentalAvailabilityLoader.kt:96-110`). League/tournament repeating slots are expanded into their actual day/time occurrences, but weekly events are not.
 - Impact: a weekly event that runs one evening per week can make the mobile rental calendar show its fields unavailable 24/7 for every day between the season start and end. This can suppress valid inventory for weeks or months.
 - Suggested direction: expand weekly-event schedule days/times into occurrence blocks using the canonical scheduling contract, retaining the direct interval only for truly one-time events.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `4f145d00` moves weekly event slots into the occurrence-expansion path and treats their schedule as repeating even if legacy data omits the flag; one-time events retain direct interval blocks. The focused six-test Android availability suite passed, including a Monday/Wednesday weekly event that produces four one-hour blocks and none on Tuesday.
 
 ### APP-090 — Multi-day repeating rental slots work on the server but only one day on Android
 
@@ -1546,7 +1538,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the mobile `TimeSlot.matchesRentalSelection` repeating branch reduces a slot to one day via `toMondayBasedDayIndex` and never reads `daysOfWeek` (`RentalSchedulingUtils.kt:437-492`). The canonical rental-order validator explicitly prefers the full `daysOfWeek` array and accepts any listed day (`src/app/api/public/organizations/[slug]/rental-orders/route.ts:119-132`). Multi-day schedules are a required form-boundary behavior.
 - Impact: facilities that publish one rental slot across several weekdays appear available on only one day in Android; valid inventory accepted by the backend cannot be selected in the app.
 - Suggested direction: normalize the full day array with the same Monday-based contract used by the server, falling back to legacy `dayOfWeek` only when the array is absent.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `f2733976` makes repeating rental selection evaluate the full normalized `daysOfWeek` array and use the legacy `dayOfWeek` only when no array is present. The focused two-test Android suite passed for a Monday/Wednesday slot, Tuesday rejection, legacy fallback, and explicit-array precedence.
 
 ### APP-091 — Android can charge for a stitched rental range that the server then rejects
 
@@ -1573,7 +1565,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `EventSearchScreen` calculates the pixels actually available below the search box and above navigation, then calls `availablePx.coerceAtLeast(640.dp.toPx())` before passing the value as `filterMaxHeight` (`EventSearchScreen.kt:940-951`).
 - Impact: on phones, split screen, large display scaling, or an open keyboard, the filter dropdown is deliberately made taller than its available viewport; controls can extend behind navigation or off-screen.
 - Suggested direction: clamp the dropdown to the positive available space, with 640dp as an upper design cap rather than a lower bound, and verify constrained/large-font layouts.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `4c6b7dfc` resolves the filter height from the actual available viewport space, clamped from zero to a 640dp design maximum rather than forced to a 640dp minimum. The focused three-test height suite covers constrained, oversized, and no-available-space viewports.
 
 ### APP-094 — Weekly date filters exclude seasons that overlap the selected range
 
@@ -1582,7 +1574,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: for `WEEKLY_EVENT`, `EventFilter.filter` accepts the lower bound when the season end is after it, but rejects the event whenever `effectiveWeeklyEnd > date.second` (`EventFilter.kt:31-44`). That requires the whole season to end inside the selected range instead of testing whether any occurrence/season interval overlaps it. Existing `EventFilterTest` covers only ordinary events.
 - Impact: filtering for a week or short date window hides ongoing weekly leagues/events whose end date is later, even when they have occurrences during the requested dates.
 - Suggested direction: use interval-overlap/occurrence semantics for weekly events and add start-before/end-after, no-fixed-end, and multi-day schedule regression cases.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `4c6b7dfc` applies interval-overlap semantics to weekly event date filtering, so seasons spanning a selected range remain discoverable while later-starting seasons remain excluded. The focused ten-test event-filter suite covers spanning, later-starting, and open-ended weekly seasons.
 
 ### APP-095 — The rental timetable exposes dozens of unlabeled controls and pointer-only resize handles
 
@@ -1618,7 +1610,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the Publish handler calls `onSave(...)` and immediately sets `editorOpen = false` (`OrganizationReviewsContent.kt:316-329`). `saveReview` performs the network mutation asynchronously and reports failure only through the shared error flow (`OrganizationDetailComponent.kt:514-528`). Reopening the editor reconstructs its fields from the unchanged server payload, not the failed local draft.
 - Impact: a transient network/server failure discards up to 2,000 characters of user-written review text and forces the user to re-enter it after seeing an error popup.
 - Suggested direction: keep the editor and draft open until success, model mutation success/failure explicitly, and preserve the draft across retries/dismissal according to a clear policy.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `a5872288` makes review-save progress explicit and only closes/clears the editor after the asynchronous save succeeds. On failure, the editor and its local rating/body draft remain open for a retry, while the existing server review remains unchanged. The focused two-test review-save suite passed; a broader component suite still has two unrelated existing checkout assertions, both outside the review flow.
 
 ### APP-099 — “Create event now” drops the completed rental context
 
@@ -1645,7 +1637,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: organization details fetch events once with `limit = 300` and teams once with the repository default limit of 200 (`OrganizationDetailComponent.kt:416-452`; `ITeamRepository.getTeamsByOrganization` default in `TeamRepository.kt:70-73`). `EventsTabContent` and `TeamsTabContent` render those lists with no paging state or load-more callback (`OrganizationDetailScreen.kt:1080-1165`).
 - Impact: established facilities can have older/overflow events and teams disappear from their public Android organization page with no indication that the list is partial.
 - Suggested direction: expose deterministic cursor pagination from both repositories and paginate the full tabs; keep the six-card overview previews intentionally bounded.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited web and mobile branches; release deployment pending**. `7ea8e5da` adds paged event/team repository contracts, deduplicated generation-safe load-more state, and explicit controls. `f0b5d826` refreshes the paid team directly so a team outside the first page cannot be announced as completed while its bank payment is still pending; it also corrects legacy fallback offsets. Server event paging is covered by `7c06224d`; `0c4966c7` adds the required deterministic team tie-breaker (`id ASC`) and tied-name page-boundary coverage. The three integrated mobile regressions passed; focused web tests passed 35/35 and `npx tsc --noEmit` passed.
 
 ### APP-102 — Team document-sync progress is persisted and surfaced as an error
 
@@ -1663,7 +1655,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `ProfileDetailsScreen` copies username, names, email, and profile image into local form state in `LaunchedEffect(currentUser, currentAccount)` every time either full object changes (`ProfileDetailsScreen.kt:137-144`). Image deletion explicitly reloads the current account/user (`ImagesRepository.kt:72-77`), and other repository refreshes can update those StateFlows while the form is open.
 - Impact: deleting an uploaded image, auth/profile refresh, or any unrelated current-user field change can silently replace names, username, and photo choices the user has typed but not saved.
 - Suggested direction: initialize/reset the draft by stable user ID or explicit successful-save/reset events, and merge external updates only into untouched fields with a visible conflict policy.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `04fbfc86` introduces a profile-owned draft/baseline model: a clean draft hydrates from the active profile, a dirty draft survives user/account emissions and selected-image deletion, a matching successful-save snapshot becomes the new baseline, and a different signed-in user resets the form. The focused five-test reducer suite passed.
 
 ### APP-104 — Profile Details marks username required but still enables an invalid save
 
@@ -1672,7 +1664,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the username field displays an error whenever blank, but `isFormValid` includes only email, first name, last name, and password (`ProfileDetailsScreen.kt:109-130,314-321,478-493`). `UserRepository.updateProfile` sends the blank username, while the canonical PATCH handler rejects an empty normalized username (`UserRepository.kt:1310-1345`; `src/app/api/users/[id]/route.ts:215-225`).
 - Impact: the primary Save button appears valid and submits a request that is guaranteed to fail, producing server-error feedback instead of preventing/correcting the field.
 - Suggested direction: normalize and validate username in the form using the canonical contract, include it in Save gating, and display uniqueness/format failures on the field.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `b77f6da1` centralizes the Profile Details form validation, trims the username exactly as the server does, blocks blank/whitespace-only handles, presents an actionable required message, and submits the normalized handle. The focused seven-test draft/validation suite passed.
 
 ### APP-105 — Password can change successfully before the rest of Profile Save fails
 
@@ -1681,7 +1673,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `UserRepository.updateProfile` calls and commits `updatePassword` first, then constructs/sends the separate profile update (`UserRepository.kt:1310-1345`). A later username conflict, validation error, authorization failure, or network failure returns one overall “Failed to update profile” message (`ProfileDetailsComponent.kt:156-183`) with no indication that the password already changed.
 - Impact: users can believe nothing was saved, retry with the now-obsolete current password, or be surprised at their next login. The operation has no transaction/compensation boundary across authentication and profile data.
 - Suggested direction: separate Password Change from Profile Save in the UI, or provide a server-owned atomic workflow/explicit partial-success result; clear password fields and communicate success as soon as the password mutation commits.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `86f32971` removes password mutation from `updateProfile` entirely and presents a separate Change Password action. A successful password call clears the password inputs and displays explicit success; a failed profile save no longer says anything about an independently successful password update. The focused nine-test Profile Details draft/password-validation suite passed after the full Android test-source compile.
 
 ### APP-106 — Profile photo picking can fail with no visible error
 
@@ -1690,7 +1682,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: Profile Details closes the gallery picker on `onError` without reporting the error, and an empty `onPhotosSelected` result also does nothing (`ProfileDetailsScreen.kt:164-181`). This mirrors the runtime-confirmed silent picker failure in APP-017 but affects the profile-photo workflow.
 - Impact: after completing the system picker, users can return to an unchanged profile with no explanation or recovery guidance; URI/provider conversion failures are indistinguishable from cancellation.
 - Suggested direction: distinguish cancel, empty result, provider failure, conversion failure, upload failure, and success in a consumable UI state with a retry action.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `59b6d7a0` replaces the legacy callback launcher with a reactive picker result state: a user dismissal remains silent, while empty selection and provider errors display an actionable Try again prompt. Conversion and upload now have distinct recovery messages, rethrow cancellation, and always dismiss the loader in `finally`. The focused six-test picker-feedback suite and nine-test existing Profile Details draft suite passed.
 
 ### APP-107 — Profile connection search lets older requests overwrite the current query
 
@@ -1699,7 +1691,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: every `searchConnections` call launches an independent coroutine with no debounce, cancellation, request token, or query check before committing results (`ProfileComponent.kt:1976-2015`). `refreshConnections` can simultaneously perform another search for the captured query and replace the same result list (`:1912-1974`).
 - Impact: typing quickly can display users for an older query under the newest text, and clearing/changing the query does not prevent a slow prior response from repopulating results. Actions may target someone the user did not currently search for.
 - Suggested direction: use a debounced `mapLatest`/cancelable search pipeline keyed by normalized query and discard responses whose key is no longer current.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `7b6ef71f` cancels the superseded search and refresh jobs, gives each request a monotonic identity, and commits search results only if both its request and query are still current. Refreshes no longer run their own search or overwrite the active search result list. The focused four-test request-tracker suite passed.
 
 ### APP-108 — Missing requested signing template silently falls back to a different document
 
@@ -1777,28 +1769,25 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: incident create/delete failures are written back into the persisted `MatchMVP.incidents` collection with pending/failed upload states and an in-memory retry is scheduled (`MatchContentComponent.kt:1845-1882`). However, `processIncidentQueueUntilBlocked` is invoked only after recording/removing a new incident, from its own in-memory retry job, or while confirming a segment (`:1527-1529,1559-1565,1773-1842`). Component initialization observes the match, event, teams, and check-ins but never drains persisted incident work (`:425-480`).
+- Evidence: incident create/delete failures are written back into the persisted `MatchMVP.incidents` collection with pending/failed upload states. `bc4e2bf8` makes the resolved, checked-in official state perform one serialized recovery drain for the current match when Match Detail is reopened. It prevents duplicate drains per match and keeps a startup failure durable without spinning an unbounded in-memory retry chain.
 - Impact: killing the process, navigating away, or recreating the component after a failed incident upload strands the durable pending/failed incident indefinitely. Its optimistic score effect can remain visible locally while the server never receives the incident, and confirmation is blocked only after an official later tries to finish the segment.
-- Suggested direction: make incident upload states part of the repository-owned durable outbox, trigger a single serialized drain at repository/app startup and connectivity recovery, and expose terminal/retry state explicitly.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused Android `MatchContentComponentTest` suite passed all 56 cases, including a reopened official successfully resending a persisted failed incident and existing failed-confirmation handling.
 
 ### APP-117 — Completing a match records its scheduled timestamp as the actual finish time
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: when the confirmed segment ends the match, `confirmSet` chooses `updatedScoringMatch.end`, then `start`, and only then `Clock.System.now()` as the finalize time (`MatchContentComponent.kt:1627-1635`). The local operation applier writes that value into `actualEnd` when `finalize` is true (`MatchOperationLocalApplier.kt:27-33`), and the same operation is sent to the server.
+- Evidence: `46c9c9c1` changes `confirmSet` to use `Clock.System.now()` as the finalization time, keeping scheduled fields separate. `MatchContentComponentTest` supplies distinct 2025 scheduled start/end instants and asserts the persisted completion is neither one while still matching the local finalized `actualEnd`.
 - Impact: a match completed early, late, or on a rescheduled day is recorded as ending at its planned schedule boundary rather than when the official actually completed it. Duration, operational history, downstream schedule logic, and audit records become false.
-- Suggested direction: use the current instant (or an explicit official-entered actual time) for lifecycle completion; keep scheduled `start`/`end` fields separate and immutable during scoring.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused Android `MatchContentComponentTest` suite passed all 55 cases, including the scheduled-versus-actual completion regression.
 
 ### APP-118 — One transient team-check-in read failure disables retries for the component lifetime
 
 - Severity: **medium-high**
 - Repository: `mvp-app`
-- Evidence: `refreshMatchCheckInsIfAllowed` stores `lastLoadedMatchCheckInKey` before issuing the request and returns immediately for that key on every later event/match emission (`MatchContentComponent.kt:1224-1243`). Its failure handler intentionally does nothing and never clears the key (`:1254-1256`).
+- Evidence: `95a98de8` preserves an in-flight key across the initial failure so concurrent component collectors do not duplicate the request, then begins one bounded retry after three seconds. A successful retry records the check-ins and clears retry state; a later event/match refresh can retry again after a persistent failure.
 - Impact: a brief network or authorization failure leaves an official's team check-in panel empty and stale until the entire match-detail component is recreated. Subsequent successful connectivity cannot repair the view, which can lead staff to treat checked-in teams as absent.
-- Suggested direction: mark a key complete only after success, or retain explicit loading/error/last-success state and allow bounded retry on refresh, foregrounding, and connectivity recovery.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused 57-test `MatchContentComponentTest` suite passed, including a failed initial check-in read that automatically retries and populates the returned check-in.
 
 ### APP-119 — Android set scoring cannot represent win-by-two and submits invalid final scores
 
@@ -1825,7 +1814,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `EventImageCoordinator.uploadSelected` and `deleteImage` await repository calls but ignore both returned `Result` values; delete always hides loading immediately afterward (`EventImageCoordinator.kt:33-44`). `DefaultEventDetailComponent` launches those methods without inspecting an outcome or updating `errorState` (`DefaultEventDetailComponent.kt:1709-1721`). The coordinator tests cover only success and loading events (`EventImageCoordinatorTest.kt`).
 - Impact: a failed event-image upload leaves the picker apparently doing nothing, and a failed delete leaves the image present with no explanation. Hosts can proceed believing required branding was saved or removed, repeating operations and creating support ambiguity.
 - Suggested direction: return/propagate failures through the component's error state, use `try/finally` for loading ownership, retain retryable selection state, and add failure-path component tests.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `a8139fdf` returns explicit conversion/upload outcomes, propagates failures into retryable component feedback, and retains the selected image until delete succeeds. Image-operation loading now releases in `finally`, including thrown repository errors. The focused image-coordinator (5), picker-feedback (7), and create-component (42) tests passed.
 
 ### APP-122 — A required-signature purchase fails open when the signing URL is absent
 
@@ -1849,28 +1838,25 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: after a resource is deselected, `buildEditDraft` identifies rental fields only from the *currently selected* options. It therefore classifies the previously selected rental field in `currentFields` as a custom field and retains it, while filtering out every rental-backed slot (`EventRentalResourcesCoordinator.kt:145-184`). The component immediately feeds the current edit fields/slots through this method after each selection change (`DefaultEventDetailComponent.kt:2867-2874`).
+- Evidence: `a095e272` distinguishes selected rental fields from every known available rental field. The edit-draft merger excludes all known rental-owned fields from user-created fields, while retaining only selected resources and their slots.
 - Impact: the UI toggle appears to detach a booking resource, but the saved event can remain linked to the facility field without its rental slot or booking provenance. Hosts may retain/schedule against a resource they explicitly removed or no longer control.
-- Suggested direction: track rental-owned field IDs independently of the current selection (from all available/attached booking options), remove deselected rental fields and their slot references atomically, and preserve only fields explicitly created as local custom resources.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused `EventRentalResourcesCoordinatorTest` suite passed all five cases, including a deselection regression that removes the facility field, rental slot, and custom-slot reference atomically.
 
 ### APP-125 — Blank event names pass Android's overall edit validation
 
 - Severity: **medium-high**
 - Repository: `mvp-app`
-- Evidence: `computeEventValidationResult` correctly calculates `isNameValid = editEvent.name.isNotBlank()` and adds “Event name is required” to the diagnostic list, but the final `isValid` conjunction starts with `isPriceValid` and never includes `isNameValid` (`EventDetailsValidation.kt:154,387-406,408-411`). Callers can therefore treat an otherwise valid blank-name event as saveable even while the detailed error list says it is invalid.
+- Evidence: `24faca6a` adds `isNameValid` to the authoritative `isValid` conjunction in `computeEventValidationResult`, aligning the submit gate with the existing diagnostic.
 - Impact: Android can enable and execute event creation/update with an empty name. Depending on server behavior, the host either receives a late API failure after completing the form or persists an unnamed event that is ambiguous in schedules, registrations, notifications, and public listings.
-- Suggested direction: include `isNameValid` in the authoritative `isValid` expression, keep submission blocked from that single result, and add a regression test asserting a blank name cannot be submitted.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused eight-test event-validation suite passed, including an otherwise-valid whitespace-only name regression.
 
 ### APP-126 — Android discards custom match-incident definitions before saving
 
 - Severity: **medium-high**
 - Repository: `mvp-app`
-- Evidence: the match-rules editor builds and passes retained custom `incidentTypeDefinitions` into `copyMatchRulesOverride` (`EventDetailsMatchRulesSection.kt:269-280,388-417`). That helper immediately sends them through `normalizeMatchRulesOverride`, whose reconstructed `MatchRulesConfigMVP` copies booleans, supported codes, and timekeeping but omits `incidentTypeDefinitions` entirely (`EventMatchRules.kt:455-487,490-512`). The web editor preserves and tests this field (`MatchRulesSection.tsx:572-580`; `MatchRulesSection.test.tsx:87-94`).
+- Evidence: `752082f3` normalizes and retains `incidentTypeDefinitions` in `normalizeMatchRulesOverride`, including code canonicalization, label preservation, metadata, and other definition fields before persistence.
 - Impact: a host can add a custom incident type and see its code selected locally, but its authored definition—especially label and behavioral metadata—is removed from the event override before persistence. Later scoring screens must synthesize a generic discipline definition from the code, so the saved configuration does not match what the host created.
-- Suggested direction: normalize and retain custom definitions in `normalizeMatchRulesOverride`, remove only definitions that truly match sport defaults or are no longer selected, and add round-trip tests covering a custom code, label, and metadata.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused 11-test match-rules suite passed a custom code/label/card/color/metadata override regression.
 
 ### APP-127 — The Android bracket tab renders as a blank zero-height surface when no rounds exist
 
@@ -1903,28 +1889,25 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: refund and proof-acceptance drafts are initialized with raw cent integers such as `refundableAmountCents.toString()` / `payment.amountCents.toString()` and are passed directly to `MoneyInputField`; bill tax is handled the same way (`ParticipantsVeiw.kt:923-931,1392-1472,1525-1551,1604-1606,1677-1684`). Submission then strips digits and treats the resulting number as cents (`:2436-2438`). The shared money utility defines input values as display dollars and provides `centsToDisplayValue` / `displayValueToCents` for this boundary (`MoneyUtils.kt:12-29`).
+- Evidence: the audit correctly identified cent-backed draft values, but the rendered-input path was not traced: `MoneyInputField` uses `keyboardType = "money"`, whose shared `CurrencyAmountInputVisualTransformation` renders those cent strings as currency with a dollar prefix and two fractional digits. `d2b7cea8` adds regression coverage for $0.10, $10.00, and $1,234.56 from their cent-backed values.
 - Impact: a refundable $10.00 payment appears as `1000` in a money field. A host who corrects that visually to `10` sends a 10-cent refund; entering `10.00` happens to become `1000` only because punctuation is stripped. The same unit ambiguity affects accepted manual-payment amounts and bill tax, making financial mistakes likely.
-- Suggested direction: keep draft values explicitly in display dollars, convert cents with `MoneyInputUtils.centsToDisplayValue`, convert submissions with `displayValueToCents`, show a currency prefix, and add round-trip tests for values such as $0.10, $10.00, and $1,234.56.
-- Fix status: **not changed; reporting only**.
+- Fix status: **reconciled from current source; release deployment pending**. The input intentionally retains cents for lossless submission, but users see formatted currency rather than raw cents. The focused 3-test money-display suite passed.
 
 ### APP-131 — In-flight refund and proof-review actions remain tappable and can submit duplicates or conflicts
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: the Accept and Reject buttons are enabled when no proof request is active **or when the active id equals that same proof** (`ParticipantsVeiw.kt:1466-1519`). Consequently both buttons stay enabled after one is tapped. The Refund button uses the same predicate for `refundingPaymentId` (`:1541-1574`). Each tap launches a new coroutine without a per-action idempotency guard.
+- Evidence: `38dc5780` introduces one shared availability predicate that is true only when no billing action is in flight. Accept, Reject, and Refund disable immediately and repeat the same guard inside `onClick` before state mutation, closing the rapid second-tap window.
 - Impact: rapid taps can send duplicate refunds, duplicate proof acceptance, or concurrent Accept and Reject decisions for the same proof. Even if the server rejects/idempotently handles some repeats, the UI permits contradictory financial operations and can surface misleading success/error ordering.
-- Suggested direction: disable every action for the active proof/payment immediately, separate review from refund busy state, make server mutations idempotent, and ignore late responses that do not match the current operation token.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused participant-management helper suite passed all nine tests, including the no-active, same-proof, and other-payment busy-state regression.
 
 ### APP-132 — Late participant billing responses can populate the wrong participant's refund dialog
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `loadRefundSnapshot` stores the selected context globally, launches an unowned coroutine, and unconditionally writes its returned snapshot/error/loading state (`ParticipantsVeiw.kt:908-937`). Closing the modal does not cancel that request, and opening another participant starts another request against the same state. There is no context id or request generation check before applying either response.
+- Evidence: `5a47758f` gives each billing snapshot request a generation and captures its team ID. Results, errors, and loading teardown are applied only if both still match the current modal; closing a modal invalidates all outstanding generations.
 - Impact: if a host closes participant A and opens participant B while A is still loading, A's late billing data can appear under B's title. Subsequent refund controls combine the current dialog context with stale payment ids, exposing another participant's financial details and risking an incorrect refund attempt.
-- Suggested direction: key billing state by `billingTeamId`, cancel/replace loads with `flatMapLatest` or a request token, apply results only when the current context still matches, and disable mutation controls until the matching snapshot is confirmed.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused 10-test participant-management helper suite passed the equal-generation/team, stale-generation, and wrong-team regression cases.
 
 ### APP-133 — Event creation silently drops invalid configured schedule slots
 
@@ -2214,3 +2197,30 @@ These are not yet confirmed defects:
 - 2026-07-12: Remediated APP-133 in the audited mobile branch. Event creation now rejects every invalid configured schedule slot before payload preparation, with the slot number and reason. The focused 41-test event-creation component suite passed. Mobile release deployment remains pending.
 - 2026-07-12: Rebuilt the audited mobile branch after the APP-044 and APP-133 changes, installed it on the attached Android emulator, and force-stop cold-launched it to the Login UI. The UI tree and screenshot rendered normally; fresh logcat contained no app crash or ANR. This runtime check validates startup/integration only; the focused payment and schedule regression suites cover their failure paths.
 - 2026-07-12: Revalidated DB-002 and DB-003 in the audited mobile branch. Confirmed 37 canonical Room schema snapshots are tracked and generated into the same directory used by the build; the 9-test attached-emulator migration suite successfully migrated every supported historical source through v91 without a destructive fallback. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-055 in the audited mobile branch. Player actions no longer require a pre-injected loader and always tear a captured loader down after failures or cancellation; all four focused Android tests passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-063 in the audited mobile branch. Search fields are now caller-controlled and submit through the Search IME action; both focused Android UI regressions passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-117 in the audited mobile branch. Match finalization now records the actual completion instant rather than its scheduled boundary; the 55-test focused match-content suite passed, including a regression with distinct scheduled and actual timestamps. Mobile release deployment remains pending.
+- 2026-07-12: Reconciled APP-130 in the audited mobile branch. Cent-backed participant billing drafts already render through the shared cash-register currency transformation with a dollar prefix and two fractional digits; the added three-case regression confirms $0.10, $10.00, and $1,234.56 displays. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated SEC-039 and DATA-019 in the audited mobile branch. The trusted-URL policy rejects hostile schemes and binds sensitive URLs to trusted origins; notification normalizers preserve declared opt-out defaults. The focused URL-policy and notification-setting suites passed all four and all three cases, respectively. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-131 in the audited mobile branch. Participant proof reviews and refunds now use a single-flight availability predicate both for rendering and inside click handlers, blocking duplicate or contradictory rapid taps. The focused 9-test participant-management suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-132 in the audited mobile branch. Participant billing loads now carry a generation and team ID; late responses after closing or switching dialogs cannot overwrite the active participant's snapshot, error, or loading state. The focused 10-test participant-management suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-124 in the audited mobile branch. Event edit drafts now distinguish all available rental-owned fields from user-created fields, so deselecting a rental resource removes its facility field, booking slot, and stale custom-slot reference together. The focused 5-test rental-resource suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-125 in the audited mobile branch. The event validation gate now includes the existing nonblank-name rule, so a whitespace-only title cannot be saved. The focused 8-test event-validation suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-126 in the audited mobile branch. Custom match-incident definitions now survive override normalization with their code, label, color, and metadata intact. The focused 11-test match-rules suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-084 in the audited mobile branch. A chat draft now remains editable after a failed send and clears only after successful message persistence when it still matches the submitted text. The focused 4-test chat terms/send suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-083 in the audited mobile branch. Chat destruction now conditionally clears only its owned active-chat marker, resuming foreground notifications after non-Back navigation without clobbering a newer chat. The focused 6-test chat terms/send/lifecycle suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-020 in the audited mobile branch. `Field.facilityId` is persisted through the v90-to-v91 Room migration while only the hydrated facility relation remains ignored; the attached-emulator migration/DAO suite passed all nine cases. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-116 in the audited mobile branch. A checked-in official reopening Match Detail now makes one serialized recovery attempt for persisted failed/pending incident operations without launching an unbounded retry loop. The focused 56-test match-content suite passed, including the reopened-failed-incident regression. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-001 in the audited mobile branch. `c3be4fc1` makes authoritative full event responses replace stale cached divisions and participant rosters; the focused deletion-convergence regression passed. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-002 in the audited mobile branch. `99d84287` returns converged Room collection state after authoritative mutations and avoids destructive cache deletion for partial collections; the focused three-test repository API suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-003 in the audited mobile branch. `4b271007` batches every cited ID-filter collection lookup at 100 IDs, preserves result ordering, and pairs with DATA-002's exact-ID cache deletion; three helper and five 201-ID integration regressions passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-080 in the audited mobile branch. A successful authoritative team refresh now replaces the selected snapshot or clears a team whose ID disappeared, while a failed refresh and an unsaved Create Team draft remain safe. The focused three-test team-selection suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-081 in the audited mobile branch. Team Management now exposes component errors to a dismissible list feedback surface and the existing editor error display; the focused Robolectric feedback UI regression passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-118 in the audited mobile branch. A transient match team-check-in read now makes one bounded retry without duplicate collector traffic and can recover the check-in state; the 57-test match-content suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-085 in the audited mobile branch. Persisted message delivery failures and report-only success now use distinct warning/success feedback instead of persistent red errors; the focused eight-test chat suite and Robolectric feedback-banner test passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-086 in the audited mobile branch. The production chat screen now keeps an away-from-bottom reader in place, counts unseen incoming messages, and offers an explicit scroll-to-latest action; the focused five-test scroll-policy suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-087 in the audited mobile branch. Chat now renders an explicit loading state until a group resolves and an unavailable/error state rather than a blank enabled composer; focused component (9/9) and Robolectric availability-screen (2/2) suites passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-090 in the audited mobile branch. Repeating rental availability now respects every canonical Monday-based `daysOfWeek` entry and falls back to the legacy day only when necessary; the focused two-test regression suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-103 in the audited mobile branch. Profile Details now retains a dirty draft through user/account refreshes and image deletion, resets only for a changed signed-in user, and acknowledges matching saved state; the focused five-test reducer suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-089 in the audited mobile branch. Weekly events now produce only their configured weekday/time occurrences in rental availability instead of blocking a field for the full season; the focused six-test availability suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-104 in the audited mobile branch. Profile Details now trims/validates usernames using the server's nonblank contract, disables invalid saves, and sends a normalized value; the focused seven-test draft/validation suite passed. Mobile release deployment remains pending.
