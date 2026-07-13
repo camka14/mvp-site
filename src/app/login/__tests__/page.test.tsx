@@ -3,10 +3,11 @@ import LoginPage from '../page';
 
 const pushMock = jest.fn();
 const startGuestSessionMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/app/providers', () => ({
@@ -32,9 +33,10 @@ describe('LoginPage guest entry', () => {
     pushMock.mockReset();
     startGuestSessionMock.mockReset();
     startGuestSessionMock.mockResolvedValue(undefined);
+    searchParamsMock = new URLSearchParams();
   });
 
-  it('enters guest mode through the mounted provider before navigating to onboarding', async () => {
+  it('enters guest mode through the mounted provider before returning to the first-visit router', async () => {
     render(<LoginPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }));
@@ -42,6 +44,14 @@ describe('LoginPage guest entry', () => {
     await waitFor(() => {
       expect(startGuestSessionMock).toHaveBeenCalledTimes(1);
     });
-    expect(pushMock).toHaveBeenCalledWith('/onboarding');
+    expect(pushMock).toHaveBeenCalledWith('/');
+  });
+
+  it('opens directly in account creation mode when requested by guest onboarding', () => {
+    searchParamsMock = new URLSearchParams('mode=signup&onboardingIntent=ORGANIZATION&next=%2Forganizations%3Fcreate%3D1');
+
+    render(<LoginPage />);
+
+    expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
   });
 });

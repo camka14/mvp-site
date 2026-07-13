@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationCard from '@/components/ui/OrganizationCard';
@@ -8,10 +8,10 @@ import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { Container, Title, Text, Group, Button, Paper, Stack } from '@mantine/core';
 import { useApp } from '@/app/providers';
-import type { Invite, Organization, UserData } from '@/types';
+import type { Invite, Organization, OrganizationFeature, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { userService } from '@/lib/userService';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function OrganizationsPage() {
   return (
@@ -34,6 +34,16 @@ function OrganizationsPageContent() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const createPreset = searchParams.get('preset') === 'club' ? 'club' : 'organization';
+  const requestedCreate = searchParams.get('create') === '1';
+  const initialFeatures = useMemo<OrganizationFeature[]>(
+    () => createPreset === 'club' ? ['CLUB_TEAMS', 'EVENT_MANAGEMENT'] : ['EVENT_MANAGEMENT'],
+    [createPreset],
+  );
+  const createOrganizationBlocked = requiresEmailVerification
+    || authUser?.emailVerified === false
+    || authUser?.emailVerifiedAt === null;
 
   useEffect(() => {
     if (!authLoading) {
@@ -44,6 +54,12 @@ function OrganizationsPageContent() {
       loadOrgs(user.$id);
     }
   }, [authLoading, isAuthenticated, user, router]);
+
+  useEffect(() => {
+    if (requestedCreate && !authLoading && isAuthenticated && user && !createOrganizationBlocked) {
+      setShowCreate(true);
+    }
+  }, [authLoading, createOrganizationBlocked, isAuthenticated, requestedCreate, user]);
 
   const loadOrgs = async (ownerId: string) => {
     setLoading(true);
@@ -80,15 +96,19 @@ function OrganizationsPageContent() {
       .filter((invite) => typeof invite.organizationId === 'string')
       .map((invite) => [invite.organizationId as string, invite] as const),
   );
-  const createOrganizationBlocked = requiresEmailVerification
-    || authUser?.emailVerified === false
-    || authUser?.emailVerifiedAt === null;
   const createOrganizationBlockedReason = createOrganizationBlocked
     ? 'Verify your email before creating an organization.'
     : undefined;
+
   const handleCreateOrganizationClick = () => {
     if (createOrganizationBlocked) return;
     setShowCreate(true);
+  };
+  const handleCloseCreate = () => {
+    setShowCreate(false);
+    if (requestedCreate) {
+      router.replace('/organizations');
+    }
   };
 
   return (
@@ -182,9 +202,11 @@ function OrganizationsPageContent() {
 
         <CreateOrganizationModal
           isOpen={showCreate && !createOrganizationBlocked}
-          onClose={() => setShowCreate(false)}
+          onClose={handleCloseCreate}
           currentUser={user as UserData}
           onCreated={(org) => setOrgs((prev) => [org, ...prev])}
+          initialFeatures={initialFeatures}
+          initialTagSlugs={createPreset === 'club' ? ['club'] : []}
         />
       </Container>
     </>

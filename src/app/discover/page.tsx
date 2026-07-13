@@ -37,7 +37,13 @@ import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
 import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
-import { DISCOVER_SPORT_PARAM, parseDiscoverSportFilters, resolveDiscoverSportFilters } from '@/lib/discoverFilters';
+import {
+  DISCOVER_SPORT_PARAM,
+  parseDiscoverPreset,
+  parseDiscoverSportFilters,
+  resolveDiscoverSportFilters,
+  type DiscoverTabValue,
+} from '@/lib/discoverFilters';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import EventsTabContent from './components/EventsTabContent';
@@ -77,7 +83,7 @@ type OrganizationResult = {
   relevance: number;
 };
 
-type DiscoverTab = 'events' | 'organizations' | 'rentals' | 'teams';
+type DiscoverTab = DiscoverTabValue;
 
 const EVENTS_LIMIT = 18;
 const DISCOVERY_PAGE_SIZE = 100;
@@ -122,10 +128,14 @@ function DiscoverPageContent() {
     () => parseDiscoverSportFilters(new URLSearchParams(searchParamsString)),
     [searchParamsString],
   );
+  const urlPreset = useMemo(
+    () => parseDiscoverPreset(new URLSearchParams(searchParamsString)),
+    [searchParamsString],
+  );
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
-  const { location, requestLocation } = useLocation();
+  const { location, requestLocation, setLocationFromInfo } = useLocation();
 
-  const [activeTab, setActiveTab] = useState<DiscoverTab>('events');
+  const [activeTab, setActiveTab] = useState<DiscoverTab>(() => urlPreset.tab);
 
   /**
    * Events tab state
@@ -148,16 +158,28 @@ function DiscoverPageContent() {
     useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE']);
   const [selectedSports, setSelectedSports] = useState<string[]>(() => urlSelectedSports);
   const [selectedEventTags, setSelectedEventTags] = useState<string[]>([]);
-  const [eventDivisionFilters, setEventDivisionFilters] = useState<DivisionDiscoveryFilterValue>(EMPTY_DIVISION_FILTERS);
+  const [eventDivisionFilters, setEventDivisionFilters] = useState<DivisionDiscoveryFilterValue>(() => ({
+    ...EMPTY_DIVISION_FILTERS,
+    skillDivisionTypeIds: urlPreset.tab === 'events' ? urlPreset.skillDivisionTypeIds : [],
+  }));
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
   const [eventTagsLoading, setEventTagsLoading] = useState(false);
   const [eventTagsError, setEventTagsError] = useState<string | null>(null);
-  const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>([]);
-  const [organizationDivisionFilters, setOrganizationDivisionFilters] = useState<DivisionDiscoveryFilterValue>(EMPTY_DIVISION_FILTERS);
+  const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>(() => (
+    urlPreset.tab === 'organizations' ? urlPreset.tags : []
+  ));
+  const [organizationDivisionFilters, setOrganizationDivisionFilters] = useState<DivisionDiscoveryFilterValue>(() => ({
+    ...EMPTY_DIVISION_FILTERS,
+    skillDivisionTypeIds: urlPreset.tab === 'organizations' ? urlPreset.skillDivisionTypeIds : [],
+  }));
   const [organizationTags, setOrganizationTags] = useState<OrganizationTag[]>([]);
   const [organizationTagsLoading, setOrganizationTagsLoading] = useState(false);
   const [organizationTagsError, setOrganizationTagsError] = useState<string | null>(null);
-  const [maxDistance, setMaxDistance] = useState<number | null>(null);
+  const [maxDistance, setMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'events' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
   const searchQuery = searchParams.get('q') || '';
@@ -235,7 +257,11 @@ function DiscoverPageContent() {
   const [rentalOffset, setRentalOffset] = useState(0);
   const [rentalsError, setRentalsError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
-  const [rentalsMaxDistance, setRentalsMaxDistance] = useState<number | null>(null);
+  const [rentalsMaxDistance, setRentalsMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'rentals' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
 
   /**
    * Organizations tab state
@@ -247,7 +273,11 @@ function DiscoverPageContent() {
   const [hasMoreOrganizations, setHasMoreOrganizations] = useState(true);
   const [organizationOffset, setOrganizationOffset] = useState(0);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
-  const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(null);
+  const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'organizations' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
 
   /**
    * Teams tab state
@@ -707,9 +737,25 @@ function DiscoverPageContent() {
     loadFirstPage();
   }, [isAuthenticated, hasGuestSession, authLoading, activeTab, loadFirstPage]);
 
+  const presetLocationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!urlPreset.location || presetLocationAppliedRef.current) {
+      return;
+    }
+    const labelParts = (urlPreset.location.label ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+    setLocationFromInfo({
+      lat: urlPreset.location.lat,
+      lng: urlPreset.location.lng,
+      city: labelParts[0],
+      state: labelParts[1],
+      formattedAddress: urlPreset.location.label ?? undefined,
+    });
+    presetLocationAppliedRef.current = true;
+  }, [setLocationFromInfo, urlPreset.location]);
+
   const locationRequestAttemptedRef = useRef(false);
   useEffect(() => {
-    if (location) {
+    if (location || urlPreset.location) {
       return;
     }
     if (locationRequestAttemptedRef.current) {
@@ -720,7 +766,7 @@ function DiscoverPageContent() {
     }
     locationRequestAttemptedRef.current = true;
     requestLocation().catch(() => {});
-  }, [location, requestLocation]);
+  }, [location, requestLocation, urlPreset.location]);
 
   useEffect(() => {
     if (activeTab === 'rentals') {

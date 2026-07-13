@@ -19,13 +19,14 @@ jest.mock('@/server/landingRedirect', () => ({
     resolveLandingRedirectPathFromTokenMock(...args),
 }));
 
-jest.mock('@/components/landing/LandingPage', () => ({
+jest.mock('@/components/onboarding/GuestIntentOnboarding', () => ({
   __esModule: true,
-  default: ({ brandHref }: { brandHref: string }) => (
-    <div data-testid="landing-page" data-brand-href={brandHref}>
-      Landing page
-    </div>
-  ),
+  default: () => <div data-testid="guest-onboarding">Guest onboarding</div>,
+}));
+
+jest.mock('@/components/onboarding/GuestDiscoverRedirect', () => ({
+  __esModule: true,
+  default: () => <div data-testid="guest-discover-redirect">Guest Discover redirect</div>,
 }));
 
 describe('Home page route', () => {
@@ -51,12 +52,25 @@ describe('Home page route', () => {
     expect(redirectMock).toHaveBeenCalledWith('/organizations/org_42');
   });
 
-  it('renders the landing page for visitors without a redirect target', async () => {
+  it('renders guest onboarding for a first-time visitor', async () => {
     const view = await HomePage();
 
     render(view);
 
     expect(resolveLandingRedirectPathFromTokenMock).toHaveBeenCalledWith(null);
-    expect(screen.getByTestId('landing-page')).toHaveAttribute('data-brand-href', '/');
+    expect(screen.getByTestId('guest-onboarding')).toBeInTheDocument();
+  });
+
+  it('routes a repeat anonymous visitor to Discover', async () => {
+    cookiesMock.mockResolvedValue({
+      get: (name: string) => name === 'bracketiq_guest_onboarding_v1' ? { value: '1' } : undefined,
+    });
+
+    const view = await HomePage();
+
+    render(view);
+
+    expect(screen.getByTestId('guest-discover-redirect')).toBeInTheDocument();
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });

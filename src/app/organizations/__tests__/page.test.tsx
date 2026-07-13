@@ -4,13 +4,17 @@ import OrganizationsPage from '../page';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
 const pushMock = jest.fn();
+const replaceMock = jest.fn();
+const searchParamsGetMock = jest.fn();
+const createOrganizationModalPropsMock = jest.fn();
 const useAppMock = jest.fn();
 const getOrganizationsByUserMock = jest.fn();
 const getOrganizationsByIdsMock = jest.fn();
 const listInvitesMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  useSearchParams: () => ({ get: searchParamsGetMock }),
 }));
 
 jest.mock('@/app/providers', () => ({
@@ -24,9 +28,10 @@ jest.mock('@/components/layout/Navigation', () => ({
 
 jest.mock('@/components/ui/CreateOrganizationModal', () => ({
   __esModule: true,
-  default: ({ isOpen }: { isOpen: boolean }) => (
-    isOpen ? <div data-testid="create-organization-modal" /> : null
-  ),
+  default: (props: { isOpen: boolean }) => {
+    createOrganizationModalPropsMock(props);
+    return props.isOpen ? <div data-testid="create-organization-modal" /> : null;
+  },
 }));
 
 jest.mock('@/lib/organizationService', () => ({
@@ -62,6 +67,9 @@ const renderPage = () => renderWithMantine(<OrganizationsPage />);
 describe('OrganizationsPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
+    searchParamsGetMock.mockReset().mockReturnValue(null);
+    createOrganizationModalPropsMock.mockReset();
     useAppMock.mockReset();
     getOrganizationsByUserMock.mockReset();
     getOrganizationsByIdsMock.mockReset();
@@ -100,5 +108,21 @@ describe('OrganizationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /\+ create organization/i }));
 
     expect(screen.getByTestId('create-organization-modal')).toBeInTheDocument();
+  });
+
+  it('opens club creation with club and event tools plus the Club tag preset', () => {
+    searchParamsGetMock.mockImplementation((name: string) => {
+      if (name === 'create') return '1';
+      if (name === 'preset') return 'club';
+      return null;
+    });
+
+    renderPage();
+
+    expect(screen.getByTestId('create-organization-modal')).toBeInTheDocument();
+    expect(createOrganizationModalPropsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      initialFeatures: ['CLUB_TEAMS', 'EVENT_MANAGEMENT'],
+      initialTagSlugs: ['club'],
+    }));
   });
 });

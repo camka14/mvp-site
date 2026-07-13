@@ -30,6 +30,8 @@ interface Props {
   organization?: Organization | null;
   onCreated?: (org: Organization) => void;
   onUpdated?: (org: Organization) => void;
+  initialFeatures?: OrganizationFeature[];
+  initialTagSlugs?: string[];
 }
 
 const DEFAULT_COORDINATES = { lat: 37.7749, lng: -122.4194 };
@@ -62,12 +64,15 @@ export default function CreateOrganizationModal({
   organization,
   onCreated,
   onUpdated,
+  initialFeatures,
+  initialTagSlugs,
 }: Props) {
   const isEditing = Boolean(organization);
   const { location: userLocation, locationInfo } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const initializedRef = useRef(false);
   const initializedOrganizationIdRef = useRef<string | null>(null);
+  const initialTagsAppliedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -193,7 +198,7 @@ export default function CreateOrganizationModal({
       description: '',
       website: '',
       sports: [],
-      enabledFeatures: ['EVENT_MANAGEMENT'],
+      enabledFeatures: normalizeOrganizationFeatures(initialFeatures),
       location: label,
       address: '',
       logoId: '',
@@ -208,7 +213,7 @@ export default function CreateOrganizationModal({
     setLogoUrl('');
     initializedRef.current = true;
     initializedOrganizationIdRef.current = null;
-  }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo]);
+  }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo, initialFeatures]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -230,6 +235,27 @@ export default function CreateOrganizationModal({
 
     return () => controller.abort();
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      initialTagsAppliedRef.current = false;
+      return;
+    }
+    if (isEditing || initialTagsAppliedRef.current || !initialTagSlugs?.length || !tagOptions.length) {
+      return;
+    }
+    const requested = new Set(initialTagSlugs.map((slug) => slug.trim().toLowerCase()).filter(Boolean));
+    const matchingTags = tagOptions.filter((tag) => requested.has((tag.slug ?? tag.name).trim().toLowerCase()));
+    if (matchingTags.length) {
+      setForm((previous) => ({
+        ...previous,
+        tags: Array.from(new Map(
+          [...previous.tags, ...matchingTags].map((tag) => [tag.slug ?? tag.$id ?? tag.name, tag]),
+        ).values()),
+      }));
+    }
+    initialTagsAppliedRef.current = true;
+  }, [initialTagSlugs, isEditing, isOpen, tagOptions]);
 
   useEffect(() => {
     if (!isOpen || isEditing || !userLocation) {

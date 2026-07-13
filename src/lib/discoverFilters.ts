@@ -1,5 +1,14 @@
 export const DISCOVER_SPORT_PARAM = 'sport';
 const LEGACY_DISCOVER_SPORTS_PARAM = 'sports';
+export type DiscoverTabValue = 'events' | 'organizations' | 'rentals' | 'teams';
+
+export type DiscoverPreset = {
+  tab: DiscoverTabValue;
+  tags: string[];
+  skillDivisionTypeIds: string[];
+  distanceMiles: number | null;
+  location: { lat: number; lng: number; label: string | null } | null;
+};
 
 type SearchParamsLike = {
   get(name: string): string | null;
@@ -30,6 +39,49 @@ const splitFilterValues = (value: string | null | undefined): string[] => (
     ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
     : []
 );
+
+const parseFiniteNumber = (value: string | null): number | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const parseDiscoverPreset = (searchParams: SearchParamsLike): DiscoverPreset => {
+  const requestedTab = searchParams.get('tab');
+  const tab: DiscoverTabValue = requestedTab === 'organizations'
+    || requestedTab === 'rentals'
+    || requestedTab === 'teams'
+    ? requestedTab
+    : 'events';
+  const lat = parseFiniteNumber(searchParams.get('lat'));
+  const lng = parseFiniteNumber(searchParams.get('lng'));
+  const rawDistance = parseFiniteNumber(searchParams.get('distanceMiles'));
+  const distanceMiles = rawDistance !== null && rawDistance > 0 && rawDistance <= 500
+    ? rawDistance
+    : null;
+  const location = lat !== null
+    && lng !== null
+    && lat >= -90
+    && lat <= 90
+    && lng >= -180
+    && lng <= 180
+    ? {
+        lat,
+        lng,
+        label: searchParams.get('location')?.trim() || null,
+      }
+    : null;
+
+  return {
+    tab,
+    tags: uniqueNonEmptyValues(searchParams.getAll('tags').flatMap(splitFilterValues)),
+    skillDivisionTypeIds: uniqueNonEmptyValues(
+      searchParams.getAll('skillDivisionTypeIds').flatMap(splitFilterValues),
+    ),
+    distanceMiles,
+    location,
+  };
+};
 
 export const parseDiscoverSportFilters = (searchParams: SearchParamsLike): string[] => (
   uniqueNonEmptyValues([

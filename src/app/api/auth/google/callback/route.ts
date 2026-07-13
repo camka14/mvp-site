@@ -206,6 +206,7 @@ export async function GET(req: NextRequest) {
             data: {
               firstName: nextProfile.firstName,
               lastName: nextProfile.lastName,
+              ...(existingProfile.onboardingIntent ? {} : { onboardingIntent: 'DISCOVER_EVENTS' }),
               requiredProfileFieldsCompletedAt,
               updatedAt: now,
             },
@@ -244,6 +245,7 @@ export async function GET(req: NextRequest) {
               followingIds: [],
               uploadedImages: [],
               profileImageId: null,
+              onboardingIntent: 'DISCOVER_EVENTS',
             },
           });
         })();

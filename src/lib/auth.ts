@@ -1,7 +1,7 @@
 import type { UserData } from '@/types';
 import { normalizeAccountVisibility } from '@/lib/accountVisibility';
 import { normalizeOptionalName } from '@/lib/nameCase';
-import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
+import { normalizeOnboardingIntent, type OnboardingIntent } from '@/lib/onboardingIntent';
 
 interface UserAccount {
   $id: string;
@@ -298,6 +298,7 @@ export const authService = {
     lastName: string,
     userName: string,
     dateOfBirth: string,
+    onboardingIntent?: OnboardingIntent,
   ): Promise<AuthSessionResult> {
     const normalizedFirstName = normalizeOptionalName(firstName) ?? firstName.trim();
     const normalizedLastName = normalizeOptionalName(lastName) ?? lastName.trim();
@@ -311,6 +312,7 @@ export const authService = {
         lastName: normalizedLastName,
         userName,
         dateOfBirth,
+        onboardingIntent,
       }),
     });
     if (isVerificationRequiredPayload(data) && (!data.user || !data.session)) {
@@ -432,13 +434,16 @@ export const authService = {
     return;
   },
 
-  async oauthLoginWithGoogle(): Promise<void> {
+  async oauthLoginWithGoogle(nextPath?: string | null): Promise<void> {
     if (typeof window === 'undefined') {
       throw new Error('Google OAuth is only available in the browser.');
     }
 
     // Preserve where the user was, but only as a same-origin path.
-    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const requestedNext = nextPath?.trim();
+    const next = requestedNext && requestedNext.startsWith('/') && !requestedNext.startsWith('//')
+      ? requestedNext
+      : `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const url = new URL('/api/auth/google/start', window.location.origin);
     url.searchParams.set('next', next || '/discover');
     window.location.assign(url.toString());

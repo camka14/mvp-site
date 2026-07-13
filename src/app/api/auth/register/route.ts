@@ -25,6 +25,7 @@ import {
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 import { isFutureDateOfBirth, parseDateOfBirth } from '@/lib/dateOfBirth';
+import { ONBOARDING_INTENT_VALUES } from '@/lib/onboardingIntent';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -43,6 +44,7 @@ const registerSchema = z.object({
   dateOfBirth: z.string().optional(),
   enforceProfileConflictSelection: z.boolean().optional(),
   profileSelection: profileSelectionSchema,
+  onboardingIntent: z.enum(ONBOARDING_INTENT_VALUES).optional(),
 });
 
 const PROFILE_CONFLICT_CODE = 'PROFILE_CONFLICT' as const;
@@ -222,6 +224,7 @@ export async function POST(req: NextRequest) {
     dateOfBirth,
     enforceProfileConflictSelection,
     profileSelection,
+    onboardingIntent,
   } = parsed.data;
 
   const normalizedEmail = email.toLowerCase();
@@ -339,6 +342,7 @@ export async function POST(req: NextRequest) {
                 ...(inviteHomeOrganizationId && !existingProfile.homePageOrganizationId
                   ? { homePageOrganizationId: inviteHomeOrganizationId }
                   : {}),
+                onboardingIntent: existingProfile.onboardingIntent ?? onboardingIntent ?? 'DISCOVER_EVENTS',
                 requiredProfileFieldsCompletedAt,
                 updatedAt: now,
               },
@@ -374,6 +378,7 @@ export async function POST(req: NextRequest) {
                 uploadedImages: [],
                 profileImageId: null,
                 homePageOrganizationId: inviteHomeOrganizationId,
+                onboardingIntent: onboardingIntent ?? 'DISCOVER_EVENTS',
               },
             });
           })();

@@ -1,0 +1,154 @@
+.root {
+  min-height: calc(100vh - 64px);
+  background: #f8fafc;
+}
+
+.shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #162235;
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 7px;
+  background: #172235;
+  color: #f4c763;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.stage {
+  margin-top: 44px;
+}
+
+.heading {
+  max-width: 720px;
+  letter-spacing: 0;
+}
+
+.choiceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.choice {
+  min-height: 150px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 20px;
+  text-align: left;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  border-color: #24598c;
+  box-shadow: 0 8px 22px rgba(22, 34, 53, 0.1);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.choice[data-tone='create'] {
+  border-left: 4px solid #279171;
+}
+
+.choice[data-tone='find'] {
+  border-left: 4px solid #24598c;
+}
+
+.choiceIcon[data-tone='find'] {
+  background: #e4eff9;
+  color: #1d568b;
+}
+
+.choiceIcon[data-tone='create'],
+.createGateIcon {
+  background: #dff3ec;
+  color: #19765d;
+}
+
+.formPanel {
+  max-width: 760px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 28px;
+  box-shadow: 0 12px 34px rgba(22, 34, 53, 0.08);
+}
+
+.locationResults {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 210px;
+  overflow-y: auto;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  box-shadow: 0 12px 30px rgba(22, 34, 53, 0.14);
+}
+
+.locationOption {
+  width: 100%;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #243349;
+  text-align: left;
+}
+
+.locationOption:hover,
+.locationOption:focus-visible {
+  background: #edf4fa;
+  outline: none;
+}
+
+.actionGroup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: min(100% - 24px, 620px);
+    padding-top: 20px;
+  }
+
+  .stage {
+    margin-top: 30px;
+  }
+
+  .choiceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .choice {
+    min-height: 118px;
+  }
+
+  .formPanel {
+    padding: 20px;
+  }
+
+  .actionGroup {
+    grid-template-columns: 1fr;
+  }
+}

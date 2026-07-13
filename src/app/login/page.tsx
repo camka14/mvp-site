@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { ApiError, authService, type AuthSessionResult } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
-import { ONBOARDING_PATH } from '@/lib/onboardingIntent';
+import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 import { userService } from '@/lib/userService';
 import Loading from '@/components/ui/Loading';
 import { ProfileImageUploadField } from '@/components/ui/ProfileImageUploadField';
@@ -63,6 +63,9 @@ function LoginPageContent() {
   } = useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedNextPath = getSafeMfaReturnPath(searchParams.get('next'));
+  const requestedOnboardingIntent = normalizeOnboardingIntent(searchParams.get('onboardingIntent'))
+    ?? 'DISCOVER_EVENTS';
   const isOauthMfaOffer = searchParams.get('oauth') === 'google' && searchParams.get('mfaOffer') === '1';
   const today = new Date();
   const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -70,9 +73,15 @@ function LoginPageContent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user && !optionalMfaAuthResult && !isOauthMfaOffer) {
-      router.push(requiresProfileCompletion ? '/complete-profile' : getHomePathForUser(user));
+      router.push(requiresProfileCompletion ? '/complete-profile' : requestedNextPath || getHomePathForUser(user));
     }
-  }, [authLoading, isOauthMfaOffer, optionalMfaAuthResult, requiresProfileCompletion, router, user]);
+  }, [authLoading, isOauthMfaOffer, optionalMfaAuthResult, requestedNextPath, requiresProfileCompletion, router, user]);
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'signup') {
+      setIsLogin(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const oauth = searchParams.get('oauth');
@@ -147,7 +156,7 @@ function LoginPageContent() {
     setMfaCode('');
   };
 
-  const completeAuth = (authResult: AuthSessionResult, returnPath = mfaReturnPath) => {
+  const completeAuth = (authResult: AuthSessionResult, returnPath = mfaReturnPath ?? requestedNextPath) => {
     if (!authResult?.user) {
       throw new Error('Authentication failed');
     }
@@ -318,7 +327,8 @@ function LoginPageContent() {
           formData.firstName,
           formData.lastName,
           formData.userName,
-          formData.dateOfBirth
+          formData.dateOfBirth,
+          requestedOnboardingIntent,
         );
         authResult = await attachProfileImageToAuthResult(authResult);
       }
@@ -386,7 +396,7 @@ function LoginPageContent() {
     setError('');
     try {
       await startGuestSession();
-      router.push(ONBOARDING_PATH);
+      router.push('/');
     } catch (e: any) {
       setError(e?.message || 'Failed to start guest session');
     } finally {
@@ -719,7 +729,7 @@ function LoginPageContent() {
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => authService.oauthLoginWithGoogle()}
+                onClick={() => authService.oauthLoginWithGoogle(requestedNextPath)}
                 disabled={loading}
                 className="w-full border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
