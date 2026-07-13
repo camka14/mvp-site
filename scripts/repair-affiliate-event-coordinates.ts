@@ -41,7 +41,6 @@ const useLive = process.argv.includes('--live');
 const apply = process.argv.includes('--apply');
 
 if (useLive) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
 const databaseUrl = useLive ? process.env.DATABASE_URL_LIVE : process.env.DATABASE_URL;

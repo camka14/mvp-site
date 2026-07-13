@@ -1600,32 +1600,28 @@ describe('upsertEventFromPayload', () => {
     expect(client.events.upsert).not.toHaveBeenCalled();
   });
 
-  it('retries event upsert without unknown Prisma arguments', async () => {
+  it('fails closed when Prisma rejects a requested event field', async () => {
     const client = createMockClient();
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    client.events.upsert
-      .mockRejectedValueOnce(new Error('Unknown argument `noFixedEndDateTime`. Available options are marked with ?.'))
-      .mockResolvedValue(undefined);
+    client.events.upsert.mockRejectedValueOnce(
+      new Error('Unknown argument `noFixedEndDateTime`. Available options are marked with ?.'),
+    );
 
     const payload = {
       ...baseEventPayload(),
       noFixedEndDateTime: false,
     };
 
-    try {
-      await upsertEventFromPayload(payload, client as any);
-
-      expect(client.events.upsert).toHaveBeenCalledTimes(2);
-      const firstCallArgs = client.events.upsert.mock.calls[0][0];
-      const secondCallArgs = client.events.upsert.mock.calls[1][0];
-      expect(firstCallArgs.create.noFixedEndDateTime).toBe(false);
-      expect(firstCallArgs.update.noFixedEndDateTime).toBe(false);
-      expect(secondCallArgs.create.noFixedEndDateTime).toBeUndefined();
-      expect(secondCallArgs.update.noFixedEndDateTime).toBeUndefined();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('noFixedEndDateTime'));
-    } finally {
-      warnSpy.mockRestore();
-    }
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toEqual(
+      expect.objectContaining({
+        name: 'PrismaSchemaContractError',
+        model: 'Events',
+        field: 'noFixedEndDateTime',
+      }),
+    );
+    expect(client.events.upsert).toHaveBeenCalledTimes(1);
+    const callArgs = client.events.upsert.mock.calls[0][0];
+    expect(callArgs.create.noFixedEndDateTime).toBe(false);
+    expect(callArgs.update.noFixedEndDateTime).toBe(false);
   });
 
   it('persists league scoring config values and links the resulting config id on event upsert', async () => {

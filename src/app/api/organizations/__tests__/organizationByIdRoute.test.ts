@@ -247,6 +247,40 @@ describe('/api/organizations/[id]', () => {
     expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 
+  it('fails closed when Prisma rejects a requested organization patch field', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      publicSlug: null,
+    });
+    prismaMock.organizations.update.mockRejectedValueOnce(
+      new Error('Unknown argument `name` for type OrganizationsUpdateInput.'),
+    );
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({ organization: { name: 'Renamed Org' } }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(prismaMock.organizations.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'org_1' },
+      data: expect.objectContaining({ name: 'Renamed Org' }),
+    }));
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'name',
+    }));
+  });
+
   it('normalizes and persists public page settings for organization managers', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({

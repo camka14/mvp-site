@@ -244,6 +244,47 @@ describe('POST /api/billing/bills/[id]/split', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects a bill whose owner did not explicitly allow splitting', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_no_split',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      allowSplit: false,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_no_split/split', {
+        playerIds: ['player_1'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_no_split' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(canManageBillPaymentMock).not.toHaveBeenCalled();
+    expect(prismaMock.teams.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects split recipients outside the current team roster', async () => {
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_team_invalid_recipient',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      allowSplit: true,
+    });
+    prismaMock.teams.findUnique.mockResolvedValue({ playerIds: ['player_1'] });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills/bill_team_invalid_recipient/split', {
+        playerIds: ['player_1', 'outsider_1'],
+      }),
+      { params: Promise.resolve({ id: 'bill_team_invalid_recipient' }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it('returns a conflict instead of creating duplicate children when a split already completed', async () => {
     prismaMock.bills.findUnique.mockResolvedValue({
       id: 'bill_team_already_split',

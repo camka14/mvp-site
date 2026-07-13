@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
   }
 
-  const existingSensitive = await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
+  const existingSensitive = await prisma.sensitiveUserData.findUnique({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
   const existingProfile = (existingAuth || existingSensitive)
@@ -384,7 +384,7 @@ export async function POST(req: NextRequest) {
           })();
 
       await tx.sensitiveUserData.upsert({
-        where: { id: existingSensitive?.id ?? createdAuth.id },
+        where: { userId: createdAuth.id },
         update: {
           email: normalizedEmail,
           userId: createdAuth.id,

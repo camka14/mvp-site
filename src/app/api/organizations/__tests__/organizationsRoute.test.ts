@@ -465,6 +465,36 @@ describe('/api/organizations', () => {
     expect(payload.hasStripeAccount).toBe(false);
   });
 
+  it('fails closed when Prisma rejects a requested organization field', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    createMock.mockRejectedValueOnce(
+      new Error('Unknown argument `defaultEventTaxHandling` for type OrganizationsCreateInput.'),
+    );
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        taxResponsibilityAgreementAccepted: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ defaultEventTaxHandling: 'STRIPE_TAX' }),
+    }));
+    expect(sendAdminOrganizationCreatedNotificationMock).not.toHaveBeenCalled();
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'defaultEventTaxHandling',
+    }));
+  });
+
   it('blocks organization creation when the session user has not verified email', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     authUserFindUniqueMock.mockResolvedValueOnce({ emailVerifiedAt: null });

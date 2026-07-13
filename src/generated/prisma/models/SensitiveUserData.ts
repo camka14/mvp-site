@@ -403,13 +403,13 @@ export type SensitiveUserDataOrderByWithRelationInput = {
 
 export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  userId?: string
+  email?: string
   AND?: Prisma.SensitiveUserDataWhereInput | Prisma.SensitiveUserDataWhereInput[]
   OR?: Prisma.SensitiveUserDataWhereInput[]
   NOT?: Prisma.SensitiveUserDataWhereInput | Prisma.SensitiveUserDataWhereInput[]
   createdAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
-  userId?: Prisma.StringFilter<"SensitiveUserData"> | string
-  email?: Prisma.StringFilter<"SensitiveUserData"> | string
   billingAddressLine1?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingAddressLine2?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingCity?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
@@ -429,7 +429,7 @@ export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
   totpProvider?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   financialMfaRequiredAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
   financialMfaSatisfiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
-}, "id">
+}, "id" | "userId" | "email">
 
 export type SensitiveUserDataOrderByWithAggregationInput = {
   id?: Prisma.SortOrder

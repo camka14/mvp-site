@@ -14,11 +14,12 @@ recorded where the affected surface is reachable.
 
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
-| **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257` and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (5)** | `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002` | `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
-| **Remaining / not yet reconciled (188)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
+| **Completed — high (35)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-016`, `SEC-019`, `SEC-021`, `SEC-022`, `SEC-024`, `SEC-031`, `SEC-032`, `SEC-033`, `SEC-034`, `SEC-035`, `SEC-036`, `SEC-039`, `SEC-041`, `SEC-042`, `OPS-004`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010`, `APP-065`, `APP-135` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `2401d0ee`, `eaca7349`, `bb1b1177`, `531ab0b5`, `68abaf75`, `7ee85fd8`, `5b06fffe`, `a00ff409`, `ca620ba4`, `2073720f`, `3ce1ffac`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Focused web suites passed 58 tests and `npx tsc --noEmit`; focused Android suites passed 4 invitation-invalidation, 12 logout/retry, 9 Room migration/DAO tests, and the startup-laziness regression. The installed Android app launched without a migration failure or startup ANR. |
+| **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
+| **Remaining / not yet reconciled (157)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **39 completed, 188 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **70 completed, 157 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -115,7 +116,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 | AND-FLOW-006 | Home memberships/templates/children/invites/connections/discounts/documents/refunds | Pixel 9 Pro XL API 35 + isolated database | pass with issues | Every remaining Home action and its empty/create dialog state was opened. Empty states were present. Child creation repeated the future-DOB defect; Event Templates had no empty-state guidance or creation route; debug-only controls were correctly gated by `Platform.isDebugBuild`. |
 | AND-ENV-004 | Wear build/test/runtime availability | Temurin JDK 17 + Pixel 9 Pro XL API 35 | build/tests pass; watch runtime constrained | `:wearApp:testDebugUnitTest` and `:wearApp:assembleDebug` passed (7 tests). No Wear OS AVD/system image is configured, so round-screen/performance claims remain pending. The Wear APK was installed only for constrained activity rendering, then the 1.6.14 phone APK was restored and its authenticated Discover state reverified. |
 | AND-FLOW-007 | Wear login/demo officiating surfaces | Debug Wear activity on phone emulator | partial with issues | UI-tree-derived interaction covered blank-login validation and Action → Incidents → Edit incident → Team/Player/Time. Debug routes rendered Matches, Match Detail, Timer, and score surfaces. This confirmed unlabeled login fields and the `073:52` clock; layout/performance evidence is not promoted because the device is not Wear OS. Captures are under `%TEMP%/mvp-code-audit`. |
-| AND-ENV-005 | Fresh current-HEAD cold start | Pixel 9 Pro XL API 35, freshly built/installed v1.6.14 | issue reproduced | `:composeApp:installDebug` succeeded, but two cold launches ANRed before `MainActivity` displayed. The system trace attributes the main-thread stall to eager Koin `UserRepository` resolution and Ktor/SLF4J `ServiceLoader` scanning inside `MvpApp.onCreate` (APP-135). |
+| AND-ENV-005 | Fresh current-HEAD cold start | Pixel 9 Pro XL API 35, freshly built/installed v1.6.14 | resolved in audited branch | `2073720f` defers `UserRepository` construction until it is requested instead of resolving it synchronously from Koin under `MvpApp.onCreate`. The focused startup-laziness unit test passed; a rebuilt debug APK was installed and a force-stop cold launch reached the Login screen with no ANR, crash, Koin, or ServiceLoader error in fresh logcat. |
 
 ## Confirmed findings
 
@@ -126,7 +127,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/billing/bills/route.ts:135-151` requires a session but accepts caller-controlled owner and amount data. The team normalization at `:185-205` performs no membership or manager authorization. `:325-355` persists the bill and `:341` prefers caller-supplied `user.$id` over the authenticated session for `createdBy`.
 - Impact: an ordinary account can create financial liabilities for arbitrary known user/team/organization identifiers and misattribute who created them.
 - Test evidence: `src/app/api/billing/__tests__/billsRoute.test.ts:47-115` exercises ordinary-user team bill creation without authorization fixtures; no denial case covers an unrelated team.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` requires owner authority for every bill creation and records the authenticated session user as `createdBy`; its regression suite denies unrelated team/user/organization billing and spoofed actors. The current focused billing suite passed, including the creation-denial tests.
 
 ### SEC-002 — Bill and payment records have unauthenticated or under-authorized read paths
 
@@ -137,7 +138,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - `src/app/api/billing/bills/[id]/payments/route.ts:7-13` returns all payments for a caller-supplied bill ID without authentication.
   - The list handler protects `USER` and `ORGANIZATION` at `src/app/api/billing/bills/route.ts:67-78`, but the `TEAM` branch at `:80-105` looks up related team IDs and returns bills without checking membership/management.
 - Impact: bill amounts/status/metadata and payment records can be disclosed by known or guessed IDs; any logged-in user can enumerate another team's bills.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` requires a session and `canManageBillPayment` for individual bills and payment installments, and scopes TEAM bill lists through the team manager roles. `1731ad84` additionally converts an unauthenticated list request from a server error into a proper 401 before any owner lookup. The current 17-test billing-read suite and a freshly built release server on port 3001 returned 401 for unauthenticated bill, payment, and TEAM-list probes. The public `bracket-iq.com` deployment still served the pre-fix payment path during this audit and must be released before this is considered a live closure.
 
 ### SEC-003 — Manual payment-proof images are public by file ID
 
@@ -149,7 +150,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - Authorized billing output constructs the same public generic URL at `src/app/api/events/[eventId]/teams/[teamId]/billing/route.ts:207-213`.
   - `src/app/api/files/__tests__/fileRoutes.test.ts:171-194` intentionally asserts unauthenticated serving, so this is current behavior rather than an untested omission.
 - Impact: receipts, payment screenshots, or other private proof images can be retrieved without a session when a file ID leaks.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `36e1afd6` adds `assertFileReadAccess` to generic download and preview handlers. It keeps ordinary public media readable but requires the proof uploader or an authorized bill manager for a `BillPaymentProofs.fileId`, before storage is read. The focused access and route suites passed 20 tests, including anonymous denial, unrelated-user denial, authorized-manager access, and both download/preview short-circuit checks.
 
 ### SEC-004 — Time-slot create/update/delete checks identity but not ownership
 
@@ -158,7 +159,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: POST only calls `requireSession` before persisting caller-controlled field/slot data (`src/app/api/time-slots/route.ts:271-321`). PATCH loads and updates any slot ID after the same identity-only check (`src/app/api/time-slots/[id]/route.ts:184-210`, `:330-360`). DELETE similarly authorizes no field/event/organization owner (`:363-380`).
 - Data-model concern: the `TimeSlots` record does not provide an obvious durable owner/organization/creator field, so the canonical authorization scope is unclear and must be derived consistently from attached resources.
 - Impact: an authenticated user with a known slot ID can alter or remove scheduling/rental inventory outside their organization.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `3ed10d0f` derives ownership from each scheduled field's organization/facility or standalone creator, and field-less legacy slots require management of every linked event. POST checks every requested field, while PATCH/DELETE check the persisted slot before mutation; reassignments are separately checked. The 22 focused access/route tests passed, covering unrelated callers, archived/missing fields, facility-owned fields, multi-event legacy slots, and all three mutation methods.
 
 ### SEC-005 — Filterless refund-request query exposes all refund rows to any account
 
@@ -167,7 +168,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/refund-requests/route.ts:11-33` authorizes only when optional `userId`, `hostId`, or `organizationId` filters exist. With no filter, `:35-47` builds a global query and returns up to the requested limit.
 - Impact: any authenticated user can read refund records across users, hosts, and organizations.
 - Test gap: filtered denial cases exist, but no filterless isolation case establishes the intended behavior.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. The list route now treats an unscoped non-admin request as the caller's personal refund inbox, while explicit host and organization scopes require the corresponding management authority. The focused route suite passed all 12 tests, including filterless isolation and denied cross-host/organization requests.
 
 ### SEC-006 — Batch registration-response authorization checks only one returned row
 
@@ -175,7 +176,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/registration-question-responses/route.ts:54-67` loads all requested subject IDs, derives scope only from `responses[0]`, authorizes that scope, and returns the entire array. The helper uses an unordered `findMany` across all IDs (`src/server/registrationQuestions.ts:373-388`).
 - Impact: mixing one managed subject with subjects from other scopes can disclose registration answers from events/teams the caller cannot manage.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `1aaafb77` derives every distinct durable event/team scope represented in a batch and authorizes all of them before returning any response. The focused seven-test suite passed, including mixed managed/unmanaged batches in both database orders and malformed/missing scope denial.
 
 ### SEC-007 — Schedule/realtime endpoints expose unpublished and private event operations
 
@@ -188,7 +189,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - The schema has `UNPUBLISHED` and `PRIVATE` states (`prisma/schema.prisma:75-80`), while the canonical public-search filter permits only `PUBLISHED`/null (`src/server/publicSearchPages.ts:13`, `:483-489`).
 - Impact: private or draft schedules, participants, exact occupancy/times/prices, locations, and live match updates can leak through known event/field IDs.
 - Test concern: existing privacy tests codify only template exclusion, leaving the broader state mismatch unguarded.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `aafb360f` centralizes event-state visibility for match and field calendar reads, including `PRIVATE`; the realtime token path requires event-manager authority for `UNPUBLISHED`, `DRAFT`, `PRIVATE`, and `TEMPLATE` states. Sixteen focused visibility tests passed across public matches, both field schedules, private realtime tokens, and the shared resolver. `696bf484` adds a standalone private-field-match regression outside the user-edited test surface.
 
 ### SEC-008 — Tracked Playwright storage state contains reusable bearer session tokens
 
@@ -196,7 +197,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `e2e/.auth/host.json:4-8` and `participant.json:4-8` contain tracked `auth_token` JWT cookies with long expirations. `e2e/global-setup.ts:24-37` performs real seeded logins and `:83-97` writes resulting storage state into those files. `.gitignore` does not exclude `e2e/.auth/`.
 - Impact: anyone with repository history can replay the local/test bearer tokens wherever the same signing secret and seeded database/session version are used. This also normalizes committing credentials generated by future environments.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `58466c56` removes the tracked storage-state files and ignores `e2e/.auth/`, while global setup generates fresh local state only after seeding. `git ls-files e2e/.auth` is empty and Git confirms the path is ignored. The current session verifier also rejects session-shaped shared-secret tokens without an expiry (`b3826149`); all seven focused token tests passed, including that historical-token shape.
 
 ### SEC-009 — MFA can be bypassed by omitting a caller-controlled `clientType`
 
@@ -206,7 +207,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Test evidence: `src/app/api/auth/__tests__/authRoutes.test.ts:500-544` explicitly expects successful login without `clientType` and without invoking MFA.
 - Impact: a password holder can bypass enabled web MFA with the normal login endpoint by omitting a JSON property. Trust is placed in an attacker-controlled client declaration rather than the account/session policy.
 - Legacy relevance: this looks like backward compatibility for older clients and must be evaluated against the `1.6.13` floor, but it is unsafe regardless of caller version when MFA is enabled.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` no longer lets caller-supplied `clientType` decide whether an authenticator challenge is required; every verified password login invokes the MFA challenge unless an explicitly enabled non-production local bypass is active. The focused auth route suite passed, including an MFA-enabled login that omits `clientType` and receives no session cookie.
 
 ### SEC-010 — Session JWTs have no cryptographic expiry
 
@@ -214,7 +215,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/lib/authServer.ts:68-70` signs normal session JWTs with no `expiresIn`; `:72-84` verifies without an age policy. The browser cookie lasts 400 days (`:8`, `:115-124`), but copied bearer tokens are not bound to cookie expiry. Logout increments the account session version (`src/app/api/auth/logout/route.ts:5-11`), but a token remains valid indefinitely absent revocation/password-related session-version change.
 - Impact: stolen Authorization tokens can outlive the already-long cookie lifetime and compound the committed-storage-state exposure.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `79db2c13` signs typed, issuer/audience-bound session tokens with the 400-day session lifetime, and `b3826149` rejects missing/invalid expiry claims during verification. The seven focused auth-token tests passed, covering bounded issuance plus missing-expiry, expired, wrong-audience, and wrong-type rejection.
 
 ### SEC-011 — Legacy universal user POST permits arbitrary profile mass assignment
 
@@ -223,7 +224,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/users/route.ts:143-152` requires any session, then trusts caller-supplied `id` plus an arbitrary `data` record. `:183-205` creates that `UserData` row and `:213-232` updates an existing row. There is no `session.userId === id`/admin assertion and no mutable-field allowlist.
 - Impact: an authenticated caller can create or overwrite another user's profile, including canonical flags/arrays accepted by Prisma, rather than using the access-controlled resource route.
 - Legacy relevance: the safer `PATCH /api/users/[id]` path has explicit access/field handling; this broad POST is a strong pre-`1.6.13` compatibility cleanup candidate after callers are traced.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` retires the universal mutation endpoint: authenticated and unauthenticated callers can no longer create or overwrite an arbitrary `UserData` record through `POST /api/users`, and the route returns HTTP 410 without any persistence access. The focused user-route suite passed all 16 cases, including an attempted victim-profile overwrite.
 
 ### SEC-012 — Universal invite endpoint trusts scope and inviter identity
 
@@ -232,7 +233,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/users/invite/route.ts:32-40` requires any session but accepts optional caller-controlled `inviterId`. `:60-71` validates only that exactly one team/event/organization scope ID is present, not that the caller manages it. `:88-114` provisions the email account and creates the invite with the spoofable actor at `createdBy`.
 - Alias amplification: `invite_by_email`, `invite-by-email`, and `invite-email` all re-export this POST handler.
 - Impact: any account can invite arbitrary emails as players/officials into known scopes and attribute the invite to another user.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `58466c56` derives `createdBy` exclusively from the authenticated session and requires team captain/manager/coach, event-manager, organization-manager, or admin authority for each exact invite scope. The focused invite suite passed all four cases, including spoofed-inviter and unauthorized team/event/organization attempts.
 
 ### SEC-013 — Generic ensure/lookup endpoints enable account creation and email enumeration
 
@@ -244,7 +245,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - `exists`, `exists-by-email`, and `lookup-by-email` re-export the same lookup behavior.
 - Impact: the API supports bulk database/account bloat and authenticated email/account identifier enumeration; aliases expand the surface and obscure the canonical contract.
 - Legacy relevance: determine which aliases/callers remain at the `1.6.13` compatibility floor and retire older universal flows in favor of scoped invitations/search.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` retires the arbitrary-email ensure endpoint and the lookup endpoint plus `exists`, `exists-by-email`, and `lookup-by-email` aliases with HTTP 410, leaving account resolution to authorized scoped invitation flows. The focused alias suite passed all 10 cases and verifies no persistence or identity lookup occurs.
 
 ### SEC-014 — Event creation trusts caller-supplied host and organization scope
 
@@ -253,7 +254,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the create schema accepts `event` as an arbitrary record (`src/app/api/events/route.ts:60-66`). After authentication/email verification (`:970-980`), the handler explicitly prefers payload `hostId` over `session.userId` (`:1045-1052`) and sends the payload into repository persistence (`:1081-1101`) without proving the caller can act for payload `organizationId`. Notifications use the resulting spoofed host (`:1103-1113`).
 - Impact: any verified account can create events/resources under another known user or organization and trigger externally visible notifications attributed to that host.
 - Source-of-truth concern: the persistence repository receives data but no actor/session, so authorization cannot be consistently enforced at that layer.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` derives a non-admin event host only from the authenticated session and requires `EVENTS_MANAGE` permission for the requested organization before opening the creation transaction. The focused event-save suite passed all six cases, including a spoofed `hostId` and an unauthorized organization-create attempt.
 
 ### SEC-015 — Public user privacy policy returns exact DOB, minor identity, and social metadata unchanged
 
@@ -265,7 +266,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - Unauthenticated single and batch user reads invoke that function (`src/app/api/users/[id]/route.ts:113-138`, `src/app/api/users/route.ts:65-90`).
 - Impact: known user IDs reveal exact birth dates, minor identities, and social/account metadata to unauthenticated callers. Exact DOB is particularly sensitive and unnecessary for a public profile.
 - Test concern: user-route tests whose names describe hiding unrelated minors currently assert visible names and `isIdentityHidden=false`, indicating policy/implementation drift rather than protection.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` applies a contextual privacy projection: public viewers receive no DOB, verification state, social arrays, Stripe state, or home-organization data, while minor identity is masked unless the viewer has a documented parent/team/event/organization relationship. The focused user-route suite passed all 16 cases, including anonymous unrelated minor/adult privacy assertions.
 
 ### SEC-016 — Users can self-assert server-owned verification and payment flags
 
@@ -274,7 +275,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `USER_MUTABLE_FIELDS` includes `dobVerified`, `dobVerifiedAt`, `ageVerificationProvider`, and `hasStripeAccount` (`src/app/api/users/[id]/route.ts:20-39`). PATCH copies present fields directly into `nextData` (`:201-247`) and persists them (`:304-310`). Paid-event eligibility later trusts the profile `hasStripeAccount` bit (`src/server/repositories/events.ts:568-592`).
 - Impact: a user can claim age verification and Stripe connection state without completing the authoritative provider flow, undermining compliance and paid-event gating.
 - Source-of-truth mismatch: organization PATCH correctly treats analogous Stripe state as provider-owned; user profiles do not enforce the same invariant.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` removes provider-owned verification/payment fields from the client mutable allowlist and rejects any direct PATCH containing them. The focused user-profile route suite passed all 14 tests, including a multi-field self-assertion attempt that returns 403 before any persistence read.
 
 ### SEC-017 — Stripe webhook accepts unsigned attacker JSON and performs payment transitions
 
@@ -284,7 +285,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Alias: `/billing/webhook` re-exports the same POST handler from `src/app/billing/webhook/route.ts`.
 - Impact: an unauthenticated forged `payment_intent.succeeded` can mark existing financial records paid, activate event/team registrations, or create new paid records without a Stripe charge.
 - Test gap: no negative test requires a signature or rejects a missing signature.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` fails closed when no webhook secret is configured, when a Stripe signature is absent, or when signature verification fails. The only unverified path requires the explicit non-production `STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV=true` escape hatch. The focused webhook suite passed all 18 cases, including unsigned-payload rejection before any payment transition.
 
 ### SEC-018 — Paid rentals fail open to arbitrary `pi_*` strings when Stripe is unconfigured
 
@@ -293,7 +294,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/app/api/public/organizations/[slug]/rental-orders/route.ts:157-183` treats any supplied `pi_*` string as verified when `STRIPE_SECRET_KEY` is absent. POST passes the client ID into this path (`:533-614`), then writes a fully paid bill/payment (`:422-528`) and confirmed booking/items (`:691-755`). There is no production/environment guard.
 - Test evidence: `src/app/api/public/organizations/[slug]/rental-orders/__tests__/route.test.ts:75-81,291-386` intentionally deletes the Stripe key, submits `pi_rental_1`, and asserts a paid bill and confirmed booking.
 - Impact: any deployment missing/misconfiguring the Stripe key can be booked without payment by submitting a fabricated identifier.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. The rental-order verifier now rejects a paid booking with a clear 503 before any bill, payment, booking, or booking-item write when Stripe verification is unconfigured. It then retrieves and validates a succeeded Stripe intent against the expected rental, event, organization, user, and amount. All 39 focused Stripe/rental route tests passed, including an unconfigured-key fabricated `pi_*` regression.
 
 ### SEC-019 — Missing Stripe configuration silently enables mock financial state across production handlers
 
@@ -307,7 +308,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Impact: a missing secret changes business truth instead of producing an explicit service-unavailable error; payment/account state can be fabricated or checkout can lead to a dead route.
 - Runtime evidence: from the current Android Home screen, tapping the visible “Manage Stripe” action against the local unconfigured API stayed on Home and surfaced only `Invalid redirect url`, confirming that the fallback reaches user-visible production flow rather than a clearly isolated test surface.
 - Suggested invariant: mocks require an explicit test/development flag that cannot start in production; absence of provider credentials must fail closed.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `2401d0ee` introduces a shared configured-secret guard and returns a clear 503 before bill intent, purchase intent, Stripe Connect, and team billing checkout can create mock state or begin mutations. The 33 focused Stripe configuration/route tests passed, including no-secret failures for every affected flow and no writes before the error.
 
 ### DB-001 — Mobile deletes the Room database before migrations can run
 
@@ -317,7 +318,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: after updating the emulator to current v1.6.14, logcat emitted `Deleting Room database ... because schema version 23 != 32`, followed by creation of a new database. This directly confirms the destructive path on a real upgrade state.
 - Data-loss impact: the database contains `MatchOperationOutboxEntry` (`core/database/src/commonMain/kotlin/com/razumly/mvp/core/db/MVPDatabaseService.kt:46-74`), whose pending/syncing/failed rows are durable unsent scoring/incident operations. A future version bump erases them before registered migrations run.
 - Release nuance: a clean v1.6.13/v32 to v1.6.14/v32 upgrade does not trigger deletion, but any supported installation still carrying an older on-device schema does, and the next Room version bump will do so again.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Android now opens `tournament.db` through Room with the full migration graph and only logs a destructive migration callback if one ever occurs; it no longer deletes the database before Room can migrate it. The on-device `RoomMigrationPathTest` suite passed all eight scenarios, including preserving a v24 queued match-operation row across every remaining released migration.
 
 ### DB-002 — Current Room schema history is not reproducible
 
@@ -366,7 +367,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: organization/event/team writes catch Prisma `Unknown argument`, remove fields, and retry (`mvp-site/src/app/api/organizations/route.ts:44-78`, `organizations/[id]/route.ts:86-125`, `src/server/repositories/events.ts:137-182`, team routes). Mobile team update repeats a request after stripping backend-rejected fields (`mvp-app/core/repository-impl/.../TeamRepository.kt:552-565,829-851`).
 - Impact: APIs can return success while silently losing join policy, payment, registration, or event fields; deployment schema/client mismatch becomes hidden data corruption.
 - Legacy relevance: these broad compatibility loops are candidates for removal at the `1.6.13` contract floor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. Web organization, event, field, and legacy-team mutations now fail closed on Prisma `Unknown argument` errors, preserving the requested payload and returning an explicit schema-contract failure rather than retrying without it. The mobile team repository now returns the rejected PATCH as a failure without a second stripped request or a local save. `c5de7fbb` and `7ccf037a` add the regression coverage; 142 focused web assertions, the Android and iOS 19-test team-repository runs, and a fresh Android cold launch passed.
 
 ### DATA-005 — `mvp-site` has three schema surfaces and one is materially stale
 
@@ -374,7 +375,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: Prisma config points only to `prisma/schema.prisma` (`prisma.config.ts:5-12`), and runtime imports `src/generated/prisma`. A separate tracked `prisma/schema.generated.prisma` is unused and contains 47 models/29 enums versus the canonical 83/60, missing 36 current models. `package.json` has no explicit generate/diff build gate.
 - Impact: developers/tools can select a false schema source, while committed generated-client drift is not enforced.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. The unused `prisma/schema.generated.prisma` shadow schema was retired. `npm run prisma:check` now validates and regenerates only `prisma/schema.prisma`, normalizes known generator-only whitespace deterministically, rejects any reintroduced shadow schema, and confirms that the generated client embeds the canonical schema. The package build command invokes that preflight; its regression test, `npm run prisma:check`, and `tsc --noEmit` passed in `c38269b0`.
 
 ### DATA-006 — Release metadata is not reproducible at the 1.6.13/1.6.14 boundary
 
@@ -382,7 +383,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repositories: both
 - Evidence: current Android mobile version is `1.6.14`/versionCode 67 while Wear OS is `0.1.0`/100001, but source-controlled `AppReleases` migrations seed only 1.5.6 and 1.5.12. `src/app/api/app-version/route.ts:28-36` trusts mutable DB rows, and no tracked manifest/upsert for 1.6.13 or 1.6.14 exists.
 - Impact: a fresh database cannot reproduce current update policy; release truth appears to live in manually mutated production data.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. `20260712160000_seed_app_releases_1_6_13_1_6_14` deterministically upserts Android and iOS 1.6.13/1.6.14 rows by platform, version, and build. Its regression test is deliberately outside the Prisma migrations directory (`9c294b38`) so Prisma sees only real migration history. A fresh full migration-chain replay and idempotency reapply passed; Android and iOS update-contract tests passed at their current 1.6.14 boundaries in `c03e8a94`. The live migration deployment completed successfully, status is up to date, and the public endpoint reports 1.6.13 → 1.6.14 as available while 1.6.14 is current on both platforms.
 
 ### DATA-007 — Normalized ownership/membership coexist with mutable duplicate ID arrays
 
@@ -415,7 +416,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `SensitiveUserData.userId` and `.email` are non-unique (`prisma/schema.prisma:648-675`), while `AuthUser.email` is unique. Lookup/auth flows use `findFirst` for sensitive rows (`src/app/api/users/lookup/route.ts:33-64`).
 - Impact: multiple sensitive rows per user/email are permitted, resolution is nondeterministic, and `AuthUser` and `SensitiveUserData` can disagree.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. `SensitiveUserData.userId` and canonical `email` are now unique, with a migration that rejects ambiguous legacy data rather than choosing and silently discarding a sensitive row. It normalizes unambiguous legacy email values before adding the indexes. Auth, invite, and MFA paths use deterministic `findUnique`/`upsert({ where: { userId } })` access; Google-linked accounts retain the existing application email until the explicit transactional email-change flow updates both identity records. The focused suite (67 tests), Prisma validation, TypeScript check, and a fresh migration-chain replay passed in `4b654c55`. The live migration is applied and the production aggregate reports both indexes present with zero duplicate IDs, duplicate normalized emails, orphan user IDs, or AuthUser/SensitiveUserData email mismatches.
 
 ### DATA-011 — App release identity is not constrained
 
@@ -449,7 +450,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `src/lib/authServer.ts:68-84` accepts any JWT signed by `AUTH_SECRET` as a session without requiring a session type, audience, issuer, algorithm allowlist, or expiry; missing `sessionVersion` becomes `0`. `src/lib/permissions.ts:9-29` then grants full auth when that user exists and has the common default version 0.
 - Confused token families: the same secret signs email verification links (`src/server/authEmailVerification.ts:4-23,65-73`), email-change links, realtime match tokens (`src/app/api/realtime/matches/token/route.ts:55-65`), watch setup tokens, and QuickBooks OAuth state (`src/server/integrations/quickBooksConnection.ts:200-218`). Each contains a `userId`; their intended type/audience is ignored by session verification.
 - Admin impact: `requireRazumlyAdmin` authorizes by the DB user's verified internal email/domain after generic session validation and does not require `session.isAdmin` (`src/server/razumlyAdmin.ts:81-125`). A leaked scoped token for an internal account can therefore reach internal admin routes.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `79db2c13` and `b3826149` require an HS256 session token to carry the exact issuer, session audience, `tokenType: session`, valid expiry, integer session version, and boolean admin claim. Distinct watch/realtime and other scoped tokens cannot pass generic session verification. The focused auth/realtime suites passed all nine cases, including rejection of a correctly signed email-verification-shaped token and access control for private realtime tokens.
 
 ### SEC-021 — Unlisted organizations and internal organization fields are anonymously readable
 
@@ -457,7 +458,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: unauthenticated `GET /api/organizations` applies `status=LISTED` only when no `ids`, `ownerId`, or `userId` filter exists (`src/app/api/organizations/route.ts:136-205`); `ids`/`ownerId` bypass the filter and return unrestricted rows. `GET /api/organizations/[id]` also loads any organization and full staff rows before optional auth, then returns them at `src/app/api/organizations/[id]/route.ts:127-140,194-211`.
 - Impact: known IDs expose unlisted/public-page-disabled organizations, staff user/type/role IDs, verification review data, Stripe/tax/agreement fields, and embed configuration to anonymous callers.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `3ce1ffac` makes private selectors authenticated, limits anonymous detail to listed organizations with an enabled public page, and returns a curated public projection to unauthorized authenticated viewers. The focused list/detail suites passed all 28 tests, including anonymous unlisted/ID-selector denial and assertions that staff, tax, Stripe, agreement, and embed fields are absent from public output.
 
 ### SEC-022 — Fields and time slots are anonymously bulk enumerable without pagination
 
@@ -465,7 +466,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `GET /api/fields` without parameters returns every non-archived field/facility row (`src/app/api/fields/route.ts:63-93`), including exact coordinates, use state, ownership, and rental slot IDs. `GET /api/time-slots` similarly returns every non-archived slot with field IDs, divisions, prices, and required document IDs (`src/app/api/time-slots/route.ts:179-268`). Neither requires auth or pagination.
 - Impact: one anonymous request can enumerate internal facility inventory, availability, prices, and document requirements across organizations.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `3ed10d0f` requires an explicit field/time-slot scope, paginates both routes, blocks anonymous ID/event hydration, and limits anonymous discovery to public listed-organization inventory (with a narrowly constrained affiliate rental exception). The current field/time-slot suites passed all 29 tests, including unscoped denial, private-scope denial, capped public projections, and pagination.
 
 ### SEC-023 — Any authenticated user can join, read, or alter deterministic team chats
 
@@ -473,7 +474,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/messaging/topics/[topicId]/subscriptions/route.ts:98-142` merges attacker-supplied user IDs into any existing group without membership/host/manager authorization. DELETE accepts arbitrary IDs and removes them at `:163-196`. Normal message GET trusts the resulting group `userIds` (`src/app/api/chat/groups/[id]/messages/route.ts:9-18`). Team chat IDs are deterministic `team:<teamId>` (`src/server/teamChatSync.ts:5,70-92`), and the subscription path explicitly skips minor-safety validation for team groups.
 - Impact: an ordinary adult account can add itself to a known team/minor chat, read its full history, add others, or evict victims and unregister their push targets.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` and `bb1b1177` make team-chat membership derive from the current team roster, reject reserved team-topic creation, require membership for subscription/message access, and prevent arbitrary roster changes while retaining self-scoped device-target cleanup. Three focused suites passed all 29 cases, including stale-attacker reads/writes/subscriptions, recipient filtering to the authoritative roster, and team-chat membership immutability.
 
 ### SEC-027 — Messaging topic mutation and push relay trust arbitrary callers and payload fields
 
@@ -482,7 +483,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `POST /api/messaging/topics` lets any session replace the name and `userIds` of an existing deterministic team group (`src/app/api/messaging/topics/route.ts:22-59`). The topic-ID route lets any session create/overwrite or hard-delete any deterministic `ChatGroup` (`src/app/api/messaging/topics/[topicId]/route.ts:20-77`). Message POST accepts arbitrary recipient IDs and spreads attacker `data` after server fields, so it can override `senderId` and `topicId` (`src/app/api/messaging/topics/[topicId]/messages/route.ts:19-57`). No topic-membership, team-membership, block/minor-safety, rate, or payload-size checks are applied.
 - Impact: an ordinary account can take over known chats, delete them, and use the service as an authenticated push relay while spoofing message identity/routing fields.
 - Relationship: broadens SEC-023 from subscription takeover to the full topic mutation and delivery surface.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `bb1b1177` reserves deterministic team IDs for roster synchronization, restricts generic topic updates/deletes to a non-team topic manager, requires a sending member, rate limit, chat-terms acceptance, recipient membership, and a bounded schema. Sender/topic/data routing fields are server-owned and arbitrary domain payload is discarded. The focused topic/message suites passed all 18 cases, including outsider and team-topic deletion attempts, spoofed sender/data fields, stale team members, blocked relationships, and oversized metadata.
 
 ### SEC-028 — Bill splitting is an authenticated IDOR that can create duplicate victim debt
 
@@ -490,7 +491,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/billing/bills/[id]/split/route.ts:19-127` requires only a session, then accepts arbitrary bill and player IDs. It does not require bill ownership, team/organization management, `allowSplit`, membership, or an idempotency key before creating split liabilities.
 - Impact: any account with known identifiers can repeatedly create financial debt records for other users.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` requires a team bill that explicitly opts into splitting, verified bill-payment management authority, and recipients in the current team roster. `e78d0f95` serializes the split under a bill lock, blocks existing child bills and in-flight parent payments, and conditionally voids parent installments before creating any child debt. The focused suite passed all eight cases, including unrelated caller, disabled split, outsider recipient, completed split, and intent-race denial.
 
 ### SEC-029 — Signed-document rows can be forged without scope authority
 
@@ -498,7 +499,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/documents/signed/route.ts:85-125` lets any authenticated session assert a signed-document row for caller-selected document and scope identifiers. It does not verify that the signer owns or manages that registration/event/team context before recording consent.
 - Impact: a user can fabricate waiver/consent completion and influence downstream registration eligibility.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` retires direct `POST /api/documents/signed` assertions with HTTP 410. The remaining scoped record-signature workflow only marks an existing server-issued text acknowledgement as signed, leaves PDF callbacks to their signed provider operation, and rejects caller-defined document IDs. The focused document suites passed all six cases, including direct forgery and never-issued-text-document denial.
 
 ### SEC-030 — Guest registration can impersonate an existing email owner and sign as that identity
 
@@ -506,7 +507,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: the unauthenticated guest-registration path accepts an email without proof of possession (`src/app/api/public/organizations/[slug]/events/[eventId]/guest-registrations/route.ts:497-567`). `ensureGuestParentIdentity` binds an existing account or provisions one and creates an active parent/child relationship (`src/server/publicGuestRegistration.ts:69-182`; `src/server/inviteUsers.ts:88-117`). Registration then returns a signed token bound to that parent identity (`guest-registrations/route.ts:1142-1197`). The guest record-signature and embedded-signing routes trust that token's parent as signer and activate/persist consent (`guest-record-signature/route.ts:266-424`; `guest-sign/route.ts:147-205,235-239,360-469`).
 - Impact: knowing a victim's email is sufficient to create registrations/relationships and produce waiver-signing artifacts attributed to that victim without email verification.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` makes anonymous guest identity creation fail with HTTP 409 whenever either canonical auth or sensitive-user data already owns the supplied normalized email; it no longer links a guest registration, parent/child relation, or signing token to that account. Three focused guest-registration/signature suites passed all 11 cases, including a new route-level existing-email denial with no registration or token issuance.
 
 ### SEC-031 — Rental checkout locks permit low-cost inventory denial of service
 
@@ -514,7 +515,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/billing/rental-lock/route.ts:13-52` accepts caller-provided event/time-slot data after only session validation. `src/server/repositories/rentalCheckoutLocks.ts:84-159,185-274` trusts the supplied organization, field, and time range to create ten-minute locks without first proving current DB availability, ownership, per-user quotas, or rate limits.
 - Impact: an ordinary account can enumerate public slots and repeatedly lock broad facility inventory, preventing legitimate checkout.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `2401d0ee` resolves the requested field/window against persisted rental inventory before a lock can be written, confirms the caller can use the existing event or create the draft checkout, verifies availability, and caps a user at 12 active lock rows regardless of client-supplied draft IDs. The focused rental access/route/lock suites passed, including forged-field rejection, concurrent lock contention, and the per-user cap.
 
 ### SEC-032 — Caller-supplied conflict exclusion can permit double booking
 
@@ -522,7 +523,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: the event conflict checker excludes the caller-provided `eventId` (`src/server/repositories/events.ts:2177-2229`). Rental order creation forwards an untrusted `eventId` into that check (`src/app/api/billing/rental-orders/route.ts:628-673`); the rental-lock path has the same trust boundary.
 - Impact: supplying the ID of an already occupying event can exclude the true conflict and allow another reservation for the same inventory/time.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `2401d0ee` makes the conflict exclusion depend on a canonical checkout: an existing event ID must be manageable by the caller, while a new draft must be owned by the authenticated host and backed by available rental inventory. The lock repository then checks persisted scheduling conflicts within the transaction. The focused rental access/route/lock suites passed, including unauthorized existing-event and forged-inventory denial paths.
 
 ### SEC-033 — Account deletion lacks password, MFA, or recent-auth revalidation
 
@@ -530,7 +531,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/auth/account/route.ts:74-90` accepts the current session plus a static confirmation phrase. It does not require the password, MFA, or a recent-auth timestamp for this destructive operation.
 - Impact: a stolen long-lived session token can permanently delete the account without obtaining another factor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `eaca7349` requires a current password for password accounts, a recent OAuth authentication for provider-only accounts, and a purpose-bound TOTP challenge when MFA is enabled before deletion reaches its mutation path. The account-deletion route suite passed, covering session-plus-phrase denial, bad-password denial, MFA challenge creation/confirmation, and successful reauthenticated deletion.
 
 ### SEC-034 — Email membership lookup enables bulk identity enumeration
 
@@ -538,7 +539,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/users/email-membership/route.ts:23-89` lets any authenticated user submit an unbounded set of arbitrary emails/user IDs and returns mappings and membership presence without relationship or administrative scope.
 - Impact: ordinary accounts can bulk-discover whether addresses belong to BracketIQ users and correlate identifiers.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` bounds email and user-ID input, scopes unbound requests to the signed-in user, and allows broader lookup only for a caller who can manage the supplied event and only across that event's host, assistants, and officials. The focused membership route suite passed, including arbitrary-ID denial, non-manager denial, and input-cap tests.
 
 ### SEC-035 — Generic message creation accepts unbounded and caller-controlled delivery metadata
 
@@ -546,7 +547,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/messages/route.ts:11-100` accepts unbounded body text, `readByIds`, and attachment URLs, including arbitrary external URLs. It permits callers to pre-mark recipients as having read a message and has no rate or payload limits.
 - Impact: the endpoint supports storage abuse, notification/message spam, misleading read state, and unsafe external attachment references.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `bb1b1177` bounds message, identifier, read-receipt, and attachment inputs; derives sender and initial read state from the authenticated session; accepts only BracketIQ-managed file URLs; and rate-limits message creation. The focused message-route suite passed, including spoofed delivery metadata, external attachment, and oversized-body denial cases.
 
 ### SEC-036 — Registration commits the account before required email delivery succeeds
 
@@ -555,7 +556,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: against a clean database with all 142 tracked migrations applied, mobile registration received HTTP 500 `EMAIL_VERIFICATION_SEND_FAILED`; a direct database check showed the new `AuthUser` already persisted. The mobile UI returned to the fully populated signup form and presented the attempt as failed.
 - Code evidence: account/profile/sensitive rows commit in the transaction ending at `src/app/api/auth/register/route.ts:401-402`. Required email availability and delivery are checked only afterward at `:431-451`, where failure returns 503/500 without compensating deletion or a response describing the account as created.
 - Impact: transient email failure creates a real but apparently failed account. Retrying can collide with the persisted identity, and users cannot tell whether to register again, sign in, or recover verification.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `531ab0b5` preserves the committed account but returns an explicit HTTP 202 unverified-account response when verification email delivery is unavailable, without issuing a session, so the client can offer resend/sign-in instead of misleading the user into retrying registration. The focused auth route suite passed its SMTP-failure and unavailable-email regression cases.
 
 ### SEC-037 — Email verification is advisory while full authenticated access is granted
 
@@ -572,7 +573,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: team creation accepts arbitrary `affiliateUrl` as `z.string()` and trims/persists it (`src/app/api/teams/route.ts:51-72,244-345`). Discover passes stored team/facility URLs directly to `window.open` (`src/app/discover/page.tsx:694-696,1116-1120`; `DiscoverMapModal.tsx:1717-1720`).
 - Impact: `javascript:`, `data:`, credentialed/deceptive, custom-protocol, or unsafe host URLs can be stored and executed/opened when another user clicks.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `36e1afd6` centralizes external URL normalization, accepting only bounded public HTTP(S) destinations without credentials; team writes validate/canonicalize the value and Discover revalidates it immediately before `window.open`. The focused external-URL and team-route suites passed unsafe-scheme, credentialed URL, and safe canonicalization cases.
 
 ### SEC-025 — Public image preview permits unbounded resize work
 
@@ -614,7 +615,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: Android catches and logs failure of its subscription DELETE, then unconditionally cancels retry state and erases the local target and token before returning success (`PushNotificationsRepository.kt:338-372`). The web DELETE handler independently catches `unregisterPushDeviceTarget` failure and still returns HTTP 200 (`src/app/api/messaging/topics/[topicId]/subscriptions/route.ts:163-198`). `RootComponent` therefore cannot observe cleanup failure through its `onFailure` branch (`RootComponent.kt:607-616`).
 - Impact: logout during a network/backend failure can leave the device token registered to the previous account while both layers report success and Android discards the token/target needed for a later retry. The signed-out device may continue receiving private notification titles/bodies until a later successful registration reassigns that token.
 - Suggested direction: make unregister failure observable and retain a durable pending-removal record until acknowledged; the server must not convert device-target persistence failure into a successful subscription response.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branches; production/release deployment pending**. Web `68abaf75` turns failed subscription and device-target cleanup into a retryable 503 before membership/session state changes. Mobile `7ee85fd8` uses the authenticated logout endpoint and retains the auth token, push token, and push target until the backend explicitly confirms cleanup. The focused web suites and the 12-test Android user-repository suite passed, including the cleanup-failure retention path.
 
 ### SEC-042 — Attacker-controlled push payloads are persisted as trusted local invitations
 
@@ -623,7 +624,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: SEC-027 establishes that any authenticated caller can relay a topic message to caller-selected users and spread arbitrary `data` fields into the push payload (`src/app/api/messaging/topics/[topicId]/messages/route.ts:19-57`). Android treats any payload containing `inviteId`, an invitations type, or an invite deep link as authoritative, constructs an `Invite` entirely from payload fields, and upserts it to Room before backend verification (`PushNotificationsRepository.kt:608-647,763-783`). Its follow-up refresh only upserts returned server invitations and does not remove the just-inserted payload row (`:649-679`).
 - Impact: an ordinary account can make another Android client show a fabricated pending invitation/badge with attacker-selected team, event, organization, child, and creator identifiers, especially while the victim is offline or backend refresh fails. The notification transport becomes a second writable source of invitation truth.
 - Suggested direction: never materialize domain invitations from push contents; treat pushes as invalidation hints and fetch the invitation by ID through an authorized endpoint before inserting it. Restrict the relay endpoint as described in SEC-027.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branches; production/release deployment pending**. Web topic messages now strip caller-controlled domain fields and emit only server-owned chat metadata. Mobile `5b06fffe` treats invitation payloads as invalidation hints: it reads invitation domain data only through authorized APIs, writes only the canonical response, and removes a stale cache row only after a verified 404. The focused web topic-message suite and 4-test Android invitation-invalidation suite passed, including forged payload and unauthenticated-hint cases.
 
 ### SEC-043 — One team participant's refund request can refund every participant's payments
 
@@ -632,7 +633,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the customer refund route associates a request with the first registered team containing the target user but cancels only that target user's registration (`src/app/api/billing/refund/route.ts:133-163,309-353`). When `teamId` is present, `resolveRefundablePaymentsForRequest` loads all team-owned bills, all split user bills, and direct user bills for every player/coach/captain/manager on that team; for normal event refunds it does not restrict any of those queries or resulting payments to `request.userId` (`src/server/refunds/refundExecution.ts:112-175,189-226`). Both automatic refund and later host approval use this resolver.
 - Impact: one team member (or a parent acting for one child) can request/cause an individual cancellation that refunds every remaining paid team/member bill for the event while their registrations remain active. A host approving what Android presents as one person's request can trigger the same broad Stripe refunds.
 - Suggested direction: persist the exact bill/payment/refundable-amount scope on each request and validate it against the requesting payer/registration. Team-wide refunds must be an explicit, separately authorized operation with a preview of every affected payment.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `f8c47ca4` makes individual team refunds resolve only the target participant allocation (or direct target bill), never the other team members' payments. `6e8f764e` persists and later revalidates an immutable bill/payment/amount snapshot; team-wide scope is an explicit separate mode with authorized payers. The focused execution/request/approval suites passed all 25 cases, including target-only allocation selection, team-wide explicit scope, host approval from the exact payer snapshot, and payment-level drift rejection.
 
 ### SEC-044 — Logout emits the empty user before the state Root uses to authorize cleanup
 
@@ -641,7 +642,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `UserRepository.clearLoginState` sets `currentUser`/`currentAccount` to failures and only afterward sets `startupAuthState = Unauthenticated` (`UserRepository.kt:754-764`). Root's current-user collector performs registration-cache, push-target, chat-loop, and center-action cleanup only when the startup state is already unauthenticated at the moment that user emission arrives (`RootComponent.kt:237-274`). The later startup-state collector navigates to Login but does not invoke those cleanup methods (`:177-222`).
 - Impact: normal logout can leave the old device push target registered, old registration cache present, periodic chat refresh running, and the old schedule shortcut snapshot active. The server can continue sending the device notifications for the signed-out account, and stale cross-account UI/data can survive until another user/session refresh replaces part of it.
 - Suggested direction: make logout a single ordered coordinator that explicitly stops loops, unregisters the target with retry, clears per-user Room/preferences/cache state, resets navigation/shortcuts, and only then publishes the unauthenticated terminal state; do not infer cleanup from two independently ordered flows.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. Mobile commits `a2ba3569` and `7ee85fd8` keep the authenticated token/device target until the logout API confirms cleanup, then publish `StartupAuthState.Unauthenticated` before the empty current-user state. Root therefore cancels push registration, registration-cache, chat, and center-action work on the same terminal transition. The targeted Android unit test passed and asserts the unauthenticated state is already visible when the empty user flow emits; failed device-target cleanup preserves the authenticated session for retry.
 
 ### UI-001 — DOB pickers accept future dates and the backend persists them
 
@@ -709,7 +710,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: twenty affiliate setup, repair, tagging, and logo scripts set `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'` whenever `--live` is selected (for example `scripts/discover-affiliate-club-logos.ts:27-37`, `scripts/setup-fc-piamonte-affiliate-source.ts:21-30`, and `scripts/backfill-affiliate-event-tags.ts:14-24`). That process-wide switch applies to every subsequent HTTPS request, not just PostgreSQL. These same processes fetch official pages and logo bytes (`discover-affiliate-club-logos.ts:121-219`; `setup-fc-piamonte-affiliate-source.ts:86-119`) and can persist the resulting content, coordinates, tags, files, and public organization data into the live database/storage.
 - Impact: a certificate error or network attacker can substitute scraped pages or image bytes during a production maintenance run. The scripts can then treat the substituted response as authoritative and write poisoned affiliate listings, public-page metadata, coordinates, or stored logo assets into production.
 - Suggested direction: remove the Node-wide TLS override. Configure PostgreSQL TLS only on the database client with a pinned/validated CA, retain normal certificate verification for all HTTPS fetches, and require an explicit write flag in addition to `--live` for scripts that mutate production.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a00ff409` removes every live-script assignment to `NODE_TLS_REJECT_UNAUTHORIZED`, so normal certificate verification remains enabled for affiliate-page, image, and other HTTPS fetches. Database TLS remains separately scoped through its database client configuration. A new script-tree guard plus Prisma TLS configuration tests passed, and TypeScript completed without errors.
 
 ### TEST-005 — Match-detail tests replace the outbox finalizer with incompatible fake semantics
 
@@ -736,7 +737,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `EventPurchaseIntentCoordinatorTest.process_purchase_intent_allows_missing_signature_url_and_launches_payment_sheet` constructs `requiresSignature = true` without a URL and asserts both the warning and Payment Sheet launch (`EventPurchaseIntentCoordinatorTest.kt:36-58`). No test requires a user-visible hard stop or server revalidation for that malformed mandatory-document state.
 - Impact: the suite treats bypassing a mandatory signature as intended behavior, making a correction look like a regression and weakening the legal-consent boundary.
 - Suggested direction: invert the expectation to a fail-closed state, cover missing/malformed/untrusted URLs and incomplete status, and add a server integration assertion that unsigned registrations cannot finalize even if a client attempts payment.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; production deployment pending**. `a2ba3569` changes the coordinator to a hard `WAITING_FOR_SIGNATURE` state whenever a required signing URL is absent or untrusted, with no payment-sheet launch. The focused Android coordinator suite passed the valid-signature, missing-URL, and untrusted-URL cases, asserting user-visible retry errors instead of a payment bypass.
 
 ### TEST-008 — Event-detail tests omit deselection and concurrent-search regressions
 
@@ -789,7 +790,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: dependency/config inspection found Prisma Client 7.7.0 while the Prisma CLI/generated surface reports 7.8.0 (`package.json`, `prisma.config.ts`, `prisma/schema.generated.prisma`, `src/lib/prisma.ts`).
 - Impact: generator/runtime behavior and types are not guaranteed to match, complicating migration and query debugging alongside the already stale generated schema surface.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed 2026-07-12**. The declared, installed, and generated Prisma CLI/client versions were reconciled at 7.8.0. The canonical schema guard in `c38269b0` fails the build preflight if package declarations, installed `@prisma/client`/`prisma`, or the generated client version diverge; `npm ls @prisma/client prisma --depth=0` and `npm run prisma:check` passed at 7.8.0.
 
 ### DATA-014 — Wear offline operations use unsynchronized whole-list SharedPreferences rewrites
 
@@ -834,7 +835,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the consent contract carries the authoritative `version`, `url`, and summary (`UserRepository.kt:206-212,1680-1706`). `TermsConsentDialog.kt:22-130` reads only `state.summary`; “View full agreement” expands a hard-coded `fullAgreementSections` list and never uses `state.url` or displays `state.version`. Acceptance still posts against the current server consent endpoint.
 - Impact: a user can accept the backend's current legal version without being shown that version's authoritative document. Copy changes on the server do not update the displayed “full agreement,” so the consent record and the text presented to the user can materially diverge.
 - Suggested direction: display the version and open/render the supplied canonical terms URL; keep any native summary explicitly subordinate to that document.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; production deployment pending**. `a2ba3569` displays the server-provided agreement version, opens only the canonical BracketIQ terms endpoint supplied by the server, and disables acceptance when that authoritative URL is missing or untrusted. The Android terms/repository tests passed, covering canonical relative/absolute URLs and rejection of missing, malformed, or hostile URLs without a fallback agreement.
 
 ### DATA-019 — Missing notification preferences override the declared defaults and opt users into email
 
@@ -861,7 +862,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the shared serializer sets `explicitNulls = false` (`CommonUtil.kt:70-80`), so nullable DTO properties with value `null` are omitted from JSON. `Event.toUpdateDto` maps nullable editable values such as `minAge`, `maxAge`, `cancellationRefundHours`, `address`, `sportId`, and match/set durations directly into `EventUpdateDto` (`EventDtos.kt:836-1145`); the editor explicitly sets several of these to null when a user clears/disables them (`EventDetailsRegistrationSection.kt:327-339,376,426`; `EventDetails.kt:573-580,648-653`). The server distinguishes “clear” from “unchanged” using `hasOwnProperty` in the event PATCH route, so an omitted key preserves the old database value. Team nullable update fields use the same DTO pattern (`TeamDtos.kt:299-360`), and bulk match updates do as well (`MatchDtos.kt:553-691`). Match lifecycle/segment code separately builds `JsonNull` behind explicit clear flags (`MatchDtos.kt:435-519`), proving ordinary nullable serialization is insufficient and that only those few fields received a clear protocol.
 - Impact: Android can show an optional value as removed in its draft/local state while the PATCH silently leaves the prior database value authoritative. Reopening the event/team/match restores the supposedly cleared age limit, refund window, address, assignment, duration, or other nullable field.
 - Suggested direction: use explicit patch-field wrappers/clear flags or a JSON-object builder that emits `JsonNull` for every intentionally cleared value; add serialization and API round-trip tests for each clearable field.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; production deployment pending**. `a2ba3569` preserves the normal omission semantics for untouched nullable fields but compares an edited event/team/match to its cached baseline and explicitly inserts JSON `null` for user-cleared fields. New mobile regression `a60feea9` verifies event address, age bounds, refund hours, sport, and match/set durations all serialize as JSON `null`; focused Android event/team/match patch tests passed.
 
 ### DATA-022 — Failed read-receipt requests leave Android's local cache falsely authoritative
 
@@ -888,7 +889,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: each enqueue reads `MAX(clientSequence) + 1`, derives the row ID from that sequence, then upserts the operation in separate calls with no transaction or mutex (`MatchRepository.kt:397-478`). Every enqueue launches an independent `syncPendingMatchOperations` coroutine (`:509-512`). The DAO selects `SYNCING` rows as pending and `markAttempting` is an unconditional update rather than a compare-and-set claim (`MatchOperationOutboxDao.kt:20-46,63-80`), so concurrent drainers can send the same queue simultaneously. The backend merely records client-operation metadata inside match/incident metadata; it does not enforce an idempotency key (`src/app/api/events/[eventId]/matches/[matchId]/route.ts:264-310`).
 - Impact: concurrent scoring/actions can allocate the same sequence and overwrite one outbox row before transmission. Even without a collision, multiple drainers can deliver old and new absolute-score/lifecycle operations out of order or duplicate action side effects, then race the ACK/FAILED state. This defeats the outbox's purpose as an ordered source of truth for officiating changes.
 - Suggested direction: allocate and insert under one Room transaction, use one serialized actor/mutex for draining, and atomically claim only PENDING/FAILED rows. Enforce server idempotency by client operation ID and preserve per-device sequence ordering.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. A process-wide enqueue mutex serializes sequence allocation, and production writes the outbox operation plus optimistic match projection through one Room transaction. A separate sync mutex allows one drainer, while startup and bounded retry scheduling resume pending work. The focused repository suite passed all 13 cases, including a new concurrent enqueue regression that yields eight unique, monotonic operation sequences.
 
 ### DATA-025 — A rejected match operation remains authoritative locally and blocks every later operation
 
@@ -897,7 +898,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: failed and interrupted `SYNCING` rows are returned by the same pending query as new work (`MatchOperationOutboxDao.kt:20-46`). Every remote match is then re-overlaid with all of those rows (`MatchRepository.kt:305-323,515-537`). The drain stops at the first failed send (`:911-927`), and the only production trigger for another drain is enqueueing another operation (`:509-512`); no startup/reconnect caller invokes `syncPendingMatchOperations`. Even a later trigger starts with the same permanent failure, so subsequent rows remain blocked. The HTTP test explicitly expects the rejected optimistic state to remain in Room after the row becomes FAILED (`MatchRepositoryHttpTest.kt:530-545`).
 - Impact: a validation/permission conflict or one offline failure can leave Android permanently displaying a score, match status, incident, or winner the server rejected. Later officiating edits queue behind that row and never reach the server, while refresh/realtime data is repeatedly overwritten by the failed local payload.
 - Suggested direction: distinguish retryable transport failures from terminal rejections, retry durably on startup/connectivity with backoff, reconcile/drop terminal overlays against the authoritative response, and let later independent operations progress or surface a blocking conflict explicitly.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Terminal 4xx operation rejections move into durable `RECONCILING` state instead of remaining as authoritative local overlays; only the canonical remote read is retried, and it ACKs the rejected operation only after replacing local state. The focused repository suite passed all 13 cases, including rejection/relaunch/reconciliation behavior that never re-POSTs the rejected score.
 
 ### DATA-026 — Manual weekly refund requests discard their occurrence scope before approval
 
@@ -907,7 +908,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Impact: a request for one weekly occurrence becomes indistinguishable from a whole-series refund by the time a host approves it. The resolver can refund every paid bill for that user—and, under SEC-043, every linked team participant—across all occurrences.
 - Source-of-truth relevance: the request record does not preserve the scope that made the cancellation valid, so approval reconstructs materially broader financial intent from event/user/team IDs.
 - Suggested direction: make refund requests immutable snapshots of exact registration occurrence, bill/payment IDs, requested/refundable cents, currency, and policy decision; reject approval if the current refundable scope differs from that snapshot.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `6e8f764e` adds immutable occurrence and financial scope fields to refund requests (`slotId`, `occurrenceDate`, bill/payment lists, payment allocation, amount, currency, policy, version, and hash). Request creation snapshots the selected occurrence; approval refuses absent/stale/drifted scope rather than reconstructing a broader series refund. The focused refund suites passed all 25 cases, including persisted weekly-occurrence scope, immutable host-preview data, and approval drift rejection.
 
 ### DATA-027 — Android's generic user update rewrites unrelated social/profile arrays from one snapshot
 
@@ -916,7 +917,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `UserRepository.updateUser` accepts a full `UserData` snapshot and always PATCHes names, username, friend IDs, incoming/outgoing friend-request IDs, following IDs, Stripe state, uploaded-image IDs, profile image, and notification settings together (`UserRepository.kt:1236-1286`). Profile notification saves and Profile Details call this path after copying one changed field into their current snapshot (`ProfileComponent.kt:1001-1043`; `UserRepository.kt:1310-1345`). The server PATCH handler treats every supplied array as an authoritative replacement (`src/app/api/users/[id]/route.ts:199-225` and subsequent update).
 - Impact: a concurrent friend/follow/request/image/profile change that lands after Android read its snapshot can be silently removed by saving notification settings or profile data. Unrelated domains share one last-write-wins mutation boundary.
 - Suggested direction: replace the generic full-snapshot patch with narrowly typed endpoints/DTOs that include only the intended fields, use canonical social action endpoints for relationship arrays, and apply optimistic concurrency/version checks where replacement semantics remain necessary.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Generic profile updates now PATCH only display-name, username, and profile-image fields; notification settings and uploaded images use dedicated narrow mutations, while social and membership arrays remain server-managed. All 12 focused user-repository tests passed, including an expanded regression that supplies stale nonempty social/image data and proves those fields are omitted while server memberships replace the snapshot.
 
 ### DATA-028 — Incident edits proceed after local persistence failures and can disappear
 
@@ -934,7 +935,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: final segment confirmation calls `updateMatchOperations(... finalize = true)`, whose production repository synchronously enqueues an outbox row, applies finalization locally, and upserts the resulting `status = COMPLETE`, `resultStatus = FINAL`, and `actualEnd` match before returning it (`MatchRepository.kt:462-479,860-882`; `MatchOperationLocalApplier.kt:15-35`). `syncMatchImmediatelyBlocking` discards that returned `MatchMVP` and reduces success to a Boolean (`MatchContentComponent.kt:1723-1771`). The caller then applies and saves `updatedScoringMatch`, the pre-finalization object that contains the completed segment but not the lifecycle fields (`:1621-1650`), overwriting the repository's finalized Room row while the finalize outbox entry remains pending.
 - Impact: immediately after completing a match, Android can persist and render an internally contradictory record: every segment complete but match lifecycle unfinished/no `actualEnd`. Realtime overlay, navigation, repeat-confirm behavior, and later offline operations can diverge until a server response happens to repair Room; if sync fails, the contradiction persists.
 - Suggested direction: return and persist the repository-applied finalized match as the sole local result, or make enqueue plus local state update atomic and prohibit the component from writing a second snapshot afterward. Add a production-repository integration test for the exact final-segment flow.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Final-set confirmation retains and applies the `MatchMVP` returned by the repository finalization operation; it no longer writes the unfinished pre-finalization snapshot back over the canonical result. All 55 focused match-content tests passed, including final set completion asserting `COMPLETE`, `FINAL`, and the returned end timestamp with no second finalization sync.
 
 ### DATA-030 — Staff reconciliation deletes and recreates invites outside the event update boundary
 
@@ -1347,7 +1348,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the network request explicitly asks for ascending message order, but `MessageDao.getMessagesInChatGroup` executes `SELECT * FROM MessageMVP WHERE chatId = :chatGroupId` with no `ORDER BY` (`MessageDao.kt:29-30`). `MessageRepository.getMessagesInChatGroup` returns that DAO list directly as the local/cache branch (`MessageRepository.kt:23-31`), and Room/SQLite does not guarantee insertion or primary-key order without an ordering clause.
 - Impact: after restart or when the network fails, a conversation can render messages out of chronological order even though the same conversation is ordered correctly immediately after a remote fetch.
 - Suggested direction: order the DAO query by `sentTime` with an ID tie-breaker and retain that order through relation/query consumers.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `ca620ba4` orders Room chat reads by `sentTime ASC, id ASC`, preserving chronological order with a stable tie-breaker for identical timestamps. The updated Room instrumentation suite passed all 9 tests on the attached Android emulator, including an out-of-order insert and same-time tie regression.
 
 ### APP-066 — Android reloads only the oldest 100 messages and has no path to newer history
 
@@ -1419,7 +1420,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: Android cards show only a truncated request ID, optional requester/event, and free-text reason before offering Approve/Reject (`RefundManagerScreen.kt:128-273`). The mobile `RefundRequest`/relation model contains no requested amount, refundable amount, currency, payment/bill IDs, occurrence, policy result, or creation date (`RefundRequest.kt:9-17`; `RefundRequestWithRelations.kt:8-26`) because the canonical Prisma request has none (`prisma/schema.prisma:1680-1691`). Approval can then execute multiple Stripe refunds resolved dynamically by event/user/team (`src/app/api/refund-requests/[id]/route.ts:105-145`).
 - Impact: a host cannot tell how much money, which payments, which weekly occurrence, or how many people will be refunded before confirming an irreversible financial action. SEC-043/DATA-026 make that missing preview especially dangerous because the actual scope can be far broader than the visible requester/event.
 - Suggested direction: return and display an authoritative approval preview with payment count, per-payment/currency amounts, total refundable cents, registrant/occurrence, policy basis, and any scope drift; require confirmation against a versioned preview/idempotency key.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Refund cards and approval confirmation now show the stored currency/amount, payment and bill counts, weekly occurrence, and policy basis before a host approves the immutable scope. The focused billing repository suite passed all 41 cases, including a scope-contract regression that preserves amount, currency, payments, occurrence, policy, and hash from the server response.
 
 ### APP-077 — Android event management permanently truncates a host's list at 200
 
@@ -1437,7 +1438,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: the create component exposes active setters for enabling plans and editing installment count, amounts, and due dates; those setters intentionally bypass selection normalization so the draft retains the plan (`DefaultCreateEventComponent.kt:508-652`). `CreateEventScreen` wires those setters into the form (`CreateEventScreen.kt:305-311`). However `createEvent()` calls `hostSyncedDraft.applyCreateSelectionRules()` immediately before validation/submission (`DefaultCreateEventComponent.kt:326-344`), and that rule unconditionally sets event and every division `allowPaymentPlans=false`, clears the count, and empties all installment arrays (`CreateEventSelectionRules.kt:7-38`). Seeded/template drafts and ordinary field edits are normalized through the same destructive rule.
 - Impact: the host can complete a visible installment plan and create the event successfully, but the persisted event silently requires the non-plan payment path. This is a financial-contract mismatch between the reviewed draft and the created product, not merely an unavailable feature.
 - Suggested direction: selection rules should preserve valid plan state and only clear it when an explicit incompatible type/price transition requires that change; add a create-payload regression test proving configured event/division installments survive submission.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Create-event selection normalization no longer erases valid event or division installment-plan state; it only applies event-type fields and canonical tags. All five focused selection-rule tests passed, including event and division payment-plan preservation through the create normalization path.
 
 ### APP-079 — Team Management owns an immortal scope and back callback
 
@@ -1554,7 +1555,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: mobile `resolveRentalRange` covers each 30-minute segment independently, may select different slots, and returns the stitched range as valid (`RentalSchedulingUtils.kt:155-202`). `OrganizationDetailScreen` sends that whole range as one rental-order selection (`OrganizationDetailScreen.kt:767-806`) and starts PaymentSheet before creating the order (`OrganizationDetailComponent.kt:662-742,1042-1063`). The server requires one availability slot to cover the entire selection (`src/app/api/public/organizations/[slug]/rental-orders/route.ts:253-273`). On order failure, mobile clears `pendingRentalReservation`, shows an error, and has no refund or durable retry path.
 - Impact: a range assembled from adjacent availability slots can pass Android validation and payment, then fail server reservation after funds have succeeded. More generally, any post-PaymentSheet order failure loses the only pending context and can leave a charged user without a booking.
 - Suggested direction: align client selection rules with the server contract before payment (or make the server accept/price explicit segment IDs), and make payment plus booking a server-owned recoverable transaction with idempotent retry/automatic compensation.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Rental selection now requires one availability slot to cover the entire paid interval, matching the server contract. Paid booking context is persisted before checkout and retryable after an interrupted post-payment submission, scoped to the paying account. The focused rental and billing suites passed all five and 41 cases, including stitched-range rejection and durable paid-order retry.
 
 ### APP-092 — Multi-selection rental checkout locks every selected field across all gaps
 
@@ -1635,7 +1636,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `DefaultOrganizationDetailComponent` keeps independent `pendingProductPurchase`, `pendingTeamRegistration`, and `pendingRentalReservation` fields with no shared checkout owner/guard (`OrganizationDetailComponent.kt:279-289`). Product checkout clears `_startingProductCheckoutId` immediately after launching PaymentSheet, so its UI/guard unlocks while the payment is pending (`:611-659`). On `PaymentResult.Completed`, the collector checks rental, product, and team with separate `if` statements and processes every non-null pending value; canceled/failed results clear all three (`:300-376`). Profile independently allows an active installment attempt and pending child-team payment; its collector always prioritizes the child payment and returns without resolving/clearing the bill attempt (`ProfileComponent.kt:735-828,1529-1589,1868-1910`).
 - Impact: overlapping intent/setup actions can make one payment result reserve a rental, announce an unrelated product purchase, and advance a team registration together—or cancel unrelated pending work. The stored rental intent may not even be the intent that the user completed, producing rejection after payment.
 - Suggested direction: enforce one application-wide checkout session with an immutable operation ID/type and route each result only to its owner; keep controls locked until that session reaches a terminal state and reject stale/mismatched results.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Organization checkout now has one immutable owner/session at a time; a PaymentSheet result is claimed and delivered only to that owner, while stale or unmatched results are ignored. All five focused checkout-session tests passed, including second-owner denial and stale-session safety.
 
 ### APP-101 — Organization event and team tabs silently truncate large catalogs
 
@@ -1707,7 +1708,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: when Profile Documents requests sign links, `signDocument` chooses a matching `templateId` but falls back to `steps.firstOrNull()` if no match exists (`ProfileComponent.kt:2425-2433`). It then opens or records that fallback step. If the fallback has no title, the modal uses the originally selected document's title (`:2449-2455`), concealing the template mismatch.
 - Impact: a user can tap one waiver/consent, be shown or sign a different returned template, and have the wrong legal document recorded. The UI may label that different content as the document they intended to sign.
 - Suggested direction: require an exact template/document/signer-context match, fail closed on absence or ambiguity, and have the server return a single signed request bound to the selected document ID.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Profile document signing now accepts exactly one returned step whose trimmed template ID matches the selected document; missing or duplicate matches show an error rather than falling back to another template. Three focused document-signing tests passed, covering missing, exact, and ambiguous-step responses.
 
 ### APP-109 — My Schedule is an unpaginated 200-event snapshot
 
@@ -1743,7 +1744,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `LoadingOverlay` claims to “Prevent interaction” by applying `Modifier.clickable(enabled = false) { }` to its full-screen scrim (`App.kt:487-494`). A disabled Compose clickable does not install an enabled gesture consumer; the overlay provides no pointer-input consumption, modal dialog semantics, focus trap, or disabled state to the underlying screen.
 - Impact: users can tap controls beneath a visually blocking loading layer, causing duplicate payments, mutations, navigation, or destructive actions while the app implies interaction is disabled.
 - Suggested direction: use a modal surface/dialog or explicitly consume pointer events across the scrim, block accessibility focus/actions behind it, and make operation owners idempotent rather than relying only on presentation blocking.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The full-screen overlay is now a non-dismissible platform `Dialog`, giving it a real modal focus/input boundary instead of a disabled clickable scrim. The current audited APK installed and cold-launched to the Login UI on the attached emulator without an app crash or Room destructive migration; authenticated loading-state interaction remains covered by the operation-owner controls above.
 
 ### APP-113 — Declined invite history is downloaded and cached forever, then filtered on-device
 
@@ -1806,7 +1807,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: Android disables all further increments as soon as either team reaches the configured target, regardless of margin (`MatchContentComponent.kt:2466-2477`), and considers any non-tied score with either team at/above the target confirmable (`:2479-2497`). The canonical web/server contract uses `getSetScoreState`/`canIncreaseSetScore` to require a two-point lead at or above the target and validates completed segment operations against that rule (`ScoreUpdateModal.tsx:2039-2061,2091-2098`; `src/lib/matchSetScoring.ts`; `src/server/matches/setScoringRules.ts:175-201`).
 - Impact: a target-21 set tied 20–20 becomes stuck at 21–20 on Android because neither side can score again. Android enables confirmation at that invalid one-point margin, but the server rejects it; under DATA-025 the failed operation can then poison the local scoring queue and leave the invalid result overlaid indefinitely.
 - Suggested direction: port the canonical shared win-by-two state machine and reachable-score cap to Android from a versioned contract, use it for increment and confirmation decisions, and add identical cross-platform fixtures for regulation, deuce, cap, decrement, and finalization cases.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Android scoring now uses the same reachable final-score rule as the server: a set remains incrementable through deuce and is confirmable only at the target with a two-point lead. All 55 focused match-content tests passed, including 20–20, 21–20, and 22–20 win-by-two cases.
 
 ### APP-120 — The event notification composer discards host text and targets the tournament topic
 
@@ -1815,7 +1816,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `SendNotificationDialog` keeps the entered title/message as private local state but exposes `onSend: () -> Unit`, so it cannot return either value (`SendNotificationDialog.kt:23-29,83-88`). Its only caller consequently sends the constants `"Event Notification"` for both title and body (`EventDetailScreen.kt:3975-3983`). The coordinator also hard-codes `isTournament = true` for every event (`EventNotificationCoordinator.kt:19-26`), which selects the `tournament-` topic rather than the `event-` topic in `PushNotificationsRepository.kt:257-267`.
 - Impact: hosts believe they sent their composed operational message, but recipients receive generic text—or, for leagues and other event types subscribed to the event topic, no message at all. This can hide schedule, venue, safety, or cancellation information while the dialog closes as though delivery succeeded.
 - Suggested direction: pass `(title, message)` out of the dialog, derive the canonical topic from the event type/subscription contract rather than a Boolean constant, show send progress/result before dismissal, and test the complete screen-to-topic payload.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The notification dialog passes the host-entered title and message into the event coordinator, which derives the event versus tournament topic from the actual event type. Two coordinator and two Android dialog UI tests passed, including league routing, payload propagation, in-flight locking, and error retention.
 
 ### APP-121 — Event image upload and deletion failures are silently discarded
 
@@ -1833,7 +1834,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `ensureDocumentSignedBeforePurchase` recognizes that a purchase intent requires an incomplete signature, but if `resolvedSigningUrl()` is blank it logs a warning and returns `true` (`EventPurchaseIntentCoordinator.kt:80-96`). `processPurchaseIntent` then launches the Payment Sheet (`:64-78`). The test suite explicitly expects this fail-open behavior (`EventPurchaseIntentCoordinatorTest.kt:36-58`).
 - Impact: a malformed, delayed, or partially compatible purchase-intent response can let a participant pay/continue registration without accepting a waiver or other document the server marked mandatory. A client warning log is not a legal-consent control or user-visible block.
 - Suggested direction: fail closed whenever `isSignatureRequired && !isSignatureCompleted`; surface a retryable error when no safe signing URL/step exists, bind completion to the exact required document, and require server-side signature verification again before payment/registration finalization.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. A required incomplete signature now stops purchase in a retryable signing state whenever its URL is missing or untrusted; PaymentSheet cannot launch until the exact signing step is safe and complete. All seven focused purchase-intent tests passed.
 
 ### APP-123 — Event participant invite searches can display stale users or teams
 
@@ -1952,7 +1953,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: a fresh `:composeApp:installDebug` completed successfully and installed the current v1.6.14 APK on the Pixel 9 Pro XL API 35 emulator. Two cold launches never displayed `MainActivity`; Android killed the process with `Reason: ... failed to complete startup`. The fresh-build ANR trace shows the main thread spending about 14 seconds in `ZipFile`/`ClassLoader.getResources`/`ServiceLoader` while SLF4J initializes from Ktor `HttpTimeout`, reached through the eager `UserRepository` factory and `Koin.createEagerInstances`, all under `MvpApp.onCreate`. The launcher remained the top resumed activity and UI Automator returned no app root node.
 - Impact: on the tested current supported Android runtime, a clean debug install cannot reach any application screen. More generally, application startup performs dependency-container and network logging/service discovery work synchronously before an activity can draw, so slower devices or cold code-loading conditions can cross Android's startup timeout even though no user-visible initialization requires the repository yet.
 - Suggested direction: remove `createdAtStart` from `UserRepository`, defer the first network-client/repository resolution until after the initial frame or a background-owned startup phase, avoid JVM `ServiceLoader`-based SLF4J discovery on Android, and add a cold-start instrumentation/macrobenchmark assertion that the first activity becomes displayed without an ANR.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `2073720f` removes `createdAtStart` from the network-backed `UserRepository`, so Koin no longer resolves the HTTP client during `MvpApp.onCreate`. The new focused module test asserts no repository is marked for eager construction. After rebuilding and installing the debug APK, a force-stop cold launch reached the Login screen on the attached Android emulator with no ANR, crash, Koin, or ServiceLoader error in fresh logcat.
 
 ### LEG-004 — Shared mobile resources retain unused starter and abandoned form assets
 
@@ -2164,3 +2165,47 @@ These are not yet confirmed defects:
 - 2026-07-10: Completed the shared `core/ui` pass using full implementation review plus structural/reference inspection for vector payload files; recorded definition-only UI/theme assets and four-way branded-button source bloat. The focused Compose Android unit-test task was blocked before execution by the unresolved Maps manifest placeholder.
 - 2026-07-10: Reconciled every in-scope ledger row to a terminal review status, completed the site typecheck, and performed final desktop/mobile browser smoke tests. Confirmed the guest-auth state loop and duplicate sport filter identity failure while mapping local missing-schema errors to the existing stale-database finding.
 - 2026-07-10: Built and installed the current Android debug APK successfully, reproduced a pre-activity cold-start ANR twice, and extracted the system ANR trace proving synchronous eager Koin/Ktor/SLF4J service discovery on the application main thread.
+- 2026-07-12: Completed DATA-004 schema-drift fail-closed remediation across web and mobile. Focused web regressions and `tsc --noEmit` passed; Android and iOS team-repository runs each passed 19 tests. A freshly installed Android build cold-launched to the Login UI with no app crash, Room migration, or illegal-state log.
+- 2026-07-12: Completed DATA-005 and reconciled DATA-013. Retired the stale shadow Prisma schema, added canonical schema/generated-client/version checks to the build preflight, refreshed the local dependency installation to the tracked 7.8.0 Prisma pair, and verified the guard test, TypeScript check, and build-command preflight.
+- 2026-07-12: Completed DATA-006. Added deterministic 1.6.13/1.6.14 AppReleases seeds for Android and iOS, verified a fresh full migration-chain replay and repeat application, passed Android/iOS update-contract tests, deployed all pending live migrations, and verified the public app-version contract at both old and current build boundaries.
+- 2026-07-12: Completed DATA-010. Enforced unique SensitiveUserData identity keys, moved auth/invite/MFA lookups to deterministic unique keys, protected Google-linked accounts from provider-email drift, validated the full migration chain and focused regression suite, and deployed the live uniqueness migration after a zero-duplicate preflight.
+- 2026-07-12: Revalidated existing SEC-001 remediation and reconciled SEC-002 in the audited branch. Focused billing authorization tests (17 total), TypeScript, and a fresh local production server confirmed creation/read/list denials. The public production endpoint still answered from an older deployment, so the source completion is explicitly marked deployment-pending.
+- 2026-07-12: Reconciled SEC-003 in the audited branch. Verified generic file handlers consult the bill-payment-proof discriminator before storage reads; 20 focused access/download/preview tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-004 in the audited branch. Verified durable field/facility/event-derived time-slot authorization across POST/PATCH/DELETE with 22 focused tests. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-005 in the audited branch. Verified unscoped refund listings are personal-only and cross-host/organization queries are denied; all 12 focused refund route tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-006 in the audited branch. Verified every distinct registration-response scope is authorized before a batch returns; all 7 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-007 in the audited branch. Verified private/unpublished event schedule and realtime-token visibility across five suites (16 tests), including a new standalone field-match regression. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-008 in the audited branch. Confirmed no E2E auth state remains tracked, the path is ignored, and current session verification rejects non-expiring historical tokens; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-010 in the audited branch. Confirmed typed session JWTs include a bounded expiry and verification rejects missing/invalid expiry claims; all 7 focused token tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-013 in the audited branch. Confirmed arbitrary account ensure and all generic email-lookup aliases return 410 without database access; all 10 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-016 in the audited branch. Verified direct DOB-verification and Stripe-state patches are rejected before persistence; all 14 focused user-profile tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-019 in the audited branch. Verified missing Stripe credentials fail closed before payment, Stripe Connect, or team checkout mutations; all 33 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-021 in the audited branch. Verified organization list/detail public projections, selector authorization, and sensitive-field omission; all 28 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-022 in the audited branch. Verified scoped, paginated fields/time-slot reads and narrow anonymous discovery output; all 29 focused tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-011 and SEC-015 in the audited branch. Verified the retired universal user mutation endpoint and contextual public user privacy projection; all 16 focused user-route tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-012 in the audited branch. Verified every invitation uses the authenticated actor and is checked against the exact team, event, or organization scope; all four focused invite-route tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-014 in the audited branch. Verified non-admin event creation cannot spoof the host and requires organization event-management permission; all six focused event-create tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-017 in the audited branch. Verified unsigned/unconfigured Stripe webhooks fail closed, with a narrowly explicit development-only bypass; all 18 focused webhook tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-020 in the audited branch. Verified generic session validation rejects signed scoped tokens and enforces issuer, audience, type, expiry, and strict claims; all nine focused auth/realtime token tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-023 in the audited branch. Verified roster-authoritative team chat membership, stale-attacker denial for reads/writes/subscriptions, and self-scoped push cleanup; all 29 focused chat tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-027 in the audited branch. Verified topic mutation/deletion, team-topic reservation, and push-relay sender/recipient/data controls; all 18 focused topic-message tests passed, including two new direct-delete regressions. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-028 in the audited branch. Verified bill-split ownership, opt-in, roster, duplicate, active-payment, and race protections; all eight focused split tests passed, including two new opt-in/outsider-recipient regressions. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-029 in the audited branch. Verified direct signed-document assertions are retired and scoped signing only changes server-issued records; all six focused document tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-030 in the audited branch. Verified anonymous guest registration rejects existing account identities before registrations, relationships, or signing tokens are created; all 11 focused guest-registration/signature tests passed, including a new endpoint-level regression. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-043 and DATA-026 in the audited branch. Verified target-only team refund allocations plus immutable weekly occurrence/payment scope at request and approval time; all 25 focused refund tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-044 in the audited mobile branch. Verified logout preserves authenticated cleanup until the server confirms removal and publishes unauthenticated state before the empty user flow; the targeted Android unit test passed. Emulator verification remains part of the final mobile validation pass.
+- 2026-07-12: Reconciled TEST-007 in the audited mobile branch. Verified a missing or untrusted mandatory signing URL stops at a retryable signature state and cannot open PaymentSheet; the focused Android coordinator suite passed. Emulator verification remains part of the final mobile validation pass.
+- 2026-07-12: Reconciled DATA-018 in the audited mobile branch. Verified terms consent displays the authoritative version, allows only the canonical supplied terms URL, and blocks consent without it; the focused Android URL/repository tests passed. Emulator verification remains part of the final mobile validation pass.
+- 2026-07-12: Reconciled DATA-021 in the audited mobile branch. Verified deliberate nullable event/team/match clears are represented by JSON null while untouched fields remain omitted; focused Android patch tests passed, including a new multi-field event-clear regression. Emulator verification remains part of the final mobile validation pass.
+- 2026-07-12: Reconciled SEC-009 in the audited branch. Verified caller-controlled or omitted `clientType` cannot bypass an enabled authenticator challenge; all 32 focused auth route tests passed, including the omitted-client-type MFA regression. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled SEC-018 in the audited branch. Verified paid rental creation refuses unconfigured Stripe verification before any financial or booking write, then validates a succeeded intent against its rental scope; all 39 focused Stripe/rental tests passed. Production deployment remains pending with the rest of the audited branch.
+- 2026-07-12: Reconciled DB-001 in the audited mobile branch. Verified the Room migration graph runs on-device without pre-open deletion; all eight migration-path tests passed, including preservation of a queued v24 match operation. Release deployment remains pending.
+- 2026-07-12: Reconciled DATA-024 and DATA-025 in the audited mobile branch. Verified serialized durable match-operation enqueue/drain behavior and terminal-rejection reconciliation; all 13 focused repository tests passed, including a new eight-concurrent-enqueue sequence regression. Release deployment remains pending.
+- 2026-07-12: Reconciled DATA-027 and DATA-029 in the audited mobile branch. Verified narrow user-profile mutations preserve server-owned relationship data and final set completion retains the repository-finalized match; the focused user and match-content suites passed all 12 and 55 cases respectively. Release deployment remains pending.
+- 2026-07-12: Reconciled APP-076, APP-078, APP-091, APP-100, APP-108, APP-119, APP-120, and APP-122 in the audited mobile branch. Verified immutable refund scope previews, payment-plan preservation, rental interval/retry safety, single-owner checkout sessions, exact document selection, win-by-two scoring, notification delivery, and fail-closed signing; focused unit/UI suites passed. Release deployment remains pending.
+- 2026-07-12: Installed the current audited Android build on the attached emulator and cold-launched it to the Login UI. The UI tree and screenshot rendered normally; logcat had no app crash, ANR, or destructive Room-migration message. Reconciled APP-112's modal loading-overlay implementation from that runtime and source evidence.
+- 2026-07-12: Revalidated SEC-024, SEC-031 through SEC-036 against current committed source. The focused web suite passed 89 tests and `npx tsc --noEmit`, covering safe external links, canonical rental checkout/lock authorization and quotas, reauthenticated account deletion, scoped email membership, hardened message payloads, and explicit persisted-registration responses after email delivery failure. Production deployment remains pending.
+- 2026-07-12: Revalidated SEC-041 and SEC-042 across the audited web and Android branches. Focused web suites passed 58 tests plus `npx tsc --noEmit`; Android passed the 4-test invitation-invalidation suite and 12-test authenticated-logout/retry suite. Cleanup failures now remain visible/retryable and push invitation data is server-verified before cache mutation. Production and mobile release deployment remain pending.
+- 2026-07-12: Remediated OPS-004 in the audited web branch. Removed all 25 live-script uses of Node's process-wide TLS-verification override and added a recursive script-tree regression guard. The guard and Prisma TLS suites passed seven tests, and `npx tsc --noEmit` passed. Production deployment remains pending.
+- 2026-07-12: Remediated APP-065 in the audited mobile branch. Room now orders cached chat messages chronologically with a stable ID tie-breaker. The updated 9-test Room migration/DAO instrumentation class passed on the attached Android emulator. Mobile release deployment remains pending.
+- 2026-07-12: Remediated APP-135 in the audited mobile branch. Deferred `UserRepository` construction out of `MvpApp.onCreate`, added a startup-laziness regression, rebuilt and installed the debug APK, and cold-launched the attached Android emulator to the Login UI with no ANR, crash, Koin, or ServiceLoader error in fresh logcat. Mobile release deployment remains pending.

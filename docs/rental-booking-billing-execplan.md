@@ -47,7 +47,7 @@ Validation passed with Prisma schema validation, generated schema validation, lo
 
 ## Context and Orientation
 
-The app is a Next.js, TypeScript, Prisma, and Postgres application. Prisma models live in `prisma/schema.prisma`; this repository also keeps `prisma/schema.generated.prisma` in sync. SQL migrations live under `prisma/migrations`.
+The app is a Next.js, TypeScript, Prisma, and Postgres application. Prisma models live only in `prisma/schema.prisma`; `npm run prisma:check` validates that canonical schema and its generated client. SQL migrations live under `prisma/migrations`.
 
 The word "rental availability" means a facility-defined sellable window, currently represented by `TimeSlots` whose ids are listed in `Fields.rentalSlotIds`. The word "rental booking" means a paid or pending customer reservation for a concrete field and time. The word "projection" means an event `TimeSlots` row created from a booking item so the event scheduler can use the booked window without owning the booking itself.
 

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
   }
 
-  const existingSensitiveUser = await prisma.sensitiveUserData.findFirst({
+  const existingSensitiveUser = await prisma.sensitiveUserData.findUnique({
     where: { email: normalizedEmail },
     select: { userId: true },
   });

@@ -271,6 +271,37 @@ describe('public guest event registration route', () => {
     expect(payload.registrationToken).toBe('guest.jwt');
   });
 
+  it('does not issue a guest registration or signing token for an existing account email', async () => {
+    ensureGuestParentIdentityMock.mockRejectedValueOnce(Object.assign(
+      new Error('An account already exists for this email. Sign in to register or manage this participant.'),
+      { status: 409 },
+    ));
+
+    const response = await POST(
+      requestFor({
+        mode: 'free_agent',
+        parent: {
+          email: 'victim@example.com',
+          firstName: 'Spoofed',
+          lastName: 'Parent',
+        },
+        child: {
+          firstName: 'Casey',
+          lastName: 'Parent',
+          dateOfBirth: '2015-05-10',
+        },
+        divisionId: 'division_1',
+      }),
+      routeContext,
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toContain('account already exists');
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
+    expect(signGuestRegistrationTokenMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a future child date of birth before creating a participant', async () => {
     const response = await POST(
       requestFor({

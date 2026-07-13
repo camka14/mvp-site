@@ -22,6 +22,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
   },
   $transaction: jest.fn(),
@@ -142,7 +143,7 @@ describe('auth routes', () => {
   describe('POST /api/auth/register', () => {
     it('creates auth, profile, and sensitive records', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findUnique.mockResolvedValue(null);
 
       prismaMock.authUser.create.mockResolvedValue({
@@ -184,12 +185,20 @@ describe('auth routes', () => {
       expect(json.verificationEmailSent).toBe(true);
       expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+      expect(prismaMock.sensitiveUserData.findUnique).toHaveBeenCalledWith({
+        where: { email: 'test@example.com' },
+      });
       expect(prismaMock.authUser.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             email: 'test@example.com',
             passwordHash: 'hashed',
           }),
+        }),
+      );
+      expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user_1' },
         }),
       );
       expect(authEmailVerificationMock.sendInitialEmailVerification).toHaveBeenCalledWith({
@@ -214,7 +223,7 @@ describe('auth routes', () => {
 
     it('returns a persisted verification-pending account when delivery fails', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findUnique.mockResolvedValue(null);
       prismaMock.authUser.create.mockResolvedValue({
         id: 'user_1',
@@ -267,7 +276,7 @@ describe('auth routes', () => {
 
     it('returns a persisted verification-pending account when SMTP is unavailable', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findUnique.mockResolvedValue(null);
       prismaMock.authUser.create.mockResolvedValue({
         id: 'user_1',
@@ -338,7 +347,7 @@ describe('auth routes', () => {
 
     it('rejects a future date of birth before creating the account', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findUnique.mockResolvedValue(null);
 
       const res = await REGISTER_POST(buildJsonRequest('http://localhost/api/auth/register', {
@@ -357,7 +366,7 @@ describe('auth routes', () => {
 
     it('rejects duplicate usernames (case-insensitive)', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue(null);
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findUnique.mockResolvedValue(null);
       prismaMock.userData.findFirst.mockResolvedValue({ id: 'user_existing' });
 
@@ -388,7 +397,7 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
       prismaMock.userData.findUnique.mockResolvedValue({
         id: 'user_1',
         firstName: null,
@@ -456,7 +465,7 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
       prismaMock.userData.findUnique.mockResolvedValue({
         id: 'user_1',
         firstName: null,
@@ -530,7 +539,7 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
       prismaMock.userData.findUnique.mockResolvedValue({
         id: 'user_1',
         firstName: 'Existing',
@@ -570,7 +579,7 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.sensitiveUserData.findUnique.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
       prismaMock.userData.findUnique.mockResolvedValue({
         id: 'user_1',
         firstName: 'Existing',

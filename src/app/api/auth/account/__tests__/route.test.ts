@@ -15,6 +15,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     deleteMany: jest.fn(),
   },
   bills: {
@@ -144,7 +145,7 @@ describe('DELETE /api/auth/account', () => {
       appleSubject: null,
       sessionVersion: 0,
     });
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({
       id: 'sensitive_1',
       email: 'user@example.com',
       appleRefreshToken: null,
@@ -283,7 +284,7 @@ describe('DELETE /api/auth/account', () => {
   });
 
   it('requires a purpose-scoped authenticator challenge for TOTP-enabled accounts', async () => {
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({
       id: 'sensitive_1',
       email: 'user@example.com',
       appleRefreshToken: null,
@@ -310,7 +311,7 @@ describe('DELETE /api/auth/account', () => {
   });
 
   it('consumes the account-deletion MFA challenge before deleting a TOTP-enabled account', async () => {
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({
       id: 'sensitive_1',
       email: 'user@example.com',
       appleRefreshToken: null,
@@ -381,7 +382,7 @@ describe('DELETE /api/auth/account', () => {
       email: 'user@example.com',
       appleSubject: 'apple-user-1',
     });
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({
       id: 'sensitive_1',
       email: 'user@example.com',
       appleRefreshToken: 'apple_refresh_token',

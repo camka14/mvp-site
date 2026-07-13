@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
+import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { hasOrgPermission } from '@/server/accessControl';
@@ -141,46 +142,18 @@ const withTeamRoleAliasesList = (teams: Record<string, any>[]) => (
 );
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
-const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
 
 const getZodErrorMessage = (error: z.ZodError): string => (
   error.issues[0]?.message ?? 'Invalid input'
 );
 
-const extractUnknownArgument = (error: unknown): string | null => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const match = message.match(UNKNOWN_ARGUMENT_REGEX);
-  return match?.[1] ?? null;
-};
-
-const omitKeys = (data: Record<string, unknown>, keys: Set<string>): Record<string, unknown> => {
-  if (!keys.size) return data;
-  return Object.fromEntries(Object.entries(data).filter(([key]) => !keys.has(key)));
-};
-
-const createTeamWithCompatibility = async (
+const createTeamWithSchemaContract = async (
   teamsDelegate: any,
   data: Record<string, unknown>,
-): Promise<Record<string, unknown>> => {
-  const omittedKeys = new Set<string>();
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      return await teamsDelegate.create({
-        data: omitKeys(data, omittedKeys),
-      });
-    } catch (error) {
-      lastError = error;
-      const unknownArgument = extractUnknownArgument(error);
-      if (!unknownArgument || omittedKeys.has(unknownArgument) || !Object.prototype.hasOwnProperty.call(data, unknownArgument)) {
-        throw error;
-      }
-      omittedKeys.add(unknownArgument);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Failed to create team with compatible schema.');
-};
+): Promise<Record<string, unknown>> => requirePrismaSchemaContract<Record<string, unknown>>(
+  'Teams',
+  () => teamsDelegate.create({ data: data as any }),
+);
 
 const canIncludeAdminOnlyTeams = async (
   session: { userId: string; isAdmin: boolean } | null,
@@ -374,29 +347,40 @@ export async function POST(req: NextRequest) {
       await sendInviteEmails(createdPendingInvites, getRequestOrigin(req));
     }
   } else {
-    const team = await createTeamWithCompatibility(teamsDelegate, {
-      id: data.id,
-      name: normalizedTeamName,
-      division: persistedDivision,
-      divisionTypeId: persistedDivisionTypeId,
-      sport: sportInput,
-      playerIds,
-      captainId,
-      managerId,
-      headCoachId,
-      coachIds: assistantCoachIds,
-      parentTeamId: normalizeText(data.parentTeamId),
-      pending,
-      teamSize: data.teamSize,
-      profileImageId: data.profileImageId ?? null,
-      openRegistration: registrationSettings.openRegistration,
-      joinPolicy: registrationSettings.joinPolicy,
-      registrationPriceCents: registrationSettings.registrationPriceCents,
-      affiliateUrl,
-      requiredTemplateIds,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    let team: Record<string, unknown>;
+    try {
+      team = await createTeamWithSchemaContract(teamsDelegate, {
+        id: data.id,
+        name: normalizedTeamName,
+        division: persistedDivision,
+        divisionTypeId: persistedDivisionTypeId,
+        sport: sportInput,
+        playerIds,
+        captainId,
+        managerId,
+        headCoachId,
+        coachIds: assistantCoachIds,
+        parentTeamId: normalizeText(data.parentTeamId),
+        pending,
+        teamSize: data.teamSize,
+        profileImageId: data.profileImageId ?? null,
+        openRegistration: registrationSettings.openRegistration,
+        joinPolicy: registrationSettings.joinPolicy,
+        registrationPriceCents: registrationSettings.registrationPriceCents,
+        affiliateUrl,
+        requiredTemplateIds,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      if (isPrismaSchemaContractError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },
+          { status: 503 },
+        );
+      }
+      throw error;
+    }
     responseTeam = withTeamRoleAliases(team as any);
   }
 

@@ -309,6 +309,31 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('fails closed when legacy team storage rejects a requested field', async () => {
+    createMock.mockRejectedValueOnce(
+      new Error('Unknown argument `joinPolicy` for type VolleyBallTeamsCreateInput.'),
+    );
+
+    const response = await POST(postJson({
+      id: 'team_1',
+      name: 'Schema Contract Team',
+      teamSize: 6,
+      openRegistration: true,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ joinPolicy: 'OPEN_REGISTRATION' }),
+    }));
+    expect(syncTeamChatByTeamIdMock).not.toHaveBeenCalled();
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH',
+      field: 'joinPolicy',
+    }));
+  });
+
   it('coerces numeric team size input before creating a team', async () => {
     createMock.mockResolvedValue({
       id: 'team_size_string',

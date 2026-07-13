@@ -46,7 +46,7 @@ describe('authPhoneMfa', () => {
     let savedDevCodeHash: string | null = null;
     const client = {
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue({
+        findUnique: jest.fn().mockResolvedValue({
           id: 'sensitive_1',
           userId: 'user_1',
           email: 'test@example.com',

@@ -15,7 +15,7 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
         create: jest.fn().mockResolvedValue({ id: 'user_abc' }),
       },
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'sensitive_1', userId: 'user_abc', email: 'test@example.com' }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'sensitive_1', userId: 'user_abc', email: 'test@example.com' }),
         upsert: jest.fn().mockResolvedValue({ id: 'sensitive_1' }),
       },
     };
@@ -49,7 +49,7 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
         update: jest.fn(),
       },
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'user_abc' }),
       },
     };
@@ -101,7 +101,7 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
         update: jest.fn().mockResolvedValue({ id: 'user_abc' }),
       },
       sensitiveUserData: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'sensitive_1', userId: 'user_abc', email: 'casey@example.com' }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'sensitive_1', userId: 'user_abc', email: 'casey@example.com' }),
         upsert: jest.fn().mockResolvedValue({ id: 'sensitive_1' }),
       },
     };
@@ -148,7 +148,7 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
           update: jest.fn(),
         },
         sensitiveUserData: {
-          findFirst: jest.fn().mockResolvedValue(null),
+          findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'user_abc' }),
         },
       };

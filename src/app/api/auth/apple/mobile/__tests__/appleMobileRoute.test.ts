@@ -18,6 +18,7 @@ const prismaMock = {
   },
   sensitiveUserData: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
   },
   $transaction: jest.fn(),
@@ -172,7 +173,7 @@ describe('apple mobile oauth route', () => {
       if (where.email === 'apple@example.com') return null;
       return null;
     });
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+    prismaMock.sensitiveUserData.findUnique.mockResolvedValue({
       id: 'user_apple',
       userId: 'user_apple',
       email: 'apple@example.com',
