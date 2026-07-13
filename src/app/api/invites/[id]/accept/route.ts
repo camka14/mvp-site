@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { acceptTeamInviteWithGuardianRules } from '@/server/teams/teamGuardianInvites';
+import { acquireEventLock } from '@/server/repositories/locks';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const inviteType = normalizeInviteType(invite.type);
   if (!inviteType) {
     return NextResponse.json({ error: 'Invalid invite' }, { status: 400 });
+  }
+
+  const eventStaffId = inviteType === 'STAFF'
+    && typeof invite.eventId === 'string'
+    && invite.eventId.trim()
+    ? invite.eventId.trim()
+    : null;
+  if (eventStaffId) {
+    const now = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      await acquireEventLock(tx, eventStaffId);
+      const lockedInvite = await tx.invites.findUnique({ where: { id } });
+      if (
+        !lockedInvite
+        || normalizeInviteType(lockedInvite.type) !== 'STAFF'
+        || lockedInvite.eventId !== eventStaffId
+      ) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      if (!session.isAdmin && lockedInvite.userId !== session.userId) {
+        return { status: 403, body: { error: 'Forbidden' } };
+      }
+
+      await tx.invites.delete({ where: { id: lockedInvite.id } });
+      if (lockedInvite.organizationId && lockedInvite.userId) {
+        await tx.userData.updateMany({
+          where: {
+            id: lockedInvite.userId,
+            homePageOrganizationId: null,
+          },
+          data: {
+            homePageOrganizationId: lockedInvite.organizationId,
+            updatedAt: now,
+          },
+        });
+      }
+      return {
+        status: 200,
+        body: { ok: true, organizationId: lockedInvite.organizationId ?? null },
+      };
+    });
+
+    return NextResponse.json(result.body, { status: result.status });
   }
 
   if (inviteType === 'STAFF') {

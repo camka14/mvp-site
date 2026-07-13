@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { declineTeamInviteWithGuardianRules } from '@/server/teams/teamGuardianInvites';
+import { acquireEventLock } from '@/server/repositories/locks';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const now = new Date();
-  if (normalizeInviteType(invite.type) === 'TEAM' && invite.teamId && invite.userId) {
+  const inviteType = normalizeInviteType(invite.type);
+  if (inviteType === 'TEAM' && invite.teamId && invite.userId) {
     const result = await declineTeamInviteWithGuardianRules({
       invite,
       session,
       now,
     });
+    return NextResponse.json(result.body, { status: result.status });
+  }
+
+  const eventStaffId = inviteType === 'STAFF'
+    && typeof invite.eventId === 'string'
+    && invite.eventId.trim()
+    ? invite.eventId.trim()
+    : null;
+  if (eventStaffId) {
+    const result = await prisma.$transaction(async (tx) => {
+      await acquireEventLock(tx, eventStaffId);
+      const lockedInvite = await tx.invites.findUnique({ where: { id } });
+      if (
+        !lockedInvite
+        || normalizeInviteType(lockedInvite.type) !== 'STAFF'
+        || lockedInvite.eventId !== eventStaffId
+      ) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      if (!session.isAdmin && lockedInvite.userId !== session.userId) {
+        return { status: 403, body: { error: 'Forbidden' } };
+      }
+
+      await tx.invites.update({
+        where: { id },
+        data: {
+          status: 'DECLINED',
+          updatedAt: now,
+        },
+      });
+      return { status: 200, body: { ok: true } };
+    });
+
     return NextResponse.json(result.body, { status: result.status });
   }
 

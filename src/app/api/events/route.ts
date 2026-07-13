@@ -1116,12 +1116,12 @@ export async function POST(req: NextRequest) {
   try {
     const context = buildContext();
     const created = await prisma.$transaction(async (tx) => {
+      await acquireEventLock(tx, eventId);
       await upsertEventFromPayload(eventPayload, tx);
 
       const loaded = await loadEventWithRelations(eventId, tx);
       let didRebuildSchedule = false;
       if (isSchedulableEventType(loaded.eventType)) {
-        await acquireEventLock(tx, eventId);
         const scheduled = scheduleEvent({ event: loaded }, context);
         await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
         await deleteMatchesByEvent(eventId, tx);

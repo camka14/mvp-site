@@ -512,8 +512,9 @@ const persistEventOfficialRows = async (
 
 const shouldKeepMatchOfficialAssignment = (
   assignment: unknown,
-  allowedEventOfficialIds: Set<string>,
-  allowedOfficialUserIds: Set<string>,
+  activeOfficialById: Map<string, EventOfficialRecord>,
+  activeOfficialByUserId: Map<string, EventOfficialRecord>,
+  matchFieldId: string | null,
 ): boolean => {
   if (!assignment || typeof assignment !== 'object') {
     return false;
@@ -524,11 +525,25 @@ const shouldKeepMatchOfficialAssignment = (
     return true;
   }
   const userId = normalizeEntityId(row.userId);
-  if (!userId || !allowedOfficialUserIds.has(userId)) {
+  if (!userId) {
     return false;
   }
   const eventOfficialId = normalizeEntityId(row.eventOfficialId);
-  return !eventOfficialId || allowedEventOfficialIds.has(eventOfficialId);
+  const official = eventOfficialId
+    ? activeOfficialById.get(eventOfficialId)
+    : activeOfficialByUserId.get(userId);
+  if (!official || official.userId !== userId) {
+    return false;
+  }
+  const positionId = normalizeEntityId(row.positionId);
+  if (!positionId || !official.positionIds.includes(positionId)) {
+    return false;
+  }
+  return !(
+    matchFieldId
+    && official.fieldIds.length
+    && !official.fieldIds.includes(matchFieldId)
+  );
 };
 
 export const clearRemovedEventOfficialMatchAssignments = async (
@@ -542,17 +557,10 @@ export const clearRemovedEventOfficialMatchAssignments = async (
   ) {
     return 0;
   }
-  const allowedEventOfficialIds = new Set(
-    eventOfficials
-      .map((official) => normalizeEntityId(official.id))
-      .filter((id): id is string => Boolean(id)),
-  );
-  const allowedOfficialUserIds = new Set(
-    eventOfficials
-      .filter((official) => official.isActive !== false)
-      .map((official) => normalizeEntityId(official.userId))
-      .filter((id): id is string => Boolean(id)),
-  );
+  const activeOfficials = eventOfficials.filter((official) => official.isActive !== false);
+  const activeOfficialById = new Map(activeOfficials.map((official) => [official.id, official]));
+  const activeOfficialByUserId = new Map(activeOfficials.map((official) => [official.userId, official]));
+  const allowedOfficialUserIds = new Set(activeOfficialByUserId.keys());
   const matches = await (client as any).matches.findMany({
     where: { eventId },
     select: {
@@ -560,13 +568,20 @@ export const clearRemovedEventOfficialMatchAssignments = async (
       officialId: true,
       officialIds: true,
       officialCheckedIn: true,
+      fieldId: true,
     },
   });
   let updatedCount = 0;
   for (const match of matches as Array<Record<string, unknown>>) {
+    const matchFieldId = normalizeEntityId(match.fieldId);
     const rawAssignments = Array.isArray(match.officialIds) ? match.officialIds : [];
     const nextAssignments = rawAssignments.filter((assignment) => (
-      shouldKeepMatchOfficialAssignment(assignment, allowedEventOfficialIds, allowedOfficialUserIds)
+      shouldKeepMatchOfficialAssignment(
+        assignment,
+        activeOfficialById,
+        activeOfficialByUserId,
+        matchFieldId,
+      )
     ));
     const nextPrimaryOfficialId = nextAssignments.length
       ? deriveLegacyOfficialIdFromAssignments(nextAssignments as MatchOfficialAssignment[])
@@ -575,9 +590,17 @@ export const clearRemovedEventOfficialMatchAssignments = async (
       ? deriveLegacyOfficialCheckedInFromAssignments(nextAssignments as MatchOfficialAssignment[])
       : false;
     const existingPrimaryOfficialId = normalizeEntityId(match.officialId);
-    const shouldClearLegacyOfficial = Boolean(
-      existingPrimaryOfficialId && !allowedOfficialUserIds.has(existingPrimaryOfficialId),
-    );
+    const legacyOfficial = existingPrimaryOfficialId
+      ? activeOfficialByUserId.get(existingPrimaryOfficialId)
+      : null;
+    const shouldClearLegacyOfficial = Boolean(existingPrimaryOfficialId && (
+      !legacyOfficial
+      || (
+        matchFieldId
+        && legacyOfficial.fieldIds.length
+        && !legacyOfficial.fieldIds.includes(matchFieldId)
+      )
+    ));
     const assignmentsChanged = nextAssignments.length !== rawAssignments.length;
     if (!assignmentsChanged && !shouldClearLegacyOfficial) {
       continue;

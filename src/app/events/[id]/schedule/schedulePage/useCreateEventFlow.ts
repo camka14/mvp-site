@@ -914,8 +914,6 @@ type UseRentalCheckoutFlowParams = {
   setPublishing: Dispatch<SetStateAction<boolean>>;
   setSubmitError: Dispatch<SetStateAction<string | null>>;
   scheduleRegularEvent: (draft: Partial<Event>) => Promise<Event | null>;
-  syncPendingEventFormInvites: (savedEvent: Event) => Promise<Event>;
-  handlePreviewEventUpdate: (preview: Event) => void;
 };
 
 export function useRentalCheckoutFlow({
@@ -932,8 +930,6 @@ export function useRentalCheckoutFlow({
   setPublishing,
   setSubmitError,
   scheduleRegularEvent,
-  syncPendingEventFormInvites,
-  handlePreviewEventUpdate,
 }: UseRentalCheckoutFlowParams) {
   const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
   const pendingRentalLockRef = useRef<{ eventDraft: Event; rentalSlot: TimeSlot } | null>(null);
@@ -997,11 +993,7 @@ export function useRentalCheckoutFlow({
     if (!context.requiresPayment) {
       const scheduledEvent = await scheduleRegularEvent(context.draftToSave);
       if (scheduledEvent?.$id) {
-        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
         eventFormRef.current?.commitDirtyBaseline();
-        if (syncedEvent !== scheduledEvent) {
-          handlePreviewEventUpdate(syncedEvent);
-        }
       }
       return;
     }
@@ -1032,13 +1024,11 @@ export function useRentalCheckoutFlow({
     }
   }, [
     eventFormRef,
-    handlePreviewEventUpdate,
     releasePendingRentalCheckoutLock,
     rentalOrganization,
     scheduleRegularEvent,
     setPublishing,
     setSubmitError,
-    syncPendingEventFormInvites,
     user,
   ]);
 
@@ -1388,20 +1378,14 @@ export function useRentalCheckoutFlow({
     if (pendingDraft) {
       const scheduledEvent = await scheduleRegularEvent(pendingDraft);
       if (scheduledEvent?.$id) {
-        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
         eventFormRef.current?.commitDirtyBaseline();
-        if (syncedEvent !== scheduledEvent) {
-          handlePreviewEventUpdate(syncedEvent);
-        }
       }
     }
     closeRentalPaymentModal({ releaseLock: false });
   }, [
     closeRentalPaymentModal,
     eventFormRef,
-    handlePreviewEventUpdate,
     scheduleRegularEvent,
-    syncPendingEventFormInvites,
   ]);
 
   useEffect(() => {

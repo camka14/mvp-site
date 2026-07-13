@@ -36,6 +36,7 @@ const sendAdminEventCreatedNotificationMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn(() => false);
 const isLeaguePlayoffTeamCountValidationErrorMock = jest.fn(() => false);
 const isRentalBookingReservationErrorMock = jest.fn(() => false);
+const acquireEventLockMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -58,6 +59,9 @@ jest.mock('@/server/eventCreationNotifications', () => ({
 }));
 jest.mock('@/server/adminNotifications', () => ({
   sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
+}));
+jest.mock('@/server/repositories/locks', () => ({
+  acquireEventLock: (...args: any[]) => acquireEventLockMock(...args),
 }));
 
 import { POST as eventsPost } from '@/app/api/events/route';
@@ -195,6 +199,10 @@ describe('event save route', () => {
       }),
     );
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1', prismaMock);
+    expect(acquireEventLockMock).toHaveBeenCalledWith(prismaMock, 'event_1');
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      upsertEventFromPayloadMock.mock.invocationCallOrder[0],
+    );
 
     const json = await res.json();
     expect(json.event.$id).toBe('event_1');

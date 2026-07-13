@@ -464,6 +464,39 @@ describe('eventService', () => {
     expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
   });
 
+  it('omits every staff-owned field from a general event patch when requested', async () => {
+    apiRequestMock.mockResolvedValue({ ...baseEventRow });
+
+    await eventService.updateEvent('evt_1', {
+      ...baseEventRow,
+      assistantHostIds: ['assistant_1'],
+      officialIds: ['official_1'],
+      eventOfficials: [{
+        id: 'event_official_1',
+        userId: 'official_1',
+        positionIds: ['position_1'],
+        fieldIds: [],
+      }],
+      staffInvites: [{ id: 'invite_1', type: 'STAFF' }],
+      pendingStaffInvites: [{ email: 'pending@example.com' }],
+    } as any, {
+      omitStaffAssignments: true,
+      expectedStaffRevision: 'staff_revision_1',
+    });
+
+    const requestBody = apiRequestMock.mock.calls[0]?.[1]?.body as any;
+    const eventPayload = requestBody?.event;
+    expect(eventPayload).not.toHaveProperty('assistantHostIds');
+    expect(eventPayload).not.toHaveProperty('officialIds');
+    expect(eventPayload).not.toHaveProperty('eventOfficials');
+    expect(eventPayload).not.toHaveProperty('staffInvites');
+    expect(eventPayload).not.toHaveProperty('pendingStaffInvites');
+    expect(requestBody).toMatchObject({
+      preserveStaffAssignments: true,
+      expectedStaffRevision: 'staff_revision_1',
+    });
+  });
+
   it('serializes a comprehensive event update without circular field references', async () => {
     apiRequestMock
       .mockResolvedValueOnce({ ...baseEventRow })

@@ -12,6 +12,7 @@ const buildInviteEmailMock = jest.fn();
 const isEmailEnabledMock = jest.fn();
 const sendEmailMock = jest.fn();
 const sendPushToUsersMock = jest.fn();
+const isUserNotificationChannelEnabledMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/server/emailTemplates', () => ({ buildInviteEmail: (...args: any[]) => buildInviteEmailMock(...args) }));
@@ -20,6 +21,9 @@ jest.mock('@/server/email', () => ({
   sendEmail: (...args: any[]) => sendEmailMock(...args),
 }));
 jest.mock('@/server/pushNotifications', () => ({ sendPushToUsers: (...args: any[]) => sendPushToUsersMock(...args) }));
+jest.mock('@/server/notificationPreferences', () => ({
+  isUserNotificationChannelEnabled: (...args: any[]) => isUserNotificationChannelEnabledMock(...args),
+}));
 
 import { sendInviteEmails } from '@/server/inviteEmails';
 
@@ -39,6 +43,7 @@ describe('sendInviteEmails', () => {
     });
     isEmailEnabledMock.mockReturnValue(true);
     sendEmailMock.mockResolvedValue(undefined);
+    isUserNotificationChannelEnabledMock.mockResolvedValue(true);
     sendPushToUsersMock.mockResolvedValue({
       attempted: true,
       recipientCount: 1,
@@ -151,6 +156,43 @@ describe('sendInviteEmails', () => {
     }));
     expect(prismaMock.invites.update.mock.calls[0][0].data).not.toHaveProperty('sentAt');
     expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('isolates a per-invite preference failure after another invite delivers', async () => {
+    isUserNotificationChannelEnabledMock.mockImplementation(async (userId: string) => {
+      if (userId === 'user_bad') {
+        throw new Error('preference lookup failed');
+      }
+      return true;
+    });
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const invites = await sendInviteEmails([
+      {
+        id: 'invite_delivered',
+        email: 'delivered@example.com',
+        userId: 'user_good',
+        type: 'TEAM',
+        status: 'PENDING',
+      },
+      {
+        id: 'invite_failed',
+        email: 'failed@example.com',
+        userId: 'user_bad',
+        type: 'TEAM',
+        status: 'PENDING',
+      },
+    ], 'http://localhost');
+
+    expect(invites).toEqual([
+      expect.objectContaining({ id: 'invite_delivered', status: 'PENDING', sentAt: expect.any(Date) }),
+      expect.objectContaining({ id: 'invite_failed', status: 'FAILED' }),
+    ]);
+    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'invite_failed' },
+      data: expect.objectContaining({ status: 'FAILED' }),
+    }));
     consoleErrorSpy.mockRestore();
   });
 });

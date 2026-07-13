@@ -3,6 +3,7 @@ import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { eventService } from '@/lib/eventService';
+import type { EventStaffDraft, EventStaffSnapshot } from '@/lib/eventStaffService';
 import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
@@ -1375,7 +1376,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setOrganizationStaffTypeFilter,
         sportOfficialPositionTemplates,
         staffInviteError,
-        submitPendingStaffInvites,
         validatePendingStaffAssignments,
     } = useStaffOfficialController({
         eventData,
@@ -3439,10 +3439,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         sportsLoading,
     ]);
 
-    const getDraftSnapshot = useCallback(
-        () => buildDraftEvent(getValues()),
-        [buildDraftEvent, getValues],
-    );
+    const getDraftSnapshot = useCallback((): EventStaffDraft => ({
+        ...buildDraftEvent(getValues()),
+        pendingStaffInvites: isAffiliateEvent
+            ? []
+            : ((getValues('pendingStaffInvites') ?? []) as PendingStaffInvite[])
+                .map(normalizePendingStaffInvite),
+    }), [buildDraftEvent, getValues, isAffiliateEvent]);
     const applyAffiliateEventSimplifications = useCallback((checked: boolean) => {
         setValue('isAffiliateEvent', checked, { shouldDirty: true, shouldValidate: true });
         if (!checked) {
@@ -3555,12 +3558,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         await validatePendingStaffAssignments();
     }, [isAffiliateEvent, validatePendingStaffAssignments]);
 
-    const submitPendingStaffInvitesForSubmit = useCallback(async (eventId: string) => {
-        if (isAffiliateEvent) {
-            return;
-        }
-        await submitPendingStaffInvites(eventId);
-    }, [isAffiliateEvent, submitPendingStaffInvites]);
+    const applyCanonicalStaffState = useCallback((snapshot: EventStaffSnapshot) => {
+        setEventData((prev) => ({
+            ...prev,
+            assistantHostIds: [...snapshot.assistantHostIds],
+            officialPositions: snapshot.officialPositions.map((position) => ({ ...position })),
+            eventOfficials: snapshot.eventOfficials.map((official) => ({
+                ...official,
+                positionIds: [...official.positionIds],
+                fieldIds: [...official.fieldIds],
+            })),
+            officialIds: [...snapshot.officialIds],
+            pendingStaffInvites: [],
+        }), { shouldDirty: false, shouldValidate: true });
+    }, [setEventData]);
 
     useImperativeHandle(
         ref,
@@ -3571,9 +3582,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             getValidationErrors: () => lastValidationErrorsRef.current,
             validatePendingStaffAssignments: validatePendingStaffAssignmentsForSubmit,
             commitDirtyBaseline,
-            submitPendingStaffInvites: submitPendingStaffInvitesForSubmit,
+            applyCanonicalStaffState,
         }),
-        [commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, submitPendingStaffInvitesForSubmit, validateDraft, validatePendingStaffAssignmentsForSubmit],
+        [applyCanonicalStaffState, commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, validateDraft, validatePendingStaffAssignmentsForSubmit],
     );
 
     // Syncs the selected event image with component state after uploads or picker changes.

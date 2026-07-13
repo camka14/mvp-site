@@ -104,12 +104,21 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const scheduleEventMock = jest.fn();
+const acquireEventLockMock = jest.fn();
+const loadEventStaffSnapshotMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/scheduler/scheduleEvent', () => ({
   scheduleEvent: (...args: any[]) => scheduleEventMock(...args),
   ScheduleError: class ScheduleError extends Error {},
+}));
+jest.mock('@/server/repositories/locks', () => ({
+  acquireEventLock: (...args: any[]) => acquireEventLockMock(...args),
+}));
+jest.mock('@/server/events/eventStaffReconciliation', () => ({
+  EVENT_STAFF_REVISION_CONFLICT_CODE: 'EVENT_STAFF_REVISION_CONFLICT',
+  loadEventStaffSnapshot: (...args: any[]) => loadEventStaffSnapshotMock(...args),
 }));
 
 import { PATCH as eventPatch } from '@/app/api/events/[eventId]/route';
@@ -219,6 +228,13 @@ describe('event PATCH route', () => {
     );
 
     expect(res.status).toBe(200);
+    expect(acquireEventLockMock).toHaveBeenCalledWith(
+      expect.objectContaining({ events: eventsMock }),
+      'event_1',
+    );
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      eventsMock.findUnique.mock.invocationCallOrder[0],
+    );
     expect(prismaMock.events.update).toHaveBeenCalledTimes(1);
 
     const updateArg = prismaMock.events.update.mock.calls[0][0];
@@ -251,6 +267,114 @@ describe('event PATCH route', () => {
         }),
       }),
     );
+  });
+
+  it('rejects a preserve-staff patch with a stale staff revision before writing', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    eventsMock.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: ['assistant_current'],
+    });
+    loadEventStaffSnapshotMock.mockResolvedValueOnce({ revision: 'revision_current' });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          name: 'Stale metadata update',
+          assistantHostIds: ['assistant_stale'],
+        },
+        preserveStaffAssignments: true,
+        expectedStaffRevision: 'revision_stale',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Event staff changed. Reload and try again.',
+      code: 'EVENT_STAFF_REVISION_CONFLICT',
+      currentRevision: 'revision_current',
+    });
+    expect(loadEventStaffSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ events: eventsMock }),
+      'event_1',
+    );
+    expect(eventsMock.update).not.toHaveBeenCalled();
+    expect(eventOfficialsMock.deleteMany).not.toHaveBeenCalled();
+    expect(eventOfficialsMock.create).not.toHaveBeenCalled();
+    expect(divisionsMock.deleteMany).not.toHaveBeenCalled();
+    expect(divisionsMock.upsert).not.toHaveBeenCalled();
+    expect(eventRegistrationsMock.updateMany).not.toHaveBeenCalled();
+    expect(eventRegistrationsMock.upsert).not.toHaveBeenCalled();
+  });
+
+  it('patches general metadata with a matching staff revision without rewriting staff assignments', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const officialPositions = [
+      { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+    ];
+    const existingOfficial = {
+      id: 'event_official_1',
+      userId: 'official_1',
+      positionIds: ['event_pos_r1'],
+      fieldIds: ['field_1'],
+      isActive: true,
+    };
+    const existingEvent = {
+      id: 'event_1',
+      name: 'Original name',
+      hostId: 'host_1',
+      assistantHostIds: ['assistant_current'],
+      organizationId: null,
+      eventType: 'EVENT',
+      fieldIds: ['field_1'],
+      officialPositions,
+      officialSchedulingMode: 'SCHEDULE',
+      divisions: ['open'],
+      start: new Date('2026-01-01T00:00:00.000Z'),
+    };
+    const updatedEvent = {
+      ...existingEvent,
+      name: 'Updated metadata',
+    };
+    eventsMock.findUnique
+      .mockResolvedValueOnce(existingEvent)
+      .mockResolvedValueOnce(updatedEvent);
+    eventsMock.update.mockResolvedValueOnce(updatedEvent);
+    eventOfficialsMock.findMany.mockResolvedValue([existingOfficial]);
+    loadEventStaffSnapshotMock.mockResolvedValueOnce({ revision: 'revision_current' });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          name: 'Updated metadata',
+          assistantHostIds: ['assistant_stale'],
+          eventOfficials: [],
+        },
+        preserveStaffAssignments: true,
+        expectedStaffRevision: 'revision_current',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(loadEventStaffSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ events: eventsMock }),
+      'event_1',
+    );
+    expect(eventsMock.update).toHaveBeenCalledTimes(1);
+    const updateArg = eventsMock.update.mock.calls[0][0];
+    expect(updateArg.data.name).toBe('Updated metadata');
+    expect(updateArg.data.assistantHostIds).toBeUndefined();
+    expect(eventOfficialsMock.deleteMany).not.toHaveBeenCalled();
+    expect(eventOfficialsMock.create).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      name: 'Updated metadata',
+      assistantHostIds: ['assistant_current'],
+      eventOfficials: [expect.objectContaining(existingOfficial)],
+      officialIds: ['official_1'],
+    }));
   });
 
   it('accepts event timeZone on PATCH and applies it to canonical slot saves', async () => {

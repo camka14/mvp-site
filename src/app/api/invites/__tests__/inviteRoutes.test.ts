@@ -6,6 +6,7 @@ const prismaMock = {
   $transaction: jest.fn(),
   invites: {
     create: jest.fn(),
+    deleteMany: jest.fn(),
     findFirst: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
@@ -47,6 +48,7 @@ const canManageOrganizationMock = jest.fn();
 const canManageEventMock = jest.fn();
 const hasOrgPermissionMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
+const acquireEventLockMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -68,13 +70,23 @@ jest.mock('@/server/teams/teamMembership', () => ({
       : []
   ),
 }));
+jest.mock('@/server/repositories/locks', () => ({
+  acquireEventLock: (...args: any[]) => acquireEventLockMock(...args),
+}));
 
-import { GET, POST } from '@/app/api/invites/route';
+import { DELETE, GET, POST } from '@/app/api/invites/route';
 
 const jsonRequest = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest('http://localhost/api/invites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+
+const jsonDeleteRequest = (body: unknown) =>
+  new NextRequest('http://localhost/api/invites', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 
@@ -455,6 +467,10 @@ describe('/api/invites', () => {
       expect.objectContaining({ id: 'event_1' }),
       prismaMock,
     );
+    expect(acquireEventLockMock).toHaveBeenCalledWith(prismaMock, 'event_1');
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      ensureAuthUserAndUserDataByEmailMock.mock.invocationCallOrder[0],
+    );
     expect(prismaMock.staffMembers.upsert).not.toHaveBeenCalled();
     expect(prismaMock.invites.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -590,6 +606,7 @@ describe('/api/invites', () => {
         userId: 'user_staff_1',
       }),
     });
+    expect(acquireEventLockMock).not.toHaveBeenCalled();
   });
 
   it('replaces staff types on an existing event-scoped STAFF invite when requested', async () => {
@@ -667,6 +684,35 @@ describe('/api/invites', () => {
     expect(prismaMock.invites.create).not.toHaveBeenCalled();
     expect(prismaMock.invites.update).not.toHaveBeenCalled();
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
+  });
+
+  it('locks event-scoped STAFF invites before the generic bulk delete re-authorizes and mutates', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'creator_1', isAdmin: false });
+    const invite = {
+      id: 'invite_staff_event_1',
+      type: 'STAFF',
+      eventId: 'event_1',
+      organizationId: null,
+      teamId: null,
+      userId: 'invitee_1',
+      createdBy: 'creator_1',
+    };
+    prismaMock.invites.findMany.mockResolvedValue([invite]);
+    prismaMock.invites.deleteMany.mockResolvedValue({ count: 1 });
+
+    const res = await DELETE(jsonDeleteRequest({ type: 'STAFF' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ deleted: true });
+    expect(acquireEventLockMock).toHaveBeenCalledWith(prismaMock, 'event_1');
+    expect(prismaMock.invites.findMany).toHaveBeenCalledTimes(2);
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.invites.findMany.mock.invocationCallOrder[1],
+    );
+    expect(prismaMock.invites.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['invite_staff_event_1'] } },
+    });
   });
 
   it('rolls back earlier staged invites when a later invite in the batch fails validation', async () => {

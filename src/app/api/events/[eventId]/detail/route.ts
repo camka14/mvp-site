@@ -6,6 +6,7 @@ import { canManageEvent } from '@/server/accessControl';
 import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { loadEventWithRelations } from '@/server/repositories/events';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { loadLockedEventStaffSnapshot } from '@/server/events/eventStaffReconciliation';
 import { GET as getEvent } from '../route';
 import { GET as getParticipants } from '../participants/route';
 import { GET as getTeamCompliance } from '../teams/compliance/route';
@@ -153,7 +154,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     const eventWithRelationsPromise = canViewSchedule
       ? loadEventWithRelations(eventId)
       : Promise.resolve(null);
-    const [eventWithRelations, fieldRows, timeSlotRows, leagueScoringConfig] = await Promise.all([
+    const [eventWithRelations, fieldRows, timeSlotRows, leagueScoringConfig, managedStaffState] = await Promise.all([
       eventWithRelationsPromise,
       (() => {
         const fieldIds = normalizeIdList(eventPayload?.fieldIds);
@@ -173,6 +174,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
           ? prisma.leagueScoringConfigs.findUnique({ where: { id: scoringConfigId } })
           : Promise.resolve(null);
       })(),
+      shouldLoadManageData
+        ? loadLockedEventStaffSnapshot(prisma, eventId)
+        : Promise.resolve(null),
     ]);
 
     const matches = eventWithRelations
@@ -199,8 +203,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       }
     }
 
+    const canonicalEventPayload = managedStaffState
+      ? {
+          ...eventPayload,
+          assistantHostIds: managedStaffState.assistantHostIds,
+          officialPositions: managedStaffState.officialPositions,
+          eventOfficials: managedStaffState.eventOfficials,
+          officialIds: managedStaffState.officialIds,
+          staffInvites: managedStaffState.staffInvites,
+        }
+      : eventPayload;
+
     return NextResponse.json({
-      event: eventPayload,
+      event: canonicalEventPayload,
       participantSnapshot: participantPayload,
       matches: canViewSchedule ? serializeMatchesLegacy(matches) : [],
       fields: canViewSchedule
@@ -212,7 +227,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       leagueScoringConfig: canViewSchedule && leagueScoringConfig
         ? withLegacyFields(leagueScoringConfig)
         : null,
-      staffInvites: Array.isArray(eventPayload?.staffInvites) ? eventPayload.staffInvites : [],
+      staffInvites: managedStaffState?.staffInvites
+        ?? (Array.isArray(eventPayload?.staffInvites) ? eventPayload.staffInvites : []),
+      staffRevision: managedStaffState?.revision ?? null,
       teamCompliance,
       userCompliance,
     }, { status: 200 });

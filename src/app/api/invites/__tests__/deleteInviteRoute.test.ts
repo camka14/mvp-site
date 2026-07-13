@@ -18,12 +18,16 @@ const prismaMock = {
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
+const acquireEventLockMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({
   canManageEvent: (...args: any[]) => canManageEventMock(...args),
   canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+}));
+jest.mock('@/server/repositories/locks', () => ({
+  acquireEventLock: (...args: any[]) => acquireEventLockMock(...args),
 }));
 
 import { DELETE } from '@/app/api/invites/[id]/route';
@@ -33,7 +37,11 @@ const deleteRequest = () => new NextRequest('http://localhost/api/invites/invite
 describe('DELETE /api/invites/[id]', () => {
   const txMock = {
     invites: {
+      findUnique: jest.fn(),
       delete: jest.fn(),
+    },
+    events: {
+      findUnique: jest.fn(),
     },
     teams: {
       findUnique: jest.fn(),
@@ -45,6 +53,8 @@ describe('DELETE /api/invites/[id]', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'manager_1', isAdmin: false });
     prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof txMock) => unknown) => fn(txMock));
+    txMock.invites.findUnique.mockImplementation((args) => prismaMock.invites.findUnique(args));
+    txMock.events.findUnique.mockImplementation((args) => prismaMock.events.findUnique(args));
     txMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.teams.findUnique.mockResolvedValue(null);
     canManageEventMock.mockResolvedValue(false);
@@ -75,7 +85,15 @@ describe('DELETE /api/invites/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(payload.deleted).toBe(true);
-    expect(canManageEventMock).toHaveBeenCalled();
+    expect(acquireEventLockMock).toHaveBeenCalledWith(txMock, 'event_1');
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      txMock.invites.findUnique.mock.invocationCallOrder[0],
+    );
+    expect(canManageEventMock).toHaveBeenCalledWith(
+      { userId: 'manager_1', isAdmin: false },
+      expect.objectContaining({ hostId: 'host_1' }),
+      txMock,
+    );
     expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
   });
 
@@ -103,6 +121,7 @@ describe('DELETE /api/invites/[id]', () => {
 
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Forbidden');
+    expect(acquireEventLockMock).toHaveBeenCalledWith(txMock, 'event_1');
     expect(txMock.invites.delete).not.toHaveBeenCalled();
   });
 });
