@@ -15,11 +15,11 @@ recorded where the affected surface is reachable.
 | Status | Finding IDs | Evidence |
 | --- | --- | --- |
 | **Completed — critical (34)** | `SEC-001`, `SEC-009`, `SEC-011`, `SEC-012`, `SEC-014`, `SEC-015`, `SEC-017`, `SEC-018`, `DB-001`, `SEC-020`, `SEC-023`, `SEC-027`, `SEC-028`, `SEC-029`, `SEC-030`, `SEC-043`, `SEC-044`, `TEST-007`, `DATA-018`, `DATA-021`, `DATA-024`, `DATA-025`, `DATA-026`, `DATA-027`, `DATA-029`, `APP-076`, `APP-078`, `APP-091`, `APP-100`, `APP-108`, `APP-112`, `APP-119`, `APP-120`, `APP-122` | Server and mobile critical-remediation commits, including `a5ce0257`, `1731ad84`, and `a2ba3569`; focused regression suites and the subsequent broad web/mobile test runs. |
-| **Completed — high (23)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-016`, `SEC-019`, `SEC-021`, `SEC-022`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `2401d0ee`, `3ce1ffac`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. Android and iOS focused tests passed; the Room v90→v91 path passed eight Android instrumented tests and the installed Android app launched without a migration failure. |
+| **Completed — high (30)** | `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`, `SEC-010`, `SEC-013`, `SEC-016`, `SEC-019`, `SEC-021`, `SEC-022`, `SEC-024`, `SEC-031`, `SEC-032`, `SEC-033`, `SEC-034`, `SEC-035`, `SEC-036`, `SEC-039`, `DATA-019`, `DATA-020`, `DATA-001`, `DATA-002`, `DATA-003`, `DATA-004`, `DATA-005`, `DATA-006`, `DATA-010` | `a5ce0257`, `1731ad84`, `36e1afd6`, `3ed10d0f`, `1aaafb77`, `aafb360f`, `696bf484`, `58466c56`, `79db2c13`, `b3826149`, `d5d6592e`, `2401d0ee`, `eaca7349`, `bb1b1177`, `531ab0b5`, `3ce1ffac`, `caab4a9c`, `81bff7fa`, `4ca35a13`, `c3be4fc1`, `99d84287`, `4b271007`, `c5de7fbb`, `7ccf037a`, `c38269b0`, `de9bf54d`, `c03e8a94`, `9c294b38`, `4b654c55`. The focused web regression suite passed 89 tests and `npx tsc --noEmit`; Android and iOS focused tests passed, the Room v90→v91 path passed eight Android instrumented tests, and the installed Android app launched without a migration failure. |
 | **Completed — other severity (1)** | `DATA-013` | Current dependency declarations and generated client were revalidated at Prisma 7.8.0; `c38269b0` makes that version alignment an explicit build preflight. |
 | **Remaining / not yet reconciled (169)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **58 completed, 169 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **65 completed, 162 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -515,7 +515,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/billing/rental-lock/route.ts:13-52` accepts caller-provided event/time-slot data after only session validation. `src/server/repositories/rentalCheckoutLocks.ts:84-159,185-274` trusts the supplied organization, field, and time range to create ten-minute locks without first proving current DB availability, ownership, per-user quotas, or rate limits.
 - Impact: an ordinary account can enumerate public slots and repeatedly lock broad facility inventory, preventing legitimate checkout.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `2401d0ee` resolves the requested field/window against persisted rental inventory before a lock can be written, confirms the caller can use the existing event or create the draft checkout, verifies availability, and caps a user at 12 active lock rows regardless of client-supplied draft IDs. The focused rental access/route/lock suites passed, including forged-field rejection, concurrent lock contention, and the per-user cap.
 
 ### SEC-032 — Caller-supplied conflict exclusion can permit double booking
 
@@ -523,7 +523,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: the event conflict checker excludes the caller-provided `eventId` (`src/server/repositories/events.ts:2177-2229`). Rental order creation forwards an untrusted `eventId` into that check (`src/app/api/billing/rental-orders/route.ts:628-673`); the rental-lock path has the same trust boundary.
 - Impact: supplying the ID of an already occupying event can exclude the true conflict and allow another reservation for the same inventory/time.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `2401d0ee` makes the conflict exclusion depend on a canonical checkout: an existing event ID must be manageable by the caller, while a new draft must be owned by the authenticated host and backed by available rental inventory. The lock repository then checks persisted scheduling conflicts within the transaction. The focused rental access/route/lock suites passed, including unauthorized existing-event and forged-inventory denial paths.
 
 ### SEC-033 — Account deletion lacks password, MFA, or recent-auth revalidation
 
@@ -531,7 +531,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/auth/account/route.ts:74-90` accepts the current session plus a static confirmation phrase. It does not require the password, MFA, or a recent-auth timestamp for this destructive operation.
 - Impact: a stolen long-lived session token can permanently delete the account without obtaining another factor.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `eaca7349` requires a current password for password accounts, a recent OAuth authentication for provider-only accounts, and a purpose-bound TOTP challenge when MFA is enabled before deletion reaches its mutation path. The account-deletion route suite passed, covering session-plus-phrase denial, bad-password denial, MFA challenge creation/confirmation, and successful reauthenticated deletion.
 
 ### SEC-034 — Email membership lookup enables bulk identity enumeration
 
@@ -539,7 +539,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/users/email-membership/route.ts:23-89` lets any authenticated user submit an unbounded set of arbitrary emails/user IDs and returns mappings and membership presence without relationship or administrative scope.
 - Impact: ordinary accounts can bulk-discover whether addresses belong to BracketIQ users and correlate identifiers.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `d5d6592e` bounds email and user-ID input, scopes unbound requests to the signed-in user, and allows broader lookup only for a caller who can manage the supplied event and only across that event's host, assistants, and officials. The focused membership route suite passed, including arbitrary-ID denial, non-manager denial, and input-cap tests.
 
 ### SEC-035 — Generic message creation accepts unbounded and caller-controlled delivery metadata
 
@@ -547,7 +547,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: `src/app/api/messages/route.ts:11-100` accepts unbounded body text, `readByIds`, and attachment URLs, including arbitrary external URLs. It permits callers to pre-mark recipients as having read a message and has no rate or payload limits.
 - Impact: the endpoint supports storage abuse, notification/message spam, misleading read state, and unsafe external attachment references.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `bb1b1177` bounds message, identifier, read-receipt, and attachment inputs; derives sender and initial read state from the authenticated session; accepts only BracketIQ-managed file URLs; and rate-limits message creation. The focused message-route suite passed, including spoofed delivery metadata, external attachment, and oversized-body denial cases.
 
 ### SEC-036 — Registration commits the account before required email delivery succeeds
 
@@ -556,7 +556,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Runtime evidence: against a clean database with all 142 tracked migrations applied, mobile registration received HTTP 500 `EMAIL_VERIFICATION_SEND_FAILED`; a direct database check showed the new `AuthUser` already persisted. The mobile UI returned to the fully populated signup form and presented the attempt as failed.
 - Code evidence: account/profile/sensitive rows commit in the transaction ending at `src/app/api/auth/register/route.ts:401-402`. Required email availability and delivery are checked only afterward at `:431-451`, where failure returns 503/500 without compensating deletion or a response describing the account as created.
 - Impact: transient email failure creates a real but apparently failed account. Retrying can collide with the persisted identity, and users cannot tell whether to register again, sign in, or recover verification.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `531ab0b5` preserves the committed account but returns an explicit HTTP 202 unverified-account response when verification email delivery is unavailable, without issuing a session, so the client can offer resend/sign-in instead of misleading the user into retrying registration. The focused auth route suite passed its SMTP-failure and unavailable-email regression cases.
 
 ### SEC-037 — Email verification is advisory while full authenticated access is granted
 
@@ -573,7 +573,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-site`
 - Evidence: team creation accepts arbitrary `affiliateUrl` as `z.string()` and trims/persists it (`src/app/api/teams/route.ts:51-72,244-345`). Discover passes stored team/facility URLs directly to `window.open` (`src/app/discover/page.tsx:694-696,1116-1120`; `DiscoverMapModal.tsx:1717-1720`).
 - Impact: `javascript:`, `data:`, credentialed/deceptive, custom-protocol, or unsafe host URLs can be stored and executed/opened when another user clicks.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `36e1afd6` centralizes external URL normalization, accepting only bounded public HTTP(S) destinations without credentials; team writes validate/canonicalize the value and Discover revalidates it immediately before `window.open`. The focused external-URL and team-route suites passed unsafe-scheme, credentialed URL, and safe canonicalization cases.
 
 ### SEC-025 — Public image preview permits unbounded resize work
 
@@ -2204,3 +2204,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled DATA-027 and DATA-029 in the audited mobile branch. Verified narrow user-profile mutations preserve server-owned relationship data and final set completion retains the repository-finalized match; the focused user and match-content suites passed all 12 and 55 cases respectively. Release deployment remains pending.
 - 2026-07-12: Reconciled APP-076, APP-078, APP-091, APP-100, APP-108, APP-119, APP-120, and APP-122 in the audited mobile branch. Verified immutable refund scope previews, payment-plan preservation, rental interval/retry safety, single-owner checkout sessions, exact document selection, win-by-two scoring, notification delivery, and fail-closed signing; focused unit/UI suites passed. Release deployment remains pending.
 - 2026-07-12: Installed the current audited Android build on the attached emulator and cold-launched it to the Login UI. The UI tree and screenshot rendered normally; logcat had no app crash, ANR, or destructive Room-migration message. Reconciled APP-112's modal loading-overlay implementation from that runtime and source evidence.
+- 2026-07-12: Revalidated SEC-024, SEC-031 through SEC-036 against current committed source. The focused web suite passed 89 tests and `npx tsc --noEmit`, covering safe external links, canonical rental checkout/lock authorization and quotas, reauthenticated account deletion, scoped email membership, hardened message payloads, and explicit persisted-registration responses after email delivery failure. Production deployment remains pending.
