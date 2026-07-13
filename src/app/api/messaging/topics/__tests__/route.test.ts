@@ -7,6 +7,7 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
     create: jest.fn(),
+    deleteMany: jest.fn(),
   },
   userData: {
     findMany: jest.fn(),
@@ -23,12 +24,16 @@ jest.mock('@/server/legacyFormat', () => ({
 }));
 
 import { POST as postTopic } from '@/app/api/messaging/topics/route';
-import { POST as postTopicById } from '@/app/api/messaging/topics/[topicId]/route';
+import { DELETE as deleteTopicById, POST as postTopicById } from '@/app/api/messaging/topics/[topicId]/route';
 
 const postRequest = (body: unknown) => new NextRequest('http://localhost/api/messaging/topics', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
+});
+
+const deleteRequest = () => new NextRequest('http://localhost/api/messaging/topics/topic_1', {
+  method: 'DELETE',
 });
 
 describe('/api/messaging/topics POST', () => {
@@ -148,5 +153,44 @@ describe('/api/messaging/topics/[topicId] POST', () => {
     expect(response.status).toBe(403);
     expect(json.error).toContain('reserved');
     expect(prismaMock.chatGroup.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/messaging/topics/[topicId] DELETE', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    requireSessionMock.mockResolvedValue({ userId: 'attacker_1', isAdmin: false });
+  });
+
+  it('rejects an outsider trying to delete another user\'s topic', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'topic_1',
+      hostId: 'owner_1',
+      teamId: null,
+      userIds: ['owner_1', 'member_1'],
+    });
+
+    const response = await deleteTopicById(deleteRequest(), {
+      params: Promise.resolve({ topicId: 'topic_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(prismaMock.chatGroup.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct deletion of roster-managed team topics', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      id: 'team:team_1',
+      hostId: 'attacker_1',
+      teamId: 'team_1',
+      userIds: ['attacker_1', 'minor_1'],
+    });
+
+    const response = await deleteTopicById(deleteRequest(), {
+      params: Promise.resolve({ topicId: 'team:team_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(prismaMock.chatGroup.deleteMany).not.toHaveBeenCalled();
   });
 });
