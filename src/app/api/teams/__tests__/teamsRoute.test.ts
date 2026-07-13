@@ -149,7 +149,7 @@ describe('/api/teams route', () => {
       where: { organizationId: 'org_1', archivedAt: null },
       take: 201,
       skip: 0,
-      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
     }));
   });
 
@@ -186,7 +186,7 @@ describe('/api/teams route', () => {
       },
       take: 201,
       skip: 0,
-      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
     }));
   });
 

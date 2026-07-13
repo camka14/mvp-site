@@ -581,7 +581,7 @@ describe('listCanonicalTeamsForUser', () => {
       },
       take: 25,
       skip: 0,
-      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
     });
     expect(canonicalFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'team_open' },
@@ -622,7 +622,80 @@ describe('listCanonicalTeamsForUser', () => {
       },
       take: 50,
       skip: 0,
-      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
+    });
+  });
+
+  it('uses the id tie-breaker for consecutive organization pages with tied names', async () => {
+    const sharedTeamFields = {
+      name: 'Alpha Aces',
+      division: 'Open',
+      divisionTypeId: 'open',
+      wins: null,
+      losses: null,
+      teamSize: 6,
+      profileImageId: null,
+      sport: 'Volleyball',
+      organizationId: 'org_1',
+      createdBy: 'user_1',
+      openRegistration: true,
+      registrationPriceCents: 0,
+      requiredTemplateIds: [],
+      visibility: 'PUBLIC',
+      createdAt: new Date('2026-07-13T00:00:00.000Z'),
+      updatedAt: new Date('2026-07-13T00:00:00.000Z'),
+    };
+    const teamsById = {
+      team_alpha_1: { ...sharedTeamFields, id: 'team_alpha_1' },
+      team_alpha_2: { ...sharedTeamFields, id: 'team_alpha_2' },
+    };
+    const canonicalFindManyMock = jest.fn()
+      .mockResolvedValueOnce([{ id: 'team_alpha_1' }])
+      .mockResolvedValueOnce([{ id: 'team_alpha_2' }]);
+    const canonicalFindUniqueMock = jest.fn(({ where }: { where: { id: keyof typeof teamsById } }) => (
+      Promise.resolve(teamsById[where.id] ?? null)
+    ));
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([]);
+    const client = {
+      canonicalTeams: {
+        findMany: canonicalFindManyMock,
+        findUnique: canonicalFindUniqueMock,
+      },
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+      },
+    };
+
+    const firstPage = await listCanonicalTeamsForUser({
+      organizationId: 'org_1',
+      includeAdminOnly: true,
+      limit: 1,
+      offset: 0,
+    }, client);
+    const secondPage = await listCanonicalTeamsForUser({
+      organizationId: 'org_1',
+      includeAdminOnly: true,
+      limit: 1,
+      offset: 1,
+    }, client);
+
+    expect(firstPage.map((team) => team.id)).toEqual(['team_alpha_1']);
+    expect(secondPage.map((team) => team.id)).toEqual(['team_alpha_2']);
+    expect(canonicalFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: { organizationId: 'org_1', archivedAt: null },
+      take: 1,
+      skip: 0,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
+    });
+    expect(canonicalFindManyMock).toHaveBeenNthCalledWith(2, {
+      where: { organizationId: 'org_1', archivedAt: null },
+      take: 1,
+      skip: 1,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }, { id: 'asc' }],
     });
   });
 
