@@ -207,7 +207,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Test evidence: `src/app/api/auth/__tests__/authRoutes.test.ts:500-544` explicitly expects successful login without `clientType` and without invoking MFA.
 - Impact: a password holder can bypass enabled web MFA with the normal login endpoint by omitting a JSON property. Trust is placed in an attacker-controlled client declaration rather than the account/session policy.
 - Legacy relevance: this looks like backward compatibility for older clients and must be evaluated against the `1.6.13` floor, but it is unsafe regardless of caller version when MFA is enabled.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited branch; production deployment pending**. `a5ce0257` no longer lets caller-supplied `clientType` decide whether an authenticator challenge is required; every verified password login invokes the MFA challenge unless an explicitly enabled non-production local bypass is active. The focused auth route suite passed, including an MFA-enabled login that omits `clientType` and receives no session cookie.
 
 ### SEC-010 — Session JWTs have no cryptographic expiry
 
@@ -2197,3 +2197,4 @@ These are not yet confirmed defects:
 - 2026-07-12: Reconciled TEST-007 in the audited mobile branch. Verified a missing or untrusted mandatory signing URL stops at a retryable signature state and cannot open PaymentSheet; the focused Android coordinator suite passed. Emulator verification remains part of the final mobile validation pass.
 - 2026-07-12: Reconciled DATA-018 in the audited mobile branch. Verified terms consent displays the authoritative version, allows only the canonical supplied terms URL, and blocks consent without it; the focused Android URL/repository tests passed. Emulator verification remains part of the final mobile validation pass.
 - 2026-07-12: Reconciled DATA-021 in the audited mobile branch. Verified deliberate nullable event/team/match clears are represented by JSON null while untouched fields remain omitted; focused Android patch tests passed, including a new multi-field event-clear regression. Emulator verification remains part of the final mobile validation pass.
+- 2026-07-12: Reconciled SEC-009 in the audited branch. Verified caller-controlled or omitted `clientType` cannot bypass an enabled authenticator challenge; all 32 focused auth route tests passed, including the omitted-client-type MFA regression. Production deployment remains pending with the rest of the audited branch.
