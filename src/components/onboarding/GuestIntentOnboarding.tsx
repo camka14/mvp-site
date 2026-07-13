@@ -8,6 +8,7 @@ import {
   Divider,
   Group,
   Loader,
+  Modal,
   Select,
   Stack,
   Text,
@@ -256,16 +257,35 @@ export default function GuestIntentOnboarding() {
   };
 
   return (
-    <main className={styles.root}>
-      <div className={styles.shell}>
-        <div className={styles.brand} aria-label="BracketIQ">
-          <span className={styles.brandMark}>BIQ</span>
-          <span>BracketIQ</span>
+    <Modal
+      opened
+      onClose={() => undefined}
+      closeOnClickOutside={false}
+      closeOnEscape={false}
+      withCloseButton={false}
+      centered
+      size={!searchTarget && !createTarget ? 'xl' : 'lg'}
+      title={(
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">BIQ</span>
+          <span>BracketIQ onboarding</span>
         </div>
-
-        <section className={styles.stage}>
-          {!searchTarget && !createTarget ? (
-            <Stack gap="xl">
+      )}
+      overlayProps={{
+        backgroundOpacity: 0.76,
+        blur: 2,
+        color: '#101828',
+        className: 'guest-onboarding-backdrop',
+      }}
+      classNames={{
+        content: styles.modalContent,
+        header: styles.modalHeader,
+        body: styles.modalBody,
+      }}
+    >
+      <section className={styles.stage} data-testid="guest-onboarding-dialog-content">
+        {!searchTarget && !createTarget ? (
+          <Stack gap="xl">
               <Stack gap={8} className={styles.heading}>
                 <Text size="sm" fw={700} c="blue.8">Get to the right place</Text>
                 <Title order={1} size="2.5rem">What brings you to BracketIQ?</Title>
@@ -291,11 +311,11 @@ export default function GuestIntentOnboarding() {
                   ))}
                 </div>
               </Stack>
-            </Stack>
-          ) : null}
+          </Stack>
+        ) : null}
 
-          {searchTarget ? (
-            <div className={styles.formPanel}>
+        {searchTarget ? (
+          <div className={styles.formPanel}>
               <Stack gap="lg">
                 <Button variant="subtle" size="compact-sm" leftSection={<ArrowLeft size={16} />} onClick={reset} w="fit-content">
                   Back
@@ -388,11 +408,11 @@ export default function GuestIntentOnboarding() {
                   Show {targetLabel(searchTarget)}
                 </Button>
               </Stack>
-            </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {createTarget ? (
-            <div className={styles.formPanel}>
+        {createTarget ? (
+          <div className={styles.formPanel}>
               <Stack gap="lg">
                 <Button variant="subtle" size="compact-sm" leftSection={<ArrowLeft size={16} />} onClick={reset} w="fit-content">
                   Back
@@ -416,11 +436,10 @@ export default function GuestIntentOnboarding() {
                   </Button>
                 </div>
               </Stack>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </main>
+          </div>
+        ) : null}
+      </section>
+    </Modal>
   );
 }
 

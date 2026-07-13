@@ -29,6 +29,11 @@ jest.mock('@/components/onboarding/GuestDiscoverRedirect', () => ({
   default: () => <div data-testid="guest-discover-redirect">Guest Discover redirect</div>,
 }));
 
+jest.mock('@/components/landing/LandingPage', () => ({
+  __esModule: true,
+  default: () => <div data-testid="landing-page">Landing page</div>,
+}));
+
 describe('Home page route', () => {
   beforeEach(() => {
     cookiesMock.mockReset();
@@ -58,6 +63,7 @@ describe('Home page route', () => {
     render(view);
 
     expect(resolveLandingRedirectPathFromTokenMock).toHaveBeenCalledWith(null);
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument();
     expect(screen.getByTestId('guest-onboarding')).toBeInTheDocument();
   });
 

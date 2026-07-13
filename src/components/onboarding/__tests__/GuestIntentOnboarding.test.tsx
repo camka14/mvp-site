@@ -75,6 +75,16 @@ describe('GuestIntentOnboarding', () => {
     window.localStorage.clear();
   });
 
+  it('uses a focused dialog over a dimmed backdrop instead of a full-page onboarding step', async () => {
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    expect(screen.getByRole('dialog', { name: /bracketiq onboarding/i })).toBeInTheDocument();
+    expect(document.querySelector('.guest-onboarding-backdrop')).toBeInTheDocument();
+    expect(screen.getByTestId('guest-onboarding-dialog-content').tagName).toBe('SECTION');
+    expect(document.querySelector('main')).not.toBeInTheDocument();
+  });
+
   it('starts a guest session and routes an event search with the selected location', async () => {
     renderWizard();
 

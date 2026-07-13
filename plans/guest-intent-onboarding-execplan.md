@@ -17,6 +17,7 @@ The flow is a browser-first guest onboarding. It is distinct from the existing `
 - [x] (2026-07-12) Made Discover consume onboarding tab, sport, skill, club-tag, distance, and location presets.
 - [x] (2026-07-12) Preserved create intent through registration and opened the requested creation screen.
 - [x] (2026-07-12) Added focused regressions and verified desktop and mobile browser layouts with Playwright.
+- [x] (2026-07-13) Replaced the full-page first step with a focused modal over a strongly dimmed home screen.
 
 ## Surprises & Discoveries
 
@@ -71,9 +72,13 @@ The flow is a browser-first guest onboarding. It is distinct from the existing `
   Rationale: The server can read the onboarding cookie but cannot set the local guest-session state required by Discover. The bootstrap preserves the fast repeat path without weakening Discover access checks.
   Date/Author: 2026-07-12 / Codex.
 
+- Decision: First-visit onboarding is always presented as a bounded dialog over a dimmed page; no step may use the viewport or full page as its highlighted surface.
+  Rationale: A full-page step reads like a replacement page and makes the dialog state easy to miss. The backdrop establishes modal focus, while any future guided highlight must target a concrete control or component.
+  Date/Author: 2026-07-13 / Codex.
+
 ## Outcomes & Retrospective
 
-Implemented a first-visit root wizard with six intent choices, search follow-ups backed by the sports/division/location catalogs, shareable Discover presets, direct post-signup create routes, and a repeat-visitor guest bootstrap. New web registrations and Google-created web profiles receive an onboarding intent, so they do not repeat legacy account onboarding.
+Implemented a first-visit root wizard with six intent choices, search follow-ups backed by the sports/division/location catalogs, shareable Discover presets, direct post-signup create routes, and a repeat-visitor guest bootstrap. First-time visitors see the wizard in a bounded, non-dismissible dialog above a strongly dimmed home screen rather than as a full-page replacement. New web registrations and Google-created web profiles receive an onboarding intent, so they do not repeat legacy account onboarding.
 
 Focused Jest coverage passes for URL construction, malformed presets, root routing, guest restoration, wizard actions, login mode, registration, Google OAuth, organization presets, and modal payloads. TypeScript and whitespace checks pass. Playwright verified the first screen, event follow-up, and club account gate at 1440 x 900 and 390 x 844. The real event search handoff produced:
 
@@ -142,3 +147,5 @@ Use existing Mantine components and Lucide icons. Use `useSports` for the sports
 Revision note (2026-07-12): Initial implementation plan created after auditing the existing root, account onboarding, Discover, auth, location, and organization creation flows.
 
 Revision note (2026-07-12): Updated after implementation and browser verification to record the guest-session bootstrap, explicit icon colors, local parent-schema mismatch, final test coverage, and verified redirect contracts.
+
+Revision note (2026-07-13): Replaced full-page onboarding presentation with a bounded modal and explicit dimmed-backdrop rule; future highlights must target concrete components rather than the screen.

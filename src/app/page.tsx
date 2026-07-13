@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import GuestDiscoverRedirect from '@/components/onboarding/GuestDiscoverRedirect';
 import GuestIntentOnboarding from '@/components/onboarding/GuestIntentOnboarding';
+import LandingPage from '@/components/landing/LandingPage';
 import {
   GUEST_ONBOARDING_COOKIE,
   isGuestOnboardingCookieComplete,
@@ -23,5 +24,10 @@ export default async function HomePage() {
     return <GuestDiscoverRedirect />;
   }
 
-  return <GuestIntentOnboarding />;
+  return (
+    <>
+      <LandingPage brandHref="/" />
+      <GuestIntentOnboarding />
+    </>
+  );
 }
