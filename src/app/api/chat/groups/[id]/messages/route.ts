@@ -38,7 +38,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       prisma.messages.count({ where }),
       prisma.messages.findMany({
         where,
-        orderBy: { sentTime: order },
+        orderBy: [
+          { sentTime: order },
+          { id: order },
+        ],
         skip: index,
         take: limit,
       }),
