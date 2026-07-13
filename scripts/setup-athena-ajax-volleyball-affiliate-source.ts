@@ -34,7 +34,6 @@ if (useLive) {
   process.env.DATABASE_URL = liveUrl;
   process.env.STORAGE_PROVIDER = 'spaces';
   process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
 type PrismaClientInstance = typeof import('../src/lib/prisma').prisma;

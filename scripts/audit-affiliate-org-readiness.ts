@@ -25,7 +25,6 @@ if (useLive) {
   }
   process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
   process.env.PG_SSL_REJECT_UNAUTHORIZED = "false";
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
 
 const DIRECTORY_SOURCE_IDS = new Set([

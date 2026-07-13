@@ -16,7 +16,6 @@ if (useLive) {
     throw new Error('--live requires DATABASE_URL_LIVE.');
   }
   process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
 const SYSTEM_TAGS = [
