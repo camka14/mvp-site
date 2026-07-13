@@ -340,25 +340,25 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `withPreservedCachedDivisionState` restores cached `divisions`/`divisionDetails` whenever a fresh response omits a cached division (`core/repository-impl/src/commonMain/kotlin/com/razumly/mvp/core/data/repositories/EventRepository.kt:1152-1186`) and is applied to detail, mutation, list, and search responses. `:1189-1196` similarly replaces remote participant arrays with cached arrays.
+- Evidence: `c3be4fc1` removes the cache-overlay path from authoritative full event responses. `withCachedDivisionStateForPartialParticipantSnapshot` remains only for the explicitly narrow `/participants` response, which cannot represent full division configuration.
 - Impact: removed divisions, participants, pricing, or schedule configuration can remain indefinitely on mobile; Room becomes a conflicting authority instead of a convergent cache.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused `EventRepositoryHttpTest.getEvent_replaces_cached_divisions_and_participant_roster_with_authoritative_response` regression passed, proving authoritative responses replace stale cached divisions and participant rosters.
 
 ### DATA-002 — Generic refresh deletes Room rows but returns stale pre-delete objects
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: `core/repository-api/src/commonMain/kotlin/com/razumly/mvp/core/data/repositories/IMVPRepository.kt:18-38` deletes local IDs absent from a remote response, saves remote rows, then returns raw remote data—or the captured pre-delete `localData` when remote is empty. Fields use this at `FieldRepository.kt:85-96`; the pattern also reaches users/chat.
+- Evidence: `99d84287` rewrites `multiResponse` so only explicit authoritative-ID responses can delete missing Room rows, upserts fresh remote values, and returns the converged Room state after each mutation rather than raw remote or pre-delete snapshots. Exact field/user reads provide authoritative IDs; partial, paged, and filtered reads do not delete unrelated cache entries.
 - Impact: callers render deleted objects once after Room has removed them, and partial/truncated responses can cause destructive cache deletion. The immediate return path also bypasses Room as local source of truth.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. The focused three-test `IMVPRepositoryTest` suite passed the converged snapshot, authoritative-empty deletion, and non-authoritative-no-delete cases.
 
 ### DATA-003 — Collection APIs lack shared ID chunking and can truncate/delete records
 
 - Severity: **high**
 - Repository: `mvp-app`
-- Evidence: users correctly chunk at 100 (`UserRepository.kt:812-825`), but organizations send all IDs with `limit=100` (`BillingRepository.kt:2097-2108`), teams use one request with `limit=200` (`TeamRepository.kt:1190-1195`), events/fields/time slots/products are also unchunked, and missing event results are later deleted (`EventRepository.kt:1233-1239,1867-1881`).
+- Evidence: `4b271007` adds a normalized, deduplicated, order-preserving 100-ID chunk helper and applies it to products, organizations, events, fields, time slots, teams, users, and match event/field filters. Per-chunk limits match the requested chunk size, and DATA-002 only deletes exact requested IDs after the complete batch aggregate.
 - Impact: URL-size failures and server limits silently omit entities; omission can then be interpreted as authoritative deletion.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. Three core helper cases and five focused 201-ID repository integration cases passed, covering products/organizations, events, fields/time slots, teams, and event-by-field match filters.
 
 ### DATA-004 — Schema drift is treated as successful mutation by dropping unknown fields
 
@@ -2216,3 +2216,6 @@ These are not yet confirmed defects:
 - 2026-07-12: Remediated APP-083 in the audited mobile branch. Chat destruction now conditionally clears only its owned active-chat marker, resuming foreground notifications after non-Back navigation without clobbering a newer chat. The focused 6-test chat terms/send/lifecycle suite passed. Mobile release deployment remains pending.
 - 2026-07-12: Revalidated DATA-020 in the audited mobile branch. `Field.facilityId` is persisted through the v90-to-v91 Room migration while only the hydrated facility relation remains ignored; the attached-emulator migration/DAO suite passed all nine cases. Mobile release deployment remains pending.
 - 2026-07-12: Remediated APP-116 in the audited mobile branch. A checked-in official reopening Match Detail now makes one serialized recovery attempt for persisted failed/pending incident operations without launching an unbounded retry loop. The focused 56-test match-content suite passed, including the reopened-failed-incident regression. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-001 in the audited mobile branch. `c3be4fc1` makes authoritative full event responses replace stale cached divisions and participant rosters; the focused deletion-convergence regression passed. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-002 in the audited mobile branch. `99d84287` returns converged Room collection state after authoritative mutations and avoids destructive cache deletion for partial collections; the focused three-test repository API suite passed. Mobile release deployment remains pending.
+- 2026-07-12: Revalidated DATA-003 in the audited mobile branch. `4b271007` batches every cited ID-filter collection lookup at 100 IDs, preserves result ordering, and pairs with DATA-002's exact-ID cache deletion; three helper and five 201-ID integration regressions passed. Mobile release deployment remains pending.
