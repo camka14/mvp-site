@@ -21,6 +21,8 @@ describe('GET /api/profile/schedule/next-action', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-13T12:00:00Z'));
     jest.clearAllMocks();
+    prismaMock.events.findMany.mockReset();
+    prismaMock.matches.findMany.mockReset();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     loadProfileScheduleScopeMock.mockResolvedValue({
       userId: 'user_1',
@@ -100,17 +102,18 @@ describe('GET /api/profile/schedule/next-action', () => {
   });
 
   it('returns a current match from an older open-ended event', async () => {
-    prismaMock.events.findMany.mockResolvedValue([
-      {
-        id: 'event_open',
-        name: 'Ongoing League',
-        imageId: 'image_open',
-        state: 'PUBLISHED',
-        start: new Date('2025-01-01T10:00:00Z'),
-        end: new Date('2025-02-01T10:00:00Z'),
-        noFixedEndDateTime: true,
-      },
-    ]);
+    const oldOpenEndedEvent = {
+      id: 'event_open',
+      name: 'Ongoing League',
+      imageId: 'image_open',
+      state: 'PUBLISHED',
+      start: new Date('2025-01-01T10:00:00Z'),
+      end: new Date('2025-02-01T10:00:00Z'),
+      noFixedEndDateTime: true,
+    };
+    prismaMock.events.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([oldOpenEndedEvent]);
     prismaMock.matches.findMany.mockResolvedValue([
       {
         id: 'match_live',
@@ -135,18 +138,139 @@ describe('GET /api/profile/schedule/next-action', () => {
       eventName: 'Ongoing League',
       eventImageId: 'image_open',
     });
-    expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.events.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
       where: expect.objectContaining({
         AND: expect.arrayContaining([
           expect.objectContaining({
-            OR: expect.arrayContaining([{ noFixedEndDateTime: true }, { end: null }]),
+            OR: [
+              { start: { gte: new Date('2026-07-12T12:00:00.000Z') } },
+              { noFixedEndDateTime: false, end: { gte: new Date('2026-07-13T12:00:00.000Z') } },
+            ],
           }),
         ]),
       }),
     }));
     expect(prismaMock.matches.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ eventId: { in: ['event_open'] } }),
+      where: expect.not.objectContaining({ eventId: expect.anything() }),
     }));
+    expect(prismaMock.events.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ['event_open'] } }),
+    }));
+  });
+
+  it('does not turn an old open-ended event without a current match into an event shortcut', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_old_open',
+        name: 'Old League',
+        imageId: null,
+        state: 'PUBLISHED',
+        start: new Date('2024-01-01T10:00:00Z'),
+        end: null,
+        noFixedEndDateTime: true,
+      },
+    ]);
+    prismaMock.matches.findMany.mockResolvedValue([]);
+
+    const response = await GET(new NextRequest('http://localhost/api/profile/schedule/next-action'));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.action).toEqual({ type: 'CREATE_EVENT' });
+  });
+
+  it('excludes a historical null-start match even when its status still says in progress', async () => {
+    prismaMock.events.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'event_old_open',
+          name: 'Old League',
+          imageId: null,
+          state: 'PUBLISHED',
+          start: new Date('2024-01-01T10:00:00Z'),
+          end: null,
+          noFixedEndDateTime: true,
+        },
+      ]);
+    prismaMock.matches.findMany.mockResolvedValue([
+      {
+        id: 'match_stale',
+        eventId: 'event_old_open',
+        matchId: 9,
+        start: null,
+        end: null,
+        status: 'IN_PROGRESS',
+        resultStatus: null,
+        actualStart: new Date('2026-06-01T12:00:00Z'),
+      },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/profile/schedule/next-action'));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.action).toEqual({ type: 'CREATE_EVENT' });
+    expect(prismaMock.matches.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                start: null,
+                actualStart: {
+                  gte: new Date('2026-07-13T08:00:00.000Z'),
+                  lte: new Date('2026-07-13T12:00:00.000Z'),
+                },
+                status: { in: ['IN_PROGRESS', 'STARTED'] },
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    }));
+  });
+
+  it('does not let more than 500 historical open-ended events block a current match shortcut', async () => {
+    const historicalEvents = Array.from({ length: 501 }, (_, index) => ({
+      id: `historical_${index}`,
+      name: `Historical ${index}`,
+      imageId: null,
+      state: 'PUBLISHED',
+      start: new Date('2024-01-01T10:00:00Z'),
+      end: null,
+      noFixedEndDateTime: true,
+    }));
+    const carrierEvent = historicalEvents[0]!;
+    prismaMock.events.findMany.mockImplementation(async (args: any) => {
+      if (args.where?.id?.in) return [carrierEvent];
+      const lowerBound = args.where?.AND?.[1]?.OR?.[0]?.start?.gte as Date;
+      return historicalEvents.filter((event) => event.start >= lowerBound);
+    });
+    prismaMock.matches.findMany.mockResolvedValue([
+      {
+        id: 'match_current',
+        eventId: carrierEvent.id,
+        matchId: 12,
+        start: new Date('2026-07-13T12:15:00Z'),
+        end: new Date('2026-07-13T13:15:00Z'),
+        status: 'SCHEDULED',
+        resultStatus: null,
+        actualStart: null,
+      },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/profile/schedule/next-action'));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.action).toEqual({
+      type: 'MATCH',
+      eventId: carrierEvent.id,
+      matchId: 'match_current',
+      eventName: carrierEvent.name,
+      eventImageId: '',
+    });
   });
 
   it('ignores terminal matches and falls back to the nearest eligible event', async () => {
@@ -192,14 +316,14 @@ describe('GET /api/profile/schedule/next-action', () => {
     });
   });
 
-  it('returns create-event without querying matches when there is no candidate event', async () => {
+  it('returns create-event after checking for current matches when there is no candidate event', async () => {
     prismaMock.events.findMany.mockResolvedValue([]);
 
     const response = await GET(new NextRequest('http://localhost/api/profile/schedule/next-action'));
     const json = await response.json();
 
     expect(json.action).toEqual({ type: 'CREATE_EVENT' });
-    expect(prismaMock.matches.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.matches.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('does not expose a live-match shortcut for a terminal event', async () => {
@@ -220,7 +344,7 @@ describe('GET /api/profile/schedule/next-action', () => {
 
     expect(response.status).toBe(200);
     expect(json.action).toEqual({ type: 'CREATE_EVENT' });
-    expect(prismaMock.matches.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.matches.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when the bounded event candidate query overflows', async () => {

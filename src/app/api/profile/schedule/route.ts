@@ -150,7 +150,17 @@ export async function GET(req: NextRequest) {
     ...event,
     officialIds: officialIdsByEventId.get(event.id) ?? [],
   }));
+  const managedEventIds = eventDtos
+    .filter((event) => (
+      event.hostId === userId
+      || event.assistantHostIds?.includes(userId)
+      || event.officialIds.includes(userId)
+    ))
+    .map((event) => event.id);
   const matchFilters: Record<string, unknown>[] = [{ officialId: userId }];
+  if (managedEventIds.length) {
+    matchFilters.push({ eventId: { in: managedEventIds } });
+  }
   if (relevantTeamIds.length) {
     matchFilters.push(
       { team1Id: { in: relevantTeamIds } },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,7 +26,13 @@ import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
-import { loadCompleteSchedulePayload, type SchedulePage } from '@/lib/schedulePagination';
+import {
+  loadCompleteSchedulePayload,
+  normalizeScheduleCalendarRange,
+  withScheduleDateWindow,
+  type ScheduleDateWindow,
+  type SchedulePage,
+} from '@/lib/schedulePagination';
 
 type SchedulePayload = SchedulePage<Event, Match, Field, Team>;
 
@@ -214,13 +220,20 @@ export default function ScheduleCalendarPanel({
   const [teams, setTeams] = useState<Team[]>([]);
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [visibleWindow, setVisibleWindow] = useState<ScheduleDateWindow | null>(null);
+  const requestGenerationRef = useRef(0);
 
-  const loadSchedule = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+  const loadSchedule = useCallback(async (
+    mode: 'initial' | 'refresh' = 'initial',
+    dateWindow: ScheduleDateWindow | null = null,
+  ) => {
+    const requestGeneration = ++requestGenerationRef.current;
     if (mode === 'initial') setLoading(true);
     if (mode === 'refresh') setRefreshing(true);
     setError(null);
     try {
-      const payload = await loadCompleteSchedulePayload(endpoint, async (pageEndpoint) => {
+      const requestEndpoint = dateWindow ? withScheduleDateWindow(endpoint, dateWindow) : endpoint;
+      const payload = await loadCompleteSchedulePayload(requestEndpoint, async (pageEndpoint) => {
         const response = await fetch(pageEndpoint, {
           credentials: 'include',
         });
@@ -242,16 +255,20 @@ export default function ScheduleCalendarPanel({
         ? payload.teams
         : [];
 
+      if (requestGeneration !== requestGenerationRef.current) return;
       setEvents(normalizedEvents);
       setMatches(normalizedMatches);
       setFields(normalizedFields);
       setTeams(normalizedTeams);
     } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       console.error('Failed to load schedule', err);
       setError(errorText);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestGeneration === requestGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [endpoint, errorText]);
 
@@ -364,7 +381,7 @@ export default function ScheduleCalendarPanel({
           variant="light"
           loading={refreshing}
           onClick={() => {
-            void loadSchedule('refresh');
+            void loadSchedule('refresh', visibleWindow);
           }}
         >
           Refresh
@@ -416,6 +433,17 @@ export default function ScheduleCalendarPanel({
             }
           }}
           onNavigate={(date) => setCalendarDate(date instanceof Date ? date : new Date(date))}
+          onRangeChange={(range) => {
+            const nextWindow = normalizeScheduleCalendarRange(range);
+            if (!nextWindow) return;
+            if (
+              visibleWindow
+              && visibleWindow.from.getTime() === nextWindow.from.getTime()
+              && visibleWindow.to.getTime() === nextWindow.to.getTime()
+            ) return;
+            setVisibleWindow(nextWindow);
+            void loadSchedule('refresh', nextWindow);
+          }}
           startAccessor="start"
           endAccessor="end"
           length={120}

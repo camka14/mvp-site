@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const ACTUAL_START_LOOKBACK_MS = 4 * HOUR_MS;
 const NEXT_ACTION_MAX_EVENT_CANDIDATES = 500;
 const NEXT_ACTION_MAX_MATCH_CANDIDATES = 200;
 const TERMINAL_EVENT_STATES = new Set(['CANCELLED', 'CANCELED', 'DELETED', 'ARCHIVED', 'TEMPLATE']);
@@ -56,13 +57,14 @@ const isEventNonTerminal = (event: NextActionEvent): boolean => (
 
 const isEventEligible = (event: NextActionEvent, now: Date): boolean => {
   if (!isEventNonTerminal(event)) return false;
-  const effectiveEnd = event.noFixedEndDateTime
-    ? null
-    : event.end && event.end > event.start
-      ? event.end
-      : new Date(event.start.getTime() + DAY_MS);
-  return (effectiveEnd === null || effectiveEnd >= now)
-    && event.start <= new Date(now.getTime() + DAY_MS);
+  if (event.noFixedEndDateTime || !event.end) {
+    return event.start >= new Date(now.getTime() - DAY_MS)
+      && event.start <= new Date(now.getTime() + DAY_MS);
+  }
+  const effectiveEnd = event.end > event.start
+    ? event.end
+    : new Date(event.start.getTime() + DAY_MS);
+  return effectiveEnd >= now && event.start <= new Date(now.getTime() + DAY_MS);
 };
 
 const isMatchEligible = (match: NextActionMatch, now: Date): boolean => {
@@ -73,7 +75,9 @@ const isMatchEligible = (match: NextActionMatch, now: Date): boolean => {
 
   if (!match.start) {
     const status = normalizedState(match.status);
-    return Boolean(match.actualStart) || status === 'IN_PROGRESS' || status === 'STARTED';
+    if (!match.actualStart || (status !== 'IN_PROGRESS' && status !== 'STARTED')) return false;
+    return match.actualStart >= new Date(now.getTime() - ACTUAL_START_LOOKBACK_MS)
+      && match.actualStart <= now;
   }
 
   const effectiveEnd = match.end && match.end > match.start
@@ -110,10 +114,8 @@ export async function GET(req: NextRequest) {
         },
         {
           OR: [
-            { noFixedEndDateTime: true },
-            { end: null },
-            { end: { gte: now } },
             { start: { gte: windowStart } },
+            { noFixedEndDateTime: false, end: { gte: now } },
           ],
         },
       ],
@@ -136,19 +138,7 @@ export async function GET(req: NextRequest) {
       code: 'SCHEDULE_NEXT_ACTION_EVENT_LIMIT',
     }, { status: 413 });
   }
-  const events = eventRows;
-
-  const matchCarrierEvents = events.filter(isEventNonTerminal);
-  const eligibleEvents = matchCarrierEvents.filter((event) => isEventEligible(event, now));
-  if (!matchCarrierEvents.length) {
-    return NextResponse.json({
-      contractVersion: 1,
-      generatedAt: now.toISOString(),
-      action: createEventAction(),
-    });
-  }
-
-  const eventById = new Map(matchCarrierEvents.map((event) => [event.id, event]));
+  const eligibleEvents = eventRows.filter((event) => isEventEligible(event, now));
   const matchFilters: Record<string, unknown>[] = [{ officialId: scheduleScope.userId }];
   if (scheduleScope.relevantTeamIds.length) {
     matchFilters.push(
@@ -159,7 +149,6 @@ export async function GET(req: NextRequest) {
   }
   const matchRows = await prisma.matches.findMany({
     where: {
-      eventId: { in: matchCarrierEvents.map((event) => event.id) },
       OR: matchFilters,
       AND: [
         {
@@ -185,10 +174,11 @@ export async function GET(req: NextRequest) {
             { end: { gte: now }, start: { lte: new Date(now.getTime() + HOUR_MS) } },
             {
               start: null,
-              OR: [
-                { actualStart: { not: null } },
-                { status: { in: ['IN_PROGRESS', 'STARTED'] } },
-              ],
+              actualStart: {
+                gte: new Date(now.getTime() - ACTUAL_START_LOOKBACK_MS),
+                lte: now,
+              },
+              status: { in: ['IN_PROGRESS', 'STARTED'] },
             },
           ],
         },
@@ -214,6 +204,39 @@ export async function GET(req: NextRequest) {
     }, { status: 413 });
   }
   const matches = matchRows;
+  const candidateEventIds = Array.from(new Set(matches
+    .map((match) => match.eventId?.trim() ?? '')
+    .filter(Boolean)));
+  const eventById = new Map(eventRows.map((event) => [event.id, event]));
+  const missingCarrierEventIds = candidateEventIds.filter((eventId) => !eventById.has(eventId));
+  if (missingCarrierEventIds.length) {
+    const carrierEvents = await prisma.events.findMany({
+      where: {
+        id: { in: missingCarrierEventIds },
+        archivedAt: null,
+        AND: [
+          {
+            OR: [
+              { state: null },
+              { state: { not: 'TEMPLATE' } },
+            ],
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        imageId: true,
+        start: true,
+        end: true,
+        noFixedEndDateTime: true,
+        state: true,
+      },
+      take: missingCarrierEventIds.length,
+      orderBy: [{ start: 'asc' }, { id: 'asc' }],
+    }) as NextActionEvent[];
+    carrierEvents.filter(isEventNonTerminal).forEach((event) => eventById.set(event.id, event));
+  }
 
   const matchCandidate = matches
     .filter((match) => Boolean(match.eventId && eventById.has(match.eventId)))

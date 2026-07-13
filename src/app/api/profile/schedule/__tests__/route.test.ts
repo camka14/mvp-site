@@ -62,6 +62,7 @@ describe('GET /api/profile/schedule', () => {
       {
         id: 'event_1',
         name: 'Test Event',
+        hostId: 'user_1',
         state: 'PUBLISHED',
         start: new Date('2026-03-01T10:00:00Z'),
         end: new Date('2026-03-01T12:00:00Z'),
@@ -152,6 +153,7 @@ describe('GET /api/profile/schedule', () => {
           eventId: { in: ['event_1'] },
           OR: expect.arrayContaining([
             { officialId: 'user_1' },
+            { eventId: { in: ['event_1'] } },
             { team1Id: { in: ['team_1', 'team_2'] } },
             { team2Id: { in: ['team_1', 'team_2'] } },
             { teamOfficialId: { in: ['team_1', 'team_2'] } },
