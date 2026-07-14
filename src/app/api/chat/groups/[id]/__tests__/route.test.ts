@@ -6,6 +6,9 @@ const requireSessionMock = jest.fn();
 const chatGroupFindUniqueMock = jest.fn();
 const chatGroupUpdateMock = jest.fn();
 const userDataFindManyMock = jest.fn();
+const messagesCountMock = jest.fn();
+const messagesFindFirstMock = jest.fn();
+const isChatGroupMemberMock = jest.fn();
 const archiveChatGroupMock = jest.fn();
 const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
@@ -22,7 +25,16 @@ jest.mock('@/lib/prisma', () => ({
     userData: {
       findMany: (...args: any[]) => userDataFindManyMock(...args),
     },
+    messages: {
+      count: (...args: any[]) => messagesCountMock(...args),
+      findFirst: (...args: any[]) => messagesFindFirstMock(...args),
+    },
   },
+}));
+
+jest.mock('@/server/chatAccess', () => ({
+  ...jest.requireActual('@/server/chatAccess'),
+  isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
 }));
 
 jest.mock('@/server/legacyFormat', () => ({
@@ -34,7 +46,7 @@ jest.mock('@/server/moderation', () => ({
   archiveChatGroup: (...args: any[]) => archiveChatGroupMock(...args),
 }));
 
-import { DELETE, PATCH } from '@/app/api/chat/groups/[id]/route';
+import { DELETE, GET, PATCH } from '@/app/api/chat/groups/[id]/route';
 
 const patchRequest = (body: unknown) => new NextRequest('http://localhost/api/chat/groups/chat_1', {
   method: 'PATCH',
@@ -52,10 +64,56 @@ const existingGroup = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('/api/chat/groups/[id] PATCH', () => {
+describe('/api/chat/groups/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    isChatGroupMemberMock.mockResolvedValue(true);
+  });
+
+  it('returns the authoritative unread count and latest-message summary', async () => {
+    const group = existingGroup();
+    const lastMessage = {
+      id: 'message_2',
+      chatId: 'chat_1',
+      userId: 'user_2',
+      body: 'Latest update',
+      sentTime: new Date('2026-07-14T08:00:00.000Z'),
+      readByIds: [],
+      removedAt: null,
+    };
+    chatGroupFindUniqueMock.mockResolvedValue(group);
+    messagesCountMock.mockResolvedValue(3);
+    messagesFindFirstMock.mockResolvedValue(lastMessage);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/chat/groups/chat_1'),
+      { params: Promise.resolve({ id: 'chat_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      id: 'chat_1',
+      unreadCount: 3,
+      lastMessage: expect.objectContaining({
+        id: 'message_2',
+        $id: 'message_2',
+        body: 'Latest update',
+      }),
+    }));
+    expect(messagesCountMock).toHaveBeenCalledWith({
+      where: {
+        chatId: 'chat_1',
+        userId: { not: 'user_1' },
+        removedAt: null,
+        NOT: { readByIds: { has: 'user_1' } },
+      },
+    });
+    expect(messagesFindFirstMock).toHaveBeenCalledWith({
+      where: { chatId: 'chat_1', removedAt: null },
+      orderBy: [{ sentTime: 'desc' }, { id: 'desc' }],
+    });
   });
 
   it('rejects adding a minor participant to a non-team chat', async () => {

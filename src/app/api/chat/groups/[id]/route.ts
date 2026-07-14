@@ -57,7 +57,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    return NextResponse.json(withLegacyFields(group), { status: 200 });
+    const [unreadCount, lastMessage] = await Promise.all([
+      prisma.messages.count({
+        where: {
+          chatId: id,
+          userId: { not: session.userId },
+          removedAt: null,
+          NOT: { readByIds: { has: session.userId } },
+        },
+      }),
+      prisma.messages.findFirst({
+        where: {
+          chatId: id,
+          removedAt: null,
+        },
+        orderBy: [
+          { sentTime: 'desc' },
+          { id: 'desc' },
+        ],
+      }),
+    ]);
+
+    return NextResponse.json(withLegacyFields({
+      ...group,
+      unreadCount,
+      lastMessage: lastMessage ? withLegacyFields(lastMessage) : null,
+    }), { status: 200 });
   } catch (error) {
     return handleRouteError(error, 'Failed to load chat group');
   }
