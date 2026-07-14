@@ -36,9 +36,10 @@ recorded where the affected surface is reachable.
 | **Completed — other severity, account/progress/empty-state batch (4)** | `APP-013`, `APP-019`, `APP-067`, `APP-102` | Mobile `03bef4a5` scopes guide completion and active coach marks to the authenticated account, separates signing synchronization progress from errors, and gives Chats, Event Management, and Event Templates truthful loading/error/empty states with actionable routes. Sixteen focused state/component/Compose tests passed, Android debug and iOS simulator compilation passed, and independent re-review confirmed the account-switch and initial-load-error blockers were closed. |
 | **Completed — other severity, Wear interaction batch (3)** | `APP-030`, `APP-031`, `APP-034` | Mobile `668ee373` removes the duplicate empty-list action, adds confirmation-gated incident deletion through the existing optimistic/outbox match-patch path, and renders familiar unpadded match minutes. The complete Wear suite passed 29/29 tests and the debug build compiled and assembled. The exact commit installed on a 384x384 round Wear OS emulator: the timer rendered `73:17`, delete confirmation fit the viewport, confirming removed the selected incident locally, and fresh logs contained no crash, ANR, or OOM. Independent review found no blocker. |
 | **Completed — other severity, mobile input-control batch (4)** | `APP-051`, `APP-053`, `APP-054`, `APP-057` | Mobile `ddb3f0e0` separates integer and decimal keyboard contracts, preserves unloaded dropdown selections, exposes enabled labeled button semantics plus press feedback and coordinate-tap handling for picker fields, and makes tag collapse/reopen work through touch and accessibility activation. Four pure logic and four Compose interaction tests passed, the iOS simulator target compiled, and independent review passed after the accessibility-reopen blocker was closed. The exact Android commit assembled, installed, and cold-launched; a UI-tree-derived Birthday-field tap opened the picker, with no crash, ANR, or OOM. |
-| **Remaining / not yet reconciled (30)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Completed — other severity, mobile cleanup/release batch (13)** | `APP-021`, `APP-023`, `AUD-005`, `LEG-004`, `LEG-005`, `LEG-006`, `LEG-007`, `LEG-008`, `LEG-010`, `LEG-011`, `LEG-012`, `LEG-013`, `LEG-014` | Mobile `5d6478e1` centralizes the audited dependency/plugin versions, enables the strict release-size settings, generates all logo variants from one checked source, and removes the verified dead resources, helpers, experiments, and temporary probes. Independent review found no blockers; `bash scripts/tests/mobile-cleanup-contract.sh` passed. A clean exact-commit run passed logo verification, 57/57 Match Content tests, all 29 Wear tests and its debug assembly, Android debug assembly, iOS simulator compilation, and strict-R8/resource-shrunk `bundleRelease` plus `assembleRelease`; the artifacts were 62 MiB (debug APK), 17 MiB (release APK), and 26 MiB (AAB). The exact release APK was aligned and debug-signed only for local smoke testing, then reached Login on two cold launches (17.2 s and 12.8 s); the exact debug APK likewise reached Login twice after installation (26.2 s and 16.3 s). Each idle run kept an active process and produced no fatal exception, ANR, OOM, Room, or migration failure. One earlier debug launch at 98% emulator CPU produced a platform startup ANR during DexFile ZIP extraction before application code, while Google Messages was also ANRing; both idle reruns passed. |
+| **Remaining / not yet reconciled (17)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **197 completed, 30 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **210 completed, 17 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -1139,7 +1140,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `composeApp/build.gradle.kts:185-199` hard-codes Google auth/client versions older than the catalog entries, while `gradle/libs.versions.toml` separately declares newer values. The Compose stack mixes 1.11.1 and 1.11.3 artifacts, and `libs.coil.compose` is declared twice (`composeApp/build.gradle.kts:125,130`).
 - Impact: dependency updates have multiple sources of truth, resolution can change transitively, and ABI/build issues are harder to reproduce or review.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` moves the Google Services and SKIE plugin versions into the version catalog, consolidates JetBrains Compose at 1.11.1 and AndroidX Compose at 1.11.3, removes the duplicate Coil declaration, and deletes the unused Google OAuth/client stack. The cleanup contract, clean debug/release/Wear builds, iOS simulator compile, and independent review passed.
 
 ### APP-022 — Build resolution and the Android launcher are machine-specific
 
@@ -1155,7 +1156,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: Compose source information is enabled globally, including release (`composeApp/build.gradle.kts:23-25`); the app and Wear modules use broad `META-INF/*` pick-first rules rather than resolving specific conflicts; language splits are disabled; Gradle/Kotlin/native daemons request up to 12 GB, 8 GB, and 12 GB respectively; optimized resource shrinking and strict R8 keep-rule handling are disabled in `gradle.properties`.
 - Impact: release artifacts and builds are larger/heavier than necessary, duplicate-resource conflicts can be silently discarded, and normal development/CI requires unusually large memory allowances.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` disables Compose source information by default, removes the broad resource pick-firsts and disabled language splits, caps each daemon at 4 GiB, and enables strict R8 plus optimized resource shrinking. Clean exact-commit debug and release builds passed, producing a 62 MiB debug APK, 17 MiB release APK, and 26 MiB AAB. The aligned/debug-signed release APK and the debug APK each reached Login on two idle cold launches without a fatal exception, ANR, OOM, Room, or migration failure. An earlier debug launch under 98% emulator CPU hit a platform DexFile ZIP-extraction startup ANR while Google Messages was also ANRing; both idle reruns passed.
 
 ### APP-025 — The local-backend helper can declare a stale database and dependency tree ready
 
@@ -1965,7 +1966,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: only 7 of the 39 entries in `composeApp/src/commonMain/composeResources/values/strings.xml` have any production generated-resource reference; the other 32 include the old four-item navigation, tournament-creation form labels, validation text, and unused set-confirmation text. Only 2 of the 12 XML drawables in the same resource tree are referenced; the other 10 include the Compose Multiplatform starter logo plus abandoned visibility, Google, surface, group, tournament, and remove icons. `create_new_event` also leaves an accidental literal `"` text node after its closing tag.
 - Legacy relevance: these resources are unreachable from the current application and have no compatibility role at the 1.6.13 floor; retaining them expands generated resource APIs and obscures which copy is authoritative.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes all 32 unused strings, the accidental text node, and the ten unreferenced drawable assets, leaving the seven strings and two shared logo drawables with production consumers. The cleanup contract and clean multi-target builds passed.
 
 ### LEG-005 — Tracked temporary SQL probes target the retired volleyball team table
 
@@ -1973,7 +1974,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: three root files named `.tmp_placeholder_team_search.sql`, `.tmp_placeholder_team_search2.sql`, and `.tmp_mojibake_team_search.sql` are tracked production-repository artifacts with no caller. Each queries `"VolleyBallTeams"`; the canonical site migration `20260415214000_team_membership_event_team_snapshots` renamed that table to `"EventTeams"`, so the probes now fail against the current schema. One also preserves mojibake search text (`â€“`) alongside the intended en dash.
 - Legacy relevance: these are one-off diagnostics from before the canonical table rename, not a supported 1.6.13 compatibility surface.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` deletes all three tracked one-off SQL probes; the cleanup contract rejects their reintroduction.
 
 ### LEG-006 — Android retains definition-only and fully commented platform helpers
 
@@ -1981,7 +1982,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: production reference scanning finds no caller for Android `getGoogleUserInfo`, the `DecimalFormat` expect/actual pair, `MapComponent.setRadius`, or `LatLng.toMoko`; `BuildConfigImpl.kt` contains only a package, unused imports, and a fully commented former implementation. `getGoogleUserInfo` is the only production use of the heavyweight Google API/auth client classes, whose two dependencies are still declared directly in `composeApp/build.gradle.kts:185-201`.
 - Legacy relevance: these paths do not provide 1.6.13 compatibility behavior. Remove them after confirming no reflection/generated entry point, then remove the now-unneeded OAuth client dependencies rather than preserving two Google sign-in implementations.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes the definition-only platform helpers, empty build-config shell, and now-unneeded Google OAuth/client dependencies. The cleanup contract scans for the retired symbols and coordinates; Android, iOS, Wear, and release validation passed.
 
 ### LEG-007 — Shared mobile constants retain an abandoned Appwrite backend catalog
 
@@ -1989,7 +1990,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `Constants.kt:3-39` defines an Appwrite endpoint plus old database, collection, function, channel, and bucket identifiers, including the retired volleyball-team naming. Production reference scanning finds no use of `DbConstants` or any of its members; only the separate `UIConstants` object in that file is active.
 - Legacy relevance: the current mobile client uses the Next/Postgres API contract, so this catalog has no compatibility role at the 1.6.13 floor and inaccurately advertises a second backend source of truth.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes the unused `DbConstants` Appwrite catalog while preserving the active `UIConstants`; the cleanup contract rejects the retired symbol and the clean builds passed.
 
 ### LEG-008 — Shared UI retains definition-only icons, theme layers, and money helpers
 
@@ -1998,7 +1999,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: complete Kotlin symbol/reference scanning finds no production consumer for seven `MVPIcons` vectors (`ArrowDown`, `ArrowUp`, both `BaselineVisibility*` icons, the Compose Multiplatform starter logo, `Volleyball`, and `VolleyballPlayer`). `PasswordField` uses Material icons instead. `Color.kt`'s three seed/brand aliases and `Type.kt`'s `AppTypography` have no consumer; `MVPTheme` does not install that typography. `AppExtendedColors` and both large palettes are provided globally but never read. `MoneyInputUtils.displayValueToCents` and `formatCurrency` are definition-only, and `EmailSignInButton` calculates an unused, incorrectly mixed-type `fontSize` branch (`EmailSignInButton.kt:56-62`).
 - Legacy relevance: the starter logo, volleyball-specific art, superseded visibility icons, and transitional theme/money APIs have no Android compatibility role at the 1.6.13 floor. Keeping them expands source/compiled APIs and obscures the active Material/theme and cents-input paths.
 - Suggested direction: remove definition-only symbols after a final generated/reflection check; retain only the active cents formatter/filter and theme tokens actually consumed by screens.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` deletes the seven unused icon vectors, uninstalled typography and extended-color layers, unused money helpers, and dead email-button font-size branch while retaining the active theme and cents-input paths. The cleanup contract, clean builds, and independent review passed.
 
 ### LEG-009 — A tested chat redesign is definition-only while the live screen duplicates older UI
 
@@ -2018,7 +2019,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Impact: the unused alternate animation and generic marker styling create a false second map-rendering path and increase the surface reviewers must reconcile against the actual Android implementation.
 - Suggested direction: remove these definitions after confirming there is no generated/reflection entry point, or move them into the active map implementation if they represent intended behavior.
 - Legacy relevance: neither abstraction participates in the 1.6.13 compatibility contract.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes `AnimatedMarkerContent` and `MaterialMarker` while leaving the active Android marker implementations intact; the cleanup contract and clean multi-target builds passed.
 
 ### LEG-011 — Volleyball-specific stylized-text parsing is unreachable production code
 
@@ -2027,7 +2028,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: a full Kotlin reference scan finds no caller of `StylizedText` or constructor use of `TextPatterns`; references are confined to their two definition files. The hard-coded pattern catalog styles volleyball divisions, “twos/quads/pairs/doubles,” and sand/grass/indoor icons (`TextPatterns.kt`; `StylizedText.kt`).
 - Legacy relevance: this abandoned presentation experiment has no role in the generic multi-sport 1.6.13 compatibility contract and preserves volleyball-specific assumptions in Discover.
 - Suggested direction: remove both files after the final generated/reflection check, or replace them with an actively used sport/tag-driven presentation owned by current domain data.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes both unreachable stylized-text files and their sport-specific catalog; the cleanup contract rejects the retired symbols and the clean builds passed.
 
 ### LEG-012 — My Schedule retains an unused second calendar implementation
 
@@ -2036,7 +2037,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `ProfileMyScheduleScreen` delegates the live experience to shared `ScheduleView`. Full Kotlin reference scanning finds no production caller for its private `ScheduleMode`, `ScheduleEntry`, mode selector, month/week/day pickers, calendar title/day cells, date-navigation helpers, or related calendar state; those definitions are self-contained in `ProfileMyScheduleScreen.kt` and total roughly 300 lines.
 - Legacy relevance: the abandoned local calendar path has no 1.6.13 compatibility role and duplicates the active shared schedule UI.
 - Suggested direction: remove the unreachable implementation and its imports, or migrate deliberately to it and retire `ScheduleView`; retain one tested schedule presentation.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes the unused local calendar implementation and keeps `ProfileMyScheduleScreen` on the shared `ScheduleView` path. The cleanup contract rejects the retired calendar symbols and the clean builds passed.
 
 ### LEG-013 — Match detail retains a confirmation-dialog API that can never open
 
@@ -2045,7 +2046,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `showSetConfirmDialog` is initialized to false and its only assignment is another false in `dismissSetDialog`; no production or test path ever sets it true (`MatchContentComponent.kt:372-373,483-485`). `requestSetConfirmation` only validates and sets an error on failure, with no action on success (`:1570-1583`). The live scoring screen bypasses both and calls `confirmSet` directly from its button (`MatchDetailScreen.kt:1479-1482`).
 - Legacy relevance: the dialog state, dismiss/request methods, unused string resources, and related test calls represent an abandoned confirmation interaction, not a 1.6.13 compatibility path. Their presence suggests a safety confirmation exists when the active UI performs immediate completion.
 - Suggested direction: either restore one intentional, tested confirmation flow and route the button through it, or remove the unreachable API/state/resources and call the operation with naming that reflects immediate execution.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` removes the unreachable dialog state/API and routes the existing immediate action through the explicitly named `completeCurrentSet`. All 57 focused `MatchContentComponentTest` cases passed with the clean builds.
 
 ### LEG-014 — Event detail retains six abandoned form/bracket composable files
 
@@ -2054,7 +2055,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: a complete production Kotlin reference scan finds no caller outside each definition file for the empty `Header`, `TeamSizeLimitDropdown`, `MultiSelectDropdownField`, `CollapsableHeader`, any of the three set-count dropdown functions, or `MatchEditControls` (`eventDetail/composables/Header.kt`, `TeamSizeLimitDropdown.kt`, `MultiSelectDropdownField.kt`, `CollapsableHeader.kt`, `SetCountDropdown.kt`, `MatchEditControls.kt`). `Header` also collects event/detail state but renders an empty full-screen column; several other files preserve unused imports from older Material dropdown implementations.
 - Legacy relevance: these are disconnected versions of controls now implemented by the active editor, division, and match-management surfaces; none participates in the 1.6.13 compatibility contract.
 - Suggested direction: remove the six unreachable files and their stale imports/resources after a generated/reflection check; keep one active control implementation per setting.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` deletes all six abandoned composable files; the cleanup contract rejects their paths and the clean Android, iOS, Wear, and release builds passed.
 
 ### LEG-002 — Mobile contains obsolete migrations, DTOs, and definition-only routes
 
@@ -2100,7 +2101,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `ic_launcher_foreground.xml`, `ic_notification_logo.xml`, `mvp_logo.xml`, and `mvp_logo_white_bg.xml` each embed the same ordered 41 `pathData` values (roughly 14 KB per file). Their scale and fill treatments intentionally differ, but there is no checked-in generator or canonical geometry asset from which those variants are produced.
 - Impact: a brand-shape correction must be repeated in four files and can silently drift across launcher, notification, light-theme, and dark-theme surfaces.
 - Suggested direction: keep the required platform variants but generate them from one canonical vector/geometry source.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `5d6478e1` designates `mvp_logo.xml` as the canonical geometry, generates the launcher, notification, and light-background variants from it, and makes every pre-build run `verifyLogoVectors` to reject drift. The explicit verification task and cleanup contract passed in the clean exact-commit build.
 
 ### AUD-006 — Image-upload policy is manually duplicated between web and mobile
 
