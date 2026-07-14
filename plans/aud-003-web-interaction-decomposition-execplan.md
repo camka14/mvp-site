@@ -16,7 +16,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
 - [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract.
-- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup. Completed: weekly-session parsing/generation/selection, shared division-entry identity, tournament pool-to-bracket registration, installment normalization/labels, and division option construction moved behind direct tests. Remaining: public-detail presentation helpers.
+- [x] (2026-07-14 14:14Z) Milestone 2: extracted weekly-session calculations, division/registration eligibility and payment-plan calculations, organization/schedule/display presentation helpers, and their direct tests without changing state ownership or markup.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
@@ -46,6 +46,9 @@ After this plan is complete, users must see the same event details, registration
 - Observation: putting shared date parsing in either extracted domain module would create a cycle between weekly-session labeling and division-entry identity.
   Evidence: `weeklySessions.ts` resolves division labels through `getDivisionIdFromEventEntry`, while division option construction also needs date parsing for installment and age-cutoff inputs. The common parser now lives in dependency-neutral `dateValues.ts`; focused tests load both modules together and TypeScript resolves the graph cleanly.
 
+- Observation: public division skill parsing greedily consumed part of the `_age_` suffix for composite IDs.
+  Evidence: a direct `skill_premier_age_18plus` grouping regression initially rendered the skill row as `18+`. The extracted parser now stops at the first `_age_` separator, and the test proves `Premier` and `18+` remain distinct skill and age labels.
+
 ## Decision Log
 
 - Decision: preserve `EventDetailSheet.tsx` and `EventForm.tsx` as stable public facades until the final milestone.
@@ -74,7 +77,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. The first behavior-preserving extraction moved weekly-session calculations and division-entry identity into focused modules, reducing `EventDetailSheet.tsx` by 303 net lines while retaining its public behavior. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules, reducing `EventDetailSheet.tsx` from 7,219 to 6,136 lines while retaining its public API and rendered markup. The direct presentation tests also corrected one composite skill/age parsing defect. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -212,6 +215,15 @@ Second pure-calculation extraction evidence on 2026-07-14:
 
 The four new direct division-registration tests cover tournament pool-to-bracket registration, league playoff exclusion, event defaults versus division payment-plan overrides, and identifier/amount/date/relative-day/presentation normalization. The shared date parser was moved to `dateValues.ts` so the extracted weekly-session and division-registration modules do not form a circular dependency.
 
+Final Milestone 2 evidence on 2026-07-14:
+
+    PASS 6 suites / 33 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 6,499 -> 6,136 lines
+
+Six direct presentation tests cover normalized lists, safe organization destinations, policy/staffing summaries, 12-hour time boundaries, ordered multi-day schedule groups, and gender/age/skill division grouping. The division-registration suite now also covers inactive family links plus event- and division-level age eligibility.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -223,3 +235,4 @@ Use existing React, React Hook Form, Mantine, service modules, Jest, Testing Lib
 Revision note (2026-07-14): Created the self-contained AUD-003 continuation after current-source mapping showed that the earlier EventForm helper/view extraction was complete but orchestration remained concentrated, while EventDetailSheet still combined loading, registration, payment, signing, authentication, and rendering.
 Revision note (2026-07-14): Recorded the first partial pure-calculation milestone after extracting weekly-session generation and selection with 22 passing focused tests, TypeScript, targeted lint, and a 303-line net reduction in the facade.
 Revision note (2026-07-14): Continued Milestone 2 by extracting division, tournament-pool, and installment calculations with 26 passing focused tests, TypeScript, targeted lint, and a further 417-line reduction in the event-detail facade.
+Revision note (2026-07-14): Completed Milestone 2 by extracting public-detail presentation and eligibility rules with 33 passing focused tests, TypeScript, targeted lint, and a further 363-line reduction in the event-detail facade.

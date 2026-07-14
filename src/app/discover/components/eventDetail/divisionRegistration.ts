@@ -1,5 +1,7 @@
 import type { Event } from '@/types';
 import { formatPrice } from '@/types';
+import { calculateAgeOnDate, isAgeWithinRange } from '@/lib/age';
+import type { FamilyChild } from '@/lib/familyService';
 import {
     buildDivisionToken,
     cleanDivisionDisplayName,
@@ -457,4 +459,48 @@ export const buildDivisionOptionsForEvent = (event: Event | null): EventDivision
     });
 
     return options;
+};
+
+export const isActiveFamilyChild = (child: FamilyChild): boolean => {
+    const normalizedLinkStatus = typeof child.linkStatus === 'string'
+        ? child.linkStatus.trim().toLowerCase()
+        : 'active';
+    return normalizedLinkStatus === 'active';
+};
+
+export const isDivisionOptionEligibleForRegistrant = ({
+    division,
+    dateOfBirth,
+    eventStartDate,
+    eventMinAge,
+    eventMaxAge,
+}: {
+    division: EventDivisionOption;
+    dateOfBirth: Date | null;
+    eventStartDate: Date | null;
+    eventMinAge?: number;
+    eventMaxAge?: number;
+}): boolean => {
+    if (!dateOfBirth) {
+        return true;
+    }
+
+    const ageAtEvent = calculateAgeOnDate(dateOfBirth, eventStartDate ?? new Date());
+    if (!Number.isFinite(ageAtEvent)) {
+        return false;
+    }
+
+    const hasEventAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
+    if (hasEventAgeLimits && !isAgeWithinRange(ageAtEvent, eventMinAge, eventMaxAge)) {
+        return false;
+    }
+
+    const divisionEligibility = evaluateDivisionAgeEligibility({
+        dateOfBirth,
+        divisionTypeId: division.divisionTypeId,
+        sportInput: division.sportId ?? undefined,
+        referenceDate: eventStartDate ?? undefined,
+    });
+
+    return !(divisionEligibility.applies && divisionEligibility.eligible === false);
 };

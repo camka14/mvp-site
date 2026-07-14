@@ -6,6 +6,8 @@ import {
     formatPaymentPlanPreviewPrice,
     getDivisionIdFromEventEntry,
     getNormalizedDivisionAliases,
+    isActiveFamilyChild,
+    isDivisionOptionEligibleForRegistrant,
     normalizeInstallmentAmountsCents,
     normalizeInstallmentDueDateValues,
     normalizeInstallmentDueRelativeDayValues,
@@ -157,5 +159,42 @@ describe('event division registration options', () => {
         expect(formatInstallmentRelativeDueDayLabel(0)).toBe('Session day');
         expect(formatInstallmentRelativeDueDayLabel(2)).toBe('2 days after session');
         expect(formatPaymentPlanPreviewPrice(2500)).toBe('$25.00 + fees');
+    });
+
+    it('filters inactive family links and enforces event and division age limits', () => {
+        const [adultDivision] = buildDivisionOptionsForEvent(buildEvent({
+            start: '2026-08-01T19:00:00.000Z',
+            divisions: ['adult_open'],
+            divisionDetails: [{
+                id: 'adult_open',
+                key: 'c_skill_open_age_18plus',
+                name: 'Coed Open 18+',
+            }],
+        }));
+
+        expect(isActiveFamilyChild({ linkStatus: undefined } as never)).toBe(true);
+        expect(isActiveFamilyChild({ linkStatus: ' UNLINKED ' } as never)).toBe(false);
+        expect(isDivisionOptionEligibleForRegistrant({
+            division: adultDivision!,
+            dateOfBirth: null,
+            eventStartDate: new Date('2026-08-01T19:00:00.000Z'),
+        })).toBe(true);
+        expect(isDivisionOptionEligibleForRegistrant({
+            division: adultDivision!,
+            dateOfBirth: new Date('2010-01-01T00:00:00.000Z'),
+            eventStartDate: new Date('2026-08-01T19:00:00.000Z'),
+        })).toBe(false);
+        expect(isDivisionOptionEligibleForRegistrant({
+            division: adultDivision!,
+            dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+            eventStartDate: new Date('2026-08-01T19:00:00.000Z'),
+            eventMaxAge: 30,
+        })).toBe(false);
+        expect(isDivisionOptionEligibleForRegistrant({
+            division: adultDivision!,
+            dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+            eventStartDate: new Date('2026-08-01T19:00:00.000Z'),
+            eventMinAge: 18,
+        })).toBe(true);
     });
 });
