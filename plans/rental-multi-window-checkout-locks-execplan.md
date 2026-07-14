@@ -20,9 +20,10 @@ The same exact selection list must drive three operations: the server-authoritat
 - [x] (2026-07-14 01:02Z) Sent the same exact mobile rental-order selection rows to purchase intent and final-order preparation while retaining aggregate fallback fields.
 - [x] (2026-07-14 01:02Z) Added the focused server and mobile regressions named by this plan. Execution is intentionally deferred to central validation so Jest and Gradle are not run concurrently with other agents.
 - [x] (2026-07-14 01:07Z) Ran the four focused server suites: 56 tests passed with zero failures. `npx tsc --noEmit` also passed after tightening the shared field-row type at the final-order boundary.
-- [ ] Run the focused Android tests and Android/iOS compilation checks and record their counts.
-- [ ] Exercise the freshly built Android app where authentication permits and record the result in this plan and the audit ledger.
-- [ ] Commit both repositories and reconcile APP-092 in `docs/code-audit/README.md`.
+- [x] (2026-07-14 01:13Z) Ran the focused Android tests: `BillingRepositoryHttpTest` passed 45/45 and `OrganizationDetailComponentTest` passed 14/14. The iOS simulator shared compile also completed successfully.
+- [x] (2026-07-14 01:16Z) Installed the current audited branch on the Pixel 9 Pro API 35 emulator. A force-stop cold launch reached the Login screen in 4.6 seconds; the UI tree and screenshot were captured, and fresh logs contained no fatal exception, ANR, or OOM. No authenticated session was retained, so direct rental-timetable interaction remained unreachable without changing account state.
+- [x] (2026-07-14 01:14Z) Committed the server implementation as `0720f586` and the mobile implementation as `c40797cd`.
+- [x] (2026-07-14 01:19Z) Reconciled APP-092 in `docs/code-audit/README.md` after recording Android install/cold-launch evidence.
 
 ## Surprises & Discoveries
 
@@ -69,7 +70,7 @@ The same exact selection list must drive three operations: the server-authoritat
 
 ## Outcomes & Retrospective
 
-Implementation and focused server validation are complete. The request now carries `rentalSelections` as the authoritative non-empty exact array while retaining the aggregate `timeSlot` fallback for older clients. Canonical pricing, exact temporary holds, and final-order item creation share the same deterministic selection validator. Temporary holds serialize on sorted fields, reject any non-identical interval overlap, and reconcile retries to the submitted set. The four focused Jest suites passed 56 tests with zero failures, and `npx tsc --noEmit` passed. Mobile tests, platform compilation, device reachability, commits, and audit-ledger reconciliation remain pending.
+Implementation, validation, commits, reachable device evidence, and audit-ledger reconciliation are complete. The request now carries `rentalSelections` as the authoritative non-empty exact array while retaining the aggregate `timeSlot` fallback for older clients. Canonical pricing, exact temporary holds, and final-order item creation share the same deterministic selection validator. Temporary holds serialize on sorted fields, reject any non-identical interval overlap, and reconcile retries to the submitted set. The four focused Jest suites passed 56 tests with zero failures, and `npx tsc --noEmit` passed. Mobile passed 59 focused tests across the repository and component contracts, and the iOS simulator shared compile succeeded. Server commit `0720f586` and mobile commit `c40797cd` contain the implementation. The installed current branch cold-launched to Login without a fatal exception, ANR, or OOM; authenticated rental UI was unavailable because no valid session was retained. APP-092 is recorded as completed in the live remediation ledger.
 
 ## Context and Orientation
 
