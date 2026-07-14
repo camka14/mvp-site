@@ -29,7 +29,7 @@ jest.mock('@/server/repositories/events', () => ({
   listFieldSchedulingConflicts: (...args: unknown[]) => listFieldSchedulingConflictsMock(...args),
 }));
 
-import { GET } from '@/app/api/organizations/[organizationId]/rental-availability/route';
+import { GET } from '@/app/api/organizations/[id]/rental-availability/route';
 
 const rangeStart = '2026-06-01T09:00:00.000Z';
 const rangeEnd = '2026-06-01T12:00:00.000Z';
@@ -38,9 +38,9 @@ const request = (search = `start=${encodeURIComponent(rangeStart)}&end=${encodeU
   new NextRequest(`http://localhost/api/organizations/organization_1/rental-availability?${search}`)
 );
 
-const routeParams = () => ({ params: Promise.resolve({ organizationId: 'organization_1' }) });
+const routeParams = () => ({ params: Promise.resolve({ id: 'organization_1' }) });
 
-describe('/api/organizations/[organizationId]/rental-availability', () => {
+describe('/api/organizations/[id]/rental-availability', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getOptionalSessionMock.mockResolvedValue(null);

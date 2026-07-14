@@ -7,6 +7,7 @@ import { isMinorAtUtcDate } from '@/server/userPrivacy';
 
 const DEFAULT_REVIEW_LIMIT = 50;
 const MAX_REVIEW_LIMIT = 100;
+const MAX_REVIEW_CURSOR_LENGTH = 1024;
 
 export type OrganizationReviewPublicUser = {
   id: string;
@@ -35,6 +36,7 @@ export type OrganizationReviewSummary = {
 export type OrganizationReviewsPayload = {
   summary: OrganizationReviewSummary;
   reviews: OrganizationReviewView[];
+  nextCursor: string | null;
   viewerReview: OrganizationReviewView | null;
   viewerIsAuthenticated: boolean;
   canReview: boolean;
@@ -42,6 +44,53 @@ export type OrganizationReviewsPayload = {
 };
 
 type Viewer = { userId: string; isAdmin?: boolean } | null;
+
+type OrganizationReviewCursor = {
+  createdAt: string;
+  id: string;
+};
+
+export class InvalidOrganizationReviewCursorError extends Error {
+  constructor() {
+    super('Invalid organization review cursor.');
+    this.name = 'InvalidOrganizationReviewCursorError';
+  }
+}
+
+const encodeOrganizationReviewCursor = (review: {
+  createdAt: Date;
+  id: string;
+}): string => Buffer.from(JSON.stringify({
+  createdAt: review.createdAt.toISOString(),
+  id: review.id,
+} satisfies OrganizationReviewCursor), 'utf8').toString('base64url');
+
+const decodeOrganizationReviewCursor = (rawCursor: string): {
+  createdAt: Date;
+  id: string;
+} => {
+  if (!rawCursor || rawCursor.length > MAX_REVIEW_CURSOR_LENGTH || !/^[A-Za-z0-9_-]+$/.test(rawCursor)) {
+    throw new InvalidOrganizationReviewCursorError();
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(rawCursor, 'base64url').toString('utf8')) as Partial<OrganizationReviewCursor>;
+    if (
+      typeof parsed.createdAt !== 'string'
+      || typeof parsed.id !== 'string'
+      || !parsed.id.trim()
+    ) {
+      throw new InvalidOrganizationReviewCursorError();
+    }
+    const createdAt = new Date(parsed.createdAt);
+    if (Number.isNaN(createdAt.getTime())) {
+      throw new InvalidOrganizationReviewCursorError();
+    }
+    return { createdAt, id: parsed.id };
+  } catch (error) {
+    if (error instanceof InvalidOrganizationReviewCursorError) throw error;
+    throw new InvalidOrganizationReviewCursorError();
+  }
+};
 
 const profileImageUrl = (profileImageId: string | null): string | null => {
   const fileId = profileImageId?.trim();
@@ -158,7 +207,7 @@ const serializeReviews = async (rows: Array<{
 export const getOrganizationReviewsPayload = async (
   organizationId: string,
   viewer: Viewer,
-  options: { limit?: number } = {},
+  options: { limit?: number; cursor?: string } = {},
 ): Promise<OrganizationReviewsPayload> => {
   const eligibility = await getOrganizationReviewEligibility(organizationId, viewer);
   if (!eligibility.organizationExists) {
@@ -167,11 +216,25 @@ export const getOrganizationReviewsPayload = async (
 
   const limit = Math.min(Math.max(Math.trunc(options.limit ?? DEFAULT_REVIEW_LIMIT), 1), MAX_REVIEW_LIMIT);
   const publishedWhere = { organizationId, status: OrganizationReviewStatusEnum.PUBLISHED };
-  const [reviews, reviewCount, ratingAggregate, ratingGroups, viewerReview] = await Promise.all([
+  const cursor = options.cursor ? decodeOrganizationReviewCursor(options.cursor) : null;
+  const pageWhere = cursor
+    ? {
+        AND: [
+          publishedWhere,
+          {
+            OR: [
+              { createdAt: { lt: cursor.createdAt } },
+              { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+            ],
+          },
+        ],
+      }
+    : publishedWhere;
+  const [reviewPage, reviewCount, ratingAggregate, ratingGroups, viewerReview] = await Promise.all([
     prisma.organizationReviews.findMany({
-      where: publishedWhere,
-      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
-      take: limit,
+      where: pageWhere,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     }),
     prisma.organizationReviews.count({ where: publishedWhere }),
     prisma.organizationReviews.aggregate({ where: publishedWhere, _avg: { rating: true } }),
@@ -191,6 +254,11 @@ export const getOrganizationReviewsPayload = async (
         })
       : Promise.resolve(null),
   ]);
+  const hasNextPage = reviewPage.length > limit;
+  const reviews = hasNextPage ? reviewPage.slice(0, limit) : reviewPage;
+  const nextCursor = hasNextPage && reviews.length > 0
+    ? encodeOrganizationReviewCursor(reviews[reviews.length - 1])
+    : null;
 
   const ratingCounts: [number, number, number, number, number] = [0, 0, 0, 0, 0];
   ratingGroups.forEach((group) => {
@@ -214,6 +282,7 @@ export const getOrganizationReviewsPayload = async (
       ratingCounts,
     },
     reviews: reviews.map((review) => serializedById.get(review.id)).filter((review): review is OrganizationReviewView => Boolean(review)),
+    nextCursor,
     viewerReview: viewerReview ? serializedById.get(viewerReview.id) ?? null : null,
     viewerIsAuthenticated: Boolean(viewer),
     canReview: eligibility.canReview,

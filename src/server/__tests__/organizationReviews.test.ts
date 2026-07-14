@@ -3,7 +3,14 @@
 const prismaMock = {
   organizations: { findUnique: jest.fn() },
   staffMembers: { findUnique: jest.fn() },
-  organizationReviews: { upsert: jest.fn() },
+  organizationReviews: {
+    upsert: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+    aggregate: jest.fn(),
+    groupBy: jest.fn(),
+  },
+  userData: { findMany: jest.fn() },
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
@@ -16,6 +23,8 @@ jest.mock('@/generated/prisma/client', () => ({
 
 import {
   getOrganizationReviewEligibility,
+  getOrganizationReviewsPayload,
+  InvalidOrganizationReviewCursorError,
   toOrganizationReviewPublicUser,
   upsertOrganizationReview,
 } from '@/server/organizationReviews';
@@ -25,6 +34,100 @@ describe('getOrganizationReviewEligibility', () => {
     jest.clearAllMocks();
     prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'owner_1' });
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.organizationReviews.findMany.mockResolvedValue([]);
+    prismaMock.organizationReviews.count.mockResolvedValue(0);
+    prismaMock.organizationReviews.aggregate.mockResolvedValue({ _avg: { rating: null } });
+    prismaMock.organizationReviews.groupBy.mockResolvedValue([]);
+    prismaMock.userData.findMany.mockResolvedValue([]);
+  });
+
+  it('returns a deterministic next cursor without exposing the lookahead row', async () => {
+    const rows = [
+      reviewRow('review_3', '2026-07-13T03:00:00.000Z'),
+      reviewRow('review_2', '2026-07-13T02:00:00.000Z'),
+      reviewRow('review_1', '2026-07-13T01:00:00.000Z'),
+    ];
+    prismaMock.organizationReviews.findMany.mockResolvedValue(rows);
+    prismaMock.organizationReviews.count.mockResolvedValue(3);
+
+    const firstPage = await getOrganizationReviewsPayload('org_1', null, { limit: 2 });
+
+    expect(firstPage.reviews.map((review) => review.id)).toEqual(['review_3', 'review_2']);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    expect(prismaMock.organizationReviews.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 3,
+    }));
+
+    prismaMock.organizationReviews.findMany.mockResolvedValue([rows[2]]);
+    const secondPage = await getOrganizationReviewsPayload('org_1', null, {
+      limit: 2,
+      cursor: firstPage.nextCursor ?? undefined,
+    });
+
+    expect(secondPage.reviews.map((review) => review.id)).toEqual(['review_1']);
+    expect(secondPage.nextCursor).toBeNull();
+    expect(prismaMock.organizationReviews.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { organizationId: 'org_1', status: 'PUBLISHED' },
+          {
+            OR: [
+              { createdAt: { lt: rows[1].createdAt } },
+              { createdAt: rows[1].createdAt, id: { lt: rows[1].id } },
+            ],
+          },
+        ],
+      },
+    }));
+  });
+
+  it('keeps an unseen review reachable when it is edited between pages', async () => {
+    const first = reviewRow('review_3', '2026-07-13T03:00:00.000Z');
+    const boundary = reviewRow('review_2', '2026-07-13T02:00:00.000Z');
+    const unseen = reviewRow('review_1', '2026-07-13T01:00:00.000Z');
+    prismaMock.organizationReviews.findMany.mockResolvedValueOnce([first, boundary, unseen]);
+
+    const firstPage = await getOrganizationReviewsPayload('org_1', null, { limit: 2 });
+
+    unseen.updatedAt = new Date('2026-07-13T04:00:00.000Z');
+    prismaMock.organizationReviews.findMany.mockResolvedValueOnce([unseen]);
+    const secondPage = await getOrganizationReviewsPayload('org_1', null, {
+      limit: 2,
+      cursor: firstPage.nextCursor ?? undefined,
+    });
+
+    expect(secondPage.reviews.map((review) => review.id)).toEqual(['review_1']);
+    expect(prismaMock.organizationReviews.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { organizationId: 'org_1', status: 'PUBLISHED' },
+          {
+            OR: [
+              { createdAt: { lt: boundary.createdAt } },
+              { createdAt: boundary.createdAt, id: { lt: boundary.id } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    }));
+  });
+
+  it('preserves the legacy default of 50 reviews when no limit is provided', async () => {
+    await getOrganizationReviewsPayload('org_1', null);
+
+    expect(prismaMock.organizationReviews.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 51,
+    }));
+  });
+
+  it('rejects malformed pagination cursors instead of treating them as the first page', async () => {
+    await expect(getOrganizationReviewsPayload('org_1', null, {
+      cursor: 'not-a-valid-cursor',
+    })).rejects.toBeInstanceOf(InvalidOrganizationReviewCursorError);
+
+    expect(prismaMock.organizationReviews.findMany).not.toHaveBeenCalled();
   });
 
   it('allows a signed-in non-staff user to review', async () => {
@@ -93,4 +196,15 @@ describe('getOrganizationReviewEligibility', () => {
       profileImageUrl: null,
     });
   });
+});
+
+const reviewRow = (id: string, updatedAt: string) => ({
+  id,
+  organizationId: 'org_1',
+  reviewerUserId: `user_${id}`,
+  rating: 5,
+  body: `${id} body`,
+  status: 'PUBLISHED',
+  createdAt: new Date(updatedAt),
+  updatedAt: new Date(updatedAt),
 });

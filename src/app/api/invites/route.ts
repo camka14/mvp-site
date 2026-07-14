@@ -26,6 +26,12 @@ import {
   rollbackTeamInviteEventSyncs,
 } from '@/server/teams/teamInviteEventSync';
 import { acquireEventLock } from '@/server/repositories/locks';
+import {
+  InvalidInviteCursorError,
+  listInviteRecordsPage,
+  normalizeInvitePageLimit,
+  pruneExpiredTerminalInvites,
+} from '@/server/inviteListing';
 
 export const dynamic = 'force-dynamic';
 
@@ -181,16 +187,32 @@ export async function GET(req: NextRequest) {
   const userId = normalizeId(params.get('userId'));
   const type = normalizeInviteType(params.get('type'));
   const teamId = normalizeId(params.get('teamId'));
+  const rawStatus = params.get('status');
+  const status = rawStatus === null ? null : normalizeInviteStatus(rawStatus);
+  const rawHistory = params.get('history');
+  const history = rawHistory === 'true';
+  const limit = normalizeInvitePageLimit(params.get('limit'));
+  const cursor = params.get('cursor');
+
+  if (
+    (rawStatus !== null && !status)
+    || (rawHistory !== null && rawHistory !== 'true' && rawHistory !== 'false')
+    || (history && rawStatus !== null)
+    || limit === null
+  ) {
+    return NextResponse.json({ error: 'Invalid invite list query' }, { status: 400 });
+  }
 
   if (userId && !session.isAdmin && userId !== session.userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const where: any = {};
+  let canListTeamInvites = false;
   let includeChildTeamInvites = false;
   let childInviteIdsForViewer: string[] = [];
   if (!session.isAdmin) {
-    const canListTeamInvites = teamId ? await canManageTeamInvites(teamId, session, prisma) : false;
+    canListTeamInvites = teamId ? await canManageTeamInvites(teamId, session, prisma) : false;
     if (userId || !canListTeamInvites) {
       where.userId = userId ?? session.userId;
     }
@@ -216,11 +238,26 @@ export async function GET(req: NextRequest) {
   }
   if (type) where.type = type;
   if (teamId) where.teamId = teamId;
+  const requestedStatus = status ?? 'PENDING';
+  const statusWhere = history
+    ? { status: { in: ['DECLINED', 'REJECTED', 'FAILED'] } }
+    : requestedStatus === 'PENDING'
+      ? { OR: [{ status: null }, { status: { in: ['PENDING', 'SENT'] } }] }
+      : requestedStatus === 'DECLINED'
+        ? { status: { in: ['DECLINED', 'REJECTED'] } }
+        : { status: requestedStatus };
+  const listingWhere = { AND: [where, statusWhere] };
 
-  const invites = await prisma.invites.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  });
+  let page: { invites: Array<Record<string, any>>; nextCursor: string | null };
+  try {
+    page = await listInviteRecordsPage(prisma, listingWhere, { limit, cursor });
+  } catch (error) {
+    if (error instanceof InvalidInviteCursorError) {
+      return NextResponse.json({ error: 'Invalid invite cursor' }, { status: 400 });
+    }
+    throw error;
+  }
+  const invites = page.invites;
 
   const childProfiles = childInviteIdsForViewer.length
     ? await prisma.userData.findMany({
@@ -229,6 +266,25 @@ export async function GET(req: NextRequest) {
     })
     : [];
   const childById = new Map(childProfiles.map((child) => [child.id, child]));
+
+  if (!cursor) {
+    try {
+      await pruneExpiredTerminalInvites({
+        client: prisma,
+        scope: {
+          userId: session.isAdmin
+            ? userId
+            : (userId || !canListTeamInvites ? userId ?? session.userId : null),
+          delegatedChildUserIds: childInviteIdsForViewer,
+          teamId,
+          type,
+          allowGlobal: session.isAdmin && !userId && !teamId,
+        },
+      });
+    } catch (error) {
+      console.warn('Failed to prune expired terminal invites', error);
+    }
+  }
 
   return NextResponse.json({
     invites: invites.map((invite) => {
@@ -246,6 +302,7 @@ export async function GET(req: NextRequest) {
           : {}),
       });
     }),
+    nextCursor: page.nextCursor,
   }, { status: 200 });
 }
 

@@ -826,6 +826,10 @@ model Invites {
   createdBy      String?
   firstName      String?
   lastName       String?
+
+  @@index([userId, status, createdAt, id])
+  @@index([teamId, status, createdAt, id])
+  @@index([status, updatedAt])
 }
 
 model TeamInviteEventSyncs {
@@ -845,6 +849,7 @@ model TeamInviteEventSyncs {
 
   @@unique([inviteId, eventTeamId, userId])
   @@index([inviteId])
+  @@index([status, inviteId])
   @@index([canonicalTeamId])
   @@index([eventId])
   @@index([eventTeamId])
@@ -2221,6 +2226,7 @@ model OrganizationReviews {
 
   @@unique([organizationId, reviewerUserId])
   @@index([organizationId, status, updatedAt])
+  @@index([organizationId, status, createdAt(sort: Desc), id(sort: Desc)], map: "OrganizationReviews_org_status_created_id_idx")
   @@index([reviewerUserId])
 }
 

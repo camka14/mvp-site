@@ -4,6 +4,7 @@ import { getOptionalSession, requireSession } from '@/lib/permissions';
 import {
   getOrganizationReviewEligibility,
   getOrganizationReviewsPayload,
+  InvalidOrganizationReviewCursorError,
   upsertOrganizationReview,
 } from '@/server/organizationReviews';
 
@@ -14,13 +15,28 @@ const reviewSchema = z.object({
   body: z.string().trim().max(2000).nullable().optional(),
 });
 
+const reviewPageSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().trim().min(1).max(1024).optional(),
+});
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const [{ id }, session] = await Promise.all([params, getOptionalSession(req)]);
-    const payload = await getOrganizationReviewsPayload(id, session);
+    const page = reviewPageSchema.safeParse({
+      limit: req.nextUrl.searchParams.get('limit') ?? undefined,
+      cursor: req.nextUrl.searchParams.get('cursor') ?? undefined,
+    });
+    if (!page.success) {
+      return NextResponse.json({ error: 'Invalid review pagination.' }, { status: 400 });
+    }
+    const payload = await getOrganizationReviewsPayload(id, session, page.data);
     return NextResponse.json(payload, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof InvalidOrganizationReviewCursorError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('Failed to load organization reviews', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

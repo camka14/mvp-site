@@ -16,6 +16,7 @@ jest.mock('@/lib/permissions', () => ({
 jest.mock('@/server/organizationReviews', () => ({
   getOrganizationReviewEligibility: (...args: unknown[]) => getEligibilityMock(...args),
   getOrganizationReviewsPayload: (...args: unknown[]) => getPayloadMock(...args),
+  InvalidOrganizationReviewCursorError: class InvalidOrganizationReviewCursorError extends Error {},
   upsertOrganizationReview: (...args: unknown[]) => upsertReviewMock(...args),
 }));
 
@@ -24,6 +25,7 @@ import { GET, POST } from '@/app/api/organizations/[id]/reviews/route';
 const emptyPayload = {
   summary: { averageRating: null, reviewCount: 0, ratingCounts: [0, 0, 0, 0, 0] },
   reviews: [],
+  nextCursor: null,
   viewerReview: null,
   viewerIsAuthenticated: false,
   canReview: false,
@@ -38,7 +40,7 @@ describe('/api/organizations/[id]/reviews', () => {
     getEligibilityMock.mockResolvedValue({ organizationExists: true, canReview: true, cannotReviewReason: null });
   });
 
-  it('returns public review data without a session', async () => {
+  it('preserves the legacy 50-review page size when no pagination query is provided', async () => {
     const response = await GET(
       new NextRequest('http://localhost/api/organizations/org_1/reviews'),
       { params: Promise.resolve({ id: 'org_1' }) },
@@ -46,7 +48,28 @@ describe('/api/organizations/[id]/reviews', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(emptyPayload);
-    expect(getPayloadMock).toHaveBeenCalledWith('org_1', null);
+    expect(getPayloadMock).toHaveBeenCalledWith('org_1', null, { limit: 50, cursor: undefined });
+  });
+
+  it('passes validated cursor pagination to the canonical loader', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/reviews?limit=35&cursor=cursor_123'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(getPayloadMock).toHaveBeenCalledWith('org_1', null, { limit: 35, cursor: 'cursor_123' });
+  });
+
+  it('rejects invalid page sizes before loading reviews', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/reviews?limit=101'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid review pagination.' });
+    expect(getPayloadMock).not.toHaveBeenCalled();
   });
 
   it('rejects ratings outside the 1 to 5 range', async () => {

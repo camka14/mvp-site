@@ -1,4 +1,4 @@
-import { Invite, StaffMemberType, UserData, Subscription } from '@/types';
+import { Invite, InviteStatus, StaffMemberType, UserData, Subscription } from '@/types';
 import { normalizeAccountVisibility, type AccountVisibility } from '@/lib/accountVisibility';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { normalizeNotificationSettings } from '@/lib/notificationSettings';
@@ -303,23 +303,59 @@ class UserService {
     }
   }
 
-  async listInvites(filters: { userId?: string; type?: string; types?: readonly string[]; teamId?: string } = {}): Promise<Invite[]> {
+  async listInvites(filters: {
+    userId?: string;
+    type?: string;
+    types?: readonly string[];
+    teamId?: string;
+    status?: InviteStatus;
+    history?: boolean;
+  } = {}): Promise<Invite[]> {
+    if (filters.history && filters.status) {
+      throw new Error('Invite history and status filters cannot be combined');
+    }
     const params = new URLSearchParams();
     if (filters.userId) params.set('userId', filters.userId);
     if (filters.type) params.set('type', filters.type);
     if (filters.teamId) params.set('teamId', filters.teamId);
+    if (filters.history) {
+      params.set('history', 'true');
+    } else {
+      params.set('status', filters.status ?? 'PENDING');
+    }
+    params.set('limit', '100');
+
+    const fetchAllPages = async (pageParams: URLSearchParams): Promise<Invite[]> => {
+      const invitesById = new Map<string, Invite>();
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+      do {
+        const requestParams = new URLSearchParams(pageParams);
+        if (cursor) requestParams.set('cursor', cursor);
+        const response = await apiFetch<{ invites?: Invite[]; nextCursor?: string | null }>(
+          `/api/invites?${requestParams.toString()}`,
+        );
+        (response.invites ?? []).forEach((invite) => invitesById.set(invite.$id, normalizeInviteNames(invite)));
+        const nextCursor = response.nextCursor?.trim() || null;
+        if (nextCursor && (nextCursor === cursor || seenCursors.has(nextCursor))) {
+          throw new Error('Invite pagination returned a repeated cursor');
+        }
+        if (nextCursor) seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      } while (cursor);
+      return Array.from(invitesById.values());
+    };
+
     if (filters.types && filters.types.length) {
       const dedupedTypes = Array.from(new Set(filters.types));
       const inviteLists = await Promise.all(dedupedTypes.map(async (inviteType) => {
         const typeParams = new URLSearchParams(params);
         typeParams.set('type', inviteType);
-        const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${typeParams.toString()}`);
-        return response.invites ?? [];
+        return fetchAllPages(typeParams);
       }));
-      return inviteLists.flat().map(normalizeInviteNames);
+      return Array.from(new Map(inviteLists.flat().map((invite) => [invite.$id, invite])).values());
     }
-    const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${params.toString()}`);
-    return (response.invites ?? []).map(normalizeInviteNames);
+    return fetchAllPages(params);
   }
 
   async inviteUsersByEmail(

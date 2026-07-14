@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 const prismaMock = {
   $transaction: jest.fn(),
+  $executeRaw: jest.fn(),
   invites: {
     create: jest.fn(),
     deleteMany: jest.fn(),
@@ -94,6 +95,7 @@ describe('/api/invites', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    prismaMock.$executeRaw.mockResolvedValue(0);
     prismaMock.authUser.findUnique.mockResolvedValue(null);
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
     prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
@@ -151,13 +153,20 @@ describe('/api/invites', () => {
     expect(res.status).toBe(200);
     expect(prismaMock.invites.findMany).toHaveBeenCalledWith({
       where: {
-        userId: 'user_1',
-        type: 'TEAM',
+        AND: [
+          { userId: 'user_1', type: 'TEAM' },
+          { OR: [{ status: null }, { status: { in: ['PENDING', 'SENT'] } }] },
+        ],
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { createdAt: { sort: 'desc', nulls: 'last' } },
+        { id: 'desc' },
+      ],
+      take: 51,
     });
     expect(json.invites).toHaveLength(1);
     expect(json.invites[0].$id).toBe('invite_1');
+    expect(json.nextCursor).toBeNull();
   });
 
   it('allows team managers to list pending invites for their team', async () => {
@@ -177,11 +186,114 @@ describe('/api/invites', () => {
     expect(loadCanonicalTeamByIdMock).toHaveBeenCalledWith('team_1', prismaMock);
     expect(prismaMock.invites.findMany).toHaveBeenCalledWith({
       where: {
-        type: 'TEAM',
-        teamId: 'team_1',
+        AND: [
+          { type: 'TEAM', teamId: 'team_1' },
+          { OR: [{ status: null }, { status: { in: ['PENDING', 'SENT'] } }] },
+        ],
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { createdAt: { sort: 'desc', nulls: 'last' } },
+        { id: 'desc' },
+      ],
+      take: 51,
     });
+  });
+
+  it('authorizes terminal cleanup for guardian-visible child TEAM invites without a pending-only scope', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    prismaMock.parentChildLinks.findMany.mockResolvedValue([{ childId: 'child_1' }]);
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?type=TEAM'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+    const query = prismaMock.$executeRaw.mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(query.sql).toContain('NOT EXISTS');
+    expect(query.values).toEqual(expect.arrayContaining(['parent_1', 'child_1', 'TEAM']));
+  });
+
+  it('supports an explicit bounded terminal-history view', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    const createdAt = new Date('2026-01-01T00:00:00.000Z');
+    prismaMock.invites.findMany
+      .mockResolvedValueOnce([{
+        id: 'declined_1',
+        type: 'TEAM',
+        email: 'user@example.com',
+        status: 'DECLINED',
+        userId: 'user_1',
+        staffTypes: [],
+        createdAt,
+        updatedAt: createdAt,
+      }]);
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?history=true&limit=10'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.invites.map((invite: { $id: string }) => invite.$id)).toEqual(['declined_1']);
+    expect(prismaMock.invites.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { userId: 'user_1' },
+          { status: { in: ['DECLINED', 'REJECTED', 'FAILED'] } },
+        ],
+      },
+      take: 11,
+    }));
+  });
+
+  it('supports an explicit single-status filter without enabling all history', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.invites.findMany.mockResolvedValueOnce([]);
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?status=DECLINED'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.invites.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { userId: 'user_1' },
+          { status: { in: ['DECLINED', 'REJECTED'] } },
+        ],
+      },
+    }));
+  });
+
+  it('returns an opaque continuation cursor without exposing the extra row', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    const createdAt = new Date('2026-01-01T00:00:00.000Z');
+    prismaMock.invites.findMany
+      .mockResolvedValueOnce(['invite_3', 'invite_2', 'invite_1'].map((id) => ({
+        id,
+        type: 'TEAM',
+        email: `${id}@example.test`,
+        status: 'PENDING',
+        userId: 'user_1',
+        staffTypes: [],
+        createdAt,
+        updatedAt: createdAt,
+      })));
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?limit=2'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.invites.map((invite: { $id: string }) => invite.$id)).toEqual(['invite_3', 'invite_2']);
+    expect(json.nextCursor).toEqual(expect.any(String));
+    expect(json.nextCursor).not.toContain('invite_2');
+  });
+
+  it('rejects invalid list filters and malformed cursors', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const invalidStatus = await GET(new NextRequest('http://localhost/api/invites?status=ACCEPTED'));
+    const conflictingMode = await GET(new NextRequest('http://localhost/api/invites?history=true&status=DECLINED'));
+    const invalidCursor = await GET(new NextRequest('http://localhost/api/invites?cursor=not-a-json-cursor'));
+
+    expect(invalidStatus.status).toBe(400);
+    expect(conflictingMode.status).toBe(400);
+    expect(invalidCursor.status).toBe(400);
   });
 
   it('rejects non-admin invite listing for a different user', async () => {

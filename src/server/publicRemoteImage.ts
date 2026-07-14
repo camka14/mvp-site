@@ -229,7 +229,7 @@ const defaultRequest: PublicRemoteImageDependencies['request'] = async ({
 
 const firstHeader = (headers: Record<string, HeaderValue>, name: string): string | undefined => {
   const value = headers[name];
-  return Array.isArray(value) ? value[0] : value;
+  return typeof value === 'string' ? value : value?.[0];
 };
 
 const positiveIntegerOption = (value: number | undefined, fallback: number, name: string): number => {

@@ -109,7 +109,15 @@ describe('POST /api/users/invite authorization', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.invites.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ createdBy: 'manager_1', teamId: 'team_1' }),
+      data: expect.objectContaining({
+        createdBy: 'manager_1',
+        teamId: 'team_1',
+        type: 'TEAM',
+        status: 'PENDING',
+      }),
+    }));
+    expect(prismaMock.invites.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: 'TEAM' }),
     }));
   });
 });

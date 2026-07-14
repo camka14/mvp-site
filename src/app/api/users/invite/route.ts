@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       failed.push({ email, reason: 'invalid_type' });
       continue;
     }
+    const canonicalType = type === 'player' ? 'TEAM' : 'STAFF';
 
     const scopeFields = [invite.eventId, invite.organizationId, invite.teamId].filter(Boolean);
     if (type === 'player') {
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.invites.findFirst({
       where: {
         email: { equals: email, mode: 'insensitive' },
-        type,
+        type: canonicalType,
         eventId: invite.eventId ?? null,
         organizationId: invite.organizationId ?? null,
         teamId: invite.teamId ?? null,
@@ -144,9 +145,9 @@ export async function POST(req: NextRequest) {
     const record = await prisma.invites.create({
       data: {
         id: crypto.randomUUID(),
-        type,
+        type: canonicalType,
         email,
-        status: 'pending',
+        status: 'PENDING',
         eventId: invite.eventId ?? null,
         organizationId: invite.organizationId ?? null,
         teamId: invite.teamId ?? null,

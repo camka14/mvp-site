@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -97,21 +97,41 @@ export default function OrganizationReviewsPanel({
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const dataGenerationRef = useRef(0);
 
   const loadReviews = useCallback(async () => {
+    const generation = ++dataGenerationRef.current;
     setLoading(true);
+    setLoadingMore(false);
+    setSaving(false);
+    setDeleting(false);
     setError(null);
+    setLoadMoreError(null);
     try {
-      setPayload(await organizationReviewService.getReviews(organizationId));
+      const nextPayload = await organizationReviewService.getReviews(organizationId, {
+        limit: mode === 'summary' ? 6 : 20,
+      });
+      if (dataGenerationRef.current === generation) {
+        setPayload(nextPayload);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load reviews.');
+      if (dataGenerationRef.current === generation) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load reviews.');
+      }
     } finally {
-      setLoading(false);
+      if (dataGenerationRef.current === generation) {
+        setLoading(false);
+      }
     }
-  }, [organizationId]);
+  }, [mode, organizationId]);
 
   useEffect(() => {
     void loadReviews();
+    return () => {
+      dataGenerationRef.current += 1;
+    };
   }, [loadReviews]);
 
   const openEditor = () => {
@@ -120,38 +140,87 @@ export default function OrganizationReviewsPanel({
     setEditorOpen(true);
   };
 
+  const loadMoreReviews = async () => {
+    const cursor = payload?.nextCursor;
+    if (!cursor || loadingMore) return;
+    const generation = ++dataGenerationRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const nextPage = await organizationReviewService.getReviews(organizationId, { limit: 20, cursor });
+      if (dataGenerationRef.current !== generation) return;
+      setPayload((current) => {
+        if (!current || current.nextCursor !== cursor) return current;
+        const existingIds = new Set(current.reviews.map((review) => review.id));
+        const appended = nextPage.reviews.filter((review) => !existingIds.has(review.id));
+        return {
+          ...nextPage,
+          reviews: [...current.reviews, ...appended],
+        };
+      });
+    } catch (loadError) {
+      if (dataGenerationRef.current === generation) {
+        setLoadMoreError(loadError instanceof Error ? loadError.message : 'Unable to load more reviews.');
+      }
+    } finally {
+      if (dataGenerationRef.current === generation) {
+        setLoadingMore(false);
+      }
+    }
+  };
+
   const saveReview = async () => {
     if (rating < 1 || rating > 5) return;
+    const generation = ++dataGenerationRef.current;
     setSaving(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
     try {
-      setPayload(await organizationReviewService.saveReview(organizationId, { rating, body }));
-      setEditorOpen(false);
-      notifications.show({ color: 'green', message: 'Your review has been published.' });
+      const nextPayload = await organizationReviewService.saveReview(organizationId, { rating, body });
+      if (dataGenerationRef.current === generation) {
+        setPayload(nextPayload);
+        setEditorOpen(false);
+        notifications.show({ color: 'green', message: 'Your review has been published.' });
+      }
     } catch (saveError) {
-      notifications.show({
-        color: 'red',
-        message: saveError instanceof Error ? saveError.message : 'Unable to save your review.',
-      });
+      if (dataGenerationRef.current === generation) {
+        notifications.show({
+          color: 'red',
+          message: saveError instanceof Error ? saveError.message : 'Unable to save your review.',
+        });
+      }
     } finally {
-      setSaving(false);
+      if (dataGenerationRef.current === generation) {
+        setSaving(false);
+      }
     }
   };
 
   const deleteReview = async () => {
     const reviewId = payload?.viewerReview?.id;
     if (!reviewId) return;
+    const generation = ++dataGenerationRef.current;
     setDeleting(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
     try {
-      setPayload(await organizationReviewService.deleteReview(organizationId, reviewId));
-      setEditorOpen(false);
-      notifications.show({ color: 'green', message: 'Your review has been deleted.' });
+      const nextPayload = await organizationReviewService.deleteReview(organizationId, reviewId);
+      if (dataGenerationRef.current === generation) {
+        setPayload(nextPayload);
+        setEditorOpen(false);
+        notifications.show({ color: 'green', message: 'Your review has been deleted.' });
+      }
     } catch (deleteError) {
-      notifications.show({
-        color: 'red',
-        message: deleteError instanceof Error ? deleteError.message : 'Unable to delete your review.',
-      });
+      if (dataGenerationRef.current === generation) {
+        notifications.show({
+          color: 'red',
+          message: deleteError instanceof Error ? deleteError.message : 'Unable to delete your review.',
+        });
+      }
     } finally {
-      setDeleting(false);
+      if (dataGenerationRef.current === generation) {
+        setDeleting(false);
+      }
     }
   };
 
@@ -283,6 +352,22 @@ export default function OrganizationReviewsPanel({
                 {index < payload.reviews.length - 1 ? <Divider mt="lg" /> : null}
               </div>
             ))}
+            {loadMoreError ? (
+              <Alert color="red" title="More reviews unavailable" aria-live="polite">
+                <Text size="sm">{loadMoreError}</Text>
+              </Alert>
+            ) : null}
+            {payload.nextCursor ? (
+              <Button
+                variant="light"
+                loading={loadingMore}
+                disabled={loadingMore}
+                onClick={() => void loadMoreReviews()}
+                style={{ alignSelf: 'center' }}
+              >
+                Load more reviews
+              </Button>
+            ) : null}
           </Stack>
         ) : (
           <Text size="sm" c="dimmed">No reviews yet. Be the first to share your experience.</Text>
