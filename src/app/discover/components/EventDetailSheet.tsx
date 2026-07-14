@@ -6,15 +6,11 @@ import {
 } from 'lucide-react';
 import {
     Event,
-    UserData,
     Team,
     getEventImageFallbackUrl,
     getEventImageUrl,
 } from '@/types';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
-import {
-    normalizePriceCents,
-} from './eventDetail/divisionRegistration';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
 import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegistrationQuestionsController';
@@ -31,34 +27,15 @@ import { useWeeklyEventSelectionModel } from './eventDetail/hooks/useWeeklyEvent
 import { useEventDetailNavigationController } from './eventDetail/hooks/useEventDetailNavigationController';
 import { useEventDetailPresentationController } from './eventDetail/hooks/useEventDetailPresentationController';
 import { collectUniqueUserIds } from './eventDetail/eventDetailData';
-import {
-    CheckoutPreviewDialog,
-    PasswordConfirmationDialog,
-    PaymentPlanPreviewDialog,
-    RegistrationQuestionsDialog,
-    SigningDialog,
-} from './eventDetail/EventRegistrationDialogs';
-import {
-    FreeAgentActionsDialog,
-    InlineEventAuthDialog,
-} from './eventDetail/EventDetailDialogs';
-import {
-    EventParticipantDropdowns,
-} from './eventDetail/EventParticipantsSection';
-import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
 import { createEventJoinActions } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
-import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard';
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
 import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualRegistrationPanel';
 import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
 import { EventDetailContent } from './eventDetail/EventDetailContent';
+import { EventDetailOverlays } from './eventDetail/EventDetailOverlays';
 import { useApp } from '@/app/providers';
-import { EventQrCodeModal } from '@/components/events/EventQrCodeModal';
-import BillingAddressModal from '@/components/ui/BillingAddressModal';
-import PaymentModal from '@/components/ui/PaymentModal';
-import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
 import {
     trackEventOutboundClicked,
     trackEventRegistrationStarted,
@@ -94,6 +71,7 @@ export default function EventDetailSheet({
     publicCompletion,
 }: EventDetailSheetProps) {
     const todayForDob = new Date();
+    const presentationController = useEventDetailPresentationController();
     const {
         user,
         authUser,
@@ -153,7 +131,7 @@ export default function EventDetailSheet({
         closeQrCode,
         toggleTeamJoinOptions,
         toggleMobileJoin,
-    } = useEventDetailPresentationController();
+    } = presentationController;
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
@@ -162,6 +140,7 @@ export default function EventDetailSheet({
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
     const [selectedChildId, setSelectedChildId] = useState('');
     const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
+    const registrationWorkflowController = useRegistrationWorkflowController();
     const {
         setPhase: setRegistrationWorkflowPhase,
         setManualPaymentOpened: setShowManualPaymentModal,
@@ -177,7 +156,7 @@ export default function EventDetailSheet({
         showManualPaymentModal,
         confirmingPurchase,
         paymentPlanPreview,
-    } = useRegistrationWorkflowController();
+    } = registrationWorkflowController;
     const {
         anchorRef: joinCardAnchorRef,
         cardRef: joinCardRef,
@@ -201,6 +180,22 @@ export default function EventDetailSheet({
         event: currentEvent,
         selectedOccurrence,
     });
+    const checkoutController = useEventCheckoutController({
+        user,
+        eventId: currentEvent?.$id,
+        occurrence: selectedWeeklyOccurrence,
+        registrationQuestionAnswers,
+        selectedTeamId,
+        selectedDivisionId,
+        selectedDivisionTypeKey,
+        setRegistrationQuestionAnswers,
+        setSelectedTeamId,
+        setSelectedDivisionId,
+        setSelectedDivisionTypeKey,
+        setJoining,
+        setJoinError,
+        setWorkflowPhase: setRegistrationWorkflowPhase,
+    });
     const {
         paymentData,
         pendingCheckout: pendingEventCheckout,
@@ -223,22 +218,7 @@ export default function EventDetailSheet({
         continueAfterBillingAddress,
         closePayment,
         clearPaymentData,
-    } = useEventCheckoutController({
-        user,
-        eventId: currentEvent?.$id,
-        occurrence: selectedWeeklyOccurrence,
-        registrationQuestionAnswers,
-        selectedTeamId,
-        selectedDivisionId,
-        selectedDivisionTypeKey,
-        setRegistrationQuestionAnswers,
-        setSelectedTeamId,
-        setSelectedDivisionId,
-        setSelectedDivisionTypeKey,
-        setJoining,
-        setJoinError,
-        setWorkflowPhase: setRegistrationWorkflowPhase,
-    });
+    } = checkoutController;
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
         [currentEvent],
@@ -252,6 +232,17 @@ export default function EventDetailSheet({
         }),
         [currentEvent.imageId, eventImageFallbackUrl],
     );
+    const navigationController = useEventDetailNavigationController({
+        event: currentEvent,
+        user,
+        refreshSession,
+        onClose,
+        onWeeklyOccurrenceChange,
+        publicCompletion,
+        clearRegistrationProgress: clearEventRegistrationProgress,
+        setJoinError,
+        setJoinNotice,
+    });
     const {
         eventStartDate,
         eventMinAge,
@@ -321,35 +312,14 @@ export default function EventDetailSheet({
         viewBracket: handleBracketClick,
         selectWeeklySession: handleWeeklySessionSelect,
         navigateToCompletion: navigateToPublicEventCompletion,
-    } = useEventDetailNavigationController({
-        event: currentEvent,
-        user,
-        refreshSession,
-        onClose,
-        onWeeklyOccurrenceChange,
-        publicCompletion,
-        clearRegistrationProgress: clearEventRegistrationProgress,
-        setJoinError,
-        setJoinNotice,
-    });
+    } = navigationController;
     useDivisionSelectionSynchronization({
         options: divisionOptions,
         setSelectedDivisionId,
         setSelectedDivisionTypeKey,
     });
 
-    const {
-        manualPaymentBill,
-        registeringChild,
-        setRegisteringChild,
-        childRegistration,
-        childConsent,
-        childRegistrationChildId,
-        ensureWeeklyOccurrenceSelected,
-        finalizeJoin,
-        submitManualProof: handleManualPaymentProofSubmit,
-        resetChildRegistrationState,
-    } = useEventJoinFinalizationController({
+    const joinFinalizationController = useEventJoinFinalizationController({
         event: currentEvent,
         checkoutEvent,
         user,
@@ -374,7 +344,19 @@ export default function EventDetailSheet({
         setJoinNotice,
         setManualPaymentOpened: setShowManualPaymentModal,
     });
-    const { confirmRegistrationAfterPayment } = useRegistrationConfirmationController({
+    const {
+        manualPaymentBill,
+        registeringChild,
+        setRegisteringChild,
+        childRegistration,
+        childConsent,
+        childRegistrationChildId,
+        ensureWeeklyOccurrenceSelected,
+        finalizeJoin,
+        submitManualProof: handleManualPaymentProofSubmit,
+        resetChildRegistrationState,
+    } = joinFinalizationController;
+    const registrationConfirmationController = useRegistrationConfirmationController({
         event: currentEvent,
         user,
         selectedTeamId,
@@ -386,6 +368,21 @@ export default function EventDetailSheet({
         setJoinNotice,
     });
 
+    const { confirmRegistrationAfterPayment } = registrationConfirmationController;
+
+    const signingController = useEventSigningController({
+        event: currentEvent,
+        user,
+        userEmail: authUser?.email,
+        signingOpened: showSignModal,
+        timeoutMs: JOIN_API_TIMEOUT_MS,
+        onFinalize: finalizeJoin,
+        setWorkflowPhase: setRegistrationWorkflowPhase,
+        setJoining,
+        setJoiningChildFreeAgent,
+        setJoinError,
+        setJoinNotice,
+    });
     const {
         signLinks,
         currentSignIndex,
@@ -403,28 +400,9 @@ export default function EventDetailSheet({
         handleTextAcceptance,
         cancelSigning,
         resetSigningState,
-    } = useEventSigningController({
-        event: currentEvent,
-        user,
-        userEmail: authUser?.email,
-        signingOpened: showSignModal,
-        timeoutMs: JOIN_API_TIMEOUT_MS,
-        onFinalize: finalizeJoin,
-        setWorkflowPhase: setRegistrationWorkflowPhase,
-        setJoining,
-        setJoiningChildFreeAgent,
-        setJoinError,
-        setJoinNotice,
-    });
+    } = signingController;
 
-    const {
-        shouldAsk: shouldAskRegistrationQuestions,
-        open: openRegistrationQuestionsStep,
-        close: closeRegistrationQuestionsStep,
-        updateAnswer: updateRegistrationQuestionAnswer,
-        submit: submitRegistrationQuestionsStep,
-        reset: resetRegistrationQuestions,
-    } = useRegistrationQuestionsController({
+    const registrationQuestionsController = useRegistrationQuestionsController({
         questions: registrationQuestions,
         answers: registrationQuestionAnswers,
         setAnswers: setRegistrationQuestionAnswers,
@@ -442,6 +420,14 @@ export default function EventDetailSheet({
         setJoinError,
         setJoinNotice,
     });
+    const {
+        shouldAsk: shouldAskRegistrationQuestions,
+        open: openRegistrationQuestionsStep,
+        close: closeRegistrationQuestionsStep,
+        updateAnswer: updateRegistrationQuestionAnswer,
+        submit: submitRegistrationQuestionsStep,
+        reset: resetRegistrationQuestions,
+    } = registrationQuestionsController;
 
     useEventDetailInactiveReset({
         active: isActive,
@@ -960,166 +946,44 @@ export default function EventDetailSheet({
         />
     );
 
-    const renderEventTeamParticipant = (participant: Team | UserData) => (
-        <EventTeamParticipantCard
-            event={currentEvent}
-            team={participant as Team}
-            user={user}
-            divisionNameIndex={divisionDisplayNameIndex}
-            onRequireAuth={openAuthModal}
-            onReload={() => loadEventDetails(currentEvent.$id, { automatic: false })}
-            onNotice={setJoinNotice}
-        />
-    );
-
     return (
         <>
             {content}
-
-            <EventQrCodeModal
-                eventId={currentEvent.$id}
-                eventName={currentEvent.name || 'Event'}
-                eventUrl={currentEventPublicUrl}
-                organizationLogoId={currentOrganizationLogoId}
-                opened={showQrCodeModal}
-                onClose={closeQrCode}
-            />
-
-            <EventParticipantDropdowns
-                visible={showParticipantsSection}
-                isTeamSignup={isTeamSignup}
-                playersOpened={showPlayersDropdown}
-                teamsOpened={showTeamsDropdown}
-                freeAgentsOpened={showFreeAgentsDropdown}
-                players={players}
-                teams={teams}
+            <EventDetailOverlays
+                checkoutController={checkoutController}
+                checkoutEvent={checkoutEvent}
+                currentEvent={currentEvent}
+                currentEventPublicUrl={currentEventPublicUrl}
+                currentOrganizationLogoId={currentOrganizationLogoId}
+                divisionDisplayNameIndex={divisionDisplayNameIndex}
                 freeAgents={freeAgents}
-                loading={isLoadingEvent}
-                renderTeam={renderEventTeamParticipant}
-                onClosePlayers={closePlayersDropdown}
-                onCloseTeams={closeTeamsDropdown}
-                onCloseFreeAgents={closeFreeAgentsDropdown}
-                onOpenFreeAgentActions={openFreeAgentActions}
-            />
-
-            <InlineEventAuthDialog
-                opened={showAuthModal}
-                mode={authModalMode}
-                form={authModalForm}
-                loading={authModalLoading}
-                error={authModalError}
-                maxDateOfBirth={maxAuthDob}
-                verificationEmail={authVerificationEmail}
-                verificationMessage={authVerificationMessage}
-                verificationMessageType={authVerificationMessageType}
-                resendingVerification={authResendingVerification}
-                onFieldChange={handleAuthModalInputChange}
-                onToggleMode={toggleAuthModalMode}
-                onResendVerification={handleAuthModalResendVerification}
-                onContinueWithGoogle={handleAuthModalGoogle}
-                onSubmit={submitAuthModal}
-                onClose={closeAuthModal}
-            />
-
-            <FreeAgentActionsDialog
-                user={selectedFreeAgentActionUser}
-                eventId={currentEvent?.$id ?? null}
-                onInvite={handleInviteFreeAgentToTeam}
-                onClose={closeFreeAgentActions}
-            />
-
-            <RegistrationQuestionsDialog
-                opened={showRegistrationQuestionsModal}
-                questions={registrationQuestions}
-                answers={registrationQuestionAnswers}
-                error={joinError}
-                submitting={joining || registeringChild}
-                onAnswerChange={updateRegistrationQuestionAnswer}
-                onClose={closeRegistrationQuestionsStep}
-                onSubmit={submitRegistrationQuestionsStep}
-            />
-
-            <PaymentPlanPreviewDialog
-                opened={Boolean(paymentPlanPreview)}
-                ownerLabel={paymentPlanPreview?.ownerLabel ?? 'you'}
-                divisionName={selectedDivisionOption?.name}
-                totalPriceCents={selectedDivisionBilling.priceCents}
-                rows={paymentPlanPreviewRows}
-                onClose={() => setPaymentPlanPreview(null)}
-                onContinue={continuePaymentPlanPreview}
-            />
-
-            <PasswordConfirmationDialog
-                opened={showPasswordModal}
-                password={password}
-                error={passwordError}
-                loading={confirmingPassword}
-                onPasswordChange={setPassword}
-                onClose={cancelPasswordConfirmation}
-                onSubmit={confirmPasswordAndStartSigning}
-            />
-
-            <SigningDialog
-                opened={showSignModal}
-                signLinks={signLinks}
-                currentIndex={currentSignIndex}
-                textAccepted={textAccepted}
-                recording={recordingSignature}
-                onTextAcceptedChange={setTextAccepted}
-                onAcceptText={handleTextAcceptance}
-                onFinishedSigning={handleSignedDocument}
-                onClose={cancelSigning}
-            />
-
-            <CheckoutPreviewDialog
-                opened={showCheckoutPreviewModal && Boolean(pendingEventCheckout)}
-                originalPriceCents={normalizePriceCents(selectedDivisionBilling.priceCents)}
-                discountCode={discountCode}
-                discountPreview={discountPreview}
-                discountPreviewLoading={discountPreviewLoading}
-                discountPreviewError={discountPreviewError}
-                checkoutError={joinError}
+                isLoadingEvent={isLoadingEvent}
+                isTeamSignup={isTeamSignup}
+                joinError={joinError}
                 joining={joining}
-                onDiscountCodeChange={handleCheckoutDiscountCodeChange}
-                onClearDiscount={clearCheckoutDiscount}
-                onApplyDiscount={handleApplyDiscountPreview}
-                onCheckout={continueCheckoutPreview}
-                onClose={closeCheckoutPreview}
-            />
-
-            <BillingAddressModal
-                opened={showBillingAddressModal}
-                onClose={closeBillingAddress}
-                onSaved={continueAfterBillingAddress}
-            />
-
-            <PaymentModal
-                isOpen={showPaymentModal}
-                onClose={closePayment}
-                event={checkoutEvent ?? currentEvent}
-                paymentData={paymentData}
-                onPaymentSuccess={async () => {
-                    clearPaymentData();
-                    clearEventRegistrationProgress();
-                    await confirmRegistrationAfterPayment();
-                }}
-                onPaymentPending={async () => {
-                    clearPaymentData();
-                    clearEventRegistrationProgress();
-                    await confirmRegistrationAfterPayment({ pendingPayment: true });
-                }}
-            />
-            <ManualPaymentProofDialog
-                opened={showManualPaymentModal}
-                event={checkoutEvent ?? currentEvent}
-                bill={manualPaymentBill}
-                zIndex={SIGN_MODAL_Z_INDEX}
-                onClose={() => setShowManualPaymentModal(false)}
-                onSubmit={handleManualPaymentProofSubmit}
-            />
-            <RegistrationHoldTimer
-                expiresAt={registrationHoldExpiresAt}
-                onExpire={handleEventRegistrationHoldExpired}
+                joinFinalizationController={joinFinalizationController}
+                maxAuthDob={maxAuthDob}
+                navigationController={navigationController}
+                onContinuePaymentPlanPreview={continuePaymentPlanPreview}
+                onInviteFreeAgentToTeam={handleInviteFreeAgentToTeam}
+                onParticipantReload={() => loadEventDetails(currentEvent.$id, { automatic: false })}
+                onSetJoinNotice={setJoinNotice}
+                participantsVisible={showParticipantsSection}
+                paymentPlanPreviewRows={paymentPlanPreviewRows}
+                players={players}
+                presentationController={presentationController}
+                registeringChild={registeringChild}
+                registrationConfirmationController={registrationConfirmationController}
+                registrationQuestionAnswers={registrationQuestionAnswers}
+                registrationQuestions={registrationQuestions}
+                registrationQuestionsController={registrationQuestionsController}
+                registrationWorkflowController={registrationWorkflowController}
+                selectedDivisionName={selectedDivisionOption?.name}
+                selectedDivisionPriceCents={selectedDivisionBilling.priceCents}
+                signingController={signingController}
+                signingModalZIndex={SIGN_MODAL_Z_INDEX}
+                teams={teams}
+                user={user}
             />
         </>
     );
