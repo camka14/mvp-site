@@ -35,7 +35,6 @@ import {
 import {
     normalizeEventOfficialPositions,
     normalizeEventOfficials,
-    normalizeOfficialSchedulingMode,
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
 import { buildEventFormSchema } from './eventForm/schema';
@@ -104,10 +103,9 @@ import { MatchRulesConfigSection } from './eventForm/sections/MatchRulesConfigSe
 import { RegistrationQuestionsSection } from './eventForm/sections/RegistrationQuestionsSection';
 import { ScheduleConfigBody } from './eventForm/sections/ScheduleConfigBody';
 import { ScheduleConfigSection } from './eventForm/sections/ScheduleConfigSection';
-import { StaffManagementPanel } from './eventForm/sections/StaffManagementPanel';
-import { StaffSection } from './eventForm/sections/StaffSection';
 import { ManualPaymentSettingsSection } from './eventForm/sections/ManualPaymentSettingsSection';
 import { EventFormDivisionSection } from './eventForm/sections/EventFormDivisionSection';
+import { EventFormStaffSection } from './eventForm/sections/EventFormStaffSection';
 import type { EventFormHandle, EventFormProps } from './eventForm/types';
 
 const SHEET_POPOVER_Z_INDEX = 1800;
@@ -575,56 +573,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [eventData.sportConfig, eventData.sportId, sportsById],
     );
 
-    const {
-        assignedActiveOfficialsForStaffing,
-        assignedHostCards,
-        assignedOfficialCards,
-        assignedUserIdSetByRole,
-        assistantHostValue,
-        availableOfficialFieldOptions,
-        eventOfficialByUserId,
-        filteredOrganizationStaffEntries,
-        handleAddAssistantHost,
-        handleAddOfficial,
-        handleAddOfficialPosition,
-        handleAssignedHostsScroll,
-        handleAssignedOfficialsScroll,
-        handleHostChange,
-        handleInviteFieldChange,
-        handleInviteRoleToggle,
-        handleOrganizationStaffScroll,
-        handleRemoveAssistantHost,
-        handleRemoveOfficial,
-        handleRemoveOfficialPosition,
-        handleRemovePendingStaffInviteRole,
-        handleResetOfficialPositionsFromSport,
-        handleStagePendingStaffInvite,
-        handleUpdateEventOfficialEligibility,
-        handleUpdateOfficialPosition,
-        hostCardVisibleCount,
-        newStaffInvite,
-        nonOrgStaffError,
-        nonOrgStaffResults,
-        nonOrgStaffSearch,
-        nonOrgStaffSearchLoading,
-        officialCardVisibleCount,
-        officialStaffingCoverageError,
-        organizationAllowedHostIds,
-        organizationAllowedOfficialIds,
-        organizationOfficialsById,
-        organizationStaffSearch,
-        organizationStaffStatusFilter,
-        organizationStaffTypeFilter,
-        organizationStaffVisibleCount,
-        requiredOfficialSlotsPerMatch,
-        setNonOrgStaffSearch,
-        setOrganizationStaffSearch,
-        setOrganizationStaffStatusFilter,
-        setOrganizationStaffTypeFilter,
-        sportOfficialPositionTemplates,
-        staffInviteError,
-        validatePendingStaffAssignments,
-    } = useStaffOfficialController({
+    const staffController = useStaffOfficialController({
         eventData,
         activeEditingEvent,
         incomingEvent,
@@ -639,6 +588,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData,
         setPendingStaffInvites,
     });
+    const {
+        assignedActiveOfficialsForStaffing,
+        officialStaffingCoverageError,
+        organizationAllowedHostIds,
+        organizationAllowedOfficialIds,
+        organizationOfficialsById,
+        requiredOfficialSlotsPerMatch,
+        validatePendingStaffAssignments,
+    } = staffController;
 
     const clearLeagueSlotErrors = useCallback(() => {
         clearErrors('leagueSlots');
@@ -1003,86 +961,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-match-rules')}
                         />
 
-                        {showStaffSection ? (
-                            <StaffSection
-                                collapsed={collapsedSections['section-officials']}
-                                onToggle={() => toggleSectionCollapse('section-officials')}
-                            >
-                                    <StaffManagementPanel
-                                        control={control}
-                                        eventData={eventData}
-                                        isOrganizationHostedEvent={isOrganizationHostedEvent}
-                                        officialStaffingCoverageError={officialStaffingCoverageError}
-                                        sportDefaultPositionCount={sportOfficialPositionTemplates.length}
-                                        maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
-                                        maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
-                                        comboboxProps={sharedComboboxProps}
-                                        organizationStaffSearch={organizationStaffSearch}
-                                        organizationStaffTypeFilter={organizationStaffTypeFilter}
-                                        organizationStaffStatusFilter={organizationStaffStatusFilter}
-                                        filteredOrganizationStaffEntries={filteredOrganizationStaffEntries}
-                                        organizationStaffVisibleCount={organizationStaffVisibleCount}
-                                        nonOrgStaffSearch={nonOrgStaffSearch}
-                                        nonOrgStaffResults={nonOrgStaffResults}
-                                        nonOrgStaffSearchLoading={nonOrgStaffSearchLoading}
-                                        nonOrgStaffError={nonOrgStaffError}
-                                        newStaffInvite={newStaffInvite}
-                                        assignedOfficialUserIds={assignedUserIdSetByRole.OFFICIAL}
-                                        assistantHostIds={assistantHostValue}
-                                        assignedOfficialCards={assignedOfficialCards}
-                                        assignedHostCards={assignedHostCards}
-                                        officialCardVisibleCount={officialCardVisibleCount}
-                                        hostCardVisibleCount={hostCardVisibleCount}
-                                        eventOfficialByUserId={eventOfficialByUserId}
-                                        availableOfficialFieldOptions={availableOfficialFieldOptions}
-                                        staffInviteError={staffInviteError}
-                                        eventOfficialsDisabled={isImmutableField('eventOfficials')}
-                                        assistantHostsDisabled={isImmutableField('assistantHostIds')}
-                                        hostDisabled={isImmutableField('hostId')}
-                                        onRosterEditsChange={(checked) => {
-                                            if (!checked) {
-                                                setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
-                                            }
-                                        }}
-                                        onTeamsOfficiateChange={(checked) => {
-                                            if (!checked) {
-                                                setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
-                                                if (eventData.officialSchedulingMode === 'TEAM_STAFFING') {
-                                                    setValue('officialSchedulingMode', 'SCHEDULE', { shouldDirty: true, shouldValidate: true });
-                                                }
-                                            }
-                                        }}
-                                        onSchedulingModeChange={(value) => {
-                                            const nextMode = normalizeOfficialSchedulingMode(value);
-                                            setValue('officialSchedulingMode', nextMode, { shouldDirty: true, shouldValidate: true });
-                                            if (nextMode === 'TEAM_STAFFING' && !eventData.doTeamsOfficiate) {
-                                                setValue('doTeamsOfficiate', true, { shouldDirty: true, shouldValidate: true });
-                                            }
-                                        }}
-                                        onLoadSportDefaults={handleResetOfficialPositionsFromSport}
-                                        onAddPosition={handleAddOfficialPosition}
-                                        onUpdatePosition={handleUpdateOfficialPosition}
-                                        onRemovePosition={handleRemoveOfficialPosition}
-                                        onOrganizationStaffSearchChange={setOrganizationStaffSearch}
-                                        onOrganizationStaffTypeFilterChange={setOrganizationStaffTypeFilter}
-                                        onOrganizationStaffStatusFilterChange={setOrganizationStaffStatusFilter}
-                                        onOrganizationStaffScroll={handleOrganizationStaffScroll}
-                                        onAddOfficial={handleAddOfficial}
-                                        onAddAssistantHost={handleAddAssistantHost}
-                                        onSetHost={handleHostChange}
-                                        onNonOrgStaffSearchChange={setNonOrgStaffSearch}
-                                        onInviteFieldChange={handleInviteFieldChange}
-                                        onInviteRoleToggle={handleInviteRoleToggle}
-                                        onStageInvite={handleStagePendingStaffInvite}
-                                        onAssignedOfficialsScroll={handleAssignedOfficialsScroll}
-                                        onAssignedHostsScroll={handleAssignedHostsScroll}
-                                        onRemovePendingStaffInviteRole={handleRemovePendingStaffInviteRole}
-                                        onRemoveOfficial={handleRemoveOfficial}
-                                        onRemoveAssistantHost={handleRemoveAssistantHost}
-                                        onUpdateEventOfficialEligibility={handleUpdateEventOfficialEligibility}
-                                    />
-                            </StaffSection>
-                        ) : null}
+                        <EventFormStaffSection
+                            visible={showStaffSection}
+                            collapsed={collapsedSections['section-officials']}
+                            control={control}
+                            eventData={eventData}
+                            isOrganizationHostedEvent={isOrganizationHostedEvent}
+                            maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
+                            maxShortTextLength={MAX_SHORT_TEXT_LENGTH}
+                            comboboxProps={sharedComboboxProps}
+                            isImmutableField={isImmutableField}
+                            setValue={setValue}
+                            staffController={staffController}
+                            onToggle={() => toggleSectionCollapse('section-officials')}
+                        />
 
                         <EventFormDivisionSection
                             collapsed={collapsedSections['section-division-settings']}
