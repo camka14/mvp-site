@@ -1,0 +1,201 @@
+# Decompose the web event detail and event form interaction owners
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. Maintain this document in accordance with `PLANS.md` at the repository root.
+
+This plan continues the completed extraction history in `plans/event-form-split-execplan.md`, but it is self-contained for the remaining AUD-003 work. The earlier plan explains how `EventForm.tsx` fell from roughly 14,647 lines to its current size by moving helpers and visual sections. This plan starts from the current checkout and covers both remaining monoliths named by AUD-003.
+
+## Purpose / Big Picture
+
+The public event detail and event create/edit form currently work, but their top-level React components still own thousands of lines of unrelated state, effects, commands, and rendering. That makes a change to one registration dialog, one event-loading request, or one form synchronization rule unusually likely to affect another flow.
+
+After this plan is complete, users must see the same event details, registration choices, authentication and signing dialogs, event form fields, validation, scheduling, staff, divisions, resources, and save behavior. The observable improvement is reliability: incompatible registration dialogs cannot be active together, stale requests cannot overwrite a newly selected event, and each major workflow has direct focused tests. The internal result is that `EventDetailSheet.tsx` and `EventForm.tsx` become compatibility facades that compose focused controllers and views rather than owning every behavior themselves.
+
+## Progress
+
+- [x] (2026-07-14 21:15Z) Reconciled AUD-003 against current source and measured `EventDetailSheet.tsx` at 7,219 lines, `EventForm.tsx` at 4,376 lines, `useDivisionEditorController.ts` at 843 lines, and `useStaffOfficialController.ts` at 892 lines.
+- [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
+- [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
+- [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract.
+- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup.
+- [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
+- [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
+- [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
+- [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
+- [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
+
+## Surprises & Discoveries
+
+- Observation: `EventForm.tsx` is no longer primarily a rendering monolith; the prior split already extracted most pure helpers and visual sections.
+  Evidence: current source contains `eventForm/defaultValues.ts`, `eventStateMapping.ts`, `schema.ts`, `divisionForm.ts`, `slotForm.ts`, `slotValidation.ts`, `slotConflictHelpers.ts`, `resourceGroups.ts`, `rentalResources.ts`, focused section components, and seven extracted hooks. The remaining 4,376 lines are mostly orchestration and synchronization.
+
+- Observation: two extracted EventForm hooks are themselves too broad to count as a completed ownership split.
+  Evidence: `useDivisionEditorController.ts` is 843 lines and `useStaffOfficialController.ts` is 892 lines, each combining draft state, derived models, commands, and side effects.
+
+- Observation: `EventDetailSheet.tsx` models a linear registration workflow with many independent booleans.
+  Evidence: the component owns separate flags for registration questions, payment, manual proof, billing address, checkout preview, signing, password confirmation, authentication, team options, participant drawers, and more. Those flags allow impossible combinations unless every callback resets every sibling correctly.
+
+- Observation: the current event-detail helper region is already a natural first safe extraction.
+  Evidence: lines before the component contain pure weekly-session, division/pool, payment-plan, organization-label, schedule-formatting, and eligibility functions. They can move with input/output tests before state ownership changes.
+
+- Observation: bracketed Next.js route paths should be passed to Jest through `--runTestsByPath`.
+  Evidence: the earlier EventForm split established that treating `src/app/events/[id]/...` as a pattern can produce a false zero-test result.
+
+## Decision Log
+
+- Decision: preserve `EventDetailSheet.tsx` and `EventForm.tsx` as stable public facades until the final milestone.
+  Rationale: discover pages and schedule pages already import these paths and depend on their props and imperative API. Moving internals behind them keeps integration risk bounded and makes each milestone independently reversible.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: move pure calculations before changing state ownership.
+  Rationale: direct input/output tests can prove a mechanical move without mixing it with workflow changes. This creates stable domain modules for later controllers.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: represent event registration as one discriminated workflow step rather than a collection of modal booleans.
+  Rationale: questions, password confirmation, signing, checkout preview, billing address, payment, manual proof, and final confirmation are mutually exclusive phases of one workflow. One reducer makes invalid combinations unrepresentable and gives cancellation one explicit transition.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: keep React Hook Form as the sole persisted `EventFormValues` owner.
+  Rationale: a controller that copies the entire draft into separate React state would create the parallel source of truth AUD-003 warns about. Controllers may own transient request or editor state, but persisted event fields must be read and written through the existing form API.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: split controllers by dependency and command ownership, not merely by line count.
+  Rationale: independent computations and effects should not rerun because another workflow changed. Each controller must have one reason to change and an explicit typed contract; no new catch-all hook is acceptable even if it shortens the facade.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: do not introduce SWR, another form library, global state, route changes, API changes, database changes, or storage changes in this refactor.
+  Rationale: the existing service and React Hook Form boundaries are sufficient. A behavior-preserving decomposition should not combine dependency or contract migration with ownership cleanup.
+  Date/Author: 2026-07-14 / Codex
+
+## Outcomes & Retrospective
+
+Planning and current-source mapping are complete. Implementation has not started under this plan. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+
+## Context and Orientation
+
+Work from `/Users/elesesy/StudioProjects/mvp-site` on the existing audit branch. The repository is a Next.js App Router application using React, TypeScript, Mantine, React Hook Form, and service modules that call server routes. Do not stage or alter unrelated broadcast-overlay work already present in the worktree.
+
+`src/app/discover/components/EventDetailSheet.tsx` is the public event-details and registration surface. It receives an event identifier or event data through `EventDetailSheetProps`, loads the canonical event and related people/teams/questions, computes weekly occurrences and eligible divisions, presents public details, and runs authentication, registration, billing, signing, checkout, manual-payment, waitlist, team, child, and free-agent workflows. Its public default export and props must remain compatible.
+
+`src/app/events/[id]/schedule/components/EventForm.tsx` is the event create/edit form used by the schedule page. React Hook Form owns `EventFormValues`; the component exposes an `EventFormHandle` imperative API to its parent and composes sections under `src/app/events/[id]/schedule/components/eventForm/`. Its public import path, props, draft-change behavior, validation, and imperative handle must remain compatible.
+
+A controller in this plan is a hook that owns one workflow's transient state, effects, and commands. A view model is immutable data prepared for rendering. A command is a function that performs one user action, usually by calling an existing service. A facade is the stable top-level component that composes controllers and views without reimplementing their internals.
+
+The principal existing event-detail tests are:
+
+    src/app/discover/components/__tests__/EventDetailSheetDetails.test.tsx
+    src/app/discover/components/__tests__/EventDetailSheetJoinPaymentPlanConflict.test.tsx
+    src/app/discover/components/__tests__/EventDetailSheetJoinPaymentPlanTeamJoin.test.tsx
+
+The principal EventForm tests are:
+
+    src/app/events/[id]/schedule/components/__tests__/EventForm.test.tsx
+    src/app/events/[id]/schedule/components/__tests__/eventFormHelpers.test.ts
+
+Existing end-to-end coverage includes event joining, event creation, rentals, and template parameters under `e2e/`. These tests remain the browser-level safety net after focused unit and component tests pass.
+
+## Plan of Work
+
+Milestone 1 adds characterization coverage before moving behavior. Add direct tests for the current event-load generation or request-token rule so a late response for event A cannot overwrite event B. Add tests proving only one registration phase is active, canceling signing stops its poll and returns to an intentional prior/idle state, and a manual-payment transition cannot leave checkout or payment dialogs active. For EventForm, add tests for cancellation or invalidation of superseded slot-conflict requests, the division-save transformation, opening/reset/dirty-baseline behavior, and every method on `EventFormHandle`. These tests should describe current intended behavior; if one exposes a real defect, document it in `Surprises & Discoveries` and fix it in the narrow controller milestone that owns it.
+
+Milestone 2 creates `src/app/discover/components/eventDetail/` and moves pure functions without changing JSX or state. Put weekly date parsing and `buildWeeklySessionOptions`/`resolveSelectedWeeklySessionOption` in `weeklySessions.ts`. Put division aliasing, tournament-pool mapping, option building, payment-plan rows, and eligibility in `divisionRegistration.ts`. Put public organization labels, capacity/permission summaries, schedule groups, and display formatting in `eventDetailPresentation.ts`. Keep domain types beside the module that owns them or in a narrowly named `types.ts`; do not create a miscellaneous helper dump or a barrel export. Add direct tests for boundary dates, occurrence selection, tournament pool aliases, installment normalization, and age/eligibility cases.
+
+Milestone 3 extracts loading and authentication. Create `hooks/useEventDetailDataController.ts` as the sole owner of event hydration, participants, host organization/user data, family children, managed teams, registration questions, loading/error state, request identity, cancellation, and `reload`. Its load result must be accepted only when the request key still matches the active event and selected weekly occurrence. Create `hooks/useInlineEventAuthController.ts` as the sole owner of login/signup mode, credentials, verification/resend feedback, Google sign-in entry, and reset. The facade may consume returned state and actions but must not retain duplicate flags or invoke the same services directly.
+
+Milestone 4 extracts the registration workflow. Create `registrationCommands.ts` for stateless service orchestration that can be tested with dependency fakes; it should cover self, child, team, free-agent, waitlist, bill, signing-link, checkout, manual-payment, withdrawal, and confirmation operations without owning React state. Create `hooks/useEventRegistrationController.ts` around a reducer with exactly one active workflow phase. The initial phase vocabulary is `idle`, `questions`, `payment-plan-preview`, `password`, `signing`, `checkout-preview`, `billing-address`, `payment`, `manual-proof`, and `confirming`; add a phase only when a real reachable flow cannot be expressed by these names. Put signing polling in `hooks/useSigningStatusPoll.ts`, driven by the active signing state and exact registration/document identity. It must stop on cancellation, event change, completion, error, and unmount.
+
+Once controllers are stable, move rendering into `EventDetailView.tsx`, `EventHero.tsx`, `EventOverviewSections.tsx`, `WeeklySessionPicker.tsx`, `EventParticipantsSection.tsx`, `EventRegistrationCard.tsx`, `ChildRegistrationPanel.tsx`, and `EventDetailDialogs.tsx`. These components receive typed values/actions and do not call services. Components must be declared at module scope so React does not remount them on every facade render. Heavy dialogs may use `next/dynamic` only if bundle evidence shows they are not needed for initial event display and loading them lazily does not alter focus or hydration behavior.
+
+Milestone 5 extracts remaining EventForm orchestration behind existing form state. Create `useEventFormLifecycle.ts` for initial defaults, edit-event changes, reset, immutable defaults, dirty baseline, and draft notification. Create `useEventPaymentController.ts` for installments, manual-payment links, tax preview, automatic-refund availability, and Stripe onboarding. Create `useEventDivisionSynchronization.ts` for sport-derived, playoff, division, and scoring invariants that are currently spread across effects. Create `useDivisionCommitController.ts` and a pure `buildDivisionCommitPatch()` so a division save produces one tested patch before it updates React Hook Form. Create `useEventResourceController.ts` for organization/rental resources, local fields, selected resources, and derived options. Create `useEventSlotController.ts` for add/update/remove, schedule-mode changes, request cancellation, external conflicts, auto-resolution, and normalization. Create `useEventFormSubmissionController.ts` for draft construction, validation, staff snapshot application, error flattening, save notification, and dirty-baseline commit.
+
+Controller dependencies must flow in one direction: React Hook Form draft, then lifecycle/catalog data, then payment/division/resource controllers, then slot/staff controllers, then submission, then render-only sections. A controller must not import a view. A pure helper must not import a service. No controller may retain a second complete `EventFormValues` value.
+
+Milestone 6 splits the existing large controllers. Refactor `useDivisionEditorController.ts` into a small facade over a draft-state hook, pure normalization/commit helpers, and domain commands. Refactor `useStaffOfficialController.ts` into a small facade over `useStaffRosterController.ts` and `useOfficialAssignmentsController.ts`. Move remaining top-level section wiring into `EventFormSections.tsx`, which renders from explicit models and actions without services or form-wide state mutation. Keep direct module imports rather than adding a barrel file that can hide dependency cycles.
+
+Milestone 7 validates the complete behavior. Run the focused suites after every milestone, then TypeScript and a production build. Start the release build locally and use the in-app browser at desktop and mobile widths. Verify `/discover`, an inline public event page, and the schedule create/edit page. Exercise weekly occurrence selection, free and paid registration, division/team selection, auth and signing dialogs, participant drawers, sticky join-card geometry, dirty-state reporting, division edits, organization and rental resources, timeslot conflicts, save, and reload. Check for console/page errors and ensure the rendered behavior matches the pre-refactor characterization tests.
+
+## Concrete Steps
+
+Before each milestone, inspect scope from the repository root:
+
+    cd /Users/elesesy/StudioProjects/mvp-site
+    git status --short
+    git diff --check
+
+Run the event-detail component safety net serially:
+
+    npx jest --runInBand \
+      src/app/discover/components/__tests__/EventDetailSheetDetails.test.tsx \
+      src/app/discover/components/__tests__/EventDetailSheetJoinPaymentPlanConflict.test.tsx \
+      src/app/discover/components/__tests__/EventDetailSheetJoinPaymentPlanTeamJoin.test.tsx
+
+Run the bracketed EventForm paths literally:
+
+    npx jest --runInBand --runTestsByPath \
+      'src/app/events/[id]/schedule/components/__tests__/EventForm.test.tsx' \
+      'src/app/events/[id]/schedule/components/__tests__/eventFormHelpers.test.ts'
+
+After each passing milestone, inspect the file-scoped diff, run `git diff --check`, stage only the milestone paths, run `git diff --cached --check`, and commit the milestone. Never stage unrelated broadcast-overlay files.
+
+After all unit/component milestones:
+
+    npx tsc --noEmit
+    npm run build
+
+Then run the browser suite against the configured local release server:
+
+    npx playwright test \
+      e2e/event-join.spec.ts \
+      e2e/event-create.spec.ts \
+      e2e/rental-purchase.spec.ts \
+      e2e/event-template-parameters.spec.ts \
+      --project=chromium
+
+Record exact test counts, build result, local URLs, viewport sizes, and any unreachable authenticated path under `Artifacts and Notes` before marking the final progress item complete.
+
+## Validation and Acceptance
+
+Acceptance is behavioral first. Existing event-detail and event-form props and `EventFormHandle` remain compatible. A user can view an event, switch weekly occurrences, authenticate, choose a registrant/team/division, answer questions, sign required documents, preview and complete the appropriate payment path, withdraw, and inspect participants without stale data or contradictory dialogs. A host can create or edit an event, change resources, divisions, staff, scoring, and slots, see conflicts and validation, save, reload, and retain the same persisted values.
+
+All existing focused suites plus new direct controller/helper tests must pass. TypeScript and the production build must pass. Browser acceptance must show no new console errors, page errors, hydration warnings, focus-loss loops, clipped dialogs, or mobile sticky-card regressions.
+
+The structural acceptance targets are:
+
+- `EventDetailSheet.tsx` is no more than about 600 lines and contains composition, facade props, and no direct service orchestration.
+- `EventForm.tsx` is no more than about 700 lines and contains form creation plus controller/view composition, not workflow implementations.
+- No new interaction hook or view exceeds about 600 lines; if one approaches that size, split by ownership before closure.
+- Presentational components make no direct service/API calls.
+- Each request-owning controller cancels or rejects superseded work.
+- Registration has one active phase, not sibling modal booleans.
+- React Hook Form remains the only persisted event-draft source.
+- No route, API, database, storage, or user-facing copy change is introduced solely to satisfy line-count targets.
+
+AUD-003 is not complete merely because code moved. It is complete only when ownership is singular, dependency direction is clear, focused tests cover transitions and stale work, and release-build browser behavior passes.
+
+## Idempotence and Recovery
+
+Every milestone is an additive move followed by removal of the old implementation and is safe to repeat after a failed test. Move one cohesive region at a time; do not combine event-detail state extraction with EventForm state extraction in one commit. If a moved pure function changes output, restore the original inline implementation and compare input/output fixtures before continuing. If a controller creates duplicate state, stop and redesign its contract rather than synchronizing two copies with another effect.
+
+Request cancellation and reducer transitions must be deterministic under repeated calls. Tests should use deferred promises or fake timers and restore timers/mocks in teardown. Browser fixtures must be cleaned using their existing teardown paths. Do not reset the dirty worktree or discard unrelated user changes. Recovery is by reverting only the most recent scoped milestone commit or patching the moved symbols back through `apply_patch`.
+
+## Artifacts and Notes
+
+Planning measurements on 2026-07-14:
+
+    7,219  src/app/discover/components/EventDetailSheet.tsx
+    4,376  src/app/events/[id]/schedule/components/EventForm.tsx
+      843  src/app/events/[id]/schedule/components/eventForm/hooks/useDivisionEditorController.ts
+      892  src/app/events/[id]/schedule/components/eventForm/hooks/useStaffOfficialController.ts
+
+Current source contains about 80 `useState` calls, 14 effects, and 36 callbacks in the event-detail facade. EventForm contains about 42 effects, 49 memos, 41 callbacks, and 12 refs. These counts are diagnostic, not acceptance criteria; the goal is explicit ownership and tested behavior.
+
+Implementation transcripts and browser evidence will be appended here as milestones complete.
+
+## Interfaces and Dependencies
+
+Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
+
+Keep the existing `EventForm` export, props, `EventFormValues`, and `EventFormHandle` compatible. Controller hooks accept narrow slices of the React Hook Form API such as `control`, `getValues`, `setValue`, `reset`, and `formState` only where needed. `buildDivisionCommitPatch()` is pure and returns the exact fields to apply; `useDivisionCommitController` owns applying that result atomically. `EventFormSections.tsx` receives explicit models/actions and imports no services.
+
+Use existing React, React Hook Form, Mantine, service modules, Jest, Testing Library, Playwright, and Next.js build tooling. Do not add a state-management or data-fetching dependency. Prefer direct imports and module-scope components. Split independent effects and memo computations by their real dependencies so unrelated state changes do not retrigger other workflows.
+
+Revision note (2026-07-14): Created the self-contained AUD-003 continuation after current-source mapping showed that the earlier EventForm helper/view extraction was complete but orchestration remained concentrated, while EventDetailSheet still combined loading, registration, payment, signing, authentication, and rendering.
