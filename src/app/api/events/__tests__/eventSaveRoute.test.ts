@@ -66,15 +66,27 @@ jest.mock('@/server/repositories/locks', () => ({
 
 import { POST as eventsPost } from '@/app/api/events/route';
 
-const postRequest = (url: string, body: any) =>
+const ORIGIN_ENV_KEYS = ['PUBLIC_WEB_BASE_URL', 'NEXT_PUBLIC_SITE_URL', 'NEXT_PUBLIC_WEB_BASE_URL'] as const;
+
+const clearOriginEnv = () => {
+  for (const key of ORIGIN_ENV_KEYS) {
+    delete process.env[key];
+  }
+};
+
+const postRequest = (url: string, body: any, headers: Record<string, string> = {}) =>
   new NextRequest(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 
 describe('event save route', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
+    process.env = { ...originalEnv };
+    clearOriginEnv();
     jest.resetAllMocks();
     prismaMock.$transaction.mockImplementation(
       async (callback: (tx: typeof prismaMock) => Promise<unknown> | unknown) => callback(prismaMock),
@@ -88,6 +100,10 @@ describe('event save route', () => {
     hasOrgPermissionMock.mockResolvedValue(true);
     canManageEventMock.mockResolvedValue(true);
     prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'host_1' });
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
   });
 
   it('blocks event creation when the session user has not verified email', async () => {
@@ -220,6 +236,60 @@ describe('event save route', () => {
       }),
       baseUrl: 'http://localhost',
     });
+  });
+
+  it('uses the canonical origin for creation notifications when request host headers are hostile', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com';
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    upsertEventFromPayloadMock.mockResolvedValueOnce('event_1');
+    loadEventWithRelationsMock.mockResolvedValueOnce({ eventType: 'EVENT' });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        name: 'Canonical Event',
+        hostId: 'host_1',
+        divisions: [],
+        fieldIds: [],
+        state: 'UNPUBLISHED',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+      });
+    prismaMock.divisions.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsPost(postRequest(
+      'https://internal.service.local/api/events',
+      {
+        id: 'event_1',
+        event: {
+          name: 'Canonical Event',
+          eventType: 'EVENT',
+          start: '2026-01-01T00:00:00.000Z',
+          end: '2026-02-01T00:00:00.000Z',
+        },
+      },
+      {
+        host: 'poisoned-host.example.com',
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'attacker.example.com',
+      },
+    ));
+
+    expect(res.status).toBe(201);
+    expect(notifySocialAudienceOfEventCreationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      baseUrl: 'https://bracket-iq.com',
+    }));
+    expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
+      event: expect.objectContaining({ id: 'event_1' }),
+      baseUrl: 'https://bracket-iq.com',
+    });
+    const notificationCalls = JSON.stringify([
+      ...notifySocialAudienceOfEventCreationMock.mock.calls,
+      ...sendAdminEventCreatedNotificationMock.mock.calls,
+    ]);
+    expect(notificationCalls).not.toContain('attacker.example.com');
+    expect(notificationCalls).not.toContain('poisoned-host.example.com');
   });
 
   it('returns 500 when upsert fails and does not emit creation notifications', async () => {

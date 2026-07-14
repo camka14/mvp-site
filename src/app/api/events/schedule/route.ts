@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
@@ -196,7 +197,7 @@ export async function POST(req: NextRequest) {
     if (result.createdEvent) {
       await sendAdminEventCreatedNotification({
         event: result.event,
-        baseUrl: req.nextUrl.origin,
+        baseUrl: getRequestOrigin(req),
       }).catch((notificationError) => {
         console.warn('Failed to send admin event creation notification', {
           eventId,

@@ -37,6 +37,20 @@ describe('getRequestOrigin', () => {
     expect(getRequestOrigin(req)).toBe('https://app.bracket-iq.com');
   });
 
+  it('uses the configured apex origin instead of hostile host headers', () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com/app/path';
+
+    const req = new NextRequest('https://internal.service.local/api/events', {
+      headers: {
+        host: 'poisoned-host.example.com',
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'attacker.example.com',
+      },
+    });
+
+    expect(getRequestOrigin(req)).toBe('https://bracket-iq.com');
+  });
+
   it('allows loopback header-derived origins when no canonical origin is configured', () => {
     const req = new NextRequest('http://127.0.0.1:3000/api/auth/google/start', {
       headers: {
