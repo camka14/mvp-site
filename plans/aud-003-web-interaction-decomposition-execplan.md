@@ -17,8 +17,9 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
 - [x] (2026-07-14 14:27Z) Milestone 1: characterized stale event loads, registration-step exclusivity, signing cancellation and in-flight poll cleanup, superseded slot-conflict requests, normalized division commits, and the complete `EventFormHandle` imperative contract.
 - [x] (2026-07-14 14:14Z) Milestone 2: extracted weekly-session calculations, division/registration eligibility and payment-plan calculations, organization/schedule/display presentation helpers, and their direct tests without changing state ownership or markup.
-- [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
+- [x] (2026-07-14 14:39Z) Milestone 3: extracted event hydration, occurrence participants, host, family children, managed teams, registration questions, inline authentication, loading/error state, request identity, cancellation, and the single `reload` boundary.
 - [x] (2026-07-14 14:31Z) Milestone 3a: moved inline login/signup, verification resend, Google entry, feedback, and request invalidation into `useInlineEventAuthController`; event-detail data loading remains for Milestone 3b.
+- [x] (2026-07-14 14:39Z) Milestone 3b: moved all event-detail reads and their cancellation rules into `useEventDetailDataController`, with pure participant projection in `eventDetailData.ts`.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
@@ -61,6 +62,12 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: inline authentication had no stale-result guard when its modal closed or the event detail unmounted.
   Evidence: the extracted controller now invalidates login, signup, resend, and Google request generations on close, mode change, and unmount. A deferred-login test proves session refresh and success callbacks cannot run after cleanup.
+
+- Observation: weekly and non-weekly participant hydration independently normalized the same ids, ordering, capacity, and payment-failure state.
+  Evidence: `buildParticipantEventData()` now projects both response shapes through one tested path, including temporary canonical fallback for an entity that still arrives with `id` but no `$id`; the controller then applies the existing league/tournament parent-team filter once.
+
+- Observation: rejected stale participant requests could still enter their local catch blocks before the final publication guard.
+  Evidence: every participant and legacy free-agent success/error path now checks the controller generation and event identity before logging or publishing fallback state. The deferred event-switch component regression remains green after the move.
 
 ## Decision Log
 
@@ -264,6 +271,17 @@ First Milestone 3 extraction evidence on 2026-07-14:
 
 Four direct controller tests cover signup validation, successful login/session refresh, unverified-email resend, and deferred-login cleanup after unmount. The existing guest-event component test continues to prove the inline auth modal opens without navigating away from event details.
 
+Completed Milestone 3 evidence on 2026-07-14:
+
+    PASS 10 suites / 176 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 6,088 -> 5,546 lines
+    useEventDetailDataController.ts: 367 lines
+    eventDetailData.ts: 208 lines
+
+The four new pure data tests cover occurrence load keys, sport-scoped managed teams, canonical participant ordering/payment failures, and immutable empty-occurrence projections. Existing component tests continue to cover stale event replacement, guest auth, participant rendering, registration transitions, and payment-plan behavior through the extracted controller.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -279,3 +297,4 @@ Revision note (2026-07-14): Completed Milestone 2 by extracting public-detail pr
 Revision note (2026-07-14): Added the first Milestone 1 deferred-response characterization and closed the stale event-hydration race it exposed with 34 passing focused tests, TypeScript, and targeted lint.
 Revision note (2026-07-14): Completed Milestone 1 with registration-phase, signing-poll cleanup, slot-request invalidation, normalized division-commit, and full imperative-handle coverage; the combined safety net passes 168 tests across eight suites.
 Revision note (2026-07-14): Began Milestone 3 by extracting the inline-auth controller with explicit request invalidation and 14 passing focused tests; event hydration remains the next ownership boundary.
+Revision note (2026-07-14): Completed Milestone 3 by consolidating all event-detail reads and stale-result rejection into one 367-line controller; the ten-suite safety net passes 176 tests and the facade is now 5,546 lines.

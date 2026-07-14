@@ -31,13 +31,10 @@ import {
     formatAffiliateEventPriceRange,
     formatEventDivisionPriceRange,
     formatPrice,
-    RegistrationQuestion,
     RegistrationQuestionAnswerInput,
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
-import { eventService, type EventParticipantRegistrationEntry, type WeeklyOccurrenceSelection } from '@/lib/eventService';
-import { userService } from '@/lib/userService';
-import { teamService } from '@/lib/teamService';
+import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { paymentService, type DiscountPreview, type EventRegistrationCheckoutTarget } from '@/lib/paymentService';
 import { billingAddressService } from '@/lib/billingAddressService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
@@ -45,7 +42,7 @@ import { billService } from '@/lib/billService';
 import { createId } from '@/lib/id';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
-import { familyService, FamilyChild } from '@/lib/familyService';
+import type { FamilyChild } from '@/lib/familyService';
 import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
@@ -100,6 +97,8 @@ import {
     type WeeklySessionOption,
 } from './eventDetail/weeklySessions';
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
+import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
+import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -317,10 +316,6 @@ function ManualPaymentProofModal({
     );
 }
 
-type LoadEventDetailsOptions = {
-    automatic?: boolean;
-};
-
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
 );
@@ -356,100 +351,6 @@ const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant'
     });
 };
 
-const normalizeRequestToken = (value: unknown): string | null => {
-    if (typeof value !== 'string') {
-        return null;
-    }
-    const normalized = value.trim();
-    return normalized.length > 0 ? normalized : null;
-};
-
-const buildEventDetailsLoadKey = (
-    eventId: unknown,
-    occurrence?: WeeklyOccurrenceSelection,
-): string | null => {
-    const normalizedEventId = normalizeRequestToken(eventId);
-    if (!normalizedEventId) {
-        return null;
-    }
-
-    const slotId = normalizeRequestToken(occurrence?.slotId);
-    const occurrenceDate = normalizeRequestToken(occurrence?.occurrenceDate);
-    return slotId && occurrenceDate
-        ? `${normalizedEventId}:${slotId}:${occurrenceDate}`
-        : `${normalizedEventId}:all`;
-};
-
-const normalizeUserId = (value: unknown): string | null => {
-    if (typeof value !== 'string') {
-        return null;
-    }
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-};
-
-const getEventSportName = (event: Event | null | undefined): string => {
-    if (!event) {
-        return '';
-    }
-    const rawSport: unknown = (event as { sport?: unknown }).sport;
-    if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
-        return rawSport.trim();
-    }
-    if (
-        rawSport
-        && typeof rawSport === 'object'
-        && typeof (rawSport as { name?: unknown }).name === 'string'
-    ) {
-        return ((rawSport as { name?: string }).name ?? '').trim();
-    }
-    if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
-        return event.sportId.trim();
-    }
-    return '';
-};
-
-const teamIsManagedByUser = (team: Team, userId: string): boolean => {
-    const normalizedUserId = normalizeUserId(userId);
-    if (!normalizedUserId) {
-        return false;
-    }
-    const assistantCoachIds = Array.isArray((team as { assistantCoachIds?: unknown }).assistantCoachIds)
-        ? ((team as { assistantCoachIds?: unknown }).assistantCoachIds as unknown[])
-        : [];
-    const coachIds = Array.isArray((team as { coachIds?: unknown }).coachIds)
-        ? ((team as { coachIds?: unknown }).coachIds as unknown[])
-        : [];
-    const staffIds = [...assistantCoachIds, ...coachIds]
-        .map((entry) => normalizeUserId(entry))
-        .filter((entry): entry is string => Boolean(entry));
-
-    return normalizeUserId(team.managerId) === normalizedUserId
-        || normalizeUserId(team.captainId) === normalizedUserId
-        || normalizeUserId(team.headCoachId) === normalizedUserId
-        || staffIds.includes(normalizedUserId);
-};
-
-const getManagedUserTeamsForEvent = (teams: Team[] | null | undefined, event: Event | null | undefined, userId: string): Team[] => {
-    const targetSport = getEventSportName(event).toLowerCase();
-    const teamList = Array.isArray(teams) ? teams : [];
-    return teamList.filter((team) => {
-        const matchesSport = targetSport.length === 0
-            || (team.sport || '').trim().toLowerCase() === targetSport;
-        return matchesSport && teamIsManagedByUser(team, userId);
-    });
-};
-
-const collectUniqueUserIds = (value: unknown): string[] => {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-    const ids = value
-        .map((entry) => normalizeUserId(entry))
-        .filter((entry): entry is string => Boolean(entry));
-    return Array.from(new Set(ids));
-};
-
 const normalizeEmailValue = (value?: string | null): string | null => {
     if (typeof value !== 'string') {
         return null;
@@ -462,34 +363,6 @@ type DivisionSelectionPayload = {
     divisionId?: string;
     divisionTypeId?: string;
     divisionTypeKey?: string;
-};
-
-const isPaymentFailedRegistration = (registration: EventParticipantRegistrationEntry): boolean =>
-    String(registration.status ?? '').trim().toUpperCase() === 'PAYMENT_FAILED';
-
-const collectPaymentFailedRegistrationState = (
-    registrations: {
-        teams?: EventParticipantRegistrationEntry[];
-        users?: EventParticipantRegistrationEntry[];
-        children?: EventParticipantRegistrationEntry[];
-    } | undefined,
-    currentUserId: string | null,
-): { userFailed: boolean; teamIds: string[] } => {
-    const normalizedUserId = normalizeUserId(currentUserId);
-    const failedUsers = (registrations?.users ?? []).filter(isPaymentFailedRegistration);
-    const failedTeams = (registrations?.teams ?? []).filter(isPaymentFailedRegistration);
-
-    return {
-        userFailed: Boolean(
-            normalizedUserId &&
-            failedUsers.some((registration) => normalizeUserId(registration.registrantId) === normalizedUserId),
-        ),
-        teamIds: Array.from(new Set(
-            failedTeams
-                .map((registration) => normalizeUserId(registration.registrantId))
-                .filter((teamId): teamId is string => Boolean(teamId)),
-        )),
-    };
 };
 
 type ReadOnlyDetailField = {
@@ -589,14 +462,34 @@ export default function EventDetailSheet({
         userTeamsLoading,
     } = useApp();
     const router = useRouter();
-    const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
-    const [players, setPlayers] = useState<UserData[]>([]);
-    const [teams, setTeams] = useState<Team[]>([]);
-    const [freeAgents, setFreeAgents] = useState<UserData[]>([]);
-    const [currentUserPaymentFailed, setCurrentUserPaymentFailed] = useState(false);
-    const [paymentFailedTeamIds, setPaymentFailedTeamIds] = useState<string[]>([]);
-    const [isLoadingEvent, setIsLoadingEvent] = useState(false);
-    const [isLoadingTeams, setIsLoadingTeams] = useState(false);
+    const isActive = renderInline ? Boolean(isOpen) : isOpen;
+    const {
+        currentEvent,
+        players,
+        teams,
+        freeAgents,
+        currentUserPaymentFailed,
+        paymentFailedTeamIds,
+        isLoadingEvent,
+        hostUser,
+        children,
+        childrenLoading,
+        childrenError,
+        userTeams,
+        isLoadingTeams,
+        registrationQuestions,
+        registrationQuestionAnswers,
+        setRegistrationQuestionAnswers,
+        reload: loadEventDetails,
+    } = useEventDetailDataController({
+        event,
+        isActive,
+        renderInline,
+        selectedOccurrence,
+        user,
+        cachedUserTeams,
+        userTeamsLoading: Boolean(userTeamsLoading),
+    });
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
     const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
     const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
@@ -630,9 +523,6 @@ export default function EventDetailSheet({
     const [confirmingPassword, setConfirmingPassword] = useState(false);
     const [recordingSignature, setRecordingSignature] = useState(false);
     const [textAccepted, setTextAccepted] = useState(false);
-    const [children, setChildren] = useState<FamilyChild[]>([]);
-    const [childrenLoading, setChildrenLoading] = useState(false);
-    const [childrenError, setChildrenError] = useState<string | null>(null);
     const [selectedChildId, setSelectedChildId] = useState('');
     const [registeringChild, setRegisteringChild] = useState(false);
     const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
@@ -640,15 +530,9 @@ export default function EventDetailSheet({
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showRegistrationQuestionsModal, setShowRegistrationQuestionsModal] = useState(false);
-    const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
-    const [registrationQuestionAnswers, setRegistrationQuestionAnswers] = useState<Record<string, string>>({});
     const [registrationQuestionsIntent, setRegistrationQuestionsIntent] = useState<JoinIntent | null>(null);
     const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
     const [showQrCodeModal, setShowQrCodeModal] = useState(false);
-    const [hostUser, setHostUser] = useState<UserData | null>(null);
-    const eventRef = React.useRef<Event | null>(event);
-    const loadedEventDetailsKeyRef = useRef<string | null>(null);
-    const eventDetailsRequestGenerationRef = useRef(0);
     const joinCardAnchorRef = useRef<HTMLDivElement | null>(null);
     const joinCardRef = useRef<HTMLDivElement | null>(null);
     const [joinCardDocked, setJoinCardDocked] = useState(false);
@@ -657,50 +541,11 @@ export default function EventDetailSheet({
     const [joinCardWidth, setJoinCardWidth] = useState(0);
 
     // Team-signup join controls
-    const [userTeams, setUserTeams] = useState<Team[]>([]);
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
     const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
-
-    const currentEvent = detailedEvent || event;
-    useEffect(() => {
-        if (!currentEvent?.$id || (!isOpen && !renderInline)) {
-            setRegistrationQuestions([]);
-            setRegistrationQuestionAnswers({});
-            return undefined;
-        }
-
-        let cancelled = false;
-        const loadQuestions = async () => {
-            try {
-                const questions = await teamService.getRegistrationQuestions('EVENT', currentEvent.$id);
-                if (cancelled) {
-                    return;
-                }
-                setRegistrationQuestions(questions);
-                setRegistrationQuestionAnswers((current) => {
-                    const next = { ...current };
-                    questions.forEach((question) => {
-                        if (!(question.id in next)) {
-                            next[question.id] = '';
-                        }
-                    });
-                    return next;
-                });
-            } catch {
-                if (!cancelled) {
-                    setRegistrationQuestions([]);
-                    setRegistrationQuestionAnswers({});
-                }
-            }
-        };
-        void loadQuestions();
-        return () => {
-            cancelled = true;
-        };
-    }, [currentEvent?.$id, isOpen, renderInline]);
 
     const currentEventPublicUrl = React.useMemo(
         () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
@@ -832,7 +677,7 @@ export default function EventDetailSheet({
             setSelectedDivisionTypeKey(draft.selectedDivisionTypeKey);
         }
         setRegistrationHoldExpiresAt(draft.holdExpiresAt ?? null);
-    }, [eventRegistrationProgressKey]);
+    }, [eventRegistrationProgressKey, setRegistrationQuestionAnswers]);
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
@@ -1199,7 +1044,6 @@ export default function EventDetailSheet({
     const shouldBypassHostPayment = Boolean(currentEvent && isEventHost && !currentEvent.teamSignup);
     const isFreeForUser = isFreeEvent || shouldBypassHostPayment;
 
-    const isActive = renderInline ? Boolean(isOpen) : isOpen;
     const todayForDob = new Date();
     const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
 
@@ -1287,92 +1131,6 @@ export default function EventDetailSheet({
     }, [submitAuthModal]);
 
     useEffect(() => {
-        if (!isActive || !currentEvent?.hostId) {
-            setHostUser(null);
-            return;
-        }
-        const hostId = currentEvent.hostId;
-
-        let cancelled = false;
-
-        const loadHostUser = async () => {
-            try {
-                const resolvedHost = await userService.getUserById(hostId, { eventId: currentEvent.$id });
-                if (!cancelled) {
-                    setHostUser(resolvedHost ?? null);
-                }
-            } catch (error) {
-                console.error('Failed to load host user:', error);
-                if (!cancelled) {
-                    setHostUser(null);
-                }
-            }
-        };
-
-        void loadHostUser();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [currentEvent?.$id, currentEvent?.hostId, isActive]);
-
-    useEffect(() => {
-        if (!isActive || !user) {
-            setUserTeams([]);
-            setIsLoadingTeams(false);
-            return;
-        }
-
-        const targetEvent = currentEvent ?? event;
-        if (!targetEvent || !targetEvent.teamSignup) {
-            setUserTeams([]);
-            setIsLoadingTeams(false);
-            return;
-        }
-
-        const managedTeams = getManagedUserTeamsForEvent(cachedUserTeams, targetEvent, user.$id);
-        setUserTeams(managedTeams);
-        setIsLoadingTeams(userTeamsLoading && managedTeams.length === 0);
-    }, [cachedUserTeams, currentEvent, event, isActive, user, userTeamsLoading]);
-
-    useEffect(() => {
-        if (!isActive || !user) {
-            setChildren([]);
-            setChildrenLoading(false);
-            setChildrenError(null);
-            return;
-        }
-
-        let cancelled = false;
-        setChildrenLoading(true);
-        setChildrenError(null);
-
-        const loadChildren = async () => {
-            try {
-                const result = await familyService.listChildren();
-                if (!cancelled) {
-                    setChildren(result);
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    setChildren([]);
-                    setChildrenError(error instanceof Error ? error.message : 'Failed to load children.');
-                }
-            } finally {
-                if (!cancelled) {
-                    setChildrenLoading(false);
-                }
-            }
-        };
-
-        loadChildren();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [isActive, user]);
-
-    useEffect(() => {
         if (!divisionOptions.length) {
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
@@ -1394,337 +1152,37 @@ export default function EventDetailSheet({
         });
     }, [divisionOptions]);
 
-    const loadEventDetails = useCallback(async (eventId?: string, options: LoadEventDetailsOptions = {}) => {
-        const sourceEvent = eventRef.current;
-        const targetId = eventId ?? sourceEvent?.$id;
-        if (!targetId) return;
-
-        const selectedOccurrence = selectedWeeklyOccurrenceSlotId && selectedWeeklyOccurrenceDate
-            ? {
-                slotId: selectedWeeklyOccurrenceSlotId,
-                occurrenceDate: selectedWeeklyOccurrenceDate,
-            }
-            : undefined;
-        const loadKey = buildEventDetailsLoadKey(targetId, selectedOccurrence);
-        if (options.automatic && loadKey && loadedEventDetailsKeyRef.current === loadKey) {
+    useEffect(() => {
+        if (isActive) {
             return;
         }
-        if (options.automatic) {
-            loadedEventDetailsKeyRef.current = loadKey;
-        }
-
-        const requestGeneration = eventDetailsRequestGenerationRef.current + 1;
-        eventDetailsRequestGenerationRef.current = requestGeneration;
-        const normalizedTargetId = normalizeRequestToken(targetId);
-        const isCurrentRequest = () => (
-            eventDetailsRequestGenerationRef.current === requestGeneration
-            && normalizeRequestToken(eventRef.current?.$id) === normalizedTargetId
-        );
-
-        setIsLoadingEvent(true);
-        try {
-            // Fetch full event with relationships for accurate editing context
-            let latest = renderInline ? sourceEvent : await eventService.getEventWithRelations(targetId);
-            if (!isCurrentRequest()) {
-                return;
-            }
-            if (!latest && !renderInline) {
-                latest = await eventService.getEvent(targetId);
-                if (!isCurrentRequest()) {
-                    return;
-                }
-            }
-            const baseEvent = latest || sourceEvent;
-            if (!baseEvent) {
-                return;
-            }
-
-            let resolvedEvent = baseEvent;
-            let eventPlayers: UserData[] = Array.isArray(baseEvent.players) ? (baseEvent.players as UserData[]) : [];
-            let eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
-            let eventFreeAgents: UserData[] = [];
-
-            if (baseEvent.eventType === 'WEEKLY_EVENT' && !baseEvent.parentEvent) {
-                if (selectedOccurrence?.slotId && selectedOccurrence?.occurrenceDate) {
-                    try {
-                        const snapshot = await eventService.getEventParticipants(targetId, selectedOccurrence);
-                        if (!isCurrentRequest()) {
-                            return;
-                        }
-                        const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
-                        setCurrentUserPaymentFailed(failedState.userFailed);
-                        setPaymentFailedTeamIds(failedState.teamIds);
-                        const refreshedTeamIds = Array.from(new Set(
-                            (snapshot.participants.teamIds ?? [])
-                                .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
-                                .filter((teamId): teamId is string => teamId.length > 0),
-                        ));
-                        const participantUserIds = Array.from(new Set(
-                            (snapshot.participants.userIds ?? [])
-                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                                .filter((userId): userId is string => userId.length > 0),
-                        ));
-                        const waitListIds = Array.from(new Set(
-                            (snapshot.participants.waitListIds ?? [])
-                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                                .filter((userId): userId is string => userId.length > 0),
-                        ));
-                        const freeAgentIds = Array.from(new Set(
-                            (snapshot.participants.freeAgentIds ?? [])
-                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                                .filter((userId): userId is string => userId.length > 0),
-                        ));
-
-                        const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
-                        const orderedTeams = refreshedTeamIds
-                            .map((teamId) => teamsById.get(teamId))
-                            .filter((team): team is Team => Boolean(team));
-                        const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
-                        const orderedUsers = participantUserIds
-                            .map((userId) => usersById.get(userId))
-                            .filter((participant): participant is UserData => Boolean(participant));
-                        const orderedFreeAgents = freeAgentIds
-                            .map((userId) => usersById.get(userId))
-                            .filter((participant): participant is UserData => Boolean(participant));
-
-                        resolvedEvent = {
-                            ...baseEvent,
-                            teamIds: refreshedTeamIds,
-                            teams: orderedTeams,
-                            userIds: participantUserIds,
-                            players: orderedUsers,
-                            waitListIds,
-                            freeAgentIds,
-                            participantCount: snapshot.participantCount,
-                            participantCapacity: snapshot.participantCapacity ?? undefined,
-                        } as Event;
-                        eventPlayers = orderedUsers;
-                        eventTeams = orderedTeams;
-                        eventFreeAgents = orderedFreeAgents;
-                    } catch (error) {
-                        console.error('Failed to load weekly session participants:', error);
-                        setCurrentUserPaymentFailed(false);
-                        setPaymentFailedTeamIds([]);
-                        resolvedEvent = {
-                            ...baseEvent,
-                            teamIds: [],
-                            teams: [],
-                            userIds: [],
-                            players: [],
-                            waitListIds: [],
-                            freeAgentIds: [],
-                        } as Event;
-                        eventPlayers = [];
-                        eventTeams = [];
-                        eventFreeAgents = [];
-                    }
-                } else {
-                    setCurrentUserPaymentFailed(false);
-                    setPaymentFailedTeamIds([]);
-                    resolvedEvent = {
-                        ...baseEvent,
-                        teamIds: [],
-                        teams: [],
-                        userIds: [],
-                        players: [],
-                        waitListIds: [],
-                        freeAgentIds: [],
-                    } as Event;
-                    eventPlayers = [];
-                    eventTeams = [];
-                    eventFreeAgents = [];
-                }
-            } else {
-                try {
-                    const snapshot = await eventService.getEventParticipants(targetId);
-                    if (!isCurrentRequest()) {
-                        return;
-                    }
-                    const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
-                    setCurrentUserPaymentFailed(failedState.userFailed);
-                    setPaymentFailedTeamIds(failedState.teamIds);
-                    const refreshedTeamIds = Array.from(new Set(
-                        (snapshot.participants.teamIds ?? [])
-                            .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
-                            .filter((teamId): teamId is string => teamId.length > 0),
-                    ));
-                    const participantUserIds = Array.from(new Set(
-                        (snapshot.participants.userIds ?? [])
-                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                            .filter((userId): userId is string => userId.length > 0),
-                    ));
-                    const waitListIds = Array.from(new Set(
-                        (snapshot.participants.waitListIds ?? [])
-                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                            .filter((userId): userId is string => userId.length > 0),
-                    ));
-                    const freeAgentIds = Array.from(new Set(
-                        (snapshot.participants.freeAgentIds ?? [])
-                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                            .filter((userId): userId is string => userId.length > 0),
-                    ));
-                    const snapshotTeams = (snapshot.teams ?? [])
-                        .map((team) => ({
-                            ...team,
-                            $id: typeof team.$id === 'string' && team.$id.trim().length > 0
-                                ? team.$id
-                                : String((team as any).id ?? ''),
-                        }))
-                        .filter((team): team is Team => team.$id.length > 0);
-                    const snapshotUsers = (snapshot.users ?? [])
-                        .map((participant) => ({
-                            ...participant,
-                            $id: typeof participant.$id === 'string' && participant.$id.trim().length > 0
-                                ? participant.$id
-                                : String((participant as any).id ?? ''),
-                        }))
-                        .filter((participant): participant is UserData => participant.$id.length > 0);
-                    const teamsById = new Map(snapshotTeams.map((team) => [team.$id, team]));
-                    const orderedTeams = refreshedTeamIds
-                        .map((teamId) => teamsById.get(teamId))
-                        .filter((team): team is Team => Boolean(team));
-                    const usersById = new Map(snapshotUsers.map((participant) => [participant.$id, participant]));
-                    const orderedUsers = participantUserIds
-                        .map((userId) => usersById.get(userId))
-                        .filter((participant): participant is UserData => Boolean(participant));
-                    const orderedFreeAgents = freeAgentIds
-                        .map((userId) => usersById.get(userId))
-                        .filter((participant): participant is UserData => Boolean(participant));
-
-                    resolvedEvent = {
-                        ...baseEvent,
-                        teamIds: refreshedTeamIds,
-                        teams: orderedTeams,
-                        userIds: participantUserIds,
-                        players: orderedUsers,
-                        waitListIds,
-                        freeAgentIds,
-                        participantCount: snapshot.participantCount,
-                        participantCapacity: snapshot.participantCapacity ?? undefined,
-                    } as Event;
-                    eventPlayers = orderedUsers;
-                    eventTeams = orderedTeams;
-                    eventFreeAgents = orderedFreeAgents;
-                } catch (error) {
-                    console.error('Failed to load event participants:', error);
-                    setCurrentUserPaymentFailed(false);
-                    setPaymentFailedTeamIds([]);
-                    const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
-                    const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
-
-                    if (shouldLoadFreeAgents) {
-                        try {
-                            eventFreeAgents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
-                            if (!isCurrentRequest()) {
-                                return;
-                            }
-                        } catch (freeAgentError) {
-                            if (!isCurrentRequest()) {
-                                return;
-                            }
-                            console.error('Failed to load free agents:', freeAgentError);
-                            eventFreeAgents = [];
-                        }
-                    }
-                }
-            }
-
-            if (!isCurrentRequest()) {
-                return;
-            }
-            setDetailedEvent(resolvedEvent);
-            setPlayers(eventPlayers);
-            const isSchedulableSlotEvent = resolvedEvent.eventType === 'LEAGUE' || resolvedEvent.eventType === 'TOURNAMENT';
-            const filteredTeams = isSchedulableSlotEvent
-                ? eventTeams.filter((team) => typeof team.parentTeamId === 'string' && team.parentTeamId.trim().length > 0)
-                : eventTeams;
-            setTeams(filteredTeams);
-            setFreeAgents(eventFreeAgents);
-
-        } catch (error) {
-            if (!isCurrentRequest()) {
-                return;
-            }
-            console.error('Failed to load event details:', error);
-        } finally {
-            if (isCurrentRequest()) {
-                setIsLoadingEvent(false);
-            }
-        }
-    }, [renderInline, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId, user?.$id]);
-
-    useEffect(() => {
-        eventRef.current = event;
-        setDetailedEvent((previous) => {
-            if (!event || !previous || previous.$id !== event.$id) {
-                return previous;
-            }
-            return {
-                ...previous,
-                fieldIds: Array.isArray(event.fieldIds) ? event.fieldIds : previous.fieldIds,
-                fields: Array.isArray(event.fields) ? event.fields : previous.fields,
-                timeSlotIds: Array.isArray(event.timeSlotIds) ? event.timeSlotIds : previous.timeSlotIds,
-                timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots : previous.timeSlots,
-                divisions: Array.isArray(event.divisions) ? event.divisions : previous.divisions,
-                divisionDetails: Array.isArray(event.divisionDetails) ? event.divisionDetails : previous.divisionDetails,
-                playoffDivisionDetails: Array.isArray(event.playoffDivisionDetails)
-                    ? event.playoffDivisionDetails
-                    : previous.playoffDivisionDetails,
-            } as Event;
-        });
-    }, [event]);
-
-    useEffect(() => {
-        if (isActive && event) {
-            setDetailedEvent(event);
-            void loadEventDetails(event.$id, { automatic: true });
-        } else {
-            loadedEventDetailsKeyRef.current = null;
-            setDetailedEvent(null);
-            setPlayers([]);
-            setTeams([]);
-            setFreeAgents([]);
-            setCurrentUserPaymentFailed(false);
-            setPaymentFailedTeamIds([]);
-            setIsLoadingEvent(false);
-            setIsLoadingTeams(false);
-            setJoinError(null); // Reset error when modal closes
-            setJoinNotice(null);
-            setShowSignModal(false);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingJoin(null);
-            setPendingSignedDocumentId(null);
-            setPendingSignatureOperationId(null);
-            setShowPasswordModal(false);
-            setShowCapacityBreakdown(false);
-            setPassword('');
-            setPasswordError(null);
-            setConfirmingPassword(false);
-            setRecordingSignature(false);
-            setTextAccepted(false);
-            setChildren([]);
-            setChildrenLoading(false);
-            setChildrenError(null);
-            setSelectedChildId('');
-            setRegisteringChild(false);
-            setJoiningChildFreeAgent(false);
-            setChildRegistration(null);
-            setChildConsent(null);
-            setChildRegistrationChildId(null);
-            setShowRegistrationQuestionsModal(false);
-            setRegistrationQuestions([]);
-            setRegistrationQuestionAnswers({});
-            setRegistrationQuestionsIntent(null);
-            setPaymentPlanPreview(null);
-            setSelectedDivisionId('');
-            setSelectedDivisionTypeKey('');
-        }
-
-        return () => {
-            eventDetailsRequestGenerationRef.current += 1;
-        };
-    }, [event, event?.$id, isActive, loadEventDetails]);
+        setJoinError(null);
+        setJoinNotice(null);
+        setShowSignModal(false);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setPendingJoin(null);
+        setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
+        setShowPasswordModal(false);
+        setShowCapacityBreakdown(false);
+        setPassword('');
+        setPasswordError(null);
+        setConfirmingPassword(false);
+        setRecordingSignature(false);
+        setTextAccepted(false);
+        setSelectedChildId('');
+        setRegisteringChild(false);
+        setJoiningChildFreeAgent(false);
+        setChildRegistration(null);
+        setChildConsent(null);
+        setChildRegistrationChildId(null);
+        setShowRegistrationQuestionsModal(false);
+        setRegistrationQuestionsIntent(null);
+        setPaymentPlanPreview(null);
+        setSelectedDivisionId('');
+        setSelectedDivisionTypeKey('');
+    }, [isActive]);
 
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
