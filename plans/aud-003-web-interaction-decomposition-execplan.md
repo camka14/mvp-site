@@ -28,6 +28,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 17:02Z) Milestone 4e: extracted the participant capacity summary, previews, and participant dropdowns behind typed render-only values/actions. Participant hydration remains controller-owned and the facade retains team-row commands pending the registration-controller milestone.
 - [x] (2026-07-14 17:18Z) Milestone 4f: extracted the manual-payment proof dialog and its stateless upload/submission command. The dialog owns only local file/error presentation while the facade owns workflow completion and event refresh.
 - [x] (2026-07-14 17:34Z) Milestone 4g: moved scoped registration-resume hydration, save, clear, and hold-expiry state into `useEventRegistrationProgress`, preserving React Hook Form-independent selection and answer ownership in their existing controllers.
+- [x] (2026-07-14 17:51Z) Milestone 4h: moved discount-code editing, preview requests, applied-code validation, and error/loading state into `useEventDiscountPreview` with a typed pending-checkout contract.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
@@ -118,7 +119,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one signing poll owner, one mutually exclusive registration phase, focused registration/authentication/participant/manual-payment views, and one scoped registration-resume owner, reducing contradictory-dialog and persistence risk while preserving the facade API and rendered behavior. `EventDetailSheet.tsx` currently measures 4,849 lines, down from 7,219; the remaining registration controller and broader view extraction is still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one signing poll owner, one mutually exclusive registration phase, focused registration/authentication/participant/manual-payment views, scoped registration-resume persistence, and isolated discount-preview ownership, reducing contradictory-dialog and persistence risk while preserving the facade API and rendered behavior. `EventDetailSheet.tsx` currently measures 4,808 lines, down from 7,219; the remaining checkout/join controller and broader view extraction is still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -373,6 +374,16 @@ Registration-resume controller evidence on 2026-07-14:
 
 Three direct hook tests cover scoped draft hydration, latest-default plus explicit-patch persistence, and storage/hold cleanup. The controller derives its key from event, user, slot, and occurrence; stale hold state is hidden immediately when that key changes, and deferred hydration is cancelled during cleanup so an obsolete draft cannot update a new event scope.
 
+Discount-preview controller evidence on 2026-07-14:
+
+    PASS 19 suites / 216 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 4,849 -> 4,808 lines
+    useEventDiscountPreview.ts: 112 lines
+
+Four direct hook tests cover trimmed-code preparation and validation, canonical successful previews with complete checkout context, blank-code short-circuiting, and service-failure reset/error state. The facade now forwards typed checkout intent and consumes immutable preview state instead of owning discount request state and transitions.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -396,3 +407,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting typed inline-aut
 Revision note (2026-07-14): Continued Milestone 4 by extracting participant capacity, previews, and dropdown composition; the 15-suite safety net passes 202 tests and the facade is now 5,028 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the manual-payment proof dialog and stateless submission command; the 17-suite safety net passes 209 tests and the facade is now 4,908 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting registration-resume hydration, persistence, and hold state; the 18-suite safety net passes 212 tests and the facade is now 4,849 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting discount preview state, requests, and applied-code validation; the 19-suite safety net passes 216 tests and the facade is now 4,808 lines.

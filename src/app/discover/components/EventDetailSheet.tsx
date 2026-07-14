@@ -33,7 +33,7 @@ import {
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
-import { paymentService, type DiscountPreview, type EventRegistrationCheckoutTarget } from '@/lib/paymentService';
+import { paymentService } from '@/lib/paymentService';
 import { billingAddressService } from '@/lib/billingAddressService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
@@ -96,6 +96,11 @@ import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEvent
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
 import { useEventRegistrationProgress } from './eventDetail/hooks/useEventRegistrationProgress';
+import {
+    useEventDiscountPreview,
+    type EventCheckoutWithBillingAddress,
+    type PendingEventCheckoutState,
+} from './eventDetail/hooks/useEventDiscountPreview';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -172,15 +177,6 @@ type JoinIntent = {
 type PaymentPlanPreviewState = {
     intent: JoinIntent;
     ownerLabel: string;
-};
-
-type PendingEventCheckoutState = {
-    event: Event;
-    team?: Team;
-    eventRegistration?: EventRegistrationCheckoutTarget;
-    selection?: DivisionRegistrationSelection;
-    answers?: RegistrationQuestionAnswerInput[];
-    discountCode?: string | null;
 };
 
 const hasCompleteBillingAddress = (billingAddress?: BillingAddress | null): billingAddress is BillingAddress => (
@@ -380,10 +376,18 @@ export default function EventDetailSheet({
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
-    const [discountCode, setDiscountCode] = useState('');
-    const [discountPreview, setDiscountPreview] = useState<DiscountPreview | null>(null);
-    const [discountPreviewLoading, setDiscountPreviewLoading] = useState(false);
-    const [discountPreviewError, setDiscountPreviewError] = useState<string | null>(null);
+    const {
+        code: discountCode,
+        preview: discountPreview,
+        loading: discountPreviewLoading,
+        error: discountPreviewError,
+        prepare: prepareDiscountPreview,
+        resetPreview: resetDiscountPreview,
+        changeCode: handleCheckoutDiscountCodeChange,
+        clearCode: clearCheckoutDiscount,
+        apply: applyDiscountPreview,
+        validateAppliedCode: validateAppliedDiscountCode,
+    } = useEventDiscountPreview();
     const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [signLinks, setSignLinks] = useState<SignStep[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
@@ -1319,9 +1323,7 @@ export default function EventDetailSheet({
         answers,
         discountCode: checkoutDiscountCode,
         billingAddress,
-    }: PendingEventCheckoutState & {
-        billingAddress?: BillingAddress;
-    }) => {
+    }: EventCheckoutWithBillingAddress) => {
         if (!user) {
             throw new Error('You must be signed in to continue.');
         }
@@ -1359,8 +1361,7 @@ export default function EventDetailSheet({
             setPendingEventCheckout(null);
             setShowBillingAddressModal(false);
             setShowCheckoutPreviewModal(false);
-            setDiscountPreview(null);
-            setDiscountPreviewError(null);
+            resetDiscountPreview();
         } catch (error) {
             if (
                 isApiRequestError(error)
@@ -1391,6 +1392,7 @@ export default function EventDetailSheet({
         selectedTeamId,
         selectedWeeklyOccurrence,
         discountCode,
+        resetDiscountPreview,
         setShowBillingAddressModal,
         setShowCheckoutPreviewModal,
         setShowPaymentModal,
@@ -1400,9 +1402,7 @@ export default function EventDetailSheet({
 
     const prepareEventCheckout = useCallback(async (checkout: PendingEventCheckoutState) => {
         setPendingEventCheckout(checkout);
-        setDiscountCode(checkout.discountCode?.trim() ?? '');
-        setDiscountPreview(null);
-        setDiscountPreviewError(null);
+        prepareDiscountPreview(checkout.discountCode);
         setJoinError(null);
 
         try {
@@ -1418,69 +1418,28 @@ export default function EventDetailSheet({
             setShowCheckoutPreviewModal(false);
             setShowBillingAddressModal(true);
         }
-    }, [setShowBillingAddressModal, setShowCheckoutPreviewModal]);
+    }, [prepareDiscountPreview, setShowBillingAddressModal, setShowCheckoutPreviewModal]);
 
     const handleApplyDiscountPreview = useCallback(async () => {
-        if (!pendingEventCheckout || !user) {
-            return;
-        }
-        const normalizedCode = discountCode.trim();
-        if (!normalizedCode) {
-            setDiscountPreview(null);
-            setDiscountPreviewError(null);
-            return;
-        }
-
-        setDiscountPreviewLoading(true);
-        setDiscountPreviewError(null);
-        try {
-            const preview = await paymentService.previewEventDiscount({
-                user,
-                event: pendingEventCheckout.event,
-                team: pendingEventCheckout.team,
-                selection: pendingEventCheckout.selection,
-                occurrence: selectedWeeklyOccurrence,
-                answers: pendingEventCheckout.answers,
-                discountCode: normalizedCode,
-                eventRegistration: pendingEventCheckout.eventRegistration,
-            });
-            setDiscountPreview(preview);
-            setDiscountCode(preview.code ?? normalizedCode);
-        } catch (error) {
-            setDiscountPreview(null);
-            setDiscountPreviewError(error instanceof Error ? error.message : 'Unable to apply discount code.');
-        } finally {
-            setDiscountPreviewLoading(false);
-        }
-    }, [discountCode, pendingEventCheckout, selectedWeeklyOccurrence, user]);
+        await applyDiscountPreview({
+            checkout: pendingEventCheckout,
+            user,
+            occurrence: selectedWeeklyOccurrence,
+        });
+    }, [applyDiscountPreview, pendingEventCheckout, selectedWeeklyOccurrence, user]);
 
     const closeCheckoutPreview = useCallback(() => {
         setShowCheckoutPreviewModal(false);
         setPendingEventCheckout(null);
-        setDiscountPreview(null);
-        setDiscountPreviewError(null);
-    }, [setShowCheckoutPreviewModal]);
-
-    const handleCheckoutDiscountCodeChange = useCallback((code: string) => {
-        setDiscountCode(code);
-        setDiscountPreview(null);
-        setDiscountPreviewError(null);
-    }, []);
-
-    const clearCheckoutDiscount = useCallback(() => {
-        setDiscountCode('');
-        setDiscountPreview(null);
-        setDiscountPreviewError(null);
-    }, []);
+        resetDiscountPreview();
+    }, [resetDiscountPreview, setShowCheckoutPreviewModal]);
 
     const continueCheckoutPreview = useCallback(async () => {
         if (!pendingEventCheckout) {
             return;
         }
         const normalizedCode = discountCode.trim();
-        const appliedCode = discountPreview?.code?.trim() ?? '';
-        if (normalizedCode && normalizedCode.toUpperCase() !== appliedCode.toUpperCase()) {
-            setDiscountPreviewError('Apply the discount code before continuing to payment.');
+        if (!validateAppliedDiscountCode()) {
             return;
         }
         setJoining(true);
@@ -1495,7 +1454,7 @@ export default function EventDetailSheet({
         } finally {
             setJoining(false);
         }
-    }, [discountCode, discountPreview?.code, pendingEventCheckout, startEventCheckout]);
+    }, [discountCode, pendingEventCheckout, startEventCheckout, validateAppliedDiscountCode]);
 
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
