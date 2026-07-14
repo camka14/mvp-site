@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import Image from 'next/image';
-import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea, FileInput } from '@mantine/core';
+import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, PasswordInput, Stack, Collapse, Progress, TextInput, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     CalendarDays,
@@ -61,7 +61,6 @@ import {
     buildDivisionOptionsForEvent,
     formatInstallmentDueDateLabel,
     formatInstallmentRelativeDueDayLabel,
-    formatPaymentPlanPreviewPrice,
     getDivisionIdFromEventEntry,
     getNormalizedDivisionAliases,
     normalizeInstallmentAmountsCents,
@@ -105,6 +104,13 @@ import {
     registrationWorkflowReducer,
     type RegistrationWorkflowPhase,
 } from './eventDetail/registrationWorkflow';
+import {
+    CheckoutPreviewDialog,
+    PasswordConfirmationDialog,
+    PaymentPlanPreviewDialog,
+    RegistrationQuestionsDialog,
+    SigningDialog,
+} from './eventDetail/EventRegistrationDialogs';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -1622,6 +1628,49 @@ export default function EventDetailSheet({
         }
     }, [discountCode, pendingEventCheckout, selectedWeeklyOccurrence, user]);
 
+    const closeCheckoutPreview = useCallback(() => {
+        setShowCheckoutPreviewModal(false);
+        setPendingEventCheckout(null);
+        setDiscountPreview(null);
+        setDiscountPreviewError(null);
+    }, [setShowCheckoutPreviewModal]);
+
+    const handleCheckoutDiscountCodeChange = useCallback((code: string) => {
+        setDiscountCode(code);
+        setDiscountPreview(null);
+        setDiscountPreviewError(null);
+    }, []);
+
+    const clearCheckoutDiscount = useCallback(() => {
+        setDiscountCode('');
+        setDiscountPreview(null);
+        setDiscountPreviewError(null);
+    }, []);
+
+    const continueCheckoutPreview = useCallback(async () => {
+        if (!pendingEventCheckout) {
+            return;
+        }
+        const normalizedCode = discountCode.trim();
+        const appliedCode = discountPreview?.code?.trim() ?? '';
+        if (normalizedCode && normalizedCode.toUpperCase() !== appliedCode.toUpperCase()) {
+            setDiscountPreviewError('Apply the discount code before continuing to payment.');
+            return;
+        }
+        setJoining(true);
+        setJoinError(null);
+        try {
+            await startEventCheckout({
+                ...pendingEventCheckout,
+                discountCode: normalizedCode || null,
+            });
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Unable to start checkout.');
+        } finally {
+            setJoining(false);
+        }
+    }, [discountCode, discountPreview?.code, pendingEventCheckout, startEventCheckout]);
+
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
             return true;
@@ -1967,6 +2016,23 @@ export default function EventDetailSheet({
         setRegistrationQuestionsIntent(intent);
         setShowRegistrationQuestionsModal(true);
     }, [setShowRegistrationQuestionsModal]);
+
+    const closeRegistrationQuestionsStep = useCallback(() => {
+        setShowRegistrationQuestionsModal(false);
+        setRegistrationQuestionsIntent(null);
+    }, [setShowRegistrationQuestionsModal]);
+
+    const updateRegistrationQuestionAnswer = useCallback((questionId: string, value: string) => {
+        const nextAnswers = {
+            ...registrationQuestionAnswers,
+            [questionId]: value,
+        };
+        setRegistrationQuestionAnswers(nextAnswers);
+        saveEventRegistrationProgress({
+            step: 'questions',
+            answers: nextAnswers,
+        });
+    }, [registrationQuestionAnswers, saveEventRegistrationProgress, setRegistrationQuestionAnswers]);
 
     const submitRegistrationQuestionsStep = useCallback(async () => {
         if (!registrationQuestionsIntent || !currentEvent || !user) {
@@ -5097,360 +5163,64 @@ export default function EventDetailSheet({
                 </Stack>
             </Modal>
 
-            <Modal
+            <RegistrationQuestionsDialog
                 opened={showRegistrationQuestionsModal}
-                onClose={() => {
-                    setShowRegistrationQuestionsModal(false);
-                    setRegistrationQuestionsIntent(null);
-                }}
-                centered
-                size="lg"
-                title="Registration questions"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <form
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        void submitRegistrationQuestionsStep();
-                    }}
-                >
-                    <Stack gap="sm">
-                        {registrationQuestions.length > 0 ? (
-                            <Stack gap="md">
-                                {registrationQuestions.map((question) => (
-                                    <Textarea
-                                        key={question.id}
-                                        label={question.prompt}
-                                        required={Boolean(question.required)}
-                                        autosize
-                                        minRows={question.answerType === 'LONG_TEXT' ? 4 : 2}
-                                        value={registrationQuestionAnswers[question.id] ?? ''}
-                                        onChange={(event) => {
-                                            const value = event.currentTarget.value;
-                                            const nextAnswers = {
-                                                ...registrationQuestionAnswers,
-                                                [question.id]: value,
-                                            };
-                                            setRegistrationQuestionAnswers(nextAnswers);
-                                            saveEventRegistrationProgress({
-                                                step: 'questions',
-                                                answers: nextAnswers,
-                                            });
-                                        }}
-                                    />
-                                ))}
-                            </Stack>
-                        ) : (
-                            <Text size="sm" c="dimmed">
-                                Continue to finish registration.
-                            </Text>
-                        )}
-                        {joinError ? (
-                            <Alert color="red" variant="light">
-                                {joinError}
-                            </Alert>
-                        ) : null}
-                        <Group justify="flex-end" wrap="wrap">
-                            <Button
-                                variant="default"
-                                onClick={() => {
-                                    setShowRegistrationQuestionsModal(false);
-                                    setRegistrationQuestionsIntent(null);
-                                }}
-                            >
-                                Cancel
-                            </Button>
-                            <Button type="submit" loading={joining || registeringChild}>
-                                Continue
-                            </Button>
-                        </Group>
-                    </Stack>
-                </form>
-            </Modal>
+                questions={registrationQuestions}
+                answers={registrationQuestionAnswers}
+                error={joinError}
+                submitting={joining || registeringChild}
+                onAnswerChange={updateRegistrationQuestionAnswer}
+                onClose={closeRegistrationQuestionsStep}
+                onSubmit={submitRegistrationQuestionsStep}
+            />
 
-            <Modal
+            <PaymentPlanPreviewDialog
                 opened={Boolean(paymentPlanPreview)}
+                ownerLabel={paymentPlanPreview?.ownerLabel ?? 'you'}
+                divisionName={selectedDivisionOption?.name}
+                totalPriceCents={selectedDivisionBilling.priceCents}
+                rows={paymentPlanPreviewRows}
                 onClose={() => setPaymentPlanPreview(null)}
-                centered
-                title="Payment plan preview"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <Stack gap="sm">
-                    <Text size="sm" c="dimmed">
-                        Continuing will join this event and start a payment plan for {paymentPlanPreview?.ownerLabel ?? 'you'}.
-                    </Text>
-                    {selectedDivisionOption?.name && (
-                        <Text size="xs" c="dimmed">
-                            Division: {selectedDivisionOption.name}
-                        </Text>
-                    )}
-                    <Paper withBorder p="sm" radius="md">
-                        <Group justify="space-between" align="center">
-                            <Text fw={600}>Plan total</Text>
-                            <Text fw={700}>{formatPaymentPlanPreviewPrice(selectedDivisionBilling.priceCents)}</Text>
-                        </Group>
-                    </Paper>
-                    {paymentPlanPreviewRows.length > 0 ? (
-                        <Paper withBorder p="sm" radius="md" className="space-y-2">
-                            {paymentPlanPreviewRows.map((row) => (
-                                <Group key={row.id} justify="space-between" align="flex-start" gap="xs">
-                                    <div>
-                                        <Text size="sm" fw={500}>
-                                            Installment {row.installmentNumber}
-                                        </Text>
-                                        <Text size="xs" c="dimmed">
-                                            Due {row.dueDateLabel}
-                                        </Text>
-                                    </div>
-                                    <Text size="sm" fw={600}>
-                                        {formatPaymentPlanPreviewPrice(row.amountCents)}
-                                    </Text>
-                                </Group>
-                            ))}
-                        </Paper>
-                    ) : (
-                        <Alert color="yellow" variant="light">
-                            No installment schedule was configured. The plan will be created with event-level defaults.
-                        </Alert>
-                    )}
-                    <Group justify="flex-end">
-                        <Button variant="default" onClick={() => setPaymentPlanPreview(null)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={continuePaymentPlanPreview}>
-                            Continue with Payment Plan
-                        </Button>
-                    </Group>
-                </Stack>
-            </Modal>
+                onContinue={continuePaymentPlanPreview}
+            />
 
-            <Modal
+            <PasswordConfirmationDialog
                 opened={showPasswordModal}
+                password={password}
+                error={passwordError}
+                loading={confirmingPassword}
+                onPasswordChange={setPassword}
                 onClose={cancelPasswordConfirmation}
-                centered
-                title="Confirm your password"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <form
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        void confirmPasswordAndStartSigning();
-                    }}
-                >
-                    <Stack gap="sm">
-                        <Text size="sm" c="dimmed">
-                            Please confirm your password before signing required documents.
-                        </Text>
-                        <PasswordInput
-                            label="Password"
-                            value={password}
-                            onChange={(event) => setPassword(event.currentTarget.value)}
-                            error={passwordError ?? undefined}
-                            required
-                        />
-                        <Group justify="flex-end">
-                            <Button variant="default" onClick={cancelPasswordConfirmation}>
-                                Cancel
-                            </Button>
-                            <Button
-                                type="submit"
-                                loading={confirmingPassword}
-                                disabled={!password.trim()}
-                            >
-                                Continue
-                            </Button>
-                        </Group>
-                    </Stack>
-                </form>
-            </Modal>
+                onSubmit={confirmPasswordAndStartSigning}
+            />
 
-            <Modal
+            <SigningDialog
                 opened={showSignModal}
+                signLinks={signLinks}
+                currentIndex={currentSignIndex}
+                textAccepted={textAccepted}
+                recording={recordingSignature}
+                onTextAcceptedChange={setTextAccepted}
+                onAcceptText={handleTextAcceptance}
+                onFinishedSigning={handleSignedDocument}
                 onClose={cancelSigning}
-                centered
-                size="xl"
-                title="Sign required documents"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                {signLinks.length > 0 ? (
-                    <div>
-                        <Text size="sm" c="dimmed" mb="xs">
-                            Document {currentSignIndex + 1} of {signLinks.length}
-                            {signLinks[currentSignIndex]?.title ? ` • ${signLinks[currentSignIndex]?.title}` : ''}
-                        </Text>
-                        {signLinks[currentSignIndex]?.requiredSignerLabel && (
-                            <Text size="xs" c="dimmed" mb="xs">
-                                Required signer: {signLinks[currentSignIndex]?.requiredSignerLabel}
-                            </Text>
-                        )}
-                        {signLinks[currentSignIndex]?.type === 'TEXT' ? (
-                            <Stack gap="sm">
-                                <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
-                                    <Text style={{ whiteSpace: 'pre-wrap' }}>
-                                        {signLinks[currentSignIndex]?.content || 'No waiver text provided.'}
-                                    </Text>
-                                </Paper>
-                                <Checkbox
-                                    label="I agree to the waiver above."
-                                    checked={textAccepted}
-                                    onChange={(event) => setTextAccepted(event.currentTarget.checked)}
-                                />
-                                <Group justify="flex-end">
-                                    <Button
-                                        onClick={() => void handleTextAcceptance()}
-                                        loading={recordingSignature}
-                                        disabled={!textAccepted || recordingSignature}
-                                    >
-                                        Accept and continue
-                                    </Button>
-                                </Group>
-                            </Stack>
-                        ) : (
-                            <Stack gap="xs">
-                                <div style={{ height: 600 }}>
-                                    <iframe
-                                        src={signLinks[currentSignIndex]?.url}
-                                        title="BoldSign Signing"
-                                        style={{ width: '100%', height: '100%', border: 'none' }}
-                                    />
-                                </div>
-                                <Group justify="flex-end">
-                                    <Button
-                                        variant="default"
-                                        onClick={() => void handleSignedDocument()}
-                                        loading={recordingSignature}
-                                        disabled={recordingSignature}
-                                    >
-                                        I finished signing
-                                    </Button>
-                                </Group>
-                            </Stack>
-                        )}
-                    </div>
-                ) : (
-                    <Text size="sm" c="dimmed">Preparing documents...</Text>
-                )}
-            </Modal>
+            />
 
-            <Modal
+            <CheckoutPreviewDialog
                 opened={showCheckoutPreviewModal && Boolean(pendingEventCheckout)}
-                onClose={() => {
-                    setShowCheckoutPreviewModal(false);
-                    setPendingEventCheckout(null);
-                    setDiscountPreview(null);
-                    setDiscountPreviewError(null);
-                }}
-                centered
-                title="Checkout preview"
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <Stack gap="sm">
-                    {(() => {
-                        const normalizedCode = discountCode.trim();
-                        const appliedCode = discountPreview?.code?.trim() ?? '';
-                        const canContinueWithDiscount = !normalizedCode
-                            || normalizedCode.toUpperCase() === appliedCode.toUpperCase();
-                        return (
-                            <>
-                    <Text size="sm" c="dimmed">
-                        Review the registration price before checkout. Add a discount code here if you have one.
-                    </Text>
-                    <Paper withBorder radius="md" p="sm" className="space-y-2">
-                        <Group justify="space-between">
-                            <Text size="sm" c="dimmed">Original price</Text>
-                            <Text size="sm" fw={700}>
-                                {formatPrice(discountPreview?.originalAmountCents ?? normalizePriceCents(selectedDivisionBilling.priceCents))}
-                            </Text>
-                        </Group>
-                        {discountPreview ? (
-                            <Group justify="space-between">
-                                <Text size="sm" c="dimmed">Discount</Text>
-                                <Text size="sm" fw={700} c="green">
-                                    -{formatPrice(discountPreview.discountAmountCents)}
-                                </Text>
-                            </Group>
-                        ) : null}
-                        <Group justify="space-between">
-                            <Text size="sm" fw={800}>New price</Text>
-                            <Text size="lg" fw={900}>
-                                {formatPrice(discountPreview?.discountedAmountCents ?? normalizePriceCents(selectedDivisionBilling.priceCents))}
-                            </Text>
-                        </Group>
-                    </Paper>
-                    <TextInput
-                        label="Discount code"
-                        placeholder="Enter code"
-                        value={discountCode}
-                        onChange={(event) => {
-                            setDiscountCode(event.currentTarget.value);
-                            setDiscountPreview(null);
-                            setDiscountPreviewError(null);
-                        }}
-                    />
-                    {discountPreviewError ? (
-                        <Alert color="red" variant="light">
-                            {discountPreviewError}
-                        </Alert>
-                    ) : null}
-                    {joinError ? (
-                        <Alert color="red" variant="light">
-                            {joinError}
-                        </Alert>
-                    ) : null}
-                    <Group justify="flex-end">
-                        <Button
-                            variant="default"
-                            onClick={() => {
-                                setDiscountCode('');
-                                setDiscountPreview(null);
-                                setDiscountPreviewError(null);
-                            }}
-                        >
-                            Clear
-                        </Button>
-                        <Button
-                            variant="light"
-                            loading={discountPreviewLoading}
-                            disabled={!discountCode.trim()}
-                            onClick={() => { void handleApplyDiscountPreview(); }}
-                        >
-                            Apply
-                        </Button>
-                        <Button
-                            loading={joining}
-                            disabled={!canContinueWithDiscount}
-                            onClick={async () => {
-                                if (!pendingEventCheckout) {
-                                    return;
-                                }
-                                const normalizedCode = discountCode.trim();
-                                const appliedCode = discountPreview?.code?.trim() ?? '';
-                                if (normalizedCode && normalizedCode.toUpperCase() !== appliedCode.toUpperCase()) {
-                                    setDiscountPreviewError('Apply the discount code before continuing to payment.');
-                                    return;
-                                }
-                                setJoining(true);
-                                setJoinError(null);
-                                try {
-                                    await startEventCheckout({
-                                        ...pendingEventCheckout,
-                                        discountCode: normalizedCode || null,
-                                    });
-                                } catch (error) {
-                                    setJoinError(error instanceof Error ? error.message : 'Unable to start checkout.');
-                                } finally {
-                                    setJoining(false);
-                                }
-                            }}
-                        >
-                            Checkout
-                        </Button>
-                    </Group>
-                            </>
-                        );
-                    })()}
-                </Stack>
-            </Modal>
+                originalPriceCents={normalizePriceCents(selectedDivisionBilling.priceCents)}
+                discountCode={discountCode}
+                discountPreview={discountPreview}
+                discountPreviewLoading={discountPreviewLoading}
+                discountPreviewError={discountPreviewError}
+                checkoutError={joinError}
+                joining={joining}
+                onDiscountCodeChange={handleCheckoutDiscountCodeChange}
+                onClearDiscount={clearCheckoutDiscount}
+                onApplyDiscount={handleApplyDiscountPreview}
+                onCheckout={continueCheckoutPreview}
+                onClose={closeCheckoutPreview}
+            />
 
             <BillingAddressModal
                 opened={showBillingAddressModal}
