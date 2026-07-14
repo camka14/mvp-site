@@ -19,7 +19,6 @@ import {
     getEventDateTime,
     getUserFullName,
     getUserHandle,
-    getTeamAvatarUrl,
     getEventImageFallbackUrl,
     getEventImageUrl,
     getOrganizationAvatarUrl,
@@ -121,13 +120,13 @@ import {
 } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
+import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
 import UserCard from '@/components/ui/UserCard';
-import TeamRegistrationFlow from '@/components/ui/TeamRegistrationFlow';
 import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
 import {
     trackEventOutboundClicked,
@@ -2755,92 +2754,17 @@ export default function EventDetailSheet({
         </div>
     );
 
-    const renderEventTeamParticipant = (team: Team | UserData) => {
-        const teamRow = team as Team;
-        const organizationName = getOrganizationName(currentEvent.organization) ?? currentEvent.location ?? 'Event';
-        const sportInput = typeof currentEvent?.sport === 'string'
-            ? currentEvent.sport
-            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
-        const divisionLabel = resolveDivisionDisplayName({
-            division: teamRow.division,
-            divisionNameIndex: divisionDisplayNameIndex,
-            sportInput,
-        }) ?? 'Division';
-        const divisionSuffix = /\bdivision\b/i.test(divisionLabel) ? '' : ' Division';
-
-        return (
-            <TeamRegistrationFlow
-                team={teamRow}
-                user={user}
-                paymentSummary={{
-                    name: teamRow.name || 'Team',
-                    location: organizationName,
-                    eventType: currentEvent.eventType,
-                    price: Math.max(0, Math.round(Number(teamRow.registrationPriceCents ?? 0))),
-                }}
-                organization={{
-                    $id: currentEvent.organizationId ?? undefined,
-                    name: organizationName,
-                }}
-                onRequireAuth={openAuthModal}
-                onTeamUpdated={() => {
-                    void loadEventDetails(currentEvent.$id, { automatic: false });
-                }}
-                onCompleted={async () => {
-                    setJoinNotice(`You joined ${teamRow.name || 'this team'}.`);
-                    await loadEventDetails(currentEvent.$id, { automatic: false });
-                }}
-            >
-                {(flow) => (
-                    <div className="space-y-2 rounded-lg p-3 hover:bg-gray-50">
-                        <div className="flex items-center gap-3">
-                            <Image
-                                src={getTeamAvatarUrl(teamRow, 40)}
-                                alt={teamRow.name || 'Team'}
-                                width={40}
-                                height={40}
-                                unoptimized
-                                className="w-10 h-10 rounded-full object-cover"
-                            />
-                            <div className="flex-1">
-                                <div className="font-medium text-gray-900">{teamRow.name || 'Unnamed Team'}</div>
-                                <div className="text-sm text-gray-500">
-                                    {teamRow.currentSize} members &bull; {divisionLabel}{divisionSuffix}
-                                </div>
-                            </div>
-                            <div className="text-xs text-gray-400">
-                                Team
-                            </div>
-                        </div>
-                        {flow.registrationError ? (
-                            <Alert color="red" variant="light" py="xs">
-                                <Text size="xs">{flow.registrationError}</Text>
-                            </Alert>
-                        ) : null}
-                        {flow.currentUserActiveMember && !flow.shouldOfferDocumentReview ? (
-                            <Text size="xs" c="green" fw={600}>
-                                Already on this team
-                            </Text>
-                        ) : null}
-                        {flow.actionVisible ? (
-                            <Button
-                                size="xs"
-                                fullWidth
-                                loading={flow.actionLoading}
-                                disabled={flow.actionDisabled}
-                                onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
-                                    event.stopPropagation();
-                                    flow.openFlow();
-                                }}
-                            >
-                                {flow.actionLabel}
-                            </Button>
-                        ) : null}
-                    </div>
-                )}
-            </TeamRegistrationFlow>
-        );
-    };
+    const renderEventTeamParticipant = (participant: Team | UserData) => (
+        <EventTeamParticipantCard
+            event={currentEvent}
+            team={participant as Team}
+            user={user}
+            divisionNameIndex={divisionDisplayNameIndex}
+            onRequireAuth={openAuthModal}
+            onReload={() => loadEventDetails(currentEvent.$id, { automatic: false })}
+            onNotice={setJoinNotice}
+        />
+    );
 
     return (
         <>
