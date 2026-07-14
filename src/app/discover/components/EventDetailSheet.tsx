@@ -89,6 +89,7 @@ import {
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
+import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegistrationQuestionsController';
 import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
@@ -313,7 +314,6 @@ export default function EventDetailSheet({
     const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
-    const [registrationQuestionsIntent, setRegistrationQuestionsIntent] = useState<JoinIntent | null>(null);
     const [paymentPlanPreviewState, setPaymentPlanPreviewState] = useState<PaymentPlanPreviewState | null>(null);
     const [registrationWorkflow, dispatchRegistrationWorkflow] = useReducer(
         registrationWorkflowReducer,
@@ -325,9 +325,6 @@ export default function EventDetailSheet({
     ) => {
         dispatchRegistrationWorkflow({ type: opened ? 'open' : 'close', phase });
     }, []);
-    const setShowRegistrationQuestionsModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('questions', opened);
-    }, [setRegistrationWorkflowPhase]);
     const setShowManualPaymentModal = useCallback((opened: boolean) => {
         setRegistrationWorkflowPhase('manual-proof', opened);
     }, [setRegistrationWorkflowPhase]);
@@ -1409,6 +1406,32 @@ export default function EventDetailSheet({
         setJoinNotice,
     });
 
+    const {
+        shouldAsk: shouldAskRegistrationQuestions,
+        open: openRegistrationQuestionsStep,
+        close: closeRegistrationQuestionsStep,
+        updateAnswer: updateRegistrationQuestionAnswer,
+        submit: submitRegistrationQuestionsStep,
+        reset: resetRegistrationQuestions,
+    } = useRegistrationQuestionsController({
+        questions: registrationQuestions,
+        answers: registrationQuestionAnswers,
+        setAnswers: setRegistrationQuestionAnswers,
+        event: currentEvent,
+        user,
+        isMinor,
+        selection: resolvedDivisionSelectionPayload,
+        occurrence: selectedWeeklyOccurrence,
+        saveProgress: saveEventRegistrationProgress,
+        beginSigning: beginSigningFlow,
+        finalizeJoin,
+        reload: loadEventDetails,
+        setWorkflowPhase: setRegistrationWorkflowPhase,
+        setJoining,
+        setJoinError,
+        setJoinNotice,
+    });
+
     useEffect(() => {
         if (isActive) {
             return;
@@ -1424,134 +1447,11 @@ export default function EventDetailSheet({
         setChildRegistration(null);
         setChildConsent(null);
         setChildRegistrationChildId(null);
-        setRegistrationQuestionsIntent(null);
+        resetRegistrationQuestions();
         setPaymentPlanPreviewState(null);
         setSelectedDivisionId('');
         setSelectedDivisionTypeKey('');
-    }, [isActive, resetRegistrationWorkflow, resetSigningState]);
-
-    const buildRegistrationQuestionAnswers = useCallback((): RegistrationQuestionAnswerInput[] => (
-        registrationQuestions.map((question) => ({
-            questionId: question.id,
-            answer: registrationQuestionAnswers[question.id] ?? '',
-        }))
-    ), [registrationQuestionAnswers, registrationQuestions]);
-
-    const validateRegistrationQuestionAnswers = useCallback((): string | null => {
-        const missingRequired = registrationQuestions.find((question) => (
-            Boolean(question.required) && String(registrationQuestionAnswers[question.id] ?? '').trim().length === 0
-        ));
-        if (missingRequired) {
-            return `Answer "${missingRequired.prompt}" before continuing.`;
-        }
-        return null;
-    }, [registrationQuestionAnswers, registrationQuestions]);
-
-    const shouldAskRegistrationQuestions = useCallback((intent: JoinIntent): boolean => (
-        registrationQuestions.length > 0
-        && !intent.answers
-        && (intent.mode === 'user' || intent.mode === 'team' || intent.mode === 'child')
-    ), [registrationQuestions.length]);
-
-    const openRegistrationQuestionsStep = useCallback((intent: JoinIntent) => {
-        setJoinError(null);
-        setRegistrationQuestionsIntent(intent);
-        setShowRegistrationQuestionsModal(true);
-    }, [setShowRegistrationQuestionsModal]);
-
-    const closeRegistrationQuestionsStep = useCallback(() => {
-        setShowRegistrationQuestionsModal(false);
-        setRegistrationQuestionsIntent(null);
-    }, [setShowRegistrationQuestionsModal]);
-
-    const updateRegistrationQuestionAnswer = useCallback((questionId: string, value: string) => {
-        const nextAnswers = {
-            ...registrationQuestionAnswers,
-            [questionId]: value,
-        };
-        setRegistrationQuestionAnswers(nextAnswers);
-        saveEventRegistrationProgress({
-            step: 'questions',
-            answers: nextAnswers,
-        });
-    }, [registrationQuestionAnswers, saveEventRegistrationProgress, setRegistrationQuestionAnswers]);
-
-    const submitRegistrationQuestionsStep = useCallback(async () => {
-        if (!registrationQuestionsIntent || !currentEvent || !user) {
-            return;
-        }
-        const validationError = validateRegistrationQuestionAnswers();
-        if (validationError) {
-            setJoinError(validationError);
-            return;
-        }
-
-        const answers = buildRegistrationQuestionAnswers();
-        saveEventRegistrationProgress({
-            step: 'signing',
-            answers: registrationQuestionAnswers,
-        });
-
-        const intent: JoinIntent = {
-            ...registrationQuestionsIntent,
-            answers,
-        };
-        setShowRegistrationQuestionsModal(false);
-        setRegistrationQuestionsIntent(null);
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        let signingStarted = false;
-        try {
-            if (intent.mode === 'user' && isMinor) {
-                trackEventRegistrationStarted(currentEvent, 'self', {
-                    division_id: resolvedDivisionSelectionPayload?.divisionId,
-                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
-                    slot_id: selectedWeeklyOccurrence?.slotId,
-                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
-                    requires_parent_approval: true,
-                    answered_registration_questions: true,
-                });
-                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload, intent.answers);
-                if (result.requiresParentApproval) {
-                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
-                } else {
-                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
-                }
-                await loadEventDetails();
-                return;
-            }
-            signingStarted = await beginSigningFlow(intent);
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin(intent);
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to continue registration.');
-            setShowRegistrationQuestionsModal(true);
-            setRegistrationQuestionsIntent(intent);
-        } finally {
-            if (!signingStarted) {
-                setJoining(false);
-            }
-        }
-    }, [
-        beginSigningFlow,
-        buildRegistrationQuestionAnswers,
-        currentEvent,
-        finalizeJoin,
-        isMinor,
-        loadEventDetails,
-        registrationQuestionsIntent,
-        registrationQuestionAnswers,
-        resolvedDivisionSelectionPayload,
-        saveEventRegistrationProgress,
-        selectedWeeklyOccurrence,
-        setShowRegistrationQuestionsModal,
-        user,
-        validateRegistrationQuestionAnswers,
-    ]);
+    }, [isActive, resetRegistrationQuestions, resetRegistrationWorkflow, resetSigningState]);
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;

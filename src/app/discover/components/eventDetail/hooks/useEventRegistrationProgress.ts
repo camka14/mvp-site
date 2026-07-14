@@ -9,7 +9,7 @@ import {
     type RegistrationProgressStep,
 } from '@/lib/registrationProgressStorage';
 
-type RegistrationProgressPatch = {
+export type RegistrationProgressPatch = {
     step?: RegistrationProgressStep;
     answers?: Record<string, string>;
     selectedTeamId?: string | null;
