@@ -95,6 +95,7 @@ import {
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
+import { useEventRegistrationProgress } from './eventDetail/hooks/useEventRegistrationProgress';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -128,13 +129,6 @@ import RefundSection from '@/components/ui/RefundSection';
 import UserCard from '@/components/ui/UserCard';
 import TeamRegistrationFlow from '@/components/ui/TeamRegistrationFlow';
 import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
-import {
-    buildRegistrationProgressKey,
-    clearRegistrationProgress,
-    loadRegistrationProgress,
-    saveRegistrationProgress,
-    type RegistrationProgressStep,
-} from '@/lib/registrationProgressStorage';
 import {
     type RegistrationAttemptType,
     trackEventOutboundClicked,
@@ -383,7 +377,9 @@ export default function EventDetailSheet({
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [manualPaymentBill, setManualPaymentBill] = useState<Bill | null>(null);
-    const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
+    const [selectedTeamId, setSelectedTeamId] = useState('');
+    const [selectedDivisionId, setSelectedDivisionId] = useState('');
+    const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
     const [discountCode, setDiscountCode] = useState('');
     const [discountPreview, setDiscountPreview] = useState<DiscountPreview | null>(null);
     const [discountPreviewLoading, setDiscountPreviewLoading] = useState(false);
@@ -470,9 +466,6 @@ export default function EventDetailSheet({
     // Team-signup join controls
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
     const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
-    const [selectedTeamId, setSelectedTeamId] = useState('');
-    const [selectedDivisionId, setSelectedDivisionId] = useState('');
-    const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEventPublicUrl = React.useMemo(
         () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
@@ -524,56 +517,26 @@ export default function EventDetailSheet({
     const selectedWeeklyOccurrenceSlotId = selectedWeeklyOccurrence?.slotId ?? null;
     const selectedWeeklyOccurrenceDate = selectedWeeklyOccurrence?.occurrenceDate ?? null;
     const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
-    const eventRegistrationProgressKey = React.useMemo(() => buildRegistrationProgressKey({
-        scope: 'event',
+    const {
+        holdExpiresAt: registrationHoldExpiresAt,
+        setHoldExpiresAt: setRegistrationHoldExpiresAt,
+        save: saveEventRegistrationProgress,
+        clear: clearEventRegistrationProgress,
+    } = useEventRegistrationProgress({
         userId: user?.$id,
-        subjectId: currentEvent?.$id,
+        eventId: currentEvent?.$id,
         slotId: selectedWeeklyOccurrenceSlotId,
         occurrenceDate: selectedWeeklyOccurrenceDate,
-    }), [currentEvent?.$id, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId, user?.$id]);
-    const saveEventRegistrationProgress = useCallback((patch: {
-        step?: RegistrationProgressStep;
-        answers?: Record<string, string>;
-        selectedTeamId?: string | null;
-        selectedDivisionId?: string | null;
-        selectedDivisionTypeKey?: string | null;
-        registrationId?: string | null;
-        holdExpiresAt?: string | null;
-    } = {}) => {
-        if (!eventRegistrationProgressKey || !user?.$id || !currentEvent?.$id) {
-            return;
-        }
-        saveRegistrationProgress(eventRegistrationProgressKey, {
-            scope: 'event',
-            userId: user.$id,
-            subjectId: currentEvent.$id,
-            step: patch.step ?? 'questions',
-            answers: patch.answers ?? registrationQuestionAnswers,
-            selectedTeamId: (patch.selectedTeamId ?? selectedTeamId) || null,
-            selectedDivisionId: (patch.selectedDivisionId ?? selectedDivisionId) || null,
-            selectedDivisionTypeKey: (patch.selectedDivisionTypeKey ?? selectedDivisionTypeKey) || null,
-            slotId: selectedWeeklyOccurrenceSlotId,
-            occurrenceDate: selectedWeeklyOccurrenceDate,
-            registrationId: patch.registrationId ?? paymentData?.registrationId ?? null,
-            holdExpiresAt: patch.holdExpiresAt ?? registrationHoldExpiresAt,
-        });
-    }, [
-        currentEvent?.$id,
-        eventRegistrationProgressKey,
-        paymentData?.registrationId,
-        registrationHoldExpiresAt,
-        registrationQuestionAnswers,
+        answers: registrationQuestionAnswers,
+        selectedTeamId,
         selectedDivisionId,
         selectedDivisionTypeKey,
-        selectedTeamId,
-        selectedWeeklyOccurrenceDate,
-        selectedWeeklyOccurrenceSlotId,
-        user?.$id,
-    ]);
-    const clearEventRegistrationProgress = useCallback(() => {
-        clearRegistrationProgress(eventRegistrationProgressKey);
-        setRegistrationHoldExpiresAt(null);
-    }, [eventRegistrationProgressKey]);
+        registrationId: paymentData?.registrationId,
+        setAnswers: setRegistrationQuestionAnswers,
+        setSelectedTeamId,
+        setSelectedDivisionId,
+        setSelectedDivisionTypeKey,
+    });
     const handleEventRegistrationHoldExpired = useCallback(() => {
         clearEventRegistrationProgress();
         setShowPaymentModal(false);
@@ -586,29 +549,6 @@ export default function EventDetailSheet({
         setShowBillingAddressModal,
         setShowPaymentModal,
     ]);
-    useEffect(() => {
-        const draft = loadRegistrationProgress(eventRegistrationProgressKey);
-        if (!draft) {
-            setRegistrationHoldExpiresAt(null);
-            return;
-        }
-        if (draft.answers) {
-            setRegistrationQuestionAnswers((current) => ({
-                ...current,
-                ...draft.answers,
-            }));
-        }
-        if (draft.selectedTeamId) {
-            setSelectedTeamId(draft.selectedTeamId);
-        }
-        if (draft.selectedDivisionId) {
-            setSelectedDivisionId(draft.selectedDivisionId);
-        }
-        if (draft.selectedDivisionTypeKey) {
-            setSelectedDivisionTypeKey(draft.selectedDivisionTypeKey);
-        }
-        setRegistrationHoldExpiresAt(draft.holdExpiresAt ?? null);
-    }, [eventRegistrationProgressKey, setRegistrationQuestionAnswers]);
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
@@ -1454,6 +1394,7 @@ export default function EventDetailSheet({
         setShowBillingAddressModal,
         setShowCheckoutPreviewModal,
         setShowPaymentModal,
+        setRegistrationHoldExpiresAt,
         user,
     ]);
 
