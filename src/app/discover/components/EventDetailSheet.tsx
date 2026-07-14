@@ -1,14 +1,11 @@
 import React, { useState, useCallback, useReducer } from 'react';
 import Image from 'next/image';
-import { Button, Paper, Alert, Text, ActionIcon, Group, Stack } from '@mantine/core';
+import { Button, Text, ActionIcon, Group } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     CalendarDays,
-    ChevronDown,
-    ChevronUp,
     MapPin,
     QrCode,
-    ShieldCheck,
     Users,
 } from 'lucide-react';
 import {
@@ -17,11 +14,9 @@ import {
     Team,
     getEventImageFallbackUrl,
     getEventImageUrl,
-    formatPrice,
 } from '@/types';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
-import { formatAgeRange } from '@/lib/age';
 import {
     normalizePriceCents,
 } from './eventDetail/divisionRegistration';
@@ -78,11 +73,11 @@ import { PublicEventProgramDetails } from './eventDetail/PublicEventProgramDetai
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
 import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualRegistrationPanel';
 import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
+import { EventJoinCard } from './eventDetail/EventJoinCard';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
-import RefundSection from '@/components/ui/RefundSection';
 import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
 import {
     trackEventOutboundClicked,
@@ -108,12 +103,6 @@ const SIGN_MODAL_Z_INDEX = SHEET_POPOVER_Z_INDEX + 200;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const JOIN_API_TIMEOUT_MS = 5_000;
-const WEEKLY_SESSION_VISIBLE_ROWS = 10;
-const WEEKLY_SESSION_CARD_HEIGHT_PX = 72;
-const WEEKLY_SESSION_CARD_GAP_PX = 8;
-const WEEKLY_SESSION_LIST_MAX_HEIGHT_PX = (
-    WEEKLY_SESSION_VISIBLE_ROWS * WEEKLY_SESSION_CARD_HEIGHT_PX
-) + ((WEEKLY_SESSION_VISIBLE_ROWS - 1) * WEEKLY_SESSION_CARD_GAP_PX);
 
 export default function EventDetailSheet({
     event,
@@ -721,7 +710,6 @@ export default function EventDetailSheet({
         isWeeklyParentEvent,
         now: todayForDob,
     });
-    const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const renderHostManageQrActions = () => (
         <Group grow gap="sm" wrap="wrap">
             <Button
@@ -869,6 +857,77 @@ export default function EventDetailSheet({
             comboboxProps={sharedComboboxProps}
             onChildChange={setSelectedChildId}
             onAction={() => { void handleRegisterChild(); }}
+        />
+    );
+    const registrationPanel = isTeamSignup ? (
+        <EventTeamRegistrationPanel
+            eventHasStarted={eventHasStarted}
+            selectedWeeklySession={Boolean(isWeeklyParentEvent && selectedWeeklyOccurrenceOption)}
+            showTeamJoinOptions={showTeamJoinOptions}
+            isLoadingTeams={isLoadingTeams}
+            userTeams={userTeams}
+            selectedTeamId={selectedTeamId}
+            showTeamWaitlistActions={showTeamWaitlistActions}
+            joining={joining}
+            weeklySelectionRequired={weeklySelectionRequired}
+            selectedTeamIsWaitlisted={selectedTeamIsWaitlisted}
+            isDivisionSelectionMissing={isDivisionSelectionMissing}
+            selectedTeamIsRegistered={selectedTeamIsRegistered}
+            confirmingPurchase={confirmingPurchase}
+            isFreeForUser={isFreeForUser}
+            priceCents={selectedDivisionBilling.priceCents}
+            selectedTeamPaymentFailed={selectedTeamPaymentFailed}
+            selfRegistrationBlockedReason={selfRegistrationBlockedReason}
+            isMinor={isMinor}
+            isUserFreeAgent={isUserFreeAgent}
+            freeAgentJoinBlockedReason={freeAgentJoinBlockedReason}
+            childRegistrationPanel={childRegistrationPanel}
+            canShowScheduleButton={canShowScheduleButton}
+            hostManageQrActions={renderHostManageQrActions()}
+            renderInline={renderInline}
+            isTournament={currentEvent.eventType === 'TOURNAMENT'}
+            sportName={typeof currentEvent.sport === 'string'
+                ? currentEvent.sport
+                : currentEvent.sport?.name}
+            totalParticipants={totalParticipants}
+            participantCapacity={participantCapacity}
+            comboboxProps={sharedComboboxProps}
+            onToggleTeamOptions={() => setShowTeamJoinOptions((visible) => !visible)}
+            onSelectedTeamChange={(teamId) => {
+                setSelectedTeamId(teamId);
+                saveEventRegistrationProgress({ selectedTeamId: teamId || null });
+            }}
+            onManageTeams={() => {
+                router.push(`/teams?event=${currentEvent.$id}`);
+                onClose();
+            }}
+            onJoinTeamWaitlist={() => { void handleJoinTeamWaitlist(); }}
+            onJoinAsTeam={() => { void handleJoinAsTeam(); }}
+            onWithdrawTeam={() => { void handleWithdrawTeam(); }}
+            onLeaveFreeAgents={() => { void handleLeaveFreeAgents(); }}
+            onJoinFreeAgents={() => { void handleJoinFreeAgents(); }}
+            onViewBracket={handleBracketClick}
+        />
+    ) : (
+        <EventIndividualRegistrationPanel
+            selfRegistrationBlockedReason={selfRegistrationBlockedReason}
+            isMinor={isMinor}
+            showSelfWaitlistActions={showSelfWaitlistActions}
+            isUserWaitlisted={isUserWaitlisted}
+            selfWaitlistLeaveDisabled={selfWaitlistLeaveDisabled}
+            selfWaitlistJoinDisabled={selfWaitlistJoinDisabled}
+            selfJoinDisabled={selfJoinDisabled}
+            eventHasStarted={eventHasStarted}
+            joining={joining}
+            confirmingPurchase={confirmingPurchase}
+            priceCents={selectedDivisionBilling.priceCents}
+            currentUserPaymentFailed={currentUserPaymentFailed}
+            canShowScheduleButton={canShowScheduleButton}
+            hostManageQrActions={renderHostManageQrActions()}
+            childRegistrationPanel={childRegistrationPanel}
+            onLeaveWaitlist={() => { void handleLeaveWaitlist(); }}
+            onJoinWaitlist={() => { void handleJoinWaitlist(); }}
+            onJoinEvent={() => { void handleJoinEvent(); }}
         />
     );
     const joinCardFrameClassName = renderInline
@@ -1068,361 +1127,71 @@ export default function EventDetailSheet({
                                         }
                                         : undefined}
                                 >
-                            <Paper
-                                withBorder
-                                p="lg"
-                                radius="md"
-                                className="rounded-t-xl border-slate-200 bg-white shadow-2xl lg:rounded-md lg:shadow-xl"
-                            >
-                                {renderInline && (
-                                    <button
-                                        type="button"
-                                        className="flex w-full items-center justify-between gap-3 text-left lg:hidden"
-                                        onClick={() => setMobileJoinExpanded((expanded) => !expanded)}
-                                        aria-expanded={mobileJoinExpanded}
-                                    >
-                                        <span>
-                                            <Text fw={800} className="text-slate-950">
-                                                {registrationTypeLabel}
-                                            </Text>
-                                            <Text size="xs" c="dimmed">
-                                                {selectedDivisionOption?.name
-                                                    ? `${selectedDivisionOption.name} · ${formatPrice(selectedDivisionBilling.priceCents)}`
-                                                    : eventPriceSummary}
-                                            </Text>
-                                        </span>
-                                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                                            {mobileJoinExpanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-                                        </span>
-                                    </button>
-                                )}
-                                <div className={`${!renderInline || mobileJoinExpanded ? 'block' : 'hidden'} lg:block ${renderInline ? 'mt-4 border-t border-slate-200 pt-4 lg:mt-0 lg:border-t-0 lg:pt-0' : ''}`}>
-	                                {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
-                                {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
-                                {isAffiliateEvent && (
-                                    <Stack gap="xs">
-                                        <Button
-                                            component="a"
-                                            href={affiliateActionUrl || undefined}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            fullWidth
-                                            disabled={!affiliateActionUrl}
-                                            onClick={() => {
-                                                if (!affiliateActionUrl) {
-                                                    return;
-                                                }
-                                                trackEventOutboundClicked(currentEvent, affiliateActionUrl, 'event_detail');
-                                                trackEventRegistrationStarted(currentEvent, 'affiliate', {
-                                                    destination_selected: true,
-                                                });
-                                            }}
-                                        >
-                                            View Event
-                                        </Button>
-                                        <Text size="xs" c="dimmed" ta="center">
-                                            Registration or booking continues on the organizer&apos;s website.
-                                        </Text>
-                                    </Stack>
-                                )}
-                                {!isAffiliateEvent && isWeeklyParentEvent && (
-                                    <div className="space-y-3 mb-4">
-                                        <Group justify="space-between" align="center" gap="xs">
-                                            <div>
-                                                <Text size="sm" fw={600}>
-                                            {selectedWeeklyOccurrenceOption ? 'Selected weekly session' : 'Select a weekly session'}
-                                                </Text>
-                                                <Text size="xs" c="dimmed">
-                                                    Choose the day and slot you want to register for.
-                                                </Text>
-                                            </div>
-                                            {selectedWeeklyOccurrenceOption && onWeeklyOccurrenceChange && (
-                                                <Button
-                                                    variant="subtle"
-                                                    color="red"
-                                                    size="compact-sm"
-                                                    onClick={() => onWeeklyOccurrenceChange(null)}
-                                                >
-                                                    Clear
-                                                </Button>
-                                            )}
-                                        </Group>
-                                        {weeklySessionOptions.length === 0 ? (
-                                            <Alert color="yellow" variant="light">
-                                                No upcoming weekly sessions are available.
-                                            </Alert>
-                                        ) : (
-                                            <div
-                                                className={`space-y-2 ${shouldScrollWeeklySessions ? 'overflow-y-auto pr-1' : ''}`}
-                                                style={shouldScrollWeeklySessions ? { maxHeight: WEEKLY_SESSION_LIST_MAX_HEIGHT_PX } : undefined}
-                                            >
-                                                {weeklySessionOptions.map((session) => {
-                                                    const isSelected = selectedWeeklyOccurrenceOption?.slotId === session.slotId
-                                                        && selectedWeeklyOccurrenceOption?.occurrenceDate === session.occurrenceDate;
-                                                    return (
-                                                        <button
-                                                            key={session.id}
-                                                            type="button"
-                                                            onClick={() => { void handleWeeklySessionSelect(session); }}
-                                                            className={`w-full rounded-lg border p-2 text-left transition ${
-                                                                isSelected
-                                                                    ? 'border-red-400 bg-red-50 shadow-sm'
-                                                                    : 'border-gray-200 bg-white hover:border-blue-400 hover:shadow-sm'
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="mvp-image-background relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
-                                                                    <Image
-                                                                        src={eventImageUrl}
-                                                                        alt={currentEvent.name}
-                                                                        fill
-                                                                        unoptimized
-                                                                        sizes="96px"
-                                                                        className="object-cover"
-                                                                    />
-                                                                </div>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <Text size="sm" fw={600} className="truncate">
-                                                                        {session.label}
-                                                                    </Text>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        Divisions: {session.divisionLabel}
-                                                                    </Text>
-                                                                    <Text size="xs" c={isSelected ? 'red' : 'dimmed'}>
-                                                                        {isSelected ? 'Selected' : 'Tap to select'}
-                                                                    </Text>
-                                                                </div>
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                {!isAffiliateEvent ? ((!isWeeklyParentEvent || !weeklySelectionRequired) ? (
-                                    <>
-                                {hasAgeLimits && (
-                                    <Alert color="yellow" variant="light" mb="sm">
-                                        <Text fw={600} size="sm">
-                                            Age-restricted event
-                                        </Text>
-                                        <Text size="sm">
-                                            Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}. We only check eligibility using the date of birth you enter in your profile. The host may verify age at check-in (for example, photo ID).
-                                        </Text>
-                                    </Alert>
-                                )}
-                                {divisionOptions.length > 0 && selectedDivisionOption && (
-                                    <div className="mb-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <Text size="xs" c="dimmed" fw={800} tt="uppercase" className="tracking-normal">
-                                                    Selected division
-                                                </Text>
-                                                <Text size="sm" fw={800} className="text-slate-950">
-                                                    {selectedDivisionOption.name}
-                                                </Text>
-                                                <Text size="xs" c="dimmed">
-                                                    {selectedDivisionOption.divisionTypeName}
-                                                </Text>
-                                            </div>
-                                            <Text size="sm" fw={800} className="text-emerald-700">
-                                                {formatPrice(selectedDivisionBilling.priceCents)}
-                                            </Text>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-2 border-t border-slate-200 pt-3 text-xs sm:grid-cols-2">
-                                            <div>
-                                                <Text size="xs" c="dimmed">Registration closes</Text>
-                                                <Text size="xs" fw={700}>{registrationCutoffSummary}</Text>
-                                            </div>
-                                            <div>
-                                                <Text size="xs" c="dimmed">Refunds</Text>
-                                                <Text size="xs" fw={700}>{refundSummary}</Text>
-                                            </div>
-                                            {!hasAgeLimits && selectedDivisionOption.ageCutoffLabel && (
-                                                <div className="sm:col-span-2">
-                                                    <Text size="xs" c="dimmed">{selectedDivisionOption.ageCutoffLabel}</Text>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                {isDivisionSelectionMissing && (
-                                    <Alert color="yellow" variant="light" mb="sm">
-                                        {registrationByDivisionType
-                                            ? 'Choose a division type before registration.'
-                                            : 'Choose a division before registration.'}
-                                    </Alert>
-                                )}
-
-                                {!user ? (
-                                    <div style={{ textAlign: 'center' }}>
-                                        <Button fullWidth color="blue" onClick={openAuthModal}>
-                                            Register / Login
-                                        </Button>
-                                        <Text size="xs" c="dimmed" mt="xs">
-                                            Sign in or create an account to register or purchase.
-                                        </Text>
-                                    </div>
-                                ) : isUserRegistered ? (
-                                    <>
-                                        <Text size="sm" c="green" fw={500} ta="center">
-                                            {"✓ You're registered for this event"}
-                                        </Text>
-                                        <div style={{ textAlign: 'center', marginTop: 8 }}>
-                                            <Text size="sm" c="dimmed">
-                                                {totalParticipants} / {participantCapacity} total participants
-                                            </Text>
-                                        </div>
-                                        {canShowScheduleButton && (
-                                            <div className="mt-4 space-y-2">
-                                                {renderHostManageQrActions()}
-                                                {currentEvent.eventType === 'TOURNAMENT' && (
-                                                    <Button
-                                                        fullWidth
-                                                        color="green"
-                                                        onClick={handleBracketClick}
-                                                    >
-                                                        View Tournament Bracket
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {isTeamSignup ? (
-                                                <EventTeamRegistrationPanel
-                                                    eventHasStarted={eventHasStarted}
-                                                    selectedWeeklySession={Boolean(
-                                                        isWeeklyParentEvent && selectedWeeklyOccurrenceOption,
-                                                    )}
-                                                    showTeamJoinOptions={showTeamJoinOptions}
-                                                    isLoadingTeams={isLoadingTeams}
-                                                    userTeams={userTeams}
-                                                    selectedTeamId={selectedTeamId}
-                                                    showTeamWaitlistActions={showTeamWaitlistActions}
-                                                    joining={joining}
-                                                    weeklySelectionRequired={weeklySelectionRequired}
-                                                    selectedTeamIsWaitlisted={selectedTeamIsWaitlisted}
-                                                    isDivisionSelectionMissing={isDivisionSelectionMissing}
-                                                    selectedTeamIsRegistered={selectedTeamIsRegistered}
-                                                    confirmingPurchase={confirmingPurchase}
-                                                    isFreeForUser={isFreeForUser}
-                                                    priceCents={selectedDivisionBilling.priceCents}
-                                                    selectedTeamPaymentFailed={selectedTeamPaymentFailed}
-                                                    selfRegistrationBlockedReason={selfRegistrationBlockedReason}
-                                                    isMinor={isMinor}
-                                                    isUserFreeAgent={isUserFreeAgent}
-                                                    freeAgentJoinBlockedReason={freeAgentJoinBlockedReason}
-                                                    childRegistrationPanel={childRegistrationPanel}
-                                                    canShowScheduleButton={canShowScheduleButton}
-                                                    hostManageQrActions={renderHostManageQrActions()}
-                                                    renderInline={renderInline}
-                                                    isTournament={currentEvent.eventType === 'TOURNAMENT'}
-                                                    sportName={
-                                                        typeof currentEvent.sport === 'string'
-                                                            ? currentEvent.sport
-                                                            : currentEvent.sport?.name
-                                                    }
-                                                    totalParticipants={totalParticipants}
-                                                    participantCapacity={participantCapacity}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    onToggleTeamOptions={() => {
-                                                        setShowTeamJoinOptions((visible) => !visible);
-                                                    }}
-                                                    onSelectedTeamChange={(teamId) => {
-                                                        setSelectedTeamId(teamId);
-                                                        saveEventRegistrationProgress({
-                                                            selectedTeamId: teamId || null,
-                                                        });
-                                                    }}
-                                                    onManageTeams={() => {
-                                                        router.push(`/teams?event=${currentEvent.$id}`);
-                                                        onClose();
-                                                    }}
-                                                    onJoinTeamWaitlist={() => {
-                                                        void handleJoinTeamWaitlist();
-                                                    }}
-                                                    onJoinAsTeam={() => {
-                                                        void handleJoinAsTeam();
-                                                    }}
-                                                    onWithdrawTeam={() => {
-                                                        void handleWithdrawTeam();
-                                                    }}
-                                                    onLeaveFreeAgents={() => {
-                                                        void handleLeaveFreeAgents();
-                                                    }}
-                                                    onJoinFreeAgents={() => {
-                                                        void handleJoinFreeAgents();
-                                                    }}
-                                                    onViewBracket={handleBracketClick}
-                                                />
-                                            ) : (
-                                                <EventIndividualRegistrationPanel
-                                                    selfRegistrationBlockedReason={selfRegistrationBlockedReason}
-                                                    isMinor={isMinor}
-                                                    showSelfWaitlistActions={showSelfWaitlistActions}
-                                                    isUserWaitlisted={isUserWaitlisted}
-                                                    selfWaitlistLeaveDisabled={selfWaitlistLeaveDisabled}
-                                                    selfWaitlistJoinDisabled={selfWaitlistJoinDisabled}
-                                                    selfJoinDisabled={selfJoinDisabled}
-                                                    eventHasStarted={eventHasStarted}
-                                                    joining={joining}
-                                                    confirmingPurchase={confirmingPurchase}
-                                                    priceCents={selectedDivisionBilling.priceCents}
-                                                    currentUserPaymentFailed={currentUserPaymentFailed}
-                                                    canShowScheduleButton={canShowScheduleButton}
-                                                    hostManageQrActions={renderHostManageQrActions()}
-                                                    childRegistrationPanel={childRegistrationPanel}
-                                                    onLeaveWaitlist={() => {
-                                                        void handleLeaveWaitlist();
-                                                    }}
-                                                    onJoinWaitlist={() => {
-                                                        void handleJoinWaitlist();
-                                                    }}
-                                                    onJoinEvent={() => {
-                                                        void handleJoinEvent();
-                                                    }}
-                                                />
-                                            )}
-                                    </div>
-                                )}
-                                    </>
-                                ) : (
-                                    <Alert color="blue" variant="light">
-                                                            Select a weekly session to see registration options.
-                                    </Alert>
-                                )) : null}
-                                {hasRefundTarget && (
-                                    <div className="mt-5 border-t border-slate-200 pt-4">
-                                        <RefundSection
-                                            event={currentEvent}
-                                            userRegistered={!!isUserRegistered}
-                                            linkedChildren={activeChildren}
-                                            selectedOccurrence={selectedWeeklyOccurrence ?? null}
-                                            effectiveStart={eventStartDate}
-                                            onRefundSuccess={loadEventDetails}
-                                        />
-                                    </div>
-                                )}
-                                {(showSecurePaymentNote || showPoweredByBracketIqNote) && (
-                                    <div className="mt-5 space-y-2 border-t border-slate-200 pt-4">
-                                        {showSecurePaymentNote && (
-                                            <div className="flex items-center gap-2 text-emerald-800">
-                                                <ShieldCheck size={15} />
-                                                <Text size="xs" fw={700}>Secure payments</Text>
-                                            </div>
-                                        )}
-                                        {showPoweredByBracketIqNote && (
-                                            <Text size="xs" c="dimmed">
-                                                Powered by BracketIQ
-                                            </Text>
-                                        )}
-                                    </div>
-                                )}
-                                </div>
-                            </Paper>
+                            <EventJoinCard
+                                renderInline={renderInline}
+                                mobileExpanded={mobileJoinExpanded}
+                                registrationTypeLabel={registrationTypeLabel}
+                                selectedDivisionOption={selectedDivisionOption}
+                                priceCents={selectedDivisionBilling.priceCents}
+                                eventPriceSummary={eventPriceSummary}
+                                joinError={joinError}
+                                joinNotice={joinNotice}
+                                event={currentEvent}
+                                eventImageUrl={eventImageUrl}
+                                affiliateActionUrl={affiliateActionUrl}
+                                isAffiliateEvent={isAffiliateEvent}
+                                isWeeklyParentEvent={isWeeklyParentEvent}
+                                selectedWeeklyOccurrenceOption={selectedWeeklyOccurrenceOption}
+                                weeklySessionOptions={weeklySessionOptions}
+                                weeklySelectionRequired={weeklySelectionRequired}
+                                hasAgeLimits={hasAgeLimits}
+                                eventMinAge={eventMinAge}
+                                eventMaxAge={eventMaxAge}
+                                divisionOptionCount={divisionOptions.length}
+                                registrationCutoffSummary={registrationCutoffSummary}
+                                refundSummary={refundSummary}
+                                isDivisionSelectionMissing={isDivisionSelectionMissing}
+                                registrationByDivisionType={registrationByDivisionType}
+                                hasUser={Boolean(user)}
+                                isUserRegistered={Boolean(isUserRegistered)}
+                                totalParticipants={totalParticipants}
+                                participantCapacity={participantCapacity}
+                                canShowScheduleButton={canShowScheduleButton}
+                                hostManageQrActions={renderHostManageQrActions()}
+                                isTournament={currentEvent.eventType === 'TOURNAMENT'}
+                                registrationPanel={registrationPanel}
+                                hasRefundTarget={hasRefundTarget}
+                                activeChildren={activeChildren}
+                                selectedWeeklyOccurrence={selectedWeeklyOccurrence}
+                                eventStartDate={eventStartDate}
+                                showSecurePaymentNote={showSecurePaymentNote}
+                                showPoweredByBracketIqNote={showPoweredByBracketIqNote}
+                                onToggleMobile={() => {
+                                    setMobileJoinExpanded((expanded) => !expanded);
+                                }}
+                                onAffiliateClick={() => {
+                                    if (!affiliateActionUrl) {
+                                        return;
+                                    }
+                                    trackEventOutboundClicked(
+                                        currentEvent,
+                                        affiliateActionUrl,
+                                        'event_detail',
+                                    );
+                                    trackEventRegistrationStarted(currentEvent, 'affiliate', {
+                                        destination_selected: true,
+                                    });
+                                }}
+                                onClearWeeklyOccurrence={onWeeklyOccurrenceChange
+                                    ? () => onWeeklyOccurrenceChange(null)
+                                    : undefined}
+                                onWeeklySessionSelect={(session) => {
+                                    void handleWeeklySessionSelect(session);
+                                }}
+                                onAuthenticate={openAuthModal}
+                                onViewBracket={handleBracketClick}
+                                onRefundSuccess={loadEventDetails}
+                            />
                                 </div>
                             </div>
                         </div>
