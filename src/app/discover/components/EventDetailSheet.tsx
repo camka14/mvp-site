@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import Image from 'next/image';
-import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Stack, Collapse, Progress, FileInput } from '@mantine/core';
+import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Stack, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     CalendarDays,
@@ -18,7 +18,6 @@ import {
     UserData,
     Team,
     getEventDateTime,
-    getUserAvatarUrl,
     getUserFullName,
     getUserHandle,
     getTeamAvatarUrl,
@@ -115,9 +114,12 @@ import {
     FreeAgentActionsDialog,
     InlineEventAuthDialog,
 } from './eventDetail/EventDetailDialogs';
+import {
+    EventParticipantDropdowns,
+    EventParticipantsSection,
+    type ParticipantDivisionCapacityRow,
+} from './eventDetail/EventParticipantsSection';
 import { useApp } from '@/app/providers';
-import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
-import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
@@ -946,6 +948,25 @@ export default function EventDetailSheet({
         }),
         [currentEvent, teams],
     );
+    const participantDivisionCapacityRows = React.useMemo<ParticipantDivisionCapacityRow[]>(() => {
+        const sportInput = typeof currentEvent?.sport === 'string'
+            ? currentEvent.sport
+            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
+        return divisionCapacityBreakdown.map((row) => ({
+            id: row.divisionId,
+            label: resolveDivisionDisplayName({
+                division: row.divisionId,
+                divisionNameIndex: divisionDisplayNameIndex,
+                sportInput,
+            }) ?? row.name ?? 'Division',
+            filled: row.filled,
+            capacity: row.capacity,
+            spotsLeft: row.capacity > 0 ? Math.max(0, row.capacity - row.filled) : 0,
+            fillPercent: row.capacity > 0
+                ? Math.min(100, Math.round((row.filled / row.capacity) * 100))
+                : 0,
+        }));
+    }, [currentEvent?.sport, currentEvent?.sportId, divisionCapacityBreakdown, divisionDisplayNameIndex]);
     const selectedDivisionBilling = React.useMemo(() => {
         if (!currentEvent) {
             return {
@@ -2532,6 +2553,16 @@ export default function EventDetailSheet({
         setSelectedFreeAgentActionUser(null);
     }, []);
 
+    const toggleCapacityBreakdown = useCallback(() => {
+        setShowCapacityBreakdown((opened) => !opened);
+    }, []);
+    const openPlayersDropdown = useCallback(() => setShowPlayersDropdown(true), []);
+    const closePlayersDropdown = useCallback(() => setShowPlayersDropdown(false), []);
+    const openTeamsDropdown = useCallback(() => setShowTeamsDropdown(true), []);
+    const closeTeamsDropdown = useCallback(() => setShowTeamsDropdown(false), []);
+    const openFreeAgentsDropdown = useCallback(() => setShowFreeAgentsDropdown(true), []);
+    const closeFreeAgentsDropdown = useCallback(() => setShowFreeAgentsDropdown(false), []);
+
     const handleInviteFreeAgentToTeam = useCallback(() => {
         if (!selectedFreeAgentActionUser || !currentEvent?.$id) {
             return;
@@ -4095,147 +4126,27 @@ export default function EventDetailSheet({
 
                         {/* Sidebar */}
                         <div className="space-y-6 lg:self-start">
-                            {showParticipantsSection && (
-                                <>
-                            {/* Participants */}
-                            <h3 className="mb-4 text-lg font-semibold text-slate-950">Participants</h3>
-
-                            <Paper withBorder p="md" radius="md" className="space-y-3 border-slate-200 bg-white shadow-sm">
-                                <Group justify="space-between" align="flex-start" gap="xs">
-                                    <div>
-                                        <Text size="xs" c="dimmed">{isTeamSignup ? 'Teams' : 'Spots'}</Text>
-                                        <Text fw={600}>
-                                            {participantCapacity > 0
-                                                ? `${totalParticipants}/${participantCapacity}`
-                                                : totalParticipants}
-                                        </Text>
-                                    </div>
-                                    <div>
-                                        <Text size="xs" c="dimmed">{isTeamSignup ? 'Free Agents' : 'Waitlist'}</Text>
-                                        <Text fw={600}>
-                                            {isTeamSignup
-                                                ? normalizedFreeAgentIds.length
-                                                : normalizedWaitlistIds.length}
-                                        </Text>
-                                    </div>
-                                    <div>
-                                        <Text size="xs" c="dimmed">Left</Text>
-                                        <Text fw={600}>{participantCapacity > 0 ? spotsLeft : '—'}</Text>
-                                    </div>
-                                </Group>
-                                <Progress value={eventFillPercent} />
-                                <Text size="xs" c="dimmed">
-                                    {participantCapacity > 0
-                                        ? `${eventFillPercent}% full • ${spotsLeft} left`
-                                        : 'No capacity configured'}
-                                </Text>
-
-                                {divisionCapacityBreakdown.length > 0 && (
-                                    <>
-                                        <Button
-                                            variant="subtle"
-                                            size="xs"
-                                            px={0}
-                                            onClick={() => setShowCapacityBreakdown((prev) => !prev)}
-                                        >
-                                            {showCapacityBreakdown ? 'Hide division breakdown' : 'Show division breakdown'}
-                                        </Button>
-                                        <Collapse in={showCapacityBreakdown}>
-                                            <div className="space-y-2 pt-2">
-                                                {divisionCapacityBreakdown.map((divisionRow) => {
-                                                    const sportInput = typeof currentEvent?.sport === 'string'
-                                                        ? currentEvent.sport
-                                                        : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
-                                                    const divisionLabel = resolveDivisionDisplayName({
-                                                        division: divisionRow.divisionId,
-                                                        divisionNameIndex: divisionDisplayNameIndex,
-                                                        sportInput,
-                                                    }) ?? divisionRow.name ?? 'Division';
-                                                    const divisionLeft = divisionRow.capacity > 0
-                                                        ? Math.max(0, divisionRow.capacity - divisionRow.filled)
-                                                        : 0;
-                                                    const divisionPercent = divisionRow.capacity > 0
-                                                        ? Math.min(100, Math.round((divisionRow.filled / divisionRow.capacity) * 100))
-                                                        : 0;
-                                                    return (
-                                                        <Paper
-                                                            key={divisionRow.divisionId}
-                                                            withBorder
-                                                            p="sm"
-                                                            radius="md"
-                                                            className="space-y-2"
-                                                        >
-                                                            <Group justify="space-between" align="center" gap="xs">
-                                                                <Text size="sm" fw={600}>
-                                                                    {divisionLabel}
-                                                                </Text>
-                                                                <Text size="sm" c="dimmed" fw={600}>
-                                                                    {divisionRow.capacity > 0
-                                                                        ? `${divisionRow.filled}/${divisionRow.capacity}`
-                                                                        : divisionRow.filled}
-                                                                </Text>
-                                                            </Group>
-                                                            <Progress value={divisionPercent} size="sm" />
-                                                            <Text size="xs" c="dimmed">
-                                                                {divisionRow.capacity > 0
-                                                                    ? `${divisionPercent}% full • ${divisionLeft} left`
-                                                                    : 'No capacity configured'}
-                                                            </Text>
-                                                        </Paper>
-                                                    );
-                                                })}
-                                            </div>
-                                        </Collapse>
-                                    </>
-                                )}
-                            </Paper>
-
-                            {/* Players Section */}
-                            {!isTeamSignup && (
-                                <div className="mb-4">
-                                    <ParticipantsPreview
-                                        title="Players"
-                                        participants={players}
-                                        totalCount={players.length}
-                                        isLoading={isLoadingEvent}
-                                        onClick={() => setShowPlayersDropdown(true)}
-                                        getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                        emptyMessage="No players registered yet"
-                                    />
-                                </div>
-                            )}
-
-                            {/* Teams Section */}
-                            {isTeamSignup && (
-                                <div className="mb-4">
-                                    <ParticipantsPreview
-                                        title="Teams"
-                                        participants={teams}
-                                        totalCount={teams.length}
-                                        isLoading={isLoadingEvent}
-                                        onClick={() => setShowTeamsDropdown(true)}
-                                        getAvatarUrl={(participant) => getTeamAvatarUrl(participant as Team, 32)}
-                                        emptyMessage="No teams registered yet"
-                                    />
-                                </div>
-                            )}
-
-                            {/* Free Agents Section */}
-                            {isTeamSignup && (
-                                <div className="mb-4">
-                                    <ParticipantsPreview
-                                        title="Free Agents"
-                                        participants={freeAgents}
-                                        totalCount={normalizedFreeAgentIds.length}
-                                        isLoading={isLoadingEvent}
-                                        onClick={() => setShowFreeAgentsDropdown(true)}
-                                        getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                        emptyMessage="No free agents yet"
-                                    />
-                                </div>
-                            )}
-                                </>
-                            )}
+                            {showParticipantsSection ? (
+                                <EventParticipantsSection
+                                    isTeamSignup={isTeamSignup}
+                                    participantCapacity={participantCapacity}
+                                    totalParticipants={totalParticipants}
+                                    freeAgentCount={normalizedFreeAgentIds.length}
+                                    waitlistCount={normalizedWaitlistIds.length}
+                                    spotsLeft={spotsLeft}
+                                    fillPercent={eventFillPercent}
+                                    divisionCapacityRows={participantDivisionCapacityRows}
+                                    capacityBreakdownOpened={showCapacityBreakdown}
+                                    players={players}
+                                    teams={teams}
+                                    freeAgents={freeAgents}
+                                    loading={isLoadingEvent}
+                                    onToggleCapacityBreakdown={toggleCapacityBreakdown}
+                                    onOpenPlayers={openPlayersDropdown}
+                                    onOpenTeams={openTeamsDropdown}
+                                    onOpenFreeAgents={openFreeAgentsDropdown}
+                                />
+                            ) : null}
 
                             {/* Join Options (includes total participants) */}
                             <div
@@ -4956,77 +4867,22 @@ export default function EventDetailSheet({
                 onClose={() => setShowQrCodeModal(false)}
             />
 
-            {/* Players Dropdown */}
-            {showParticipantsSection && !isTeamSignup && (
-                <ParticipantsDropdown
-                    isOpen={showPlayersDropdown}
-                    onClose={() => setShowPlayersDropdown(false)}
-                    title="Event Players"
-                    participants={players}
-                    isLoading={isLoadingEvent}
-                    renderParticipant={(player) => (
-                        <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                            {(() => {
-                                const participant = player as UserData;
-                                const participantName = getUserFullName(participant);
-                                const participantHandle = getUserHandle(participant);
-                                return (
-                                    <>
-                                        <Image
-                                            src={getUserAvatarUrl(participant, 40)}
-                                            alt={participantName}
-                                            width={40}
-                                            height={40}
-                                            unoptimized
-                                            className="w-10 h-10 rounded-full object-cover"
-                                        />
-                                        <div>
-                                            <div className="font-medium text-gray-900">{participantName}</div>
-                                            {participantHandle && (
-                                                <div className="text-sm text-gray-500">{participantHandle}</div>
-                                            )}
-                                        </div>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    )}
-                    emptyMessage="No players have joined this event yet."
-                />
-            )}
-
-            {/* Teams Dropdown */}
-            {showParticipantsSection && isTeamSignup && (
-                <ParticipantsDropdown
-                    isOpen={showTeamsDropdown}
-                    onClose={() => setShowTeamsDropdown(false)}
-                    title="Event Teams"
-                    participants={teams}
-                    isLoading={isLoadingEvent}
-                    renderParticipant={renderEventTeamParticipant}
-                    emptyMessage="No teams have registered for this event yet."
-                />
-            )}
-
-            {/* Free Agents Dropdown */}
-            {showParticipantsSection && isTeamSignup && (
-                <ParticipantsDropdown
-                    isOpen={showFreeAgentsDropdown}
-                    onClose={() => setShowFreeAgentsDropdown(false)}
-                    title="Free Agents"
-                    participants={freeAgents}
-                    isLoading={isLoadingEvent}
-                    renderParticipant={(agent) => (
-                        <div className="p-1">
-                            <UserCard
-                                user={agent as UserData}
-                                onClick={() => openFreeAgentActions(agent as UserData)}
-                            />
-                        </div>
-                    )}
-                    emptyMessage="No free agents have listed for this event yet."
-                />
-            )}
+            <EventParticipantDropdowns
+                visible={showParticipantsSection}
+                isTeamSignup={isTeamSignup}
+                playersOpened={showPlayersDropdown}
+                teamsOpened={showTeamsDropdown}
+                freeAgentsOpened={showFreeAgentsDropdown}
+                players={players}
+                teams={teams}
+                freeAgents={freeAgents}
+                loading={isLoadingEvent}
+                renderTeam={renderEventTeamParticipant}
+                onClosePlayers={closePlayersDropdown}
+                onCloseTeams={closeTeamsDropdown}
+                onCloseFreeAgents={closeFreeAgentsDropdown}
+                onOpenFreeAgentActions={openFreeAgentActions}
+            />
 
             <InlineEventAuthDialog
                 opened={showAuthModal}
