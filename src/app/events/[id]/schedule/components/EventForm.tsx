@@ -130,7 +130,6 @@ import {
     type FlattenedFormError,
 } from './eventForm/validationErrors';
 import type {
-    EventFormState,
     EventFormValues,
 } from './eventForm/formTypes';
 import {
@@ -139,17 +138,11 @@ import {
     resolveSelectedSport,
     sportRequiresSets,
 } from './eventForm/formOptions';
-import { buildEventFormDefaultValues } from './eventForm/defaultValues';
 import {
     getLockedEventTypeTagSlugs,
     syncEventTypeTagsForEventType,
 } from './eventForm/eventTypeTags';
 import { buildEventDraft } from './eventForm/buildEventDraft';
-import {
-    applyImmutableEventDefaults,
-    normalizeImmutableFields,
-    normalizeImmutableTimeSlots,
-} from './eventForm/immutableDefaults';
 import {
     createLeagueSlotForm,
     normalizeFieldIds,
@@ -231,6 +224,11 @@ import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSe
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
 import { useDivisionEditorController } from './eventForm/hooks/useDivisionEditorController';
+import {
+    useEventFormDefaults,
+    useEventFormLifecycle,
+    useEventFormLifecycleStabilization,
+} from './eventForm/hooks/useEventFormLifecycle';
 import { useEventPaymentController } from './eventForm/hooks/useEventPaymentController';
 import { useOrganizationFieldHydration } from './eventForm/hooks/useOrganizationFieldHydration';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
@@ -248,8 +246,6 @@ import { StaffManagementPanel } from './eventForm/sections/StaffManagementPanel'
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { ManualPaymentsSection } from './eventForm/sections/ManualPaymentsSection';
 import type { EventFormHandle, EventFormProps } from './eventForm/types';
-
-type EventType = Event['eventType'];
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
@@ -315,17 +311,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     onDraftStateChange,
 }, ref) => {
     const open = isOpen ?? true;
-    const lastResetSourceRef = useRef<string | null>(null);
-    const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
-    const pendingInitialDirtyRebaseRef = useRef(false);
-    const pendingInitialDirtyRebaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
-    const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
-        () => ({}),
-    );
-    const previousEventTypeRef = useRef<EventType | null>(null);
     const previousEditableScheduleModeRef = useRef<boolean | null>(null);
-    const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
@@ -358,8 +345,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const sportOptions = useMemo(() => buildSportOptions(sports), [sports]);
     const [eventTagOptions, setEventTagOptions] = useState<EventTag[]>([]);
 
-    const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
-
     useEffect(() => {
         const controller = new AbortController();
         fetch('/api/event-tags', { signal: controller.signal })
@@ -379,65 +364,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setHydratedOrganization(organization ?? null);
     }, [organization]);
 
-    const immutableFields = useMemo(
-        () => normalizeImmutableFields(immutableDefaultsMemo.fields),
-        [immutableDefaultsMemo.fields],
-    );
-
-    const hasImmutableFields = immutableFields.length > 0;
-
-    const immutableTimeSlotsFromDefaults = useMemo(
-        () => normalizeImmutableTimeSlots(immutableDefaultsMemo.timeSlots, immutableFields),
-        [immutableDefaultsMemo.timeSlots, immutableFields],
-    );
-
-    const isImmutableField = useCallback(
-        (key: keyof Event) => immutableDefaultsMemo[key] !== undefined,
-        [immutableDefaultsMemo]
-    );
-
-    const applyImmutableDefaults = useCallback((state: EventFormState): EventFormState => (
-        applyImmutableEventDefaults({
-            state,
-            defaults: immutableDefaultsMemo,
-            sportsById,
-        })
-    ), [immutableDefaultsMemo, sportsById]);
-
-    const buildDefaultFormValues = useCallback((): EventFormValues => (
-        buildEventFormDefaultValues({
-            activeEditingEvent,
-            applyImmutableDefaults,
-            defaultLocation: {
-                location: defaultLocation?.location,
-                address: defaultLocation?.address,
-                coordinates: defaultLocation?.coordinates,
-            },
-            hasImmutableFields,
-            immutableDefaults,
-            immutableFields,
-            isCreateMode,
-            resolvedOrganizationFields: Array.isArray(resolvedOrganizationFields)
-                ? (resolvedOrganizationFields as Field[])
-                : [],
-            resolvedOrganizationId,
-            sportsById,
-        })
-    ), [
-        activeEditingEvent,
-        applyImmutableDefaults,
-        defaultLocation?.address,
-        defaultLocation?.coordinates,
-        defaultLocation?.location,
+    const {
+        buildDefaultFormValues,
         hasImmutableFields,
-        immutableDefaults,
         immutableFields,
+        immutableTimeSlotsFromDefaults,
+        isImmutableField,
+    } = useEventFormDefaults({
+        activeEditingEvent,
+        defaultLocation,
+        immutableDefaults,
         isCreateMode,
-        resolvedOrganizationFields,
+        resolvedOrganizationFields: Array.isArray(resolvedOrganizationFields)
+            ? (resolvedOrganizationFields as Field[])
+            : [],
         resolvedOrganizationId,
         sportsById,
-    ]);
-
+    });
     const {
         control,
         watch,
@@ -453,7 +396,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reValidateMode: 'onBlur',
         defaultValues: buildDefaultFormValues(),
     });
-    const [isDirtyTrackingReady, setIsDirtyTrackingReady] = useState(false);
     const setValue = useCallback((
         name: string,
         value: unknown,
@@ -468,68 +410,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     // React Hook Form intentionally remains the single persisted draft owner.
     // eslint-disable-next-line react-hooks/incompatible-library -- `watch` is the existing form subscription boundary.
     const formValues = watch();
-
-    useEffect(() => {
-        if (!open) {
-            setIsDirtyTrackingReady(false);
-            lastResetSourceRef.current = null;
-            previousEventTypeRef.current = null;
-            previousEventFieldLocationRef.current = '';
-            dirtyBaselineValuesRef.current = null;
-            pendingInitialDirtyRebaseRef.current = false;
-            if (pendingInitialDirtyRebaseTimeoutRef.current) {
-                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
-                pendingInitialDirtyRebaseTimeoutRef.current = null;
-            }
-            onDirtyStateChange?.(false);
-            onDraftStateChange?.({
-                draft: {},
-                baselineDraft: {},
-            });
-            return;
-        }
-        const sourceKey = isCreateMode
-            ? 'create'
-            : `event:${String(activeEditingEvent?.$id ?? '')}`;
-        const sourceChanged = lastResetSourceRef.current !== sourceKey;
-        if (!sourceChanged) {
-            return;
-        }
-        lastResetSourceRef.current = sourceKey;
-        setIsDirtyTrackingReady(false);
-        pendingInitialDirtyRebaseRef.current = true;
-        if (pendingInitialDirtyRebaseTimeoutRef.current) {
-            clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
-            pendingInitialDirtyRebaseTimeoutRef.current = null;
-        }
-        onDirtyStateChange?.(false);
-        const nextDefaults = buildDefaultFormValues();
-        previousEventTypeRef.current = nextDefaults.eventType;
-        previousEventFieldLocationRef.current = defaultFieldLocationForEvent(nextDefaults.location);
-        dirtyBaselineValuesRef.current = null;
-        reset(nextDefaults);
-    }, [
+    const {
+        commitDirtyBaseline,
+        previousEventFieldLocationRef,
+        previousEventTypeRef,
+        stabilization: formLifecycleStabilization,
+    } = useEventFormLifecycle({
         activeEditingEvent,
         buildDefaultFormValues,
+        formValues,
+        getValues,
         isCreateMode,
+        isDirty,
         onDirtyStateChange,
         onDraftStateChange,
-        reset,
         open,
-    ]);
-
-    useEffect(() => {
-        const baselineValues = dirtyBaselineValuesRef.current ?? formValues;
-        onDraftStateChange?.({
-            draft: buildDraftForDirtyTrackingRef.current(formValues),
-            baselineDraft: buildDraftForDirtyTrackingRef.current(baselineValues),
-        });
-        if (!isDirtyTrackingReady) {
-            onDirtyStateChange?.(false);
-            return;
-        }
-        onDirtyStateChange?.(isDirty);
-    }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
+        reset,
+    });
 
     const eventData = formValues;
     const {
@@ -919,6 +816,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         hasRestrictedImmutableFields,
         isCreateMode,
         isOrganizationHostedEvent,
+        previousEventTypeRef,
         setFieldCount,
     ]);
 
@@ -2164,7 +2062,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return [...retainedFields, ...normalizedLocalFields];
         }, { shouldDirty: false });
-    }, [eventData.location, fieldCount, shouldManageLocalFields, setFields]);
+    }, [eventData.location, fieldCount, previousEventFieldLocationRef, shouldManageLocalFields, setFields]);
 
     // For non-organization events with existing facilities, seed the field list with event ordering.
     useEffect(() => {
@@ -3133,6 +3031,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         joinAsParticipant,
         organizationHostedEventId,
         organizationOfficialsById,
+        previousEventFieldLocationRef,
         rentalLockedSlotsForDraft,
         rentalPurchase,
         resolvedOrganization,
@@ -3141,58 +3040,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         shouldProvisionFields,
         sportsById,
     ]);
-    buildDraftForDirtyTrackingRef.current = buildDraftEvent;
-
-    useEffect(() => {
-        if (!open || !pendingInitialDirtyRebaseRef.current || sportsLoading || fieldsLoading) {
-            if (pendingInitialDirtyRebaseTimeoutRef.current) {
-                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
-                pendingInitialDirtyRebaseTimeoutRef.current = null;
-            }
-            return;
-        }
-
-        const expectedDraftFingerprint = JSON.stringify(buildDraftEvent(getValues()));
-        if (pendingInitialDirtyRebaseTimeoutRef.current) {
-            clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
-        }
-
-        // Rebase only after normalization effects stop mutating draft-backed values.
-        pendingInitialDirtyRebaseTimeoutRef.current = setTimeout(() => {
-            pendingInitialDirtyRebaseTimeoutRef.current = null;
-            if (!pendingInitialDirtyRebaseRef.current) {
-                return;
-            }
-
-            const latestDraftFingerprint = JSON.stringify(buildDraftEvent(getValues()));
-            if (latestDraftFingerprint !== expectedDraftFingerprint) {
-                return;
-            }
-
-            const stabilizedValues = getValues();
-            dirtyBaselineValuesRef.current = stabilizedValues;
-            pendingInitialDirtyRebaseRef.current = false;
-            reset(stabilizedValues);
-            setIsDirtyTrackingReady(true);
-            onDirtyStateChange?.(false);
-        }, 0);
-
-        return () => {
-            if (pendingInitialDirtyRebaseTimeoutRef.current) {
-                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
-                pendingInitialDirtyRebaseTimeoutRef.current = null;
-            }
-        };
-    }, [
+    useEventFormLifecycleStabilization({
         buildDraftEvent,
         fieldsLoading,
         formValues,
         getValues,
-        onDirtyStateChange,
+        lifecycle: formLifecycleStabilization,
         open,
         reset,
         sportsLoading,
-    ]);
+    });
 
     const getDraftSnapshot = useCallback((): EventStaffDraft => ({
         ...buildDraftEvent(getValues()),
@@ -3298,13 +3155,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         requiredOfficialSlotsPerMatch,
         trigger,
     ]);
-
-    const commitDirtyBaseline = useCallback(() => {
-        const currentValues = getValues();
-        dirtyBaselineValuesRef.current = currentValues;
-        reset(currentValues);
-        onDirtyStateChange?.(false);
-    }, [getValues, onDirtyStateChange, reset]);
 
     const validatePendingStaffAssignmentsForSubmit = useCallback(async () => {
         if (isAffiliateEvent) {
