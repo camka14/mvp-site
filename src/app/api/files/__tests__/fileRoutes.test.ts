@@ -30,7 +30,7 @@ jest.mock('@/lib/permissions', () => ({ requireSession: jest.fn() }));
 jest.mock('@/lib/storageProvider', () => ({ getStorageProvider: jest.fn() }));
 jest.mock('@/server/fileAccess', () => ({ assertFileReadAccess: jest.fn() }));
 
-import { POST } from '@/app/api/files/upload/route';
+import { GET as UPLOAD_POLICY_GET, POST } from '@/app/api/files/upload/route';
 import { GET, DELETE } from '@/app/api/files/[id]/route';
 import { GET as PREVIEW_GET } from '@/app/api/files/[id]/preview/route';
 
@@ -54,6 +54,36 @@ describe('file routes', () => {
   });
 
   describe('POST /api/files/upload', () => {
+    it('publishes the versioned upload policy used by the POST validator', async () => {
+      const res = await UPLOAD_POLICY_GET();
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json).toEqual({
+        version: 1,
+        maxBytes: 10 * 1024 * 1024,
+        mimeTypes: [
+          'image/avif',
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/svg+xml',
+          'image/webp',
+        ],
+        mimeTypesByExtension: {
+          '.avif': 'image/avif',
+          '.jpeg': 'image/jpeg',
+          '.jpg': 'image/jpeg',
+          '.png': 'image/png',
+          '.svg': 'image/svg+xml',
+          '.webp': 'image/webp',
+        },
+        unsupportedTypeMessage: 'Unsupported image type. Please select a PNG, JPEG, WebP, AVIF, or SVG image.',
+        tooLargeMessage: 'Image must be 10MB or less. Choose a smaller image and try again.',
+      });
+      expect(res.headers.get('Cache-Control')).toContain('max-age=300');
+    });
+
     it('rejects files larger than 10MB', async () => {
       requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
       const storageProvider = { putObject: jest.fn() };

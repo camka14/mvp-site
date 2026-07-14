@@ -3,10 +3,24 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
-import { resolveImageContentType } from '@/lib/imageUploadPolicy';
+import {
+  IMAGE_UPLOAD_POLICY,
+  IMAGE_UPLOAD_TOO_LARGE_MESSAGE,
+  IMAGE_UPLOAD_UNSUPPORTED_TYPE_MESSAGE,
+  MAX_IMAGE_UPLOAD_BYTES,
+  resolveImageContentType,
+} from '@/lib/imageUploadPolicy';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  return NextResponse.json(IMAGE_UPLOAD_POLICY, {
+    headers: {
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+    },
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,19 +29,17 @@ export async function POST(req: NextRequest) {
     const file = form.get('file');
     const organizationIdInput = form.get('organizationId');
     const organizationId = typeof organizationIdInput === 'string' ? organizationIdInput.trim() : null;
-    const maxFileBytes = 10 * 1024 * 1024;
-
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
 
-    if (file.size > maxFileBytes) {
-      return NextResponse.json({ error: 'File size must be 10MB or less' }, { status: 413 });
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      return NextResponse.json({ error: IMAGE_UPLOAD_TOO_LARGE_MESSAGE }, { status: 413 });
     }
 
     const contentType = resolveImageContentType(file.type, file.name);
     if (!contentType) {
-      return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 415 });
+      return NextResponse.json({ error: IMAGE_UPLOAD_UNSUPPORTED_TYPE_MESSAGE }, { status: 415 });
     }
 
     const arrayBuffer = await file.arrayBuffer();

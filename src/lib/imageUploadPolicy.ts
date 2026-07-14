@@ -1,22 +1,44 @@
 export const SVG_MIME_TYPE = 'image/svg+xml';
 
-const IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
+export const IMAGE_UPLOAD_POLICY_VERSION = 1;
+export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const IMAGE_UPLOAD_UNSUPPORTED_TYPE_MESSAGE =
+  'Unsupported image type. Please select a PNG, JPEG, WebP, AVIF, or SVG image.';
+export const IMAGE_UPLOAD_TOO_LARGE_MESSAGE =
+  'Image must be 10MB or less. Choose a smaller image and try again.';
+
+const IMAGE_TYPE_BY_EXTENSION = {
   '.avif': 'image/avif',
   '.jpeg': 'image/jpeg',
   '.jpg': 'image/jpeg',
   '.png': 'image/png',
   '.svg': SVG_MIME_TYPE,
   '.webp': 'image/webp',
-};
+} as const;
 
-export const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>([
+const IMAGE_UPLOAD_MIME_TYPES = [
   'image/avif',
   'image/jpeg',
   'image/jpg',
   'image/png',
   SVG_MIME_TYPE,
   'image/webp',
-]);
+] as const;
+
+/**
+ * Public, versioned source of truth for image-upload clients. Keep validation
+ * and the capability response derived from this one object.
+ */
+export const IMAGE_UPLOAD_POLICY = Object.freeze({
+  version: IMAGE_UPLOAD_POLICY_VERSION,
+  maxBytes: MAX_IMAGE_UPLOAD_BYTES,
+  mimeTypes: IMAGE_UPLOAD_MIME_TYPES,
+  mimeTypesByExtension: IMAGE_TYPE_BY_EXTENSION,
+  unsupportedTypeMessage: IMAGE_UPLOAD_UNSUPPORTED_TYPE_MESSAGE,
+  tooLargeMessage: IMAGE_UPLOAD_TOO_LARGE_MESSAGE,
+});
+
+export const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>(IMAGE_UPLOAD_POLICY.mimeTypes);
 
 export const IMAGE_UPLOAD_ACCEPT = Array.from(SUPPORTED_IMAGE_MIME_TYPES).join(',');
 
@@ -30,10 +52,14 @@ export const resolveImageContentType = (contentType?: string | null, fileName?: 
   }
 
   const normalizedName = (fileName || '').trim().toLowerCase();
-  const matchedExtension = Object.keys(IMAGE_TYPE_BY_EXTENSION).find((extension) =>
+  const matchedExtension = Object.keys(IMAGE_UPLOAD_POLICY.mimeTypesByExtension).find((extension) =>
     normalizedName.endsWith(extension),
   );
-  return matchedExtension ? IMAGE_TYPE_BY_EXTENSION[matchedExtension] : '';
+  return matchedExtension
+    ? IMAGE_UPLOAD_POLICY.mimeTypesByExtension[
+        matchedExtension as keyof typeof IMAGE_UPLOAD_POLICY.mimeTypesByExtension
+      ]
+    : '';
 };
 
 export const isSupportedImageUpload = (contentType?: string | null, fileName?: string | null): boolean =>
