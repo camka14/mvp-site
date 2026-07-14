@@ -61,7 +61,6 @@ import {
 import {
     buildPublicDivisionGroups,
     buildScheduleTimeslotGroups,
-    formatNotSpecifiedValue,
     formatOfficialSchedulingModeLabel,
     formatReadOnlyValueList,
     formatRefundSummary,
@@ -121,6 +120,7 @@ import {
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
 import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard';
+import { EventDetailSheetSummary } from './eventDetail/EventDetailSheetSummary';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -2034,149 +2034,19 @@ export default function EventDetailSheet({
                                     </div>
                                 </>
                             ) : (
-                                <>
-                                    {/* Event Info */}
-                                    <div>
-                                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
-                                        <Paper withBorder p="md" radius="md" className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Type</span>
-                                                    <p className="font-medium">{formatEnumDisplayLabel(currentEvent.eventType, 'Event')}</p>
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Registration</span>
-                                                    <p className="font-medium">{isTeamSignup ? 'Team registration' : 'Individual registration'}</p>
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Price</span>
-                                                    <p className="font-medium">
-                                                        {selectedDivisionBilling.priceCents === 0
-                                                            ? 'Free'
-                                                            : `${formatPrice(selectedDivisionBilling.priceCents)}`}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Sport</span>
-                                                    <p className="font-medium">
-                                                        {currentEvent.sport?.name || currentEvent.sportId || 'TBD'}
-                                                    </p>
-                                                </div>
-                                                {(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number') && (
-                                                    <div>
-                                                        <span className="text-sm text-gray-600">Age Range</span>
-                                                        <p className="font-medium">{formatAgeRange(eventMinAge, eventMaxAge)}</p>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {eventDivisionLabels.length > 0 && (
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Divisions</span>
-                                                    <div className="flex flex-wrap gap-2 mt-1">
-                                                        {eventDivisionLabels.map((divisionLabel, index) => (
-                                                            <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                                                {divisionLabel}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </Paper>
-                                    </div>
-
-                                    {/* Description */}
-                                    <Paper withBorder p="md" radius="md">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
-                                        <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
-                                    </Paper>
-
-                                    {mapEmbedSrc && (
-                                        <Paper withBorder p="md" radius="md" className="space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <Text size="sm" c="dimmed">Location</Text>
-                                                    <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
-                                                    {hasValidCoords && (
-                                                        <Text size="xs" c="dimmed">
-                                                            {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
-                                                        </Text>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
-                                                <iframe
-                                                    title="Event location preview"
-                                                    src={mapEmbedSrc}
-                                                    className="w-full h-full"
-                                                    loading="lazy"
-                                                    allowFullScreen
-                                                />
-                                            </div>
-                                        </Paper>
-                                    )}
-
-                                    {/* Tournament Details */}
-                                    {currentEvent.eventType === 'TOURNAMENT' && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
-                                            <Paper withBorder p="md" radius="md" className="space-y-2">
-                                                {currentEvent.doubleElimination && (
-                                                    <p><span className="font-medium">Format:</span> Double Elimination</p>
-                                                )}
-                                                {currentEvent.prize && (
-                                                    <p><span className="font-medium">Prize:</span> {currentEvent.prize}</p>
-                                                )}
-                                                {currentEvent.winnerSetCount && (
-                                                    <p><span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}</p>
-                                                )}
-                                            </Paper>
-                                        </div>
-                                    )}
-
-                                    {/* League Playoff Details */}
-                                    {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
-                                            <Paper withBorder p="md" radius="md" className="space-y-2">
-                                                <p>
-                                                    <span className="font-medium">Teams Included:</span>{' '}
-                                                    {currentEvent.playoffTeamCount ?? 'Configured'}
-                                                </p>
-                                                {typeof currentEvent.doubleElimination === 'boolean' && (
-                                                    <p>
-                                                        <span className="font-medium">Format:</span>{' '}
-                                                        {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
-                                                    </p>
-                                                )}
-                                                {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
-                                                    <p>
-                                                        <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
-                                                    </p>
-                                                )}
-                                            </Paper>
-                                        </div>
-                                    )}
-
-                                    {/* Event Stats */}
-                                    <Paper withBorder p="md" radius="md">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Max Participants:</span>
-                                                <span className="font-medium">{formatNotSpecifiedValue(participantCapacity)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Team Size:</span>
-                                                <span className="font-medium">{currentEvent.teamSizeLimit}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Registration Cutoff:</span>
-                                                <span className="font-medium">{registrationCutoffSummary}</span>
-                                            </div>
-                                        </div>
-                                    </Paper>
-                                </>
+                                <EventDetailSheetSummary
+                                    event={currentEvent}
+                                    isTeamSignup={isTeamSignup}
+                                    priceCents={selectedDivisionBilling.priceCents}
+                                    eventMinAge={eventMinAge}
+                                    eventMaxAge={eventMaxAge}
+                                    divisionLabels={eventDivisionLabels}
+                                    mapEmbedSrc={mapEmbedSrc}
+                                    mapLat={mapLat}
+                                    mapLng={mapLng}
+                                    participantCapacity={participantCapacity}
+                                    registrationCutoffSummary={registrationCutoffSummary}
+                                />
                             )}
                         </div>
 
