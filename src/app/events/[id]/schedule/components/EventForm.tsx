@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -7,8 +7,6 @@ import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
-import { locationService } from '@/lib/locationService';
-import { userService } from '@/lib/userService';
 import {
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
@@ -31,9 +29,6 @@ import {
 } from './eventForm/eventRules';
 import {
     coordinatesAreSet,
-    formatLatLngLabel,
-    getLatitudeFromCoordinates,
-    getLongitudeFromCoordinates,
 } from './eventForm/locationHelpers';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 import {
@@ -55,7 +50,6 @@ import {
     parseCompositeDivisionTypeId,
 } from './eventForm/divisionForm';
 import {
-    getEventOfficialUserIds,
     normalizeEventOfficialPositions,
     normalizeEventOfficials,
     normalizeOfficialSchedulingMode,
@@ -127,6 +121,8 @@ import { useEventPaymentController } from './eventForm/hooks/useEventPaymentCont
 import { useEventResourceController } from './eventForm/hooks/useEventResourceController';
 import { useEventSlotController } from './eventForm/hooks/useEventSlotController';
 import { useEventFormSubmissionController } from './eventForm/hooks/useEventFormSubmissionController';
+import { useEventFormInvariantSynchronization } from './eventForm/hooks/useEventFormInvariantSynchronization';
+import { useEventFormReferenceHydration } from './eventForm/hooks/useEventFormReferenceHydration';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -455,36 +451,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
-    useEffect(() => {
-        if (isEditMode) {
-            return;
-        }
-        const ids = getEventOfficialUserIds(eventData.eventOfficials);
-        const refs = eventData.officials || [];
-        const missingIds = ids.filter((id) => !refs.some((ref) => ref.$id === id));
-        if (!missingIds.length) {
-            return;
-        }
-
-        let cancelled = false;
-        (async () => {
-            try {
-                const fetched = await userService.getUsersByIds(missingIds);
-                if (!cancelled && fetched.length) {
-                    setEventData((prev) => ({
-                        ...prev,
-                        officials: [...(prev.officials || []), ...fetched.filter((ref) => ref.$id)],
-                    }), { shouldDirty: false, shouldValidate: false });
-                }
-            } catch (error) {
-                console.warn('Failed to hydrate officials for event:', error);
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [eventData.eventOfficials, eventData.officials, isEditMode, setEventData]);
+    useEventFormReferenceHydration({
+        eventData,
+        isEditMode,
+        setEventData,
+    });
 
     const slotDivisionLookup = useMemo(
         () => buildSlotDivisionLookup(
@@ -911,91 +882,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [isRentalCreateFlow, resolvedOrganizationId],
     );
     const supportsNoFixedEndDateTime = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
-    useEffect(() => {
-        if (!isRentalCreateFlow) {
-            return;
-        }
-        if (eventData.eventType === 'WEEKLY_EVENT') {
-            setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
-        }
-    }, [eventData.eventType, isRentalCreateFlow, setValue]);
-    useEffect(() => {
-        if (isEditMode || hasExternalRentalField) {
-            return;
-        }
-        if (!supportsNoFixedEndDateTime) {
-            return;
-        }
-        if (!eventData.noFixedEndDateTime) {
-            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-        }
-    }, [eventData.eventType, eventData.parentEvent, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
-
-    useEffect(() => {
-        if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
-            !eventData.teamSignup) {
-            setEventData(prev => {
-                if (prev.teamSignup) {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    teamSignup: true,
-                };
-            }, { shouldDirty: false });
-        }
-    }, [eventData.eventType, eventData.teamSignup, setEventData]);
-
-    useEffect(() => {
-        if (eventData.teamSignup) {
-            if (!eventData.allowMatchRosterEdits && eventData.allowTemporaryMatchPlayers) {
-                setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
-            }
-            return;
-        }
-        if (
-            eventData.teamCheckInMode !== 'OFF' ||
-            eventData.allowMatchRosterEdits ||
-            eventData.allowTemporaryMatchPlayers
-        ) {
-            setValue('teamCheckInMode', 'OFF', { shouldDirty: true, shouldValidate: true });
-            setValue('allowMatchRosterEdits', false, { shouldDirty: true, shouldValidate: true });
-            setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
-        }
-    }, [
-        eventData.allowMatchRosterEdits,
-        eventData.allowTemporaryMatchPlayers,
-        eventData.teamCheckInMode,
-        eventData.teamSignup,
+    useEventFormInvariantSynchronization({
+        eventData,
+        hasExternalRentalField,
+        isEditMode,
+        isRentalCreateFlow,
+        joinAsParticipant,
+        setEventData,
+        setJoinAsParticipant,
         setValue,
-    ]);
-
-    
-
-    // Prevents the creator from joining twice when they toggle team-based registration on.
-    useEffect(() => {
-        if (eventData.teamSignup && joinAsParticipant) {
-            setJoinAsParticipant(false);
-        }
-    }, [eventData.teamSignup, joinAsParticipant, setJoinAsParticipant]);
-
-    // Populate human-readable location if empty
-    // Converts coordinates into a city/state label when the user hasn't typed an address manually.
-    useEffect(() => {
-        const lat = getLatitudeFromCoordinates(eventData.coordinates);
-        const lng = getLongitudeFromCoordinates(eventData.coordinates);
-        const hasCoords = coordinatesAreSet(eventData.coordinates);
-
-        if (!isEditMode && eventData.location.trim().length === 0 && hasCoords && typeof lat === 'number' && typeof lng === 'number') {
-            locationService.reverseGeocode(lat, lng)
-                .then(info => {
-                    const label = [info.city, info.state].filter(Boolean).join(', ')
-                        || `${info.lat.toFixed(4)}, ${info.lng.toFixed(4)}`;
-                    setEventData(prev => ({ ...prev, location: label }));
-                })
-                .catch(() => { /* ignore */ });
-        }
-    }, [isEditMode, eventData.location, eventData.coordinates, setEventData]);
+        supportsNoFixedEndDateTime,
+    });
 
     const leagueError = buildLeagueScheduleError(errors.leagueSlots);
 
