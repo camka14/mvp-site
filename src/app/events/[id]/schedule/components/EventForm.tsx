@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, TournamentConfig, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, TournamentConfig, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -11,15 +11,7 @@ import {
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
 } from '@/lib/organizationEventAccess';
-import {
-    formatLocalDateTime,
-    getSystemTimeZone,
-    normalizeTimeZone,
-    nowLocalDateTimeString,
-    parseLocalDateTime,
-} from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
-import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
 import {
     buildEventTypeOptions,
     hasAffiliateUrl,
@@ -65,10 +57,7 @@ import {
     resolveSelectedSport,
     sportRequiresSets,
 } from './eventForm/formOptions';
-import {
-    getLockedEventTypeTagSlugs,
-    syncEventTypeTagsForEventType,
-} from './eventForm/eventTypeTags';
+import { getLockedEventTypeTagSlugs } from './eventForm/eventTypeTags';
 import {
     buildLeagueScheduleError,
 } from './eventForm/scheduleMessages';
@@ -94,7 +83,6 @@ import {
     buildMobileEditUnsupportedWarning,
     sumInstallmentAmounts,
 } from './eventForm/paymentPlanHelpers';
-import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpers';
 import {
     buildEventFormSectionNavigationItems,
     getVisibleSectionNavigationItems,
@@ -123,6 +111,7 @@ import { useEventSlotController } from './eventForm/hooks/useEventSlotController
 import { useEventFormSubmissionController } from './eventForm/hooks/useEventFormSubmissionController';
 import { useEventFormInvariantSynchronization } from './eventForm/hooks/useEventFormInvariantSynchronization';
 import { useEventFormReferenceHydration } from './eventForm/hooks/useEventFormReferenceHydration';
+import { useEventFormConfigurationActions } from './eventForm/hooks/useEventFormConfigurationActions';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -744,99 +733,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setPendingStaffInvites,
     });
 
-    const handleLeagueScoringConfigChange = useCallback(
-        (key: keyof LeagueScoringConfig, value: LeagueScoringConfig[keyof LeagueScoringConfig]) => {
-            const currentConfig = (
-                getValues('leagueScoringConfig') as LeagueScoringConfig | undefined
-            ) ?? eventData.leagueScoringConfig;
-            const nextConfig = applyLeagueScoringConfigFieldChange(
-                currentConfig,
-                key,
-                value,
-                (config) => setValue('leagueScoringConfig', config, { shouldDirty: true, shouldValidate: false }),
-            );
-            setEventData(prev => ({
-                ...prev,
-                leagueScoringConfig: nextConfig,
-            }));
-        },
-        [eventData.leagueScoringConfig, getValues, setEventData, setValue]
-    );
-
-    const handleMatchRulesOverrideChange = useCallback((nextValue: MatchRulesConfig | null) => {
-        const sanitized = sanitizeMatchRulesOverrideForEditor(nextValue);
-        setValue('matchRulesOverride', sanitized, { shouldDirty: true, shouldValidate: false });
-        const template = (selectedSportForOfficials?.matchRulesTemplate ?? null) as MatchRulesConfig | null;
-        const templateTimekeeping = template?.timekeeping ?? null;
-        const overrideTimekeeping = sanitized?.timekeeping ?? null;
-        const timerMode = overrideTimekeeping?.timerMode ?? templateTimekeeping?.timerMode;
-        const segmentDuration = normalizeNumber(
-            overrideTimekeeping?.segmentDurationMinutes
-            ?? templateTimekeeping?.segmentDurationMinutes,
-        );
-        const segmentCount = normalizeNumber(template?.segmentCount)
-            ?? (eventData.eventType === 'TOURNAMENT'
-                ? normalizeNumber(tournamentData.winnerSetCount)
-                : normalizeNumber(leagueData.setsPerMatch))
-            ?? 1;
-        if (timerMode === 'COUNT_UP' && segmentDuration && segmentCount > 0) {
-            const totalMatchDuration = Math.max(1, Math.trunc(segmentDuration * segmentCount));
-            if (eventData.eventType === 'LEAGUE') {
-                setLeagueData((previous) => ({
-                    ...previous,
-                    usesSets: false,
-                    matchDurationMinutes: totalMatchDuration,
-                    setDurationMinutes: undefined,
-                }));
-            } else if (eventData.eventType === 'TOURNAMENT') {
-                setTournamentData((previous) => ({
-                    ...previous,
-                    matchDurationMinutes: totalMatchDuration,
-                    setDurationMinutes: undefined,
-                }));
-            }
-        }
-    }, [
-        eventData.eventType,
-        leagueData.setsPerMatch,
-        selectedSportForOfficials,
+    const clearLeagueSlotErrors = useCallback(() => {
+        clearErrors('leagueSlots');
+    }, [clearErrors]);
+    const {
+        handleAffiliateEventChange,
+        handleEndChange,
+        handleEventTypeChange,
+        handleIncludePlayoffsToggle,
+        handleIncludePoolPlayChange,
+        handleLeagueScoringConfigChange,
+        handleMatchRulesOverrideChange,
+        handleNoFixedEndDateTimeChange,
+        handleSelectedAddressChange,
+        handleStartChange,
+    } = useEventFormConfigurationActions({
+        clearLeagueSlotErrors,
+        eventData,
+        getValues,
+        isAffiliateEvent,
+        leagueData,
+        selectedSport: selectedSportForOfficials,
+        setEventData,
         setLeagueData,
         setTournamentData,
         setValue,
-        tournamentData.winnerSetCount,
-    ]);
-
-    const handleIncludePlayoffsToggle = useCallback((checked: boolean) => {
-        if (!checked) {
-            setLeagueData((prev) => ({
-                ...prev,
-                includePlayoffs: false,
-                playoffTeamCount: undefined,
-            }));
-            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
-            return;
-        }
-
-        if (eventData.singleDivision) {
-            const fallback = typeof leagueData.playoffTeamCount === 'number'
-                ? leagueData.playoffTeamCount
-                : eventData.maxParticipants || 2;
-            setLeagueData((prev) => ({
-                ...prev,
-                includePlayoffs: true,
-                playoffTeamCount: Math.max(2, Math.trunc(fallback)),
-            }));
-            return;
-        }
-
-        setLeagueData((prev) => ({
-            ...prev,
-            includePlayoffs: true,
-            playoffTeamCount: typeof prev.playoffTeamCount === 'number'
-                ? Math.max(2, Math.trunc(prev.playoffTeamCount))
-                : Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
-        }));
-    }, [eventData.maxParticipants, eventData.singleDivision, leagueData.playoffTeamCount, setLeagueData, setValue]);
+        tournamentData,
+    });
 
     const { handleSaveDivisionDetail } = useDivisionCommitController({
         createNextPlayoffDivision,
@@ -946,35 +869,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reset,
         sportsLoading,
     });
-    const applyAffiliateEventSimplifications = useCallback((checked: boolean) => {
-        setValue('isAffiliateEvent', checked, { shouldDirty: true, shouldValidate: true });
-        if (!checked) {
-            setValue('affiliateUrl', '', { shouldDirty: true, shouldValidate: true });
-            return;
-        }
-        setValue('teamSignup', false, { shouldDirty: true, shouldValidate: true });
-        setValue('registrationByDivisionType', false, { shouldDirty: true, shouldValidate: true });
-        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
-        setValue('allowPaymentPlans', false, { shouldDirty: true, shouldValidate: true });
-        setValue('installmentCount', 0, { shouldDirty: true, shouldValidate: true });
-        setValue('installmentAmounts', [], { shouldDirty: true, shouldValidate: true });
-        setValue('installmentDueDates', [], { shouldDirty: true, shouldValidate: true });
-        setValue('installmentDueRelativeDays', [], { shouldDirty: true, shouldValidate: true });
-        setValue('allowTeamSplitDefault', false, { shouldDirty: true, shouldValidate: true });
-        setValue('requiredTemplateIds', [], { shouldDirty: true, shouldValidate: true });
-        setValue('playoffDivisionDetails', [], { shouldDirty: true, shouldValidate: true });
-        setValue('assistantHostIds', [], { shouldDirty: true, shouldValidate: true });
-        setValue('officialIds', [], { shouldDirty: true, shouldValidate: true });
-        setValue('eventOfficials', [], { shouldDirty: true, shouldValidate: true });
-        setValue('pendingStaffInvites', [], { shouldDirty: true, shouldValidate: true });
-        setValue('doTeamsOfficiate', false, { shouldDirty: true, shouldValidate: true });
-        setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
-        setValue('officialSchedulingMode', 'OFF', { shouldDirty: true, shouldValidate: true });
-        setValue('officialPositions', [], { shouldDirty: true, shouldValidate: true });
-        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: true });
-        setValue('autoCreatePointMatchIncidents', false, { shouldDirty: true, shouldValidate: true });
-        setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-    }, [setValue]);
     // Syncs the selected event image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, _url: string) => {
         if (isImmutableField('imageId')) {
@@ -1161,79 +1055,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             comboboxProps={sharedComboboxProps}
                             isImmutableField={isImmutableField}
                             onToggle={() => toggleSectionCollapse('section-event-details')}
-                            onEventTypeChange={(nextType, applyValue) => {
-                                clearErrors('leagueSlots');
-                                const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
-                                applyValue(nextType);
-                                setValue(
-                                    'tags',
-                                    syncEventTypeTagsForEventType(getValues('tags'), nextType),
-                                    { shouldDirty: true, shouldValidate: true },
-                                );
-                                if (enforcingTeamSettings) {
-                                    setValue('teamSignup', true, { shouldDirty: true });
-                                    setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                } else {
-                                    setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                    const parsedStart = parseLocalDateTime(getValues('start'));
-                                    const parsedEnd = parseLocalDateTime(getValues('end'));
-                                    if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                        const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                        setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                    }
-                                }
-                            }}
-                            onAffiliateEventChange={(checked, applyValue) => {
-                                applyValue(checked);
-                                applyAffiliateEventSimplifications(checked);
-                            }}
+                            onEventTypeChange={handleEventTypeChange}
+                            onAffiliateEventChange={handleAffiliateEventChange}
                             onIncludePlayoffsChange={handleIncludePlayoffsToggle}
-                            onIncludePoolPlayChange={(checked) => {
-                                setLeagueData((prev) => ({
-                                    ...prev,
-                                    includePlayoffs: checked,
-                                    playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
-                                }));
-                                if (!checked) {
-                                    const currentDetails = Array.isArray(eventData.divisionDetails)
-                                        ? eventData.divisionDetails
-                                        : [];
-                                    setValue(
-                                        'divisionDetails',
-                                        currentDetails.map((detail) => ({
-                                            ...detail,
-                                            playoffTeamCount: undefined,
-                                            poolCount: undefined,
-                                            poolTeamCount: undefined,
-                                        })),
-                                        { shouldDirty: true, shouldValidate: true },
-                                    );
-                                }
-                            }}
-                            onStartChange={(parsed) => {
-                                setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                            }}
-                            onEndChange={(parsed) => {
-                                setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                            }}
-                            onNoFixedEndDateTimeChange={(checked) => {
-                                setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                if (checked) return;
-                                const parsedStart = parseLocalDateTime(getValues('start'));
-                                const parsedEnd = parseLocalDateTime(getValues('end'));
-                                if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                    const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                    setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                }
-                            }}
+                            onIncludePoolPlayChange={handleIncludePoolPlayChange}
+                            onStartChange={handleStartChange}
+                            onEndChange={handleEndChange}
+                            onNoFixedEndDateTimeChange={handleNoFixedEndDateTimeChange}
                             onManualPaymentsChange={handleManualPaymentsChange}
                             coordinatesSelected={coordinatesAreSet(eventData.coordinates)}
                             defaultCoordinates={defaultLocation?.coordinates}
-                            onSelectedAddressChange={(nextCoordinates, nextAddress) => {
-                                setValue('coordinates', nextCoordinates, { shouldDirty: true, shouldValidate: true });
-                                setValue('address', nextAddress, { shouldDirty: true, shouldValidate: true });
-                            }}
+                            onSelectedAddressChange={handleSelectedAddressChange}
                             isLocationImmutable={isLocationImmutable}
                             templatesLoading={templatesLoading}
                             templatesError={templatesError}
