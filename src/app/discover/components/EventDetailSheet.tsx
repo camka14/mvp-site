@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Button, ActionIcon, Group } from '@mantine/core';
+import { Button, Group } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     QrCode,
@@ -44,21 +44,16 @@ import {
 } from './eventDetail/EventDetailDialogs';
 import {
     EventParticipantDropdowns,
-    EventParticipantsSection,
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
 import { createEventJoinActions } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
 import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard';
-import { EventDetailSheetSummary } from './eventDetail/EventDetailSheetSummary';
-import { PublicEventOverview } from './eventDetail/PublicEventOverview';
-import { PublicEventProgramDetails } from './eventDetail/PublicEventProgramDetails';
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
 import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualRegistrationPanel';
 import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
-import { EventJoinCard } from './eventDetail/EventJoinCard';
-import { EventDetailHero } from './eventDetail/EventDetailHero';
+import { EventDetailContent } from './eventDetail/EventDetailContent';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -806,233 +801,163 @@ export default function EventDetailSheet({
             onJoinEvent={() => { void handleJoinEvent(); }}
         />
     );
-    const joinCardFrameClassName = renderInline
-        ? `fixed inset-x-0 bottom-0 z-50 max-h-[82vh] overflow-y-auto px-4 pb-4 pt-3 lg:inset-auto lg:p-0 ${
-            joinCardDocked
-                ? 'lg:fixed lg:bottom-24 lg:z-30 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto'
-                : 'lg:static lg:max-h-none lg:overflow-visible'
-        }`
-        : undefined;
-
     const content = (
-        <div className={`space-y-6 ${renderInline ? 'pb-24 lg:pb-0' : ''}`}>
-            {!renderInline && (
-                <div
-                    style={{
-                        position: 'sticky',
-                        top: 12,
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        zIndex: SHEET_POPOVER_Z_INDEX + 20,
-                    }}
-                >
-                    <ActionIcon
-                        variant="filled"
-                        color="gray"
-                        radius="xl"
-                        aria-label="Close"
-                        onClick={onClose}
-                        style={{
-                            boxShadow: 'var(--mvp-shadow-overlay)',
-                        }}
-                    >
-                        ×
-                    </ActionIcon>
-                </div>
-            )}
-            
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                <EventDetailHero
-                    imageUrl={eventImageUrl}
-                    imageFallbackUrl={eventImageFallbackUrl}
-                    eventName={currentEvent.name}
-                    eventTypeLabel={eventTypeLabel}
-                    sportLabel={sportLabel}
-                    registrationTypeLabel={registrationTypeLabel}
-                    showHostedByLabel={shouldShowHostedByHeroLabel}
-                    hostedByLabel={hostedByLabel}
-                    scheduleLabel={eventScheduleDisplayText}
-                    locationLabel={eventLocationSummary}
-                    spotsLabel={spotsSummary}
-                />
-
-                {/* Content */}
-                <div className="bg-white p-5 sm:p-7">
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
-                        {/* Main Content */}
-                        <div className="space-y-6">
-                            {renderInline ? (
-                                <>
-                                    <div className="space-y-5">
-                                        <PublicEventOverview
-                                            description={currentEvent.description}
-                                            organization={organization}
-                                            hostUser={hostUser}
-                                            hostedByHref={hostedByHref}
-                                            hostedByLabel={hostedByLabel}
-                                            hostedByHandle={hostedByHandle}
-                                            isAffiliateEvent={isAffiliateEvent}
-                                            registrationStatusClassName={publicRegistrationStatusClassName}
-                                            registrationStatusLabel={publicRegistrationStatusLabel}
-                                            isEvergreenProgram={isEvergreenProgram}
-                                            sharesSingleDayWindow={sharesSingleDayWindow}
-                                            scheduleDisplayText={eventScheduleDisplayText}
-                                            startDate={startDateValue}
-                                            endDate={endDateValue}
-                                            displayTimeZone={eventDisplayTimeZone}
-                                            locationSummary={eventLocationSummary}
-                                            address={eventAddress}
-                                            mapEmbedSrc={mapEmbedSrc}
-                                        />
-
-                                        <PublicEventProgramDetails
-                                            allDivisionOptionCount={allDivisionOptions.length}
-                                            eligibleDivisionCount={divisionOptions.length}
-                                            divisionGroups={publicDivisionGroups}
-                                            registrationByDivisionType={registrationByDivisionType}
-                                            selectedDivisionId={selectedDivisionOption?.id}
-                                            selectedDivisionTypeKey={selectedDivisionOption?.divisionTypeKey}
-                                            onDivisionSelect={handlePublicDivisionSelect}
-                                            supportsScheduleDetails={supportsScheduleDetails}
-                                            scheduleDateChips={scheduleDateChips}
-                                            schedulePreviewItems={schedulePreviewItems}
-                                            eventType={currentEvent.eventType}
-                                            canViewStaffSection={canViewStaffSection}
-                                            sportLabel={sportLabel}
-                                            hostedByLabel={hostedByLabel}
-                                            assistantHostNames={assistantHostNames}
-                                            officialNames={officialNames}
-                                            officialSchedulingMode={currentEvent.officialSchedulingMode}
-                                            officialPositionsSummary={officialPositionsSummary}
-                                        />
-                                    </div>
-                                </>
-                            ) : (
-                                <EventDetailSheetSummary
-                                    event={currentEvent}
-                                    isTeamSignup={isTeamSignup}
-                                    priceCents={selectedDivisionBilling.priceCents}
-                                    eventMinAge={eventMinAge}
-                                    eventMaxAge={eventMaxAge}
-                                    divisionLabels={eventDivisionLabels}
-                                    mapEmbedSrc={mapEmbedSrc}
-                                    mapLat={mapLat}
-                                    mapLng={mapLng}
-                                    participantCapacity={participantCapacity}
-                                    registrationCutoffSummary={registrationCutoffSummary}
-                                />
-                            )}
-                        </div>
-
-                        {/* Sidebar */}
-                        <div className="space-y-6 lg:self-start">
-                            {showParticipantsSection ? (
-                                <EventParticipantsSection
-                                    isTeamSignup={isTeamSignup}
-                                    participantCapacity={participantCapacity}
-                                    totalParticipants={totalParticipants}
-                                    freeAgentCount={normalizedFreeAgentIds.length}
-                                    waitlistCount={normalizedWaitlistIds.length}
-                                    spotsLeft={spotsLeft}
-                                    fillPercent={eventFillPercent}
-                                    divisionCapacityRows={participantDivisionCapacityRows}
-                                    capacityBreakdownOpened={showCapacityBreakdown}
-                                    players={players}
-                                    teams={teams}
-                                    freeAgents={freeAgents}
-                                    loading={isLoadingEvent}
-                                    onToggleCapacityBreakdown={toggleCapacityBreakdown}
-                                    onOpenPlayers={openPlayersDropdown}
-                                    onOpenTeams={openTeamsDropdown}
-                                    onOpenFreeAgents={openFreeAgentsDropdown}
-                                />
-                            ) : null}
-
-                            {/* Join Options (includes total participants) */}
-                            <div
-                                ref={joinCardAnchorRef}
-                                style={joinCardDocked ? { height: joinCardHeight } : undefined}
-                            >
-                                <div
-                                    ref={joinCardRef}
-                                    className={joinCardFrameClassName}
-                                    style={joinCardDocked
-                                        ? {
-                                            left: joinCardLeft,
-                                            width: joinCardWidth || undefined,
-                                        }
-                                        : undefined}
-                                >
-                            <EventJoinCard
-                                renderInline={renderInline}
-                                mobileExpanded={mobileJoinExpanded}
-                                registrationTypeLabel={registrationTypeLabel}
-                                selectedDivisionOption={selectedDivisionOption}
-                                priceCents={selectedDivisionBilling.priceCents}
-                                eventPriceSummary={eventPriceSummary}
-                                joinError={joinError}
-                                joinNotice={joinNotice}
-                                event={currentEvent}
-                                eventImageUrl={eventImageUrl}
-                                affiliateActionUrl={affiliateActionUrl}
-                                isAffiliateEvent={isAffiliateEvent}
-                                isWeeklyParentEvent={isWeeklyParentEvent}
-                                selectedWeeklyOccurrenceOption={selectedWeeklyOccurrenceOption}
-                                weeklySessionOptions={weeklySessionOptions}
-                                weeklySelectionRequired={weeklySelectionRequired}
-                                hasAgeLimits={hasAgeLimits}
-                                eventMinAge={eventMinAge}
-                                eventMaxAge={eventMaxAge}
-                                divisionOptionCount={divisionOptions.length}
-                                registrationCutoffSummary={registrationCutoffSummary}
-                                refundSummary={refundSummary}
-                                isDivisionSelectionMissing={isDivisionSelectionMissing}
-                                registrationByDivisionType={registrationByDivisionType}
-                                hasUser={Boolean(user)}
-                                isUserRegistered={Boolean(isUserRegistered)}
-                                totalParticipants={totalParticipants}
-                                participantCapacity={participantCapacity}
-                                canShowScheduleButton={canShowScheduleButton}
-                                hostManageQrActions={renderHostManageQrActions()}
-                                isTournament={currentEvent.eventType === 'TOURNAMENT'}
-                                registrationPanel={registrationPanel}
-                                hasRefundTarget={hasRefundTarget}
-                                activeChildren={activeChildren}
-                                selectedWeeklyOccurrence={selectedWeeklyOccurrence}
-                                eventStartDate={eventStartDate}
-                                showSecurePaymentNote={showSecurePaymentNote}
-                                showPoweredByBracketIqNote={showPoweredByBracketIqNote}
-                                onToggleMobile={toggleMobileJoin}
-                                onAffiliateClick={() => {
-                                    if (!affiliateActionUrl) {
-                                        return;
-                                    }
-                                    trackEventOutboundClicked(
-                                        currentEvent,
-                                        affiliateActionUrl,
-                                        'event_detail',
-                                    );
-                                    trackEventRegistrationStarted(currentEvent, 'affiliate', {
-                                        destination_selected: true,
-                                    });
-                                }}
-                                onClearWeeklyOccurrence={onWeeklyOccurrenceChange
-                                    ? () => onWeeklyOccurrenceChange(null)
-                                    : undefined}
-                                onWeeklySessionSelect={(session) => {
-                                    void handleWeeklySessionSelect(session);
-                                }}
-                                onAuthenticate={openAuthModal}
-                                onViewBracket={handleBracketClick}
-                                onRefundSuccess={loadEventDetails}
-                            />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <EventDetailContent
+            renderInline={renderInline}
+            onClose={onClose}
+            sheetPopoverZIndex={SHEET_POPOVER_Z_INDEX}
+            heroProps={{
+                imageUrl: eventImageUrl,
+                imageFallbackUrl: eventImageFallbackUrl,
+                eventName: currentEvent.name,
+                eventTypeLabel,
+                sportLabel,
+                registrationTypeLabel,
+                showHostedByLabel: shouldShowHostedByHeroLabel,
+                hostedByLabel,
+                scheduleLabel: eventScheduleDisplayText,
+                locationLabel: eventLocationSummary,
+                spotsLabel: spotsSummary,
+            }}
+            overviewProps={{
+                description: currentEvent.description,
+                organization,
+                hostUser,
+                hostedByHref,
+                hostedByLabel,
+                hostedByHandle,
+                isAffiliateEvent,
+                registrationStatusClassName: publicRegistrationStatusClassName,
+                registrationStatusLabel: publicRegistrationStatusLabel,
+                isEvergreenProgram,
+                sharesSingleDayWindow,
+                scheduleDisplayText: eventScheduleDisplayText,
+                startDate: startDateValue,
+                endDate: endDateValue,
+                displayTimeZone: eventDisplayTimeZone,
+                locationSummary: eventLocationSummary,
+                address: eventAddress,
+                mapEmbedSrc,
+            }}
+            programDetailsProps={{
+                allDivisionOptionCount: allDivisionOptions.length,
+                eligibleDivisionCount: divisionOptions.length,
+                divisionGroups: publicDivisionGroups,
+                registrationByDivisionType,
+                selectedDivisionId: selectedDivisionOption?.id,
+                selectedDivisionTypeKey: selectedDivisionOption?.divisionTypeKey,
+                onDivisionSelect: handlePublicDivisionSelect,
+                supportsScheduleDetails,
+                scheduleDateChips,
+                schedulePreviewItems,
+                eventType: currentEvent.eventType,
+                canViewStaffSection,
+                sportLabel,
+                hostedByLabel,
+                assistantHostNames,
+                officialNames,
+                officialSchedulingMode: currentEvent.officialSchedulingMode,
+                officialPositionsSummary,
+            }}
+            summaryProps={{
+                event: currentEvent,
+                isTeamSignup,
+                priceCents: selectedDivisionBilling.priceCents,
+                eventMinAge,
+                eventMaxAge,
+                divisionLabels: eventDivisionLabels,
+                mapEmbedSrc,
+                mapLat,
+                mapLng,
+                participantCapacity,
+                registrationCutoffSummary,
+            }}
+            showParticipantsSection={showParticipantsSection}
+            participantsProps={{
+                isTeamSignup,
+                participantCapacity,
+                totalParticipants,
+                freeAgentCount: normalizedFreeAgentIds.length,
+                waitlistCount: normalizedWaitlistIds.length,
+                spotsLeft,
+                fillPercent: eventFillPercent,
+                divisionCapacityRows: participantDivisionCapacityRows,
+                capacityBreakdownOpened: showCapacityBreakdown,
+                players,
+                teams,
+                freeAgents,
+                loading: isLoadingEvent,
+                onToggleCapacityBreakdown: toggleCapacityBreakdown,
+                onOpenPlayers: openPlayersDropdown,
+                onOpenTeams: openTeamsDropdown,
+                onOpenFreeAgents: openFreeAgentsDropdown,
+            }}
+            joinCardProps={{
+                renderInline,
+                mobileExpanded: mobileJoinExpanded,
+                registrationTypeLabel,
+                selectedDivisionOption,
+                priceCents: selectedDivisionBilling.priceCents,
+                eventPriceSummary,
+                joinError,
+                joinNotice,
+                event: currentEvent,
+                eventImageUrl,
+                affiliateActionUrl,
+                isAffiliateEvent,
+                isWeeklyParentEvent,
+                selectedWeeklyOccurrenceOption,
+                weeklySessionOptions,
+                weeklySelectionRequired,
+                hasAgeLimits,
+                eventMinAge,
+                eventMaxAge,
+                divisionOptionCount: divisionOptions.length,
+                registrationCutoffSummary,
+                refundSummary,
+                isDivisionSelectionMissing,
+                registrationByDivisionType,
+                hasUser: Boolean(user),
+                isUserRegistered: Boolean(isUserRegistered),
+                totalParticipants,
+                participantCapacity,
+                canShowScheduleButton,
+                hostManageQrActions: renderHostManageQrActions(),
+                isTournament: currentEvent.eventType === 'TOURNAMENT',
+                registrationPanel,
+                hasRefundTarget,
+                activeChildren,
+                selectedWeeklyOccurrence,
+                eventStartDate,
+                showSecurePaymentNote,
+                showPoweredByBracketIqNote,
+                onToggleMobile: toggleMobileJoin,
+                onAffiliateClick: () => {
+                    if (!affiliateActionUrl) {
+                        return;
+                    }
+                    trackEventOutboundClicked(currentEvent, affiliateActionUrl, 'event_detail');
+                    trackEventRegistrationStarted(currentEvent, 'affiliate', {
+                        destination_selected: true,
+                    });
+                },
+                onClearWeeklyOccurrence: onWeeklyOccurrenceChange
+                    ? () => onWeeklyOccurrenceChange(null)
+                    : undefined,
+                onWeeklySessionSelect: (session) => {
+                    void handleWeeklySessionSelect(session);
+                },
+                onAuthenticate: openAuthModal,
+                onViewBracket: handleBracketClick,
+                onRefundSuccess: loadEventDetails,
+            }}
+            joinCardAnchorRef={joinCardAnchorRef}
+            joinCardRef={joinCardRef}
+            joinCardDocked={joinCardDocked}
+            joinCardHeight={joinCardHeight}
+            joinCardLeft={joinCardLeft}
+            joinCardWidth={joinCardWidth}
+        />
     );
 
     const renderEventTeamParticipant = (participant: Team | UserData) => (
