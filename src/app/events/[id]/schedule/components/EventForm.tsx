@@ -11,7 +11,6 @@ import {
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
 } from '@/lib/organizationEventAccess';
-import { createClientId } from '@/lib/clientId';
 import {
     buildEventTypeOptions,
     hasAffiliateUrl,
@@ -110,6 +109,7 @@ import { useEventFormInvariantSynchronization } from './eventForm/hooks/useEvent
 import { useEventFormReferenceHydration } from './eventForm/hooks/useEventFormReferenceHydration';
 import { useEventFormConfigurationActions } from './eventForm/hooks/useEventFormConfigurationActions';
 import { useEventFormCatalogController } from './eventForm/hooks/useEventFormCatalogController';
+import { useRegistrationQuestionEditorActions } from './eventForm/hooks/useRegistrationQuestionEditorActions';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -926,41 +926,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         scrollOffset: SECTION_SCROLL_OFFSET,
     });
 
-    const handleAddRegistrationQuestion = useCallback(() => {
-        expandSection('section-registration-questions');
-        setRegistrationQuestionDrafts((current) => [
-            ...current,
-            {
-                id: createClientId(),
-                prompt: '',
-                answerType: 'TEXT',
-                required: false,
-                sortOrder: current.length,
-            },
-        ]);
-    }, [expandSection]);
-
-    const handleRegistrationQuestionPromptChange = useCallback((index: number, prompt: string) => {
-        setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-            entryIndex === index
-                ? { ...entry, prompt, sortOrder: index }
-                : entry
-        )));
-    }, []);
-
-    const handleRegistrationQuestionRequiredChange = useCallback((index: number, required: boolean) => {
-        setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-            entryIndex === index
-                ? { ...entry, required, sortOrder: index }
-                : entry
-        )));
-    }, []);
-
-    const handleRemoveRegistrationQuestion = useCallback((index: number) => {
-        setRegistrationQuestionDrafts((current) => current
-            .filter((_, entryIndex) => entryIndex !== index)
-            .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })));
-    }, []);
+    const {
+        addQuestion: handleAddRegistrationQuestion,
+        changePrompt: handleRegistrationQuestionPromptChange,
+        changeRequired: handleRegistrationQuestionRequiredChange,
+        removeQuestion: handleRemoveRegistrationQuestion,
+    } = useRegistrationQuestionEditorActions({
+        expandSection,
+        setDrafts: setRegistrationQuestionDrafts,
+    });
 
     const registrationQuestionsEditor = (
         <RegistrationQuestionsSection
