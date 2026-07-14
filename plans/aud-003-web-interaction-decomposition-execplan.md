@@ -49,6 +49,7 @@ After this plan is complete, users must see the same event details, registration
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
 - [x] (2026-07-14 16:32Z) Milestone 5b: moved immutable/default construction, source resets, dirty baselines, external draft notifications, and normalization-stable rebasing into focused EventForm lifecycle hooks.
+- [x] (2026-07-14 17:38Z) Milestone 5c: moved organization/rental hydration, RHF field adapters, local-field synchronization, selected/division resource normalization, options, and locked-rental derivation into `useEventResourceController`.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
 
@@ -144,7 +145,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration and team participant presentation, sheet summary, inline public overview/program details, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,451 lines, down from 7,219, has no direct effects, passes complete-file ESLint, and no longer imports event, registration, payment, or bill services; the join-card and overlay composition remain substantial. EventForm payment and lifecycle ownership are now extracted and `EventForm.tsx` measures 3,941 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration and team participant presentation, sheet summary, inline public overview/program details, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,451 lines, down from 7,219, has no direct effects, passes complete-file ESLint, and no longer imports event, registration, payment, or bill services; the join-card and overlay composition remain substantial. EventForm payment, lifecycle, and resource ownership are now extracted and `EventForm.tsx` measures 3,430 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -499,6 +500,16 @@ EventForm lifecycle-controller evidence on 2026-07-14:
 
 Five direct lifecycle regressions cover source resets, closed-state cleanup, external draft/dirty notification, normalization-stable baseline rebasing, and explicit baseline commits. React Hook Form remains the single persisted draft owner; the extracted lifecycle owns only default construction, reset identity, readiness, and baseline refs.
 
+EventForm resource-controller evidence on 2026-07-14:
+
+    PASS 39 suites / 323 tests
+    PASS npx tsc --noEmit
+    PASS new hook/test/helper ESLint with zero warnings and git diff --check
+    EventForm.tsx: 3,941 -> 3,430 lines
+    useEventResourceController.ts: 599 lines
+
+Four direct controller regressions cover local-field creation/renaming, organization and rental resource success, resource-load failure, and deferred close/cancellation. React Hook Form remains the sole persisted resource draft; the controller exposes derived pools, options, and narrow field actions while slot mutation and division-only invariants remain separate future owners.
+
 Event participant-action extraction evidence on 2026-07-14:
 
     PASS 28 suites / 278 tests
@@ -647,3 +658,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting the non-inline e
 Revision note (2026-07-14): Continued Milestone 4 by extracting public detail primitives; the combined 36-suite safety net passes 311 tests and the facade is now 2,716 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the inline public overview; the combined 37-suite safety net passes 315 tests and the facade is now 2,639 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting public choices, timeline, scoring, and staff presentation; the combined 38-suite safety net passes 319 tests and the facade is now 2,451 lines.
+Revision note (2026-07-14): Continued Milestone 5 by extracting EventForm resource hydration, field synchronization, resource selection, and rental-lock derivation; the combined 39-suite safety net passes 323 tests and the facade is now 3,430 lines.
