@@ -29,6 +29,7 @@ import { useEventParticipantModel } from './eventDetail/hooks/useEventParticipan
 import { useRegistrationWorkflowController } from './eventDetail/hooks/useRegistrationWorkflowController';
 import { useWeeklyEventSelectionModel } from './eventDetail/hooks/useWeeklyEventSelectionModel';
 import { useEventDetailNavigationController } from './eventDetail/hooks/useEventDetailNavigationController';
+import { useEventDetailPresentationController } from './eventDetail/hooks/useEventDetailPresentationController';
 import { collectUniqueUserIds } from './eventDetail/eventDetailData';
 import {
     CheckoutPreviewDialog,
@@ -134,11 +135,30 @@ export default function EventDetailSheet({
         cachedUserTeams,
         userTeamsLoading: Boolean(userTeamsLoading),
     });
-    const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
-    const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
-    const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
-    const [showCapacityBreakdown, setShowCapacityBreakdown] = useState(false);
-    const [selectedFreeAgentActionUser, setSelectedFreeAgentActionUser] = useState<UserData | null>(null);
+    const {
+        playersDropdownOpened: showPlayersDropdown,
+        teamsDropdownOpened: showTeamsDropdown,
+        freeAgentsDropdownOpened: showFreeAgentsDropdown,
+        capacityBreakdownOpened: showCapacityBreakdown,
+        selectedFreeAgentActionUser,
+        qrCodeOpened: showQrCodeModal,
+        teamJoinOptionsOpened: showTeamJoinOptions,
+        mobileJoinExpanded,
+        setCapacityBreakdownOpened: setShowCapacityBreakdown,
+        openPlayersDropdown,
+        closePlayersDropdown,
+        openTeamsDropdown,
+        closeTeamsDropdown,
+        openFreeAgentsDropdown,
+        closeFreeAgentsDropdown,
+        toggleCapacityBreakdown,
+        openFreeAgentActions,
+        closeFreeAgentActions,
+        openQrCode,
+        closeQrCode,
+        toggleTeamJoinOptions,
+        toggleMobileJoin,
+    } = useEventDetailPresentationController();
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
@@ -163,7 +183,6 @@ export default function EventDetailSheet({
         confirmingPurchase,
         paymentPlanPreview,
     } = useRegistrationWorkflowController();
-    const [showQrCodeModal, setShowQrCodeModal] = useState(false);
     const {
         anchorRef: joinCardAnchorRef,
         cardRef: joinCardRef,
@@ -174,10 +193,6 @@ export default function EventDetailSheet({
             width: joinCardWidth,
         },
     } = useJoinCardDocking({ active: isActive, inline: renderInline });
-
-    // Team-signup join controls
-    const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
-    const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
 
     const {
         eventPublicUrl: currentEventPublicUrl,
@@ -449,24 +464,6 @@ export default function EventDetailSheet({
         setSelectedDivisionTypeKey,
     });
 
-    const openFreeAgentActions = useCallback((agent: UserData) => {
-        setSelectedFreeAgentActionUser(agent);
-    }, []);
-
-    const closeFreeAgentActions = useCallback(() => {
-        setSelectedFreeAgentActionUser(null);
-    }, []);
-
-    const toggleCapacityBreakdown = useCallback(() => {
-        setShowCapacityBreakdown((opened) => !opened);
-    }, []);
-    const openPlayersDropdown = useCallback(() => setShowPlayersDropdown(true), []);
-    const closePlayersDropdown = useCallback(() => setShowPlayersDropdown(false), []);
-    const openTeamsDropdown = useCallback(() => setShowTeamsDropdown(true), []);
-    const closeTeamsDropdown = useCallback(() => setShowTeamsDropdown(false), []);
-    const openFreeAgentsDropdown = useCallback(() => setShowFreeAgentsDropdown(true), []);
-    const closeFreeAgentsDropdown = useCallback(() => setShowFreeAgentsDropdown(false), []);
-
     const handleInviteFreeAgentToTeam = useCallback(() => {
         if (!selectedFreeAgentActionUser || !currentEvent.$id) {
             return;
@@ -475,10 +472,16 @@ export default function EventDetailSheet({
             event: currentEvent.$id,
             freeAgent: selectedFreeAgentActionUser.$id,
         });
-        setShowFreeAgentsDropdown(false);
-        setSelectedFreeAgentActionUser(null);
+        closeFreeAgentsDropdown();
+        closeFreeAgentActions();
         router.push(`/teams?${params.toString()}`);
-    }, [currentEvent.$id, router, selectedFreeAgentActionUser]);
+    }, [
+        closeFreeAgentActions,
+        closeFreeAgentsDropdown,
+        currentEvent.$id,
+        router,
+        selectedFreeAgentActionUser,
+    ]);
 
     const isTeamSignup = Boolean(currentEvent.teamSignup);
     const {
@@ -594,7 +597,7 @@ export default function EventDetailSheet({
             <Button
                 variant="default"
                 leftSection={<QrCode size={16} />}
-                onClick={() => setShowQrCodeModal(true)}
+                onClick={openQrCode}
             >
                 QR Code
             </Button>
@@ -765,7 +768,7 @@ export default function EventDetailSheet({
             totalParticipants={totalParticipants}
             participantCapacity={participantCapacity}
             comboboxProps={sharedComboboxProps}
-            onToggleTeamOptions={() => setShowTeamJoinOptions((visible) => !visible)}
+            onToggleTeamOptions={toggleTeamJoinOptions}
             onSelectedTeamChange={(teamId) => {
                 setSelectedTeamId(teamId);
                 saveEventRegistrationProgress({ selectedTeamId: teamId || null });
@@ -999,9 +1002,7 @@ export default function EventDetailSheet({
                                 eventStartDate={eventStartDate}
                                 showSecurePaymentNote={showSecurePaymentNote}
                                 showPoweredByBracketIqNote={showPoweredByBracketIqNote}
-                                onToggleMobile={() => {
-                                    setMobileJoinExpanded((expanded) => !expanded);
-                                }}
+                                onToggleMobile={toggleMobileJoin}
                                 onAffiliateClick={() => {
                                     if (!affiliateActionUrl) {
                                         return;
@@ -1056,7 +1057,7 @@ export default function EventDetailSheet({
                 eventUrl={currentEventPublicUrl}
                 organizationLogoId={currentOrganizationLogoId}
                 opened={showQrCodeModal}
-                onClose={() => setShowQrCodeModal(false)}
+                onClose={closeQrCode}
             />
 
             <EventParticipantDropdowns
