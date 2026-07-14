@@ -1,9 +1,18 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
-import { CurrentUser, currentUserSelect, isMinorAtUtcDate, publicUserSelect } from '@/server/userPrivacy';
+import {
+  type CurrentUser,
+  type PublicUser as PrivacyPublicUser,
+  type SelectedCurrentUser,
+  currentUserSelect,
+  isMinorAtUtcDate,
+  publicUserSelect,
+} from '@/server/userPrivacy';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
-export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
+export type PublicUser = PrivacyPublicUser;
 type SocialTx = Prisma.TransactionClient;
+type StoredCurrentUser = SelectedCurrentUser;
 type CurrentUserSocialUser = CurrentUser;
 
 const normalizeIds = (value: string[] | null | undefined): string[] => (
@@ -36,7 +45,7 @@ const mapUsersById = (users: PublicUser[]): Map<string, PublicUser> => {
   return new Map(users.map((user) => [user.id, user]));
 };
 
-const mapSocialUsersById = (users: CurrentUserSocialUser[]): Map<string, CurrentUserSocialUser> => {
+const mapSocialUsersById = (users: StoredCurrentUser[]): Map<string, StoredCurrentUser> => {
   return new Map(users.map((user) => [user.id, user]));
 };
 
@@ -50,13 +59,14 @@ const findUsersByIds = async (tx: SocialTx, ids: string[]): Promise<PublicUser[]
   const normalizedIds = normalizeIds(ids);
   if (!normalizedIds.length) return [];
 
-  return tx.userData.findMany({
+  const users = await tx.userData.findMany({
     where: { id: { in: normalizedIds } },
     select: publicUserSelect,
   });
+  return withDerivedCanonicalTeamIds(users, tx);
 };
 
-const findSocialUsersByIds = async (tx: SocialTx, ids: string[]): Promise<CurrentUserSocialUser[]> => {
+const findSocialUsersByIds = async (tx: SocialTx, ids: string[]): Promise<StoredCurrentUser[]> => {
   const normalizedIds = normalizeIds(ids);
   if (!normalizedIds.length) return [];
 
@@ -66,11 +76,19 @@ const findSocialUsersByIds = async (tx: SocialTx, ids: string[]): Promise<Curren
   });
 };
 
+const attachCurrentUserTeamIds = async (
+  tx: SocialTx,
+  user: StoredCurrentUser,
+): Promise<CurrentUserSocialUser> => {
+  const [derivedUser] = await withDerivedCanonicalTeamIds([user], tx);
+  return derivedUser;
+};
+
 const getActorAndTarget = async (
   tx: SocialTx,
   actorUserId: string,
   targetUserId: string,
-): Promise<{ actor: CurrentUserSocialUser; target: CurrentUserSocialUser }> => {
+): Promise<{ actor: StoredCurrentUser; target: StoredCurrentUser }> => {
   const actorId = actorUserId.trim();
   const targetId = targetUserId.trim();
 
@@ -103,8 +121,8 @@ const assertSocialUsersAreAdults = (
 };
 
 const assertUsersAreNotBlocked = (
-  actor: Pick<CurrentUserSocialUser, 'blockedUserIds' | 'id'>,
-  target: Pick<CurrentUserSocialUser, 'blockedUserIds' | 'id'>,
+  actor: Pick<StoredCurrentUser, 'blockedUserIds' | 'id'>,
+  target: Pick<StoredCurrentUser, 'blockedUserIds' | 'id'>,
 ): void => {
   const actorBlockedIds = normalizeIds(actor.blockedUserIds);
   const targetBlockedIds = normalizeIds(target.blockedUserIds);
@@ -138,52 +156,53 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
     throw new SocialGraphError(400, 'A valid user id is required.');
   }
 
-  const user = await prisma.userData.findUnique({
-    where: { id: actorId },
-    select: currentUserSelect,
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.userData.findUnique({
+      where: { id: actorId },
+      select: currentUserSelect,
+    });
+
+    if (!user) {
+      throw new SocialGraphError(404, 'User not found.');
+    }
+
+    const followers = await tx.userData.findMany({
+      where: { followingIds: { has: actorId } },
+      select: publicUserSelect,
+    });
+
+    const relatedIds = normalizeIds([
+      ...normalizeIds(user.friendIds),
+      ...normalizeIds(user.followingIds),
+      ...normalizeIds(user.friendRequestIds),
+      ...normalizeIds(user.friendRequestSentIds),
+      ...normalizeIds(user.blockedUserIds),
+      ...followers.map((row) => row.id),
+    ]);
+
+    const [userWithTeamIds, relatedUsers] = await Promise.all([
+      attachCurrentUserTeamIds(tx, user),
+      findUsersByIds(tx, relatedIds),
+    ]);
+    const usersById = mapUsersById(relatedUsers);
+
+    return {
+      user: userWithTeamIds,
+      friends: sortUsers(pickUsersByIds(normalizeIds(user.friendIds), usersById)),
+      following: sortUsers(pickUsersByIds(normalizeIds(user.followingIds), usersById)),
+      followers: sortUsers(pickUsersByIds(normalizeIds(followers.map((row) => row.id)), usersById)),
+      incomingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestIds), usersById)),
+      outgoingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestSentIds), usersById)),
+      blocked: sortUsers(pickUsersByIds(normalizeIds(user.blockedUserIds), usersById)),
+    };
   });
-
-  if (!user) {
-    throw new SocialGraphError(404, 'User not found.');
-  }
-
-  const followers = await prisma.userData.findMany({
-    where: { followingIds: { has: actorId } },
-    select: publicUserSelect,
-  });
-
-  const relatedIds = normalizeIds([
-    ...normalizeIds(user.friendIds),
-    ...normalizeIds(user.followingIds),
-    ...normalizeIds(user.friendRequestIds),
-    ...normalizeIds(user.friendRequestSentIds),
-    ...normalizeIds(user.blockedUserIds),
-    ...followers.map((row) => row.id),
-  ]);
-
-  const relatedUsers = await prisma.userData.findMany({
-    where: { id: { in: relatedIds } },
-    select: publicUserSelect,
-  });
-
-  const usersById = mapUsersById(relatedUsers);
-
-  return {
-    user,
-    friends: sortUsers(pickUsersByIds(normalizeIds(user.friendIds), usersById)),
-    following: sortUsers(pickUsersByIds(normalizeIds(user.followingIds), usersById)),
-    followers: sortUsers(pickUsersByIds(normalizeIds(followers.map((row) => row.id)), usersById)),
-    incomingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestIds), usersById)),
-    outgoingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestSentIds), usersById)),
-    blocked: sortUsers(pickUsersByIds(normalizeIds(user.blockedUserIds), usersById)),
-  };
 };
 
 export const sendFriendRequest = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
     assertSocialUsersAreAdults(actor, target);
-    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
+    assertUsersAreNotBlocked(actor, target);
 
     const actorFriendIds = normalizeIds(actor.friendIds);
     const actorSentIds = normalizeIds(actor.friendRequestSentIds);
@@ -191,7 +210,7 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
     const targetIncomingIds = normalizeIds(target.friendRequestIds);
 
     if (actorFriendIds.includes(target.id)) {
-      return actor;
+      return attachCurrentUserTeamIds(tx, actor);
     }
 
     if (actorIncomingIds.includes(target.id)) {
@@ -199,7 +218,7 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
     }
 
     if (actorSentIds.includes(target.id) && targetIncomingIds.includes(actor.id)) {
-      return actor;
+      return attachCurrentUserTeamIds(tx, actor);
     }
 
     const now = new Date();
@@ -212,7 +231,7 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
       },
     });
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         friendRequestSentIds: addUniqueId(actor.friendRequestSentIds, target.id),
@@ -220,6 +239,7 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };
 
@@ -227,7 +247,7 @@ export const acceptFriendRequest = async (actorUserId: string, requesterUserId: 
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, requesterUserId);
     assertSocialUsersAreAdults(actor, target);
-    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
+    assertUsersAreNotBlocked(actor, target);
 
     const actorFriends = normalizeIds(actor.friendIds);
     const actorIncoming = normalizeIds(actor.friendRequestIds);
@@ -256,7 +276,7 @@ export const acceptFriendRequest = async (actorUserId: string, requesterUserId: 
       },
     });
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         friendIds: addUniqueId(actorFriends, target.id),
@@ -266,6 +286,7 @@ export const acceptFriendRequest = async (actorUserId: string, requesterUserId: 
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };
 
@@ -284,7 +305,7 @@ export const declineFriendRequest = async (actorUserId: string, requesterUserId:
       },
     });
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         friendRequestIds: removeId(actor.friendRequestIds, target.id),
@@ -293,6 +314,7 @@ export const declineFriendRequest = async (actorUserId: string, requesterUserId:
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };
 
@@ -312,7 +334,7 @@ export const removeFriend = async (actorUserId: string, friendUserId: string): P
       },
     });
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         friendIds: removeId(actor.friendIds, target.id),
@@ -322,6 +344,7 @@ export const removeFriend = async (actorUserId: string, friendUserId: string): P
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };
 
@@ -329,13 +352,13 @@ export const followUser = async (actorUserId: string, targetUserId: string): Pro
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
     assertSocialUsersAreAdults(actor, target);
-    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
+    assertUsersAreNotBlocked(actor, target);
 
     if (normalizeIds(actor.followingIds).includes(target.id)) {
-      return actor;
+      return attachCurrentUserTeamIds(tx, actor);
     }
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         followingIds: addUniqueId(actor.followingIds, target.id),
@@ -343,6 +366,7 @@ export const followUser = async (actorUserId: string, targetUserId: string): Pro
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };
 
@@ -350,7 +374,7 @@ export const unfollowUser = async (actorUserId: string, targetUserId: string): P
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
 
-    return tx.userData.update({
+    const updatedActor = await tx.userData.update({
       where: { id: actor.id },
       data: {
         followingIds: removeId(actor.followingIds, target.id),
@@ -358,5 +382,6 @@ export const unfollowUser = async (actorUserId: string, targetUserId: string): P
       },
       select: currentUserSelect,
     });
+    return attachCurrentUserTeamIds(tx, updatedActor);
   });
 };

@@ -582,7 +582,6 @@ const upsertOrganization = async (ownerId: string, definition: SourceOrganizatio
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicSlug: definition.publicSlug ?? null,
       publicPageEnabled,
       publicWidgetsEnabled: false,

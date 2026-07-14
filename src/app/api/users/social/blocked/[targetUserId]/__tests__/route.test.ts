@@ -50,6 +50,14 @@ describe('DELETE /api/users/social/blocked/[targetUserId]', () => {
             uploadedImages: [],
           }),
         },
+        teamRegistrations: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        teamStaffAssignments: {
+          findMany: jest.fn().mockResolvedValue([
+            { userId: 'user_1', teamId: 'team_current' },
+          ]),
+        },
       };
       return callback(tx);
     });
@@ -63,5 +71,6 @@ describe('DELETE /api/users/social/blocked/[targetUserId]', () => {
     expect(res.status).toBe(200);
     expect(clearBlockReportsMock).toHaveBeenCalledWith(expect.anything(), 'user_1', 'user_2');
     expect(json.user.blockedUserIds).toEqual(['user_3']);
+    expect(json.user.teamIds).toEqual(['team_current']);
   });
 });

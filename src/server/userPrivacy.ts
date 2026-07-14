@@ -12,7 +12,6 @@ export const publicUserSelect = {
   dobVerified: true,
   dobVerifiedAt: true,
   ageVerificationProvider: true,
-  teamIds: true,
   friendIds: true,
   userName: true,
   hasStripeAccount: true,
@@ -25,7 +24,8 @@ export const publicUserSelect = {
   accountVisibility: true,
 } as const;
 
-export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
+export type SelectedPublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
+export type PublicUser = SelectedPublicUser & { teamIds: string[] };
 
 export const currentUserSelect = {
   ...publicUserSelect,
@@ -37,7 +37,8 @@ export const currentUserSelect = {
   notificationSettings: true,
 } as const;
 
-export type CurrentUser = Prisma.UserDataGetPayload<{ select: typeof currentUserSelect }>;
+export type SelectedCurrentUser = Prisma.UserDataGetPayload<{ select: typeof currentUserSelect }>;
+export type CurrentUser = SelectedCurrentUser & { teamIds: string[] };
 
 export type VisibilityUser = Omit<PublicUser, 'dateOfBirth'> & {
   dateOfBirth: Date | null;

@@ -326,7 +326,6 @@ const upsertOrganization = async (ownerId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicPageEnabled: false,
       publicWidgetsEnabled: false,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',

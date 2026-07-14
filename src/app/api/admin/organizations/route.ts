@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
+import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 50;
@@ -45,9 +46,10 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const organizationsWithProductIds = await withDerivedOrganizationProductIds(organizationRows, prisma);
     return NextResponse.json(
       {
-        organizations: withLegacyList(organizationRows),
+        organizations: withLegacyList(organizationsWithProductIds),
         total,
         limit,
         offset,

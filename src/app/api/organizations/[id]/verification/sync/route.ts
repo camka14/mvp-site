@@ -8,6 +8,7 @@ import {
   findManagedOrganizationStripeAccount,
   syncManagedOrganizationStripeAccount,
 } from '@/server/organizationStripeVerification';
+import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    return NextResponse.json(withLegacyFields(updatedOrganization), { status: 200 });
+    const [updatedWithProductIds] = await withDerivedOrganizationProductIds([updatedOrganization], prisma);
+    return NextResponse.json(withLegacyFields(updatedWithProductIds), { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to sync organization verification status', error);

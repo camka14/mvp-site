@@ -19,6 +19,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     upsert: jest.fn(),
   },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -57,12 +63,16 @@ describe('google mobile oauth route', () => {
         authUser: prismaMock.authUser,
         userData: prismaMock.userData,
         sensitiveUserData: prismaMock.sensitiveUserData,
+        teamRegistrations: prismaMock.teamRegistrations,
+        teamStaffAssignments: prismaMock.teamStaffAssignments,
       }),
     );
 
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
     sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
   });
 
   afterAll(() => {
@@ -100,7 +110,10 @@ describe('google mobile oauth route', () => {
       updatedAt: new Date(),
     });
     prismaMock.userData.findUnique.mockResolvedValue(null);
-    prismaMock.userData.create.mockResolvedValue({ id: 'user_1' });
+    prismaMock.userData.create.mockResolvedValue({ id: 'user_1', teamIds: ['legacy_only'] });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { userId: 'user_1', teamId: 'team_current' },
+    ]);
     prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
 
     const req = buildJsonRequest('http://localhost/api/auth/google/mobile', { idToken: 'id-token-123' });
@@ -109,6 +122,7 @@ describe('google mobile oauth route', () => {
 
     expect(res.status).toBe(200);
     expect(json.user.id).toBe('user_1');
+    expect(json.profile.teamIds).toEqual(['team_current']);
     expect(json.token).toBe('signed-token');
     expect(json.requiresProfileCompletion).toBe(true);
     expect(json.missingProfileFields).toContain('dateOfBirth');

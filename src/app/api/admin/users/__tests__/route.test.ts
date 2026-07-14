@@ -11,6 +11,12 @@ const prismaMock = {
     count: jest.fn(),
     findMany: jest.fn(),
   },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
 };
 
 jest.mock('@/server/razumlyAdmin', () => ({
@@ -26,6 +32,8 @@ import { GET as adminUsersGet } from '@/app/api/admin/users/route';
 describe('GET /api/admin/users', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
   });
 
   it('returns 403 when caller is not an allowed admin', async () => {
@@ -67,7 +75,7 @@ describe('GET /api/admin/users', () => {
           lastName: 'player',
           userName: 'sam_player',
           dateOfBirth: new Date('2000-01-01T00:00:00Z'),
-          teamIds: [],
+          teamIds: ['legacy_only'],
           friendIds: [],
           friendRequestIds: [],
           friendRequestSentIds: [],
@@ -75,6 +83,9 @@ describe('GET /api/admin/users', () => {
           uploadedImages: [],
         },
       ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValueOnce([
+      { userId: 'user_1', teamId: 'team_current' },
+    ]);
 
     const res = await adminUsersGet(new NextRequest('http://localhost/api/admin/users?query=user@example.com'));
     const json = await res.json();
@@ -86,6 +97,7 @@ describe('GET /api/admin/users', () => {
     expect(json.users[0].firstName).toBe('Sam');
     expect(json.users[0].dateJoined).toBe('2026-03-01T10:00:00.000Z');
     expect(json.users[0].lastSeenAt).toBe('2026-03-12T10:00:00.000Z');
+    expect(json.users[0].teamIds).toEqual(['team_current']);
     expect(json.sort).toBe('lastSeen');
     expect(json.direction).toBe('desc');
   });

@@ -209,7 +209,6 @@ export async function POST(req: NextRequest) {
               }),
               dateOfBirth: nextProfile.dateOfBirth,
               requiredProfileFieldsCompletedAt,
-              teamIds: [],
               friendIds: [],
               friendRequestIds: [],
               friendRequestSentIds: [],

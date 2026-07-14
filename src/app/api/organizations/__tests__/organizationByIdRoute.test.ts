@@ -38,6 +38,9 @@ const prismaMock = {
   eventRegistrations: {
     findFirst: jest.fn(),
   },
+  products: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -62,6 +65,7 @@ describe('/api/organizations/[id]', () => {
     prismaMock.fields.findMany.mockResolvedValue([]);
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.products.findMany.mockResolvedValue([]);
   });
 
   it('does not expose an unlisted organization to an anonymous detail request', async () => {
@@ -112,6 +116,7 @@ describe('/api/organizations/[id]', () => {
     expect(payload).not.toHaveProperty('taxResponsibilityAcceptedByUserId');
     expect(payload).not.toHaveProperty('embedAllowedDomains');
     expect(payload).not.toHaveProperty('staffMembers');
+    expect(payload).not.toHaveProperty('productIds');
     expect(prismaMock.staffMembers.findMany).not.toHaveBeenCalled();
     expect(prismaMock.sensitiveUserData.findMany).not.toHaveBeenCalled();
   });
@@ -157,7 +162,11 @@ describe('/api/organizations/[id]', () => {
       id: 'org_1',
       ownerId: 'owner_1',
       name: 'Test Org',
+      productIds: ['legacy_only'],
     });
+    prismaMock.products.findMany.mockResolvedValue([
+      { id: 'product_current', organizationId: 'org_1' },
+    ]);
 
     const response = await GET(
       new NextRequest('http://localhost/api/organizations/org_1'),
@@ -168,6 +177,7 @@ describe('/api/organizations/[id]', () => {
     expect(response.status).toBe(200);
     expect(payload.viewerCanManageOrganization).toBe(true);
     expect(payload.viewerCanAccessUsers).toBe(true);
+    expect(payload.productIds).toEqual(['product_current']);
     expect(prismaMock.sensitiveUserData.findMany).toHaveBeenCalled();
   });
 
@@ -244,6 +254,29 @@ describe('/api/organizations/[id]', () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe('Unknown organization patch fields.');
     expect(payload.unknownKeys).toEqual(['hasStripeAccount']);
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct productIds patch attempts without writing the organization', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      publicSlug: null,
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({ organization: { productIds: ['product_1'] } }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('productIds is derived from products and cannot be updated directly.');
     expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 

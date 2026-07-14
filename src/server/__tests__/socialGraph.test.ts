@@ -1,6 +1,8 @@
 /** @jest-environment node */
 
 const users = new Map<string, any>();
+const playerMemberships: Array<{ userId: string; teamId: string }> = [];
+const staffMemberships: Array<{ userId: string; teamId: string }> = [];
 
 const cloneUser = (user: any) => ({
   ...user,
@@ -54,6 +56,18 @@ const prismaMock: any = {
     findUnique,
     update,
   },
+  teamRegistrations: {
+    findMany: jest.fn(async (args: any) => {
+      const ids = args?.where?.userId?.in ?? [];
+      return playerMemberships.filter((row) => ids.includes(row.userId));
+    }),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(async (args: any) => {
+      const ids = args?.where?.userId?.in ?? [];
+      return staffMemberships.filter((row) => ids.includes(row.userId));
+    }),
+  },
   $transaction: jest.fn(async (callback: (tx: any) => unknown): Promise<unknown> => callback(prismaMock)),
 };
 
@@ -61,8 +75,10 @@ jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 
 import {
   acceptFriendRequest,
+  declineFriendRequest,
   followUser,
   getSocialGraphForUser,
+  removeFriend,
   sendFriendRequest,
   unfollowUser,
 } from '@/server/socialGraph';
@@ -93,19 +109,29 @@ describe('socialGraph', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     users.clear();
+    playerMemberships.splice(0);
+    staffMemberships.splice(0);
     users.set('user_1', baseUser('user_1'));
     users.set('user_2', baseUser('user_2'));
     users.set('user_3', baseUser('user_3'));
   });
 
   it('sends and accepts friend requests with symmetric updates', async () => {
+    playerMemberships.push({ userId: 'user_1', teamId: 'team_z' });
+    staffMemberships.push(
+      { userId: 'user_1', teamId: 'team_a' },
+      { userId: 'user_2', teamId: 'team_b' },
+    );
+    users.set('user_1', baseUser('user_1', { teamIds: ['legacy_only'] }));
     const sender = await sendFriendRequest('user_1', 'user_2');
     expect(sender.id).toBe('user_1');
+    expect(sender.teamIds).toEqual(['team_a', 'team_z']);
     expect(users.get('user_1').friendRequestSentIds).toContain('user_2');
     expect(users.get('user_2').friendRequestIds).toContain('user_1');
 
     const accepter = await acceptFriendRequest('user_2', 'user_1');
     expect(accepter.id).toBe('user_2');
+    expect(accepter.teamIds).toEqual(['team_b']);
 
     expect(users.get('user_1').friendIds).toContain('user_2');
     expect(users.get('user_2').friendIds).toContain('user_1');
@@ -114,11 +140,33 @@ describe('socialGraph', () => {
   });
 
   it('follows and unfollows users', async () => {
-    await followUser('user_1', 'user_3');
+    playerMemberships.push({ userId: 'user_1', teamId: 'team_current' });
+    const followed = await followUser('user_1', 'user_3');
+    expect(followed.teamIds).toEqual(['team_current']);
     expect(users.get('user_1').followingIds).toContain('user_3');
 
-    await unfollowUser('user_1', 'user_3');
+    const unfollowed = await unfollowUser('user_1', 'user_3');
+    expect(unfollowed.teamIds).toEqual(['team_current']);
     expect(users.get('user_1').followingIds).not.toContain('user_3');
+  });
+
+  it('returns canonical team ids when declining a request or removing a friend', async () => {
+    playerMemberships.push({ userId: 'user_1', teamId: 'team_current' });
+    users.set('user_1', baseUser('user_1', {
+      teamIds: ['legacy_only'],
+      friendIds: ['user_2'],
+      friendRequestIds: ['user_2'],
+    }));
+    users.set('user_2', baseUser('user_2', {
+      friendIds: ['user_1'],
+      friendRequestSentIds: ['user_1'],
+    }));
+
+    const declined = await declineFriendRequest('user_1', 'user_2');
+    expect(declined.teamIds).toEqual(['team_current']);
+
+    const removed = await removeFriend('user_1', 'user_2');
+    expect(removed.teamIds).toEqual(['team_current']);
   });
 
   it('rejects friend requests involving minor or placeholder-DOB accounts', async () => {
@@ -174,7 +222,13 @@ describe('socialGraph', () => {
   });
 
   it('builds a social graph including followers', async () => {
+    playerMemberships.push(
+      { userId: 'user_1', teamId: 'team_actor' },
+      { userId: 'user_2', teamId: 'team_friend' },
+      { userId: 'user_3', teamId: 'team_related' },
+    );
     users.set('user_1', baseUser('user_1', {
+      teamIds: ['legacy_actor'],
       friendIds: ['user_2'],
       followingIds: ['user_3'],
       friendRequestIds: ['user_3'],
@@ -187,7 +241,9 @@ describe('socialGraph', () => {
     const graph = await getSocialGraphForUser('user_1');
 
     expect(graph.user.id).toBe('user_1');
+    expect(graph.user.teamIds).toEqual(['team_actor']);
     expect(graph.friends.map((row) => row.id)).toEqual(['user_2']);
+    expect(graph.friends[0]?.teamIds).toEqual(['team_friend']);
     expect(graph.following.map((row) => row.id)).toEqual(['user_3']);
     expect(graph.followers.map((row) => row.id)).toEqual(['user_3']);
     expect(graph.incomingFriendRequests.map((row) => row.id)).toEqual(['user_3']);

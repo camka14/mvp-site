@@ -128,7 +128,6 @@ export const ensureAuthUserAndUserDataByEmail = async (
         lastName: normalizedLastName,
         userName: reservedUserName,
         dateOfBirth: new Date('2000-01-01'),
-        teamIds: [],
         friendIds: [],
         friendRequestIds: [],
         friendRequestSentIds: [],

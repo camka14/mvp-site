@@ -23,6 +23,7 @@ import {
   resolveSystemOrganizationTagIdsBySlugs,
   syncOrganizationTags,
 } from '@/server/organizationTags';
+import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 
 export const dynamic = 'force-dynamic';
 
@@ -351,7 +352,7 @@ export async function GET(req: NextRequest) {
     )
   );
   const visiblePageRows = exposeInternalFields
-    ? pageRows
+    ? await withDerivedOrganizationProductIds(pageRows, prisma)
     : pageRows.map((organization) => toPublicOrganizationListRow(organization));
   const responseRows = includeAffiliateRentals
     ? visiblePageRows.map((organization) => ({
@@ -427,7 +428,6 @@ export async function POST(req: NextRequest) {
       status,
       hasStripeAccount: false,
       coordinates: data.coordinates ?? null,
-      productIds: Array.isArray(data.productIds) ? data.productIds : [],
       taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
       operatesAthleticFacility: data.operatesAthleticFacility === true,
       defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
@@ -459,5 +459,5 @@ export async function POST(req: NextRequest) {
     });
   });
 
-  return NextResponse.json(withLegacyFields({ ...organization, tags }), { status: 201 });
+  return NextResponse.json(withLegacyFields({ ...organization, productIds: [], tags }), { status: 201 });
 }

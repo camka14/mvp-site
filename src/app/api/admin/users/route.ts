@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 50;
@@ -199,8 +200,9 @@ export async function GET(req: NextRequest) {
         : [];
     }
     const authById = new Map(authRows.map((row) => [row.id, row]));
+    const userRowsWithDerivedTeamIds = await withDerivedCanonicalTeamIds(userRows, prisma);
 
-    const users = withLegacyList(userRows.map(applyNameCaseToUserFields)).map((user) => {
+    const users = withLegacyList(userRowsWithDerivedTeamIds.map(applyNameCaseToUserFields)).map((user) => {
       const authUser = authById.get(user.id);
       return {
         ...user,

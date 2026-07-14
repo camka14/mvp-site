@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
-import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
+import { loadCanonicalTeamById, withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import {
   applyUserPrivacyList,
   createVisibilityContext,
@@ -285,10 +285,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }, { status: 200 });
   }
 
-  const users = await prisma.userData.findMany({
+  const selectedUsers = await prisma.userData.findMany({
     where: { id: { in: freeAgentIds } },
     select: publicUserSelect,
   });
+  const users = await withDerivedCanonicalTeamIds(selectedUsers, prisma);
   const usersById = new Map(users.map((user) => [user.id, user] as const));
   const orderedUsers = freeAgentIds
     .map((freeAgentId) => usersById.get(freeAgentId))

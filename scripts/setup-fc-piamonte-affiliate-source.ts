@@ -165,7 +165,6 @@ const upsertOrganization = async (ownerId: string, logoId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicSlug: 'fc-piamonte',
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

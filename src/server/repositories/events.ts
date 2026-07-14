@@ -67,6 +67,7 @@ import {
   buildEventRegistrationId,
   getEventParticipantIdsForEvent,
 } from '@/server/events/eventRegistrations';
+import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 import {
   buildGeneratedTournamentPools,
   generatedPoolsForBracket,
@@ -2042,17 +2043,98 @@ const buildTimeSlots = (
   });
 };
 
-const buildOfficials = (rows: any[], divisions: Division[]) => {
+const buildOfficials = (
+  rows: any[],
+  divisions: Division[],
+  eventTeamIdsByUserId: Map<string, Set<string>>,
+) => {
   return rows.map((row) => new UserData({
     id: row.id,
     firstName: row.firstName ?? '',
     lastName: row.lastName ?? '',
     userName: row.userName ?? '',
     hasStripeAccount: Boolean(row.hasStripeAccount),
-    teamIds: ensureArray(row.teamIds),
+    teamIds: [...(eventTeamIdsByUserId.get(row.id) ?? new Set<string>())].sort(),
     matches: [],
     divisions: divisions.length ? [...divisions] : [],
   }));
+};
+
+const buildOfficialEventTeamIds = (params: {
+  officialIds: string[];
+  canonicalTeamIdsByUserId: Map<string, string[]>;
+  eventTeamRows: any[];
+  eventParticipantRows: any[];
+  eventTeamStaffRows: any[];
+}): Map<string, Set<string>> => {
+  const officialIds = new Set(params.officialIds);
+  const eventTeamIdsByUserId = new Map<string, Set<string>>(
+    params.officialIds.map((userId) => [userId, new Set<string>()]),
+  );
+  const eventTeamIds = new Set(
+    params.eventTeamRows
+      .map((row) => normalizeEntityId(row?.id))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  );
+  const eventTeamIdsByRelationshipId = new Map<string, Set<string>>();
+  const linkEventTeam = (relationshipId: string | null, eventTeamId: string) => {
+    if (!relationshipId) {
+      return;
+    }
+    const linkedEventTeamIds = eventTeamIdsByRelationshipId.get(relationshipId) ?? new Set<string>();
+    linkedEventTeamIds.add(eventTeamId);
+    eventTeamIdsByRelationshipId.set(relationshipId, linkedEventTeamIds);
+  };
+  for (const eventTeam of params.eventTeamRows) {
+    const eventTeamId = normalizeEntityId(eventTeam?.id);
+    if (!eventTeamId) {
+      continue;
+    }
+    linkEventTeam(eventTeamId, eventTeamId);
+    linkEventTeam(normalizeEntityId(eventTeam?.parentTeamId), eventTeamId);
+  }
+  const addMembership = (userIdValue: unknown, eventTeamIdValue: unknown) => {
+    const userId = normalizeEntityId(userIdValue);
+    const eventTeamId = normalizeEntityId(eventTeamIdValue);
+    if (!userId || !eventTeamId || !officialIds.has(userId) || !eventTeamIds.has(eventTeamId)) {
+      return;
+    }
+    eventTeamIdsByUserId.get(userId)?.add(eventTeamId);
+  };
+
+  for (const userId of params.officialIds) {
+    for (const canonicalTeamId of params.canonicalTeamIdsByUserId.get(userId) ?? []) {
+      for (const eventTeamId of eventTeamIdsByRelationshipId.get(canonicalTeamId) ?? []) {
+        addMembership(userId, eventTeamId);
+      }
+    }
+  }
+
+  for (const eventTeam of params.eventTeamRows) {
+    const eventTeamId = normalizeEntityId(eventTeam?.id);
+    if (!eventTeamId) {
+      continue;
+    }
+    const rosterUserIds = [
+      ...ensureStringArray(eventTeam?.playerIds),
+      normalizeEntityId(eventTeam?.captainId),
+      normalizeEntityId(eventTeam?.managerId),
+      normalizeEntityId(eventTeam?.headCoachId),
+      ...ensureStringArray(eventTeam?.coachIds),
+    ];
+    rosterUserIds.forEach((userId) => addMembership(userId, eventTeamId));
+  }
+
+  params.eventParticipantRows.forEach((row) => {
+    if (row?.status === 'ACTIVE') {
+      addMembership(row?.registrantId, row?.eventTeamId);
+    }
+  });
+  params.eventTeamStaffRows.forEach((row) => {
+    addMembership(row?.userId, row?.eventTeamId);
+  });
+
+  return eventTeamIdsByUserId;
 };
 
 const attachTimeSlotsToFields = (fields: Record<string, PlayingField>, slots: TimeSlot[]) => {
@@ -2972,20 +3054,29 @@ export const loadEventWithRelations = async (
     : [];
   const officialIds = eventOfficials.map((official: any) => official.userId);
 
-  const [fieldRows, teamRows, timeSlotRows, officialRows, matchRows, leagueConfigRow] = await Promise.all([
+  const [
+    fieldRows,
+    teamRows,
+    timeSlotRows,
+    officialRows,
+    matchRows,
+    leagueConfigRow,
+    canonicalTeamIdsByOfficialId,
+  ] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
     teamIdsToLoad.length ? client.teams.findMany({ where: { id: { in: teamIdsToLoad } } }) : Promise.resolve([]),
     loadTimeSlotRows(client, timeSlotIds),
     officialIds.length ? client.userData.findMany({ where: { id: { in: officialIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
+    getCanonicalTeamIdsByUserIds(officialIds, client),
   ]);
   const teamPlayerIds = includeTeamPlayers
     ? Array.from(new Set(
         (teamRows as any[]).flatMap((row) => ensureStringArray((row as any).playerIds)),
       ))
     : [];
-  const [teamPlayerRows, eventRegistrationRows] = await Promise.all([
+  const [teamPlayerRows, eventRegistrationRows, eventTeamStaffRows] = await Promise.all([
     includeTeamPlayers && teamPlayerIds.length
       ? client.userData.findMany({ where: { id: { in: teamPlayerIds } } })
       : Promise.resolve([]),
@@ -3005,6 +3096,18 @@ export const loadEventWithRelations = async (
             jerseyNumber: true,
             position: true,
             isCaptain: true,
+          },
+        })
+      : Promise.resolve([]),
+    teamIdsToLoad.length && typeof (client as any).eventTeamStaffAssignments?.findMany === 'function'
+      ? (client as any).eventTeamStaffAssignments.findMany({
+          where: {
+            eventTeamId: { in: teamIdsToLoad },
+            status: 'ACTIVE',
+          },
+          select: {
+            eventTeamId: true,
+            userId: true,
           },
         })
       : Promise.resolve([]),
@@ -3110,7 +3213,14 @@ export const loadEventWithRelations = async (
     playerRegistrationsByTeamId,
   );
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
-  const officials = buildOfficials(officialRows, allDivisions);
+  const officialEventTeamIds = buildOfficialEventTeamIds({
+    officialIds,
+    canonicalTeamIdsByUserId: canonicalTeamIdsByOfficialId,
+    eventTeamRows: teamRows,
+    eventParticipantRows: eventRegistrationRows,
+    eventTeamStaffRows,
+  });
+  const officials = buildOfficials(officialRows, allDivisions, officialEventTeamIds);
   attachTimeSlotsToFields(fields, timeSlots);
   const eventStart = event.start instanceof Date ? event.start : new Date(event.start);
   const eventEnd = event.end instanceof Date

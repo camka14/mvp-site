@@ -116,6 +116,14 @@ describe('POST /api/users/social/blocked', () => {
             { id: 'chat_1', userIds: ['user_1', 'user_2'], hostId: 'user_1', archivedAt: null },
           ]),
         },
+        teamRegistrations: {
+          findMany: jest.fn().mockResolvedValue([
+            { userId: 'user_1', teamId: 'team_current' },
+          ]),
+        },
+        teamStaffAssignments: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
       };
       return callback(tx);
     });
@@ -152,5 +160,6 @@ describe('POST /api/users/social/blocked', () => {
     expect(json.user.blockedUserIds).toEqual(['user_2']);
     expect(json.user.friendIds).toEqual([]);
     expect(json.user.followingIds).toEqual([]);
+    expect(json.user.teamIds).toEqual(['team_current']);
   });
 });

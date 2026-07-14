@@ -12,6 +12,7 @@ import {
 } from '@/server/moderation';
 import { ModerationReportTargetTypeEnum } from '@/generated/prisma/client';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const blockSchema = z.object({
   targetUserId: z.string().trim().min(1),
@@ -112,9 +113,10 @@ export async function POST(req: NextRequest) {
         }),
         client: tx,
       });
+      const [actorWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([updatedActor], tx);
 
       return {
-        user: updatedActor,
+        user: actorWithDerivedTeamIds,
         removedChatIds,
         report,
       };

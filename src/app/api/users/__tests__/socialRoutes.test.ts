@@ -71,8 +71,8 @@ describe('social routes', () => {
 
   it('returns social graph for the signed-in user', async () => {
     getSocialGraphForUserMock.mockResolvedValue({
-      user: { id: 'user_1' },
-      friends: [{ id: 'user_2' }],
+      user: { id: 'user_1', teamIds: ['team_current'] },
+      friends: [{ id: 'user_2', teamIds: ['team_friend'] }],
       following: [{ id: 'user_3' }],
       followers: [{ id: 'user_4' }],
       incomingFriendRequests: [{ id: 'user_5' }],
@@ -86,12 +86,14 @@ describe('social routes', () => {
     expect(response.status).toBe(200);
     expect(getSocialGraphForUserMock).toHaveBeenCalledWith('user_1');
     expect(payload.user.$id).toBe('user_1');
+    expect(payload.user.teamIds).toEqual(['team_current']);
+    expect(payload.friends[0].teamIds).toEqual(['team_friend']);
     expect(payload.friends).toHaveLength(1);
     expect(payload.following).toHaveLength(1);
   });
 
   it('sends friend requests', async () => {
-    sendFriendRequestMock.mockResolvedValue({ id: 'user_1' });
+    sendFriendRequestMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
 
     const response = await sendFriendRequestPost(
       jsonRequest('POST', 'http://localhost/api/users/social/friend-requests', { targetUserId: 'user_2' }),
@@ -99,10 +101,11 @@ describe('social routes', () => {
 
     expect(response.status).toBe(200);
     expect(sendFriendRequestMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await response.json()).user.teamIds).toEqual(['team_current']);
   });
 
   it('accepts incoming friend requests', async () => {
-    acceptFriendRequestMock.mockResolvedValue({ id: 'user_1' });
+    acceptFriendRequestMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
 
     const response = await acceptFriendRequestPost(
       jsonRequest('POST', 'http://localhost/api/users/social/friend-requests/user_2/accept'),
@@ -111,10 +114,11 @@ describe('social routes', () => {
 
     expect(response.status).toBe(200);
     expect(acceptFriendRequestMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await response.json()).user.teamIds).toEqual(['team_current']);
   });
 
   it('declines incoming friend requests', async () => {
-    declineFriendRequestMock.mockResolvedValue({ id: 'user_1' });
+    declineFriendRequestMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
 
     const response = await declineFriendRequestDelete(
       jsonRequest('DELETE', 'http://localhost/api/users/social/friend-requests/user_2'),
@@ -123,10 +127,11 @@ describe('social routes', () => {
 
     expect(response.status).toBe(200);
     expect(declineFriendRequestMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await response.json()).user.teamIds).toEqual(['team_current']);
   });
 
   it('removes existing friends', async () => {
-    removeFriendMock.mockResolvedValue({ id: 'user_1' });
+    removeFriendMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
 
     const response = await removeFriendDelete(
       jsonRequest('DELETE', 'http://localhost/api/users/social/friends/user_2'),
@@ -135,17 +140,19 @@ describe('social routes', () => {
 
     expect(response.status).toBe(200);
     expect(removeFriendMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await response.json()).user.teamIds).toEqual(['team_current']);
   });
 
   it('follows and unfollows users', async () => {
-    followUserMock.mockResolvedValue({ id: 'user_1' });
-    unfollowUserMock.mockResolvedValue({ id: 'user_1' });
+    followUserMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
+    unfollowUserMock.mockResolvedValue({ id: 'user_1', teamIds: ['team_current'] });
 
     const followResponse = await followPost(
       jsonRequest('POST', 'http://localhost/api/users/social/following', { targetUserId: 'user_2' }),
     );
     expect(followResponse.status).toBe(200);
     expect(followUserMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await followResponse.json()).user.teamIds).toEqual(['team_current']);
 
     const unfollowResponse = await unfollowDelete(
       jsonRequest('DELETE', 'http://localhost/api/users/social/following/user_2'),
@@ -153,6 +160,7 @@ describe('social routes', () => {
     );
     expect(unfollowResponse.status).toBe(200);
     expect(unfollowUserMock).toHaveBeenCalledWith('user_1', 'user_2');
+    expect((await unfollowResponse.json()).user.teamIds).toEqual(['team_current']);
   });
 });
 

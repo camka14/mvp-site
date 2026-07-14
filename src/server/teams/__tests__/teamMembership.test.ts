@@ -10,11 +10,70 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 import {
   applyCanonicalTeamRegistrationMetadata,
   claimOrCreateEventTeamSnapshot,
+  getCanonicalTeamIdsByUserIds,
   listCanonicalTeamsForUser,
   listTeamsByIds,
   normalizeJerseyNumber,
   syncCanonicalTeamRoster,
+  withDerivedCanonicalTeamIds,
 } from '@/server/teams/teamMembership';
+
+describe('canonical user-team compatibility projection', () => {
+  it('deduplicates and sorts active player and staff memberships', async () => {
+    const teamRegistrationsFindMany = jest.fn().mockResolvedValue([
+      { userId: 'user_1', teamId: 'team_z' },
+      { userId: 'user_1', teamId: 'team_a' },
+    ]);
+    const teamStaffAssignmentsFindMany = jest.fn().mockResolvedValue([
+      { userId: 'user_1', teamId: 'team_a' },
+      { userId: 'user_2', teamId: 'team_b' },
+    ]);
+
+    const result = await getCanonicalTeamIdsByUserIds([' user_1 ', 'user_2'], {
+      teamRegistrations: { findMany: teamRegistrationsFindMany },
+      teamStaffAssignments: { findMany: teamStaffAssignmentsFindMany },
+    });
+
+    expect(result.get('user_1')).toEqual(['team_a', 'team_z']);
+    expect(result.get('user_2')).toEqual(['team_b']);
+    expect(teamRegistrationsFindMany).toHaveBeenCalledWith({
+      where: { userId: { in: ['user_1', 'user_2'] }, status: 'ACTIVE' },
+      select: { userId: true, teamId: true },
+    });
+    expect(teamStaffAssignmentsFindMany).toHaveBeenCalledWith({
+      where: { userId: { in: ['user_1', 'user_2'] }, status: 'ACTIVE' },
+      select: { userId: true, teamId: true },
+    });
+  });
+
+  it('overrides contradictory stored arrays and only requires an id on selected users', async () => {
+    const users = await withDerivedCanonicalTeamIds([
+      { id: 'user_1', firstName: 'Sam', teamIds: ['legacy_only'] },
+    ], {
+      teamRegistrations: {
+        findMany: jest.fn().mockResolvedValue([{ userId: 'user_1', teamId: 'canonical_team' }]),
+      },
+      teamStaffAssignments: { findMany: jest.fn().mockResolvedValue([]) },
+    });
+
+    expect(users).toEqual([{
+      id: 'user_1',
+      firstName: 'Sam',
+      teamIds: ['canonical_team'],
+    }]);
+  });
+
+  it('fails explicitly instead of falling back to UserData.teamIds when normalized delegates are missing', async () => {
+    const userDataFindMany = jest.fn().mockResolvedValue([
+      { id: 'user_1', teamIds: ['legacy_only'] },
+    ]);
+
+    await expect(getCanonicalTeamIdsByUserIds(['user_1'], {
+      userData: { findMany: userDataFindMany },
+    })).rejects.toThrow('Canonical team membership requires TeamRegistrations and TeamStaffAssignments delegates.');
+    expect(userDataFindMany).not.toHaveBeenCalled();
+  });
+});
 
 describe('normalizeJerseyNumber', () => {
   it('returns digits or null for blank values', () => {

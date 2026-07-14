@@ -164,7 +164,6 @@ const upsertOrganization = async (ownerId: string, logoId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicSlug: 'la-amistad-soccer-club',
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

@@ -9,6 +9,7 @@ const organizationTagAssignmentsFindManyMock = jest.fn();
 const createMock = jest.fn();
 const authUserFindUniqueMock = jest.fn();
 const staffMembersFindManyMock = jest.fn();
+const productsFindManyMock = jest.fn();
 const prismaMock = {
   authUser: {
     findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
@@ -28,6 +29,9 @@ const prismaMock = {
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
     create: (...args: any[]) => createMock(...args),
+  },
+  products: {
+    findMany: (...args: any[]) => productsFindManyMock(...args),
   },
 };
 
@@ -66,6 +70,7 @@ describe('/api/organizations', () => {
     organizationTagsFindManyMock.mockResolvedValue([]);
     organizationTagAssignmentsFindManyMock.mockResolvedValue([]);
     staffMembersFindManyMock.mockResolvedValue([]);
+    productsFindManyMock.mockResolvedValue([]);
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
@@ -238,7 +243,10 @@ describe('/api/organizations', () => {
   it('keeps unlisted organizations available for the authenticated owner management list', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     findManyMock.mockResolvedValue([
-      { id: 'org_hidden', name: 'Demo Org', ownerId: 'owner_1', status: 'UNLISTED' },
+      { id: 'org_hidden', name: 'Demo Org', ownerId: 'owner_1', status: 'UNLISTED', productIds: ['legacy_only'] },
+    ]);
+    productsFindManyMock.mockResolvedValue([
+      { id: 'product_current', organizationId: 'org_hidden' },
     ]);
 
     const res = await organizationsGet(new NextRequest('http://localhost/api/organizations?ownerId=owner_1&limit=25'));
@@ -252,8 +260,13 @@ describe('/api/organizations', () => {
       orderBy: { name: 'asc' },
     });
     expect(json.organizations).toEqual([
-      expect.objectContaining({ $id: 'org_hidden', status: 'UNLISTED' }),
+      expect.objectContaining({
+        $id: 'org_hidden',
+        status: 'UNLISTED',
+        productIds: ['product_current'],
+      }),
     ]);
+    expect(productsFindManyMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects anonymous owner-scoped organization lists before querying organizations', async () => {
@@ -317,6 +330,7 @@ describe('/api/organizations', () => {
     expect(payload.organizations[0]).not.toHaveProperty('ownerId');
     expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
     expect(payload.organizations[0]).not.toHaveProperty('verificationReviewNotes');
+    expect(payload.organizations[0]).not.toHaveProperty('productIds');
   });
 
   it('allows a pending staff invitee to resolve an unlisted organization by ID without exposing internal fields', async () => {
@@ -378,7 +392,7 @@ describe('/api/organizations', () => {
     expect(payload.organizations[0]).not.toHaveProperty('embedAllowedDomains');
   });
 
-  it('ignores client hasStripeAccount values when creating organizations', async () => {
+  it('ignores client hasStripeAccount and derived productIds values when creating organizations', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     createMock.mockResolvedValue({
       id: 'org_1',
@@ -394,6 +408,7 @@ describe('/api/organizations', () => {
         name: 'New Org',
         ownerId: 'user_1',
         hasStripeAccount: true,
+        productIds: ['legacy_only'],
         status: 'UNLISTED',
         taxResponsibilityAgreementAccepted: true,
       }),
@@ -426,7 +441,9 @@ describe('/api/organizations', () => {
       }),
       baseUrl: 'http://localhost',
     });
+    expect(createMock.mock.calls[0][0].data).not.toHaveProperty('productIds');
     expect(payload.hasStripeAccount).toBe(false);
+    expect(payload.productIds).toEqual([]);
   });
 
   it('uses the canonical origin for creation notifications when request host headers are hostile', async () => {

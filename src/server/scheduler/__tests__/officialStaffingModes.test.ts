@@ -496,4 +496,106 @@ describe('official staffing modes', () => {
     expect(match.officialAssignments[0]).toEqual(expect.objectContaining({ userId: 'official_1' }));
     expect(new Set(match.officialAssignments.map((assignment) => assignment.userId)).size).toBe(1);
   });
+
+  it('does not assign a participant to officiate their own match when an unrelated official is eligible', () => {
+    const division = buildDivision();
+    const field = buildField('field_1', 1, division);
+    const teams = Object.values(buildTeams(2, division));
+    const participantOfficial = new UserData({
+      id: 'official_a_participant',
+      divisions: [division],
+      teamIds: [teams[0].id],
+    });
+    const unrelatedOfficial = new UserData({
+      id: 'official_z_unrelated',
+      divisions: [division],
+      teamIds: [],
+    });
+    const tournament = new Tournament({
+      id: 'planner_own_match_guard',
+      name: 'Planner Own Match Guard',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 10, 0, 0),
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: Object.fromEntries(teams.map((team) => [team.id, team])),
+      divisions: [division],
+      fields: { [field.id]: field },
+      officials: [participantOfficial, unrelatedOfficial],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [{ id: 'referee', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [participantOfficial, unrelatedOfficial].map((official) => ({
+        id: `event_${official.id}`,
+        userId: official.id,
+        positionIds: ['referee'],
+        fieldIds: [],
+        isActive: true,
+      })),
+    });
+    const match = buildPlannerMatch('match_own_team', division, field, teams[0], teams[1], 9);
+
+    new OfficialStaffingPlanner(tournament).assignMatch(match);
+
+    expect(match.officialAssignments).toEqual([
+      expect.objectContaining({ userId: 'official_z_unrelated' }),
+    ]);
+  });
+
+  it('does not assign an official whose event team plays an overlapping match', () => {
+    const division = buildDivision();
+    const field = buildField('field_1', 1, division);
+    const teams = Object.values(buildTeams(4, division));
+    const overlappingParticipant = new UserData({
+      id: 'official_a_overlapping_participant',
+      divisions: [division],
+      teamIds: [teams[2].id],
+    });
+    const unrelatedOfficial = new UserData({
+      id: 'official_z_unrelated',
+      divisions: [division],
+      teamIds: [],
+    });
+    const tournament = new Tournament({
+      id: 'planner_overlap_guard',
+      name: 'Planner Overlap Guard',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 10, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: Object.fromEntries(teams.map((team) => [team.id, team])),
+      divisions: [division],
+      fields: { [field.id]: field },
+      officials: [overlappingParticipant, unrelatedOfficial],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [{ id: 'referee', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [overlappingParticipant, unrelatedOfficial].map((official) => ({
+        id: `event_${official.id}`,
+        userId: official.id,
+        positionIds: ['referee'],
+        fieldIds: [],
+        isActive: true,
+      })),
+    });
+    const targetMatch = buildPlannerMatch('match_target', division, field, teams[0], teams[1], 9);
+    const overlappingMatch = buildPlannerMatch('match_overlapping', division, field, teams[2], teams[3], 9);
+    teams[2].matches.push(overlappingMatch);
+
+    new OfficialStaffingPlanner(tournament).assignMatch(targetMatch);
+
+    expect(targetMatch.officialAssignments).toEqual([
+      expect.objectContaining({ userId: 'official_z_unrelated' }),
+    ]);
+  });
 });

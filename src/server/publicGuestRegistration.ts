@@ -137,7 +137,6 @@ export const ensureGuestChildUserData = async (
       lastName: normalizeOptionalName(input.lastName),
       userName: buildGuestUserName('guest-child'),
       dateOfBirth: input.dateOfBirth,
-      teamIds: [],
       friendIds: [],
       friendRequestIds: [],
       friendRequestSentIds: [],

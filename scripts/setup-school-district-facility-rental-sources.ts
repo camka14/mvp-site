@@ -340,7 +340,6 @@ const upsertOrganization = async (org: SourceOrganizationDefinition, ownerId: st
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicPageEnabled: false,
       publicWidgetsEnabled: false,
       taxOrganizationType: 'GOVERNMENT_ENTITY',

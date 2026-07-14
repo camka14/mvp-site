@@ -486,7 +486,6 @@ export async function DELETE(req: NextRequest) {
         dobVerified: false,
         dobVerifiedAt: null,
         ageVerificationProvider: null,
-        teamIds: [],
         friendIds: [],
         followingIds: [],
         friendRequestIds: [],

@@ -44,7 +44,6 @@ const ORGANIZATION_COLUMNS = [
   'verificationReviewNotes',
   'verificationReviewUpdatedAt',
   'coordinates',
-  'productIds',
   'publicSlug',
   'publicPageEnabled',
   'publicWidgetsEnabled',

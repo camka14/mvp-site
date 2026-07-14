@@ -243,8 +243,18 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
       { eventId: 'event_1', registrantId: 'free_registration' },
       ]);
     prismaMock.userData.findMany.mockResolvedValueOnce([
-      { id: 'free_registration', firstName: 'Reg', lastName: 'Agent' },
+      { id: 'free_registration', firstName: 'Reg', lastName: 'Agent', teamIds: ['legacy_only'] },
     ]);
+    teamRegistrationsFindManyMock.mockImplementation(async (args: any) => (
+      args?.where?.userId?.in?.includes('free_registration')
+        ? [{ userId: 'free_registration', teamId: 'team_current' }]
+        : []
+    ));
+    teamStaffAssignmentsFindManyMock.mockImplementation(async (args: any) => (
+      args?.where?.userId?.in?.includes('free_registration')
+        ? [{ userId: 'free_registration', teamId: 'team_staff' }]
+        : []
+    ));
 
     const response = await GET(
       new NextRequest('http://localhost/api/teams/team_1/invite-free-agents'),
@@ -269,5 +279,6 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
       free_registration: ['event_team_1'],
     });
     expect(payload.users.map((row: any) => row.$id)).toEqual(['free_registration']);
+    expect(payload.users[0].teamIds).toEqual(['team_current', 'team_staff']);
   });
 });

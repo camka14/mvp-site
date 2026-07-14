@@ -186,7 +186,6 @@ const upsertOrganization = async (ownerId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates: [-122.687027, 45.398621],
-      productIds: [],
       publicPageEnabled: false,
       publicWidgetsEnabled: false,
       taxOrganizationType: 'GOVERNMENT_ENTITY',

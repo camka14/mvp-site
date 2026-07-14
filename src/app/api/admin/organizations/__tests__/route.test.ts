@@ -8,6 +8,9 @@ const prismaMock = {
     count: jest.fn(),
     findMany: jest.fn(),
   },
+  products: {
+    findMany: jest.fn(),
+  },
 };
 
 jest.mock('@/server/razumlyAdmin', () => ({
@@ -23,6 +26,7 @@ import { GET as adminOrganizationsGet } from '@/app/api/admin/organizations/rout
 describe('GET /api/admin/organizations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.products.findMany.mockResolvedValue([]);
   });
 
   it('returns 403 when caller is not an allowed admin', async () => {
@@ -35,8 +39,12 @@ describe('GET /api/admin/organizations', () => {
     requireRazumlyAdminMock.mockResolvedValue({ userId: 'admin_1', adminEmail: 'admin@bracket-iq.com' });
     prismaMock.organizations.count.mockResolvedValue(2);
     prismaMock.organizations.findMany.mockResolvedValue([
-      { id: 'org_1', name: 'Alpha Org' },
+      { id: 'org_1', name: 'Alpha Org', productIds: ['legacy_only'] },
       { id: 'org_2', name: 'Beta Org' },
+    ]);
+    prismaMock.products.findMany.mockResolvedValue([
+      { id: 'product_2', organizationId: 'org_1' },
+      { id: 'product_1', organizationId: 'org_1' },
     ]);
 
     const res = await adminOrganizationsGet(new NextRequest('http://localhost/api/admin/organizations?limit=50&offset=0'));
@@ -46,5 +54,8 @@ describe('GET /api/admin/organizations', () => {
     expect(json.total).toBe(2);
     expect(json.organizations).toHaveLength(2);
     expect(json.organizations[0].$id).toBe('org_1');
+    expect(json.organizations[0].productIds).toEqual(['product_1', 'product_2']);
+    expect(json.organizations[1].productIds).toEqual([]);
+    expect(prismaMock.products.findMany).toHaveBeenCalledTimes(1);
   });
 });

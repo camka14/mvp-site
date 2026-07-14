@@ -36,6 +36,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     findMany: jest.fn(),
   },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   sensitiveUserData: {
     findMany: jest.fn(),
   },
@@ -154,6 +160,10 @@ describe('GET /api/events/[eventId]/participants', () => {
       participantCapacity: 10,
       occurrence: null,
     });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
   });
 
   it('allows guests to load participant snapshots for public events', async () => {
@@ -213,6 +223,100 @@ describe('GET /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
     expect(buildEventParticipantSnapshotMock).not.toHaveBeenCalled();
+  });
+
+  it('does not grant failed-payment visibility from a contradictory stored team array', async () => {
+    getOptionalSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: false });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      id: 'user_1',
+      teamIds: ['legacy_team_not_backed_by_membership'],
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/participants'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.teams.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'event_1',
+        status: 'PAYMENT_FAILED',
+        OR: [
+          { registrantType: 'SELF', registrantId: 'user_1' },
+          { registrantType: 'CHILD', parentId: 'user_1' },
+        ],
+      }),
+    }));
+  });
+
+  it('finds a failed team registration through active canonical membership and its event-team child', async () => {
+    getOptionalSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: false });
+    prismaMock.teamRegistrations.findMany.mockResolvedValueOnce([
+      { userId: 'user_1', teamId: 'canonical_team_1' },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'event_team_1' },
+    ]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: 'failed_registration_1',
+        registrantId: 'canonical_team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        status: 'PAYMENT_FAILED',
+        parentId: 'canonical_team_1',
+        eventTeamId: 'event_team_1',
+        divisionId: null,
+        divisionTypeId: null,
+        divisionTypeKey: null,
+        consentDocumentId: null,
+        consentStatus: null,
+        slotId: null,
+        occurrenceDate: null,
+        createdAt: new Date('2026-07-14T12:00:00.000Z'),
+        updatedAt: new Date('2026-07-14T12:01:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/participants'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.teamRegistrations.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: { in: ['user_1'] },
+        status: 'ACTIVE',
+      },
+      select: { userId: true, teamId: true },
+    });
+    expect(prismaMock.teams.findMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'event_1',
+        parentTeamId: { in: ['canonical_team_1'] },
+      },
+      select: { id: true },
+    });
+    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { registrantType: 'TEAM', registrantId: { in: ['canonical_team_1', 'event_team_1'] } },
+          { registrantType: 'TEAM', eventTeamId: { in: ['canonical_team_1', 'event_team_1'] } },
+          { registrantType: 'TEAM', parentId: { in: ['canonical_team_1', 'event_team_1'] } },
+        ]),
+      }),
+    }));
+    expect(payload.registrations.teams).toEqual([
+      expect.objectContaining({
+        registrationId: 'failed_registration_1',
+        registrantId: 'canonical_team_1',
+      }),
+    ]);
   });
 });
 

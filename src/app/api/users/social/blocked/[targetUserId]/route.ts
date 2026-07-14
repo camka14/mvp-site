@@ -5,6 +5,7 @@ import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { clearBlockReports } from '@/server/moderation';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const removeId = (value: string[] | null | undefined, id: string): string[] => (
   Array.from(new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)))
@@ -30,13 +31,15 @@ export async function DELETE(
       }
 
       await clearBlockReports(tx, actor.id, normalizedTargetUserId);
-      return tx.userData.update({
+      const updatedActor = await tx.userData.update({
         where: { id: actor.id },
         data: {
           blockedUserIds: removeId(actor.blockedUserIds, normalizedTargetUserId),
           updatedAt: new Date(),
         },
       });
+      const [actorWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([updatedActor], tx);
+      return actorWithDerivedTeamIds;
     });
 
     return NextResponse.json(

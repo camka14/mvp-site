@@ -204,8 +204,16 @@ describe('buildEventParticipantSnapshot', () => {
       },
       userData: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'user_1', firstName: 'Sam' },
+          { id: 'user_1', firstName: 'Sam', teamIds: ['legacy_only'] },
         ]),
+      },
+      teamRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          { userId: 'user_1', teamId: 'team_current' },
+        ]),
+      },
+      teamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       timeSlots: {
         findUnique: jest.fn().mockResolvedValue(weeklySlot),
@@ -216,7 +224,11 @@ describe('buildEventParticipantSnapshot', () => {
     } as any);
 
     expect(snapshot.participants.userIds).toEqual(['user_1']);
-    expect(snapshot.users).toEqual([{ id: 'user_1', firstName: 'Sam' }]);
+    expect(snapshot.users).toEqual([{
+      id: 'user_1',
+      firstName: 'Sam',
+      teamIds: ['team_current'],
+    }]);
     expect(snapshot.participantCount).toBe(1);
     expect(snapshot.occurrence).toEqual({
       slotId: 'slot_1',

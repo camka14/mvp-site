@@ -166,7 +166,6 @@ const upsertOrganization = async (ownerId: string, logoId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicSlug: 'foothills-soccer-club',
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

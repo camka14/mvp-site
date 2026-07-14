@@ -1482,7 +1482,6 @@ const buildAffiliateOrganizationData = async (
     verificationStatus: 'UNVERIFIED',
     verificationReviewStatus: 'NONE',
     coordinates,
-    productIds: [],
     publicSlug: await nextAvailableOrganizationSlug(name, organizationId),
     publicPageEnabled: options.publicPageEnabled === true,
     publicWidgetsEnabled: false,

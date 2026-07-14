@@ -337,6 +337,7 @@ class OrganizationService {
 
   async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
     const payload = buildPayload(data);
+    delete payload.productIds;
 
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
@@ -368,6 +369,7 @@ class OrganizationService {
     delete (payload as Record<string, unknown>).staffInvites;
     delete (payload as Record<string, unknown>).staffRoles;
     delete (payload as Record<string, unknown>).staffEmailsByUserId;
+    delete (payload as Record<string, unknown>).productIds;
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
     }
@@ -680,6 +682,13 @@ class OrganizationService {
       organization.hosts = activeHosts;
       organization.owner = owner;
       organization.products = products;
+      if (!Array.isArray(organization.productIds)) {
+        organization.productIds = Array.from(new Set(
+          products
+            .map((product) => product.$id)
+            .filter((productId): productId is string => typeof productId === 'string' && productId.length > 0),
+        )).sort();
+      }
       organization.teams = teams;
 
       return organization;

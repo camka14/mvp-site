@@ -227,7 +227,6 @@ const upsertOrganization = async (ownerId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates: [-122.789617, 45.512921],
-      productIds: [],
       publicSlug: PUBLIC_SLUG,
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

@@ -112,8 +112,12 @@ describe('users list route', () => {
 
   it('returns users by ids in requested order', async () => {
     findManyMock.mockResolvedValue([
-      { id: 'user_2', userName: 'user2' },
-      { id: 'user_1', userName: 'user1' },
+      { id: 'user_2', userName: 'user2', dateOfBirth: new Date('2000-01-01'), teamIds: ['legacy_only'] },
+      { id: 'user_1', userName: 'user1', dateOfBirth: new Date('2000-01-01'), teamIds: ['legacy_only'] },
+    ]);
+    teamRegistrationsFindManyMock.mockResolvedValue([
+      { userId: 'user_2', teamId: 'team_b' },
+      { userId: 'user_1', teamId: 'team_a' },
     ]);
 
     const res = await usersGet(new NextRequest('http://localhost/api/users?ids=user_1,user_2,user_1'));
@@ -125,6 +129,7 @@ describe('users list route', () => {
       take: 2,
     }));
     expect(json.users.map((user: any) => user.$id)).toEqual(['user_1', 'user_2']);
+    expect(json.users.map((user: any) => user.teamIds)).toEqual([['team_a'], ['team_b']]);
   });
 
   it('supports search query mode when ids are not provided', async () => {

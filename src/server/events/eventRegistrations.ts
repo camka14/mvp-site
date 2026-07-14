@@ -7,6 +7,7 @@ import {
   type WeeklyOccurrenceInput,
 } from '@/server/events/weeklyOccurrences';
 import { isTournamentPoolPlayEnabled } from '@/server/events/tournamentPools';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
@@ -780,7 +781,7 @@ export const buildEventParticipantSnapshot = async (params: {
       .map((row) => row.registrantId),
   ));
 
-  const [teams, users] = await Promise.all([
+  const [teams, selectedUsers] = await Promise.all([
     teamIds.length
       ? client.teams.findMany({
         where: { id: { in: teamIds } },
@@ -792,6 +793,7 @@ export const buildEventParticipantSnapshot = async (params: {
       })
       : Promise.resolve([]),
   ]);
+  const users = await withDerivedCanonicalTeamIds(selectedUsers, client);
   const parentTeamIds = Array.from(new Set(
     (teams as Array<{ parentTeamId?: unknown }>)
       .map((team) => normalizeId(team.parentTeamId))

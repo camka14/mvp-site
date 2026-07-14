@@ -94,7 +94,11 @@ describe('PATCH /api/users/[id]', () => {
       firstName: 'Test',
       lastName: 'User',
       userName: 'updated_name',
+      teamIds: ['legacy_only'],
     });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { userId: 'user_1', teamId: 'team_current' },
+    ]);
 
     const response = await patchUserById(
       buildJsonRequest('http://localhost/api/users/user_1', { data: { userName: 'updated_name' } }),
@@ -104,6 +108,7 @@ describe('PATCH /api/users/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(json.user.$id).toBe('user_1');
+    expect(json.user.teamIds).toEqual(['team_current']);
     expect(prismaMock.userData.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'user_1' },
       data: expect.objectContaining({ userName: 'updated_name' }),

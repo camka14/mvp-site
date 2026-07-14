@@ -867,38 +867,7 @@ export const getCanonicalTeamIdsByUserIds = async (
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
   if (!teamRegistrationsDelegate?.findMany || !teamStaffAssignmentsDelegate?.findMany) {
-    if (client?.userData?.findMany) {
-      const userRows = await client.userData.findMany({
-        where: { id: { in: normalizedUserIds } },
-        select: {
-          id: true,
-          teamIds: true,
-        },
-      }) as Array<{ id: string; teamIds?: string[] | null }>;
-
-      userRows.forEach((row) => {
-        teamIdsByUserId.set(row.id, normalizeIdList(row.teamIds));
-      });
-    } else if (client?.userData?.findUnique) {
-      const userRows = await Promise.all(normalizedUserIds.map(async (userId) => {
-        const row = await client.userData.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            teamIds: true,
-          },
-        }) as { id: string; teamIds?: string[] | null } | null;
-        return row;
-      }));
-
-      userRows.forEach((row) => {
-        if (!row) {
-          return;
-        }
-        teamIdsByUserId.set(row.id, normalizeIdList(row.teamIds));
-      });
-    }
-    return teamIdsByUserId;
+    throw new Error('Canonical team membership requires TeamRegistrations and TeamStaffAssignments delegates.');
   }
 
   const [playerRegistrations, staffAssignments] = await Promise.all([
@@ -937,10 +906,14 @@ export const getCanonicalTeamIdsByUserIds = async (
     }
   });
 
+  teamIdsByUserId.forEach((teamIds, userId) => {
+    teamIdsByUserId.set(userId, [...teamIds].sort());
+  });
+
   return teamIdsByUserId;
 };
 
-export const withDerivedCanonicalTeamIds = async <T extends { id: string; teamIds?: unknown }>(
+export const withDerivedCanonicalTeamIds = async <T extends { id: string }>(
   users: T[],
   client: PrismaLike = prisma,
 ): Promise<Array<Omit<T, 'teamIds'> & { teamIds: string[] }>> => {

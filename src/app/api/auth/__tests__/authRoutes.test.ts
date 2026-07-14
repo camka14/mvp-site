@@ -25,6 +25,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     upsert: jest.fn(),
   },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -112,6 +118,8 @@ describe('auth routes', () => {
       invites: prismaMock.invites,
       staffMembers: prismaMock.staffMembers,
       sensitiveUserData: prismaMock.sensitiveUserData,
+      teamRegistrations: prismaMock.teamRegistrations,
+      teamStaffAssignments: prismaMock.teamStaffAssignments,
     }));
 
     authServerMock.hashPassword.mockResolvedValue('hashed');
@@ -138,6 +146,8 @@ describe('auth routes', () => {
     adminNotificationsMock.sendAdminAccountCreatedNotification.mockResolvedValue(undefined);
     prismaMock.invites.findFirst.mockResolvedValue(null);
     prismaMock.staffMembers.findFirst.mockResolvedValue(null);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
   });
 
   describe('POST /api/auth/register', () => {
@@ -159,7 +169,11 @@ describe('auth routes', () => {
         lastName: 'User',
         userName: 'tester',
         dateOfBirth: new Date('2000-01-01'),
+        teamIds: ['legacy_only'],
       });
+      prismaMock.teamRegistrations.findMany.mockResolvedValue([
+        { userId: 'user_1', teamId: 'team_current' },
+      ]);
       prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
 
       const req = buildJsonRequest('http://localhost/api/auth/register', {
@@ -177,6 +191,7 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
+      expect(json.profile.teamIds).toEqual(['team_current']);
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
       expect(json.session).toBeUndefined();
       expect(json.token).toBeUndefined();

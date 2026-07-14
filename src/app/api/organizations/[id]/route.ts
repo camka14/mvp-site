@@ -26,6 +26,7 @@ import {
   getOrganizationTagsForOrganizationIds,
   syncOrganizationTags,
 } from '@/server/organizationTags';
+import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,6 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'sports',
   'status',
   'coordinates',
-  'productIds',
   'ownerId',
   'publicSlug',
   'publicPageEnabled',
@@ -190,10 +190,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .map((row) => [row.userId, row.email] as const),
   );
   const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds([org.id]);
+  const [organizationWithProductIds] = await withDerivedOrganizationProductIds([org], prisma);
 
   return NextResponse.json(
     withLegacyFields({
-      ...org,
+      ...organizationWithProductIds,
       tags: tagsByOrganizationId.get(org.id) ?? [],
       staffMembers: viewerCanManageStaffRoster
         ? staffMembers.map((staffMember) => ({
@@ -241,6 +242,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const payload = parsed.payload;
+  if (Object.prototype.hasOwnProperty.call(payload, 'productIds')) {
+    return NextResponse.json(
+      { error: 'productIds is derived from products and cannot be updated directly.' },
+      { status: 400 },
+    );
+  }
   const unknownPayloadKeys = findUnknownKeys(payload, [
     ...ORGANIZATION_MUTABLE_FIELDS,
     ...ORGANIZATION_HARD_IMMUTABLE_FIELDS,
@@ -384,6 +391,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const tags = Object.prototype.hasOwnProperty.call(payload, 'tags')
     ? await syncOrganizationTags(id, payload.tags)
     : (await getOrganizationTagsForOrganizationIds([id])).get(id) ?? [];
+  const [updatedWithProductIds] = await withDerivedOrganizationProductIds([updated], prisma);
 
-  return NextResponse.json(withLegacyFields({ ...updated, tags }), { status: 200 });
+  return NextResponse.json(withLegacyFields({ ...updatedWithProductIds, tags }), { status: 200 });
 }

@@ -231,7 +231,6 @@ const upsertOrganization = async (ownerId: string, logoId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates: null,
-      productIds: [],
       publicSlug: 'portland-community-college',
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

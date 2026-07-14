@@ -241,7 +241,6 @@ export async function GET(req: NextRequest) {
               ),
               dateOfBirth: nextProfile.dateOfBirth,
               requiredProfileFieldsCompletedAt,
-              teamIds: [],
               friendIds: [],
               friendRequestIds: [],
               friendRequestSentIds: [],

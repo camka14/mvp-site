@@ -86,6 +86,60 @@ describe('organizationService', () => {
         name: 'Membership',
       }),
     ]);
+    expect(organization?.productIds).toEqual([]);
+  });
+
+  it('derives the compatibility productIds alias from hydrated products when the API omits it', async () => {
+    apiRequestMock.mockImplementation(async (url) => {
+      if (url === '/api/organizations/org_1') {
+        return {
+          $id: 'org_1',
+          name: 'Test Org',
+        };
+      }
+      if (String(url).startsWith('/api/events?')) {
+        return { events: [] };
+      }
+      if (String(url).startsWith('/api/facilities?')) {
+        return { facilities: [] };
+      }
+      return {};
+    });
+    listFieldsMock.mockResolvedValue([]);
+    listProductsMock.mockResolvedValue([
+      { $id: 'prod_2', organizationId: 'org_1', name: 'Second' },
+      { $id: 'prod_1', organizationId: 'org_1', name: 'First' },
+      { $id: 'prod_1', organizationId: 'org_1', name: 'Duplicate' },
+    ] as any);
+
+    const organization = await organizationService.getOrganizationById('org_1', true);
+
+    expect(organization?.productIds).toEqual(['prod_1', 'prod_2']);
+  });
+
+  it('never sends the derived productIds alias in organization creates or updates', async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({ $id: 'org_1', name: 'Created', productIds: [] })
+      .mockResolvedValueOnce({ $id: 'org_1', name: 'Updated', productIds: [] });
+
+    await organizationService.createOrganization({
+      name: 'Created',
+      ownerId: 'owner_1',
+      productIds: ['prod_stale'],
+    });
+    await organizationService.updateOrganization('org_1', {
+      name: 'Updated',
+      productIds: ['prod_stale'],
+    });
+
+    expect(apiRequestMock).toHaveBeenNthCalledWith(1, '/api/organizations', expect.objectContaining({
+      method: 'POST',
+      body: expect.not.objectContaining({ productIds: expect.anything() }),
+    }));
+    expect(apiRequestMock).toHaveBeenNthCalledWith(2, '/api/organizations/org_1', {
+      method: 'PATCH',
+      body: { organization: { name: 'Updated' } },
+    });
   });
 
   it('requests affiliate rental organizations when listing organizations with fields for rentals', async () => {

@@ -266,7 +266,6 @@ const upsertOrganization = async (ownerId: string, logoId: string) => {
       verificationStatus: 'UNVERIFIED',
       verificationReviewStatus: 'NONE',
       coordinates,
-      productIds: [],
       publicSlug: 'clackamas-united-soccer-club',
       publicPageEnabled: true,
       publicWidgetsEnabled: false,

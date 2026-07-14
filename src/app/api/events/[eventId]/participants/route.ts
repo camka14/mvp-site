@@ -25,6 +25,7 @@ import {
 import {
   claimOrCreateEventTeamSnapshot,
   findRegisteredEventTeamForCanonical,
+  getCanonicalTeamIdsByUserIds,
   loadCanonicalTeamById,
 } from '@/server/teams/teamMembership';
 import {
@@ -172,11 +173,23 @@ const loadViewerPaymentFailedRegistrations = async ({
   slotId: string | null;
   occurrenceDate: string | null;
 }) => {
-  const viewer = await prisma.userData.findUnique({
-    where: { id: userId },
-    select: { teamIds: true },
-  });
-  const viewerTeamIds = normalizeUserIdList(viewer?.teamIds);
+  const canonicalTeamIdsByUserId = await getCanonicalTeamIdsByUserIds([userId], prisma);
+  const canonicalTeamIds = canonicalTeamIdsByUserId.get(userId) ?? [];
+  const eventTeams = canonicalTeamIds.length
+    ? await prisma.teams.findMany({
+      where: {
+        eventId,
+        parentTeamId: { in: canonicalTeamIds },
+      },
+      select: { id: true },
+    })
+    : [];
+  const viewerTeamIds = ensureUnique([
+    ...canonicalTeamIds,
+    ...eventTeams
+      .map((team) => normalizeId(team.id))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  ]);
   const or: any[] = [
     { registrantType: 'SELF', registrantId: userId },
     { registrantType: 'CHILD', parentId: userId },

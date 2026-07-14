@@ -96,7 +96,6 @@ export async function POST(req: NextRequest) {
         lastName,
         userName: `${firstName}.${lastName}.${childId.slice(0, 6)}`.toLowerCase(),
         dateOfBirth: dob,
-        teamIds: [],
         friendIds: [],
         friendRequestIds: [],
         friendRequestSentIds: [],
