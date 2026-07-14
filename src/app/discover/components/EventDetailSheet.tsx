@@ -12,7 +12,6 @@ import {
     Users,
 } from 'lucide-react';
 import {
-    BillingAddress,
     Event,
     Match,
     UserData,
@@ -21,7 +20,6 @@ import {
     getUserFullName,
     getUserHandle,
     getTeamAvatarUrl,
-    PaymentIntent,
     Bill,
     getEventImageFallbackUrl,
     getEventImageUrl,
@@ -31,10 +29,9 @@ import {
     formatPrice,
     RegistrationQuestionAnswerInput,
 } from '@/types';
-import { apiRequest, isApiRequestError } from '@/lib/apiClient';
+import { apiRequest } from '@/lib/apiClient';
 import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { paymentService } from '@/lib/paymentService';
-import { billingAddressService } from '@/lib/billingAddressService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
 import { createId } from '@/lib/id';
@@ -95,12 +92,7 @@ import {
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
-import { useEventRegistrationProgress } from './eventDetail/hooks/useEventRegistrationProgress';
-import {
-    useEventDiscountPreview,
-    type EventCheckoutWithBillingAddress,
-    type PendingEventCheckoutState,
-} from './eventDetail/hooks/useEventDiscountPreview';
+import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -178,16 +170,6 @@ type PaymentPlanPreviewState = {
     intent: JoinIntent;
     ownerLabel: string;
 };
-
-const hasCompleteBillingAddress = (billingAddress?: BillingAddress | null): billingAddress is BillingAddress => (
-    Boolean(
-        billingAddress?.line1?.trim()
-        && billingAddress.city?.trim()
-        && billingAddress.state?.trim()
-        && billingAddress.postalCode?.trim()
-        && billingAddress.countryCode?.trim(),
-    )
-);
 
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
@@ -371,24 +353,10 @@ export default function EventDetailSheet({
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
-    const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [manualPaymentBill, setManualPaymentBill] = useState<Bill | null>(null);
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
-    const {
-        code: discountCode,
-        preview: discountPreview,
-        loading: discountPreviewLoading,
-        error: discountPreviewError,
-        prepare: prepareDiscountPreview,
-        resetPreview: resetDiscountPreview,
-        changeCode: handleCheckoutDiscountCodeChange,
-        clearCode: clearCheckoutDiscount,
-        apply: applyDiscountPreview,
-        validateAppliedCode: validateAppliedDiscountCode,
-    } = useEventDiscountPreview();
-    const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [signLinks, setSignLinks] = useState<SignStep[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
@@ -425,15 +393,6 @@ export default function EventDetailSheet({
     }, [setRegistrationWorkflowPhase]);
     const setShowSignModal = useCallback((opened: boolean) => {
         setRegistrationWorkflowPhase('signing', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setShowCheckoutPreviewModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('checkout-preview', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setShowBillingAddressModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('billing-address', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setShowPaymentModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('payment', opened);
     }, [setRegistrationWorkflowPhase]);
     const setShowManualPaymentModal = useCallback((opened: boolean) => {
         setRegistrationWorkflowPhase('manual-proof', opened);
@@ -518,41 +477,45 @@ export default function EventDetailSheet({
         },
         [selectedWeeklyOccurrenceOption],
     );
-    const selectedWeeklyOccurrenceSlotId = selectedWeeklyOccurrence?.slotId ?? null;
-    const selectedWeeklyOccurrenceDate = selectedWeeklyOccurrence?.occurrenceDate ?? null;
     const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
     const {
+        paymentData,
+        pendingCheckout: pendingEventCheckout,
         holdExpiresAt: registrationHoldExpiresAt,
-        setHoldExpiresAt: setRegistrationHoldExpiresAt,
-        save: saveEventRegistrationProgress,
-        clear: clearEventRegistrationProgress,
-    } = useEventRegistrationProgress({
-        userId: user?.$id,
+        discountCode,
+        discountPreview,
+        discountPreviewLoading,
+        discountPreviewError,
+        saveProgress: saveEventRegistrationProgress,
+        clearProgress: clearEventRegistrationProgress,
+        prepareCheckout: prepareEventCheckout,
+        startCheckout: startEventCheckout,
+        applyDiscountPreview: handleApplyDiscountPreview,
+        closeCheckoutPreview,
+        continueCheckoutPreview,
+        changeDiscountCode: handleCheckoutDiscountCodeChange,
+        clearDiscountCode: clearCheckoutDiscount,
+        expireHold: handleEventRegistrationHoldExpired,
+        closeBillingAddress,
+        continueAfterBillingAddress,
+        closePayment,
+        clearPaymentData,
+    } = useEventCheckoutController({
+        user,
         eventId: currentEvent?.$id,
-        slotId: selectedWeeklyOccurrenceSlotId,
-        occurrenceDate: selectedWeeklyOccurrenceDate,
-        answers: registrationQuestionAnswers,
+        occurrence: selectedWeeklyOccurrence,
+        registrationQuestionAnswers,
         selectedTeamId,
         selectedDivisionId,
         selectedDivisionTypeKey,
-        registrationId: paymentData?.registrationId,
-        setAnswers: setRegistrationQuestionAnswers,
+        setRegistrationQuestionAnswers,
         setSelectedTeamId,
         setSelectedDivisionId,
         setSelectedDivisionTypeKey,
+        setJoining,
+        setJoinError,
+        setWorkflowPhase: setRegistrationWorkflowPhase,
     });
-    const handleEventRegistrationHoldExpired = useCallback(() => {
-        clearEventRegistrationProgress();
-        setShowPaymentModal(false);
-        setPaymentData(null);
-        setPendingEventCheckout(null);
-        setShowBillingAddressModal(false);
-        setJoinError('Registration hold expired. Start registration again to reserve a new spot.');
-    }, [
-        clearEventRegistrationProgress,
-        setShowBillingAddressModal,
-        setShowPaymentModal,
-    ]);
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
@@ -1314,147 +1277,6 @@ export default function EventDetailSheet({
         setShowPasswordModal(true);
         return true;
     }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, setShowPasswordModal, user]);
-
-    const startEventCheckout = useCallback(async ({
-        event: checkoutEvent,
-        team,
-        eventRegistration,
-        selection,
-        answers,
-        discountCode: checkoutDiscountCode,
-        billingAddress,
-    }: EventCheckoutWithBillingAddress) => {
-        if (!user) {
-            throw new Error('You must be signed in to continue.');
-        }
-
-        try {
-            const paymentIntent = await paymentService.createPaymentIntent(
-                user,
-                checkoutEvent,
-                team,
-                undefined,
-                undefined,
-                selection,
-                billingAddress,
-                selectedWeeklyOccurrence,
-                answers,
-                (checkoutDiscountCode ?? discountCode).trim() || null,
-                eventRegistration,
-            );
-            const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
-            setRegistrationHoldExpiresAt(holdExpiresAt);
-            saveEventRegistrationProgress({
-                step: 'checkout',
-                answers: answers?.reduce<Record<string, string>>((acc, answer) => {
-                    acc[answer.questionId] = answer.answer;
-                    return acc;
-                }, {}) ?? registrationQuestionAnswers,
-                selectedTeamId: (team?.$id ?? selectedTeamId) || null,
-                selectedDivisionId: (selection?.divisionId ?? selectedDivisionId) || null,
-                selectedDivisionTypeKey: (selection?.divisionTypeKey ?? selectedDivisionTypeKey) || null,
-                registrationId: paymentIntent.registrationId ?? null,
-                holdExpiresAt,
-            });
-            setPaymentData(paymentIntent);
-            setShowPaymentModal(true);
-            setPendingEventCheckout(null);
-            setShowBillingAddressModal(false);
-            setShowCheckoutPreviewModal(false);
-            resetDiscountPreview();
-        } catch (error) {
-            if (
-                isApiRequestError(error)
-                && error.data
-                && typeof error.data === 'object'
-                && 'billingAddressRequired' in error.data
-                && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
-            ) {
-                setPendingEventCheckout({
-                    event: checkoutEvent,
-                    team,
-                    eventRegistration,
-                    selection,
-                    answers,
-                    discountCode: checkoutDiscountCode ?? discountCode,
-                });
-                setShowBillingAddressModal(true);
-                setShowCheckoutPreviewModal(false);
-                return;
-            }
-            throw error;
-        }
-    }, [
-        registrationQuestionAnswers,
-        saveEventRegistrationProgress,
-        selectedDivisionId,
-        selectedDivisionTypeKey,
-        selectedTeamId,
-        selectedWeeklyOccurrence,
-        discountCode,
-        resetDiscountPreview,
-        setShowBillingAddressModal,
-        setShowCheckoutPreviewModal,
-        setShowPaymentModal,
-        setRegistrationHoldExpiresAt,
-        user,
-    ]);
-
-    const prepareEventCheckout = useCallback(async (checkout: PendingEventCheckoutState) => {
-        setPendingEventCheckout(checkout);
-        prepareDiscountPreview(checkout.discountCode);
-        setJoinError(null);
-
-        try {
-            const profile = await billingAddressService.getBillingAddressProfile();
-            if (!hasCompleteBillingAddress(profile.billingAddress)) {
-                setShowCheckoutPreviewModal(false);
-                setShowBillingAddressModal(true);
-                return;
-            }
-            setShowBillingAddressModal(false);
-            setShowCheckoutPreviewModal(true);
-        } catch (error) {
-            setShowCheckoutPreviewModal(false);
-            setShowBillingAddressModal(true);
-        }
-    }, [prepareDiscountPreview, setShowBillingAddressModal, setShowCheckoutPreviewModal]);
-
-    const handleApplyDiscountPreview = useCallback(async () => {
-        await applyDiscountPreview({
-            checkout: pendingEventCheckout,
-            user,
-            occurrence: selectedWeeklyOccurrence,
-        });
-    }, [applyDiscountPreview, pendingEventCheckout, selectedWeeklyOccurrence, user]);
-
-    const closeCheckoutPreview = useCallback(() => {
-        setShowCheckoutPreviewModal(false);
-        setPendingEventCheckout(null);
-        resetDiscountPreview();
-    }, [resetDiscountPreview, setShowCheckoutPreviewModal]);
-
-    const continueCheckoutPreview = useCallback(async () => {
-        if (!pendingEventCheckout) {
-            return;
-        }
-        const normalizedCode = discountCode.trim();
-        if (!validateAppliedDiscountCode()) {
-            return;
-        }
-        setJoining(true);
-        setJoinError(null);
-        try {
-            await startEventCheckout({
-                ...pendingEventCheckout,
-                discountCode: normalizedCode || null,
-            });
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Unable to start checkout.');
-        } finally {
-            setJoining(false);
-        }
-    }, [discountCode, pendingEventCheckout, startEventCheckout, validateAppliedDiscountCode]);
 
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
@@ -4756,36 +4578,22 @@ export default function EventDetailSheet({
 
             <BillingAddressModal
                 opened={showBillingAddressModal}
-                onClose={() => {
-                    setShowBillingAddressModal(false);
-                    setShowCheckoutPreviewModal(false);
-                    setPendingEventCheckout(null);
-                }}
-                onSaved={async (billingAddress) => {
-                    if (!pendingEventCheckout) {
-                        setShowBillingAddressModal(false);
-                        return;
-                    }
-                    setShowBillingAddressModal(false);
-                    setShowCheckoutPreviewModal(true);
-                }}
+                onClose={closeBillingAddress}
+                onSaved={continueAfterBillingAddress}
             />
 
             <PaymentModal
                 isOpen={showPaymentModal}
-                onClose={() => {
-                    setShowPaymentModal(false);
-                    setPaymentData(null); // Clear payment data
-                }}
+                onClose={closePayment}
                 event={checkoutEvent ?? currentEvent}
-                paymentData={paymentData} // Pass the already-created payment intent
+                paymentData={paymentData}
                 onPaymentSuccess={async () => {
-                    setPaymentData(null);
+                    clearPaymentData();
                     clearEventRegistrationProgress();
                     await confirmRegistrationAfterPayment();
                 }}
                 onPaymentPending={async () => {
-                    setPaymentData(null);
+                    clearPaymentData();
                     clearEventRegistrationProgress();
                     await confirmRegistrationAfterPayment({ pendingPayment: true });
                 }}
