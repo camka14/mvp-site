@@ -17,7 +17,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - [x] (2026-07-14 09:31Z) Read `PLANS.md`, the `LEG-001` finding, the current server compatibility helpers, generated Prisma delegate, current mobile DTOs, and the mobile v1.6.13 tag.
 - [x] (2026-07-14 09:31Z) Counted the current removal surface: 124 web files call `withLegacyFields` or `withLegacyList`, six call `stripLegacyFieldsDeep`, 17 use generic parsing helpers from `legacyFormat.ts`, 11 production files mention `volleyBallTeams`, and 15 mobile DTO files declare `$id` aliases with 129 legacy-field references.
 - [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases.
-- [ ] Remove the obsolete Prisma delegate fallback and update focused team, invite, chat, profile, and archive tests.
+- [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
 - [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them.
 - [ ] Replace every API response wrapper with the canonical response shape, remove the open-ended-event rewrite, and delete `src/server/legacyFormat.ts`.
 - [ ] Remove legacy DTO fallbacks from the current Android/iOS/Wear/watchOS clients after server and v1.6.13 fixture coverage proves canonical decoding.
@@ -37,6 +37,9 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 - Observation: `legacyFormat.ts` combines three unrelated responsibilities.
   Evidence: it adds response aliases, mutates `end: null` to `end: start`, strips dollar-prefixed input recursively, and also contains generic ID/date parsers. The generic parsers must move rather than disappear with response compatibility.
+
+- Observation: the profile schedule route test still depended on a partial Prisma mock that predated normalized team membership.
+  Evidence: the first focused run failed eight cases with `Canonical team membership requires TeamRegistrations and TeamStaffAssignments delegates.` Adding `teamRegistrations` and `teamStaffAssignments` mocks and canonical rows made all 11 cases pass; no production fallback was restored.
 
 ## Decision Log
 
@@ -58,7 +61,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-Research and the executable plan are complete. No production compatibility code has been removed yet. The first implementation slice is the generated team delegate because it is narrow, independently verifiable, and does not change the HTTP response contract.
+Research, the executable plan, and the generated-delegate slice are complete. Web production and tests now have zero `volleyBallTeams` references outside generated history. The HTTP response contract is unchanged so far; the next slice is the canonical-only v1.6.13 fixture inventory, followed by explicit request-alias rejection.
 
 ## Context and Orientation
 
@@ -178,6 +181,15 @@ Initial evidence:
 
 Record checkpoint commit hashes, focused suite totals, final zero-search results, release route observations, emulator device/API, and watch validation here as the plan proceeds.
 
+Delegate-slice evidence:
+
+    rg -n 'volleyBallTeams' src --glob '*.{ts,tsx}' --glob '!src/generated/**'
+    # no output
+
+    focused suites: 10 passed / 89 tests, then profile schedule 11 passed / 11 tests
+    npx tsc --noEmit --pretty false: exit 0
+    git diff --check: no output
+
 ## Interfaces and Dependencies
 
 `src/server/requestParsing.ts` must own the generic parsing functions after `legacyFormat.ts` is removed:
@@ -190,3 +202,5 @@ Names may be adjusted once all callers are inspected, but they must not include 
 The v1.6.13 fixture runner must use the repository's existing Kotlin serialization and Swift Codable dependencies. Do not add a second JSON library. The server response migration must use plain objects and existing domain-specific formatters; do not add a new universal serializer that can recreate the legacy semantics.
 
 Revision note (2026-07-14 09:31Z): created this self-contained plan after tracing the central server helper, distributed team-delegate fallbacks, current mobile DTO aliases, and the v1.6.13 canonical event DTO. The staged order keeps every checkpoint executable while requiring oldest-supported-client proof before any external contract removal.
+
+Revision note (2026-07-14 09:39Z): recorded completion of the generated-team-delegate slice and the profile schedule mock repair discovered during focused validation. The next milestone remains oldest-supported-client contract proof before changing HTTP response fields.

@@ -10,7 +10,7 @@ import {
   publicUserSelect,
 } from '@/server/userPrivacy';
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 
 const normalizeIdList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];

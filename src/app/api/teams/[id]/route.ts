@@ -415,7 +415,7 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
   };
 };
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 const updateTeamWithSchemaContract = async (
   teamsDelegate: any,
   where: Record<string, unknown>,

@@ -834,12 +834,12 @@ export const deleteOrArchiveEventTeam = async (input: EntityDeleteInput): Promis
   }
 
   const references = await countEventTeamReferences(input.client, input.entity);
-  const teamsDelegate = input.client.teams ?? input.client.volleyBallTeams;
+  const teamsDelegate = input.client.teams;
   if (references.length > 0 || input.entity.archivedAt) {
     const now = new Date();
     const reason = input.entity.archiveReason ?? input.reason ?? 'delete_requested';
     await runTransaction(input.client, async (tx) => {
-      const txTeams = tx.teams ?? tx.volleyBallTeams;
+      const txTeams = tx.teams;
       await txTeams.update({
         where: { id: teamId },
         data: {

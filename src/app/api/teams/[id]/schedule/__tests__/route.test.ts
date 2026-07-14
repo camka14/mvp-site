@@ -67,7 +67,7 @@ jest.mock('@/server/officials/eventOfficials', () => ({
   getEventOfficialIdsByEventIds: (...args: any[]) => getEventOfficialIdsByEventIdsMock(...args),
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
-  getEventTeamsDelegate: (client: any) => client?.teams ?? client?.volleyBallTeams ?? null,
+  getEventTeamsDelegate: (client: any) => client?.teams ?? null,
   isAdminOnlyCanonicalTeam: (...args: any[]) => isAdminOnlyCanonicalTeamMock(...args),
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   normalizeId,

@@ -21,7 +21,10 @@ const prismaMock = {
   teams: {
     findMany: jest.fn(),
   },
-  volleyBallTeams: {
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
     findMany: jest.fn(),
   },
 };
@@ -49,8 +52,8 @@ describe('GET /api/profile/schedule', () => {
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockReset();
     prismaMock.teams.findMany.mockResolvedValue([]);
-    prismaMock.volleyBallTeams.findMany.mockReset();
-    prismaMock.volleyBallTeams.findMany.mockResolvedValue([]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
   });
 
   it('returns batched participant schedule payload', async () => {
@@ -58,6 +61,7 @@ describe('GET /api/profile/schedule', () => {
       id: 'user_1',
       teamIds: ['team_1'],
     });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([{ userId: 'user_1', teamId: 'team_1' }]);
     prismaMock.events.findMany.mockResolvedValue([
       {
         id: 'event_1',
@@ -540,14 +544,12 @@ describe('GET /api/profile/schedule', () => {
     );
   });
 
-  it('falls back to legacy volleyBallTeams delegate when teams delegate is unavailable', async () => {
-    const originalTeamsDelegate = prismaMock.teams;
-    (prismaMock as any).teams = undefined;
-
+  it('hydrates event-team rows through the generated teams delegate', async () => {
     prismaMock.userData.findUnique.mockResolvedValue({
       id: 'user_1',
       teamIds: ['team_1'],
     });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([{ userId: 'user_1', teamId: 'team_1' }]);
     prismaMock.events.findMany.mockResolvedValue([
       {
         id: 'event_1',
@@ -567,15 +569,13 @@ describe('GET /api/profile/schedule', () => {
         createdAt: new Date('2026-02-01T00:00:00Z'),
       }]);
     prismaMock.matches.findMany.mockResolvedValue([]);
-    prismaMock.volleyBallTeams.findMany.mockResolvedValue([{ id: 'team_1', name: 'Legacy Team' }]);
+    prismaMock.teams.findMany.mockResolvedValue([{ id: 'team_1', name: 'Event Team' }]);
 
     const response = await GET(new NextRequest('http://localhost/api/profile/schedule'));
     const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(json.teams).toHaveLength(1);
-    expect(prismaMock.volleyBallTeams.findMany).toHaveBeenCalled();
-
-    (prismaMock as any).teams = originalTeamsDelegate;
+    expect(prismaMock.teams.findMany).toHaveBeenCalled();
   });
 });

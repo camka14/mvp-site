@@ -15,7 +15,7 @@ export const uniqueScheduleIds = (values: Array<string | null | undefined>): str
 );
 
 export const getScheduleTeamsDelegate = (client: PrismaLike) => (
-  client?.teams ?? client?.volleyBallTeams
+  client?.teams
 );
 
 export type ProfileScheduleScope = {

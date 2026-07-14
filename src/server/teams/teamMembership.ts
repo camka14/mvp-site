@@ -169,7 +169,7 @@ export const TEAM_VISIBILITY_ADMIN_ONLY = 'ADMIN_ONLY';
 export type TeamVisibility = typeof TEAM_VISIBILITY_PUBLIC | typeof TEAM_VISIBILITY_ADMIN_ONLY;
 
 const getCanonicalTeamsDelegate = (client: PrismaLike) => client?.canonicalTeams ?? null;
-export const getEventTeamsDelegate = (client: PrismaLike) => client?.teams ?? client?.volleyBallTeams ?? null;
+export const getEventTeamsDelegate = (client: PrismaLike) => client?.teams ?? null;
 const getTeamRegistrationsDelegate = (client: PrismaLike) => client?.teamRegistrations ?? null;
 const getTeamStaffAssignmentsDelegate = (client: PrismaLike) => client?.teamStaffAssignments ?? null;
 const getEventTeamStaffAssignmentsDelegate = (client: PrismaLike) => client?.eventTeamStaffAssignments ?? null;

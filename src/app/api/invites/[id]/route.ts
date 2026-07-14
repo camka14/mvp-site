@@ -13,7 +13,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 
 export const dynamic = 'force-dynamic';
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 
 /**
  * Returns one invitation only to its recipient (or a linked guardian for an

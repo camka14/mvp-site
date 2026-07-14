@@ -141,7 +141,7 @@ const withTeamRoleAliasesList = (teams: Record<string, any>[]) => (
   withLegacyList(teams).map((team) => withTeamRoleAliases(team))
 );
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 
 const getZodErrorMessage = (error: z.ZodError): string => (
   error.issues[0]?.message ?? 'Invalid input'

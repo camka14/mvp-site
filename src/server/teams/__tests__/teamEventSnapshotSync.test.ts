@@ -7,7 +7,7 @@ const syncTeamChatInTxMock = jest.fn();
 
 jest.mock('@/server/teams/teamMembership', () => ({
   claimOrCreateEventTeamSnapshot: (...args: any[]) => claimOrCreateEventTeamSnapshotMock(...args),
-  getEventTeamsDelegate: (client: any) => client?.teams ?? client?.volleyBallTeams ?? null,
+  getEventTeamsDelegate: (client: any) => client?.teams ?? null,
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   normalizeId: (value: unknown) => {
     if (typeof value !== 'string') return null;

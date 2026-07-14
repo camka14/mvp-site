@@ -23,7 +23,7 @@ const uniqueIds = (values: Array<string | null | undefined>): string[] => (
   )
 );
 
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 
 const parseUpdatedAfter = (value: string | null): Date | null => {
   const normalized = normalizeId(value);

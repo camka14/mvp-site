@@ -56,7 +56,7 @@ const createSchema = z.object({
 }).passthrough();
 
 const emailSchema = z.string().email();
-const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const getTeamsDelegate = (client: any) => client?.teams;
 
 class InviteRouteError extends Error {
   status: number;
