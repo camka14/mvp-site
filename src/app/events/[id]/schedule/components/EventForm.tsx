@@ -27,15 +27,11 @@ import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
 import { resolveTournamentSetMode } from './tournamentSetMode';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
-import { hasExternalRentalFieldForEvent } from './externalRentalField';
 import {
     buildEventTypeOptions,
     hasAffiliateUrl,
     hasParentEventRef,
     isTournamentPoolPlayFormEnabled,
-    shouldShowOrganizationFieldsInEventDetails,
-    supportsFieldCountForEvent,
-    supportsOrganizationFieldSelectionForEvent,
     supportsScheduleSlotsForEvent,
 } from './eventForm/eventRules';
 import {
@@ -45,17 +41,11 @@ import {
     getLongitudeFromCoordinates,
 } from './eventForm/locationHelpers';
 import {
-    defaultFieldLocationForEvent,
-    sanitizeFieldsForForm,
-    withEventFieldLocationDefault,
-} from './eventForm/fieldDefaults';
-import {
     buildDivisionName,
     buildDivisionToken,
     getDivisionTypeById,
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
-import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import {
     normalizeManualPaymentProvider,
 } from '@/lib/manualRegistrationPayments';
@@ -71,9 +61,7 @@ import {
     deriveScheduleParticipantCount,
     DIVISION_GENDER_OPTIONS,
     type DivisionDetailForm,
-    divisionFieldIdsEqual,
     getDefaultDivisionTypeSelectionsForSport,
-    normalizeDivisionFieldIds,
     normalizeDivisionKeys,
     normalizeDivisionDetailEntry,
     normalizeDivisionNameKey,
@@ -95,33 +83,8 @@ import {
     normalizeOfficialSchedulingMode,
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
-import {
-    buildFieldById,
-    buildOrganizationResourcePool,
-    buildResolvedOrganizationFieldSignature,
-    fieldsEqual,
-    isEventLocalField,
-    isGeneratedLocalFieldPlaceholder,
-    isRentedResourceForOrganization,
-    isSelectableOrganizationResource,
-    mergeFieldsById,
-    resolveFieldsReferencedInSlots,
-    resolveSelectedRentedFieldIds,
-    toFieldIdList,
-} from './eventForm/resourceGroups';
-import {
-    buildRentalBookingTimeSlot,
-    buildRentalLeagueFieldOptions,
-    buildRentalResourceFields,
-    buildRentalResourceOptionsByFieldId,
-    buildRentalResourceOptionsBySelectorId,
-    buildRentalResourceSelectorFields,
-    buildSelectedRentalFieldIds,
-    isRentalBookingSelectorId,
-    isRentalLockedTimeSlot,
-    mergeRentalLockedTimeSlots,
-    resolveSelectedRentalResourceOptions,
-} from './eventForm/rentalResources';
+import { toFieldIdList } from './eventForm/resourceGroups';
+import { isRentalLockedTimeSlot } from './eventForm/rentalResources';
 import { buildEventFormSchema } from './eventForm/schema';
 import {
     dedupeValidationErrors,
@@ -145,10 +108,8 @@ import {
 import { buildEventDraft } from './eventForm/buildEventDraft';
 import {
     createLeagueSlotForm,
-    normalizeFieldIds,
     normalizeSlotFieldIds,
     normalizeWeekdays,
-    timeSlotsEqual,
 } from './eventForm/slotForm';
 import {
     normalizeSlotState,
@@ -174,11 +135,7 @@ import {
     normalizePendingStaffInvite,
     type PendingStaffInvite,
 } from './eventForm/staffInvites';
-import {
-    normalizeResourceText,
-    stringArraysEqual,
-    stringSetsEqual,
-} from './eventForm/shared';
+import { stringArraysEqual, stringSetsEqual } from './eventForm/shared';
 import {
     leagueConfigEqual,
     leagueSlotsEqual,
@@ -230,9 +187,8 @@ import {
     useEventFormLifecycleStabilization,
 } from './eventForm/hooks/useEventFormLifecycle';
 import { useEventPaymentController } from './eventForm/hooks/useEventPaymentController';
-import { useOrganizationFieldHydration } from './eventForm/hooks/useOrganizationFieldHydration';
+import { useEventResourceController } from './eventForm/hooks/useEventResourceController';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
-import { useRentalBookingResources } from './eventForm/hooks/useRentalBookingResources';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
 import { EventDetailsPanel } from './eventForm/sections/EventDetailsPanel';
@@ -464,53 +420,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [eventData.eventType],
     );
     const isAffiliateEvent = Boolean(eventData.isAffiliateEvent || hasAffiliateUrl(eventData.affiliateUrl));
-    const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
-    const eventSupportsScheduleSlots = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
-    const hasRestrictedImmutableFields = hasImmutableFields && !eventSupportsScheduleSlots;
-    const immutableDefaultRentalTimeSlots = useMemo(
-        () => immutableTimeSlotsFromDefaults.filter(isRentalLockedTimeSlot),
-        [immutableTimeSlotsFromDefaults],
-    );
-    const immutableTimeSlots = useMemo(() => {
-        if (eventSupportsScheduleSlots) {
-            return [];
-        }
-        if (rentalLockedTimeSlots.length) {
-            return rentalLockedTimeSlots;
-        }
-        return immutableTimeSlotsFromDefaults;
-    }, [eventSupportsScheduleSlots, immutableTimeSlotsFromDefaults, rentalLockedTimeSlots]);
-    const hasImmutableTimeSlots = immutableTimeSlots.length > 0;
-    const rentalLockedSlotsForDraft = useMemo(
-        () => eventSupportsScheduleSlots
-            ? mergeRentalLockedTimeSlots([...immutableDefaultRentalTimeSlots, ...rentalLockedTimeSlots])
-            : rentalLockedTimeSlots,
-        [eventSupportsScheduleSlots, immutableDefaultRentalTimeSlots, rentalLockedTimeSlots],
-    );
     const hasUnsetTeamCapacityLimits = eventData.teamSizeLimit == null
         || (eventData.singleDivision && eventData.maxParticipants == null);
     const leagueSlots = formValues.leagueSlots;
     const leagueData = formValues.leagueData;
     const tournamentData = formValues.tournamentData;
     const playoffData = formValues.playoffData;
-    const fields = formValues.fields;
-    const fieldCount = formValues.fieldCount;
-    const selectedFieldIds = useMemo(
-        () => (Array.isArray(formValues.selectedFieldIds) ? formValues.selectedFieldIds : []),
-        [formValues.selectedFieldIds],
-    );
-    const resolvedOrganizationFieldSignature = useMemo(
-        () => buildResolvedOrganizationFieldSignature(resolvedOrganization?.fields as Field[] | undefined),
-        [resolvedOrganization?.fields],
-    );
-    const divisionFieldIds = useMemo(
-        () => (
-            formValues.divisionFieldIds && typeof formValues.divisionFieldIds === 'object'
-                ? formValues.divisionFieldIds
-                : {}
-        ),
-        [formValues.divisionFieldIds],
-    );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = resolvedOrganization?.$id ?? eventData.organizationId;
     const templateOrganizationId = templateOrganizationIdProp ?? organizationId;
@@ -624,54 +539,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
-    const setFields = useCallback(
-        (
-            updater: React.SetStateAction<Field[]>,
-            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-        ) => {
-            const current = getValues('fields');
-            const next = typeof updater === 'function' ? (updater as (prev: Field[]) => Field[])(current) : updater;
-            if (fieldsEqual(current, next)) {
-                return;
-            }
-            setValue('fields', next, {
-                shouldDirty: options.shouldDirty ?? true,
-                shouldValidate: options.shouldValidate ?? true,
-            });
-        },
-        [getValues, setValue],
-    );
-
-    const setFieldCount = useCallback(
-        (value: number) => {
-            if (Object.is(getValues('fieldCount'), value)) {
-                return;
-            }
-            setValue('fieldCount', value, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const setSelectedFieldIds = useCallback(
-        (value: string[]) => {
-            if (Object.is(getValues('selectedFieldIds'), value)) {
-                return;
-            }
-            setValue('selectedFieldIds', value, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const setDivisionFieldIds = useCallback(
-        (value: Record<string, string[]>) => {
-            if (Object.is(getValues('divisionFieldIds'), value)) {
-                return;
-            }
-            setValue('divisionFieldIds', value, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
     const setJoinAsParticipant = useCallback(
         (value: boolean) => {
             if (Object.is(getValues('joinAsParticipant'), value)) {
@@ -717,109 +584,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
     }, [eventData.eventOfficials, eventData.officials, isEditMode, setEventData]);
 
-    const organizationHostedEventId = (
-        resolvedOrganization?.$id
-        || eventData.organizationId
-        || (activeEditingEvent?.organization as Organization | undefined)?.$id
-        || activeEditingEvent?.organizationId
-        || ''
-    );
-    const isOrganizationHostedEvent = organizationHostedEventId.length > 0;
-    const supportsOrganizationFieldSelection = !isAffiliateEvent && supportsOrganizationFieldSelectionForEvent(
-        eventData.eventType,
-        eventData.parentEvent,
-    );
-    const shouldLoadRentalResources = !isAffiliateEvent && (supportsOrganizationFieldSelection || eventSupportsScheduleSlots);
-    const shouldManageLocalFields = !isAffiliateEvent && !hasRestrictedImmutableFields && supportsFieldCountForEvent(eventData.eventType);
-    const shouldProvisionFields = shouldManageLocalFields;
-    const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
-    const { fieldsLoading } = useOrganizationFieldHydration({
-        hasRestrictedImmutableFields,
-        isEditMode,
-        organizationFieldSignature: resolvedOrganizationFieldSignature,
-        organizationId: organizationHostedEventId,
-        resolvedOrganizationFields: Array.isArray(resolvedOrganizationFields)
-            ? (resolvedOrganizationFields as Field[])
-            : null,
-        resolvedOrganizationId: resolvedOrganization?.$id,
-        sanitizeFields: sanitizeFieldsForForm,
-        setFields,
-        setHydratedOrganization,
-    });
-
-    const {
-        options: rentalResourceOptions,
-        loading: rentalResourcesLoading,
-        error: rentalResourcesError,
-    } = useRentalBookingResources({
-        eventId: activeEditingEvent?.$id,
-        isEditMode,
-        open,
-        organizationId: organizationHostedEventId,
-        shouldLoad: shouldLoadRentalResources,
-        setFields,
-    });
-
-    useEffect(() => {
-        if (
-            !isCreateMode
-            || rentalResourcesLoading
-            || rentalResourceOptions.length === 0
-            || hasRestrictedImmutableFields
-            || (formDirtyFields as Record<string, unknown>).fieldCount
-            || (formDirtyFields as Record<string, unknown>).fields
-        ) {
-            return;
-        }
-
-        const currentFieldCount = Number(getValues('fieldCount'));
-        if (!Number.isFinite(currentFieldCount) || currentFieldCount <= 0) {
-            return;
-        }
-
-        const currentLocalFields = (getValues('fields') ?? []).filter((field) => isEventLocalField(field as Field));
-        const onlyGeneratedLocalFields = currentLocalFields.every((field, index) => (
-            isGeneratedLocalFieldPlaceholder(field as Field, index)
-        ));
-        if (!onlyGeneratedLocalFields) {
-            return;
-        }
-
-        setValue('fieldCount', 0, { shouldDirty: false, shouldValidate: true });
-    }, [
-        formDirtyFields,
-        getValues,
-        hasRestrictedImmutableFields,
-        isCreateMode,
-        rentalResourceOptions.length,
-        rentalResourcesLoading,
-        setValue,
-    ]);
-
-    useEffect(() => {
-        const previousEventType = previousEventTypeRef.current;
-        previousEventTypeRef.current = eventData.eventType;
-
-        if (!previousEventType || previousEventType === eventData.eventType) {
-            return;
-        }
-        if (!isCreateMode || !isOrganizationHostedEvent || hasRestrictedImmutableFields) {
-            return;
-        }
-        if (!supportsFieldCountForEvent(eventData.eventType) || supportsFieldCountForEvent(previousEventType)) {
-            return;
-        }
-
-        setFieldCount(0);
-    }, [
-        eventData.eventType,
-        hasRestrictedImmutableFields,
-        isCreateMode,
-        isOrganizationHostedEvent,
-        previousEventTypeRef,
-        setFieldCount,
-    ]);
-
     const slotDivisionLookup = useMemo(
         () => buildSlotDivisionLookup(
             eventData.divisionDetails || [],
@@ -840,6 +604,56 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     useEffect(() => {
         slotDivisionKeysRef.current = slotDivisionKeys;
     }, [slotDivisionKeys]);
+    const {
+        eventLocalFields,
+        eventSupportsScheduleSlots,
+        fieldCount,
+        fields,
+        fieldsLoading,
+        fieldsReferencedInSlots,
+        handleLocalFieldNameChange,
+        hasExternalRentalField,
+        hasImmutableTimeSlots,
+        hasRestrictedImmutableFields,
+        immutableTimeSlots,
+        isOrganizationHostedEvent,
+        isOrganizationManagedEvent,
+        leagueFieldOptions,
+        organizationHostedEventId,
+        organizationResourcePool,
+        rentalLockedSlotsForDraft,
+        rentalResourcesError,
+        resourceSelectorLoading,
+        selectedFieldIds,
+        selectedFields,
+        selectedRentedFieldIds,
+        setFieldCount,
+        shouldManageLocalFields,
+        shouldProvisionFields,
+        showLocalFieldCreationControls,
+        showOrganizationFieldsInEventDetails,
+        usesRentalSlots,
+    } = useEventResourceController({
+        activeEditingEvent,
+        eventData,
+        fieldCountDirty: Boolean((formDirtyFields as Record<string, unknown>).fieldCount),
+        fieldsDirty: Boolean((formDirtyFields as Record<string, unknown>).fields),
+        getValues,
+        hasImmutableFields,
+        immutableFields,
+        immutableTimeSlotsFromDefaults,
+        isAffiliateEvent,
+        isCreateMode,
+        isEditMode,
+        open,
+        previousEventFieldLocationRef,
+        previousEventTypeRef,
+        rentalPurchaseFieldId: rentalPurchase?.fieldId,
+        resolvedOrganization,
+        setHydratedOrganization,
+        setValue,
+        slotDivisionKeys,
+    });
     const divisionOptions = useMemo(
         () => slotDivisionLookup.options,
         [slotDivisionLookup],
@@ -2021,102 +1835,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         sportsById,
     ]);
 
-    useEffect(() => {
-        if (!hasRestrictedImmutableFields) {
-            return;
-        }
-        setFields(sanitizeFieldsForForm(immutableFields), { shouldDirty: false });
-    }, [hasRestrictedImmutableFields, immutableFields, setFields]);
-
-    // When provisioning local fields, mirror count changes into the generated list.
-    useEffect(() => {
-        const previousEventLocation = previousEventFieldLocationRef.current;
-        const eventFieldLocation = defaultFieldLocationForEvent(eventData.location);
-        previousEventFieldLocationRef.current = eventFieldLocation;
-
-        if (!shouldManageLocalFields) {
-            return;
-        }
-        setFields(prev => {
-            const retainedFields = prev.filter((field) => !isEventLocalField(field));
-            const normalizedLocalFields: Field[] = prev
-                .filter(isEventLocalField)
-                .slice(0, fieldCount)
-                .map((field) => withEventFieldLocationDefault(
-                    field,
-                    eventFieldLocation,
-                    previousEventLocation,
-                ));
-
-            if (normalizedLocalFields.length < fieldCount) {
-                for (let index = normalizedLocalFields.length; index < fieldCount; index += 1) {
-                    normalizedLocalFields.push({
-                        $id: createClientId(),
-                        name: `Field ${index + 1}`,
-                        location: eventFieldLocation,
-                        lat: 0,
-                        long: 0,
-                    } as Field);
-                }
-            }
-
-            return [...retainedFields, ...normalizedLocalFields];
-        }, { shouldDirty: false });
-    }, [eventData.location, fieldCount, previousEventFieldLocationRef, shouldManageLocalFields, setFields]);
-
-    // For non-organization events with existing facilities, seed the field list with event ordering.
-    useEffect(() => {
-        if (shouldManageLocalFields || isOrganizationManagedEvent || !activeEditingEvent?.fields?.length) {
-            return;
-        }
-        const sorted = sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields));
-        setFields(sorted, { shouldDirty: false });
-    }, [activeEditingEvent?.fields, isOrganizationManagedEvent, setFields, shouldManageLocalFields]);
-
-    useEffect(() => {
-        const availableFields = isOrganizationHostedEvent && supportsOrganizationFieldSelection
-            ? fields.filter((field) => isSelectableOrganizationResource(field, organizationHostedEventId))
-            : fields;
-        const availableFieldIds = toFieldIdList(availableFields);
-        const rentalSelectorFieldIds = rentalResourceOptions
-            .map((option) => normalizeResourceText(option.selectorId))
-            .filter(Boolean);
-        const pendingRentalSelectorFieldIds = rentalResourcesLoading || rentalResourceOptions.length === 0
-            ? selectedFieldIds.filter(isRentalBookingSelectorId)
-            : [];
-        const allowed = new Set([...availableFieldIds, ...rentalSelectorFieldIds, ...pendingRentalSelectorFieldIds]);
-        const normalizedSelected = Array.from(
-            new Set(
-                selectedFieldIds
-                    .map((fieldId) => String(fieldId))
-                    .filter((fieldId) => allowed.has(fieldId)),
-            ),
-        );
-        if (!stringArraysEqual(selectedFieldIds, normalizedSelected)) {
-            setValue('selectedFieldIds', normalizedSelected, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [fields, isOrganizationHostedEvent, organizationHostedEventId, rentalResourceOptions, rentalResourcesLoading, selectedFieldIds, setValue, supportsOrganizationFieldSelection]);
-
-    useEffect(() => {
-        const divisionKeys = normalizeDivisionKeys(eventData.divisions);
-        const availableFieldIds = toFieldIdList(fields);
-
-        const nextDivisionFieldIds = normalizeDivisionFieldIds(
-            divisionFieldIds,
-            divisionKeys,
-            availableFieldIds,
-        );
-
-        if (!divisionFieldIdsEqual(divisionFieldIds, nextDivisionFieldIds)) {
-            setValue('divisionFieldIds', nextDivisionFieldIds, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        divisionFieldIds,
-        eventData.divisions,
-        fields,
-        setValue,
-    ]);
-
     // Clear slot field references that point to fields no longer selected/available.
     useEffect(() => {
         const availableFieldIds = toFieldIdList(fields);
@@ -2478,20 +2196,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         handleUpdateSlot(index, updates);
     };
 
-    // Updates locally managed event fields without mutating reusable organization fields.
-    const handleLocalFieldNameChange = useCallback((fieldId: string, name: string) => {
-        if (!shouldManageLocalFields || hasRestrictedImmutableFields) {
-            return;
-        }
-        setFields(prev => {
-            return prev.map((field) => (
-                field.$id === fieldId && isEventLocalField(field)
-                    ? { ...field, name }
-                    : field
-            ));
-        });
-    }, [hasRestrictedImmutableFields, setFields, shouldManageLocalFields]);
-
     // Hydrate schedule state and slots when opening the modal for an existing event.
     useEffect(() => {
         if (isEditMode) {
@@ -2656,210 +2360,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setLeagueSlots,
     ]);
 
-    // Merge any newly loaded fields from the event into local state without losing existing edits.
-    useEffect(() => {
-        if (isEditMode) {
-            return;
-        }
-        if (hasRestrictedImmutableFields) {
-            return;
-        }
-        if (activeEditingEvent?.fields) {
-            setFields(prev => {
-                const map = new Map<string, Field>();
-                const incoming = sanitizeFieldsForForm(activeEditingEvent.fields as Field[]);
-                [...prev, ...incoming].forEach(field => {
-                    if (field?.$id) {
-                        map.set(field.$id, field);
-                    }
-                });
-                return Array.from(map.values());
-            }, { shouldDirty: false });
-        }
-    }, [activeEditingEvent?.fields, hasRestrictedImmutableFields, isEditMode, setFields]);
-
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
         updateLeagueSlots(prev => prev, { shouldDirty: false });
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
-    const rentalResourceFields = useMemo(
-        () => buildRentalResourceFields(rentalResourceOptions),
-        [rentalResourceOptions],
-    );
-    const rentalResourceSelectorFields = useMemo(
-        () => buildRentalResourceSelectorFields(rentalResourceOptions),
-        [rentalResourceOptions],
-    );
-    const rentalResourceOptionsBySelectorId = useMemo(() => (
-        buildRentalResourceOptionsBySelectorId(rentalResourceOptions)
-    ), [rentalResourceOptions]);
-    const rentalResourceOptionsByFieldId = useMemo(
-        () => buildRentalResourceOptionsByFieldId(rentalResourceOptions),
-        [rentalResourceOptions],
-    );
-    const selectedRentalResourceOptions = useMemo(() => (
-        resolveSelectedRentalResourceOptions({
-            selectedFieldIds,
-            optionsBySelectorId: rentalResourceOptionsBySelectorId,
-            optionsByFieldId: rentalResourceOptionsByFieldId,
-        })
-    ), [rentalResourceOptionsByFieldId, rentalResourceOptionsBySelectorId, selectedFieldIds]);
-    const selectedRentalFieldIds = useMemo(
-        () => buildSelectedRentalFieldIds(selectedRentalResourceOptions),
-        [selectedRentalResourceOptions],
-    );
-    const selectedRentedFieldIds = useMemo(
-        () => resolveSelectedRentedFieldIds({
-            organizationHostedEventId,
-            selectedFieldIds,
-            selectedRentalFieldIds,
-            fields,
-            activeEventFields: Array.isArray(activeEditingEvent?.fields) ? activeEditingEvent.fields : [],
-            immutableFields,
-            rentalResourceFields,
-        }),
-        [
-            activeEditingEvent?.fields,
-            fields,
-            immutableFields,
-            organizationHostedEventId,
-            rentalResourceFields,
-            selectedFieldIds,
-            selectedRentalFieldIds,
-        ],
-    );
-    const fieldById = useMemo(() => (
-        buildFieldById(fields)
-    ), [fields]);
-    const hasSelectedRentalResource = useMemo(() => (
-        selectedFieldIds.some((fieldId) => {
-            if (isRentalBookingSelectorId(fieldId)) {
-                return true;
-            }
-            const field = fieldById.get(normalizeResourceText(fieldId));
-            return field ? isRentedResourceForOrganization(field, organizationHostedEventId) : false;
-        })
-    ), [fieldById, organizationHostedEventId, selectedFieldIds]);
-    const selectedRentalLockedSlots = useMemo(() => (
-        selectedRentalResourceOptions
-            .map((option) => buildRentalBookingTimeSlot(option, slotDivisionKeys, eventData.timeZone))
-            .filter((slot): slot is TimeSlot => Boolean(slot))
-    ), [eventData.timeZone, selectedRentalResourceOptions, slotDivisionKeys]);
-    const selectedFields = useMemo(() => {
-        return fields;
-    }, [fields]);
-    const organizationResourcePool = useMemo(
-        () => buildOrganizationResourcePool({
-            organizationHostedEventId,
-            fields,
-            rentalResourceFields,
-            rentalResourceSelectorFields,
-            selectedFieldIds,
-        }),
-        [fields, organizationHostedEventId, rentalResourceFields, rentalResourceSelectorFields, selectedFieldIds],
-    );
-    const eventLocalFields = useMemo(
-        () => fields.filter(isEventLocalField),
-        [fields],
-    );
-    const leagueFieldOptions = useMemo(
-        () => buildRentalLeagueFieldOptions({ rentalResourceOptions, selectedFields }),
-        [rentalResourceOptions, selectedFields],
-    );
-
-    const eventOrganizationId = organizationHostedEventId;
-
-    const hasExternalRentalField = useMemo(() => {
-        const sourceFields = fields.length ? fields : (activeEditingEvent?.fields ?? []);
-        const referencedFieldIds = new Set<string>();
-        sourceFields.forEach((field) => {
-            if (typeof field?.$id === 'string' && field.$id.trim().length > 0) {
-                referencedFieldIds.add(field.$id.trim());
-            }
-        });
-        normalizeFieldIds(activeEditingEvent?.fieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
-        normalizeFieldIds(eventData.selectedFieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
-        immutableFields.forEach((field) => {
-            if (typeof field?.$id === 'string' && field.$id.trim().length > 0) {
-                referencedFieldIds.add(field.$id.trim());
-            }
-        });
-        (activeEditingEvent?.timeSlots ?? []).forEach((slot) => {
-            normalizeSlotFieldIds(slot).forEach((fieldId) => referencedFieldIds.add(fieldId));
-        });
-
-        return hasExternalRentalFieldForEvent({
-            eventOrganizationId,
-            sourceFields,
-            organizationFieldIds: [
-                ...normalizeFieldIds((resolvedOrganization?.fields ?? []).map((field) => field?.$id)),
-            ],
-            referencedFieldIds: Array.from(referencedFieldIds),
-            isEditMode,
-        });
-    }, [
-        activeEditingEvent?.fieldIds,
-        activeEditingEvent?.fields,
-        activeEditingEvent?.timeSlots,
-        eventData.selectedFieldIds,
-        eventOrganizationId,
-        fields,
-        immutableFields,
-        isEditMode,
-        resolvedOrganization?.fields,
-    ]);
-    const restrictLocalFieldCreationForRentalEvent = eventData.eventType === 'EVENT' && (
-        hasSelectedRentalResource
-        || hasImmutableTimeSlots
-        || Boolean(rentalPurchase?.fieldId)
-        || (activeEditingEvent?.timeSlots ?? []).some(isRentalLockedTimeSlot)
-    );
-    const showLocalFieldCreationControls = shouldManageLocalFields && !restrictLocalFieldCreationForRentalEvent;
-
-    useEffect(() => {
-        const fallbackFieldId = immutableFields[0]?.$id || (activeEditingEvent?.fields?.[0] as Field | undefined)?.$id;
-        const existingLockedSlots = hasExternalRentalField
-            ? (activeEditingEvent?.timeSlots ?? [])
-                .map((slot) => {
-                    if (!slot || slot.rentalLocked !== true) return null;
-                    const { event: _ignored, ...rest } = slot as any;
-                    const normalized: TimeSlot = {
-                        ...rest,
-                        sourceType: rest.sourceType ?? 'RENTAL_BOOKING',
-                        rentalLocked: true,
-                        scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                        scheduledFieldIds: normalizeSlotFieldIds({
-                            scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
-                            scheduledFieldIds: rest.scheduledFieldIds,
-                        }),
-                    };
-                    return normalized;
-                })
-                .filter((slot): slot is TimeSlot => Boolean(slot))
-            : [];
-        const mergedByKey = new Map<string, TimeSlot>();
-        [...existingLockedSlots, ...selectedRentalLockedSlots].forEach((slot) => {
-            const key = slot.rentalBookingItemId
-                || `${slot.rentalBookingId ?? ''}:${normalizeSlotFieldIds(slot).join(',')}:${slot.startDate ?? ''}:${slot.endDate ?? ''}`
-                || slot.$id;
-            mergedByKey.set(key, slot);
-        });
-        const nextSlots = Array.from(mergedByKey.values()).sort((left, right) => {
-            const startCompare = String(left.startDate ?? '').localeCompare(String(right.startDate ?? ''));
-            if (startCompare !== 0) return startCompare;
-            return normalizeSlotFieldIds(left).join('|').localeCompare(normalizeSlotFieldIds(right).join('|'));
-        });
-        setRentalLockedTimeSlots((previous) => (timeSlotsEqual(previous, nextSlots) ? previous : nextSlots));
-    }, [
-        activeEditingEvent?.fields,
-        activeEditingEvent?.timeSlots,
-        hasExternalRentalField,
-        immutableFields,
-        selectedRentalLockedSlots,
-    ]);
-
     useEffect(() => {
         if (!eventData.singleDivision || hasExternalRentalField) {
             return;
@@ -2869,16 +2375,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
     }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
-
-    const fieldsReferencedInSlots = useMemo(
-        () => resolveFieldsReferencedInSlots({
-            selectedFields,
-            immutableFields,
-            slots: leagueSlots,
-            hasRestrictedImmutableFields,
-        }),
-        [hasRestrictedImmutableFields, immutableFields, leagueSlots, selectedFields],
-    );
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
@@ -3207,14 +2703,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const isWeeklyChildEvent = eventData.eventType === 'WEEKLY_EVENT' && hasParentEventRef(eventData.parentEvent);
     const supportsEditableTeamSignup = !isAffiliateEvent && (eventData.eventType === 'EVENT' || eventData.eventType === 'WEEKLY_EVENT');
     const showsFixedTeamEventToggle = !isAffiliateEvent && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
-    const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = !isAffiliateEvent && (isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent);
-    const resourceSelectorLoading = fieldsLoading || rentalResourcesLoading;
-    const showOrganizationFieldsInEventDetails = shouldShowOrganizationFieldsInEventDetails({
-        isOrganizationHostedEvent,
-        hasRentalResourceOptions: rentalResourceOptions.length > 0,
-        supportsOrganizationFieldSelection,
-    });
     const localFieldCreationControl = showLocalFieldCreationControls ? (
         <NumberInput
             label="Count"

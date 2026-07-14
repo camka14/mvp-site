@@ -1,10 +1,13 @@
 import type { Field, Organization } from '@/types';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 
-import { getFieldOrganizationId } from '../externalRentalField';
+import {
+    getFieldOrganizationId,
+    hasExternalRentalFieldForEvent,
+} from '../externalRentalField';
 import { normalizeDivisionKeys } from './divisionForm';
 import { normalizeResourceText, stringSetsEqual } from './shared';
-import { normalizeSlotFieldIds } from './slotForm';
+import { normalizeFieldIds, normalizeSlotFieldIds } from './slotForm';
 
 export type FacilityResourceGroup = {
     key: string;
@@ -151,6 +154,56 @@ export const toFieldIdList = (fields: Field[]): string[] => {
 export const buildFieldById = (fields: Field[]): Map<string, Field> => (
     new Map(fields.map((field) => [normalizeResourceText(field.$id), field] as const))
 );
+
+export const resolveHasExternalRentalField = ({
+    activeEventFieldIds,
+    activeEventFields,
+    activeEventTimeSlots,
+    eventOrganizationId,
+    fields,
+    immutableFields,
+    isEditMode,
+    organizationFields,
+    selectedFieldIds,
+}: {
+    activeEventFieldIds?: string[] | null;
+    activeEventFields?: Field[] | null;
+    activeEventTimeSlots?: Array<{ scheduledFieldId?: string; scheduledFieldIds?: string[] }> | null;
+    eventOrganizationId?: string | null;
+    fields: Field[];
+    immutableFields: Field[];
+    isEditMode: boolean;
+    organizationFields?: Field[] | null;
+    selectedFieldIds?: string[] | null;
+}): boolean => {
+    const sourceFields = fields.length ? fields : (activeEventFields ?? []);
+    const referencedFieldIds = new Set<string>();
+    sourceFields.forEach((field) => {
+        const fieldId = normalizeResourceText(field?.$id);
+        if (fieldId) {
+            referencedFieldIds.add(fieldId);
+        }
+    });
+    normalizeFieldIds(activeEventFieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
+    normalizeFieldIds(selectedFieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
+    immutableFields.forEach((field) => {
+        const fieldId = normalizeResourceText(field?.$id);
+        if (fieldId) {
+            referencedFieldIds.add(fieldId);
+        }
+    });
+    (activeEventTimeSlots ?? []).forEach((slot) => {
+        normalizeSlotFieldIds(slot).forEach((fieldId) => referencedFieldIds.add(fieldId));
+    });
+
+    return hasExternalRentalFieldForEvent({
+        eventOrganizationId: normalizeResourceText(eventOrganizationId),
+        sourceFields,
+        organizationFieldIds: normalizeFieldIds((organizationFields ?? []).map((field) => field?.$id)),
+        referencedFieldIds: Array.from(referencedFieldIds),
+        isEditMode,
+    });
+};
 
 export const buildResolvedOrganizationFieldSignature = (fields?: Field[] | null): string => {
     if (!Array.isArray(fields)) {

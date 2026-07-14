@@ -338,3 +338,40 @@ export const mergeRentalLockedTimeSlots = (slots: TimeSlot[]): TimeSlot[] => {
         return normalizeSlotFieldIds(left).join('|').localeCompare(normalizeSlotFieldIds(right).join('|'));
     });
 };
+
+export const buildEventRentalLockedTimeSlots = ({
+    activeEventFields,
+    activeEventTimeSlots,
+    hasExternalRentalField,
+    immutableFields,
+    selectedRentalLockedSlots,
+}: {
+    activeEventFields?: Field[] | null;
+    activeEventTimeSlots?: TimeSlot[] | null;
+    hasExternalRentalField: boolean;
+    immutableFields: Field[];
+    selectedRentalLockedSlots: TimeSlot[];
+}): TimeSlot[] => {
+    const fallbackFieldId = immutableFields[0]?.$id || activeEventFields?.[0]?.$id;
+    const existingLockedSlots = hasExternalRentalField
+        ? (activeEventTimeSlots ?? [])
+            .map((slot) => {
+                if (!slot || slot.rentalLocked !== true) {
+                    return null;
+                }
+                const { event: _ignored, ...rest } = slot as TimeSlot & { event?: unknown };
+                return {
+                    ...rest,
+                    sourceType: rest.sourceType ?? 'RENTAL_BOOKING',
+                    rentalLocked: true,
+                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                    scheduledFieldIds: normalizeSlotFieldIds({
+                        scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                        scheduledFieldIds: rest.scheduledFieldIds,
+                    }),
+                } as TimeSlot;
+            })
+            .filter((slot): slot is TimeSlot => Boolean(slot))
+        : [];
+    return mergeRentalLockedTimeSlots([...existingLockedSlots, ...selectedRentalLockedSlots]);
+};
