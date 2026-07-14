@@ -56,6 +56,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 17:38Z) Milestone 5c: moved organization/rental hydration, RHF field adapters, local-field synchronization, selected/division resource normalization, options, and locked-rental derivation into `useEventResourceController`.
 - [x] (2026-07-14 18:20Z) Milestone 5d: moved RHF slot writes, add/update/remove, resource/division normalization, schedule-mode transitions, conflict request identity/cancellation, stale-response rejection, warning derivation, and auto-resolution into the 580-line `useEventSlotController`; five direct controller regressions and the combined 42-suite/336-test batch pass.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
+- [x] (2026-07-14 18:46Z) Milestone 6a: split the 843-line division controller into a 335-line RHF/domain facade, a 305-line transient draft hook, and a 435-line pure state transformer while preserving the exact return contract; three direct regressions plus 156 focused tests, TypeScript, targeted ESLint, and diff checks pass.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
 
 ## Surprises & Discoveries
