@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import type { EventStaffDraft, EventStaffSnapshot } from '@/lib/eventStaffService';
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -79,12 +78,6 @@ import {
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
 import { buildEventFormSchema } from './eventForm/schema';
-import {
-    dedupeValidationErrors,
-    flattenFormErrors,
-    flattenZodIssues,
-    type FlattenedFormError,
-} from './eventForm/validationErrors';
 import type {
     EventFormValues,
 } from './eventForm/formTypes';
@@ -98,7 +91,6 @@ import {
     getLockedEventTypeTagSlugs,
     syncEventTypeTagsForEventType,
 } from './eventForm/eventTypeTags';
-import { buildEventDraft } from './eventForm/buildEventDraft';
 import {
     buildLeagueScheduleError,
 } from './eventForm/scheduleMessages';
@@ -158,6 +150,7 @@ import {
 import { useEventPaymentController } from './eventForm/hooks/useEventPaymentController';
 import { useEventResourceController } from './eventForm/hooks/useEventResourceController';
 import { useEventSlotController } from './eventForm/hooks/useEventSlotController';
+import { useEventFormSubmissionController } from './eventForm/hooks/useEventFormSubmissionController';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -221,7 +214,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     onDraftStateChange,
 }, ref) => {
     const open = isOpen ?? true;
-    const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
@@ -1809,62 +1801,46 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const leagueError = buildLeagueScheduleError(errors.leagueSlots);
 
-    // Builds the event payload used for draft updates.
-    const buildDraftEvent = useCallback((formValues?: EventFormValues): Partial<Event> => (
-        buildEventDraft({
-            activeEditingEvent,
-            currentUser,
-            fieldCount,
-            fields,
-            fieldsReferencedInSlots,
-            hasImmutableTimeSlots,
-            hasRestrictedImmutableFields,
-            hasStripeAccount,
-            immutableFields,
-            immutableTimeSlots,
-            isEditMode,
-            isOrganizationHostedEvent,
-            isOrganizationManagedEvent,
-            joinAsParticipant,
-            organizationHostedEventId,
-            organizationOfficialsById,
-            previousEventFieldLocation: previousEventFieldLocationRef.current,
-            rentalLockedSlotsForDraft,
-            rentalPurchase,
-            resolvedOrganization,
-            selectedRentedFieldIds,
-            shouldManageLocalFields,
-            shouldProvisionFields,
-            source: formValues ?? eventData,
-            sportsById,
-        })
-    ), [
+    const { buildDraftEvent } = useEventFormSubmissionController({
         activeEditingEvent,
+        assignedActiveOfficialsForStaffing,
+        commitDirtyBaseline,
         currentUser,
+        errors,
         eventData,
+        eventValidationSchema,
         fieldCount,
         fields,
         fieldsReferencedInSlots,
+        formRef: ref,
+        getValues,
         hasImmutableTimeSlots,
         hasRestrictedImmutableFields,
-        pricingControlsEnabled,
+        hasStripeAccount,
         immutableFields,
         immutableTimeSlots,
+        isAffiliateEvent,
         isEditMode,
         isOrganizationHostedEvent,
         isOrganizationManagedEvent,
         joinAsParticipant,
+        officialStaffingCoverageError,
         organizationHostedEventId,
         organizationOfficialsById,
         previousEventFieldLocationRef,
+        registrationQuestionDrafts,
         rentalLockedSlotsForDraft,
         rentalPurchase,
+        requiredOfficialSlotsPerMatch,
         resolvedOrganization,
         selectedRentedFieldIds,
+        setEventData,
         shouldManageLocalFields,
         shouldProvisionFields,
         sportsById,
-    ]);
+        trigger,
+        validatePendingStaffAssignments,
+    });
     useEventFormLifecycleStabilization({
         buildDraftEvent,
         fieldsLoading,
@@ -1875,14 +1851,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reset,
         sportsLoading,
     });
-
-    const getDraftSnapshot = useCallback((): EventStaffDraft => ({
-        ...buildDraftEvent(getValues()),
-        pendingStaffInvites: isAffiliateEvent
-            ? []
-            : ((getValues('pendingStaffInvites') ?? []) as PendingStaffInvite[])
-                .map(normalizePendingStaffInvite),
-    }), [buildDraftEvent, getValues, isAffiliateEvent]);
     const applyAffiliateEventSimplifications = useCallback((checked: boolean) => {
         setValue('isAffiliateEvent', checked, { shouldDirty: true, shouldValidate: true });
         if (!checked) {
@@ -1912,111 +1880,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue('autoCreatePointMatchIncidents', false, { shouldDirty: true, shouldValidate: true });
         setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
     }, [setValue]);
-    const getRegistrationQuestionDrafts = useCallback((): RegistrationQuestionDraft[] => {
-        if (isAffiliateEvent) {
-            return [];
-        }
-
-        return registrationQuestionDrafts
-            .map((question, index) => ({
-                id: question.id,
-                prompt: String(question.prompt ?? '').trim(),
-                answerType: question.answerType ?? 'TEXT',
-                required: Boolean(question.required),
-                sortOrder: Number.isFinite(Number(question.sortOrder)) ? Number(question.sortOrder) : index,
-            }))
-            .filter((question) => question.prompt.length > 0);
-    }, [isAffiliateEvent, registrationQuestionDrafts]);
-
-    const validateDraft = useCallback(async () => {
-        const isFormValid = await trigger();
-        if (!isFormValid) {
-            const currentValues = getValues();
-            const schemaResult = eventValidationSchema.safeParse(currentValues);
-            const flattenedErrors = dedupeValidationErrors([
-                ...(schemaResult.success ? [] : flattenZodIssues(schemaResult.error.issues)),
-                ...flattenFormErrors(errors),
-            ]);
-            lastValidationErrorsRef.current = flattenedErrors;
-            console.warn('Event form validation failed.', {
-                errorCount: flattenedErrors.length,
-                errors: flattenedErrors,
-            });
-            return false;
-        }
-
-        if (!isAffiliateEvent && officialStaffingCoverageError) {
-            lastValidationErrorsRef.current = [
-                {
-                    path: 'officialSchedulingMode',
-                    message: officialStaffingCoverageError,
-                },
-            ];
-            console.warn('Event form submission blocked by official staffing requirements.', {
-                requiredOfficialSlotsPerMatch,
-                assignedActiveOfficialsForStaffing,
-                mode: eventData.officialSchedulingMode,
-            });
-            return false;
-        }
-
-        if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
-            lastValidationErrorsRef.current = [];
-            return true;
-        }
-
-        lastValidationErrorsRef.current = [];
-        return true;
-    }, [
-        assignedActiveOfficialsForStaffing,
-        eventData.eventType,
-        eventData.officialSchedulingMode,
-        eventData.parentEvent,
-        errors,
-        eventValidationSchema,
-        getValues,
-        isAffiliateEvent,
-        officialStaffingCoverageError,
-        requiredOfficialSlotsPerMatch,
-        trigger,
-    ]);
-
-    const validatePendingStaffAssignmentsForSubmit = useCallback(async () => {
-        if (isAffiliateEvent) {
-            return;
-        }
-        await validatePendingStaffAssignments();
-    }, [isAffiliateEvent, validatePendingStaffAssignments]);
-
-    const applyCanonicalStaffState = useCallback((snapshot: EventStaffSnapshot) => {
-        setEventData((prev) => ({
-            ...prev,
-            assistantHostIds: [...snapshot.assistantHostIds],
-            officialPositions: snapshot.officialPositions.map((position) => ({ ...position })),
-            eventOfficials: snapshot.eventOfficials.map((official) => ({
-                ...official,
-                positionIds: [...official.positionIds],
-                fieldIds: [...official.fieldIds],
-            })),
-            officialIds: [...snapshot.officialIds],
-            pendingStaffInvites: [],
-        }), { shouldDirty: false, shouldValidate: true });
-    }, [setEventData]);
-
-    useImperativeHandle(
-        ref,
-        () => ({
-            getDraft: getDraftSnapshot,
-            getRegistrationQuestionDrafts,
-            validate: validateDraft,
-            getValidationErrors: () => lastValidationErrorsRef.current,
-            validatePendingStaffAssignments: validatePendingStaffAssignmentsForSubmit,
-            commitDirtyBaseline,
-            applyCanonicalStaffState,
-        }),
-        [applyCanonicalStaffState, commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, validateDraft, validatePendingStaffAssignmentsForSubmit],
-    );
-
     // Syncs the selected event image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, _url: string) => {
         if (isImmutableField('imageId')) {
