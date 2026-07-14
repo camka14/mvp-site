@@ -16,7 +16,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
 - [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract.
-- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup.
+- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup. Completed: weekly-session parsing, generation, explicit occurrence resolution, and shared division-entry identity moved behind direct tests. Remaining: division/pool/payment-plan calculations and public-detail presentation helpers.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
@@ -39,6 +39,9 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: bracketed Next.js route paths should be passed to Jest through `--runTestsByPath`.
   Evidence: the earlier EventForm split established that treating `src/app/events/[id]/...` as a pattern can produce a false zero-test result.
+
+- Observation: weekly-session generation depended implicitly on the wall clock even though the rest of the calculation was deterministic.
+  Evidence: the inline helper called `new Date()` while deriving its anchor. The extracted `buildWeeklySessionOptions` accepts an optional reference date whose default preserves production behavior, allowing boundary tests without global fake timers.
 
 ## Decision Log
 
@@ -68,7 +71,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Implementation has not started under this plan. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. The first behavior-preserving extraction moved weekly-session calculations and division-entry identity into focused modules, reducing `EventDetailSheet.tsx` by 303 net lines while retaining its public behavior. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -188,7 +191,14 @@ Planning measurements on 2026-07-14:
 
 Current source contains about 80 `useState` calls, 14 effects, and 36 callbacks in the event-detail facade. EventForm contains about 42 effects, 49 memos, 41 callbacks, and 12 refs. These counts are diagnostic, not acceptance criteria; the goal is explicit ownership and tested behavior.
 
-Implementation transcripts and browser evidence will be appended here as milestones complete.
+First extraction evidence on 2026-07-14:
+
+    PASS 4 suites / 22 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 7,219 -> 6,916 lines
+
+The four new direct tests cover local date parsing, invalid/non-weekly slots, multi-day bounded occurrence generation with canonical division labels, and selected-occurrence validation outside the generated three-week window.
 
 ## Interfaces and Dependencies
 
@@ -199,3 +209,4 @@ Keep the existing `EventForm` export, props, `EventFormValues`, and `EventFormHa
 Use existing React, React Hook Form, Mantine, service modules, Jest, Testing Library, Playwright, and Next.js build tooling. Do not add a state-management or data-fetching dependency. Prefer direct imports and module-scope components. Split independent effects and memo computations by their real dependencies so unrelated state changes do not retrigger other workflows.
 
 Revision note (2026-07-14): Created the self-contained AUD-003 continuation after current-source mapping showed that the earlier EventForm helper/view extraction was complete but orchestration remained concentrated, while EventDetailSheet still combined loading, registration, payment, signing, authentication, and rendering.
+Revision note (2026-07-14): Recorded the first partial pure-calculation milestone after extracting weekly-session generation and selection with 22 passing focused tests, TypeScript, targeted lint, and a 303-line net reduction in the facade.
