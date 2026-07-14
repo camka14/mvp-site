@@ -24,7 +24,8 @@ import {
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/requestParsing';
 import {
   cleanDivisionDisplayName,
   deriveDivisionTypeDisplayName,

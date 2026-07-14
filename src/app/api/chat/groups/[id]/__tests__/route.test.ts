@@ -116,6 +116,25 @@ describe('/api/chat/groups/[id]', () => {
     });
   });
 
+  it('rejects obsolete dollar-prefixed patch fields before reading or writing the group', async () => {
+    const response = await PATCH(patchRequest({
+      group: {
+        name: 'Canonical group',
+        metadata: { $updatedAt: '2026-07-14T12:00:00.000Z' },
+      },
+    }), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Dollar-prefixed fields are not supported.',
+      fields: ['metadata.$updatedAt'],
+    });
+    expect(chatGroupFindUniqueMock).not.toHaveBeenCalled();
+    expect(chatGroupUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects adding a minor participant to a non-team chat', async () => {
     chatGroupFindUniqueMock.mockResolvedValue(existingGroup());
     userDataFindManyMock.mockResolvedValue([

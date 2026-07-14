@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { withLegacyList } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/requestParsing';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';

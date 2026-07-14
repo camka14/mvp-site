@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOptionalSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/requestParsing';
 import { getVisibleEventIds } from '@/server/eventVisibility';
 import { canManageScheduledFields } from '@/server/timeSlotAccess';
 

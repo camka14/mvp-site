@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { findDollarPrefixedFields } from '@/server/requestParsing';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { handleRouteError } from '@/server/http/routeErrors';
 import { archiveChatGroup } from '@/server/moderation';
@@ -20,12 +21,9 @@ const CHAT_GROUP_MUTABLE_FIELDS = new Set<string>([
 ]);
 const CHAT_GROUP_IMMUTABLE_FIELDS = new Set<string>([
   'id',
-  '$id',
   'hostId',
   'createdAt',
-  '$createdAt',
   'updatedAt',
-  '$updatedAt',
   'directUserIdA',
   'directUserIdB',
 ]);
@@ -99,6 +97,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ('error' in parsed) {
       return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
     }
+    const obsoleteFields = findDollarPrefixedFields(parsed.payload);
+    if (obsoleteFields.length) {
+      return NextResponse.json(
+        { error: 'Dollar-prefixed fields are not supported.', fields: obsoleteFields },
+        { status: 400 },
+      );
+    }
 
     const { id } = await params;
     const existing = await prisma.chatGroup.findUnique({ where: { id } });
@@ -116,7 +121,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const rawPayload = parsed.payload as Record<string, any>;
-    const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
+    const payload = { ...rawPayload };
 
     const unknownPayloadKeys = findUnknownKeys(payload, [
       ...CHAT_GROUP_MUTABLE_FIELDS,

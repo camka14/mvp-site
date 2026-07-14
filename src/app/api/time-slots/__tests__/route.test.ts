@@ -548,7 +548,7 @@ describe('time-slots routes', () => {
     expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
   });
 
-  it('PATCH strips legacy and immutable fields before prisma update', async () => {
+  it('PATCH rejects obsolete dollar-prefixed fields before prisma update', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: true });
     prismaMock.timeSlots.update.mockResolvedValueOnce({
       id: 'slot_patch_guard',
@@ -583,14 +583,12 @@ describe('time-slots routes', () => {
       { params: Promise.resolve({ id: 'slot_patch_guard' }) },
     );
 
-    expect(res.status).toBe(200);
-    const updateCallArg = prismaMock.timeSlots.update.mock.calls.at(-1)?.[0] as {
-      data: Record<string, unknown>;
-    };
-    expect(updateCallArg.data).not.toHaveProperty('$id');
-    expect(updateCallArg.data).not.toHaveProperty('id');
-    expect(updateCallArg.data).not.toHaveProperty('createdAt');
-    expect(updateCallArg.data).toHaveProperty('updatedAt');
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Dollar-prefixed fields are not supported.',
+      fields: ['$id'],
+    });
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
   });
 
   it('DELETE hard deletes an unreferenced slot and removes it from field rentalSlotIds', async () => {

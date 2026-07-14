@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { findDollarPrefixedFields } from '@/server/requestParsing';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
@@ -35,11 +36,8 @@ const TIME_SLOT_MUTABLE_FIELDS = new Set<string>([
 ]);
 const TIME_SLOT_IMMUTABLE_FIELDS = new Set<string>([
   'id',
-  '$id',
   'createdAt',
-  '$createdAt',
   'updatedAt',
-  '$updatedAt',
 ]);
 
 const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: number[] | null }): number[] => {
@@ -192,6 +190,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('error' in parsed) {
     return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
+  const obsoleteFields = findDollarPrefixedFields(parsed.payload);
+  if (obsoleteFields.length) {
+    return NextResponse.json(
+      { error: 'Dollar-prefixed fields are not supported.', fields: obsoleteFields },
+      { status: 400 },
+    );
+  }
 
   const { id } = await params;
   const existingSlot = await prisma.timeSlots.findUnique({
@@ -213,7 +218,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const payload = stripLegacyFieldsDeep(parsed.payload) as Record<string, unknown>;
+  const payload = { ...(parsed.payload as Record<string, unknown>) };
   const unknownPayloadKeys = findUnknownKeys(payload, [
     ...TIME_SLOT_MUTABLE_FIELDS,
     ...TIME_SLOT_IMMUTABLE_FIELDS,

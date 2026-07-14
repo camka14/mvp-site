@@ -189,9 +189,9 @@ describe('event PATCH route', () => {
       patchRequest('http://localhost/api/events/event_1', {
         event: {
           playerIds: ['user_1'],
-          players: [{ $id: 'user_2' }],
+          players: [{ id: 'user_2' }],
           organization: 'org_1',
-          sport: { $id: 'sport_1', name: 'Volleyball' },
+          sport: { id: 'sport_1', name: 'Volleyball' },
           state: 'PUBLISHED',
         },
       }),
@@ -208,6 +208,28 @@ describe('event PATCH route', () => {
       'sport',
     ]));
     expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects obsolete dollar-prefixed fields before opening a transaction', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: true });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          name: 'Canonical event',
+          fields: [{ id: 'field_1', $updatedAt: '2026-07-14T12:00:00.000Z' }],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Dollar-prefixed fields are not supported.',
+      fields: ['fields[0].$updatedAt'],
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(eventsMock.update).not.toHaveBeenCalled();
   });
 
   it('syncs userIds into event registrations when provided for compatibility', async () => {
@@ -428,7 +450,7 @@ describe('event PATCH route', () => {
           timeZone: 'America/Los_Angeles',
           timeSlots: [
             {
-              $id: 'slot_tz',
+              id: 'slot_tz',
               daysOfWeek: [1],
               scheduledFieldId: 'field_1',
               startTimeMinutes: 540,
@@ -1096,7 +1118,7 @@ describe('event PATCH route', () => {
           divisions: ['beginner', 'advanced'],
           timeSlots: [
             {
-              $id: 'slot_1',
+              id: 'slot_1',
               dayOfWeek: 1,
               daysOfWeek: [1],
               scheduledFieldId: 'field_1',
@@ -1155,12 +1177,12 @@ describe('event PATCH route', () => {
       patchRequest('http://localhost/api/events/event_1', {
         event: {
           fields: [
-            { id: 'field_keep', $id: 'field_keep', name: 'Field Keep' },
-            { id: 'field_new', $id: 'field_new', name: 'Field New' },
+            { id: 'field_keep', name: 'Field Keep' },
+            { id: 'field_new', name: 'Field New' },
           ],
           timeSlots: [
             {
-              $id: 'slot_multi',
+              id: 'slot_multi',
               daysOfWeek: [1, 3],
               startTimeMinutes: 540,
               endTimeMinutes: 600,
@@ -1264,7 +1286,7 @@ describe('event PATCH route', () => {
         event: {
           timeSlots: [
             {
-              $id: 'slot_rental',
+              id: 'slot_rental',
               repeating: false,
               startDate: rentalStart.toISOString(),
               endDate: rentalEnd.toISOString(),
@@ -1344,7 +1366,7 @@ describe('event PATCH route', () => {
         event: {
           fieldIds: ['field_owned'],
           fields: [
-            { id: 'field_owned', $id: 'field_owned', name: 'Facility Court', organizationId: null },
+            { id: 'field_owned', name: 'Facility Court', organizationId: null },
           ],
         },
       }),
@@ -1401,7 +1423,7 @@ describe('event PATCH route', () => {
           eventType: 'LEAGUE',
           timeSlots: [
             {
-              $id: 'slot_1',
+              id: 'slot_1',
               dayOfWeek: 5,
               daysOfWeek: [5],
               scheduledFieldIds: ['field_1', 'field_2'],

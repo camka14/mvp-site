@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { parseDateInput } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/requestParsing';
 import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
 import { getVisibleEventIds } from '@/server/eventVisibility';
 

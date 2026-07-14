@@ -19,7 +19,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases.
 - [x] (2026-07-14 12:05Z) Added the first canonical-only compatibility-floor fixture for event, team, match, and user payloads. The same two tests passed from the exact `v1.6.13` tag (`50045cc3`) and were checked in at current mobile commit `245f6a0a`; organization, field, chat, billing, Wear OS, and watchOS coverage is still required before response aliases can be removed.
 - [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
-- [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them.
+- [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them. (Completed 2026-07-14 13:55Z: moved all production `parseDateInput` imports to `src/server/requestParsing.ts`; event, chat-group, and time-slot PATCH handlers now reject nested dollar-prefixed fields before database work; 51 focused tests pass. Remaining: delete the obsolete helper body and test-only mocks, and remove the ten proven-unused client route aliases.)
 - [ ] Replace every API response wrapper with the canonical response shape, remove the open-ended-event rewrite, and delete `src/server/legacyFormat.ts`.
 - [ ] Remove legacy DTO fallbacks from the current Android/iOS/Wear/watchOS clients after server and v1.6.13 fixture coverage proves canonical decoding.
 - [ ] Run focused and broad automated checks, then browser and emulator/watch contract smoke tests from exact commits.
@@ -45,6 +45,12 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - Observation: canonical-only core resource payloads are executable at the exact v1.6.13 compatibility floor even when every Appwrite dollar-prefixed alias is omitted.
   Evidence: `CanonicalOnlyContractFloorTest` passed two tests from detached tag commit `50045cc3`, decoding canonical event, team, match, and user IDs plus canonical timestamps. Its event fixture uses `end: null` with `noFixedEndDateTime: true`; the v1.6.13 wire DTO accepts the null before its non-null domain model applies the established open-ended fallback.
 
+- Observation: the oldest-supported mobile client already calls the canonical billing paths, while none of the ten client-facing alias spellings appear in that tag or the current mobile source.
+  Evidence: exact-tag source and HTTP assertions use `/api/billing/create_billing_intent` and `/api/billing/purchase-intent`; `git grep` found no use of `billing_intent`, `billing-intent`, `purchase_intent`, `create_purchase_intent`, or the six user invite/lookup aliases. `src/app/api/boldsign/webhook/route.ts` is different: it is an external provider callback and therefore is not classified as a client-version alias.
+
+- Observation: request objects decoded by Next.js during Jest route tests can originate in a different JavaScript realm.
+  Evidence: a prototype-identity plain-object check missed those objects and allowed obsolete keys through. `Object.prototype.toString.call(value) === '[object Object]'` recognizes JSON objects across realms; after the correction all four request-contract suites passed 51 tests.
+
 ## Decision Log
 
 - Decision: Treat the checked-in mobile tag `v1.6.13` as the compatibility floor and prove its actual route and field behavior from source and executable JSON fixtures.
@@ -61,6 +67,14 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 - Decision: Keep internal web view-model adaptation separate from the HTTP contract during the migration.
   Rationale: some web types still use `$id` internally. API mappers may temporarily derive an internal UI alias from canonical `id`, but HTTP routes must stop emitting dollar-prefixed fields. That boundary permits a staged UI cleanup without retaining an externally competing response shape.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: Reject obsolete dollar-prefixed request keys with HTTP 400 and report their nested paths before authorization queries or transactions begin.
+  Rationale: silently stripping obsolete fields made invalid clients appear successful and let administrators bypass immutable-field diagnostics. Early rejection gives a deterministic contract and proves no write occurred.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: Remove the ten unused client alias routes but retain `/api/boldsign/webhook` as a documented external-provider alias.
+  Rationale: exact v1.6.13 and current-client searches prove the canonical billing paths and no user-alias calls. BoldSign configuration is external to the client release floor, so deleting that callback without deployment evidence could drop document events.
   Date/Author: 2026-07-14 / Codex
 
 ## Outcomes & Retrospective
@@ -220,3 +234,5 @@ Revision note (2026-07-14 09:31Z): created this self-contained plan after tracin
 Revision note (2026-07-14 09:39Z): recorded completion of the generated-team-delegate slice and the profile schedule mock repair discovered during focused validation. The next milestone remains oldest-supported-client contract proof before changing HTTP response fields.
 
 Revision note (2026-07-14 12:05Z): recorded the first exact-v1.6.13 canonical-only fixture checkpoint. It proves four core resource families but deliberately leaves the milestone open until every required mobile, Wear OS, and watchOS family has executable coverage.
+
+Revision note (2026-07-14 13:55Z): recorded the first request-contract checkpoint. Generic date parsing now lives outside the legacy response module, the three handlers that formerly stripped obsolete fields reject them before database work, exact-tag route evidence classifies ten removable client aliases, and cross-realm JSON handling is covered by focused tests.

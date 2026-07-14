@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { parseDateInput } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/requestParsing';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 

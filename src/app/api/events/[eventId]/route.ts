@@ -23,7 +23,8 @@ import {
   EVENT_STAFF_REVISION_CONFLICT_CODE,
   loadEventStaffSnapshot,
 } from '@/server/events/eventStaffReconciliation';
-import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
+import { findDollarPrefixedFields, parseDateInput } from '@/server/requestParsing';
 import { parseDateInputInTimeZone, resolveTimeZone } from '@/server/timeZones';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext, type LeagueDivisionConfig } from '@/server/scheduler/types';
@@ -177,11 +178,8 @@ const EVENT_PATCH_ALLOWED_FIELDS = new Set<string>([
 ]);
 const EVENT_PATCH_HARD_IMMUTABLE_FIELDS = new Set<string>([
   'id',
-  '$id',
   'createdAt',
-  '$createdAt',
   'updatedAt',
-  '$updatedAt',
 ]);
 const EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'organizationId',
@@ -1815,6 +1813,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
   if ('error' in parsed) {
     return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
+  const obsoleteFields = findDollarPrefixedFields(parsed.payload);
+  if (obsoleteFields.length) {
+    return NextResponse.json(
+      { error: 'Dollar-prefixed fields are not supported.', fields: obsoleteFields },
+      { status: 400 },
+    );
+  }
   const rescheduleValue = parsed.topLevel.reschedule;
   if (rescheduleValue !== undefined && typeof rescheduleValue !== 'boolean') {
     return NextResponse.json({ error: 'Invalid input: "reschedule" must be a boolean.' }, { status: 400 });
@@ -1881,7 +1886,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           { status: 403 },
         );
       }
-      const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
+      const payload = { ...rawPayload };
       const unknownPayloadKeys = findUnknownKeys(payload, [
         ...EVENT_PATCH_ALLOWED_FIELDS,
         ...EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS,
