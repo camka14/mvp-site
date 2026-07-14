@@ -118,6 +118,12 @@ import {
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
 import { submitManualPaymentProof } from './eventDetail/manualPaymentProof';
+import {
+    createEventRegistrationBill,
+    getJoinIntentRegistrationType,
+    loadRequiredEventSignLinks,
+    type JoinIntent,
+} from './eventDetail/eventRegistrationCommands';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -127,7 +133,6 @@ import UserCard from '@/components/ui/UserCard';
 import TeamRegistrationFlow from '@/components/ui/TeamRegistrationFlow';
 import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
 import {
-    type RegistrationAttemptType,
     trackEventOutboundClicked,
     trackEventRegistrationStarted,
 } from '@/lib/analytics/eventAnalytics';
@@ -158,60 +163,9 @@ const WEEKLY_SESSION_LIST_MAX_HEIGHT_PX = (
     WEEKLY_SESSION_VISIBLE_ROWS * WEEKLY_SESSION_CARD_HEIGHT_PX
 ) + ((WEEKLY_SESSION_VISIBLE_ROWS - 1) * WEEKLY_SESSION_CARD_GAP_PX);
 
-type JoinIntent = {
-    mode: 'user' | 'team' | 'child' | 'child_free_agent' | 'user_waitlist' | 'team_waitlist' | 'child_waitlist';
-    team?: Team | null;
-    childId?: string;
-    childEmail?: string | null;
-    answers?: RegistrationQuestionAnswerInput[];
-};
-
 type PaymentPlanPreviewState = {
     intent: JoinIntent;
     ownerLabel: string;
-};
-
-const isChildJoinIntent = (intent: JoinIntent): boolean => (
-    intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
-);
-
-const getJoinIntentRegistrationType = (intent: JoinIntent): RegistrationAttemptType => {
-    switch (intent.mode) {
-        case 'team':
-            return 'team';
-        case 'child':
-            return 'child';
-        case 'user_waitlist':
-        case 'child_waitlist':
-            return 'waitlist';
-        case 'team_waitlist':
-            return 'team_waitlist';
-        case 'child_free_agent':
-            return 'free_agent';
-        case 'user':
-        default:
-            return 'self';
-    }
-};
-
-const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant' | 'parent_guardian' | 'child'): SignStep[] => {
-    const seen = new Set<string>();
-    return steps.filter((step) => {
-        const key = `${step.signerContext ?? fallbackSignerContext}:${step.templateId}:${step.documentId ?? ''}:${step.type}`;
-        if (seen.has(key)) {
-            return false;
-        }
-        seen.add(key);
-        return true;
-    });
-};
-
-const normalizeEmailValue = (value?: string | null): string | null => {
-    if (typeof value !== 'string') {
-        return null;
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized.length > 0 ? normalized : null;
 };
 
 type DivisionSelectionPayload = {
@@ -1089,57 +1043,14 @@ export default function EventDetailSheet({
     }, [clearEventRegistrationProgress, publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
 
     const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
-        if (!currentEvent) {
-            throw new Error('Event is not loaded.');
-        }
-
-        const priceCents = normalizePriceCents(selectedDivisionBilling.priceCents);
-        if (priceCents <= 0) {
-            throw new Error('This event does not have a price set for a payment plan.');
-        }
-
-        const installmentAmounts = selectedDivisionBilling.allowPaymentPlans
-            ? normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts)
-            : [];
-        const installmentDueDates = selectedDivisionBilling.allowPaymentPlans
-            ? normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates)
-            : [];
-        const installmentDueRelativeDays = selectedDivisionBilling.allowPaymentPlans
-            ? normalizeInstallmentDueRelativeDayValues(selectedDivisionBilling.installmentDueRelativeDays)
-            : [];
-        const useRelativeDueDates = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
-        if (useRelativeDueDates) {
-            if (!selectedWeeklyOccurrence?.slotId || !selectedWeeklyOccurrence?.occurrenceDate) {
-                throw new Error('Select a weekly session before starting a payment plan.');
-            }
-            if (installmentDueRelativeDays.length !== installmentAmounts.length) {
-                throw new Error('Weekly payment plans need a due date offset for each installment.');
-            }
-        }
-
-        return billService.createBill({
+        return createEventRegistrationBill({
             ownerType,
             ownerId,
-            totalAmountCents: priceCents,
-            eventId: currentEvent.$id,
-            slotId: useRelativeDueDates ? selectedWeeklyOccurrence?.slotId ?? null : null,
-            occurrenceDate: useRelativeDueDates ? selectedWeeklyOccurrence?.occurrenceDate ?? null : null,
-            organizationId: currentEvent.organizationId ?? null,
-            installmentAmounts,
-            installmentDueDates: useRelativeDueDates ? [] : installmentDueDates,
-            installmentDueRelativeDays: useRelativeDueDates ? installmentDueRelativeDays : [],
-            allowSplit: ownerType === 'TEAM' ? Boolean(currentEvent.allowTeamSplitDefault) : false,
-            paymentPlanEnabled: true,
-            timeoutMs: JOIN_API_TIMEOUT_MS,
-            event: {
-                $id: currentEvent.$id,
-                start: currentEvent.start,
-                price: priceCents,
-                installmentAmounts,
-                installmentDueDates: useRelativeDueDates ? [] : installmentDueDates,
-                installmentDueRelativeDays: useRelativeDueDates ? installmentDueRelativeDays : [],
-            },
+            event: currentEvent,
+            billing: selectedDivisionBilling,
+            occurrence: selectedWeeklyOccurrence,
             user,
+            timeoutMs: JOIN_API_TIMEOUT_MS,
         });
     }, [currentEvent, selectedDivisionBilling, selectedWeeklyOccurrence, user]);
 
@@ -1201,46 +1112,13 @@ export default function EventDetailSheet({
     }, [currentEvent, loadEventDetails, navigateToPublicEventCompletion, selectedWeeklyOccurrence]);
 
     const loadRequiredSignLinksForIntent = useCallback(async (intent: JoinIntent): Promise<SignStep[]> => {
-        if (!currentEvent || !user || !authUser?.email) {
-            throw new Error('Sign-in email is required to sign documents.');
-        }
-
-        const signerContext: 'participant' | 'parent_guardian' = isChildJoinIntent(intent)
-            ? 'parent_guardian'
-            : 'participant';
-
-        const parentLinks = await boldsignService.createSignLinks({
-            eventId: currentEvent.$id,
+        return loadRequiredEventSignLinks({
+            intent,
+            event: currentEvent,
             user,
-            userEmail: authUser.email,
-            signerContext,
-            childUserId: intent.childId,
-            childEmail: intent.childEmail ?? undefined,
+            userEmail: authUser?.email,
             timeoutMs: JOIN_API_TIMEOUT_MS,
         });
-
-        const shouldCollectChildSignatureInSameSession = isChildJoinIntent(intent) && Boolean(
-            intent.childId
-            && normalizeEmailValue(authUser.email)
-            && normalizeEmailValue(intent.childEmail ?? null)
-            && normalizeEmailValue(authUser.email) === normalizeEmailValue(intent.childEmail ?? null),
-        );
-
-        if (!shouldCollectChildSignatureInSameSession || !intent.childId) {
-            return dedupeSignSteps(parentLinks, signerContext);
-        }
-
-        const childLinks = await boldsignService.createSignLinks({
-            eventId: currentEvent.$id,
-            user,
-            userEmail: authUser.email,
-            signerContext: 'child',
-            childUserId: intent.childId,
-            childEmail: intent.childEmail ?? undefined,
-            timeoutMs: JOIN_API_TIMEOUT_MS,
-        });
-
-        return dedupeSignSteps([...parentLinks, ...childLinks], signerContext);
     }, [authUser?.email, currentEvent, user]);
 
     const beginSigningFlow = useCallback(async (intent: JoinIntent) => {
