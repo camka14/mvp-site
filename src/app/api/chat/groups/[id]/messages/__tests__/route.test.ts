@@ -64,7 +64,10 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(messagesFindManyMock).toHaveBeenCalledWith({
       where: { chatId: 'chat_1', removedAt: null },
-      orderBy: { sentTime: 'desc' },
+      orderBy: [
+        { sentTime: 'desc' },
+        { id: 'desc' },
+      ],
       skip: 20,
       take: 20,
     });
@@ -134,7 +137,10 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     expect(response.status).toBe(200);
     expect(messagesFindManyMock).toHaveBeenCalledWith({
       where: { chatId: 'chat_1', removedAt: null },
-      orderBy: { sentTime: 'asc' },
+      orderBy: [
+        { sentTime: 'asc' },
+        { id: 'asc' },
+      ],
       skip: 0,
       take: 1,
     });
@@ -177,7 +183,10 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(messagesFindManyMock).toHaveBeenCalledWith({
       where: { chatId: 'chat_1' },
-      orderBy: { sentTime: 'asc' },
+      orderBy: [
+        { sentTime: 'asc' },
+        { id: 'asc' },
+      ],
       skip: 0,
       take: 10,
     });

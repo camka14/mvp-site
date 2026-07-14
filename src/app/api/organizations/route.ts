@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
@@ -511,7 +512,7 @@ export async function POST(req: NextRequest) {
   await ensureDefaultOrganizationRoles(prisma, organization.id);
   await sendAdminOrganizationCreatedNotification({
     organization,
-    baseUrl: req.nextUrl.origin,
+    baseUrl: getRequestOrigin(req),
   }).catch((error) => {
     console.warn('Failed to send admin organization creation notification', {
       organizationId: organization.id,

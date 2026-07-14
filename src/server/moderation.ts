@@ -131,6 +131,8 @@ export const archiveChatGroup = async (
       archivedReason: options.reason,
       archivedByUserId: options.actorUserId,
       updatedAt: now,
+      directUserIdA: null,
+      directUserIdB: null,
       ...(options.userIds ? { userIds: options.userIds } : {}),
       ...(options.hostId ? { hostId: options.hostId } : {}),
     },
@@ -166,6 +168,8 @@ export const removeUserFromChatGroup = async (
       userIds: nextUserIds,
       hostId: nextHostId,
       updatedAt: new Date(),
+      directUserIdA: null,
+      directUserIdB: null,
     },
   });
 };

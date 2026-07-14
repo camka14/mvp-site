@@ -494,6 +494,84 @@ describe('GET /api/billing/bills', () => {
     ]);
   });
 
+  it('returns a deterministic offset page with explicit continuation metadata', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'manager_1', isAdmin: false });
+    prismaMock.bills.findMany.mockResolvedValueOnce([
+      {
+        id: 'bill_older_2',
+        ownerType: 'USER',
+        ownerId: 'manager_1',
+        totalAmountCents: 5000,
+        paidAmountCents: 0,
+        status: 'OPEN',
+      },
+      {
+        id: 'bill_older_1',
+        ownerType: 'USER',
+        ownerId: 'manager_1',
+        totalAmountCents: 4000,
+        paidAmountCents: 0,
+        status: 'OPEN',
+      },
+      {
+        id: 'bill_oldest',
+        ownerType: 'USER',
+        ownerId: 'manager_1',
+        totalAmountCents: 3000,
+        paidAmountCents: 0,
+        status: 'OPEN',
+      },
+    ]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/billing/bills?ownerType=USER&ownerId=manager_1&limit=2&offset=2'),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.bills.findMany).toHaveBeenCalledWith({
+      where: { ownerType: 'USER', ownerId: 'manager_1' },
+      take: 3,
+      skip: 2,
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    });
+    expect(payload.bills.map((bill: { id: string }) => bill.id)).toEqual([
+      'bill_older_2',
+      'bill_older_1',
+    ]);
+    expect(payload.pagination).toEqual({
+      limit: 2,
+      offset: 2,
+      nextOffset: 4,
+      hasMore: true,
+    });
+    expect(prismaMock.billPayments.findMany).toHaveBeenCalledWith({
+      where: { billId: { in: ['bill_older_2', 'bill_older_1'] } },
+      select: { billId: true, paymentIntentId: true },
+    });
+  });
+
+  it.each(['-1', '1.5', '1000001', 'not-a-number'])(
+    'rejects an unsafe pagination offset of %s before querying bills',
+    async (offset) => {
+      requireSessionMock.mockResolvedValueOnce({ userId: 'manager_1', isAdmin: false });
+
+      const response = await GET(
+        new NextRequest(
+          `http://localhost/api/billing/bills?ownerType=USER&ownerId=manager_1&offset=${offset}`,
+        ),
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(payload.error).toBe('offset must be an integer between 0 and 1000000');
+      expect(prismaMock.bills.findMany).not.toHaveBeenCalled();
+    },
+  );
+
   it('includes parent-team bills when listing bills for an event team', async () => {
     prismaMock.teams.findUnique
       .mockResolvedValueOnce({

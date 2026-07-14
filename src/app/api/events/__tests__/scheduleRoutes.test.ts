@@ -153,9 +153,17 @@ import { POST as matchIncidentPost } from '@/app/api/events/[eventId]/matches/[m
 import { POST as matchScorePost } from '@/app/api/events/[eventId]/matches/[matchId]/score/route';
 import { GET as matchesGet, PATCH as matchesPatch } from '@/app/api/events/[eventId]/matches/route';
 
-const jsonRequest = (url: string, body: any) => new NextRequest(url, {
+const ORIGIN_ENV_KEYS = ['PUBLIC_WEB_BASE_URL', 'NEXT_PUBLIC_SITE_URL', 'NEXT_PUBLIC_WEB_BASE_URL'] as const;
+
+const clearOriginEnv = () => {
+  for (const key of ORIGIN_ENV_KEYS) {
+    delete process.env[key];
+  }
+};
+
+const jsonRequest = (url: string, body: any, headers: Record<string, string> = {}) => new NextRequest(url, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', ...headers },
   body: JSON.stringify(body),
 });
 
@@ -280,7 +288,11 @@ const buildOfficialMobileSetConfirmation = () => {
 };
 
 describe('schedule routes', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
+    process.env = { ...originalEnv };
+    clearOriginEnv();
     jest.clearAllMocks();
     applyPersistentAutoLockMock.mockReturnValue(false);
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
@@ -342,6 +354,10 @@ describe('schedule routes', () => {
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
     refreshBroadcastPresentationForEventMock.mockResolvedValue(undefined);
     assertCanViewEventScheduleMock.mockResolvedValue(undefined);
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
   });
 
   it('returns hydrated match lists with incidents', async () => {
@@ -520,7 +536,8 @@ describe('schedule routes', () => {
     );
   });
 
-  it('sends an admin notification when schedule creates a new event document', async () => {
+  it('uses the canonical origin when notifying about a schedule-created event', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com';
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce(null)
@@ -541,13 +558,21 @@ describe('schedule routes', () => {
     serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
     serializeMatchesLegacyMock.mockReturnValue([]);
 
-    const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
-      eventDocument: {
-        id: 'event_1',
-        name: 'New Scheduled Event',
-        eventType: 'EVENT',
+    const res = await schedulePost(jsonRequest(
+      'https://internal.service.local/api/events/schedule',
+      {
+        eventDocument: {
+          id: 'event_1',
+          name: 'New Scheduled Event',
+          eventType: 'EVENT',
+        },
       },
-    }));
+      {
+        host: 'poisoned-host.example.com',
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'attacker.example.com',
+      },
+    ));
 
     expect(res.status).toBe(200);
     expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
@@ -556,8 +581,10 @@ describe('schedule routes', () => {
         name: 'New Scheduled Event',
         hostId: 'host_1',
       }),
-      baseUrl: 'http://localhost',
+      baseUrl: 'https://bracket-iq.com',
     });
+    expect(JSON.stringify(sendAdminEventCreatedNotificationMock.mock.calls)).not.toContain('attacker.example.com');
+    expect(JSON.stringify(sendAdminEventCreatedNotificationMock.mock.calls)).not.toContain('poisoned-host.example.com');
   });
 
   it('schedules an existing event id using the provided event document payload', async () => {

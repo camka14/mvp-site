@@ -49,6 +49,8 @@ describe('moderation helpers', () => {
         hostId: 'user_2',
         archivedReason: 'BLOCK_USER_SHARED_CHAT_EXIT',
         archivedByUserId: 'admin_1',
+        directUserIdA: null,
+        directUserIdB: null,
       }),
     }));
   });
@@ -71,6 +73,8 @@ describe('moderation helpers', () => {
       data: expect.objectContaining({
         userIds: ['user_2', 'user_3'],
         hostId: 'user_2',
+        directUserIdA: null,
+        directUserIdB: null,
       }),
     }));
     expect(update.mock.calls[0][0].data.archivedAt).toBeUndefined();

@@ -24,8 +24,10 @@ const main = async () => {
     lockAcquired: result.lockAcquired,
     dryRun: result.dryRun,
     dueSourceCount: result.dueSourceCount,
+    lightweightSourceCount: result.lightweightSourceCount,
     emailSent: result.emailSent,
     results: result.results,
+    lightweightResults: result.lightweightResults,
   }, null, 2));
 };
 

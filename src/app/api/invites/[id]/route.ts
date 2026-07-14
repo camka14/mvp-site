@@ -9,6 +9,7 @@ import {
   removeCanonicalPendingInvitee,
   rollbackTeamInviteEventSyncs,
 } from '@/server/teams/teamInviteEventSync';
+import { acquireEventLock } from '@/server/repositories/locks';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,48 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const invite = await prisma.invites.findUnique({ where: { id } });
   if (!invite) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const eventStaffId = normalizeInviteType(invite.type) === 'STAFF'
+    && typeof invite.eventId === 'string'
+    && invite.eventId.trim()
+    ? invite.eventId.trim()
+    : null;
+  if (eventStaffId) {
+    const result = await prisma.$transaction(async (tx) => {
+      await acquireEventLock(tx, eventStaffId);
+      const lockedInvite = await tx.invites.findUnique({ where: { id } });
+      if (
+        !lockedInvite
+        || normalizeInviteType(lockedInvite.type) !== 'STAFF'
+        || lockedInvite.eventId !== eventStaffId
+      ) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+
+      let allowed = session.isAdmin
+        || (lockedInvite.userId && lockedInvite.userId === session.userId)
+        || (lockedInvite.createdBy && lockedInvite.createdBy === session.userId);
+      if (!allowed) {
+        const event = await tx.events.findUnique({
+          where: { id: eventStaffId },
+          select: {
+            hostId: true,
+            assistantHostIds: true,
+            organizationId: true,
+          },
+        });
+        allowed = await canManageEvent(session, event, tx);
+      }
+      if (!allowed) {
+        return { status: 403, body: { error: 'Forbidden' } };
+      }
+
+      await tx.invites.delete({ where: { id: lockedInvite.id } });
+      return { status: 200, body: { deleted: true } };
+    });
+
+    return NextResponse.json(result.body, { status: result.status });
   }
 
   if (!session.isAdmin) {

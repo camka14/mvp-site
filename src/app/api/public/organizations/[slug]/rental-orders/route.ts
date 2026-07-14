@@ -9,59 +9,24 @@ import {
 } from '@/server/repositories/events';
 import { normalizePublicRentalOrderSports } from '@/server/publicRentalOrders';
 import {
-  localDatePartsInTimeZone,
-  mondayDayInTimeZone,
-  minutesInTimeZone,
-  parseDateInputInTimeZone,
-  resolveTimeZone,
-  resolveTimeZoneFromFieldOrOrganization,
-} from '@/server/timeZones';
+  normalizeRentalStringArray as normalizeStringArray,
+  rentalSelectionSchema,
+  type RentalSelectionField,
+  type ValidatedRentalSelection,
+  validateRentalSelections,
+} from '@/server/rentals/selectionValidation';
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
-const selectionSchema = z.object({
-  key: z.string().optional(),
-  scheduledFieldIds: z.array(z.string().min(1)).min(1),
-  dayOfWeek: z.number().int().min(0).max(6).optional(),
-  daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
-  startTimeMinutes: z.number().int().min(0).max(24 * 60).optional(),
-  endTimeMinutes: z.number().int().min(0).max(24 * 60).optional(),
-  startDate: z.string().min(1),
-  endDate: z.string().min(1),
-  timeZone: z.string().optional(),
-  repeating: z.boolean().optional(),
-}).passthrough();
-
 const orderSchema = z.object({
   eventId: z.string().min(1),
-  selections: z.array(selectionSchema).min(1),
+  selections: z.array(rentalSelectionSchema).min(1),
   sportId: z.string().trim().min(1).optional().nullable(),
   paymentIntentId: z.string().optional().nullable(),
   renterOrganizationId: z.string().trim().min(1).optional().nullable(),
 }).strict();
-
-type RentalOrderSelection = z.infer<typeof selectionSchema>;
-
-type ValidatedRentalSelectionItem = {
-  fieldId: string;
-  facilityId: string | null;
-  availabilitySlotId: string;
-  priceCents: number;
-};
-
-type ValidatedRentalSelection = {
-  selection: RentalOrderSelection;
-  start: Date;
-  end: Date;
-  timeZone: string;
-  fieldIds: string[];
-  items: ValidatedRentalSelectionItem[];
-  totalCents: number;
-  requiredTemplateIds: string[];
-  hostRequiredTemplateIds: string[];
-};
 
 type PaymentVerificationResult =
   | {
@@ -73,86 +38,6 @@ type PaymentVerificationResult =
   | { ok: false; status: number; error: string };
 
 const normalizeSlug = (value: string): string => value.trim().toLowerCase();
-
-const normalizeStringArray = (value: unknown): string[] => (
-  Array.isArray(value)
-    ? Array.from(new Set(
-      value
-        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-        .filter((entry) => entry.length > 0),
-    ))
-    : []
-);
-
-const dateOnlyValueInTimeZone = (date: Date, timeZone: string): number => {
-  const parts = localDatePartsInTimeZone(date, timeZone);
-  if (!parts) {
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  }
-  return Date.UTC(parts.year, parts.month - 1, parts.day);
-};
-
-const endMinutesInTimeZone = (start: Date, end: Date, timeZone: string): number => {
-  const endMinutes = minutesInTimeZone(end, timeZone);
-  return endMinutes === 0 && dateOnlyValueInTimeZone(end, timeZone) > dateOnlyValueInTimeZone(start, timeZone)
-    ? 24 * 60
-    : endMinutes;
-};
-
-const rentalSlotCoversSelection = (
-  slot: Record<string, any>,
-  selectionStart: Date,
-  selectionEnd: Date,
-  selectionTimeZone: string,
-): boolean => {
-  const slotTimeZone = resolveTimeZone(slot.timeZone, selectionTimeZone);
-  const slotStart = parseDateInputInTimeZone(slot.startDate, slotTimeZone);
-  const slotEnd = parseDateInputInTimeZone(slot.endDate, slotTimeZone);
-  if (slot.repeating === false) {
-    return Boolean(
-      slotStart
-      && slotEnd
-      && selectionStart.getTime() >= slotStart.getTime()
-      && selectionEnd.getTime() <= slotEnd.getTime(),
-    );
-  }
-
-  const selectionDay = mondayDayInTimeZone(selectionStart, slotTimeZone);
-  const slotDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-    ? slot.daysOfWeek.map((entry: unknown) => Number(entry)).filter((entry: number) => Number.isInteger(entry))
-    : typeof slot.dayOfWeek === 'number'
-      ? [slot.dayOfWeek]
-      : [];
-  if (slotDays.length && !slotDays.includes(selectionDay)) {
-    return false;
-  }
-
-  const selectionStartMinutes = minutesInTimeZone(selectionStart, slotTimeZone);
-  const selectionEndMinutes = endMinutesInTimeZone(selectionStart, selectionEnd, slotTimeZone);
-  if (
-    typeof slot.startTimeMinutes === 'number'
-    && selectionStartMinutes < slot.startTimeMinutes
-  ) {
-    return false;
-  }
-  if (
-    typeof slot.endTimeMinutes === 'number'
-    && selectionEndMinutes > slot.endTimeMinutes
-  ) {
-    return false;
-  }
-
-  if (slotStart && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) < dateOnlyValueInTimeZone(slotStart, slotTimeZone)) {
-    return false;
-  }
-  if (slotEnd && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
-    return false;
-  }
-  if (slotEnd && dateOnlyValueInTimeZone(selectionEnd, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
-    return false;
-  }
-  return true;
-};
 
 const verifyPaymentIntent = async ({
   paymentIntentId,
@@ -208,92 +93,6 @@ const verifyPaymentIntent = async ({
     metadata,
     totalChargeCents: Number.isFinite(totalChargeCents) ? totalChargeCents : expectedAmountCents,
   };
-};
-
-const validateRentalSelections = ({
-  selections,
-  fields,
-  slots,
-  organization,
-  now = new Date(),
-}: {
-  selections: RentalOrderSelection[];
-  fields: Array<Record<string, any>>;
-  slots: Array<Record<string, any>>;
-  organization: Record<string, any>;
-  now?: Date;
-}): { ok: true; selections: ValidatedRentalSelection[] } | { ok: false; error: string } => {
-  const fieldById = new Map(fields.map((field) => [String(field.id), field]));
-  const slotById = new Map(slots.map((slot) => [String(slot.id), slot]));
-  const validatedSelections: ValidatedRentalSelection[] = [];
-
-  for (const selection of selections) {
-    const fieldIds = normalizeStringArray(selection.scheduledFieldIds);
-    if (!fieldIds.length) {
-      return { ok: false, error: 'Rental selections must include at least one field.' };
-    }
-    const primaryField = fieldById.get(fieldIds[0]) ?? null;
-    const selectionTimeZone = resolveTimeZone(
-      selection.timeZone,
-      resolveTimeZoneFromFieldOrOrganization(primaryField, organization),
-    );
-    const start = parseDateInputInTimeZone(selection.startDate, selectionTimeZone);
-    const end = parseDateInputInTimeZone(selection.endDate, selectionTimeZone);
-    if (!start || !end || end.getTime() <= start.getTime()) {
-      return { ok: false, error: 'Rental selections must include valid start and end times.' };
-    }
-    if (start.getTime() < now.getTime()) {
-      return { ok: false, error: 'Rental selections must start in the future.' };
-    }
-    const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / (60 * 1000)));
-    const requiredTemplateIds = new Set<string>();
-    const hostRequiredTemplateIds = new Set<string>();
-    const items: ValidatedRentalSelectionItem[] = [];
-    let totalCents = 0;
-
-    for (const fieldId of fieldIds) {
-      const field = fieldById.get(fieldId);
-      if (!field) {
-        return { ok: false, error: 'One or more selected fields are unavailable.' };
-      }
-      const rentalSlotIds = normalizeStringArray(field.rentalSlotIds);
-      const matchedSlot = rentalSlotIds
-        .map((slotId) => slotById.get(slotId))
-        .find((slot): slot is Record<string, any> => (
-          slot ? rentalSlotCoversSelection(slot, start, end, selectionTimeZone) : false
-        ));
-      if (!matchedSlot) {
-        return { ok: false, error: `${field.name || 'Selected field'} is not available for the selected time.` };
-      }
-      let priceCents = 0;
-      if (typeof matchedSlot.price === 'number' && matchedSlot.price > 0) {
-        priceCents = Math.round((matchedSlot.price * durationMinutes) / 60);
-        totalCents += priceCents;
-      }
-      items.push({
-        fieldId,
-        facilityId: typeof field.facilityId === 'string' && field.facilityId.trim() ? field.facilityId.trim() : null,
-        availabilitySlotId: String(matchedSlot.id),
-        priceCents,
-      });
-      normalizeStringArray(matchedSlot.requiredTemplateIds).forEach((id) => requiredTemplateIds.add(id));
-      normalizeStringArray(matchedSlot.hostRequiredTemplateIds).forEach((id) => hostRequiredTemplateIds.add(id));
-    }
-
-    validatedSelections.push({
-      selection,
-      start,
-      end,
-      timeZone: selectionTimeZone,
-      fieldIds,
-      items,
-      totalCents,
-      requiredTemplateIds: Array.from(requiredTemplateIds),
-      hostRequiredTemplateIds: Array.from(hostRequiredTemplateIds),
-    });
-  }
-
-  return { ok: true, selections: validatedSelections };
 };
 
 const RENTAL_BILL_SOURCE_TYPE = 'RENTAL_BOOKING';
@@ -578,7 +377,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const fieldRows = await (prisma as any).fields.findMany({
     where: { organizationId: organization.id },
   });
-  const fields = await attachFacilitiesToFieldRows(fieldRows);
+  const fields = await attachFacilitiesToFieldRows(fieldRows) as RentalSelectionField[];
   const rentalSlotIds = Array.from(new Set(fields.flatMap((field: Record<string, any>) => normalizeStringArray(field.rentalSlotIds))));
   const slots = rentalSlotIds.length
     ? await (prisma as any).timeSlots.findMany({
@@ -623,7 +422,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: 'Rental selections must include valid times.' }, { status: 400 });
   }
 
-  const fieldIds = Array.from(new Set(validation.selections.flatMap((selection) => selection.fieldIds)));
   const bookingId = parsed.data.eventId;
   // A rental booking is not an Event yet. Never feed its client-provided
   // booking id into the scheduler's "exclude current event" parameter, or a
@@ -661,18 +459,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         };
       }
 
-      await assertNoEventFieldSchedulingConflicts({
-        client: tx,
-        eventId: conflictSubjectId,
-        organizationId: null,
-        fieldIds,
-        timeSlotIds: [],
-        start: earliestStart,
-        end: latestEnd,
-        noFixedEndDateTime: false,
-        eventType: 'EVENT',
-        parentEvent: null,
-      });
+      for (const selection of validation.selections) {
+        await assertNoEventFieldSchedulingConflicts({
+          client: tx,
+          eventId: conflictSubjectId,
+          organizationId: null,
+          fieldIds: selection.fieldIds,
+          timeSlotIds: [],
+          start: selection.start,
+          end: selection.end,
+          noFixedEndDateTime: false,
+          eventType: 'EVENT',
+          parentEvent: null,
+        });
+      }
       await assertNoRentalBookingItemConflicts({
         tx,
         bookingId,

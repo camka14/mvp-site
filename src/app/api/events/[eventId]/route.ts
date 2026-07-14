@@ -19,6 +19,10 @@ import {
   isRentalBookingReservationError,
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
+import {
+  EVENT_STAFF_REVISION_CONFLICT_CODE,
+  loadEventStaffSnapshot,
+} from '@/server/events/eventStaffReconciliation';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { parseDateInputInTimeZone, resolveTimeZone } from '@/server/timeZones';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
@@ -1821,7 +1825,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
   const parsed = parseStrictEnvelope({
     body,
     envelopeKey: 'event',
-    allowedTopLevelKeys: ['reschedule'],
+    allowedTopLevelKeys: ['reschedule', 'preserveStaffAssignments', 'expectedStaffRevision'],
   });
   if ('error' in parsed) {
     return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
@@ -1831,18 +1835,50 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     return NextResponse.json({ error: 'Invalid input: "reschedule" must be a boolean.' }, { status: 400 });
   }
   const rescheduleRequested = rescheduleValue === true;
+  const preserveStaffValue = parsed.topLevel.preserveStaffAssignments;
+  if (preserveStaffValue !== undefined && typeof preserveStaffValue !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid input: "preserveStaffAssignments" must be a boolean.' }, { status: 400 });
+  }
+  const preserveStaffAssignments = preserveStaffValue === true;
+  const expectedStaffRevisionValue = parsed.topLevel.expectedStaffRevision;
+  if (
+    expectedStaffRevisionValue !== undefined
+    && (typeof expectedStaffRevisionValue !== 'string' || !expectedStaffRevisionValue.trim())
+  ) {
+    return NextResponse.json({ error: 'Invalid input: "expectedStaffRevision" must be a non-empty string.' }, { status: 400 });
+  }
+  const expectedStaffRevision = typeof expectedStaffRevisionValue === 'string'
+    ? expectedStaffRevisionValue.trim()
+    : null;
+  if (preserveStaffAssignments && !expectedStaffRevision) {
+    return NextResponse.json({ error: 'expectedStaffRevision is required when preserving staff assignments.' }, { status: 400 });
+  }
 
   const { eventId } = await params;
 
   try {
     const context = buildContext();
     const patchResult = await prisma.$transaction(async (tx) => {
+      // Event edits and the dedicated staff desired-state endpoint share this
+      // lock so a legacy/general PATCH cannot interleave with a staff revision
+      // check and overwrite one representation after the others commit.
+      await acquireEventLock(tx, eventId);
       const existing = await tx.events.findUnique({ where: { id: eventId } });
       if (!existing) {
         throw new Response('Not found', { status: 404 });
       }
       if (!(await canManageEvent(session, existing, tx))) {
         throw new Response('Forbidden', { status: 403 });
+      }
+      if (preserveStaffAssignments && expectedStaffRevision) {
+        const staffSnapshot = await loadEventStaffSnapshot(tx, eventId);
+        if (staffSnapshot.revision !== expectedStaffRevision) {
+          throw NextResponse.json({
+            error: 'Event staff changed. Reload and try again.',
+            code: EVENT_STAFF_REVISION_CONFLICT_CODE,
+            currentRevision: staffSnapshot.revision,
+          }, { status: 409 });
+        }
       }
 
       const rawPayload = parsed.payload as Record<string, any>;
@@ -2226,7 +2262,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           { ...organizationAccess, staffMembers, staffInvites },
         ).officialIds;
         data.hostId = sanitizedAssignments.hostId ?? normalizeEntityId(existing.hostId) ?? '';
-        data.assistantHostIds = sanitizedAssignments.assistantHostIds;
+        if (!preserveStaffAssignments) {
+          data.assistantHostIds = sanitizedAssignments.assistantHostIds;
+        }
+      }
+      if (preserveStaffAssignments) {
+        delete data.assistantHostIds;
       }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
@@ -2354,7 +2395,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           isActive: row.isActive !== false,
         }))
         .filter((row) => row.positionIds.length > 0);
-      const hasEventOfficialsInput = Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
+      const hasEventOfficialsInput = !preserveStaffAssignments
+        && Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
       const allowedEventOfficialUserIds = hasEventOfficialsInput
         ? (allowedEventOfficialInputUserIds ?? requestedEventOfficialIds)
         : sanitizedExistingEventOfficials.map((row) => row.userId);
@@ -2730,6 +2772,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         await syncEventTypeTagsForEvent(eventId, data.eventType, tx);
       }
       const shouldPersistEventOfficials = (
+        !preserveStaffAssignments
+        &&
         typeof (tx as any).eventOfficials?.deleteMany === 'function'
         && (
           hasEventOfficialsInput
@@ -2856,7 +2900,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextEventTypeForSchedule = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
       let didRebuildSchedule = false;
       if (shouldSchedule && isSchedulableEventType(nextEventTypeForSchedule)) {
-        await acquireEventLock(tx, eventId);
         const loaded = await loadEventWithRelations(eventId, tx);
         if (isSchedulableEventType(loaded.eventType)) {
           const scheduled = scheduleEvent({ event: loaded }, context);

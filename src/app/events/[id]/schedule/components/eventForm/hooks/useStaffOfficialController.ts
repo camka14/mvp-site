@@ -54,13 +54,10 @@ import {
     buildOrganizationStaffRosterEntries,
     buildOrganizationUsersById,
     buildStaffInviteByUserId,
-    buildStaffInviteSubmissionPayload,
     buildUserDataById,
     createEmptyStaffInvite,
     filterOrganizationStaffRosterEntries,
     formatStaffRoleLabel,
-    getUserEmail,
-    mapInviteStaffTypeToRole,
     normalizeInviteEmail,
     normalizePendingStaffInvite,
     removePendingStaffInviteRoleByEmail,
@@ -793,139 +790,6 @@ export const useStaffOfficialController = ({
         setStaffInviteError(null);
     }, [findPendingStaffInviteConflictMessage, isOrganizationHostedEvent, lookupPendingStaffInviteMembership, newStaffInvite, setPendingStaffInvites]);
 
-    const submitPendingStaffInvites = useCallback(async (eventId: string) => {
-        if (isOrganizationHostedEvent) {
-            return;
-        }
-        if (!currentUser?.$id) {
-            const message = 'You must be signed in to manage staff invites.';
-            setStaffInviteError(message);
-            throw new Error(message);
-        }
-
-        const pendingInvites = normalizeDirtyTrackedPendingStaffInvites(
-            (getValues('pendingStaffInvites') as PendingStaffInvite[] | undefined) ?? [],
-        );
-        const pendingInviteMembershipByEmail = await validatePendingStaffInvites(pendingInvites);
-        const {
-            payload,
-            unresolvedEmailInvites,
-        } = buildStaffInviteSubmissionPayload({
-            eventId,
-            officialIds: getEventOfficialUserIds(eventData.eventOfficials),
-            assistantHostIds: assistantHostValue,
-            pendingInvites,
-            pendingInviteMembershipByEmail,
-            currentEventStaffInviteByUserId,
-            existingAssignedStaffUserIds,
-        });
-
-        const result = payload.length > 0
-            ? await userService.inviteUsersByEmail(currentUser.$id, payload)
-            : { sent: [], not_sent: [], failed: [] };
-        if ((result.failed || []).length > 0) {
-            const message = 'Failed to create one or more staff invites.';
-            setStaffInviteError(message);
-            throw new Error(message);
-        }
-
-        const resolvedUserIds = new Set<string>();
-        const inviteRolesByEmail = new Map(unresolvedEmailInvites.map((invite) => [invite.email, invite.roles] as const));
-        const fetchedInvites = [...(result.sent || []), ...(result.not_sent || [])];
-        fetchedInvites.forEach((invite) => {
-            if (invite.userId) {
-                resolvedUserIds.add(invite.userId);
-            }
-        });
-
-        if (resolvedUserIds.size > 0) {
-            try {
-                const fetchedUsers = await userService.getUsersByIds(Array.from(resolvedUserIds));
-                setEventData((prev) => {
-                    const nextPositions = prev.officialPositions || [];
-                    let nextEventOfficials = normalizeEventOfficials(
-                        prev.eventOfficials,
-                        getEventOfficialUserIds(prev.eventOfficials),
-                        nextPositions,
-                    );
-                    const nextAssistantHostIds = new Set(prev.assistantHostIds || []);
-                    const nextOfficials = [...(prev.officials || [])];
-                    fetchedUsers.forEach((userEntry) => {
-                        const matchingInvite = fetchedInvites.find((invite) => invite.userId === userEntry.$id || normalizeInviteEmail(invite.email) === getUserEmail(userEntry));
-                        const roles = matchingInvite
-                            ? (matchingInvite.staffTypes || [])
-                                .map(mapInviteStaffTypeToRole)
-                                .filter((role): role is StaffAssignmentRole => Boolean(role))
-                            : inviteRolesByEmail.get(getUserEmail(userEntry) ?? '') || [];
-                        if (roles.includes('OFFICIAL')) {
-                            nextEventOfficials = normalizeEventOfficials(
-                                nextEventOfficials.some((official) => official.userId === userEntry.$id)
-                                    ? nextEventOfficials
-                                    : [
-                                        ...nextEventOfficials,
-                                        {
-                                            id: createClientId(),
-                                            userId: userEntry.$id,
-                                            positionIds: nextPositions.map((position) => position.id),
-                                            fieldIds: [],
-                                            isActive: true,
-                                        } satisfies EventOfficial,
-                                    ],
-                                [],
-                                nextPositions,
-                            );
-                            if (!nextOfficials.some((official) => official.$id === userEntry.$id)) {
-                                nextOfficials.push(userEntry);
-                            }
-                        }
-                        if (roles.includes('ASSISTANT_HOST') && userEntry.$id !== prev.hostId) {
-                            nextAssistantHostIds.add(userEntry.$id);
-                            cacheAssistantHostUser(userEntry);
-                        }
-                    });
-                    return {
-                        ...prev,
-                        officials: nextOfficials,
-                        eventOfficials: nextEventOfficials,
-                        officialIds: getEventOfficialUserIds(nextEventOfficials),
-                        assistantHostIds: Array.from(nextAssistantHostIds),
-                    };
-                });
-            } catch (error) {
-                console.warn('Failed to hydrate staff invite users:', error);
-            }
-        }
-
-        const finalTargetUserIds = new Set<string>([
-            ...getEventOfficialUserIds(eventData.eventOfficials),
-            ...assistantHostValue,
-            ...Array.from(resolvedUserIds),
-        ]);
-        const invitesToDelete = currentEventStaffInvites.filter((invite) => invite.userId && !finalTargetUserIds.has(invite.userId));
-        if (invitesToDelete.length > 0) {
-            const inviteIdsToDelete = invitesToDelete
-                .map((invite) => normalizeEntityId(invite.$id))
-                .filter((inviteId): inviteId is string => Boolean(inviteId));
-            await Promise.all(inviteIdsToDelete.map((inviteId) => userService.deleteInviteById(inviteId)));
-        }
-
-        setPendingStaffInvites([]);
-        setStaffInviteError(null);
-    }, [
-        assistantHostValue,
-        cacheAssistantHostUser,
-        currentEventStaffInvites,
-        currentUser,
-        eventData.eventOfficials,
-        getValues,
-        isOrganizationHostedEvent,
-        setEventData,
-        setPendingStaffInvites,
-        validatePendingStaffInvites,
-        existingAssignedStaffUserIds,
-        currentEventStaffInviteByUserId,
-    ]);
-
     const assignedOfficialCards = useMemo(
         () => buildAssignedOfficialCards({
             officialIds: getEventOfficialUserIds(eventData.eventOfficials),
@@ -1023,7 +887,6 @@ export const useStaffOfficialController = ({
         setOrganizationStaffTypeFilter,
         sportOfficialPositionTemplates,
         staffInviteError,
-        submitPendingStaffInvites,
         validatePendingStaffAssignments,
     };
 };

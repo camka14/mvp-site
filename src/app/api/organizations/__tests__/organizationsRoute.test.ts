@@ -51,8 +51,20 @@ jest.mock('@/server/adminNotifications', () => ({
 
 import { GET as organizationsGet, POST as organizationsPost } from '@/app/api/organizations/route';
 
+const ORIGIN_ENV_KEYS = ['PUBLIC_WEB_BASE_URL', 'NEXT_PUBLIC_SITE_URL', 'NEXT_PUBLIC_WEB_BASE_URL'] as const;
+
+const clearOriginEnv = () => {
+  for (const key of ORIGIN_ENV_KEYS) {
+    delete process.env[key];
+  }
+};
+
 describe('/api/organizations', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
+    process.env = { ...originalEnv };
+    clearOriginEnv();
     jest.clearAllMocks();
     authUserFindUniqueMock.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     organizationTagsFindManyMock.mockResolvedValue([]);
@@ -60,6 +72,10 @@ describe('/api/organizations', () => {
     staffMembersFindManyMock.mockResolvedValue([]);
     divisionsFindManyMock.mockResolvedValue([]);
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
   });
 
   it('supports query mode with relevance-ranked results', async () => {
@@ -463,6 +479,41 @@ describe('/api/organizations', () => {
       baseUrl: 'http://localhost',
     });
     expect(payload.hasStripeAccount).toBe(false);
+  });
+
+  it('uses the canonical origin for creation notifications when request host headers are hostile', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com';
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    createMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'New Org',
+      ownerId: 'user_1',
+      hasStripeAccount: false,
+    });
+
+    const response = await organizationsPost(new NextRequest('https://internal.service.local/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        taxResponsibilityAgreementAccepted: true,
+      }),
+      headers: {
+        'content-type': 'application/json',
+        host: 'poisoned-host.example.com',
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'attacker.example.com',
+      },
+    }));
+
+    expect(response.status).toBe(201);
+    expect(sendAdminOrganizationCreatedNotificationMock).toHaveBeenCalledWith({
+      organization: expect.objectContaining({ id: 'org_1' }),
+      baseUrl: 'https://bracket-iq.com',
+    });
+    expect(JSON.stringify(sendAdminOrganizationCreatedNotificationMock.mock.calls)).not.toContain('attacker.example.com');
+    expect(JSON.stringify(sendAdminOrganizationCreatedNotificationMock.mock.calls)).not.toContain('poisoned-host.example.com');
   });
 
   it('fails closed when Prisma rejects a requested organization field', async () => {

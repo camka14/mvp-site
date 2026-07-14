@@ -25,6 +25,7 @@ import {
   removeCanonicalPendingInvitee,
   rollbackTeamInviteEventSyncs,
 } from '@/server/teams/teamInviteEventSync';
+import { acquireEventLock } from '@/server/repositories/locks';
 
 export const dynamic = 'force-dynamic';
 
@@ -256,16 +257,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const invitesInput = parsed.data.invites
+  const invitesInput: unknown[] = parsed.data.invites
     ?? (Array.isArray((body as any)?.invites) ? (body as any).invites : [body]).filter(Boolean);
 
   if (!invitesInput.length) {
     return NextResponse.json({ error: 'No invites provided' }, { status: 400 });
   }
 
+  const eventStaffLockIds = Array.from(new Set<string>(invitesInput.flatMap((inviteInput): string[] => {
+    const parsedInvite = inviteSchema.safeParse(inviteInput);
+    if (!parsedInvite.success || normalizeInviteType(parsedInvite.data.type) !== 'STAFF') {
+      return [];
+    }
+    const eventId = normalizeId(parsedInvite.data.eventId);
+    return eventId ? [eventId] : [];
+  }))).sort();
+
   const now = new Date();
   try {
     const { created, toEmail } = await prisma.$transaction(async (tx) => {
+      for (const eventId of eventStaffLockIds) {
+        await acquireEventLock(tx, eventId);
+      }
+
       const createdRecords: any[] = [];
       const toEmailRecords: any[] = [];
 
@@ -615,15 +629,41 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const invites = await prisma.invites.findMany({ where });
-  if (!invites.length) {
+  const inviteCandidates = await prisma.invites.findMany({ where });
+  if (!inviteCandidates.length) {
     return NextResponse.json({ deleted: true }, { status: 200 });
   }
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    const eventStaffLockIds = Array.from(new Set(inviteCandidates.flatMap((invite) => (
+      normalizeInviteType(invite.type) === 'STAFF' && normalizeId(invite.eventId)
+        ? [normalizeId(invite.eventId) as string]
+        : []
+    )))).sort();
+    for (const eventId of eventStaffLockIds) {
+      await acquireEventLock(tx, eventId);
+    }
+
+    // Re-run the scoped query after taking the event locks. This keeps the
+    // authorization filter and the destructive write in the same transaction.
+    // If a candidate's event scope changed while waiting, leave it untouched
+    // rather than mutating it without the corresponding advisory lock.
+    const lockedEventIds = new Set(eventStaffLockIds);
+    const lockedCandidates = await tx.invites.findMany({
+      where: {
+        AND: [where, { id: { in: inviteCandidates.map((invite) => invite.id) } }],
+      },
+    });
+    const invites = lockedCandidates.filter((invite) => {
+      const currentEventId = normalizeId(invite.eventId);
+      return normalizeInviteType(invite.type) !== 'STAFF'
+        || !currentEventId
+        || lockedEventIds.has(currentEventId);
+    });
+
     for (const invite of invites) {
-      if (invite.type === 'TEAM' && invite.teamId && invite.userId) {
+      if (normalizeInviteType(invite.type) === 'TEAM' && invite.teamId && invite.userId) {
         const teamsDelegate = getTeamsDelegate(tx);
         const team = await teamsDelegate?.findUnique({ where: { id: invite.teamId } });
         if (team && Array.isArray(team.pending) && team.pending.includes(invite.userId)) {

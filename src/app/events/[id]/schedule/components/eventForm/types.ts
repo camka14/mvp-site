@@ -1,4 +1,5 @@
 import type { Event, Organization, RegistrationQuestionDraft, UserData } from '@/types';
+import type { EventStaffDraft, EventStaffSnapshot } from '@/lib/eventStaffService';
 
 export type DefaultLocation = {
     location?: string;
@@ -36,11 +37,11 @@ export interface EventFormProps {
 }
 
 export type EventFormHandle = {
-    getDraft: () => Partial<Event>;
+    getDraft: () => EventStaffDraft;
     getRegistrationQuestionDrafts: () => RegistrationQuestionDraft[];
     validate: () => Promise<boolean>;
     getValidationErrors: () => Array<{ path: string; message: string }>;
     validatePendingStaffAssignments: () => Promise<void>;
     commitDirtyBaseline: () => void;
-    submitPendingStaffInvites: (eventId: string) => Promise<void>;
+    applyCanonicalStaffState: (snapshot: EventStaffSnapshot) => void;
 };

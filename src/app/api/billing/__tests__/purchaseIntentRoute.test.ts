@@ -46,8 +46,8 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const reserveRentalCheckoutLocksMock = jest.fn();
-const releaseRentalCheckoutLocksMock = jest.fn();
+const reserveRentalCheckoutWindowLocksMock = jest.fn();
+const releaseRentalCheckoutWindowLocksMock = jest.fn();
 const resolveCanonicalRentalCheckoutMock = jest.fn();
 const loadUserBillingProfileMock = jest.fn();
 const resolveBillingAddressInputMock = jest.fn();
@@ -66,8 +66,8 @@ jest.mock('stripe', () => ({
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
-  reserveRentalCheckoutLocks: (...args: unknown[]) => reserveRentalCheckoutLocksMock(...args),
-  releaseRentalCheckoutLocks: (...args: unknown[]) => releaseRentalCheckoutLocksMock(...args),
+  reserveRentalCheckoutWindowLocks: (...args: unknown[]) => reserveRentalCheckoutWindowLocksMock(...args),
+  releaseRentalCheckoutWindowLocks: (...args: unknown[]) => releaseRentalCheckoutWindowLocksMock(...args),
 }));
 jest.mock('@/server/rentalCheckoutAccess', () => ({
   resolveCanonicalRentalCheckout: (...args: unknown[]) => resolveCanonicalRentalCheckoutMock(...args),
@@ -123,6 +123,17 @@ const canonicalRentalResult = (options?: {
       eventType: 'EVENT',
       parentEvent: null,
     },
+    windows: [{
+      eventId: 'event_1',
+      fieldIds: ['field_1'],
+      start: options?.start ?? new Date('2099-03-18T12:00:00.000Z'),
+      end: options?.end ?? new Date('2099-03-18T13:00:00.000Z'),
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      organizationId: 'organization_1',
+      eventType: 'EVENT',
+      parentEvent: null,
+    }],
     organization: { id: 'organization_1', ownerId: 'owner_1', publicPageEnabled: true },
     totalAmountCents: options?.totalAmountCents ?? 2500,
     availabilitySlotIds: ['availability_1'],
@@ -199,13 +210,13 @@ describe('POST /api/billing/purchase-intent', () => {
       return callback(tx);
     });
     resolveCanonicalRentalCheckoutMock.mockResolvedValue(canonicalRentalResult());
-    reserveRentalCheckoutLocksMock.mockResolvedValue({
+    reserveRentalCheckoutWindowLocksMock.mockResolvedValue({
       ok: true,
       ownerToken: 'rental:user_1:event_1',
       lockIds: ['rental-checkout:field_1:2099-03-18T12:00:00.000Z:2099-03-18T13:00:00.000Z'],
       expiresAt: new Date('2099-03-18T12:10:00.000Z'),
     });
-    releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
+    releaseRentalCheckoutWindowLocksMock.mockResolvedValue(undefined);
     loadUserBillingProfileMock.mockResolvedValue({
       billingAddress: {
         line1: '123 Main St',
@@ -292,7 +303,104 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(200);
     expect(data.paymentIntent).toBe('pi_123_secret_456');
-    expect(reserveRentalCheckoutLocksMock).toHaveBeenCalled();
+    expect(reserveRentalCheckoutWindowLocksMock).toHaveBeenCalled();
+  });
+
+  it('passes the authoritative rental selection array through canonical pricing and exact holds', async () => {
+    const secondWindow = {
+      eventId: 'event_1',
+      fieldIds: ['field_2'],
+      start: new Date('2099-03-20T15:00:00.000Z'),
+      end: new Date('2099-03-20T16:00:00.000Z'),
+      timeZone: 'UTC',
+      noFixedEndDateTime: false,
+      organizationId: 'organization_1',
+      eventType: 'EVENT',
+      parentEvent: null,
+    };
+    const canonical = canonicalRentalResult({ totalAmountCents: 5000 });
+    canonical.checkout.windows = [canonical.checkout.window, secondWindow];
+    canonical.checkout.availabilitySlotIds = ['availability_1', 'availability_2'];
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonical);
+    const rentalSelections = [
+      {
+        scheduledFieldIds: ['field_1'],
+        startDate: '2099-03-18T12:00:00.000Z',
+        endDate: '2099-03-18T13:00:00.000Z',
+        timeZone: 'UTC',
+      },
+      {
+        scheduledFieldIds: ['field_2'],
+        startDate: '2099-03-20T15:00:00.000Z',
+        endDate: '2099-03-20T16:00:00.000Z',
+        timeZone: 'UTC',
+      },
+    ];
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 5000, eventType: 'EVENT' },
+      timeSlot: {
+        $id: 'aggregate_legacy_slot',
+        price: 5000,
+        startDate: '2099-03-18T12:00:00.000Z',
+        endDate: '2099-03-20T16:00:00.000Z',
+      },
+      rentalSelections,
+    }));
+
+    expect(res.status).toBe(200);
+    expect(resolveCanonicalRentalCheckoutMock).toHaveBeenCalledWith(expect.objectContaining({
+      rentalSelections,
+    }));
+    expect(reserveRentalCheckoutWindowLocksMock).toHaveBeenCalledWith(expect.objectContaining({
+      windows: [canonical.checkout.window, secondWindow],
+    }));
+    expect(mockStripePaymentIntentCreate).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({
+        time_slot_id: 'availability_1',
+        time_slot_start: '2099-03-18T12:00:00.000Z',
+        time_slot_end: '2099-03-18T13:00:00.000Z',
+      }),
+    }));
+  });
+
+  it('releases the same exact rental window set when payment intent creation fails', async () => {
+    const secondWindow = {
+      ...canonicalRentalResult().checkout.window,
+      fieldIds: ['field_2'],
+      start: new Date('2099-03-20T15:00:00.000Z'),
+      end: new Date('2099-03-20T16:00:00.000Z'),
+    };
+    const canonical = canonicalRentalResult();
+    canonical.checkout.windows = [canonical.checkout.window, secondWindow];
+    resolveCanonicalRentalCheckoutMock.mockResolvedValueOnce(canonical);
+    mockStripePaymentIntentCreate.mockRejectedValueOnce(new Error('Stripe unavailable'));
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: { $id: 'slot_1', price: 2500 },
+      rentalSelections: [
+        {
+          scheduledFieldIds: ['field_1'],
+          startDate: '2099-03-18T12:00:00.000Z',
+          endDate: '2099-03-18T13:00:00.000Z',
+        },
+        {
+          scheduledFieldIds: ['field_2'],
+          startDate: '2099-03-20T15:00:00.000Z',
+          endDate: '2099-03-20T16:00:00.000Z',
+        },
+      ],
+    }));
+
+    expect(res.status).toBe(502);
+    expect(releaseRentalCheckoutWindowLocksMock).toHaveBeenCalledWith({
+      client: prismaMock,
+      windows: [canonical.checkout.window, secondWindow],
+      userId: 'user_1',
+    });
   });
 
   it('blocks unverified users before creating a paid event payment intent', async () => {
@@ -345,7 +453,7 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('returns 409 when rental checkout lock reservation conflicts', async () => {
-    reserveRentalCheckoutLocksMock.mockResolvedValueOnce({
+    reserveRentalCheckoutWindowLocksMock.mockResolvedValueOnce({
       ok: false,
       status: 409,
       error: 'Selected fields and time range are temporarily reserved by another checkout.',
@@ -384,7 +492,7 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(400);
     expect(data.error).toContain('unavailable');
-    expect(reserveRentalCheckoutLocksMock).not.toHaveBeenCalled();
+    expect(reserveRentalCheckoutWindowLocksMock).not.toHaveBeenCalled();
     expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
 
@@ -403,7 +511,7 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(400);
     expect(data.error).toBe('Rental selections must start in the future.');
-    expect(reserveRentalCheckoutLocksMock).not.toHaveBeenCalled();
+    expect(reserveRentalCheckoutWindowLocksMock).not.toHaveBeenCalled();
     expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
 

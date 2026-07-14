@@ -22,6 +22,7 @@ const syncTeamChatInTxMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
 const reserveChildTeamRegistrationForGuardianMock = jest.fn();
+const acquireEventLockMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -43,6 +44,9 @@ jest.mock('@/server/teams/teamMembership', () => ({
 jest.mock('@/server/teams/teamChildRegistration', () => ({
   reserveChildTeamRegistrationForGuardian: (...args: unknown[]) => reserveChildTeamRegistrationForGuardianMock(...args),
 }));
+jest.mock('@/server/repositories/locks', () => ({
+  acquireEventLock: (...args: unknown[]) => acquireEventLockMock(...args),
+}));
 
 import { POST } from '@/app/api/invites/[id]/accept/route';
 
@@ -54,6 +58,7 @@ const postRequest = () =>
 describe('POST /api/invites/[id]/accept', () => {
   const txMock = {
     invites: {
+      findUnique: jest.fn(),
       delete: jest.fn(),
     },
     teams: {
@@ -69,6 +74,7 @@ describe('POST /api/invites/[id]/accept', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof txMock) => unknown) => fn(txMock));
+    txMock.invites.findUnique.mockImplementation((args) => prismaMock.invites.findUnique(args));
     prismaMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.userData.updateMany.mockResolvedValue({ count: 1 });
@@ -127,6 +133,31 @@ describe('POST /api/invites/[id]/accept', () => {
         updatedAt: expect.any(Date),
       },
     });
+  });
+
+  it('locks an event-scoped STAFF invite before re-authorizing and accepting it', async () => {
+    const invite = {
+      id: 'invite_1',
+      type: 'STAFF',
+      eventId: 'event_1',
+      organizationId: null,
+      userId: 'user_1',
+    };
+    prismaMock.invites.findUnique.mockResolvedValue(invite);
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ ok: true, organizationId: null });
+    expect(acquireEventLockMock).toHaveBeenCalledWith(txMock, 'event_1');
+    expect(acquireEventLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      txMock.invites.findUnique.mock.invocationCallOrder[0],
+    );
+    expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
   });
 
   it('accepts a TEAM player invite by syncing the canonical roster and deleting the invite', async () => {

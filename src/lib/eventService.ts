@@ -134,6 +134,7 @@ export type EventDetailBootstrapResponse = {
   timeSlots: TimeSlot[];
   leagueScoringConfig: LeagueScoringConfig | null;
   staffInvites: Invite[];
+  staffRevision: string | null;
   teamCompliance: EventTeamComplianceResponse | null;
   userCompliance: EventUserComplianceResponse | null;
 };
@@ -424,6 +425,9 @@ class EventService {
         timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots : [],
         leagueScoringConfig: event.leagueScoringConfig ?? null,
         staffInvites: Array.isArray(relationSource.staffInvites) ? relationSource.staffInvites : [],
+        staffRevision: typeof response?.staffRevision === "string" && response.staffRevision.trim().length > 0
+          ? response.staffRevision.trim()
+          : null,
         teamCompliance: response?.teamCompliance ?? null,
         userCompliance: response?.userCompliance ?? null,
       };
@@ -639,6 +643,8 @@ class EventService {
       fields?: Field[];
       timeSlots?: TimeSlot[];
       leagueScoringConfig?: LeagueScoringConfig | null;
+      omitStaffAssignments?: boolean;
+      expectedStaffRevision?: string | null;
     } = {},
   ): Promise<Event> {
     try {
@@ -712,10 +718,25 @@ class EventService {
           options.leagueScoringConfig,
         );
       }
+      if (options.omitStaffAssignments) {
+        delete payload.assistantHostIds;
+        delete payload.officialIds;
+        delete payload.eventOfficials;
+        delete payload.staffInvites;
+        delete payload.pendingStaffInvites;
+      }
 
       const response = await apiRequest<any>(`/api/events/${eventId}`, {
         method: "PATCH",
-        body: { event: payload },
+        body: {
+          event: payload,
+          ...(options.omitStaffAssignments
+            ? {
+                preserveStaffAssignments: true,
+                expectedStaffRevision: options.expectedStaffRevision,
+              }
+            : {}),
+        },
       });
 
       const hydrated = await this.getEvent(eventId);

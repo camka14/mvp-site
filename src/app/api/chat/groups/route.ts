@@ -5,8 +5,10 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { handleRouteError } from '@/server/http/routeErrors';
 import {
+  getCanonicalDirectMessagePair,
   getMinorChatParticipantIds,
   hasBlockingChatRelationship,
+  isDirectMessageCandidateGroupId,
   loadChatParticipants,
   normalizeChatParticipantIds,
 } from '@/server/chatSafety';
@@ -127,6 +129,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!isDirectMessageCandidateGroupId(parsed.data.id)) {
+      return NextResponse.json(
+        { error: 'Notification topic identifiers are reserved for messaging subscriptions.' },
+        { status: 403 },
+      );
+    }
+
     if (!requestedUserIds.includes(session.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -157,16 +166,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const group = await prisma.chatGroup.create({
-      data: {
-        id: parsed.data.id,
-        name: parsed.data.name ?? null,
-        userIds: requestedUserIds,
-        hostId: normalizedHostId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
+    const now = new Date();
+    const directMessagePair = getCanonicalDirectMessagePair(requestedUserIds);
+    const createData = {
+      id: parsed.data.id,
+      name: parsed.data.name ?? null,
+      userIds: requestedUserIds,
+      hostId: normalizedHostId,
+      createdAt: now,
+      updatedAt: now,
+      ...(directMessagePair ?? {}),
+    };
+    const group = directMessagePair
+      ? await prisma.chatGroup.upsert({
+          where: {
+            directUserIdA_directUserIdB: directMessagePair,
+          },
+          create: createData,
+          // This is deliberately a no-op update. A retry must return the
+          // canonical row without renaming it or changing its host/order.
+          update: directMessagePair,
+        })
+      : await prisma.chatGroup.create({ data: createData });
 
     return NextResponse.json(withLegacyFields(group), { status: 201 });
   } catch (error) {

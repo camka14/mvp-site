@@ -24,6 +24,7 @@ const getTeamComplianceMock = jest.fn();
 const getUserComplianceMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const loadLockedEventStaffSnapshotMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
@@ -31,6 +32,9 @@ jest.mock('@/lib/permissions', () => ({
 }));
 jest.mock('@/server/accessControl', () => ({
   canManageEvent: (...args: unknown[]) => canManageEventMock(...args),
+}));
+jest.mock('@/server/events/eventStaffReconciliation', () => ({
+  loadLockedEventStaffSnapshot: (...args: unknown[]) => loadLockedEventStaffSnapshotMock(...args),
 }));
 jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: unknown[]) => loadEventWithRelationsMock(...args),
@@ -100,6 +104,20 @@ describe('GET /api/events/[eventId]/detail', () => {
     getUserComplianceMock.mockResolvedValue(okJson({ users: [] }));
     getOptionalSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    loadLockedEventStaffSnapshotMock.mockResolvedValue({
+      revision: 'staff_revision_1',
+      staffInvites: [{ id: 'invite_1', eventId: 'event_1', type: 'STAFF' }],
+      assistantHostIds: ['assistant_canonical'],
+      officialPositions: [{ id: 'position_canonical', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [{
+        id: 'official_canonical',
+        userId: 'official_user_canonical',
+        positionIds: ['position_canonical'],
+        fieldIds: [],
+        isActive: true,
+      }],
+      officialIds: ['official_user_canonical'],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       state: 'PUBLISHED',
@@ -142,6 +160,16 @@ describe('GET /api/events/[eventId]/detail', () => {
     expect(payload.timeSlots.map((slot: any) => slot.id)).toEqual(['slot_1']);
     expect(payload.leagueScoringConfig.id).toBe('league_config_1');
     expect(payload.staffInvites).toHaveLength(1);
+    expect(payload.staffRevision).toBe('staff_revision_1');
+    expect(payload.event).toEqual(expect.objectContaining({
+      assistantHostIds: ['assistant_canonical'],
+      officialPositions: [{ id: 'position_canonical', name: 'Referee', count: 1, order: 0 }],
+      officialIds: ['official_user_canonical'],
+    }));
+    expect(payload.event.eventOfficials).toEqual([
+      expect.objectContaining({ userId: 'official_user_canonical' }),
+    ]);
+    expect(payload.event.staffInvites).toEqual(payload.staffInvites);
     expect(payload.teamCompliance.teams).toEqual([{ teamId: 'team_1', teamName: 'Team One' }]);
     expect(payload.userCompliance).toBeNull();
     expect(getTeamComplianceMock).toHaveBeenCalledTimes(1);
@@ -155,6 +183,8 @@ describe('GET /api/events/[eventId]/detail', () => {
     expect(response.status).toBe(200);
     expect(payload.teamCompliance).toBeNull();
     expect(payload.userCompliance).toBeNull();
+    expect(payload.staffRevision).toBeNull();
+    expect(loadLockedEventStaffSnapshotMock).not.toHaveBeenCalled();
     expect(getTeamComplianceMock).not.toHaveBeenCalled();
     expect(getUserComplianceMock).not.toHaveBeenCalled();
   });

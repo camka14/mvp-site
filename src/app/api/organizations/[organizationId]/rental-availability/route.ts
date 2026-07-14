@@ -228,6 +228,7 @@ export async function GET(
         where: {
           id: { in: rentalSlotIds },
           archivedAt: null,
+          price: { not: null },
         },
         select: {
           id: true,
@@ -246,7 +247,7 @@ export async function GET(
       : [];
     const rentalSlotById = new Map(
       rentalSlots
-        .filter((slot) => !slot.archivedAt)
+        .filter((slot) => !slot.archivedAt && typeof slot.price === 'number')
         .map((slot) => [slot.id, slot]),
     );
 
@@ -272,7 +273,7 @@ export async function GET(
             endDate: toIsoOrNull(slot.endDate),
             timeZone: normalizeId(slot.timeZone),
             repeating: slot.repeating !== false,
-            price: typeof slot.price === 'number' ? slot.price : 0,
+            price: slot.price as number,
           })),
         };
       })

@@ -1678,17 +1678,9 @@ describe('EventForm dirty state', () => {
     );
   });
 
-  it('stages staff invites until save and resolves them through the save hook', async () => {
+  it('applies the canonical atomic staff response and clears staged invites without generic invite calls', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
-    (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({
-      sent: [{ userId: 'official_2', email: 'official@example.com', staffTypes: ['OFFICIAL', 'HOST'] }],
-      not_sent: [],
-      failed: [],
-    });
-    (userService.getUsersByIds as jest.Mock).mockResolvedValue([
-      { $id: 'official_2', email: 'official@example.com', firstName: 'Casey', lastName: 'Official' },
-    ]);
 
     renderForm(onDirtyStateChange, formRef, {
       pendingStaffInvites: [
@@ -1702,103 +1694,51 @@ describe('EventForm dirty state', () => {
     expect(userService.inviteUsersByEmail).not.toHaveBeenCalled();
 
     await act(async () => {
-      await formRef.current?.submitPendingStaffInvites('event_1');
-    });
-
-    const [inviteUserIdArg, invitePayloadArg] = (userService.inviteUsersByEmail as jest.Mock).mock.calls[0];
-    expect(inviteUserIdArg).toBe('host_1');
-    expect(invitePayloadArg).toHaveLength(1);
-    expect(invitePayloadArg[0]).toEqual(expect.objectContaining({
-      firstName: 'Casey',
-      lastName: 'Official',
-      email: 'official@example.com',
-      type: 'STAFF',
-      eventId: 'event_1',
-      replaceStaffTypes: true,
-      staffTypes: expect.arrayContaining(['OFFICIAL', 'HOST']),
-    }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Email')).toHaveValue('');
+      formRef.current?.applyCanonicalStaffState({
+        contractVersion: 1,
+        eventId: 'event_1',
+        revision: 'canonical_revision',
+        assistantHostIds: ['official_2'],
+        officialPositions: [{
+          id: 'position_server_1',
+          name: 'Referee',
+          count: 1,
+          order: 0,
+        }],
+        eventOfficials: [{
+          id: 'event_official_2',
+          userId: 'official_2',
+          positionIds: ['position_server_1'],
+          fieldIds: [],
+          isActive: true,
+        }],
+        officialIds: ['official_2'],
+        staffInvites: [{
+          $id: 'invite_2',
+          type: 'STAFF',
+          eventId: 'event_1',
+          userId: 'official_2',
+          email: 'official@example.com',
+          status: 'PENDING',
+          staffTypes: ['HOST', 'OFFICIAL'],
+        }],
+      });
     });
 
     expect(formRef.current?.getDraft()).toEqual(
       expect.objectContaining({
         officialIds: expect.arrayContaining(['official_2']),
         assistantHostIds: expect.arrayContaining(['official_2']),
-        officials: expect.arrayContaining([
-          expect.objectContaining({ $id: 'official_2' }),
-        ]),
+        officialPositions: [expect.objectContaining({ id: 'position_server_1' })],
+        eventOfficials: [expect.objectContaining({
+          id: 'event_official_2',
+          userId: 'official_2',
+          positionIds: ['position_server_1'],
+        })],
+        pendingStaffInvites: [],
       }),
     );
-  });
-
-  it('does not resend invites for unchanged assigned staff', async () => {
-    const onDirtyStateChange = jest.fn();
-    const formRef = React.createRef<EventFormHandle>();
-
-    renderForm(onDirtyStateChange, formRef, {
-      officialIds: ['official_1'],
-      assistantHostIds: ['assistant_1'],
-      staffInvites: [],
-      pendingStaffInvites: [],
-    });
-
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
-
-    await act(async () => {
-      await formRef.current?.submitPendingStaffInvites('event_1');
-    });
-
     expect(userService.inviteUsersByEmail).not.toHaveBeenCalled();
-  });
-
-  it('updates existing pending invites when assigned roles change', async () => {
-    const onDirtyStateChange = jest.fn();
-    const formRef = React.createRef<EventFormHandle>();
-    (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({
-      sent: [],
-      not_sent: [],
-      failed: [],
-    });
-
-    renderForm(onDirtyStateChange, formRef, {
-      officialIds: ['official_1'],
-      assistantHostIds: ['official_1'],
-      staffInvites: [
-        {
-          $id: 'invite_1',
-          type: 'STAFF',
-          eventId: 'event_1',
-          userId: 'official_1',
-          status: 'PENDING',
-          staffTypes: ['OFFICIAL'],
-          email: 'official1@example.com',
-        },
-      ],
-      pendingStaffInvites: [],
-    });
-
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
-
-    await act(async () => {
-      await formRef.current?.submitPendingStaffInvites('event_1');
-    });
-
-    expect(userService.inviteUsersByEmail).toHaveBeenCalledTimes(1);
-    const [, invitePayloadArg] = (userService.inviteUsersByEmail as jest.Mock).mock.calls[0];
-    expect(invitePayloadArg).toHaveLength(1);
-    expect(invitePayloadArg[0]).toEqual(expect.objectContaining({
-      userId: 'official_1',
-      type: 'STAFF',
-      eventId: 'event_1',
-      replaceStaffTypes: true,
-      staffTypes: ['HOST', 'OFFICIAL'],
-    }));
   });
 
   it('allows null team capacity limits in form state while surfacing warning and errors', async () => {

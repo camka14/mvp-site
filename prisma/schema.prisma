@@ -1467,6 +1467,8 @@ model ChatGroup {
   updatedAt        DateTime?
   name             String?
   teamId           String?   @unique
+  directUserIdA    String?
+  directUserIdB    String?
   // Indexed via a raw SQL GIN migration for array membership lookups.
   userIds          String[]
   mutedUserIds     String[]  @default([])
@@ -1475,6 +1477,7 @@ model ChatGroup {
   archivedReason   String?
   archivedByUserId String?
 
+  @@unique([directUserIdA, directUserIdB])
   @@index([archivedAt])
 }
 

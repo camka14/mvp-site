@@ -21,6 +21,14 @@ import {
   type EventDetailBootstrapResponse,
   type EventParticipantDivisionWarning,
 } from '@/lib/eventService';
+import {
+  applyEventStaffSnapshot,
+  buildEventStaffPutInput,
+  eventStaffService,
+  stripEventStaffAssignments,
+  stripEventStaffAssignmentsFromPayload,
+  type EventStaffDraft,
+} from '@/lib/eventStaffService';
 import { getHomePathForUser } from '@/lib/homePage';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
@@ -340,6 +348,7 @@ function EventScheduleContent() {
   const [selectedStandingsPool, setSelectedStandingsPool] = useState<string | null>(null);
   const loadedTeamComplianceKeyRef = useRef<string | null>(null);
   const loadedUserComplianceKeyRef = useRef<string | null>(null);
+  const staffRevisionRef = useRef<string | null>(null);
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
   const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
@@ -2650,6 +2659,7 @@ function EventScheduleContent() {
     targetEventId: string,
     normalizedEvent: Event,
   ) => {
+    staffRevisionRef.current = bootstrap.staffRevision;
     applyParticipantSnapshot(
       targetEventId,
       bootstrap.participantSnapshot,
@@ -4168,39 +4178,31 @@ function EventScheduleContent() {
     [activeEvent, activeTab, setSubmitError],
   );
 
-  const syncPendingEventFormInvites = useCallback(
-    async (savedEvent: Event): Promise<Event> => {
-      const formApi = eventFormRef.current;
+  const reconcileEventFormStaff = useCallback(
+    async (savedEvent: Event, desiredEvent: EventStaffDraft): Promise<Event> => {
       const savedEventId = savedEvent.$id;
-      if (!formApi || !savedEventId) {
+      if (!savedEventId) {
         return savedEvent;
       }
 
-      const beforeDraft = formApi.getDraft();
       try {
-        await formApi.submitPendingStaffInvites(savedEventId);
+        const loadedRevision = staffRevisionRef.current;
+        const currentSnapshot = await eventStaffService.getEventStaffState(savedEventId);
+        const input = buildEventStaffPutInput({
+          desiredEvent,
+          persistedEvent: savedEvent,
+          snapshot: currentSnapshot,
+          expectedRevision: loadedRevision,
+        });
+        const canonicalSnapshot = await eventStaffService.putEventStaffState(savedEventId, input);
+        staffRevisionRef.current = canonicalSnapshot.revision;
+        eventFormRef.current?.applyCanonicalStaffState(canonicalSnapshot);
+        return applyEventStaffSnapshot(savedEvent, canonicalSnapshot);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to reconcile staff invitations.';
+        const message = error instanceof Error ? error.message : 'Failed to save event staff.';
         setSubmitError(message);
         throw error;
       }
-
-      const afterDraft = formApi.getDraft();
-      const beforeOfficialIds = JSON.stringify(Array.isArray(beforeDraft.officialIds) ? beforeDraft.officialIds : []);
-      const afterOfficialIds = JSON.stringify(Array.isArray(afterDraft.officialIds) ? afterDraft.officialIds : []);
-      const beforeAssistantHostIds = JSON.stringify(Array.isArray(beforeDraft.assistantHostIds) ? beforeDraft.assistantHostIds : []);
-      const afterAssistantHostIds = JSON.stringify(Array.isArray(afterDraft.assistantHostIds) ? afterDraft.assistantHostIds : []);
-      let latestEvent = savedEvent;
-      if (beforeOfficialIds !== afterOfficialIds || beforeAssistantHostIds !== afterAssistantHostIds) {
-        const invitedEventDraft = { ...savedEvent, ...(afterDraft as Event), $id: savedEventId } as Event;
-        latestEvent = await eventService.updateEvent(savedEventId, invitedEventDraft);
-      }
-
-      const refreshedEvent = await eventService.getEventWithRelations(savedEventId);
-      if (!refreshedEvent) {
-        return latestEvent;
-      }
-      return refreshedEvent;
     },
     [setSubmitError],
   );
@@ -4374,15 +4376,19 @@ function EventScheduleContent() {
       setWarningMessage(null);
 
       try {
-        const payload = buildSchedulePayload(draft);
+        const payload = buildSchedulePayload(stripEventStaffAssignments(draft as EventStaffDraft));
         const scheduleEventId = !isCreateMode ? eventId : undefined;
         const result = await eventService.scheduleEvent(payload, { eventId: scheduleEventId });
         if (!result?.event) {
           throw new Error('Failed to apply schedule changes.');
         }
         await saveEventRegistrationQuestions(result.event.$id);
+        const reconciledEvent = await reconcileEventFormStaff(
+          result.event,
+          draft as EventStaffDraft,
+        );
 
-        handlePreviewEventUpdate(result.event);
+        handlePreviewEventUpdate(reconciledEvent);
 
         if (pathname) {
           const params = new URLSearchParams(searchParams?.toString() ?? '');
@@ -4399,7 +4405,7 @@ function EventScheduleContent() {
         setPublishing(false);
       }
     },
-    [buildSchedulePayload, eventId, handlePreviewEventUpdate, isCreateMode, pathname, router, saveEventRegistrationQuestions, searchParams],
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, isCreateMode, pathname, reconcileEventFormStaff, router, saveEventRegistrationQuestions, searchParams],
   );
 
   const scheduleRegularEvent = useCallback(
@@ -4414,16 +4420,20 @@ function EventScheduleContent() {
       setWarningMessage(null);
 
       try {
-        const payload = buildSchedulePayload(draft);
+        const payload = buildSchedulePayload(stripEventStaffAssignments(draft as EventStaffDraft));
         const result = await eventService.scheduleEvent(payload);
         if (!result?.event) {
           throw new Error('Failed to create event.');
         }
         await saveEventRegistrationQuestions(result.event.$id);
+        const reconciledEvent = await reconcileEventFormStaff(
+          result.event,
+          draft as EventStaffDraft,
+        );
 
-        handlePreviewEventUpdate(result.event);
+        handlePreviewEventUpdate(reconciledEvent);
 
-        const nextId = result.event.$id ?? eventId;
+        const nextId = reconciledEvent.$id ?? eventId;
         if (nextId && pathname) {
           const params = new URLSearchParams(searchParams?.toString() ?? '');
           params.delete('create');
@@ -4435,7 +4445,7 @@ function EventScheduleContent() {
             { scroll: false },
           );
         }
-        return result.event;
+        return reconciledEvent;
       } catch (err) {
         console.error('Failed to create event:', err);
         setError(formatActionErrorMessage('Failed to create event.', err));
@@ -4444,7 +4454,7 @@ function EventScheduleContent() {
         setPublishing(false);
       }
     },
-    [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, saveEventRegistrationQuestions, searchParams],
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, reconcileEventFormStaff, router, saveEventRegistrationQuestions, searchParams],
   );
 
   const {
@@ -4464,8 +4474,6 @@ function EventScheduleContent() {
     setPublishing,
     setSubmitError,
     scheduleRegularEvent,
-    syncPendingEventFormInvites,
-    handlePreviewEventUpdate,
   });
 
   const saveExistingEvent = useCallback(
@@ -4535,15 +4543,22 @@ function EventScheduleContent() {
           const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
           nextEvent.state = toStoredEventLifecycleState(lifecycleStatus, nextEvent.state);
         }
+        const desiredStaffDraft = cloneValue(nextEvent) as EventStaffDraft;
 
         let updatedEvent = nextEvent;
         if (nextEvent.$id) {
+          if (!staffRevisionRef.current?.trim()) {
+            const initialStaffSnapshot = await eventStaffService.getEventStaffState(nextEvent.$id);
+            staffRevisionRef.current = initialStaffSnapshot.revision;
+          }
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent, {
             fields: Array.isArray(nextEvent.fields) ? nextEvent.fields : undefined,
             timeSlots: Array.isArray(nextEvent.timeSlots) ? nextEvent.timeSlots : undefined,
             leagueScoringConfig: Object.prototype.hasOwnProperty.call(nextEvent, 'leagueScoringConfig')
               ? nextEvent.leagueScoringConfig ?? null
               : undefined,
+            omitStaffAssignments: true,
+            expectedStaffRevision: staffRevisionRef.current,
           });
         }
 
@@ -4650,7 +4665,9 @@ function EventScheduleContent() {
             await leagueService.deleteMatchesByEvent(scheduleEventId);
           }
 
-          const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
+          const schedulePayload = stripEventStaffAssignmentsFromPayload(
+            toEventPayload(updatedEvent) as unknown as Record<string, unknown>,
+          );
           const scheduleOptions: {
             eventId: string;
             participantCount?: number;
@@ -4707,7 +4724,7 @@ function EventScheduleContent() {
         }
 
         await saveEventRegistrationQuestions(updatedEvent.$id);
-        updatedEvent = await syncPendingEventFormInvites(updatedEvent);
+        updatedEvent = await reconcileEventFormStaff(updatedEvent, desiredStaffDraft);
 
         hasUnsavedChangesRef.current = false;
         eventFormRef.current?.commitDirtyBaseline();
@@ -4778,7 +4795,7 @@ function EventScheduleContent() {
       stagedMatchCreates,
       toBulkMatchUpdatePayload,
       stagedMatchDeletes,
-      syncPendingEventFormInvites,
+      reconcileEventFormStaff,
       validateDraftMatchGraph,
     ],
   );
@@ -4890,11 +4907,7 @@ function EventScheduleContent() {
 
       const scheduledEvent = await scheduleRegularEvent(draftToSave);
       if (scheduledEvent?.$id) {
-        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
         eventFormRef.current?.commitDirtyBaseline();
-        if (syncedEvent !== scheduledEvent) {
-          handlePreviewEventUpdate(syncedEvent);
-        }
       }
       return;
     }

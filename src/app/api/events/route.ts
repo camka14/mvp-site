@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { canManageEvent, hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { isSessionTokenCurrent } from '@/server/authSessions';
@@ -1146,12 +1147,12 @@ export async function POST(req: NextRequest) {
   try {
     const context = buildContext();
     const created = await prisma.$transaction(async (tx) => {
+      await acquireEventLock(tx, eventId);
       await upsertEventFromPayload(eventPayload, tx);
 
       const loaded = await loadEventWithRelations(eventId, tx);
       let didRebuildSchedule = false;
       if (isSchedulableEventType(loaded.eventType)) {
-        await acquireEventLock(tx, eventId);
         const scheduled = scheduleEvent({ event: loaded }, context);
         await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
         await deleteMatchesByEvent(eventId, tx);
@@ -1181,19 +1182,20 @@ export async function POST(req: NextRequest) {
     }
 
     const payload = await buildEventResponsePayload(event);
+    const notificationBaseUrl = getRequestOrigin(req);
     void notifySocialAudienceOfEventCreation({
       eventId: event.id,
       hostId: event.hostId,
       eventName: event.name,
       eventStart: event.start,
       location: event.location,
-      baseUrl: req.nextUrl.origin,
+      baseUrl: notificationBaseUrl,
     }).catch((notificationError) => {
       console.error('Post-create social notification failed', notificationError);
     });
     await sendAdminEventCreatedNotification({
       event,
-      baseUrl: req.nextUrl.origin,
+      baseUrl: notificationBaseUrl,
     }).catch((notificationError) => {
       console.warn('Failed to send admin event creation notification', {
         eventId: event.id,

@@ -78,6 +78,34 @@ describe('/api/chat/groups/[id] PATCH', () => {
     expect(chatGroupUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('clears the direct-message pair when its membership becomes a group', async () => {
+    chatGroupFindUniqueMock.mockResolvedValue(existingGroup({
+      directUserIdA: 'user_1',
+      directUserIdB: 'user_2',
+    }));
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_3', dateOfBirth: new Date('1992-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+    chatGroupUpdateMock.mockImplementation(async ({ data }: any) => existingGroup(data));
+
+    const response = await PATCH(patchRequest({
+      group: { userIds: ['user_1', 'user_2', 'user_3'] },
+    }), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(chatGroupUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userIds: ['user_1', 'user_2', 'user_3'],
+        directUserIdA: null,
+        directUserIdB: null,
+      }),
+    }));
+  });
+
   it('rejects a team-chat host attempting to mutate roster-managed membership', async () => {
     chatGroupFindUniqueMock.mockResolvedValue(existingGroup({ teamId: 'team_1' }));
 

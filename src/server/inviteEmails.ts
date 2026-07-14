@@ -70,81 +70,87 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
   const teamNames = new Map(teams.map((team) => [team.id, team.name]));
 
   const results: InviteDeliveryResult[] = await Promise.all(invites.map(async (invite) => {
-    const email = normalizeEmail(invite.email);
-    const hasValidEmail = Boolean(email && EMAIL_REGEX.test(email));
-
-    const content = buildInviteEmail({
-      baseUrl,
-      email: hasValidEmail ? email : (invite.email?.trim() ?? ''),
-      inviteType: invite.type,
-      firstName: invite.firstName,
-      lastName: invite.lastName,
-      eventId: invite.eventId,
-      eventName: invite.eventId ? eventNames.get(invite.eventId) : undefined,
-      organizationId: invite.organizationId,
-      organizationName: invite.organizationId ? organizationNames.get(invite.organizationId) : undefined,
-      teamId: invite.teamId,
-      teamName: invite.teamId ? teamNames.get(invite.teamId) : undefined,
-    });
-
-    const inviteUserId = invite.userId?.trim();
-    const pushEnabled = inviteUserId
-      ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'push')
-      : false;
-    if (inviteUserId && pushEnabled) {
-      const pushResult = await sendPushToUsers({
-        userIds: [inviteUserId],
-        notificationType: 'invitations',
-        title: content.subject,
-        body: 'You have a new invitation in BracketIQ. Open the app to review it.',
-        data: {
-          notificationType: 'invitations',
-          deepLink: 'mvp://profile/invites',
-          inviteId: invite.id,
-        },
-      }).catch((error) => {
-        console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
-        return {
-          attempted: false,
-          reason: 'dispatch_error',
-          recipientCount: 1,
-          tokenCount: 0,
-          successCount: 0,
-          failureCount: 0,
-          prunedTokenCount: 0,
-        };
-      });
-
-      // User-id invite policy:
-      // 1) If the user has push targets, rely on push delivery.
-      // 2) If they have no push targets, fall back to email (when available).
-      if (pushResult.reason !== 'no_tokens') {
-        return {
-          id: invite.id,
-          status: invite.status ?? 'PENDING',
-          sentAt: pushResult.attempted && pushResult.successCount > 0 ? new Date() : null,
-        };
-      }
-    }
-
-    const emailEnabledByPreference = inviteUserId
-      ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'email')
-      : true;
-    if (!emailEnabledByPreference || !emailEnabled || !hasValidEmail) {
-      return { id: invite.id, status: null };
-    }
-
     try {
-      await sendEmail({
-        to: email,
-        subject: content.subject,
-        text: content.text,
-        html: content.html,
+      const email = normalizeEmail(invite.email);
+      const hasValidEmail = Boolean(email && EMAIL_REGEX.test(email));
+
+      const content = buildInviteEmail({
+        baseUrl,
+        email: hasValidEmail ? email : (invite.email?.trim() ?? ''),
+        inviteType: invite.type,
+        firstName: invite.firstName,
+        lastName: invite.lastName,
+        eventId: invite.eventId,
+        eventName: invite.eventId ? eventNames.get(invite.eventId) : undefined,
+        organizationId: invite.organizationId,
+        organizationName: invite.organizationId ? organizationNames.get(invite.organizationId) : undefined,
+        teamId: invite.teamId,
+        teamName: invite.teamId ? teamNames.get(invite.teamId) : undefined,
       });
-      return { id: invite.id, status: invite.status ?? 'PENDING', sentAt: new Date() };
+
+      const inviteUserId = invite.userId?.trim();
+      const pushEnabled = inviteUserId
+        ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'push')
+        : false;
+      if (inviteUserId && pushEnabled) {
+        const pushResult = await sendPushToUsers({
+          userIds: [inviteUserId],
+          notificationType: 'invitations',
+          title: content.subject,
+          body: 'You have a new invitation in BracketIQ. Open the app to review it.',
+          data: {
+            notificationType: 'invitations',
+            deepLink: 'mvp://profile/invites',
+            inviteId: invite.id,
+          },
+        }).catch((error) => {
+          console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
+          return {
+            attempted: false,
+            reason: 'dispatch_error',
+            recipientCount: 1,
+            tokenCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            prunedTokenCount: 0,
+          };
+        });
+
+        // User-id invite policy:
+        // 1) If the user has push targets, rely on push delivery.
+        // 2) If they have no push targets, fall back to email (when available).
+        if (pushResult.reason !== 'no_tokens') {
+          return {
+            id: invite.id,
+            status: invite.status ?? 'PENDING',
+            sentAt: pushResult.attempted && pushResult.successCount > 0 ? new Date() : null,
+          };
+        }
+      }
+
+      const emailEnabledByPreference = inviteUserId
+        ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'email')
+        : true;
+      if (!emailEnabledByPreference || !emailEnabled || !hasValidEmail) {
+        return { id: invite.id, status: null };
+      }
+
+      try {
+        await sendEmail({
+          to: email,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
+        });
+        return { id: invite.id, status: invite.status ?? 'PENDING', sentAt: new Date() };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Failed to send invite email', { inviteId: invite.id, error: message });
+        return { id: invite.id, status: 'FAILED' };
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Failed to send invite email', { inviteId: invite.id, error: message });
+      console.error('Failed to process invite delivery', { inviteId: invite.id, error: message });
       return { id: invite.id, status: 'FAILED' };
     }
   }));
