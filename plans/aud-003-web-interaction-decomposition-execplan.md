@@ -55,6 +55,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 17:28Z) Milestone 4af: moved inline-auth feedback/profile continuation, schedule/bracket navigation, weekly-occurrence routing, and public-completion navigation into the 132-line `useEventDetailNavigationController`; five direct navigation regressions plus all 25 existing facade/summary regressions, TypeScript, focused ESLint, and diff checks pass.
 - [x] (2026-07-14 17:34Z) Milestone 4ag: moved event image fallback, identity badges, host label, and schedule/location/capacity hero presentation into the 87-line render-only `EventDetailHero`; three direct view regressions plus the six-suite/33-test facade gate, TypeScript, focused ESLint, and diff checks pass.
 - [x] (2026-07-14 17:37Z) Milestone 4ah: moved participant dropdowns, capacity expansion, free-agent action selection, QR visibility, team options, and mobile join expansion into the 63-line `useEventDetailPresentationController`; four direct state regressions plus the four-suite/25-test facade gate, TypeScript, focused ESLint, and diff checks pass.
+- [x] (2026-07-14 17:43Z) Milestone 4ai: moved sheet/inline layout, public-detail branch selection, participant summary placement, docked join-card geometry, and their child prop contracts into the 125-line render-only `EventDetailContent`; three direct layout regressions plus the four-suite/24-test facade gate, TypeScript, focused ESLint, and diff checks pass.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
 - [x] (2026-07-14 16:32Z) Milestone 5b: moved immutable/default construction, source resets, dirty baselines, external draft notifications, and normalization-stable rebasing into focused EventForm lifecycle hooks.
@@ -661,6 +662,16 @@ Event-detail hero and presentation-state evidence on 2026-07-14:
 
 Three direct hero tests cover complete identity, optional label omission, and image fallback. Four direct presentation-controller tests cover independent participant dropdowns, free-agent selection, capacity/team/mobile toggles, and QR lifecycle. These moves preserve the facade's observable markup and state transitions while removing another visual responsibility and eight independent transient state owners.
 
+Event-detail content-view evidence on 2026-07-14:
+
+    PASS 4 suites / 24 tests
+    PASS npx tsc --noEmit
+    PASS focused ESLint and git diff --check
+    EventDetailSheet.tsx: 1,202 -> 1,127 lines
+    EventDetailContent.tsx: 125 lines
+
+Three direct view tests cover non-inline summary/participants/close composition, inline public overview/program composition, and measured docked-card geometry. The new view has no service or controller imports and receives typed child models/actions; event loading, registration, payment, analytics, and navigation remain outside the render-only boundary.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -709,3 +720,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting event-detail nav
 Revision note (2026-07-14): Continued Milestone 5 by extracting draft construction, validation, canonical staff application, and the exact imperative handle; the serial 11-suite EventForm gate passes 170 tests, and the facade is now 2,622 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the event hero and consolidating transient presentation state; both direct gates, TypeScript, and focused ESLint pass, and the facade is now 1,202 lines.
 Revision note (2026-07-14): Recorded a canonical integration checkpoint of 18 suites and 207 tests after the four latest AUD-003 ownership slices; release-build browser acceptance remains deliberately open.
+Revision note (2026-07-14): Continued Milestone 4 by extracting the render-only event-detail content layout; the focused facade gate passes 24 tests and the facade is now 1,127 lines.
