@@ -3,6 +3,7 @@
 import path from 'node:path';
 import {
   buildDuplicateRelationshipAudit,
+  getDuplicateRelationshipAuditExitCode,
   parseAuditCliArgs,
   parseClassificationLedger,
   reconcileClassifications,
@@ -181,5 +182,57 @@ describe('duplicate relationship array audit CLI boundaries', () => {
     expect(() => resolveData007ArtifactPath('output/data007/../report.json', cwd)).toThrow(
       'Artifact paths must be files inside output/data007/.',
     );
+  });
+
+  it('blocks strict mode while a live-team link is unclassified', () => {
+    const report = buildDuplicateRelationshipAudit({
+      organizations: [],
+      products: [],
+      users: [{ id: 'user_1', teamIds: ['team_1'] }],
+      canonicalTeams: [{ id: 'team_1' }],
+      eventTeams: [],
+      teamRegistrations: [],
+      teamStaffAssignments: [],
+    });
+
+    expect(getDuplicateRelationshipAuditExitCode(report, true)).toBe(2);
+    expect(getDuplicateRelationshipAuditExitCode(report, false)).toBe(0);
+  });
+
+  it('blocks strict mode when the classification ledger has an invalid entry', () => {
+    const report = buildDuplicateRelationshipAudit({
+      organizations: [],
+      products: [],
+      users: [],
+      canonicalTeams: [],
+      eventTeams: [],
+      teamRegistrations: [],
+      teamStaffAssignments: [],
+    }, parseClassificationLedger({ version: 1, entries: [{ ...validEntry, canonicalTeamId: '' }] }));
+
+    expect(getDuplicateRelationshipAuditExitCode(report, true)).toBe(2);
+  });
+
+  it('allows strict mode only after exact classifications reconcile', () => {
+    const report = buildDuplicateRelationshipAudit({
+      organizations: [],
+      products: [],
+      users: [{ id: 'user_1', teamIds: ['event_team_1'] }],
+      canonicalTeams: [{ id: 'team_1' }],
+      eventTeams: [{ id: 'event_team_1', parentTeamId: 'team_1' }],
+      teamRegistrations: [],
+      teamStaffAssignments: [],
+    }, parseClassificationLedger({ version: 1, entries: [validEntry] }));
+
+    expect(getDuplicateRelationshipAuditExitCode(report, true)).toBe(0);
+  });
+
+  it('allows strict mode after both legacy columns are already removed', () => {
+    expect(getDuplicateRelationshipAuditExitCode({
+      version: 1,
+      generatedAt: '2026-07-14T00:00:00.000Z',
+      columnsPresent: false,
+      alreadyRemoved: true,
+    }, true)).toBe(0);
   });
 });

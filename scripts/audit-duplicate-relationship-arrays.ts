@@ -501,6 +501,19 @@ export const buildDuplicateRelationshipAudit = (
   userTeams: buildUserTeamAudit(input, ledger),
 });
 
+export const getDuplicateRelationshipAuditExitCode = (
+  report: DuplicateRelationshipAuditReport,
+  strict: boolean,
+): 0 | 2 => {
+  if (!strict || !report.columnsPresent) {
+    return 0;
+  }
+  return (
+    (report.userTeams?.unclassifiedLegacyOnlyLiveTeamLinks ?? 0) > 0
+    || (report.userTeams?.invalidClassificationEntries ?? 0) > 0
+  ) ? 2 : 0;
+};
+
 const loadAuditRows = async (client: InstanceType<typeof Client>): Promise<DuplicateRelationshipAuditInput | null> => {
   const columnResult = await client.query(`
     SELECT table_name, column_name
@@ -625,17 +638,7 @@ const run = async (): Promise<number> => {
     console.log(JSON.stringify(summarizeReport(report), null, 2));
     if (outputPath) console.log(`Detailed report written to ${path.relative(process.cwd(), outputPath)}.`);
 
-    if (
-      options.strict
-      && report.columnsPresent
-      && (
-        (report.userTeams?.unclassifiedLegacyOnlyLiveTeamLinks ?? 0) > 0
-        || (report.userTeams?.invalidClassificationEntries ?? 0) > 0
-      )
-    ) {
-      return 2;
-    }
-    return 0;
+    return getDuplicateRelationshipAuditExitCode(report, options.strict);
   } finally {
     if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
     await client.end().catch(() => undefined);
