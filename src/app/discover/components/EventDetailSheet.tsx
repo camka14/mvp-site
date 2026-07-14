@@ -27,21 +27,17 @@ import {
 } from '@/types';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
-import type { FamilyChild } from '@/lib/familyService';
-import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
+import { formatAgeRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
-import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
-import { evaluateDivisionAgeEligibility } from '@/lib/divisionTypes';
 import { resolveDivisionDisplayName } from '@/lib/divisionDisplay';
 import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import {
     getDivisionIdFromEventEntry,
     getNormalizedDivisionAliases,
     normalizePriceCents,
-    isActiveFamilyChild,
 } from './eventDetail/divisionRegistration';
 import {
     buildScheduleTimeslotGroups,
@@ -73,7 +69,8 @@ import { useJoinCardDocking } from './eventDetail/hooks/useJoinCardDocking';
 import { useDivisionSelectionSynchronization } from './eventDetail/hooks/useDivisionSelectionSynchronization';
 import { useEventDetailInactiveReset } from './eventDetail/hooks/useEventDetailInactiveReset';
 import { useEventDivisionRegistrationModel } from './eventDetail/hooks/useEventDivisionRegistrationModel';
-import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
+import { useEventParticipantModel } from './eventDetail/hooks/useEventParticipantModel';
+import { collectUniqueUserIds } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
     isRegistrationWorkflowPhase,
@@ -646,6 +643,52 @@ export default function EventDetailSheet({
         router.push(`/teams?${params.toString()}`);
     }, [currentEvent.$id, router, selectedFreeAgentActionUser]);
 
+    const isTeamSignup = Boolean(currentEvent.teamSignup);
+    const {
+        totalParticipants,
+        participantCapacity,
+        eventAtCapacity,
+        spotsLeft,
+        eventFillPercent,
+        normalizedFreeAgentIds,
+        normalizedWaitlistIds,
+        normalizedParticipantUserIds,
+        normalizedFreeAgentIdSet,
+        normalizedWaitlistIdSet,
+        isUserRegistered,
+        isUserWaitlisted,
+        isUserFreeAgent,
+        activeChildren,
+        hasRefundTarget,
+        shouldShowChildRegistrationPanel,
+        childOptions,
+        selectedChild,
+        selectedChildEligible,
+        selectedChildHasEmail,
+        selectedChildIsFreeAgent,
+        selectedChildIsWaitlisted,
+        selectedChildIsRegistered,
+        showChildRegistrationStatus,
+    } = useEventParticipantModel({
+        event: currentEvent,
+        user,
+        players,
+        teams,
+        freeAgents,
+        children,
+        childrenLoading,
+        childrenError,
+        selectedChildId,
+        childRegistrationChildId,
+        eventStartDate,
+        eventMinAge,
+        eventMaxAge,
+        hasAgeLimits,
+        isTeamSignup,
+        selectedDivisionOption,
+        canRegisterChild,
+    });
+
     // Update the join event handlers
     if (!currentEvent) return null;
     if (!isActive) return null;
@@ -660,7 +703,6 @@ export default function EventDetailSheet({
     const eventScheduleDisplayText = isEvergreenProgram
         ? (currentEvent.dateDisplayText?.trim() || currentEvent.scheduleText?.trim() || 'No fixed start date')
         : `${date} at ${time}`;
-    const isTeamSignup = currentEvent.teamSignup;
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const startDateValue = parseDateValue(currentEvent.start ?? null);
     const endDateValue = parseDateValue(currentEvent.end ?? null);
@@ -695,129 +737,6 @@ export default function EventDetailSheet({
         affiliateUrl: affiliateActionUrl,
         isAffiliateEvent,
     });
-    const totalParticipants = isTeamSignup ? teams.length : players.length;
-    const participantCapacity = resolveEventParticipantCapacity(currentEvent);
-    const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
-    const spotsLeft = participantCapacity > 0 ? Math.max(0, participantCapacity - totalParticipants) : 0;
-    const eventFillPercent = participantCapacity > 0
-        ? Math.min(100, Math.round((totalParticipants / participantCapacity) * 100))
-        : 0;
-    const normalizedFreeAgentIds = (() => {
-        const fromEvent = collectUniqueUserIds(currentEvent.freeAgentIds);
-        const additionalFromProfiles = freeAgents
-            .map((entry) => normalizeUserId(entry?.$id))
-            .filter((entry): entry is string => Boolean(entry));
-        return Array.from(new Set([...fromEvent, ...additionalFromProfiles]));
-    })();
-    const normalizedWaitlistIds = (() => {
-        const fromEvent = collectUniqueUserIds(currentEvent.waitListIds);
-        const fromLegacy = collectUniqueUserIds(currentEvent.waitList);
-        return Array.from(new Set([...fromEvent, ...fromLegacy]));
-    })();
-    const normalizedParticipantUserIds = collectUniqueUserIds(currentEvent.userIds);
-    const normalizedFreeAgentIdSet = new Set(normalizedFreeAgentIds);
-    const normalizedWaitlistIdSet = new Set(normalizedWaitlistIds);
-    // Use expanded relations for registration state
-    const isUserRegistered = !!user && (
-        (!isTeamSignup && (players.some(p => p.$id === user.$id) || normalizedParticipantUserIds.includes(user.$id))) ||
-        (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
-    );
-    const isUserWaitlisted = !!user && normalizedWaitlistIdSet.has(user.$id);
-    const isUserFreeAgent = !!user && normalizedFreeAgentIdSet.has(user.$id);
-    const isChildEligible = (child: FamilyChild): boolean => {
-        const childDob = parseDateValue(child.dateOfBirth ?? null);
-        if (!childDob) {
-            return false;
-        }
-        const childAgeAtEvent = calculateAgeOnDate(childDob, eventStartDate ?? new Date());
-        if (!Number.isFinite(childAgeAtEvent)) {
-            return false;
-        }
-        if (hasAgeLimits) {
-            return isAgeWithinRange(childAgeAtEvent, eventMinAge, eventMaxAge);
-        }
-        if (isTeamSignup) {
-            return true;
-        }
-        if (!selectedDivisionOption) {
-            return true;
-        }
-        const divisionEligibility = evaluateDivisionAgeEligibility({
-            dateOfBirth: childDob,
-            divisionTypeId: selectedDivisionOption.divisionTypeId,
-            sportInput: selectedDivisionOption.sportId ?? undefined,
-            referenceDate: eventStartDate ?? undefined,
-        });
-        if (!divisionEligibility.applies) {
-            return true;
-        }
-        return divisionEligibility.eligible !== false;
-    };
-    const activeChildren = children.filter(isActiveFamilyChild);
-    const hasActiveChildren = activeChildren.length > 0;
-    const hasLinkedChildRefundTarget = activeChildren.some((child) => {
-        const childId = normalizeUserId(child.userId);
-        if (!childId) {
-            return false;
-        }
-        return normalizedParticipantUserIds.includes(childId)
-            || normalizedWaitlistIdSet.has(childId)
-            || normalizedFreeAgentIdSet.has(childId)
-            || teams.some((team) => (team.playerIds || []).includes(childId));
-    });
-    const hasRefundTarget = Boolean(user && (
-        isUserRegistered
-        || isUserWaitlisted
-        || isUserFreeAgent
-        || hasLinkedChildRefundTarget
-    ));
-    const shouldShowChildRegistrationPanel = canRegisterChild
-        && (childrenLoading || Boolean(childrenError) || hasActiveChildren);
-    const childOptions = activeChildren.map((child) => {
-        const name = `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Child';
-        const childDob = parseDateValue(child.dateOfBirth ?? null);
-        const childAgeAtEvent = childDob ? calculateAgeOnDate(childDob, eventStartDate ?? new Date()) : undefined;
-        const ageLabel = typeof childAgeAtEvent === 'number' && Number.isFinite(childAgeAtEvent)
-            ? `${childAgeAtEvent}y at event`
-            : 'age unknown';
-        const eligible = isChildEligible(child);
-        const childId = normalizeUserId(child.userId);
-        const hasExistingEventState = Boolean(
-            childId
-            && (
-                normalizedParticipantUserIds.includes(childId)
-                || normalizedWaitlistIdSet.has(childId)
-                || normalizedFreeAgentIdSet.has(childId)
-                || teams.some((team) => (team.playerIds || []).includes(childId))
-            ),
-        );
-        return {
-            value: child.userId,
-            label: `${name} (${ageLabel})`,
-            visible: eligible || hasExistingEventState,
-        };
-    }).filter((option) => option.visible).map((option) => ({
-        value: option.value,
-        label: option.label,
-    }));
-    const selectedChild = activeChildren.find((child) => child.userId === selectedChildId);
-    const selectedChildEligible = selectedChild ? isChildEligible(selectedChild) : false;
-    const selectedChildHasEmail = selectedChild
-        ? (typeof selectedChild.hasEmail === 'boolean' ? selectedChild.hasEmail : Boolean(selectedChild.email))
-        : true;
-    const selectedChildIsFreeAgent = Boolean(
-        selectedChildId
-        && normalizedFreeAgentIdSet.has(selectedChildId),
-    );
-    const selectedChildIsWaitlisted = Boolean(
-        selectedChildId
-        && normalizedWaitlistIdSet.has(selectedChildId),
-    );
-    const selectedChildIsRegistered = Boolean(
-        selectedChildId
-        && (players.some((participant) => participant.$id === selectedChildId) || normalizedParticipantUserIds.includes(selectedChildId)),
-    );
-    const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
     const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
     const mapLng = hasCoordinates ? Number(currentEvent.coordinates[0]) : undefined;
