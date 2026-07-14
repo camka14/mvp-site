@@ -45,6 +45,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 17:02Z) Milestone 4v: extracted the non-inline sheet summary for event facts, divisions, map, tournament/playoff rules, description, and capacity statistics.
 - [x] (2026-07-14 17:10Z) Milestone 4w: extracted the shared public detail grid, section hierarchy, and metadata row primitives with empty-value handling.
 - [x] (2026-07-14 17:18Z) Milestone 4x: extracted the inline public host, registration status, description, schedule, location, address, and map overview.
+- [x] (2026-07-14 17:30Z) Milestone 4y: extracted inline division choices, timeline preview, league scoring, and staff presentation into one typed program-details view.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
 - [x] (2026-07-14 16:32Z) Milestone 5b: moved immutable/default construction, source resets, dirty baselines, external draft notifications, and normalization-stable rebasing into focused EventForm lifecycle hooks.
@@ -143,7 +144,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration and team participant presentation, sheet-summary primitives and inline public overview, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,639 lines, down from 7,219, has no direct effects, passes complete-file ESLint, and no longer imports event, registration, payment, or bill services; public choices/timeline/staff and join-card extraction remain substantial. EventForm payment and lifecycle ownership are now extracted and `EventForm.tsx` measures 3,941 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration and team participant presentation, sheet summary, inline public overview/program details, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,451 lines, down from 7,219, has no direct effects, passes complete-file ESLint, and no longer imports event, registration, payment, or bill services; the join-card and overlay composition remain substantial. EventForm payment and lifecycle ownership are now extracted and `EventForm.tsx` measures 3,941 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -592,6 +593,17 @@ Public event overview evidence on 2026-07-14:
 
 Four direct view tests cover organization hosting and single-day timing, affiliate external-link semantics, evergreen schedule presentation, and fallback host/description/map rendering. The facade passes source values and receives no view-owned state or callbacks back from the overview.
 
+Public event program-details evidence on 2026-07-14:
+
+    PASS 38 suites / 319 tests
+    PASS npx tsc --noEmit
+    PASS new component/test and complete EventDetailSheet ESLint
+    PASS git diff --check
+    EventDetailSheet.tsx: 2,639 -> 2,451 lines
+    PublicEventProgramDetails.tsx: 249 lines
+
+Four direct view tests cover selected division forwarding, age-filtered empty choices, populated/empty schedule previews, and league/staff summaries. The component receives already-derived groups and schedule rows, so it adds no data, selection, or persistence owner.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -634,3 +646,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting event team parti
 Revision note (2026-07-14): Continued Milestone 4 by extracting the non-inline event sheet summary; the combined 35-suite safety net passes 307 tests and the facade is now 2,791 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting public detail primitives; the combined 36-suite safety net passes 311 tests and the facade is now 2,716 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the inline public overview; the combined 37-suite safety net passes 315 tests and the facade is now 2,639 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting public choices, timeline, scoring, and staff presentation; the combined 38-suite safety net passes 319 tests and the facade is now 2,451 lines.
