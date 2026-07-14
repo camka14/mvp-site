@@ -1,9 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Button, Group } from '@mantine/core';
 import { useRouter } from 'next/navigation';
-import {
-    QrCode,
-} from 'lucide-react';
 import {
     Event,
     Team,
@@ -26,15 +22,15 @@ import { useRegistrationWorkflowController } from './eventDetail/hooks/useRegist
 import { useWeeklyEventSelectionModel } from './eventDetail/hooks/useWeeklyEventSelectionModel';
 import { useEventDetailNavigationController } from './eventDetail/hooks/useEventDetailNavigationController';
 import { useEventDetailPresentationController } from './eventDetail/hooks/useEventDetailPresentationController';
-import { collectUniqueUserIds } from './eventDetail/eventDetailData';
 import { createEventJoinActions } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
-import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
-import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualRegistrationPanel';
-import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
 import { EventDetailContent } from './eventDetail/EventDetailContent';
 import { EventDetailOverlays } from './eventDetail/EventDetailOverlays';
+import {
+    EventDetailHostManageActions,
+    EventDetailRegistrationPanels,
+} from './eventDetail/EventDetailRegistrationPanels';
 import { useApp } from '@/app/providers';
 import {
     trackEventOutboundClicked,
@@ -168,6 +164,10 @@ export default function EventDetailSheet({
         },
     } = useJoinCardDocking({ active: isActive, inline: renderInline });
 
+    const weeklyModel = useWeeklyEventSelectionModel({
+        event: currentEvent,
+        selectedOccurrence,
+    });
     const {
         eventPublicUrl: currentEventPublicUrl,
         organizationLogoId: currentOrganizationLogoId,
@@ -176,10 +176,7 @@ export default function EventDetailSheet({
         selectedWeeklyOccurrenceOption,
         selectedWeeklyOccurrence,
         weeklySelectionRequired,
-    } = useWeeklyEventSelectionModel({
-        event: currentEvent,
-        selectedOccurrence,
-    });
+    } = weeklyModel;
     const checkoutController = useEventCheckoutController({
         user,
         eventId: currentEvent?.$id,
@@ -219,6 +216,21 @@ export default function EventDetailSheet({
         closePayment,
         clearPaymentData,
     } = checkoutController;
+    const divisionRegistrationModel = useEventDivisionRegistrationModel({
+        event: currentEvent,
+        user,
+        children,
+        teams,
+        selectedChildId,
+        selectedDivisionId,
+        selectedDivisionTypeKey,
+        selectedWeeklyOccurrence,
+        selectedWeeklyOccurrenceOption,
+        isWeeklyParentEvent,
+        saveRegistrationProgress: saveEventRegistrationProgress,
+        onSelectedDivisionIdChange: setSelectedDivisionId,
+        onSelectedDivisionTypeKeyChange: setSelectedDivisionTypeKey,
+    });
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
         [currentEvent],
@@ -272,21 +284,7 @@ export default function EventDetailSheet({
         canRegisterChild,
         isEventHost,
         isFreeForUser,
-    } = useEventDivisionRegistrationModel({
-        event: currentEvent,
-        user,
-        children,
-        teams,
-        selectedChildId,
-        selectedDivisionId,
-        selectedDivisionTypeKey,
-        selectedWeeklyOccurrence,
-        selectedWeeklyOccurrenceOption,
-        isWeeklyParentEvent,
-        saveRegistrationProgress: saveEventRegistrationProgress,
-        onSelectedDivisionIdChange: setSelectedDivisionId,
-        onSelectedDivisionTypeKeyChange: setSelectedDivisionTypeKey,
-    });
+    } = divisionRegistrationModel;
 
     const {
         maxAuthDob,
@@ -465,6 +463,25 @@ export default function EventDetailSheet({
     ]);
 
     const isTeamSignup = Boolean(currentEvent.teamSignup);
+    const participantModel = useEventParticipantModel({
+        event: currentEvent,
+        user,
+        players,
+        teams,
+        freeAgents,
+        children,
+        childrenLoading,
+        childrenError,
+        selectedChildId,
+        childRegistrationChildId,
+        eventStartDate,
+        eventMinAge,
+        eventMaxAge,
+        hasAgeLimits,
+        isTeamSignup,
+        selectedDivisionOption,
+        canRegisterChild,
+    });
     const {
         totalParticipants,
         participantCapacity,
@@ -490,30 +507,27 @@ export default function EventDetailSheet({
         selectedChildIsWaitlisted,
         selectedChildIsRegistered,
         showChildRegistrationStatus,
-    } = useEventParticipantModel({
-        event: currentEvent,
-        user,
-        players,
-        teams,
-        freeAgents,
-        children,
-        childrenLoading,
-        childrenError,
-        selectedChildId,
-        childRegistrationChildId,
-        eventStartDate,
-        eventMinAge,
-        eventMaxAge,
-        hasAgeLimits,
-        isTeamSignup,
-        selectedDivisionOption,
-        canRegisterChild,
-    });
+    } = participantModel;
 
     // Update the join event handlers
     if (!currentEvent) return null;
     if (!isActive) return null;
 
+    const publicModel = buildEventDetailPublicModel({
+        event: currentEvent,
+        user,
+        hostUser,
+        teams,
+        participantCapacity,
+        spotsLeft,
+        selectedDivisionBillingPriceCents: selectedDivisionBilling.priceCents,
+        selectedDivisionOption,
+        divisionDisplayNameIndex,
+        isEventHost,
+        renderInline,
+        isWeeklyParentEvent,
+        now: todayForDob,
+    });
     const {
         affiliateActionUrl,
         isAffiliateEvent,
@@ -552,65 +566,9 @@ export default function EventDetailSheet({
         canShowScheduleButton,
         showParticipantsSection,
         scheduleButtonLabel,
-    } = buildEventDetailPublicModel({
-        event: currentEvent,
-        user,
-        hostUser,
-        teams,
-        participantCapacity,
-        spotsLeft,
-        selectedDivisionBillingPriceCents: selectedDivisionBilling.priceCents,
-        selectedDivisionOption,
-        divisionDisplayNameIndex,
-        isEventHost,
-        renderInline,
-        isWeeklyParentEvent,
-        now: todayForDob,
-    });
-    const renderHostManageQrActions = () => (
-        <Group grow gap="sm" wrap="wrap">
-            <Button
-                variant="light"
-                onClick={() => handleViewSchedule()}
-            >
-                {scheduleButtonLabel}
-            </Button>
-            <Button
-                variant="default"
-                leftSection={<QrCode size={16} />}
-                onClick={openQrCode}
-            >
-                QR Code
-            </Button>
-        </Group>
-    );
-    const selectedTeamRegistration = selectedTeamId
-        ? teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) ?? null
-        : null;
-    const selectedTeamUsesSchedulableSlots = isTeamSignup && ['LEAGUE', 'TOURNAMENT'].includes(String(currentEvent.eventType ?? '').toUpperCase());
-    const selectedTeamIsRegistered = Boolean(
-        selectedTeamRegistration
-        || (
-            !selectedTeamUsesSchedulableSlots
-            &&
-            selectedTeamId
-            && collectUniqueUserIds(currentEvent.teamIds).includes(selectedTeamId)
-        ),
-    );
-    const selectedTeamPaymentFailed = Boolean(
-        selectedTeamId
-        && paymentFailedTeamIds.includes(selectedTeamId)
-    );
+    } = publicModel;
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
-    const {
-        handleRegisterChild,
-        handleJoinEvent,
-        handleJoinWaitlist,
-        handleJoinTeamWaitlist,
-        handleJoinAsTeam,
-        continuePaymentPlanPreview,
-        handleWithdrawTeam,
-    } = createEventJoinActions({
+    const joinActions = createEventJoinActions({
         event: currentEvent,
         user,
         eventHasStarted,
@@ -647,6 +605,7 @@ export default function EventDetailSheet({
         setJoinNotice,
         setPaymentPlanPreview,
     });
+    const { continuePaymentPlanPreview } = joinActions;
     const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
     const publicRegistrationStatusLabel = eventHasStarted
         ? 'Registration closed'
@@ -658,20 +617,10 @@ export default function EventDetailSheet({
         : joinAtCapacity
             ? 'border-amber-200 bg-amber-50 text-amber-900'
             : 'border-emerald-200 bg-emerald-50 text-emerald-900';
-    const showSelfWaitlistActions = !currentUserPaymentFailed && (joinAtCapacity || isUserWaitlisted);
-    const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
-    const showTeamWaitlistActions = !selectedTeamPaymentFailed && !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
-    const selfJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
-    const selfWaitlistJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
-    const selfWaitlistLeaveDisabled = joining || eventHasStarted;
     const freeAgentJoinBlockedReason = weeklySelectionRequired
-                                ? 'Select a weekly session before joining as a free agent.'
+        ? 'Select a weekly session before joining as a free agent.'
         : selfRegistrationBlockedReason;
-    const {
-        handleLeaveWaitlist,
-        handleLeaveFreeAgents,
-        handleJoinFreeAgents,
-    } = createEventParticipantActions({
+    const participantActions = createEventParticipantActions({
         event: currentEvent,
         user,
         occurrence: selectedWeeklyOccurrence,
@@ -685,106 +634,42 @@ export default function EventDetailSheet({
         setJoinError,
         setJoinNotice,
     });
-    const childRegistrationPanel = (
-        <ChildRegistrationPanel
-            visible={shouldShowChildRegistrationPanel}
-            isTeamSignup={isTeamSignup}
-            waitlistMode={childWaitlistMode}
+    const registrationPanel = (
+        <EventDetailRegistrationPanels
             childrenError={childrenError}
             childrenLoading={childrenLoading}
-            childOptions={childOptions}
-            selectedChildId={selectedChildId}
-            selectedChildPresent={Boolean(selectedChild)}
-            selectedChildHasEmail={selectedChildHasEmail}
-            selectedChildEligible={selectedChildEligible}
-            selectedChildIsFreeAgent={selectedChildIsFreeAgent}
-            selectedChildIsWaitlisted={selectedChildIsWaitlisted}
-            selectedChildIsRegistered={selectedChildIsRegistered}
-            joiningChildFreeAgent={joiningChildFreeAgent}
-            registeringChild={registeringChild}
-            canRegisterChild={canRegisterChild}
-            weeklySelectionRequired={weeklySelectionRequired}
-            isDivisionSelectionMissing={isDivisionSelectionMissing}
-            hasAgeLimits={hasAgeLimits}
-            eventMinAge={eventMinAge}
-            eventMaxAge={eventMaxAge}
-            showRegistrationStatus={showChildRegistrationStatus}
-            registration={childRegistration}
-            consent={childConsent}
-            comboboxProps={sharedComboboxProps}
-            onChildChange={setSelectedChildId}
-            onAction={() => { void handleRegisterChild(); }}
-        />
-    );
-    const registrationPanel = isTeamSignup ? (
-        <EventTeamRegistrationPanel
-            eventHasStarted={eventHasStarted}
-            selectedWeeklySession={Boolean(isWeeklyParentEvent && selectedWeeklyOccurrenceOption)}
-            showTeamJoinOptions={showTeamJoinOptions}
+            currentEvent={currentEvent}
+            currentUserPaymentFailed={currentUserPaymentFailed}
+            divisionModel={divisionRegistrationModel}
+            eventTeams={teams}
             isLoadingTeams={isLoadingTeams}
-            userTeams={userTeams}
-            selectedTeamId={selectedTeamId}
-            showTeamWaitlistActions={showTeamWaitlistActions}
+            joinActions={joinActions}
             joining={joining}
-            weeklySelectionRequired={weeklySelectionRequired}
-            selectedTeamIsWaitlisted={selectedTeamIsWaitlisted}
-            isDivisionSelectionMissing={isDivisionSelectionMissing}
-            selectedTeamIsRegistered={selectedTeamIsRegistered}
-            confirmingPurchase={confirmingPurchase}
-            isFreeForUser={isFreeForUser}
-            priceCents={selectedDivisionBilling.priceCents}
-            selectedTeamPaymentFailed={selectedTeamPaymentFailed}
-            selfRegistrationBlockedReason={selfRegistrationBlockedReason}
-            isMinor={isMinor}
-            isUserFreeAgent={isUserFreeAgent}
-            freeAgentJoinBlockedReason={freeAgentJoinBlockedReason}
-            childRegistrationPanel={childRegistrationPanel}
-            canShowScheduleButton={canShowScheduleButton}
-            hostManageQrActions={renderHostManageQrActions()}
-            renderInline={renderInline}
-            isTournament={currentEvent.eventType === 'TOURNAMENT'}
-            sportName={typeof currentEvent.sport === 'string'
-                ? currentEvent.sport
-                : currentEvent.sport?.name}
-            totalParticipants={totalParticipants}
-            participantCapacity={participantCapacity}
-            comboboxProps={sharedComboboxProps}
-            onToggleTeamOptions={toggleTeamJoinOptions}
-            onSelectedTeamChange={(teamId) => {
-                setSelectedTeamId(teamId);
-                saveEventRegistrationProgress({ selectedTeamId: teamId || null });
-            }}
+            joiningChildFreeAgent={joiningChildFreeAgent}
+            joinFinalizationController={joinFinalizationController}
             onManageTeams={() => {
                 router.push(`/teams?event=${currentEvent.$id}`);
                 onClose();
             }}
-            onJoinTeamWaitlist={() => { void handleJoinTeamWaitlist(); }}
-            onJoinAsTeam={() => { void handleJoinAsTeam(); }}
-            onWithdrawTeam={() => { void handleWithdrawTeam(); }}
-            onLeaveFreeAgents={() => { void handleLeaveFreeAgents(); }}
-            onJoinFreeAgents={() => { void handleJoinFreeAgents(); }}
+            onSelectedChildChange={setSelectedChildId}
+            onSelectedTeamChange={(teamId) => {
+                setSelectedTeamId(teamId);
+                saveEventRegistrationProgress({ selectedTeamId: teamId || null });
+            }}
             onViewBracket={handleBracketClick}
-        />
-    ) : (
-        <EventIndividualRegistrationPanel
-            selfRegistrationBlockedReason={selfRegistrationBlockedReason}
-            isMinor={isMinor}
-            showSelfWaitlistActions={showSelfWaitlistActions}
-            isUserWaitlisted={isUserWaitlisted}
-            selfWaitlistLeaveDisabled={selfWaitlistLeaveDisabled}
-            selfWaitlistJoinDisabled={selfWaitlistJoinDisabled}
-            selfJoinDisabled={selfJoinDisabled}
-            eventHasStarted={eventHasStarted}
-            joining={joining}
-            confirmingPurchase={confirmingPurchase}
-            priceCents={selectedDivisionBilling.priceCents}
-            currentUserPaymentFailed={currentUserPaymentFailed}
-            canShowScheduleButton={canShowScheduleButton}
-            hostManageQrActions={renderHostManageQrActions()}
-            childRegistrationPanel={childRegistrationPanel}
-            onLeaveWaitlist={() => { void handleLeaveWaitlist(); }}
-            onJoinWaitlist={() => { void handleJoinWaitlist(); }}
-            onJoinEvent={() => { void handleJoinEvent(); }}
+            onViewSchedule={handleViewSchedule}
+            participantActions={participantActions}
+            participantModel={participantModel}
+            paymentFailedTeamIds={paymentFailedTeamIds}
+            presentationController={presentationController}
+            publicModel={publicModel}
+            registrationWorkflowController={registrationWorkflowController}
+            renderInline={renderInline}
+            selectedChildId={selectedChildId}
+            selectedTeamId={selectedTeamId}
+            selectedTeamIsWaitlisted={selectedTeamIsWaitlisted}
+            userTeams={userTeams}
+            weeklyModel={weeklyModel}
         />
     );
     const content = (
@@ -908,7 +793,13 @@ export default function EventDetailSheet({
                 totalParticipants,
                 participantCapacity,
                 canShowScheduleButton,
-                hostManageQrActions: renderHostManageQrActions(),
+                hostManageQrActions: (
+                    <EventDetailHostManageActions
+                        onOpenQrCode={presentationController.openQrCode}
+                        onViewSchedule={handleViewSchedule}
+                        scheduleButtonLabel={scheduleButtonLabel}
+                    />
+                ),
                 isTournament: currentEvent.eventType === 'TOURNAMENT',
                 registrationPanel,
                 hasRefundTarget,
