@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TournamentConfig } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, Field } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { NumberInput } from '@mantine/core';
@@ -52,13 +52,6 @@ import {
     buildLeagueScheduleError,
 } from './eventForm/scheduleMessages';
 import {
-    normalizePendingStaffInvite,
-    type PendingStaffInvite,
-} from './eventForm/staffInvites';
-import {
-    leagueConfigEqual,
-} from './eventForm/formEquality';
-import {
     SECTION_ANIMATION_DURATION_MS,
 } from './eventForm/constants';
 import {
@@ -94,6 +87,7 @@ import { useEventFormReferenceHydration } from './eventForm/hooks/useEventFormRe
 import { useEventFormConfigurationActions } from './eventForm/hooks/useEventFormConfigurationActions';
 import { useEventFormCatalogController } from './eventForm/hooks/useEventFormCatalogController';
 import { useRegistrationQuestionEditorActions } from './eventForm/hooks/useRegistrationQuestionEditorActions';
+import { useEventFormFieldWriters } from './eventForm/hooks/useEventFormFieldWriters';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -296,100 +290,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [templateDocuments],
     );
 
-    const setEventData = useCallback(
-        (
-            updater: React.SetStateAction<EventFormValues>,
-            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-        ) => {
-            const current = getValues();
-            const next = typeof updater === 'function' ? (updater as (prev: EventFormValues) => EventFormValues)(current) : updater;
-            if (next === current) {
-                return;
-            }
-            const shouldDirty = options.shouldDirty ?? true;
-            const shouldValidate = options.shouldValidate ?? true;
-            (Object.keys(next) as (keyof EventFormValues)[]).forEach((key) => {
-                const currentVal = current[key];
-                const nextVal = next[key];
-                if (Object.is(currentVal, nextVal)) return;
-                setValue(key, nextVal, { shouldDirty, shouldValidate });
-            });
-        },
-        [getValues, setValue],
-    );
-
-    const setLeagueData = useCallback(
-        (
-            updater: React.SetStateAction<LeagueConfig>,
-            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-        ) => {
-            const current = getValues('leagueData');
-            const next = typeof updater === 'function' ? (updater as (prev: LeagueConfig) => LeagueConfig)(current) : updater;
-            if (leagueConfigEqual(current, next)) {
-                return;
-            }
-            setValue('leagueData', next, {
-                shouldDirty: options.shouldDirty ?? true,
-                shouldValidate: options.shouldValidate ?? true,
-            });
-        },
-        [getValues, setValue],
-    );
-
-    const setPendingStaffInvites = useCallback(
-        (updater: React.SetStateAction<PendingStaffInvite[]>) => {
-            const current = getValues('pendingStaffInvites') ?? [];
-            const next = typeof updater === 'function'
-                ? (updater as (prev: PendingStaffInvite[]) => PendingStaffInvite[])(current)
-                : updater;
-            setValue('pendingStaffInvites', next.map(normalizePendingStaffInvite), { shouldDirty: true, shouldValidate: false });
-        },
-        [getValues, setValue],
-    );
-
-    const setTournamentData = useCallback(
-        (updater: React.SetStateAction<TournamentConfig>) => {
-            const current = getValues('tournamentData');
-            const next = typeof updater === 'function' ? (updater as (prev: TournamentConfig) => TournamentConfig)(current) : updater;
-            if (Object.is(current, next)) {
-                return;
-            }
-            setValue('tournamentData', next, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const setPlayoffData = useCallback(
-        (
-            updater: React.SetStateAction<TournamentConfig>,
-            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-        ) => {
-            const current = getValues('playoffData');
-            const next = typeof updater === 'function' ? (updater as (prev: TournamentConfig) => TournamentConfig)(current) : updater;
-            if (Object.is(current, next)) {
-                return;
-            }
-            setValue('playoffData', next, {
-                shouldDirty: options.shouldDirty ?? true,
-                shouldValidate: options.shouldValidate ?? true,
-            });
-        },
-        [getValues, setValue],
-    );
-
-    const setJoinAsParticipant = useCallback(
-        (value: boolean) => {
-            if (Object.is(getValues('joinAsParticipant'), value)) {
-                return;
-            }
-            (setValue as (name: string, value: unknown, options?: { shouldDirty?: boolean; shouldValidate?: boolean }) => void)(
-                'joinAsParticipant',
-                value,
-                { shouldDirty: true, shouldValidate: true },
-            );
-        },
-        [getValues, setValue],
-    );
+    const {
+        setEventData,
+        setJoinAsParticipant,
+        setLeagueData,
+        setPendingStaffInvites,
+        setPlayoffData,
+        setTournamentData,
+    } = useEventFormFieldWriters({ getValues, setValue });
 
     useEventFormReferenceHydration({
         eventData,
