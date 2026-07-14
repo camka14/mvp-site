@@ -24,7 +24,7 @@ For field or court rentals, do not promise real-time availability unless the off
 
 ## Scheduled Scrape Cadence
 
-Each source can opt into automated scraping with `AffiliateScrapeSources.autoScrapeEnabled` and `scrapeIntervalMinutes`. New sources should stay manual until their mapping, logo/source organization, and compliance notes have been checked at least once. The DigitalOcean scheduled job should run daily, but the per-source interval decides whether a source is due.
+Each source can opt into automated scraping with `AffiliateScrapeSources.autoScrapeEnabled` and `scrapeIntervalMinutes`. New sources should stay manual until their mapping, logo/source organization, and compliance notes have been checked at least once. The DigitalOcean scheduled job should run daily, but the per-source interval decides whether a source is due for a full scrape. Enabled weekly and monthly sources receive a bounded lightweight list-page check on intervening days. That check stores a content fingerprint in source metadata and reports changes or failures in the daily email without generating candidates. The first check only establishes the baseline.
 
 Use these default categories:
 
