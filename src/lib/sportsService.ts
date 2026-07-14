@@ -1,13 +1,72 @@
 import { apiRequest } from '@/lib/apiClient';
 import type { MatchRulesConfig, Sport, SportOfficialPositionTemplate } from '@/types';
 
-const CACHE_KEY = 'sports-cache-v3';
+const CACHE_KEY = 'sports-cache-v4';
 // Sports rarely change; keep cache long-lived and refresh opportunistically.
 const CACHE_DURATION_MS = 1000 * 60 * 60 * 24; // 24h
 
 let cachedSports: Sport[] | null = null;
 let cachedAt: number | null = null;
 let inflightPromise: Promise<Sport[]> | null = null;
+
+const normalizeClientSportName = (value: unknown): string =>
+  String(value ?? '').trim().toLowerCase();
+
+const clientSportId = (row: any): string => String(row?.$id ?? row?.id ?? '');
+
+const clientSportCreatedAt = (row: any): number => {
+  const value = row?.$createdAt ?? row?.createdAt;
+  if (value == null) return Number.POSITIVE_INFINITY;
+  const timestamp = new Date(String(value)).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+};
+
+const clientSportConfigurationCount = (row: any): number => (
+  row && typeof row === 'object'
+    ? Object.entries(row).reduce((count, [key, value]) => (
+      ['$id', 'id', 'name', '$createdAt', 'createdAt', '$updatedAt', 'updatedAt'].includes(key) || value == null
+        ? count
+        : count + 1
+    ), 0)
+    : 0
+);
+
+const dedupeClientSportRows = <T extends { name?: unknown }>(rows: readonly T[]): T[] => {
+  const groups = new Map<string, { index: number; row: T }>();
+  rows.forEach((row) => {
+    const canonicalName = normalizeClientSportName(row.name);
+    if (!canonicalName) {
+      throw new Error(`Sport ${clientSportId(row)} has a blank canonical name.`);
+    }
+
+    const current = groups.get(canonicalName);
+    if (!current) {
+      groups.set(canonicalName, { index: groups.size, row });
+      return;
+    }
+
+    const rowId = clientSportId(row);
+    const currentId = clientSportId(current.row);
+    const rowHasCanonicalId = normalizeClientSportName(rowId) === canonicalName;
+    const currentHasCanonicalId = normalizeClientSportName(currentId) === canonicalName;
+    const rowConfigurationCount = clientSportConfigurationCount(row);
+    const currentConfigurationCount = clientSportConfigurationCount(current.row);
+    const rowCreatedAt = clientSportCreatedAt(row);
+    const currentCreatedAt = clientSportCreatedAt(current.row);
+    const isPreferred = rowHasCanonicalId !== currentHasCanonicalId
+      ? rowHasCanonicalId
+      : rowConfigurationCount !== currentConfigurationCount
+        ? rowConfigurationCount > currentConfigurationCount
+        : rowCreatedAt !== currentCreatedAt
+          ? rowCreatedAt < currentCreatedAt
+          : rowId < currentId;
+    if (isPreferred) current.row = row;
+  });
+
+  return Array.from(groups.values())
+    .sort((left, right) => left.index - right.index)
+    .map(({ row }) => row);
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -110,7 +169,7 @@ const loadFromStorage = (options?: { allowStale?: boolean }) => {
     const isExpired = Date.now() - parsed.timestamp > CACHE_DURATION_MS;
     if (isExpired && !allowStale) return;
 
-    cachedSports = parsed.items.map((item) => mapRowToSport(item));
+    cachedSports = dedupeClientSportRows(parsed.items).map((item) => mapRowToSport(item));
     cachedAt = parsed.timestamp;
   } catch {
     // Ignore storage parsing errors
@@ -140,7 +199,7 @@ const shouldUseCache = () => {
 
 const fetchSportsFromApi = async (): Promise<Sport[]> => {
   const response = await apiRequest<{ sports?: any[] }>('/api/sports');
-  const sports = (response.sports || []).map(mapRowToSport);
+  const sports = dedupeClientSportRows(response.sports || []).map(mapRowToSport);
   return sports;
 };
 

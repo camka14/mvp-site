@@ -14,10 +14,11 @@ This closes DATA-031 without relying on the current database merely happening to
 
 - [x] (2026-07-14 04:00Z) Re-read `PLANS.md`, reviewed the current schema, default seeding, `/api/sports`, client cache, and Discover filter identity path.
 - [x] (2026-07-14 04:05Z) Queried the configured local and live databases read-only: each currently has 15 sport rows and zero duplicate `lower(trim(name))` groups.
-- [ ] Add a defensive canonical-name helper and use it in default seeding, the sports API, and the browser cache boundary.
-- [ ] Add a data-preserving migration that rewires every known reference, removes duplicate rows, trims names, and creates a case-insensitive unique index plus a nonblank-name constraint.
-- [ ] Add focused unit/API regressions and a real PostgreSQL duplicate-reference migration fixture.
-- [ ] Run the focused Jest suites, TypeScript, Prisma validation/generation checks, and a clean migration replay.
+- [x] (2026-07-14 02:39Z) Added `src/server/canonicalSports.ts` and applied its deterministic canonical-ID/richness/date/ID selection to default reconciliation and `/api/sports`; added the dependency-free equivalent at the browser cache/API boundary.
+- [x] (2026-07-14 02:39Z) Added `20260713230000_enforce_canonical_sport_names`, which rewires exact IDs and legacy display-name values in every known scalar/array reference, merges compatible non-null configuration into each deterministic winner, fails closed on conflicting configuration, deletes duplicate rows, trims winners, and enforces trimmed nonblank plus case-insensitive unique names.
+- [x] (2026-07-14 02:39Z) Added focused unit/API/cache/static migration regressions and `scripts/test-canonical-sport-migration.mjs`, a loopback-only real PostgreSQL fixture covering duplicate winner selection, complementary configuration merge, conflicting-value rejection, exact-ID/name reference shapes, order-preserving array collapse, and future insert rejection.
+- [x] (2026-07-14 02:53Z) Addressed the independent review: exact-ID-first resolution now covers SQL `EventTeams.sport` and `Teams.sport`, `sports-cache-v4` invalidates ambiguous mapped v3 rows, and the migration preserves compatible configuration while rejecting conflicts with SQLSTATE `23514`.
+- [x] (2026-07-14 02:53Z) Passed 4 focused Jest suites / 18 tests, `npx tsc --noEmit --incremental false`, targeted ESLint, `npm run prisma:check`, the expanded real PostgreSQL fixture, and a clean 153-migration replay with the new constraint/index verified.
 - [ ] Render Discover locally and verify one filter per sport with no duplicate-key console error, then commit and reconcile DATA-031 in `docs/code-audit/README.md`.
 
 ## Surprises & Discoveries
@@ -30,6 +31,24 @@ This closes DATA-031 without relying on the current database merely happening to
 
 - Observation: Prisma cannot directly express a unique index over `lower(trim(name))` in `schema.prisma`.
   Evidence: The current `Sports.name` field is an ordinary `String`; a manual PostgreSQL expression index is needed unless the model gains a second normalized column or the database adopts `citext`.
+
+- Observation: The two name-based team references live in SQL tables whose names differ from both Prisma model names.
+  Evidence: Prisma model `Teams` maps to SQL table `EventTeams`, while Prisma model `CanonicalTeams` maps to SQL table `Teams`; both have a nullable `sport` display-name column and must be rewritten by the migration. A first clean replay caught the mistaken assumption that a `CanonicalTeams` SQL table existed. The only other `sportName` field is extracted affiliate candidate text, not a relational pointer to `Sports`, so changing it would corrupt source evidence rather than repair a reference.
+
+- Observation: Columns named `sportId` and `sportIds` are not guaranteed to contain actual `Sports.id` values in legacy data.
+  Evidence: Existing compatibility behavior permits display names in these string fields. The final migration resolves an exact stored ID first, then falls back to `lower(btrim(value))` display-name identity. The PostgreSQL fixture covers case/whitespace display names in `Events`, `Divisions`, `EventTemplates`, and `Fields`, in addition to exact duplicate IDs.
+
+- Observation: The minimal fixture initially passed while the first full migration replay failed because its fixture table name mirrored the Prisma model rather than historical SQL.
+  Evidence: Full replay stopped in `20260713230000_enforce_canonical_sport_names`; schema and migration history inspection showed `CanonicalTeams` has `@@map("Teams")`. After changing the migration and fixture to SQL table `Teams`, the duplicate fixture passed again and all 153 migrations replayed cleanly.
+
+- Observation: Although `EventTeams.sport` and `Teams.sport` are display-name-shaped columns, active guest registration can persist `event.sportId` into them.
+  Evidence: Independent review traced the guest path and found that a stored value can therefore be either a `Sports.id` or a name. Both columns now resolve an exact ID first and use normalized display-name identity only when no exact row exists; the fixture includes both forms and an intentional ID/name collision to prove precedence.
+
+- Observation: A v3 browser cache row has already passed through `mapRowToSport`, which converts nullable scoring flags to explicit `false`.
+  Evidence: Those mapped booleans count as populated configuration during defensive canonical selection and can make an older sparse duplicate appear artificially rich. The cache boundary now reads/writes `sports-cache-v4`; a regression proves v3 is ignored and another proves v4 payloads remain defensively deduplicated.
+
+- Observation: Deterministic winner selection alone is not data preserving when compatible duplicate rows contain complementary configuration.
+  Evidence: The migration now extracts every non-null configuration field, rejects a normalized group when one field has distinct values, and otherwise overlays the one unambiguous value per field onto the selected row before duplicate deletion. The real fixture proves both complementary merge and transactional conflict rollback.
 
 ## Decision Log
 
@@ -49,9 +68,25 @@ This closes DATA-031 without relying on the current database merely happening to
   Rationale: Old application instances and databases may coexist temporarily. Returning and caching one row per normalized name prevents duplicate UI keys before every environment has applied the migration.
   Date/Author: 2026-07-14 / Codex
 
+- Decision: Make the named nonblank constraint also require the stored name to equal `btrim(name)`.
+  Rationale: A unique index on `lower(name)` alone would still permit both `Indoor Volleyball` and ` indoor volleyball `. Trimming retained rows and rejecting future surrounding whitespace makes the database enforce the plan's `lower(trim(name))` identity without adding a second schema column.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: Resolve ID-shaped references with exact row IDs before normalized display-name fallback.
+  Rationale: An exact ID is the strongest available identity and avoids accidentally interpreting an unusual ID as another sport's display name. The fallback repairs historical values such as `sportId = ' BASKETBALL '` when the retained canonical ID is `sport_basketball_rich`.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: Merge only unambiguous duplicate configuration and abort on any distinct non-null values for the same field.
+  Rationale: Complementary sparse rows can be combined without loss, but choosing among contradictory scoring or rule settings would silently change behavior. SQLSTATE `23514`, a field-specific message, and transaction rollback make that data repair explicit before duplicate deletion.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: Invalidate `sports-cache-v3` rather than trying to re-rank its already-mapped rows.
+  Rationale: Mapping erased the distinction between nullable flags and explicit `false`, so a v3 payload cannot reliably reproduce server-side configuration richness. A v4 key forces one authoritative refresh while retaining defensive dedupe for newly written cache data.
+  Date/Author: 2026-07-14 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation is pending. At completion, record the migration name, exact canonical-selection and reference-rewrite behavior, focused test counts, PostgreSQL replay transcript, rendered Discover evidence, commit hash, and any limitation that remains.
+The implementation and non-rendered verification milestone is complete. Migration `20260713230000_enforce_canonical_sport_names` retains a normalized-ID winner first, otherwise the most configured row, then the earliest `createdAt` and lexical ID. It first rejects conflicting non-null configuration, then merges complementary configuration into the winner. It rewrites exact IDs before normalized display-name fallbacks across `Events`, `Divisions`, `EventTemplates`, `Fields`, SQL `EventTeams`, and SQL `Teams`; `Organizations` remains name-based and arrays retain first-occurrence order after collapse. The browser cache moved to v4 so already-mapped v3 booleans cannot distort rollout selection. The focused batch passed 18/18 tests, the expanded loopback merge/conflict fixture passed, Prisma 7.8.0 preflight passed, and all 153 migrations replayed into a disposable database. Remaining work is rendered Discover validation, audit-ledger reconciliation, and the scoped commit; no migration was deployed live.
 
 ## Context and Orientation
 
@@ -83,7 +118,21 @@ From `/Users/elesesy/StudioProjects/mvp-site`, inspect and test serially:
     npx prisma validate
     npx prisma generate
 
-Run the migration fixture command selected by the implementation and expect one canonical row for each normalized name, all fixture references rewritten, and a duplicate insert rejected with a unique-index error. Then run the existing full migration-replay helper or create a disposable PostgreSQL database using the local server on port 5433, apply every migration in order, and drop only that disposable database afterward.
+Run the migration fixture command selected by the implementation and expect one canonical row for each normalized name, complementary configuration merged, exact-ID and display-name references rewritten, contradictory configuration rejected transactionally, and a duplicate insert rejected with a unique-index error. Then run the existing full migration-replay helper or create a disposable PostgreSQL database using the local server on port 5433, apply every migration in order, and drop only that disposable database afterward.
+
+The selected fixture command is intentionally separate from normal Jest because it requires local PostgreSQL. It refuses any non-loopback hostname before creating its temporary schema:
+
+    SPORT_MIGRATION_TEST_DATABASE_URL=<loopback-postgres-url> node scripts/test-canonical-sport-migration.mjs
+
+The observed successful transcript was:
+
+    canonical sport migration fixture passed
+
+The clean replay created a uniquely named disposable database on `localhost:5433`, ran `npx prisma migrate deploy`, queried `pg_constraint` and `pg_indexes`, and dropped that database from an exit trap. Its final evidence was:
+
+    153 migrations found in prisma/migrations
+    All migrations have been successfully applied.
+    full migration replay passed: 153 migrations; sport constraint and index present
 
 For rendered verification, start the app using the repository's existing local command and exact configured host. The flow under test is: `/discover` loads -> sport filters open -> every canonical sport appears once -> toggling one filter changes only that control and produces no duplicate-key console error.
 
@@ -108,6 +157,14 @@ Current read-only preflight evidence:
 
 The audit's historical rendered failure remains relevant because no invariant currently prevents it from recurring.
 
+Current implementation evidence:
+
+    Test Suites: 4 passed, 4 total
+    Tests:       18 passed, 18 total
+    Prisma schema surface verified: canonical schema, generated client, and Prisma versions match.
+    canonical sport migration fixture passed
+    full migration replay passed: 153 migrations; sport constraint and index present
+
 ## Interfaces and Dependencies
 
 Use existing Prisma and PostgreSQL only; add no runtime package. The pure canonical helper should accept the existing sport row shape and return a list of the same shape. Name normalization must be shared between server dedupe call sites, while the browser cache may use a small dependency-free equivalent to avoid importing server code into the client bundle.
@@ -119,3 +176,11 @@ The database invariant must be named clearly, for example:
 and the migration must add a named nonblank check such as `Sports_name_nonblank_check`. Keep names stable so future diagnostics and rollback planning can identify the exact invariant.
 
 Revision note (2026-07-14): Initial plan created after current-source review and read-only local/live duplicate preflights. It chooses a data-preserving reference rewrite, a manual case-insensitive PostgreSQL index, and temporary application-side dedupe for safe rollout.
+
+Revision note (2026-07-14 02:30Z): Implementation resumed after a second full plan/schema review. The living sections now record the actual SQL table names for both team reference shapes, why affiliate `sportName` remains untouched, and why the check constraint must enforce trimming as well as nonblank content.
+
+Revision note (2026-07-14 02:35Z): The first clean full-chain replay exposed that Prisma model `CanonicalTeams` maps to historical SQL table `Teams`, not `CanonicalTeams`. The migration, fixture, and plan were corrected before any deployment; the failed disposable database was dropped automatically.
+
+Revision note (2026-07-14 02:39Z): The server/API/browser defenses, data-preserving migration, focused tests, loopback PostgreSQL duplicate fixture, Prisma checks, and clean 153-migration replay are complete. Exact-ID precedence with normalized display-name fallback is now documented. Rendered Discover validation, ledger reconciliation, and commit remain intentionally open for the parent audit batch.
+
+Revision note (2026-07-14 02:53Z): Independent review found three rollout gaps. SQL `EventTeams.sport` and `Teams.sport` now resolve exact IDs before names, compatible duplicate configuration is merged while conflicts fail closed, and `sports-cache-v4` invalidates stale mapped v3 rows. The expanded 18-test batch, real merge/conflict fixture, TypeScript/Prisma checks, and clean 153-migration replay all pass.

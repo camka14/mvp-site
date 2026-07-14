@@ -221,6 +221,34 @@ describe('GET /api/sports', () => {
     );
   });
 
+  it('serializes one canonical row for case and whitespace duplicate sport names', async () => {
+    const duplicateSports = [
+      {
+        id: 'sport_indoor_volleyball_duplicate',
+        name: ' indoor volleyball ',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        matchRulesTemplate: { scoringModel: 'SETS' },
+      },
+      {
+        id: 'Indoor Volleyball',
+        name: 'Indoor Volleyball',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        matchRulesTemplate: null,
+      },
+    ];
+    prismaMock.sports.findMany
+      .mockResolvedValueOnce(duplicateSports)
+      .mockResolvedValueOnce(duplicateSports);
+
+    const response = await GET(new NextRequest('http://localhost/api/sports'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.sports).toEqual([
+      expect.objectContaining({ id: 'Indoor Volleyball', name: 'Indoor Volleyball' }),
+    ]);
+  });
+
   it('remaps legacy references and removes deprecated sports', async () => {
     const seededSports = [
       { id: 'Soccer', name: 'Soccer' },

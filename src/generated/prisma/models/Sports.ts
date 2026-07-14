@@ -1500,6 +1500,9 @@ export type $SportsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     id: string
     createdAt: Date | null
     updatedAt: Date | null
+    /**
+     * Trimmed and unique case-insensitively by the migration-enforced Sports_name_ci_key expression index, which Prisma schema syntax cannot represent.
+     */
     name: string
     usePointsForWin: boolean | null
     usePointsForDraw: boolean | null

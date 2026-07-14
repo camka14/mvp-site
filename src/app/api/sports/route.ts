@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureDefaultSports } from '@/server/defaultSports';
+import { dedupeCanonicalSports, normalizeCanonicalSportName } from '@/server/canonicalSports';
 import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
@@ -10,29 +11,26 @@ const DEPRECATED_SPORT_TARGET_BY_NAME: Record<string, string> = {
   volleyball: 'Indoor Volleyball',
 };
 
-const normalizeSportName = (value: unknown): string =>
-  String(value ?? '').trim().toLowerCase();
-
 const remapOrganizationSports = (values: string[]): string[] => {
   const mapped = values.map((value) => {
-    const target = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeSportName(value)];
+    const target = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeCanonicalSportName(value)];
     return target ?? value;
   });
   return Array.from(new Set(mapped));
 };
 
 export async function GET(_req: NextRequest) {
-  let sports = await ensureDefaultSports(prisma);
+  let sports = dedupeCanonicalSports(await ensureDefaultSports(prisma));
 
   const sportsByNameLower = new Map(
     sports
-      .map((sport) => [normalizeSportName(sport.name), sport] as const)
+      .map((sport) => [normalizeCanonicalSportName(sport.name), sport] as const)
       .filter(([name]) => Boolean(name)),
   );
   const deprecatedSports = sports.filter((sport) =>
     Object.prototype.hasOwnProperty.call(
       DEPRECATED_SPORT_TARGET_BY_NAME,
-      normalizeSportName(sport.name),
+      normalizeCanonicalSportName(sport.name),
     ),
   );
 
@@ -59,8 +57,8 @@ export async function GET(_req: NextRequest) {
     });
 
     const remapOperations = deprecatedSports.flatMap((sport) => {
-      const targetName = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeSportName(sport.name)];
-      const targetSport = targetName ? sportsByNameLower.get(normalizeSportName(targetName)) : null;
+      const targetName = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeCanonicalSportName(sport.name)];
+      const targetSport = targetName ? sportsByNameLower.get(normalizeCanonicalSportName(targetName)) : null;
       if (!targetSport) {
         return [];
       }
@@ -100,8 +98,13 @@ export async function GET(_req: NextRequest) {
       },
     });
 
-    sports = await prisma.sports.findMany({ orderBy: { name: 'asc' } });
+    sports = dedupeCanonicalSports(
+      await prisma.sports.findMany({ orderBy: { name: 'asc' } }),
+    );
   }
 
-  return NextResponse.json({ sports: withLegacyList(sports) }, { status: 200 });
+  return NextResponse.json(
+    { sports: withLegacyList(dedupeCanonicalSports(sports)) },
+    { status: 200 },
+  );
 }

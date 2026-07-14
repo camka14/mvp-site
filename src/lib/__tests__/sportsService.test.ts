@@ -68,7 +68,7 @@ describe('sportsService', () => {
   });
 
   it('hydrates cached sports with preserved match rules templates', async () => {
-    localStorage.setItem('sports-cache-v3', JSON.stringify({
+    localStorage.setItem('sports-cache-v4', JSON.stringify({
       timestamp: Date.now(),
       items: [
         {
@@ -105,5 +105,77 @@ describe('sportsService', () => {
     expect(sport.officialPositionTemplates).toEqual([
       { name: 'Scorekeeper', count: 1 },
     ]);
+  });
+
+  it('deduplicates case and whitespace variants from the sports API', async () => {
+    const { sportsService, apiRequestMock } = await loadSportsService();
+
+    apiRequestMock.mockResolvedValue({
+      sports: [
+        {
+          $id: 'sport_indoor_volleyball_duplicate',
+          name: ' indoor volleyball ',
+          matchRulesTemplate: { scoringModel: 'SETS' },
+        },
+        {
+          $id: 'Indoor Volleyball',
+          name: 'Indoor Volleyball',
+          matchRulesTemplate: null,
+        },
+      ],
+    });
+
+    const sports = await sportsService.getAll(true);
+
+    expect(sports).toHaveLength(1);
+    expect(sports[0]).toEqual(expect.objectContaining({
+      $id: 'Indoor Volleyball',
+      name: 'Indoor Volleyball',
+    }));
+  });
+
+  it('ignores the prior cache version whose mapped booleans can distort canonical selection', async () => {
+    localStorage.setItem('sports-cache-v3', JSON.stringify({
+      timestamp: Date.now(),
+      items: [
+        {
+          $id: 'legacy-cache-row',
+          name: 'Legacy Cached Sport',
+          usePointsForWin: false,
+          usePointsForDraw: false,
+        },
+      ],
+    }));
+
+    const { sportsService } = await loadSportsService();
+
+    expect(sportsService.getCached({ allowStale: true })).toBeNull();
+  });
+
+  it('deduplicates a current-version local-storage payload before returning it', async () => {
+    localStorage.setItem('sports-cache-v4', JSON.stringify({
+      timestamp: Date.now(),
+      items: [
+        {
+          $id: 'sport_indoor_soccer_duplicate',
+          name: ' INDOOR SOCCER ',
+          matchRulesTemplate: { scoringModel: 'PERIODS' },
+        },
+        {
+          $id: 'Indoor Soccer',
+          name: 'Indoor Soccer',
+          matchRulesTemplate: null,
+        },
+      ],
+    }));
+
+    const { sportsService } = await loadSportsService();
+    const sports = sportsService.getCached({ allowStale: true }) ?? [];
+
+    expect(sports).toHaveLength(1);
+    expect(sports[0]).toEqual(expect.objectContaining({
+      $id: 'Indoor Soccer',
+      name: 'Indoor Soccer',
+    }));
   });
 });

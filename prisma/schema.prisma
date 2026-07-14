@@ -2473,6 +2473,7 @@ model Sports {
   id                                String    @id
   createdAt                         DateTime?
   updatedAt                         DateTime?
+  /// Trimmed and unique case-insensitively by the migration-enforced Sports_name_ci_key expression index, which Prisma schema syntax cannot represent.
   name                              String
   usePointsForWin                   Boolean?
   usePointsForDraw                  Boolean?

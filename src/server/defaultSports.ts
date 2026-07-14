@@ -4,14 +4,17 @@ import {
   getSkillDivisionTypeOptionsForSport,
   normalizeDivisionTypeParameterOptions,
 } from '@/lib/divisionTypes';
+import {
+  dedupeCanonicalSports,
+  normalizeCanonicalSportName,
+  type CanonicalSportRow,
+} from '@/server/canonicalSports';
 
-type SportRow = {
-  id: string;
+type SportRow = CanonicalSportRow & {
   name?: string | null;
   skillDivisionTypes?: unknown;
   matchRulesTemplate?: unknown;
   officialPositionTemplates?: unknown;
-  [key: string]: unknown;
 };
 
 type SportsClientLike = {
@@ -746,23 +749,27 @@ const mergeMissingMatchRulesTemplate = (
 };
 
 export const ensureDefaultSports = async (client: SportsClientLike): Promise<SportRow[]> => {
-  let sports = await client.sports.findMany({ orderBy: { name: 'asc' } });
+  let sports = dedupeCanonicalSports(
+    await client.sports.findMany({ orderBy: { name: 'asc' } }),
+  );
 
   if (sports.length === 0) {
     await client.sports.createMany({ data: DEFAULT_SPORTS, skipDuplicates: true });
-    return client.sports.findMany({ orderBy: { name: 'asc' } });
+    return dedupeCanonicalSports(
+      await client.sports.findMany({ orderBy: { name: 'asc' } }),
+    );
   }
 
   const existingById = new Map(sports.map((sport) => [sport.id, sport]));
   const existingByNameLower = new Map(
     sports
-      .map((sport) => [String(sport.name ?? '').toLowerCase(), sport] as const)
+      .map((sport) => [normalizeCanonicalSportName(sport.name), sport] as const)
       .filter(([key]) => Boolean(key)),
   );
 
   const toCreate = DEFAULT_SPORTS.filter((sport) => {
     if (existingById.has(sport.id)) return false;
-    return !existingByNameLower.has(String(sport.name).toLowerCase());
+    return !existingByNameLower.has(normalizeCanonicalSportName(sport.name));
   });
   if (toCreate.length > 0) {
     await client.sports.createMany({ data: toCreate, skipDuplicates: true });
@@ -770,7 +777,7 @@ export const ensureDefaultSports = async (client: SportsClientLike): Promise<Spo
 
   const updates = DEFAULT_SPORTS.flatMap((spec) => {
     const existing =
-      existingById.get(spec.id) ?? existingByNameLower.get(String(spec.name).toLowerCase());
+      existingById.get(spec.id) ?? existingByNameLower.get(normalizeCanonicalSportName(spec.name));
     if (!existing) return [];
 
     const patch: Record<string, boolean | Prisma.InputJsonValue> = {};
@@ -820,5 +827,7 @@ export const ensureDefaultSports = async (client: SportsClientLike): Promise<Spo
     }
   }
 
-  return client.sports.findMany({ orderBy: { name: 'asc' } });
+  return dedupeCanonicalSports(
+    await client.sports.findMany({ orderBy: { name: 'asc' } }),
+  );
 };
