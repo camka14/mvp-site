@@ -18,6 +18,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 14:27Z) Milestone 1: characterized stale event loads, registration-step exclusivity, signing cancellation and in-flight poll cleanup, superseded slot-conflict requests, normalized division commits, and the complete `EventFormHandle` imperative contract.
 - [x] (2026-07-14 14:14Z) Milestone 2: extracted weekly-session calculations, division/registration eligibility and payment-plan calculations, organization/schedule/display presentation helpers, and their direct tests without changing state ownership or markup.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
+- [x] (2026-07-14 14:31Z) Milestone 3a: moved inline login/signup, verification resend, Google entry, feedback, and request invalidation into `useInlineEventAuthController`; event-detail data loading remains for Milestone 3b.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
@@ -57,6 +58,9 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: the existing signing status effect already rejects a deferred operation response after unmount.
   Evidence: the new in-flight poll test reaches text-waiver acceptance, observes the immediate operation-status request, unmounts, resolves the deferred response as confirmed, and proves cleanup clears the interval without finalizing registration or scheduling another request.
+
+- Observation: inline authentication had no stale-result guard when its modal closed or the event detail unmounted.
+  Evidence: the extracted controller now invalidates login, signup, resend, and Google request generations on close, mode change, and unmount. A deferred-login test proves session refresh and success callbacks cannot run after cleanup.
 
 ## Decision Log
 
@@ -251,6 +255,15 @@ Completed Milestone 1 characterization evidence on 2026-07-14:
 
 The characterization suite confirms that prior registration phases are not visible together, an in-flight signing response cannot finalize after cleanup, a late slot-conflict response cannot replace the current result, and division edits update the canonical form draft once. Existing dirty-baseline and same-id reload cases continue to cover form opening/reset behavior.
 
+First Milestone 3 extraction evidence on 2026-07-14:
+
+    PASS 2 suites / 14 tests
+    PASS npx tsc --noEmit
+    EventDetailSheet.tsx: 6,136 -> 6,088 lines
+    useInlineEventAuthController.ts: 230 lines
+
+Four direct controller tests cover signup validation, successful login/session refresh, unverified-email resend, and deferred-login cleanup after unmount. The existing guest-event component test continues to prove the inline auth modal opens without navigating away from event details.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -265,3 +278,4 @@ Revision note (2026-07-14): Continued Milestone 2 by extracting division, tourna
 Revision note (2026-07-14): Completed Milestone 2 by extracting public-detail presentation and eligibility rules with 33 passing focused tests, TypeScript, targeted lint, and a further 363-line reduction in the event-detail facade.
 Revision note (2026-07-14): Added the first Milestone 1 deferred-response characterization and closed the stale event-hydration race it exposed with 34 passing focused tests, TypeScript, and targeted lint.
 Revision note (2026-07-14): Completed Milestone 1 with registration-phase, signing-poll cleanup, slot-request invalidation, normalized division-commit, and full imperative-handle coverage; the combined safety net passes 168 tests across eight suites.
+Revision note (2026-07-14): Began Milestone 3 by extracting the inline-auth controller with explicit request invalidation and 14 passing focused tests; event hydration remains the next ownership boundary.
