@@ -17,11 +17,11 @@ This closes DATA-017. It is observable in route tests that prove both quote dire
 - [x] (2026-07-14 01:25Z) Chose an authenticated, side-effect-free, versioned quote endpoint with explicit quote direction and integer cents.
 - [x] (2026-07-14 01:40Z) Added the authenticated site quote route and focused regressions for both directions, zero, rounding, malformed input, and authentication.
 - [x] (2026-07-14 01:45Z) Ran the quote route plus canonical fee suites: 2 suites and 19 tests passed.
-- [ ] Add mobile quote DTOs, repository method, and latest-request-wins state.
-- [ ] Convert every mobile `InclusivePriceInput` call site to accepted server quotes and remove local fee policy.
-- [ ] Run focused Jest and Gradle tests serially, then TypeScript, Android, and iOS compilation checks.
-- [ ] Exercise the freshly built Android app where authentication permits and record the result here and in the audit ledger.
-- [ ] Commit both repositories and reconcile DATA-017 in `docs/code-audit/README.md`.
+- [x] (2026-07-14 01:30Z) Added mobile quote DTOs, strict repository validation, and a debounced generation-based latest-request-wins coordinator with retry and disposal handling.
+- [x] (2026-07-14 01:30Z) Converted all three mobile `InclusivePriceInput` call sites to accepted server quotes, removed the local fee constants and inverse rounding code, and guarded team, event/division, and participant-bill saves while a quote is pending or failed.
+- [x] (2026-07-14 02:55Z) Ran the 19-test site quote/fee batch and TypeScript, then the consolidated 148-test mobile batch, the iOS simulator compile, and Android KSP/install checks serially; all passed.
+- [x] (2026-07-14 03:15Z) Installed versionName 1.6.14/versionCode 67 on the Pixel 9 Pro API 35 emulator, denied permission prompts using UI-tree-derived coordinates, reached Login, opened the email-signup form, and completed a force-stop/relaunch with no fatal exception, ANR, or OOM. No authenticated session was retained, so price-editor interaction was not reachable.
+- [x] (2026-07-14 03:30Z) Committed site `9bd0a7d2` and mobile `69db9bf2`, then reconciled DATA-017 in `docs/code-audit/README.md` with the exact automated and emulator evidence.
 
 ## Surprises & Discoveries
 
@@ -36,6 +36,18 @@ This closes DATA-017. It is observable in route tests that prove both quote dire
 
 - Observation: A $100.00 host take-home produces $1.00 of platform fee and $3.33 of processing fee for a $104.33 online price; the processing portion is not $2.33 because Stripe's gross-up applies to the host amount plus the platform fee.
   Evidence: The first route-test run exposed the mistaken hand calculation, after which the corrected explicit contract passed against `billingFees.ts`.
+
+- Observation: The event/division price editor is shared by both the create-event wizard and event-detail editing, so the repository bridge must exist on both components even though there is only one `InclusivePriceInput` call site in source.
+  Evidence: `CreateEventScreen.kt` and `EventDetailScreen.kt` both render `EventDetails`, which owns `EventDetailsDivisionEditorForm`.
+
+- Observation: Existing repository and component interfaces already support default unsupported implementations for incrementally introduced capabilities.
+  Evidence: The quote method uses the same default-failure pattern as discount preview and rental APIs, keeping unrelated test fakes source-compatible while production components delegate to `BillingRepository`.
+
+- Observation: Treating an unchanged external total as a retry after a failed quote caused the enclosing form's normal state echo to restart requests invisibly.
+  Evidence: The consolidated test batch exposed the loop; external synchronization is now a no-op for the same direction/input regardless of pending, confirmed, or error state, while only the explicit Retry action starts a new generation.
+
+- Observation: The standard Android test task can silently match no tests when a fully qualified class filter uses the repository package instead of the event-detail package.
+  Evidence: XML result inventory exposed the missing `MatchRepositoryHttpTest`; rerunning `com.razumly.mvp.eventDetail.data.MatchRepositoryHttpTest` executed and passed all 15 tests.
 
 ## Decision Log
 
@@ -59,9 +71,15 @@ This closes DATA-017. It is observable in route tests that prove both quote dire
   Rationale: Saving raw or locally derived cents after an unavailable quote would preserve the exact policy-drift bug this change is intended to remove.
   Date/Author: 2026-07-14 / Codex
 
+- Decision: Keep raw edits inside the shared coordinator and update feature-owned cents only from an accepted quote.
+  Rationale: This makes existing `Team.registrationPriceCents`, event/division `priceCents`, bill preview, and `EventTeamBillCreateRequest.eventAmountCents` remain the last confirmed server value throughout debounce, request, and retry states.
+  Date/Author: 2026-07-14 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation is in progress. At completion, record the final request and response contract, exact focused test counts, compilation results, manual reachability, commits, and any compatibility behavior retained for older deployed servers.
+DATA-017 is complete in the audited branches. Site `9bd0a7d2` owns the version-1 quote endpoint and mobile `69db9bf2` removes the duplicated 1%, 2.9%, 30-cent policy and inverse rounding code. The repository rejects unsupported versions, mismatched directions or request anchors, negative/non-integer/inconsistent cents, and invalid percentages. The coordinator covers initial zero, debounce, out-of-order completion, explicit failure/retry, mismatched success, same-value external synchronization, and disposal. The four real product surfaces accept only confirmed server cents and block save/create while the visible amount is unconfirmed.
+
+Verification is current-source and commit-backed: the site route/canonical fee batch passed 19 tests plus `npx tsc --noEmit`; the unique mobile set across 12 relevant classes passed 148 tests with zero failures, errors, or skips; iOS simulator compilation, Android KSP, and `:composeApp:installDebug` passed. The freshly installed Android build reached Login, responded to the email-signup action, and survived a clean force-stop/relaunch without a fatal exception, ANR, or OOM. Authenticated price editors were not manually reachable because the fresh install had no retained session, so their rendered/error/save states remain covered by repository, coordinator, Compose, and component regressions rather than an emulator interaction.
 
 ## Context and Orientation
 
@@ -149,3 +167,7 @@ The successful response is:
 Use existing authentication, JSON, coroutine, and HTTP-client dependencies. No database migration or external library is required.
 
 Revision note (2026-07-14): Initial plan created after current-source review confirmed DATA-017 and all three active mobile call sites.
+
+Revision note (2026-07-14 01:30Z): Recorded the completed mobile repository/coordinator implementation, all create/edit component bridges, accepted-quote-only persistence guards, local-policy removal, and authored focused regressions. Gradle and commits remain intentionally pending per the active handoff constraint.
+
+Revision note (2026-07-14 03:30Z): Recorded final site/mobile commits, the corrected 148-test mobile inventory, TypeScript and iOS checks, Android KSP/install evidence, clean Login/signup/relaunch emulator evidence, the same-value retry-loop regression, and the authenticated-editor reachability limitation.
