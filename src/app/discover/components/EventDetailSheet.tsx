@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useReducer } from 'react';
+import React, { useState, useCallback, useReducer } from 'react';
 import Image from 'next/image';
 import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
@@ -89,6 +89,8 @@ import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckout
 import { useEventJoinFinalizationController } from './eventDetail/hooks/useEventJoinFinalizationController';
 import { useRegistrationConfirmationController } from './eventDetail/hooks/useRegistrationConfirmationController';
 import { useJoinCardDocking } from './eventDetail/hooks/useJoinCardDocking';
+import { useDivisionSelectionSynchronization } from './eventDetail/hooks/useDivisionSelectionSynchronization';
+import { useEventDetailInactiveReset } from './eventDetail/hooks/useEventDetailInactiveReset';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -862,27 +864,11 @@ export default function EventDetailSheet({
         onSignedIn: handleInlineAuthSignedIn,
         onProfileCompletionRequired: handleInlineAuthProfileCompletionRequired,
     });
-    useEffect(() => {
-        if (!divisionOptions.length) {
-            setSelectedDivisionId('');
-            setSelectedDivisionTypeKey('');
-            return;
-        }
-
-        setSelectedDivisionId((previous) => {
-            if (previous && divisionOptions.some((option) => option.id === previous)) {
-                return previous;
-            }
-            return divisionOptions[0].id;
-        });
-
-        setSelectedDivisionTypeKey((previous) => {
-            if (previous && divisionOptions.some((option) => option.divisionTypeKey === previous)) {
-                return previous;
-            }
-            return divisionOptions[0].divisionTypeKey;
-        });
-    }, [divisionOptions]);
+    useDivisionSelectionSynchronization({
+        options: divisionOptions,
+        setSelectedDivisionId,
+        setSelectedDivisionTypeKey,
+    });
 
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
@@ -1043,29 +1029,21 @@ export default function EventDetailSheet({
         setJoinNotice,
     });
 
-    useEffect(() => {
-        if (isActive) {
-            return;
-        }
-        setJoinError(null);
-        setJoinNotice(null);
-        resetRegistrationWorkflow();
-        resetSigningState();
-        setShowCapacityBreakdown(false);
-        setSelectedChildId('');
-        resetChildRegistrationState();
-        setJoiningChildFreeAgent(false);
-        resetRegistrationQuestions();
-        setPaymentPlanPreviewState(null);
-        setSelectedDivisionId('');
-        setSelectedDivisionTypeKey('');
-    }, [
-        isActive,
-        resetChildRegistrationState,
-        resetRegistrationQuestions,
+    useEventDetailInactiveReset({
+        active: isActive,
+        setJoinError,
+        setJoinNotice,
         resetRegistrationWorkflow,
         resetSigningState,
-    ]);
+        setShowCapacityBreakdown,
+        setSelectedChildId,
+        resetChildRegistrationState,
+        setJoiningChildFreeAgent,
+        resetRegistrationQuestions,
+        setPaymentPlanPreviewState,
+        setSelectedDivisionId,
+        setSelectedDivisionTypeKey,
+    });
 
     const openFreeAgentActions = useCallback((agent: UserData) => {
         setSelectedFreeAgentActionUser(agent);

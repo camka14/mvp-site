@@ -39,6 +39,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 23:03Z) Milestone 4p: moved self waitlist and free-agent mutations, including minor approval routing, out of JSX into a typed participant-action owner; the event-detail facade now imports no event, payment, or registration service.
 - [x] (2026-07-14 23:20Z) Milestone 4q: extracted the child registration/free-agent/waitlist panel behind typed render-only props, including action-state derivation and consent links.
 - [x] (2026-07-14 16:17Z) Milestone 4r: moved join-card docking measurements, resize/scroll observation, animation-frame scheduling, and inactive cleanup into `useJoinCardDocking`.
+- [x] (2026-07-14 16:28Z) Milestone 4s: moved eligible-division selection synchronization and inactive event-detail cleanup into focused lifecycle hooks, leaving the facade with no direct effects.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
@@ -133,7 +134,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration presentation, join-card docking, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 3,019 lines, down from 7,219, and no longer imports event, registration, payment, or bill services; broader view extraction and legacy effect cleanup remain substantial. EventForm payment ownership is now extracted and `EventForm.tsx` measures 4,091 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration presentation, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,997 lines, down from 7,219, has no direct effects, and no longer imports event, registration, payment, or bill services; broader view extraction remains substantial. EventForm payment ownership is now extracted and `EventForm.tsx` measures 4,091 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -508,6 +509,17 @@ Join-card docking controller evidence on 2026-07-14:
 
 Four direct hook tests cover initial animation-frame measurement, scroll-driven viewport updates, desktop/mobile resize transitions, and observer/listener cleanup. The hook is the sole owner of join-card DOM measurements and returns an empty undocked layout when inactive or not rendered inline, preventing stale geometry from leaking across event scopes.
 
+Event-detail lifecycle-hook evidence on 2026-07-14:
+
+    PASS 32 suites / 294 tests
+    PASS npx tsc --noEmit
+    PASS new hooks/tests ESLint and git diff --check
+    EventDetailSheet.tsx: 3,019 -> 2,997 lines
+    useDivisionSelectionSynchronization.ts: 37 lines
+    useEventDetailInactiveReset.ts: 66 lines
+
+Seven direct hook tests cover first-option selection, preservation across option reordering, fallback after removal, empty-option clearing, active-state preservation, complete inactive cleanup, and exactly-once cleanup on an active-to-inactive transition. The facade now contains no direct `useEffect`; selection and reset behavior have explicit owners without changing the existing registration state contract.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -543,3 +555,4 @@ Revision note (2026-07-14): Began Milestone 5 by extracting EventForm payment or
 Revision note (2026-07-14): Continued Milestone 4 by extracting the remaining inline self waitlist/free-agent mutations; the combined 28-suite safety net passes 278 tests and the facade is now 3,148 lines with no event/payment/registration service imports.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the child registration panel; the combined 29-suite safety net passes 283 tests and the facade is now 3,057 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting join-card docking and geometry observation; the combined 30-suite safety net passes 287 tests and the facade is now 3,019 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting division-selection synchronization and inactive cleanup; the combined 32-suite safety net passes 294 tests and the facade is now 2,997 lines with no direct effects.
