@@ -16,10 +16,10 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 - [x] (2026-07-14 09:31Z) Read `PLANS.md`, the `LEG-001` finding, the current server compatibility helpers, generated Prisma delegate, current mobile DTOs, and the mobile v1.6.13 tag.
 - [x] (2026-07-14 09:31Z) Counted the current removal surface: 124 web files call `withLegacyFields` or `withLegacyList`, six call `stripLegacyFieldsDeep`, 17 use generic parsing helpers from `legacyFormat.ts`, 11 production files mention `volleyBallTeams`, and 15 mobile DTO files declare `$id` aliases with 129 legacy-field references.
-- [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases.
+- [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases. (Completed 2026-07-14 14:04Z: added the source and endpoint inventory in `docs/code-audit/leg-001-v1.6.13-contract.md`, tied it to exact tag `50045cc3` and executable fixture commit `245f6a0a`, and documented canonical decoding for app, Wear OS, and watchOS resource families. Remaining: expand executable fixtures beyond event/team/match/user where the sibling mobile worktree can be changed without colliding with active mobile audit work.)
 - [x] (2026-07-14 12:05Z) Added the first canonical-only compatibility-floor fixture for event, team, match, and user payloads. The same two tests passed from the exact `v1.6.13` tag (`50045cc3`) and were checked in at current mobile commit `245f6a0a`; organization, field, chat, billing, Wear OS, and watchOS coverage is still required before response aliases can be removed.
 - [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
-- [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them. (Completed 2026-07-14 13:55Z: moved all production `parseDateInput` imports to `src/server/requestParsing.ts`; event, chat-group, and time-slot PATCH handlers now reject nested dollar-prefixed fields before database work; 51 focused tests pass. Remaining: delete the obsolete helper body and test-only mocks, and remove the ten proven-unused client route aliases.)
+- [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them. (Completed 2026-07-14 14:04Z: moved all production `parseDateInput` imports to `src/server/requestParsing.ts`; event, chat-group, and time-slot PATCH handlers reject nested dollar-prefixed fields before database work; removed ten proven-unused client aliases while retaining the external BoldSign callback; 51 request tests and 44 route-retirement/canonical-route tests pass. Remaining: delete the obsolete helper body and test-only mocks during response-wrapper removal.)
 - [ ] Replace every API response wrapper with the canonical response shape, remove the open-ended-event rewrite, and delete `src/server/legacyFormat.ts`.
 - [ ] Remove legacy DTO fallbacks from the current Android/iOS/Wear/watchOS clients after server and v1.6.13 fixture coverage proves canonical decoding.
 - [ ] Run focused and broad automated checks, then browser and emulator/watch contract smoke tests from exact commits.
@@ -218,6 +218,14 @@ Compatibility-floor fixture evidence:
     covered so far: event, team, match, user
     still required: organization, field, chat, billing, Wear OS, watchOS
 
+Endpoint-inventory and alias-retirement evidence:
+
+    inventory: docs/code-audit/leg-001-v1.6.13-contract.md
+    exact canonical mobile paths: /api/billing/create_billing_intent and /api/billing/purchase-intent
+    removed client route aliases: 10
+    retained external callback alias: /api/boldsign/webhook
+    focused suites: 4 passed / 44 tests
+
 ## Interfaces and Dependencies
 
 `src/server/requestParsing.ts` must own the generic parsing functions after `legacyFormat.ts` is removed:
@@ -236,3 +244,5 @@ Revision note (2026-07-14 09:39Z): recorded completion of the generated-team-del
 Revision note (2026-07-14 12:05Z): recorded the first exact-v1.6.13 canonical-only fixture checkpoint. It proves four core resource families but deliberately leaves the milestone open until every required mobile, Wear OS, and watchOS family has executable coverage.
 
 Revision note (2026-07-14 13:55Z): recorded the first request-contract checkpoint. Generic date parsing now lives outside the legacy response module, the three handlers that formerly stripped obsolete fields reject them before database work, exact-tag route evidence classifies ten removable client aliases, and cross-realm JSON handling is covered by focused tests.
+
+Revision note (2026-07-14 14:04Z): added the self-contained v1.6.13 resource and endpoint inventory, recorded removal of the ten unused client route aliases, and retained the externally configured BoldSign webhook alias. Canonical billing and retired lookup tests plus the route-absence contract pass 44 tests.
