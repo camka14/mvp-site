@@ -41,7 +41,6 @@ import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
 import { createId } from '@/lib/id';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
-import { signedDocumentService } from '@/lib/signedDocumentService';
 import type { FamilyChild } from '@/lib/familyService';
 import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
@@ -98,6 +97,7 @@ import {
 } from './eventDetail/weeklySessions';
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
+import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
@@ -2228,152 +2228,58 @@ export default function EventDetailSheet({
         };
     }, [handleSignedDocument, showSignModal]);
 
-    useEffect(() => {
-        if (!pendingSignatureOperationId) {
-            return;
-        }
-        if (!currentEvent || !user) {
-            return;
-        }
-
-        let cancelled = false;
-        const startedAt = Date.now();
-        const intervalMs = 1500;
-        const timeoutMs = 90_000;
-
-        const poll = async () => {
-            try {
-                const operation = await boldsignService.getOperationStatus(pendingSignatureOperationId);
-                if (cancelled) {
-                    return;
-                }
-
-                const status = String(operation.status ?? '').toUpperCase();
-                if (status === 'CONFIRMED') {
-                    const nextIndex = currentSignIndex + 1;
-                    if (nextIndex < signLinks.length) {
-                        setCurrentSignIndex(nextIndex);
-                        setPendingSignedDocumentId(null);
-                        setPendingSignatureOperationId(null);
-                        setShowSignModal(true);
-                        setJoinNotice(null);
-                        return;
-                    }
-
-                    setPendingSignedDocumentId(null);
-                    setPendingSignatureOperationId(null);
-                    setSignLinks([]);
-                    setCurrentSignIndex(0);
-                    setShowSignModal(false);
-                    setJoinNotice(null);
-                    const intent = pendingJoin;
-                    setPendingJoin(null);
-                    if (intent) {
-                        await finalizeJoin(intent);
-                    }
-                    setJoining(false);
-                    setJoiningChildFreeAgent(false);
-                    return;
-                }
-
-                if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
-                    throw new Error(operation.error || 'Failed to synchronize signature status.');
-                }
-
-                if (Date.now() - startedAt > timeoutMs) {
-                    throw new Error('Signature sync is delayed. Please try again shortly.');
-                }
-            } catch (error) {
-                if (cancelled) {
-                    return;
-                }
-                const message = error instanceof Error ? error.message : 'Failed to confirm signature.';
-                setJoinError(message || 'Failed to confirm signature.');
-                setPendingSignedDocumentId(null);
-                setPendingSignatureOperationId(null);
-                setShowSignModal(false);
-                setSignLinks([]);
-                setCurrentSignIndex(0);
-                setPendingJoin(null);
-                setJoining(false);
-                setJoiningChildFreeAgent(false);
-            }
-        };
-
-        const interval = window.setInterval(() => {
-            void poll();
-        }, intervalMs);
-        void poll();
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignatureOperationId, signLinks.length, user]);
-
-    useEffect(() => {
-        if (!pendingSignedDocumentId || !currentEvent || !user) {
-            return;
-        }
-        if (pendingSignatureOperationId) {
+    const handleSigningPollConfirmed = useCallback(async () => {
+        const nextIndex = currentSignIndex + 1;
+        if (nextIndex < signLinks.length) {
+            setCurrentSignIndex(nextIndex);
+            setPendingSignedDocumentId(null);
+            setPendingSignatureOperationId(null);
+            setShowSignModal(true);
+            setJoinNotice(null);
             return;
         }
 
-        let cancelled = false;
-        const poll = async () => {
-            try {
-                const pendingLink = signLinks[currentSignIndex];
-                const pendingSignerUserId = pendingLink?.signerContext === 'child' && pendingJoin?.childId
-                    ? pendingJoin.childId
-                    : user.$id;
-                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId, pendingSignerUserId);
-                if (!signed || cancelled) {
-                    return;
-                }
+        setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setShowSignModal(false);
+        setJoinNotice(null);
+        const intent = pendingJoin;
+        setPendingJoin(null);
+        if (intent) {
+            await finalizeJoin(intent);
+        }
+        setJoining(false);
+        setJoiningChildFreeAgent(false);
+    }, [currentSignIndex, finalizeJoin, pendingJoin, signLinks.length]);
 
-                const nextIndex = currentSignIndex + 1;
-                if (nextIndex < signLinks.length) {
-                    setCurrentSignIndex(nextIndex);
-                    setPendingSignedDocumentId(null);
-                    setShowSignModal(true);
-                    setJoinNotice(null);
-                    return;
-                }
+    const handleSigningPollError = useCallback((message: string) => {
+        setJoinError(message || 'Failed to confirm signature.');
+        setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
+        setShowSignModal(false);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setPendingJoin(null);
+        setJoining(false);
+        setJoiningChildFreeAgent(false);
+    }, []);
 
-                setPendingSignedDocumentId(null);
-                setSignLinks([]);
-                setCurrentSignIndex(0);
-                setShowSignModal(false);
-                setJoinNotice(null);
-                const intent = pendingJoin;
-                setPendingJoin(null);
-                if (intent) {
-                    await finalizeJoin(intent);
-                }
-                setJoining(false);
-                setJoiningChildFreeAgent(false);
-            } catch (error) {
-                if (cancelled) {
-                    return;
-                }
-                const message = error instanceof Error ? error.message : 'Failed to confirm signature.';
-                setJoinError(message || 'Failed to confirm signature.');
-                setPendingSignedDocumentId(null);
-                setShowSignModal(false);
-                setSignLinks([]);
-                setCurrentSignIndex(0);
-                setPendingJoin(null);
-                setJoining(false);
-                setJoiningChildFreeAgent(false);
-            }
-        };
-
-        const interval = window.setInterval(poll, 1000);
-        poll();
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignatureOperationId, pendingSignedDocumentId, signLinks, user]);
+    const pendingSigningLink = signLinks[currentSignIndex];
+    const pendingSignerUserId = !user
+        ? null
+        : pendingSigningLink?.signerContext === 'child' && pendingJoin?.childId
+            ? pendingJoin.childId
+            : user.$id;
+    useSigningStatusPoll({
+        operationId: user ? pendingSignatureOperationId : null,
+        documentId: user && !pendingSignatureOperationId ? pendingSignedDocumentId : null,
+        signerUserId: pendingSignerUserId,
+        scopeKey: currentEvent.$id,
+        onConfirmed: handleSigningPollConfirmed,
+        onError: handleSigningPollError,
+    });
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;

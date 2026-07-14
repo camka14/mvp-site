@@ -21,6 +21,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 14:31Z) Milestone 3a: moved inline login/signup, verification resend, Google entry, feedback, and request invalidation into `useInlineEventAuthController`; event-detail data loading remains for Milestone 3b.
 - [x] (2026-07-14 14:39Z) Milestone 3b: moved all event-detail reads and their cancellation rules into `useEventDetailDataController`, with pure participant projection in `eventDetailData.ts`.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
+- [x] (2026-07-14 14:42Z) Milestone 4a: consolidated operation and signed-document polling into `useSigningStatusPoll`, including in-flight suppression, timeout/error handling, cleanup, and event-scope invalidation; the registration reducer and views remain.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
@@ -68,6 +69,9 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: rejected stale participant requests could still enter their local catch blocks before the final publication guard.
   Evidence: every participant and legacy free-agent success/error path now checks the controller generation and event identity before logging or publishing fallback state. The deferred event-switch component regression remains green after the move.
+
+- Observation: operation-backed and document-backed signing used separate effects with duplicated completion and failure transitions.
+  Evidence: one poll hook now chooses the operation path when an operation id exists, otherwise uses the signed-document fallback, permits only one in-flight request, and calls one pair of typed completion/error actions. A scope-change test proves the same pending target is not restarted for a newly selected event.
 
 ## Decision Log
 
@@ -282,6 +286,15 @@ Completed Milestone 3 evidence on 2026-07-14:
 
 The four new pure data tests cover occurrence load keys, sport-scoped managed teams, canonical participant ordering/payment failures, and immutable empty-occurrence projections. Existing component tests continue to cover stale event replacement, guest auth, participant rendering, registration transitions, and payment-plan behavior through the extracted controller.
 
+First Milestone 4 extraction evidence on 2026-07-14:
+
+    PASS 2 suites / 10 tests
+    PASS npx tsc --noEmit
+    EventDetailSheet.tsx: 5,546 -> 5,452 lines
+    useSigningStatusPoll.ts: 127 lines
+
+Five direct polling tests cover confirmed operations, terminal failures, the document fallback, unmount cleanup, and event-scope changes. The registration component suite still proves explicit pre-poll cancellation and deferred operation cleanup through the public UI.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -298,3 +311,4 @@ Revision note (2026-07-14): Added the first Milestone 1 deferred-response charac
 Revision note (2026-07-14): Completed Milestone 1 with registration-phase, signing-poll cleanup, slot-request invalidation, normalized division-commit, and full imperative-handle coverage; the combined safety net passes 168 tests across eight suites.
 Revision note (2026-07-14): Began Milestone 3 by extracting the inline-auth controller with explicit request invalidation and 14 passing focused tests; event hydration remains the next ownership boundary.
 Revision note (2026-07-14): Completed Milestone 3 by consolidating all event-detail reads and stale-result rejection into one 367-line controller; the ten-suite safety net passes 176 tests and the facade is now 5,546 lines.
+Revision note (2026-07-14): Began Milestone 4 by extracting one event-scoped signing poll owner with five direct tests; the reducer and render-only dialog split remain.
