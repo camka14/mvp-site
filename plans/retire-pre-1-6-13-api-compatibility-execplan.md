@@ -20,9 +20,10 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - [x] (2026-07-14 12:05Z) Added the first canonical-only compatibility-floor fixture for event, team, match, and user payloads. The same two tests passed from the exact `v1.6.13` tag (`50045cc3`) and were checked in at current mobile commit `245f6a0a`; organization, field, chat, billing, Wear OS, and watchOS coverage is still required before response aliases can be removed.
 - [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
 - [x] (2026-07-14 14:04Z) Moved generic request/date parsing out of `legacyFormat.ts`, made event, chat-group, match, and time-slot writes reject nested dollar-prefixed input fields before database work, removed ten proven-unused client aliases, and retained the externally configured BoldSign callback. The obsolete helper and its test-only mocks were deleted with the response slice.
-- [x] (2026-07-14 15:42Z) Removed all 124 `withLegacyFields`/`withLegacyList` response call sites and deleted `src/server/legacyFormat.ts`. Canonical list, detail, search, nested participant/detail, scheduler, match, team, organization, field, billing, chat, user, and admin responses now keep `id` and preserve `end: null`; browser adapters derive the existing internal `$id` view-model field from canonical `id` at the HTTP boundary. The focused response and open-ended-event batches cover 160 test executions across 20 suite executions, and TypeScript passed.
+- [x] (2026-07-14 14:42Z) Removed all 124 `withLegacyFields`/`withLegacyList` response call sites and deleted `src/server/legacyFormat.ts`. Canonical list, detail, search, nested participant/detail, scheduler, match, team, organization, field, billing, chat, user, and admin responses now keep `id` and preserve `end: null`; browser adapters derive the existing internal `$id` view-model field from canonical `id` at the HTTP boundary. The focused response and open-ended-event batches cover 160 test executions across 20 suite executions, and TypeScript passed.
 - [ ] Remove legacy DTO fallbacks from the current Android/iOS/Wear/watchOS clients after server and v1.6.13 fixture coverage proves canonical decoding.
-- [ ] Run focused and broad automated checks, then browser and emulator/watch contract smoke tests from exact commits.
+- [x] (2026-07-14 14:54Z) Completed the web automated gate from `310a9833`: focused response tests passed 160 assertions, the full Jest run passed 459 suites and 2,944 tests, `test:ci` passed all coverage floors including 273 API route files, TypeScript passed, and the exact optimized `npm run build` validated/generated Prisma, compiled with Turbopack, and generated all 122 static pages.
+- [ ] Run browser and emulator/watch contract smoke tests from exact commits.
 - [ ] Update `docs/code-audit/README.md` with commit and runtime evidence and mark `LEG-001` complete only when the production searches are empty or every remaining match is a historical test fixture.
 
 ## Surprises & Discoveries
@@ -85,7 +86,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-The web compatibility removal is complete in checkpoint slices. Production and tests have zero non-generated `volleyBallTeams` references, zero `legacyFormat`, `withLegacyFields`, `withLegacyList`, or `stripLegacyFieldsDeep` references, and no direct dollar-prefixed response properties in App Router API handlers. Obsolete request keys fail before writes, ten unused aliases are absent, open-ended events remain `end: null` in list/detail/search/nested responses, and browser services consume canonical-only payloads without changing the internal UI model in this slice. Exact v1.6.13 executable proof covers event, team, match, and user; source-level inventory covers organization, field, chat, billing, Wear OS, and watchOS. Full Jest, coverage, optimized build, and runtime smoke evidence remain before the overall plan can close, as does current-mobile DTO cleanup in its isolated worktree.
+The web compatibility removal is complete in checkpoint slices. Production and tests have zero non-generated `volleyBallTeams` references, zero `legacyFormat`, `withLegacyFields`, `withLegacyList`, or `stripLegacyFieldsDeep` references, and no direct dollar-prefixed response properties in App Router API handlers. Obsolete request keys fail before writes, ten unused aliases are absent, open-ended events remain `end: null` in list/detail/search/nested responses, and browser services consume canonical-only payloads without changing the internal UI model in this slice. Exact v1.6.13 executable proof covers event, team, match, and user; source-level inventory covers organization, field, chat, billing, Wear OS, and watchOS. Focused tests, full Jest, coverage, TypeScript, Prisma validation/generation verification, and the optimized release build pass from the isolated web commit. Browser/emulator/watch runtime smoke evidence and current-mobile DTO cleanup in its isolated worktree remain before the overall plan can close.
 
 ## Context and Orientation
 
@@ -244,6 +245,15 @@ Canonical-response evidence:
     canonical browser-adapter suites: 12 suites / 62 tests after one invite-pagination boundary fix
     npx tsc --noEmit --pretty false: exit 0
 
+Broad web validation from 310a9833:
+
+    npx jest --runInBand: 459 suites / 2,944 tests passed
+    npm run test:ci: exit 0
+    API route coverage: 273 files; statements 66.15% (64% floor), branches 54.14% (52% floor), functions 65.44% (63% floor), lines 67.16% (65% floor)
+    npm run build: Prisma validation/generation/check passed; Turbopack compiled in 11.1s; TypeScript passed; 122/122 static pages generated
+
+The first build attempt stopped before compilation because the isolated worktree had no `DATABASE_URL`. Loading the canonical checkout's ignored local environment resolved Prisma configuration. The next attempt reached Next.js but Turbopack correctly rejected the worktree's out-of-root `node_modules` symlink; replacing only that ignored symlink with a local APFS copy-on-write dependency tree allowed the exact project build to pass. Neither setup correction changed tracked source.
+
 ## Interfaces and Dependencies
 
 `src/server/requestParsing.ts` must own the generic parsing functions after `legacyFormat.ts` is removed:
@@ -265,4 +275,6 @@ Revision note (2026-07-14 13:55Z): recorded the first request-contract checkpoin
 
 Revision note (2026-07-14 14:04Z): added the self-contained v1.6.13 resource and endpoint inventory, recorded removal of the ten unused client route aliases, and retained the externally configured BoldSign webhook alias. Canonical billing and retired lookup tests plus the route-absence contract pass 44 tests.
 
-Revision note (2026-07-14 15:42Z): recorded the canonical-response slice, deletion of the universal legacy formatter, explicit nullable-end coverage at list/detail/search/nested boundaries, client-side canonical adapters, and the indirect event-template seed response discovered during source tracing. Broad and runtime validation remain intentionally open.
+Revision note (2026-07-14 14:42Z): recorded the canonical-response slice, deletion of the universal legacy formatter, explicit nullable-end coverage at list/detail/search/nested boundaries, client-side canonical adapters, and the indirect event-template seed response discovered during source tracing. Broad and runtime validation remain intentionally open.
+
+Revision note (2026-07-14 14:54Z): recorded the clean full Jest and coverage gates and the exact optimized build. The two preceding build stops were isolated-worktree setup failures (`DATABASE_URL` absent, then an out-of-root dependency symlink), and the successful retry used the canonical ignored environment plus a local dependency clone without tracked-source changes. Runtime browser and mobile/watch smoke tests remain open.
