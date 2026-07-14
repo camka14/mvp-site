@@ -14,6 +14,7 @@ import { getStorageProvider } from '@/lib/storageProvider';
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
 import { syncEventTags } from '@/server/eventTags';
+import { downloadPublicRemoteImage } from '@/server/publicRemoteImage';
 import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
 import { inferAffiliateParticipantAvailability, parseAffiliateMaxParticipants } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
@@ -357,7 +358,7 @@ const filenameFromUrl = (url: string, fallback: string): string => {
 };
 
 const normalizeAffiliateOrganizationLogo = async (input: Buffer): Promise<Buffer> => {
-  const flattened = await sharp(input, { animated: false })
+  const flattened = await sharp(input, { animated: false, limitInputPixels: 25_000_000 })
     .rotate()
     .flatten({ background: '#ffffff' })
     .png()
@@ -435,15 +436,7 @@ const upsertAffiliateOrganizationLogoForCandidate = async (
   if (!logoUrl) return null;
 
   try {
-    const response = await fetch(logoUrl, {
-      headers: {
-        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'user-agent': 'BracketIQ source review bot; contact samuel.r@razumly.com',
-      },
-    });
-    if (!response.ok) return null;
-
-    const normalized = await normalizeAffiliateOrganizationLogo(Buffer.from(await response.arrayBuffer()));
+    const normalized = await normalizeAffiliateOrganizationLogo(await downloadPublicRemoteImage(logoUrl));
     const logoId = affiliateOrganizationLogoId(organizationId);
     const originalName =
       nullableString(rawExtractedCandidateFields(candidate).logoOriginalName) ??
