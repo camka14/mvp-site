@@ -16,12 +16,9 @@ import {
     getEventImageUrl,
 } from '@/types';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
-import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import {
     normalizePriceCents,
 } from './eventDetail/divisionRegistration';
-import type { WeeklySessionOption } from './eventDetail/weeklySessions';
-import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
 import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegistrationQuestionsController';
@@ -35,6 +32,7 @@ import { useEventDivisionRegistrationModel } from './eventDetail/hooks/useEventD
 import { useEventParticipantModel } from './eventDetail/hooks/useEventParticipantModel';
 import { useRegistrationWorkflowController } from './eventDetail/hooks/useRegistrationWorkflowController';
 import { useWeeklyEventSelectionModel } from './eventDetail/hooks/useWeeklyEventSelectionModel';
+import { useEventDetailNavigationController } from './eventDetail/hooks/useEventDetailNavigationController';
 import { collectUniqueUserIds } from './eventDetail/eventDetailData';
 import {
     CheckoutPreviewDialog,
@@ -102,6 +100,7 @@ export default function EventDetailSheet({
     onWeeklyOccurrenceChange,
     publicCompletion,
 }: EventDetailSheetProps) {
+    const todayForDob = new Date();
     const {
         user,
         authUser,
@@ -291,103 +290,46 @@ export default function EventDetailSheet({
         onSelectedDivisionTypeKeyChange: setSelectedDivisionTypeKey,
     });
 
-    const todayForDob = new Date();
-    const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
-
-    const handleInlineAuthAuthenticated = useCallback(() => {
-        setJoinError(null);
-    }, []);
-    const handleInlineAuthSignedIn = useCallback(() => {
-        setJoinNotice('Signed in. Continue registration.');
-    }, []);
-    const handleInlineAuthProfileCompletionRequired = useCallback(() => {
-        const nextPath = typeof window !== 'undefined'
-            ? `${window.location.pathname}${window.location.search}${window.location.hash}`
-            : '/discover';
-        router.push(`/complete-profile?next=${encodeURIComponent(nextPath)}`);
-    }, [router]);
     const {
-        opened: showAuthModal,
-        mode: authModalMode,
-        form: authModalForm,
-        loading: authModalLoading,
-        error: authModalError,
-        verificationEmail: authVerificationEmail,
-        verificationMessage: authVerificationMessage,
-        verificationMessageType: authVerificationMessageType,
-        resendingVerification: authResendingVerification,
-        open: openAuthModal,
-        close: closeAuthModal,
-        toggleMode: toggleAuthModalMode,
-        updateField: handleAuthModalInputChange,
-        submit: submitAuthModal,
-        resendVerification: handleAuthModalResendVerification,
-        continueWithGoogle: handleAuthModalGoogle,
-    } = useInlineEventAuthController({
+        maxAuthDob,
+        auth: {
+            opened: showAuthModal,
+            mode: authModalMode,
+            form: authModalForm,
+            loading: authModalLoading,
+            error: authModalError,
+            verificationEmail: authVerificationEmail,
+            verificationMessage: authVerificationMessage,
+            verificationMessageType: authVerificationMessageType,
+            resendingVerification: authResendingVerification,
+            open: openAuthModal,
+            close: closeAuthModal,
+            toggleMode: toggleAuthModalMode,
+            updateField: handleAuthModalInputChange,
+            submit: submitAuthModal,
+            resendVerification: handleAuthModalResendVerification,
+            continueWithGoogle: handleAuthModalGoogle,
+        },
+        viewSchedule: handleViewSchedule,
+        viewBracket: handleBracketClick,
+        selectWeeklySession: handleWeeklySessionSelect,
+        navigateToCompletion: navigateToPublicEventCompletion,
+    } = useEventDetailNavigationController({
+        event: currentEvent,
+        user,
         refreshSession,
-        onAuthenticated: handleInlineAuthAuthenticated,
-        onSignedIn: handleInlineAuthSignedIn,
-        onProfileCompletionRequired: handleInlineAuthProfileCompletionRequired,
+        onClose,
+        onWeeklyOccurrenceChange,
+        publicCompletion,
+        clearRegistrationProgress: clearEventRegistrationProgress,
+        setJoinError,
+        setJoinNotice,
     });
     useDivisionSelectionSynchronization({
         options: divisionOptions,
         setSelectedDivisionId,
         setSelectedDivisionTypeKey,
     });
-
-    const handleViewSchedule = (tab?: string) => {
-        const eventPath = `/events/${currentEvent.$id}`;
-        const target = tab ? `${eventPath}?tab=${tab}` : eventPath;
-        router.push(target);
-        onClose();
-    };
-
-    const handleBracketClick = () => {
-        if (currentEvent.eventType === 'TOURNAMENT') {
-            handleViewSchedule('bracket');
-        }
-    };
-
-    const handleWeeklySessionSelect = useCallback((session: WeeklySessionOption) => {
-        if (!currentEvent || currentEvent.eventType !== 'WEEKLY_EVENT' || currentEvent.parentEvent) {
-            return;
-        }
-        setJoinError(null);
-        setJoinNotice(null);
-        if (onWeeklyOccurrenceChange) {
-            onWeeklyOccurrenceChange({
-                slotId: session.slotId,
-                occurrenceDate: session.occurrenceDate,
-            });
-            return;
-        }
-        if (!user) {
-            openAuthModal();
-            return;
-        }
-
-        setJoinNotice('Session selected. Finish registration on the event page.');
-        const params = new URLSearchParams({
-            tab: 'schedule',
-            slotId: session.slotId,
-            occurrenceDate: session.occurrenceDate,
-        });
-        router.push(`/events/${currentEvent.$id}?${params.toString()}`);
-        onClose();
-    }, [currentEvent, onClose, onWeeklyOccurrenceChange, openAuthModal, router, user]);
-
-    const navigateToPublicEventCompletion = useCallback(() => {
-        clearEventRegistrationProgress();
-        if (!publicCompletion?.slug) {
-            return;
-        }
-        navigateToPublicCompletion({
-            router,
-            slug: publicCompletion.slug,
-            kind: 'event',
-            redirectUrl: publicCompletion.redirectUrl,
-        });
-    }, [clearEventRegistrationProgress, publicCompletion, router]);
 
     const {
         manualPaymentBill,
