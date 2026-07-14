@@ -42,6 +42,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 16:28Z) Milestone 4s: moved eligible-division selection synchronization and inactive event-detail cleanup into focused lifecycle hooks, leaving the facade with no direct effects.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
+- [x] (2026-07-14 16:32Z) Milestone 5b: moved immutable/default construction, source resets, dirty baselines, external draft notifications, and normalization-stable rebasing into focused EventForm lifecycle hooks.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
 
@@ -134,7 +135,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration presentation, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,997 lines, down from 7,219, has no direct effects, and no longer imports event, registration, payment, or bill services; broader view extraction remains substantial. EventForm payment ownership is now extracted and `EventForm.tsx` measures 4,091 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-entry/finalization, registration-confirmation, participant actions/views, child registration presentation, join-card docking, selection synchronization, inactive cleanup, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 2,997 lines, down from 7,219, has no direct effects, and no longer imports event, registration, payment, or bill services; broader view extraction remains substantial. EventForm payment and lifecycle ownership are now extracted and `EventForm.tsx` measures 3,941 lines, down from 4,376 at this plan's baseline. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -479,6 +480,16 @@ EventForm payment-controller evidence on 2026-07-14:
 
 Seven direct controller tests cover no-Stripe cleanup, manual pricing, organization billing/refunds, weekly relative installments, aggregate updates, manual link/mode cleanup, and Stripe onboarding request state. React Hook Form remains the only persisted event draft; the controller receives narrow getters/setters and owns only payment-derived state and commands.
 
+EventForm lifecycle-controller evidence on 2026-07-14:
+
+    PASS 33 suites / 299 tests
+    PASS npx tsc --noEmit
+    PASS new hook/test ESLint with zero warnings and git diff --check
+    EventForm.tsx: 4,091 -> 3,941 lines
+    useEventFormLifecycle.ts: 336 lines
+
+Five direct lifecycle regressions cover source resets, closed-state cleanup, external draft/dirty notification, normalization-stable baseline rebasing, and explicit baseline commits. React Hook Form remains the single persisted draft owner; the extracted lifecycle owns only default construction, reset identity, readiness, and baseline refs.
+
 Event participant-action extraction evidence on 2026-07-14:
 
     PASS 28 suites / 278 tests
@@ -556,3 +567,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting the remaining in
 Revision note (2026-07-14): Continued Milestone 4 by extracting the child registration panel; the combined 29-suite safety net passes 283 tests and the facade is now 3,057 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting join-card docking and geometry observation; the combined 30-suite safety net passes 287 tests and the facade is now 3,019 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting division-selection synchronization and inactive cleanup; the combined 32-suite safety net passes 294 tests and the facade is now 2,997 lines with no direct effects.
+Revision note (2026-07-14): Continued Milestone 5 by extracting EventForm defaults, source reset, dirty baseline, draft notification, and stable rebase ownership; the combined 33-suite safety net passes 299 tests and the facade is now 3,941 lines.
