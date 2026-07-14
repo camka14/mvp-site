@@ -29,13 +29,10 @@ import {
     formatPrice,
     RegistrationQuestionAnswerInput,
 } from '@/types';
-import { apiRequest } from '@/lib/apiClient';
 import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { paymentService } from '@/lib/paymentService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
-import { createId } from '@/lib/id';
-import { boldsignService, SignStep } from '@/lib/boldsignService';
 import type { FamilyChild } from '@/lib/familyService';
 import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
@@ -91,7 +88,7 @@ import {
 } from './eventDetail/weeklySessions';
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
-import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
+import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
 import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
@@ -121,7 +118,6 @@ import { submitManualPaymentProof } from './eventDetail/manualPaymentProof';
 import {
     createEventRegistrationBill,
     getJoinIntentRegistrationType,
-    loadRequiredEventSignLinks,
     type JoinIntent,
 } from './eventDetail/eventRegistrationCommands';
 import { useApp } from '@/app/providers';
@@ -311,16 +307,6 @@ export default function EventDetailSheet({
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
-    const [signLinks, setSignLinks] = useState<SignStep[]>([]);
-    const [currentSignIndex, setCurrentSignIndex] = useState(0);
-    const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
-    const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
-    const [pendingSignatureOperationId, setPendingSignatureOperationId] = useState<string | null>(null);
-    const [password, setPassword] = useState('');
-    const [passwordError, setPasswordError] = useState<string | null>(null);
-    const [confirmingPassword, setConfirmingPassword] = useState(false);
-    const [recordingSignature, setRecordingSignature] = useState(false);
-    const [textAccepted, setTextAccepted] = useState(false);
     const [selectedChildId, setSelectedChildId] = useState('');
     const [registeringChild, setRegisteringChild] = useState(false);
     const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
@@ -341,12 +327,6 @@ export default function EventDetailSheet({
     }, []);
     const setShowRegistrationQuestionsModal = useCallback((opened: boolean) => {
         setRegistrationWorkflowPhase('questions', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setShowPasswordModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('password', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setShowSignModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('signing', opened);
     }, [setRegistrationWorkflowPhase]);
     const setShowManualPaymentModal = useCallback((opened: boolean) => {
         setRegistrationWorkflowPhase('manual-proof', opened);
@@ -958,36 +938,6 @@ export default function EventDetailSheet({
         });
     }, [divisionOptions]);
 
-    useEffect(() => {
-        if (isActive) {
-            return;
-        }
-        setJoinError(null);
-        setJoinNotice(null);
-        resetRegistrationWorkflow();
-        setSignLinks([]);
-        setCurrentSignIndex(0);
-        setPendingJoin(null);
-        setPendingSignedDocumentId(null);
-        setPendingSignatureOperationId(null);
-        setShowCapacityBreakdown(false);
-        setPassword('');
-        setPasswordError(null);
-        setConfirmingPassword(false);
-        setRecordingSignature(false);
-        setTextAccepted(false);
-        setSelectedChildId('');
-        setRegisteringChild(false);
-        setJoiningChildFreeAgent(false);
-        setChildRegistration(null);
-        setChildConsent(null);
-        setChildRegistrationChildId(null);
-        setRegistrationQuestionsIntent(null);
-        setPaymentPlanPreviewState(null);
-        setSelectedDivisionId('');
-        setSelectedDivisionTypeKey('');
-    }, [isActive, resetRegistrationWorkflow]);
-
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
         const target = tab ? `${eventPath}?tab=${tab}` : eventPath;
@@ -1110,51 +1060,6 @@ export default function EventDetailSheet({
             setRegisteringChild(false);
         }
     }, [currentEvent, loadEventDetails, navigateToPublicEventCompletion, selectedWeeklyOccurrence]);
-
-    const loadRequiredSignLinksForIntent = useCallback(async (intent: JoinIntent): Promise<SignStep[]> => {
-        return loadRequiredEventSignLinks({
-            intent,
-            event: currentEvent,
-            user,
-            userEmail: authUser?.email,
-            timeoutMs: JOIN_API_TIMEOUT_MS,
-        });
-    }, [authUser?.email, currentEvent, user]);
-
-    const beginSigningFlow = useCallback(async (intent: JoinIntent) => {
-        if (!currentEvent || !user) {
-            return false;
-        }
-        const requiredTemplateIds = Array.isArray(currentEvent.requiredTemplateIds)
-            ? currentEvent.requiredTemplateIds
-            : [];
-        if (!requiredTemplateIds.length) {
-            return false;
-        }
-        if (!authUser?.email) {
-            throw new Error('Sign-in email is required to sign documents.');
-        }
-        const links = await loadRequiredSignLinksForIntent(intent);
-        if (!links.length) {
-            setPendingJoin(null);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingSignedDocumentId(null);
-            setPendingSignatureOperationId(null);
-            setShowPasswordModal(false);
-            return false;
-        }
-
-        setPendingJoin(intent);
-        setSignLinks(links);
-        setCurrentSignIndex(0);
-        setPassword('');
-        setPasswordError(null);
-        setPendingSignedDocumentId(null);
-        setPendingSignatureOperationId(null);
-        setShowPasswordModal(true);
-        return true;
-    }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, setShowPasswordModal, user]);
 
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
@@ -1473,6 +1378,58 @@ export default function EventDetailSheet({
         userTeams,
     ]);
 
+    const {
+        signLinks,
+        currentSignIndex,
+        password,
+        setPassword,
+        passwordError,
+        confirmingPassword,
+        recordingSignature,
+        textAccepted,
+        setTextAccepted,
+        beginSigningFlow,
+        cancelPasswordConfirmation,
+        confirmPasswordAndStartSigning,
+        handleSignedDocument,
+        handleTextAcceptance,
+        cancelSigning,
+        resetSigningState,
+    } = useEventSigningController({
+        event: currentEvent,
+        user,
+        userEmail: authUser?.email,
+        signingOpened: showSignModal,
+        timeoutMs: JOIN_API_TIMEOUT_MS,
+        onFinalize: finalizeJoin,
+        setWorkflowPhase: setRegistrationWorkflowPhase,
+        setJoining,
+        setJoiningChildFreeAgent,
+        setJoinError,
+        setJoinNotice,
+    });
+
+    useEffect(() => {
+        if (isActive) {
+            return;
+        }
+        setJoinError(null);
+        setJoinNotice(null);
+        resetRegistrationWorkflow();
+        resetSigningState();
+        setShowCapacityBreakdown(false);
+        setSelectedChildId('');
+        setRegisteringChild(false);
+        setJoiningChildFreeAgent(false);
+        setChildRegistration(null);
+        setChildConsent(null);
+        setChildRegistrationChildId(null);
+        setRegistrationQuestionsIntent(null);
+        setPaymentPlanPreviewState(null);
+        setSelectedDivisionId('');
+        setSelectedDivisionTypeKey('');
+    }, [isActive, resetRegistrationWorkflow, resetSigningState]);
+
     const buildRegistrationQuestionAnswers = useCallback((): RegistrationQuestionAnswerInput[] => (
         registrationQuestions.map((question) => ({
             questionId: question.id,
@@ -1595,301 +1552,6 @@ export default function EventDetailSheet({
         user,
         validateRegistrationQuestionAnswers,
     ]);
-
-    const cancelPasswordConfirmation = useCallback(() => {
-        setShowPasswordModal(false);
-        setPassword('');
-        setPasswordError(null);
-        setPendingJoin(null);
-        setJoining(false);
-        setJoinError('Password confirmation canceled.');
-    }, [setShowPasswordModal]);
-
-    const confirmPasswordAndStartSigning = useCallback(async () => {
-        if (!pendingJoin || !currentEvent || !user || !authUser?.email) {
-            return;
-        }
-        if (!password.trim()) {
-            setPasswordError('Password is required.');
-            return;
-        }
-
-        setConfirmingPassword(true);
-        setPasswordError(null);
-        setJoinError(null);
-        setJoinNotice(null);
-        let stage: 'confirm_password' | 'finalize_join' = 'confirm_password';
-        try {
-            stage = 'confirm_password';
-            await apiRequest<{ ok: true }>('/api/documents/confirm-password', {
-                method: 'POST',
-                timeoutMs: JOIN_API_TIMEOUT_MS,
-                body: {
-                    email: authUser.email,
-                    password,
-                    eventId: currentEvent.$id,
-                },
-            });
-            const links = signLinks.length ? signLinks : await loadRequiredSignLinksForIntent(pendingJoin);
-
-            if (!links.length) {
-                stage = 'finalize_join';
-                setShowPasswordModal(false);
-                setPassword('');
-                const intent = pendingJoin;
-                setPendingJoin(null);
-                await finalizeJoin(intent);
-                setJoining(false);
-                setJoiningChildFreeAgent(false);
-                return;
-            }
-
-            setSignLinks(links);
-            setCurrentSignIndex(0);
-            setPendingSignedDocumentId(null);
-            setPendingSignatureOperationId(null);
-            setShowPasswordModal(false);
-            setPassword('');
-            setShowSignModal(true);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to confirm password.';
-            if (stage === 'finalize_join') {
-                setJoinError(message || 'Failed to complete registration.');
-                setPendingJoin(null);
-                setShowPasswordModal(false);
-                setPassword('');
-                setJoining(false);
-                setJoiningChildFreeAgent(false);
-                return;
-            }
-            setPasswordError(message);
-        } finally {
-            setConfirmingPassword(false);
-        }
-    }, [
-        authUser?.email,
-        currentEvent,
-        finalizeJoin,
-        loadRequiredSignLinksForIntent,
-        password,
-        pendingJoin,
-        setShowPasswordModal,
-        setShowSignModal,
-        signLinks,
-        user,
-    ]);
-
-    const recordSignature = useCallback(async (payload: {
-        templateId: string;
-        documentId: string;
-        type: SignStep['type'];
-        signerContext?: SignStep['signerContext'];
-    }): Promise<{ operationId?: string; syncStatus?: string }> => {
-        if (!user || !currentEvent) {
-            throw new Error('User and event are required to sign documents.');
-        }
-        const fallbackSignerContext =
-            pendingJoin?.mode === 'child' || pendingJoin?.mode === 'child_free_agent' || pendingJoin?.mode === 'child_waitlist'
-                ? 'parent_guardian'
-                : 'participant';
-        const signerContext = payload.signerContext ?? fallbackSignerContext;
-        const signingUserId = signerContext === 'child' && pendingJoin?.childId
-            ? pendingJoin.childId
-            : user.$id;
-        const response = await fetch('/api/documents/record-signature', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                templateId: payload.templateId,
-                documentId: payload.documentId,
-                eventId: currentEvent.$id,
-                type: payload.type,
-                userId: signingUserId,
-                childUserId: pendingJoin?.childId,
-                signerContext,
-                user,
-            }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || result?.error) {
-            throw new Error(result?.error || 'Failed to record signature.');
-        }
-        return {
-            operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
-            syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
-        };
-    }, [currentEvent, pendingJoin?.childId, pendingJoin?.mode, user]);
-
-    const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
-        const currentLink = signLinks[currentSignIndex];
-        if (!currentLink || currentLink.type === 'TEXT') {
-            return;
-        }
-        if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
-            return;
-        }
-        if (pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
-            return;
-        }
-        if (!currentLink.documentId) {
-            setJoinError('Missing document identifier for signature.');
-            return;
-        }
-
-        setRecordingSignature(true);
-        setJoinNotice('Confirming signature...');
-        try {
-            const signatureResult = await recordSignature({
-                templateId: currentLink.templateId,
-                documentId: currentLink.documentId,
-                type: currentLink.type,
-                signerContext: currentLink.signerContext,
-            });
-            setShowSignModal(false);
-            setPendingSignedDocumentId(currentLink.documentId);
-            setPendingSignatureOperationId(
-                signatureResult.operationId || currentLink.operationId || null,
-            );
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
-            setShowSignModal(false);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingJoin(null);
-            setJoining(false);
-        } finally {
-            setRecordingSignature(false);
-        }
-    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, setShowSignModal, signLinks]);
-
-    const handleTextAcceptance = useCallback(async () => {
-        const currentLink = signLinks[currentSignIndex];
-        if (!currentLink || currentLink.type !== 'TEXT') {
-            return;
-        }
-        if (!textAccepted || pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
-            return;
-        }
-
-        const documentId = currentLink.documentId || createId();
-        setRecordingSignature(true);
-        setJoinNotice('Confirming signature...');
-        try {
-            const signatureResult = await recordSignature({
-                templateId: currentLink.templateId,
-                documentId,
-                type: currentLink.type,
-                signerContext: currentLink.signerContext,
-            });
-            setShowSignModal(false);
-            setPendingSignedDocumentId(documentId);
-            setPendingSignatureOperationId(
-                signatureResult.operationId || currentLink.operationId || null,
-            );
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
-            setShowSignModal(false);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingJoin(null);
-            setJoining(false);
-        } finally {
-            setRecordingSignature(false);
-        }
-    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, setShowSignModal, signLinks, textAccepted]);
-
-    useEffect(() => {
-        setTextAccepted(false);
-    }, [currentSignIndex, signLinks]);
-
-    useEffect(() => {
-        if (!showSignModal) {
-            return;
-        }
-
-        const handleMessage = (event: MessageEvent) => {
-            if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
-                return;
-            }
-            const payload = event.data;
-            let eventName = '';
-            if (typeof payload === 'string') {
-                eventName = payload;
-            } else if (payload && typeof payload === 'object') {
-                eventName = payload.event || payload.eventName || payload.type || payload.name || '';
-            }
-            const eventLabel = eventName.toString();
-            if (!eventLabel || (!eventLabel.includes('onDocumentSigned') && !eventLabel.includes('documentSigned'))) {
-                return;
-            }
-
-            const documentId =
-                (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
-            void handleSignedDocument(
-                typeof documentId === 'string' ? documentId : undefined
-            );
-        };
-
-        window.addEventListener('message', handleMessage);
-        return () => {
-            window.removeEventListener('message', handleMessage);
-        };
-    }, [handleSignedDocument, showSignModal]);
-
-    const handleSigningPollConfirmed = useCallback(async () => {
-        const nextIndex = currentSignIndex + 1;
-        if (nextIndex < signLinks.length) {
-            setCurrentSignIndex(nextIndex);
-            setPendingSignedDocumentId(null);
-            setPendingSignatureOperationId(null);
-            setShowSignModal(true);
-            setJoinNotice(null);
-            return;
-        }
-
-        setPendingSignedDocumentId(null);
-        setPendingSignatureOperationId(null);
-        setSignLinks([]);
-        setCurrentSignIndex(0);
-        setShowSignModal(false);
-        setJoinNotice(null);
-        const intent = pendingJoin;
-        setPendingJoin(null);
-        if (intent) {
-            await finalizeJoin(intent);
-        }
-        setJoining(false);
-        setJoiningChildFreeAgent(false);
-    }, [currentSignIndex, finalizeJoin, pendingJoin, setShowSignModal, signLinks.length]);
-
-    const handleSigningPollError = useCallback((message: string) => {
-        setJoinError(message || 'Failed to confirm signature.');
-        setPendingSignedDocumentId(null);
-        setPendingSignatureOperationId(null);
-        setShowSignModal(false);
-        setSignLinks([]);
-        setCurrentSignIndex(0);
-        setPendingJoin(null);
-        setJoining(false);
-        setJoiningChildFreeAgent(false);
-    }, [setShowSignModal]);
-
-    const pendingSigningLink = signLinks[currentSignIndex];
-    const pendingSignerUserId = !user
-        ? null
-        : pendingSigningLink?.signerContext === 'child' && pendingJoin?.childId
-            ? pendingJoin.childId
-            : user.$id;
-    useSigningStatusPoll({
-        operationId: user ? pendingSignatureOperationId : null,
-        documentId: user && !pendingSignatureOperationId ? pendingSignedDocumentId : null,
-        signerUserId: pendingSignerUserId,
-        scopeKey: currentEvent.$id,
-        onConfirmed: handleSigningPollConfirmed,
-        onError: handleSigningPollError,
-    });
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
@@ -2359,23 +2021,6 @@ export default function EventDetailSheet({
             setJoining(false);
         }
     };
-
-    const cancelSigning = useCallback(() => {
-        setShowSignModal(false);
-        setSignLinks([]);
-        setCurrentSignIndex(0);
-        setPendingJoin(null);
-        setPendingSignedDocumentId(null);
-        setPendingSignatureOperationId(null);
-        setShowPasswordModal(false);
-        setPassword('');
-        setPasswordError(null);
-        setConfirmingPassword(false);
-        setRecordingSignature(false);
-        setTextAccepted(false);
-        setJoining(false);
-        setJoinError('Signature process canceled.');
-    }, [setShowPasswordModal, setShowSignModal]);
 
     // After successful payment, poll for up to 30s until the webhook-backed registration is reflected
     const confirmRegistrationAfterPayment = async ({ pendingPayment = false }: { pendingPayment?: boolean } = {}) => {
