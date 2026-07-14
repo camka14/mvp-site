@@ -9,8 +9,6 @@ import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
-import { isStripeConnectMfaRequiredError, paymentService } from '@/lib/paymentService';
-import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
 import {
@@ -57,16 +55,7 @@ import {
     getDivisionTypeById,
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
-import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
-import { normalizePriceCents } from '@/lib/priceUtils';
-import {
-    normalizeOrganizerManualTaxRateBps,
-    normalizeEventTaxHandling,
-    normalizeOrganizationDefaultEventTaxHandling,
-    resolvePurchaseTaxPolicy,
-    taxPolicyRequiresStripeTaxCalculation,
-} from '@/lib/taxPolicy';
 import {
     normalizeManualPaymentProvider,
 } from '@/lib/manualRegistrationPayments';
@@ -219,7 +208,6 @@ import {
 import {
     buildMobileEditUnsupportedReasons,
     buildMobileEditUnsupportedWarning,
-    canUseAutomaticRefunds,
     normalizeInstallmentAmounts,
     normalizeInstallmentRelativeDays,
     sumInstallmentAmounts,
@@ -243,6 +231,7 @@ import { DivisionSettingsSection } from './eventForm/sections/DivisionSettingsSe
 import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
 import { useDivisionEditorController } from './eventForm/hooks/useDivisionEditorController';
+import { useEventPaymentController } from './eventForm/hooks/useEventPaymentController';
 import { useOrganizationFieldHydration } from './eventForm/hooks/useOrganizationFieldHydration';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useRentalBookingResources } from './eventForm/hooks/useRentalBookingResources';
@@ -339,15 +328,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
-    // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
-    const [connectingStripe, setConnectingStripe] = useState(false);
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
     const resolvedOrganizationFields = resolvedOrganization?.fields;
-    // Organization events must use org billing; personal events use the current user billing account.
-    const hasStripeAccount = resolvedOrganization
-        ? canOrganizationUsePaidBilling(resolvedOrganization)
-        : Boolean(currentUser?.hasStripeAccount);
     const activeEditingEvent = incomingEvent ?? null;
 
     const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
@@ -482,6 +465,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             fieldOptions?: Record<string, unknown>,
         ) => void)(name, value, options);
     }, [rawSetValue]);
+    // React Hook Form intentionally remains the single persisted draft owner.
+    // eslint-disable-next-line react-hooks/incompatible-library -- `watch` is the existing form subscription boundary.
     const formValues = watch();
 
     useEffect(() => {
@@ -547,12 +532,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const {
+        addManualPaymentLink,
+        automaticRefundsAvailable,
+        connectStripe: handleConnectStripe,
+        connectingStripe,
+        eventTaxableForPreview,
+        eventTaxPolicyForPreview,
+        hasStripeAccount,
+        manualPaymentLinks,
+        manualPaymentsEnabled,
+        organizationDefaultEventTaxHandling,
+        organizerManualTaxSelected,
+        organizerTaxCollectionAllowed,
+        pricingControlsEnabled,
+        removeInstallment,
+        removeManualPaymentLink,
+        setInstallmentAmount,
+        setInstallmentDueDate,
+        setInstallmentDueRelativeDay,
+        setManualPaymentLinkValue,
+        setManualPaymentsEnabled,
+        syncInstallmentCount,
+    } = useEventPaymentController({
+        currentUser,
+        eventData,
+        getValues,
+        isCreateMode,
+        resolvedOrganization,
+        setValue,
+    });
     const lockedEventTypeTagSlugs = useMemo(
         () => getLockedEventTypeTagSlugs(eventData.eventType),
         [eventData.eventType],
     );
     const isAffiliateEvent = Boolean(eventData.isAffiliateEvent || hasAffiliateUrl(eventData.affiliateUrl));
-    const pricingControlsEnabled = hasStripeAccount || eventData.registrationPaymentMode === 'MANUAL';
     const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
     const eventSupportsScheduleSlots = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const hasRestrictedImmutableFields = hasImmutableFields && !eventSupportsScheduleSlots;
@@ -575,20 +589,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? mergeRentalLockedTimeSlots([...immutableDefaultRentalTimeSlots, ...rentalLockedTimeSlots])
             : rentalLockedTimeSlots,
         [eventSupportsScheduleSlots, immutableDefaultRentalTimeSlots, rentalLockedTimeSlots],
-    );
-    const automaticRefundsAvailable = useMemo(
-        () => canUseAutomaticRefunds({
-            hasStripeAccount,
-            singleDivision: eventData.singleDivision,
-            price: eventData.price,
-            divisionDetails: eventData.divisionDetails,
-        }),
-        [
-            eventData.divisionDetails,
-            eventData.price,
-            eventData.singleDivision,
-            hasStripeAccount,
-        ],
     );
     const hasUnsetTeamCapacityLimits = eventData.teamSizeLimit == null
         || (eventData.singleDivision && eventData.maxParticipants == null);
@@ -622,102 +622,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         loading: templatesLoading,
         error: templatesError,
     } = useTemplateDocuments(templateOrganizationId);
-
-    useEffect(() => {
-        const manualPaymentsEnabled = eventData.registrationPaymentMode === 'MANUAL';
-        if (!isCreateMode || hasStripeAccount || manualPaymentsEnabled) {
-            return;
-        }
-
-        const currentPrice = Number.isFinite(Number(eventData.price))
-            ? Number(eventData.price)
-            : 0;
-        if (currentPrice !== 0) {
-            setValue('price', 0, { shouldDirty: false, shouldValidate: true });
-        }
-
-        if (eventData.allowPaymentPlans) {
-            setValue('allowPaymentPlans', false, { shouldDirty: false, shouldValidate: true });
-        }
-
-        const currentInstallmentCount = Number.isFinite(Number(eventData.installmentCount))
-            ? Number(eventData.installmentCount)
-            : 0;
-        if (currentInstallmentCount !== 0) {
-            setValue('installmentCount', 0, { shouldDirty: false, shouldValidate: true });
-        }
-
-        const hasInstallmentAmounts = Array.isArray(eventData.installmentAmounts)
-            && eventData.installmentAmounts.length > 0;
-        if (hasInstallmentAmounts) {
-            setValue('installmentAmounts', [], { shouldDirty: false, shouldValidate: true });
-        }
-
-        const hasInstallmentDueDates = Array.isArray(eventData.installmentDueDates)
-            && eventData.installmentDueDates.length > 0;
-        if (hasInstallmentDueDates) {
-            setValue('installmentDueDates', [], { shouldDirty: false, shouldValidate: true });
-        }
-
-        const hasInstallmentDueRelativeDays = Array.isArray(eventData.installmentDueRelativeDays)
-            && eventData.installmentDueRelativeDays.length > 0;
-        if (hasInstallmentDueRelativeDays) {
-            setValue('installmentDueRelativeDays', [], { shouldDirty: false, shouldValidate: true });
-        }
-
-        const currentDivisionDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        const nextDivisionDetails = currentDivisionDetails.map((detail) => {
-            const detailPrice = Number.isFinite(Number(detail.price))
-                ? Number(detail.price)
-                : 0;
-            const detailInstallmentCount = Number.isFinite(Number(detail.installmentCount))
-                ? Number(detail.installmentCount)
-                : 0;
-            const hasDetailInstallmentAmounts = Array.isArray(detail.installmentAmounts)
-                && detail.installmentAmounts.length > 0;
-            const hasDetailInstallmentDueDates = Array.isArray(detail.installmentDueDates)
-                && detail.installmentDueDates.length > 0;
-            const hasDetailInstallmentDueRelativeDays = Array.isArray(detail.installmentDueRelativeDays)
-                && detail.installmentDueRelativeDays.length > 0;
-            const hasPaidSettings = detailPrice !== 0
-                || Boolean(detail.allowPaymentPlans)
-                || detailInstallmentCount !== 0
-                || hasDetailInstallmentAmounts
-                || hasDetailInstallmentDueDates
-                || hasDetailInstallmentDueRelativeDays;
-            if (!hasPaidSettings) {
-                return detail;
-            }
-            return {
-                ...detail,
-                price: 0,
-                allowPaymentPlans: false,
-                installmentCount: 0,
-                installmentAmounts: [],
-                installmentDueDates: [],
-                installmentDueRelativeDays: [],
-            };
-        });
-        const divisionPricingChanged = nextDivisionDetails.some(
-            (detail, index) => detail !== currentDivisionDetails[index],
-        );
-        if (divisionPricingChanged) {
-            setValue('divisionDetails', nextDivisionDetails, { shouldDirty: false, shouldValidate: true });
-        }
-
-    }, [
-        eventData.allowPaymentPlans,
-        eventData.divisionDetails,
-        eventData.installmentAmounts,
-        eventData.installmentCount,
-        eventData.installmentDueDates,
-        eventData.installmentDueRelativeDays,
-        eventData.price,
-        eventData.registrationPaymentMode,
-        hasStripeAccount,
-        isCreateMode,
-        setValue,
-    ]);
 
     const templateOptions = useMemo(
         () => buildTemplateOptions(templateDocuments),
@@ -885,99 +789,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
-    const syncInstallmentCount = useCallback(
-        (count: number) => {
-            const safeCount = Math.max(1, Math.floor(Number(count) || 0));
-            const amounts = [...(getValues('installmentAmounts') || [])];
-            const dueDates = [...(getValues('installmentDueDates') || [])];
-            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
-            const price = getValues('price') || 0;
-            const startDate = getValues('start');
-            const useRelativeDueDates = getValues('eventType') === 'WEEKLY_EVENT' && !getValues('parentEvent');
-            while (amounts.length < safeCount) {
-                amounts.push(amounts.length === 0 ? price : 0);
-                dueDates.push(startDate);
-                relativeDueDays.push(0);
-            }
-            while (amounts.length > safeCount) {
-                amounts.pop();
-                dueDates.pop();
-                relativeDueDays.pop();
-            }
-            setValue('installmentCount', safeCount, { shouldDirty: true, shouldValidate: true });
-            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
-            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
-            setValue('installmentDueDates', useRelativeDueDates ? [] : dueDates, { shouldDirty: true, shouldValidate: true });
-            setValue(
-                'installmentDueRelativeDays',
-                useRelativeDueDates ? relativeDueDays : [],
-                { shouldDirty: true, shouldValidate: true },
-            );
-        },
-        [getValues, setValue],
-    );
-
-    const setInstallmentAmount = useCallback(
-        (index: number, value: number) => {
-            const amounts = [...(getValues('installmentAmounts') || [])];
-            if (index >= amounts.length) return;
-            amounts[index] = normalizePriceCents(value);
-            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
-            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const setInstallmentDueDate = useCallback(
-        (index: number, value: Date | string | null) => {
-            const dueDates = [...(getValues('installmentDueDates') || [])];
-            if (index >= dueDates.length) return;
-            if (value instanceof Date) {
-                dueDates[index] = value.toISOString();
-            } else if (typeof value === 'string') {
-                dueDates[index] = value;
-            } else {
-                dueDates[index] = '';
-            }
-            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const setInstallmentDueRelativeDay = useCallback(
-        (index: number, value: number | string) => {
-            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
-            const amounts = getValues('installmentAmounts') || [];
-            if (index < 0 || index >= amounts.length) return;
-            while (relativeDueDays.length < amounts.length) {
-                relativeDueDays.push(0);
-            }
-            const parsed = typeof value === 'number' ? value : Number(value);
-            relativeDueDays[index] = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
-            setValue('installmentDueRelativeDays', relativeDueDays, { shouldDirty: true, shouldValidate: true });
-            setValue('installmentDueDates', [], { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
-    const removeInstallment = useCallback(
-        (index: number) => {
-            const amounts = [...(getValues('installmentAmounts') || [])];
-            const dueDates = [...(getValues('installmentDueDates') || [])];
-            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
-            if (amounts.length <= 1) return;
-            amounts.splice(index, 1);
-            dueDates.splice(index, 1);
-            relativeDueDays.splice(index, 1);
-            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
-            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
-            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
-            setValue('installmentDueRelativeDays', relativeDueDays, { shouldDirty: true, shouldValidate: true });
-            setValue('installmentCount', amounts.length, { shouldDirty: true, shouldValidate: true });
-        },
-        [getValues, setValue],
-    );
-
     useEffect(() => {
         if (isEditMode) {
             return;
@@ -1025,9 +836,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const shouldManageLocalFields = !isAffiliateEvent && !hasRestrictedImmutableFields && supportsFieldCountForEvent(eventData.eventType);
     const shouldProvisionFields = shouldManageLocalFields;
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
-    const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
-        resolvedOrganization?.defaultEventTaxHandling,
-    );
     const { fieldsLoading } = useOrganizationFieldHydration({
         hasRestrictedImmutableFields,
         isEditMode,
@@ -1114,27 +922,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setFieldCount,
     ]);
 
-    const eventTaxPolicyForPreview = resolvePurchaseTaxPolicy({
-        purchaseType: 'event',
-        taxCategory: 'EVENT_PARTICIPANT',
-        event: {
-            address: eventData.address,
-            location: eventData.location,
-            organizationId: eventData.organizationId || resolvedOrganizationId || undefined,
-            taxHandling: eventData.taxHandling,
-            organizerManualTaxRateBps: eventData.organizerManualTaxRateBps,
-        },
-        organization: resolvedOrganization
-            ? {
-                defaultEventTaxHandling: organizationDefaultEventTaxHandling,
-                taxResponsibilityAcceptedAt: resolvedOrganization.taxResponsibilityAcceptedAt,
-            }
-            : null,
-    });
-    const eventTaxableForPreview = hasStripeAccount && taxPolicyRequiresStripeTaxCalculation(eventTaxPolicyForPreview);
-    const organizerTaxCollectionAllowed = eventTaxPolicyForPreview.liabilityParty === 'ORGANIZER';
-    const organizerManualTaxSelected = organizerTaxCollectionAllowed
-        && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
     const slotDivisionLookup = useMemo(
         () => buildSlotDivisionLookup(
             eventData.divisionDetails || [],
@@ -3299,38 +3086,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const leagueError = buildLeagueScheduleError(errors.leagueSlots);
 
-    // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
-    const handleConnectStripe = async () => {
-        if (!currentUser) return;
-        if (typeof window === 'undefined') return;
-        try {
-            setConnectingStripe(true);
-            const origin = resolveClientPublicOrigin();
-            if (!origin) {
-                console.error('Unable to determine public URL for Stripe onboarding.');
-                return;
-            }
-            const refreshUrl = `${origin}/discover?stripe=refresh`;
-            const returnUrl = `${origin}/discover?stripe=return`;
-            const result = await paymentService.connectStripeAccount({
-                user: currentUser,
-                refreshUrl,
-                returnUrl,
-            });
-            if (result?.onboardingUrl) {
-                window.location.href = result.onboardingUrl;
-            }
-        } catch (error) {
-            if (isStripeConnectMfaRequiredError(error)) {
-                window.location.href = error.mfaSetupPath;
-                return;
-            }
-            console.error('Failed to connect Stripe account:', error);
-        } finally {
-            setConnectingStripe(false);
-        }
-    };
-
     // Builds the event payload used for draft updates.
     const buildDraftEvent = useCallback((formValues?: EventFormValues): Partial<Event> => (
         buildEventDraft({
@@ -3637,7 +3392,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const scoringConfigSectionLabel = eventData.eventType === 'TOURNAMENT'
         ? 'Pool Scoring Config'
         : 'League Scoring Config';
-    const manualPaymentsEnabled = eventData.registrationPaymentMode === 'MANUAL';
     const showManualPaymentsSection = !isAffiliateEvent && manualPaymentsEnabled;
     const sectionNavItems = useMemo(
         () => buildEventFormSectionNavigationItems({
@@ -3721,51 +3475,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         />
     );
 
-    const manualPaymentLinks = Array.isArray(eventData.manualPaymentLinks)
-        ? eventData.manualPaymentLinks
-        : [];
-    const setManualPaymentLinkValue = (
-        index: number,
-        field: 'provider' | 'label' | 'url',
-        value: string,
-    ) => {
-        const nextLinks = [...manualPaymentLinks];
-        const current = nextLinks[index];
-        if (!current) return;
-        nextLinks[index] = {
-            ...current,
-            [field]: field === 'provider' ? normalizeManualPaymentProvider(value) : value,
-        };
-        setValue('manualPaymentLinks', nextLinks, { shouldDirty: true, shouldValidate: true });
-    };
-    const addManualPaymentLink = () => {
-        setValue('manualPaymentLinks', [
-            ...manualPaymentLinks,
-            {
-                id: createClientId(),
-                provider: 'VENMO',
-                label: 'Venmo',
-                url: '',
-            },
-        ], { shouldDirty: true, shouldValidate: true });
-    };
-    const removeManualPaymentLink = (index: number) => {
-        setValue(
-            'manualPaymentLinks',
-            manualPaymentLinks.filter((_, linkIndex) => linkIndex !== index),
-            { shouldDirty: true, shouldValidate: true },
-        );
-    };
     const handleManualPaymentsChange = useCallback((checked: boolean) => {
-        setValue('registrationPaymentMode', checked ? 'MANUAL' : 'ONLINE', { shouldDirty: true, shouldValidate: true });
+        setManualPaymentsEnabled(checked);
         if (checked) {
-            setValue('cancellationRefundHours', null, { shouldDirty: true, shouldValidate: true });
             expandSection('section-manual-payments');
-            return;
         }
-        setValue('manualPaymentLinks', [], { shouldDirty: true, shouldValidate: true });
-        setValue('manualPaymentInstructions', '', { shouldDirty: true, shouldValidate: true });
-    }, [expandSection, setValue]);
+    }, [expandSection, setManualPaymentsEnabled]);
 
     const sheetContent = (
         <EventFormShell
