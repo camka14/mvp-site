@@ -116,6 +116,10 @@ import {
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
 import type { JoinIntent } from './eventDetail/eventRegistrationCommands';
+import {
+    createEventJoinActions,
+    type PaymentPlanPreviewState,
+} from './eventDetail/eventJoinActions';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -154,11 +158,6 @@ const WEEKLY_SESSION_CARD_GAP_PX = 8;
 const WEEKLY_SESSION_LIST_MAX_HEIGHT_PX = (
     WEEKLY_SESSION_VISIBLE_ROWS * WEEKLY_SESSION_CARD_HEIGHT_PX
 ) + ((WEEKLY_SESSION_VISIBLE_ROWS - 1) * WEEKLY_SESSION_CARD_GAP_PX);
-
-type PaymentPlanPreviewState = {
-    intent: JoinIntent;
-    ownerLabel: string;
-};
 
 type DivisionSelectionPayload = {
     divisionId?: string;
@@ -1108,125 +1107,6 @@ export default function EventDetailSheet({
         resetSigningState,
     ]);
 
-    const handleRegisterChild = async () => {
-        if (!user || !currentEvent) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before registering a child.')) {
-            return;
-        }
-        if (!selectedChildId) {
-            setJoinError(isTeamSignup ? 'Select a child to add as a free agent.' : 'Select a child to register.');
-            return;
-        }
-        const bypassEligibilityCheck = (isTeamSignup && selectedChildIsFreeAgent) || (!isTeamSignup && selectedChildIsWaitlisted);
-        if (!selectedChildEligible && !bypassEligibilityCheck) {
-            setJoinError('Selected child is not eligible for this event.');
-            return;
-        }
-        if (isTeamSignup) {
-            setJoinError(null);
-            setJoinNotice(null);
-            setJoiningChildFreeAgent(true);
-            try {
-                if (selectedChildIsFreeAgent) {
-                    await eventService.removeFreeAgent(currentEvent.$id, selectedChildId, selectedWeeklyOccurrence);
-                    setJoinNotice('Child removed from free agent list.');
-                } else {
-                    const signingStarted = await beginSigningFlow({
-                        mode: 'child_free_agent',
-                        childId: selectedChildId,
-                        childEmail: selectedChild?.email ?? null,
-                    });
-                    if (signingStarted) {
-                        return;
-                    }
-                    await finalizeJoin({
-                        mode: 'child_free_agent',
-                        childId: selectedChildId,
-                        childEmail: selectedChild?.email ?? null,
-                    });
-                    return;
-                }
-                await loadEventDetails();
-            } catch (error) {
-                setJoinError(error instanceof Error ? error.message : 'Failed to update child free agent status.');
-            } finally {
-                setJoiningChildFreeAgent(false);
-            }
-            return;
-        }
-        const eventCapacity = resolveEventParticipantCapacity(currentEvent);
-        const eventWaitlistMode = (eventCapacity > 0 && players.length >= eventCapacity) || selectedChildIsWaitlisted;
-        if (eventWaitlistMode) {
-            setJoinError(null);
-            setJoinNotice(null);
-            try {
-                if (selectedChildIsWaitlisted) {
-                    setRegisteringChild(true);
-                    await eventService.removeFromWaitlist(currentEvent.$id, selectedChildId, 'user', selectedWeeklyOccurrence);
-                    setJoinNotice('Child removed from waitlist.');
-                    await loadEventDetails();
-                    return;
-                }
-                if (selectedChildIsRegistered) {
-                    setJoinNotice('Child is already registered for this event.');
-                    return;
-                }
-                const signingStarted = await beginSigningFlow({
-                    mode: 'child_waitlist',
-                    childId: selectedChildId,
-                    childEmail: selectedChild?.email ?? null,
-                });
-                if (signingStarted) {
-                    return;
-                }
-                await finalizeJoin({
-                    mode: 'child_waitlist',
-                    childId: selectedChildId,
-                    childEmail: selectedChild?.email ?? null,
-                });
-            } catch (error) {
-                setJoinError(error instanceof Error ? error.message : 'Failed to update child waitlist status.');
-            } finally {
-                setRegisteringChild(false);
-            }
-            return;
-        }
-        if (isDivisionSelectionMissing) {
-            setJoinError(
-                registrationByDivisionType
-                    ? 'Select a division type before registering a child.'
-                    : 'Select a division before registering a child.',
-            );
-            return;
-        }
-        const childIntent: JoinIntent = {
-            mode: 'child',
-            childId: selectedChildId,
-            childEmail: selectedChild?.email ?? null,
-        };
-        if (shouldAskRegistrationQuestions(childIntent)) {
-            openRegistrationQuestionsStep(childIntent);
-            return;
-        }
-        setJoinError(null);
-        setJoinNotice(null);
-
-        let signingStarted = false;
-        try {
-            signingStarted = await beginSigningFlow(childIntent);
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin(childIntent);
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
-        }
-    };
-
     const openFreeAgentActions = useCallback((agent: UserData) => {
         setSelectedFreeAgentActionUser(agent);
     }, []);
@@ -1259,304 +1139,6 @@ export default function EventDetailSheet({
     }, [currentEvent?.$id, router, selectedFreeAgentActionUser]);
 
     // Update the join event handlers
-    const handleJoinEvent = async (skipPaymentPlanPreview = false) => {
-        if (!user || !currentEvent) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining.')) {
-            return;
-        }
-        if (isDivisionSelectionMissing) {
-            setJoinError(
-                registrationByDivisionType
-                    ? 'Select a division type before joining.'
-                    : 'Select a division before joining.',
-            );
-            return;
-        }
-        if (selfRegistrationBlockedReason) {
-            setJoinError(selfRegistrationBlockedReason);
-            return;
-        }
-        if (
-            !skipPaymentPlanPreview
-            && !isMinor
-            && selectedDivisionBilling.allowPaymentPlans
-            && normalizePriceCents(selectedDivisionBilling.priceCents) > 0
-        ) {
-            setPaymentPlanPreview({
-                intent: { mode: 'user' },
-                ownerLabel: 'You',
-            });
-            return;
-        }
-
-        const joinIntent: JoinIntent = { mode: 'user' };
-        if (shouldAskRegistrationQuestions(joinIntent)) {
-            openRegistrationQuestionsStep(joinIntent);
-            return;
-        }
-
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        let signingStarted = false;
-        try {
-            if (isMinor) {
-                trackEventRegistrationStarted(currentEvent, 'self', {
-                    division_id: resolvedDivisionSelectionPayload?.divisionId,
-                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
-                    slot_id: selectedWeeklyOccurrence?.slotId,
-                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
-                    requires_parent_approval: true,
-                });
-                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
-                if (result.requiresParentApproval) {
-                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
-                } else {
-                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
-                }
-                await loadEventDetails();
-                return;
-            }
-            signingStarted = await beginSigningFlow(joinIntent);
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin(joinIntent);
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to join event');
-        } finally {
-            if (!signingStarted) {
-                setJoining(false);
-            }
-        }
-    };
-
-    const handleJoinWaitlist = async () => {
-        if (!user || !currentEvent) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining the waitlist.')) {
-            return;
-        }
-        if (selfRegistrationBlockedReason) {
-            setJoinError(selfRegistrationBlockedReason);
-            return;
-        }
-        if (isDivisionSelectionMissing) {
-            setJoinError(
-                registrationByDivisionType
-                    ? 'Select a division type before joining the waitlist.'
-                    : 'Select a division before joining the waitlist.',
-            );
-            return;
-        }
-        const waitlistMinorIntent: JoinIntent = { mode: 'user' };
-        if (isMinor && shouldAskRegistrationQuestions(waitlistMinorIntent)) {
-            openRegistrationQuestionsStep(waitlistMinorIntent);
-            return;
-        }
-
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        let signingStarted = false;
-        try {
-            if (isMinor) {
-                trackEventRegistrationStarted(currentEvent, 'waitlist', {
-                    division_id: resolvedDivisionSelectionPayload?.divisionId,
-                    division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
-                    slot_id: selectedWeeklyOccurrence?.slotId,
-                    occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
-                    requires_parent_approval: true,
-                });
-                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
-                if (result.requiresParentApproval) {
-                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
-                } else {
-                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
-                }
-                await loadEventDetails();
-                return;
-            }
-            signingStarted = await beginSigningFlow({ mode: 'user_waitlist' });
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin({ mode: 'user_waitlist' });
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to join waitlist');
-        } finally {
-            if (!signingStarted) {
-                setJoining(false);
-            }
-        }
-    };
-
-    const handleJoinTeamWaitlist = async () => {
-        if (!user || !currentEvent || !selectedTeamId) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining the waitlist.')) {
-            return;
-        }
-        if (!selectedTeamIsWaitlisted && isDivisionSelectionMissing) {
-            setJoinError(
-                registrationByDivisionType
-                    ? 'Select a division type before joining the waitlist.'
-                    : 'Select a division before joining the waitlist.',
-            );
-            return;
-        }
-
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        const team = userTeams.find((t) => t.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
-        let signingStarted = false;
-        try {
-            if (selectedTeamIsWaitlisted) {
-                await eventService.removeFromWaitlist(currentEvent.$id, selectedTeamId, 'team', selectedWeeklyOccurrence);
-                setJoinNotice('Team removed from waitlist.');
-                await loadEventDetails();
-                return;
-            }
-            signingStarted = await beginSigningFlow({ mode: 'team_waitlist', team });
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin({ mode: 'team_waitlist', team });
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to update team waitlist status');
-        } finally {
-            if (!signingStarted) {
-                setJoining(false);
-            }
-        }
-    };
-
-    // Team-signup: join as team or free agent
-    const handleJoinAsTeam = async (skipPaymentPlanPreview = false, teamOverride?: Team) => {
-        if (!user || !currentEvent || (!selectedTeamId && !teamOverride?.$id)) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining.')) {
-            return;
-        }
-        if (isDivisionSelectionMissing) {
-            setJoinError(
-                registrationByDivisionType
-                    ? 'Select a division type before joining.'
-                    : 'Select a division before joining.',
-            );
-            return;
-        }
-
-        const team = teamOverride
-            ?? userTeams.find((t) => t.$id === selectedTeamId)
-            ?? ({ $id: selectedTeamId } as Team);
-        const joinIntent: JoinIntent = { mode: 'team', team };
-        if (
-            !skipPaymentPlanPreview
-            && selectedDivisionBilling.allowPaymentPlans
-            && normalizePriceCents(selectedDivisionBilling.priceCents) > 0
-        ) {
-            const teamName = typeof team?.name === 'string' && team.name.trim().length > 0
-                ? team.name.trim()
-                : 'Your team';
-            setPaymentPlanPreview({
-                intent: { mode: 'team', team },
-                ownerLabel: teamName,
-            });
-            return;
-        }
-        if (shouldAskRegistrationQuestions(joinIntent)) {
-            openRegistrationQuestionsStep(joinIntent);
-            return;
-        }
-
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-        let signingStarted = false;
-        try {
-            signingStarted = await beginSigningFlow(joinIntent);
-            if (signingStarted) {
-                return;
-            }
-            await finalizeJoin(joinIntent);
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to join as team');
-        } finally {
-            if (!signingStarted) {
-                setJoining(false);
-            }
-        }
-    };
-
-    const continuePaymentPlanPreview = () => {
-        const preview = paymentPlanPreview;
-        setPaymentPlanPreview(null);
-        if (!preview) {
-            return;
-        }
-
-        if (preview.intent.mode === 'team') {
-            void handleJoinAsTeam(true, preview.intent.team ?? undefined);
-            return;
-        }
-
-        void handleJoinEvent(true);
-    };
-
-    const handleWithdrawTeam = async () => {
-        if (!user || !currentEvent || !selectedTeamId) return;
-        if (eventHasStarted) {
-            setJoinError(joinClosedMessage);
-            return;
-        }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before withdrawing.')) {
-            return;
-        }
-
-        setJoining(true);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        const selectedTeam = userTeams.find((team) => team.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
-
-        try {
-            await paymentService.leaveEvent(
-                user,
-                currentEvent,
-                selectedTeam,
-                undefined,
-                undefined,
-                JOIN_API_TIMEOUT_MS,
-                selectedWeeklyOccurrence,
-            );
-
-            setJoinNotice('Team withdrawn from this event.');
-            await loadEventDetails();
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to withdraw team');
-        } finally {
-            setJoining(false);
-        }
-    };
-
     if (!currentEvent) return null;
     if (!isActive) return null;
 
@@ -2000,6 +1582,51 @@ export default function EventDetailSheet({
         && paymentFailedTeamIds.includes(selectedTeamId)
     );
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
+    const {
+        handleRegisterChild,
+        handleJoinEvent,
+        handleJoinWaitlist,
+        handleJoinTeamWaitlist,
+        handleJoinAsTeam,
+        continuePaymentPlanPreview,
+        handleWithdrawTeam,
+    } = createEventJoinActions({
+        event: currentEvent,
+        user,
+        eventHasStarted,
+        joinClosedMessage,
+        isDivisionSelectionMissing,
+        registrationByDivisionType,
+        selfRegistrationBlockedReason,
+        isMinor,
+        billing: selectedDivisionBilling,
+        selection: resolvedDivisionSelectionPayload,
+        occurrence: selectedWeeklyOccurrence,
+        selectedChildId,
+        selectedChildEligible,
+        selectedChildIsFreeAgent,
+        selectedChildIsWaitlisted,
+        selectedChildIsRegistered,
+        selectedChildEmail: selectedChild?.email ?? null,
+        playerCount: players.length,
+        selectedTeamId,
+        selectedTeamIsWaitlisted,
+        userTeams,
+        paymentPlanPreview,
+        timeoutMs: JOIN_API_TIMEOUT_MS,
+        ensureWeeklyOccurrenceSelected,
+        shouldAskRegistrationQuestions,
+        openRegistrationQuestionsStep,
+        beginSigningFlow,
+        finalizeJoin,
+        reload: loadEventDetails,
+        setJoining,
+        setJoiningChildFreeAgent,
+        setRegisteringChild,
+        setJoinError,
+        setJoinNotice,
+        setPaymentPlanPreview,
+    });
     const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
     const publicRegistrationStatusLabel = eventHasStarted
         ? 'Registration closed'
