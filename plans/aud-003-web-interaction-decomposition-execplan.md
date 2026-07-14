@@ -64,6 +64,7 @@ After this plan is complete, users must see the same event details, registration
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [x] (2026-07-14 18:46Z) Milestone 6a: split the 843-line division controller into a 335-line RHF/domain facade, a 305-line transient draft hook, and a 435-line pure state transformer while preserving the exact return contract; three direct regressions plus 156 focused tests, TypeScript, targeted ESLint, and diff checks pass.
 - [x] (2026-07-14 19:13Z) Milestone 6b: split the 892-line staff/official controller into an 85-line exact-contract facade plus 419-line roster, 200-line invite, and 309-line official-assignment owners; all 48 return keys remain ordered and nine direct regressions plus 165 focused tests, TypeScript, targeted ESLint, and diff checks pass.
+- [x] (2026-07-14 17:40Z) Integrated web checkpoint: the current canonical AUD-003 branch passes the serial 18-suite/207-test EventDetail/EventForm gate, TypeScript, focused ESLint, and diff checks after the navigation, submission, hero, and presentation-state commits.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
 
 ## Surprises & Discoveries
@@ -707,3 +708,4 @@ Revision note (2026-07-14): Continued Milestone 5 by extracting EventForm resour
 Revision note (2026-07-14): Continued Milestone 4 by extracting event-detail navigation and inline-auth coordination; five direct controller tests plus the complete facade/summary gate pass, and the facade is now 1,244 lines.
 Revision note (2026-07-14): Continued Milestone 5 by extracting draft construction, validation, canonical staff application, and the exact imperative handle; the serial 11-suite EventForm gate passes 170 tests, and the facade is now 2,622 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting the event hero and consolidating transient presentation state; both direct gates, TypeScript, and focused ESLint pass, and the facade is now 1,202 lines.
+Revision note (2026-07-14): Recorded a canonical integration checkpoint of 18 suites and 207 tests after the four latest AUD-003 ownership slices; release-build browser acceptance remains deliberately open.
