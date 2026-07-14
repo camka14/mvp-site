@@ -33,6 +33,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 18:32Z) Milestone 4j: extracted canonical bill creation, required-sign-link loading, intent classification, email normalization, and signer-step deduplication into stateless registration commands.
 - [x] (2026-07-14 19:01Z) Milestone 4k: moved password confirmation, signing state, signature recording, BoldSign message handling, sequential signer advancement, status polling, cancellation, and inactive cleanup into `useEventSigningController`.
 - [x] (2026-07-14 19:19Z) Milestone 4l: moved question-intent state, required-answer validation, draft persistence, minor approval routing, signing handoff, finalization, retry restoration, and cleanup into `useRegistrationQuestionsController`.
+- [x] (2026-07-14 22:04Z) Milestone 4m: moved child registration state, weekly/division finalization guards, capacity routing, free/manual/payment-plan/checkout completion, rollback, and manual-proof completion into `useEventJoinFinalizationController`.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
@@ -123,7 +124,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, participant, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 4,039 lines, down from 7,219; the remaining join/child orchestration and broader view extraction are still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one mutually exclusive registration phase plus focused authentication, checkout, signing, registration-question, join-finalization, participant, and manual-payment owners backed by stateless bill/sign-link commands. `EventDetailSheet.tsx` currently measures 3,662 lines, down from 7,219; the remaining action handlers and broader view extraction are still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -428,6 +429,16 @@ Registration-question controller evidence on 2026-07-14:
 
 Six direct controller tests cover supported-intent gating and answer persistence, required-answer blocking, answered signing/finalization handoff, signing-owned loading state, minor parent-approval routing, and failure restoration with the answered intent. The controller owns only question-step state and receives explicit signing/finalization actions; it does not copy event or participant state.
 
+Join-finalization controller evidence on 2026-07-14:
+
+    PASS 24 suites / 248 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 4,039 -> 3,662 lines
+    useEventJoinFinalizationController.ts: 514 lines
+
+Eight direct controller tests cover required weekly selection, active child registration and consent, capacity waitlisting, manual-payment bill/proof continuity, missing payment-plan bill creation, rollback after billing failure, paid checkout handoff, and division-independent child free-agent routing. The controller is the sole owner of child registration and manual-payment bill state and keeps finalization behavior behind explicit reload, completion, workflow-phase, and checkout actions.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -456,3 +467,4 @@ Revision note (2026-07-14): Continued Milestone 4 by composing checkout, billing
 Revision note (2026-07-14): Continued Milestone 4 by extracting stateless bill and signing-link commands plus intent helpers; the 21-suite safety net passes 228 tests and the facade is now 4,494 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting one signing controller for password, recording, messaging, sequential advancement, polling, and cancellation; the 22-suite safety net passes 234 tests and the facade is now 4,139 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting registration-question intent, validation, persistence, minor routing, and retry ownership; the 23-suite safety net passes 240 tests and the facade is now 4,039 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting join finalization, child registration, capacity/waitlist routing, manual payment, payment-plan rollback, and checkout handoff; the 24-suite safety net passes 248 tests and the facade is now 3,662 lines.

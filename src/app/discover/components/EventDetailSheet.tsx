@@ -20,7 +20,6 @@ import {
     getUserFullName,
     getUserHandle,
     getTeamAvatarUrl,
-    Bill,
     getEventImageFallbackUrl,
     getEventImageUrl,
     getOrganizationAvatarUrl,
@@ -32,9 +31,8 @@ import {
 import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { paymentService } from '@/lib/paymentService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
-import { billService } from '@/lib/billService';
 import type { FamilyChild } from '@/lib/familyService';
-import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
+import { registrationService, type DivisionRegistrationSelection } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
@@ -91,6 +89,7 @@ import { useEventDetailDataController } from './eventDetail/hooks/useEventDetail
 import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
 import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegistrationQuestionsController';
 import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
+import { useEventJoinFinalizationController } from './eventDetail/hooks/useEventJoinFinalizationController';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -115,12 +114,7 @@ import {
     type ParticipantDivisionCapacityRow,
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
-import { submitManualPaymentProof } from './eventDetail/manualPaymentProof';
-import {
-    createEventRegistrationBill,
-    getJoinIntentRegistrationType,
-    type JoinIntent,
-} from './eventDetail/eventRegistrationCommands';
+import type { JoinIntent } from './eventDetail/eventRegistrationCommands';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -304,16 +298,11 @@ export default function EventDetailSheet({
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
-    const [manualPaymentBill, setManualPaymentBill] = useState<Bill | null>(null);
     const [selectedTeamId, setSelectedTeamId] = useState('');
     const [selectedDivisionId, setSelectedDivisionId] = useState('');
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
     const [selectedChildId, setSelectedChildId] = useState('');
-    const [registeringChild, setRegisteringChild] = useState(false);
     const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
-    const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
-    const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
-    const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [paymentPlanPreviewState, setPaymentPlanPreviewState] = useState<PaymentPlanPreviewState | null>(null);
     const [registrationWorkflow, dispatchRegistrationWorkflow] = useReducer(
         registrationWorkflowReducer,
@@ -989,391 +978,42 @@ export default function EventDetailSheet({
         });
     }, [clearEventRegistrationProgress, publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
 
-    const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
-        return createEventRegistrationBill({
-            ownerType,
-            ownerId,
-            event: currentEvent,
-            billing: selectedDivisionBilling,
-            occurrence: selectedWeeklyOccurrence,
-            user,
-            timeoutMs: JOIN_API_TIMEOUT_MS,
-        });
-    }, [currentEvent, selectedDivisionBilling, selectedWeeklyOccurrence, user]);
-
-    const registerChildForEvent = useCallback(async (
-        childId: string,
-        selection: DivisionSelectionPayload = {},
-        answers?: RegistrationQuestionAnswerInput[],
-    ) => {
-        if (!currentEvent) {
-            throw new Error('Event is not loaded.');
-        }
-        const resolvedSelection = selectedWeeklyOccurrence
-            ? {
-                ...selection,
-                slotId: selectedWeeklyOccurrence.slotId ?? undefined,
-                occurrenceDate: selectedWeeklyOccurrence.occurrenceDate ?? undefined,
-            }
-            : selection;
-
-        setRegisteringChild(true);
-        try {
-            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, resolvedSelection, answers);
-            setChildRegistration(result.registration ?? null);
-            setChildConsent(result.consent ?? null);
-            setChildRegistrationChildId(childId);
-            const notices: string[] = [];
-            const registrationStatus = (result.registration?.status ?? '').toLowerCase();
-            const consentStatus = (result.consent?.status ?? '').toLowerCase();
-            if (registrationStatus === 'active') {
-                notices.push('Child registration completed.');
-            } else if (result.requiresParentApproval) {
-                notices.push('Child request sent. A parent/guardian must approve before registration can continue.');
-            } else if (result.consent?.requiresChildEmail) {
-                notices.push('Child registration started. Add child email to continue child-signature document steps.');
-            } else if (consentStatus === 'parentsigned') {
-                notices.push('Parent signature completed. Registration is pending child signature.');
-            } else if (consentStatus === 'childsigned') {
-                notices.push('Child signature completed. Registration is pending parent/guardian signature.');
-            } else if (consentStatus === 'completed') {
-                notices.push('All signatures are complete. Finalizing registration.');
-            } else if (result.consent?.status) {
-                notices.push(`Child registration is pending. Consent status: ${result.consent.status}.`);
-            } else if (registrationStatus) {
-                notices.push(`Child registration is pending. Status: ${registrationStatus}.`);
-            } else {
-                notices.push('Child registration request submitted and is pending processing.');
-            }
-            if (Array.isArray(result.warnings) && result.warnings.length > 0) {
-                notices.push(result.warnings[0]);
-            }
-            setJoinNotice(notices.join(' '));
-            await loadEventDetails();
-            if (registrationStatus === 'active') {
-                navigateToPublicEventCompletion();
-            }
-        } finally {
-            setRegisteringChild(false);
-        }
-    }, [currentEvent, loadEventDetails, navigateToPublicEventCompletion, selectedWeeklyOccurrence]);
-
-    const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
-        if (!weeklySelectionRequired) {
-            return true;
-        }
-        setJoinError(message);
-        return false;
-    }, [weeklySelectionRequired]);
-
-    const completeChildRegistration = useCallback(async (
-        childId: string,
-        selection: DivisionSelectionPayload = {},
-        answers?: RegistrationQuestionAnswerInput[],
-    ) => {
-        if (!currentEvent || !user) {
-            throw new Error('Event is not loaded.');
-        }
-
-        const childPriceCents = normalizePriceCents(selectedDivisionBilling.priceCents);
-        if (childPriceCents > 0) {
-            if (currentEvent.registrationPaymentMode === 'MANUAL') {
-                throw new Error('Child registration requires payment. Manual child payment checkout is not available yet.');
-            }
-            if (selectedDivisionBilling.allowPaymentPlans) {
-                throw new Error('Child registration requires payment. Payment plans for child registration are not available yet.');
-            }
-            await prepareEventCheckout({
-                event: checkoutEvent ?? currentEvent,
-                selection,
-                answers,
-                eventRegistration: {
-                    registrantId: childId,
-                    registrantType: 'CHILD',
-                    parentId: user.$id,
-                },
-            });
-            return;
-        }
-
-        await registerChildForEvent(childId, selection, answers);
-    }, [
-        checkoutEvent,
-        currentEvent,
-        registerChildForEvent,
-        selectedDivisionBilling.allowPaymentPlans,
-        selectedDivisionBilling.priceCents,
-            prepareEventCheckout,
-            user,
-        ]);
-
-    const finalizeJoin = useCallback(async (intent: JoinIntent) => {
-        if (!user || !currentEvent) return;
-        if (!ensureWeeklyOccurrenceSelected()) {
-            return;
-        }
-        const requiresDivisionSelection = intent.mode !== 'child_free_agent';
-        if (requiresDivisionSelection && isDivisionSelectionMissing) {
-            throw new Error(
-                registrationByDivisionType
-                    ? 'Select a division type before joining.'
-                    : 'Select a division before joining.',
-            );
-        }
-        const selection = resolvedDivisionSelectionPayload;
-        trackEventRegistrationStarted(currentEvent, getJoinIntentRegistrationType(intent), {
-            division_id: selection?.divisionId,
-            division_type_id: selection?.divisionTypeId,
-            slot_id: selectedWeeklyOccurrence?.slotId,
-            occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
-        });
-
-        if (intent.mode === 'child') {
-            if (!intent.childId) {
-                throw new Error('Select a child to register.');
-            }
-            await completeChildRegistration(intent.childId, selection, intent.answers);
-            return;
-        }
-        if (intent.mode === 'child_free_agent') {
-            if (!intent.childId) {
-                throw new Error('Select a child to add as a free agent.');
-            }
-            await eventService.addFreeAgent(currentEvent.$id, intent.childId, selectedWeeklyOccurrence);
-            setJoinNotice('Child added to free agent list.');
-            await loadEventDetails();
-            return;
-        }
-        if (intent.mode === 'child_waitlist') {
-            if (!intent.childId) {
-                throw new Error('Select a child to add to waitlist.');
-            }
-            await eventService.addToWaitlist(currentEvent.$id, intent.childId, 'user', selectedWeeklyOccurrence);
-            setJoinNotice('Child added to waitlist.');
-            await loadEventDetails();
-            return;
-        }
-
-        const resolvedTeam = (() => {
-            if (intent.mode !== 'team' && intent.mode !== 'team_waitlist') {
-                return undefined;
-            }
-            if (intent.team) {
-                return intent.team;
-            }
-            if (selectedTeamId) {
-                return userTeams.find((team) => team.$id === selectedTeamId) ?? ({ $id: selectedTeamId } as Team);
-            }
-            return undefined;
-        })();
-
-        const totalParticipants = currentEvent.teamSignup ? teams.length : players.length;
-        const participantCapacity = resolveEventParticipantCapacity(currentEvent);
-        const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
-        const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
-
-        if (joinAtCapacity && intent.mode === 'user') {
-            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
-            setJoinNotice('Added to waitlist.');
-            await loadEventDetails();
-            return;
-        }
-
-        if (joinAtCapacity && intent.mode === 'team') {
-            if (!resolvedTeam?.$id) {
-                throw new Error('Team is required to join the waitlist.');
-            }
-            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team', selectedWeeklyOccurrence);
-            setJoinNotice('Team added to waitlist.');
-            await loadEventDetails();
-            return;
-        }
-
-        const shouldRegisterSelf = intent.mode === 'user'
-            && !currentEvent.teamSignup
-            && (isFreeForUser || selectedDivisionBilling.allowPaymentPlans);
-        let registrationResult: EventRegistration | null = null;
-        const isManualPaidRegistration = currentEvent.registrationPaymentMode === 'MANUAL'
-            && !isFreeForUser
-            && (intent.mode === 'user' || intent.mode === 'team');
-
-        if (shouldRegisterSelf) {
-            const result = await registrationService.registerSelfForEvent(currentEvent.$id, selection, intent.answers);
-            registrationResult = result.registration ?? null;
-            if (registrationResult?.status && registrationResult.status !== 'active') {
-                setJoinNotice(`Registration status: ${registrationResult.status}`);
-            }
-        }
-
-        if (intent.mode === 'user_waitlist') {
-            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
-            setJoinNotice('Added to waitlist.');
-            await loadEventDetails();
-            return;
-        }
-
-        if (intent.mode === 'team_waitlist') {
-            if (!resolvedTeam?.$id) {
-                throw new Error('Team is required to join the waitlist.');
-            }
-            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team', selectedWeeklyOccurrence);
-            setJoinNotice('Team added to waitlist.');
-            await loadEventDetails();
-            return;
-        }
-
-        if (isManualPaidRegistration) {
-            const joinTeam = intent.mode === 'team' ? resolvedTeam : undefined;
-            if (intent.mode === 'team' && !joinTeam?.$id) {
-                throw new Error('Team is required to register.');
-            }
-            const joinResult = await paymentService.joinEvent(
-                user,
-                checkoutEvent ?? currentEvent,
-                joinTeam,
-                selection,
-                JOIN_API_TIMEOUT_MS,
-                selectedWeeklyOccurrence,
-                intent.answers,
-            );
-            const billId = joinResult?.bill?.$id ?? (joinResult?.bill as any)?.id;
-            if (!billId) {
-                throw new Error('Registration was created, but no manual payment bill was returned.');
-            }
-            const fullBill = await billService.getBill(billId);
-            setManualPaymentBill(fullBill ?? joinResult?.bill ?? null);
-            setShowManualPaymentModal(true);
-            setJoinNotice('Registration started. Send payment to the host, then upload proof for review.');
-            await loadEventDetails();
-            return;
-        }
-
-        if (selectedDivisionBilling.allowPaymentPlans) {
-            const eventForJoin = checkoutEvent ?? currentEvent;
-            const joinTeam = intent.mode === 'team' ? resolvedTeam : undefined;
-
-            if (intent.mode === 'team' && !joinTeam?.$id) {
-                throw new Error('Team is required to start a payment plan.');
-            }
-
-            let billCreatedDuringJoin = false;
-            try {
-                const joinResult = await paymentService.joinEvent(
-                    user,
-                    eventForJoin,
-                    joinTeam,
-                    selection,
-                    JOIN_API_TIMEOUT_MS,
-                    selectedWeeklyOccurrence,
-                    intent.answers,
-                );
-                billCreatedDuringJoin = Boolean(joinResult?.bill);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to join event.';
-                if (!message.toLowerCase().includes('already registered')) {
-                    throw error;
-                }
-            }
-
-            try {
-                if (billCreatedDuringJoin) {
-                    setJoinNotice(
-                        intent.mode === 'team'
-                            ? 'Team joined. Payment plan started. A bill was created - you can manage payments from your Profile.'
-                            : 'Joined. Payment plan started. A bill was created - pay installments from your Profile.',
-                    );
-                } else if (intent.mode === 'team' && joinTeam?.$id) {
-                    await createBillForOwner('TEAM', joinTeam.$id);
-                    setJoinNotice(
-                        'Team joined. Payment plan started. A bill was created - you can manage payments from your Profile.',
-                    );
-                } else {
-                    await createBillForOwner('USER', user.$id);
-                    setJoinNotice('Joined. Payment plan started. A bill was created - pay installments from your Profile.');
-                }
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to start payment plan.';
-                if (message.toLowerCase().includes('payment plan already exists')) {
-                    setJoinNotice(
-                        intent.mode === 'team'
-                            ? 'Team joined. Payment plan already exists - you can manage payments from your Profile.'
-                            : 'Joined. Payment plan already exists - you can manage payments from your Profile.',
-                    );
-                } else {
-                    try {
-                        await paymentService.leaveEvent(
-                            user,
-                            eventForJoin,
-                            joinTeam,
-                            undefined,
-                            undefined,
-                            JOIN_API_TIMEOUT_MS,
-                            selectedWeeklyOccurrence,
-                        );
-                    } catch (rollbackError) {
-                        console.error('Failed to rollback payment-plan join after billing error', rollbackError);
-                    }
-                    throw new Error(message);
-                }
-            }
-
-            await loadEventDetails();
-            navigateToPublicEventCompletion();
-            return;
-        }
-
-        if (isFreeForUser) {
-            if (!shouldRegisterSelf) {
-                await paymentService.joinEvent(
-                    user,
-                    checkoutEvent ?? currentEvent,
-                    resolvedTeam,
-                    selection,
-                    JOIN_API_TIMEOUT_MS,
-                    selectedWeeklyOccurrence,
-                    intent.answers,
-                );
-            }
-            await loadEventDetails();
-            const selfRegistrationPending = Boolean(
-                shouldRegisterSelf
-                && registrationResult?.status
-                && registrationResult.status !== 'active',
-            );
-            if (!selfRegistrationPending) {
-                navigateToPublicEventCompletion();
-            }
-        } else {
-            await prepareEventCheckout({
-                event: checkoutEvent ?? currentEvent,
-                team: resolvedTeam,
-                selection,
-                answers: intent.answers,
-            });
-        }
-    }, [
-        checkoutEvent,
-        completeChildRegistration,
-        createBillForOwner,
-        currentEvent,
+    const {
+        manualPaymentBill,
+        registeringChild,
+        setRegisteringChild,
+        childRegistration,
+        childConsent,
+        childRegistrationChildId,
         ensureWeeklyOccurrenceSelected,
-        isDivisionSelectionMissing,
-        isFreeForUser,
-        loadEventDetails,
-        navigateToPublicEventCompletion,
-        players.length,
-        registrationByDivisionType,
-        resolvedDivisionSelectionPayload,
-        selectedDivisionBilling.allowPaymentPlans,
-        selectedDivisionAtCapacity,
-        selectedTeamId,
-        selectedWeeklyOccurrence,
-        prepareEventCheckout,
-        setShowManualPaymentModal,
-        teams.length,
+        finalizeJoin,
+        submitManualProof: handleManualPaymentProofSubmit,
+        resetChildRegistrationState,
+    } = useEventJoinFinalizationController({
+        event: currentEvent,
+        checkoutEvent,
         user,
+        billing: selectedDivisionBilling,
+        occurrence: selectedWeeklyOccurrence,
+        selection: resolvedDivisionSelectionPayload,
+        weeklySelectionRequired,
+        isDivisionSelectionMissing,
+        registrationByDivisionType,
+        selectedDivisionAtCapacity,
+        isFreeForUser,
+        selectedTeamId,
         userTeams,
-    ]);
+        playerCount: players.length,
+        teamCount: teams.length,
+        timeoutMs: JOIN_API_TIMEOUT_MS,
+        prepareCheckout: prepareEventCheckout,
+        reload: loadEventDetails,
+        navigateToCompletion: navigateToPublicEventCompletion,
+        clearProgress: clearEventRegistrationProgress,
+        setJoinError,
+        setJoinNotice,
+        setManualPaymentOpened: setShowManualPaymentModal,
+    });
 
     const {
         signLinks,
@@ -1442,16 +1082,19 @@ export default function EventDetailSheet({
         resetSigningState();
         setShowCapacityBreakdown(false);
         setSelectedChildId('');
-        setRegisteringChild(false);
+        resetChildRegistrationState();
         setJoiningChildFreeAgent(false);
-        setChildRegistration(null);
-        setChildConsent(null);
-        setChildRegistrationChildId(null);
         resetRegistrationQuestions();
         setPaymentPlanPreviewState(null);
         setSelectedDivisionId('');
         setSelectedDivisionTypeKey('');
-    }, [isActive, resetRegistrationQuestions, resetRegistrationWorkflow, resetSigningState]);
+    }, [
+        isActive,
+        resetChildRegistrationState,
+        resetRegistrationQuestions,
+        resetRegistrationWorkflow,
+        resetSigningState,
+    ]);
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
@@ -1579,26 +1222,6 @@ export default function EventDetailSheet({
     const closeFreeAgentActions = useCallback(() => {
         setSelectedFreeAgentActionUser(null);
     }, []);
-
-    const handleManualPaymentProofSubmit = useCallback(async (proofFile: File) => {
-        await submitManualPaymentProof({
-            event: checkoutEvent ?? currentEvent,
-            bill: manualPaymentBill,
-            proofFile,
-        });
-        setShowManualPaymentModal(false);
-        setManualPaymentBill(null);
-        clearEventRegistrationProgress();
-        await loadEventDetails();
-        setJoinNotice('Payment proof uploaded. The host will review it and confirm your payment.');
-    }, [
-        checkoutEvent,
-        clearEventRegistrationProgress,
-        currentEvent,
-        loadEventDetails,
-        manualPaymentBill,
-        setShowManualPaymentModal,
-    ]);
 
     const toggleCapacityBreakdown = useCallback(() => {
         setShowCapacityBreakdown((opened) => !opened);
