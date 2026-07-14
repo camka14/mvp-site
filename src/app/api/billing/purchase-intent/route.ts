@@ -39,8 +39,8 @@ import {
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
-  releaseRentalCheckoutLocks,
-  reserveRentalCheckoutLocks,
+  releaseRentalCheckoutWindowLocks,
+  reserveRentalCheckoutWindowLocks,
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
 import {
@@ -91,6 +91,7 @@ const schema = z.object({
   team: z.record(z.string(), z.any()).optional(),
   teamRegistration: z.union([z.record(z.string(), z.any()), z.string()]).optional(),
   timeSlot: z.record(z.string(), z.any()).optional(),
+  rentalSelections: z.unknown().optional(),
   organization: z.record(z.string(), z.any()).optional(),
   purchaseType: z.string().optional(),
   slotId: z.string().optional(),
@@ -841,24 +842,24 @@ const releaseStartedCheckoutRegistration = async ({
   });
 };
 
-const releaseReservedRentalWindow = async ({
-  window,
+const releaseReservedRentalWindows = async ({
+  windows,
   userId,
 }: {
-  window: RentalCheckoutWindow | null;
+  windows: RentalCheckoutWindow[];
   userId: string;
 }) => {
-  if (!window) return;
+  if (!windows.length) return;
   try {
-    await releaseRentalCheckoutLocks({
+    await releaseRentalCheckoutWindowLocks({
       client: prisma,
-      window,
+      windows,
       userId,
     });
   } catch (error) {
-    console.warn('Failed to release reserved rental checkout window.', {
-      eventId: window.eventId,
-      fieldIds: window.fieldIds,
+    console.warn('Failed to release reserved rental checkout windows.', {
+      eventId: windows[0]?.eventId,
+      fieldIds: Array.from(new Set(windows.flatMap((window) => window.fieldIds))),
       error,
     });
   }
@@ -987,13 +988,14 @@ export async function POST(req: NextRequest) {
       session,
       event: payload.event,
       timeSlot: payload.timeSlot,
+      rentalSelections: payload.rentalSelections,
       client: prisma,
     });
     if (!canonicalRental.ok) {
       return NextResponse.json({ error: canonicalRental.error }, { status: canonicalRental.status });
     }
     canonicalRentalCheckout = canonicalRental.checkout;
-    eventId = canonicalRentalCheckout.window.eventId;
+    eventId = canonicalRentalCheckout.windows[0].eventId;
     resolvedPurchase = {
       ...resolvedPurchase,
       amountCents: canonicalRentalCheckout.totalAmountCents,
@@ -1392,7 +1394,7 @@ export async function POST(req: NextRequest) {
     : (userId ?? session.userId);
   let reservedRegistrationId: string | null = null;
   let reservedRegistrationHoldExpiresAt: Date | null = null;
-  let reservedRentalWindow: RentalCheckoutWindow | null = null;
+  let reservedRentalWindows: RentalCheckoutWindow[] = [];
 
   if (resolvedPurchase.purchaseType === 'event') {
     const reservationResult = await reserveEventRegistrationSlot({
@@ -1436,18 +1438,18 @@ export async function POST(req: NextRequest) {
     reservedRegistrationId = reservationResult.registrationId;
     reservedRegistrationHoldExpiresAt = reservationResult.registrationHoldExpiresAt ?? null;
   } else if (resolvedPurchase.purchaseType === 'rental') {
-    const rentalWindow = canonicalRentalCheckout?.window;
-    if (!rentalWindow) {
+    const rentalWindows = canonicalRentalCheckout?.windows ?? [];
+    if (!rentalWindows.length) {
       return NextResponse.json({ error: 'Unable to verify the selected rental inventory.' }, { status: 400 });
     }
     const now = new Date();
-    if (rentalWindow.start.getTime() < now.getTime()) {
+    if (rentalWindows.some((window) => window.start.getTime() < now.getTime())) {
       return NextResponse.json({ error: 'Rental selections must start in the future.' }, { status: 400 });
     }
 
-    const lockReservation = await reserveRentalCheckoutLocks({
+    const lockReservation = await reserveRentalCheckoutWindowLocks({
       client: prisma,
-      window: rentalWindow,
+      windows: rentalWindows,
       userId: actorUserId,
       now,
     });
@@ -1461,7 +1463,7 @@ export async function POST(req: NextRequest) {
         { status: lockReservation.status },
       );
     }
-    reservedRentalWindow = rentalWindow;
+    reservedRentalWindows = rentalWindows;
   }
 
   const registrationHoldResponseFields = buildRegistrationHoldResponseFields(
@@ -1521,8 +1523,8 @@ export async function POST(req: NextRequest) {
         eventId,
         teamId: checkoutTeamId,
       });
-      await releaseReservedRentalWindow({
-        window: reservedRentalWindow,
+      await releaseReservedRentalWindows({
+        windows: reservedRentalWindows,
         userId: actorUserId,
       });
       if (error instanceof DiscountCodeError) {
@@ -1617,11 +1619,23 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'event_location', payload.event?.location);
     appendMetadata(metadata, 'event_start', payload.event?.start);
     appendMetadata(metadata, 'host_id', hostUserId);
-    appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
+    appendMetadata(
+      metadata,
+      'time_slot_id',
+      canonicalRentalCheckout?.availabilitySlotIds[0] ?? extractEntityId(payload.timeSlot),
+    );
     appendMetadata(metadata, 'occurrence_slot_id', slotId);
     appendMetadata(metadata, 'occurrence_date', occurrenceDate);
-    appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
-    appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
+    appendMetadata(
+      metadata,
+      'time_slot_start',
+      canonicalRentalCheckout?.windows[0]?.start.toISOString() ?? payload.timeSlot?.startDate,
+    );
+    appendMetadata(
+      metadata,
+      'time_slot_end',
+      canonicalRentalCheckout?.windows[0]?.end.toISOString() ?? payload.timeSlot?.endDate,
+    );
     appendMetadata(metadata, 'rental_template_id', primaryRequiredTemplateId);
     if (hostRequiredTemplateIds.length > 1) {
       appendMetadata(metadata, 'rental_template_ids', hostRequiredTemplateIds.join(','));
@@ -1696,8 +1710,8 @@ export async function POST(req: NextRequest) {
       eventId,
       teamId: checkoutTeamId,
     });
-    await releaseReservedRentalWindow({
-      window: reservedRentalWindow,
+    await releaseReservedRentalWindows({
+      windows: reservedRentalWindows,
       userId: actorUserId,
     });
     await releaseDiscountCodeReservation({

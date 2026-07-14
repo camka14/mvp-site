@@ -433,6 +433,57 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     }));
   });
 
+  it('checks disjoint selections independently so a booking in the gap does not conflict', async () => {
+    mockPaidRentalInventory();
+    timeSlotsFindManyMock.mockResolvedValue([{
+      id: 'slot_1',
+      startDate: '2099-04-21T09:00:00.000Z',
+      endDate: '2099-04-21T17:00:00.000Z',
+      repeating: false,
+      price: 0,
+      requiredTemplateIds: [],
+      hostRequiredTemplateIds: [],
+    }]);
+    const gapStart = new Date('2099-04-21T12:00:00.000Z');
+    const gapEnd = new Date('2099-04-21T14:00:00.000Z');
+    assertNoEventFieldSchedulingConflictsMock.mockImplementation(async ({ start, end }) => {
+      if (start < gapEnd && end > gapStart) {
+        throw new MockEventFieldConflictError('The gap is occupied.');
+      }
+    });
+
+    const response = await POST(createRequest({
+      eventId: 'event_disjoint',
+      selections: [
+        {
+          scheduledFieldIds: ['field_1'],
+          startDate: '2099-04-21T10:00:00.000Z',
+          endDate: '2099-04-21T11:00:00.000Z',
+        },
+        {
+          scheduledFieldIds: ['field_1'],
+          startDate: '2099-04-21T15:00:00.000Z',
+          endDate: '2099-04-21T16:00:00.000Z',
+        },
+      ],
+    }), { params });
+
+    expect(response.status).toBe(201);
+    expect(assertNoEventFieldSchedulingConflictsMock).toHaveBeenCalledTimes(2);
+    expect(assertNoEventFieldSchedulingConflictsMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      fieldIds: ['field_1'],
+      start: new Date('2099-04-21T10:00:00.000Z'),
+      end: new Date('2099-04-21T11:00:00.000Z'),
+      noFixedEndDateTime: false,
+    }));
+    expect(assertNoEventFieldSchedulingConflictsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      fieldIds: ['field_1'],
+      start: new Date('2099-04-21T15:00:00.000Z'),
+      end: new Date('2099-04-21T16:00:00.000Z'),
+      noFixedEndDateTime: false,
+    }));
+  });
+
   it('selects the shortest covering slot before field order or price', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_rental';
     mockOverlappingRentalInventory([

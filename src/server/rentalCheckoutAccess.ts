@@ -2,16 +2,17 @@ import { prisma } from '@/lib/prisma';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 import {
   extractRentalCheckoutWindow,
+  MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER,
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
 import {
-  localDatePartsInTimeZone,
-  mondayDayInTimeZone,
-  minutesInTimeZone,
-  parseDateInputInTimeZone,
-  resolveTimeZone,
-  resolveTimeZoneFromFieldOrOrganization,
-} from '@/server/timeZones';
+  normalizeRentalStringArray,
+  rentalSelectionsSchema,
+  type RentalAvailabilitySlot,
+  type RentalSelectionField,
+  type RentalSelectionInput,
+  validateRentalSelections,
+} from '@/server/rentals/selectionValidation';
 
 type PrismaLike = any;
 
@@ -30,30 +31,11 @@ type CanonicalRentalOrganization = {
   timeZone?: string | null;
 };
 
-type CanonicalRentalField = {
-  id: string;
-  name?: string | null;
+type CanonicalRentalField = RentalSelectionField & {
   organizationId?: string | null;
   facilityId?: string | null;
-  rentalSlotIds?: unknown;
   lat?: number | null;
   long?: number | null;
-};
-
-type CanonicalRentalAvailabilitySlot = {
-  id: string;
-  archivedAt?: Date | string | null;
-  dayOfWeek?: number | null;
-  daysOfWeek?: unknown;
-  startTimeMinutes?: number | null;
-  endTimeMinutes?: number | null;
-  startDate?: Date | string | null;
-  endDate?: Date | string | null;
-  timeZone?: string | null;
-  repeating?: boolean | null;
-  price?: number | null;
-  requiredTemplateIds?: unknown;
-  hostRequiredTemplateIds?: unknown;
 };
 
 type CanonicalRentalEvent = {
@@ -67,7 +49,9 @@ type CanonicalRentalEvent = {
 };
 
 export type CanonicalRentalCheckout = {
+  /** Compatibility alias for legacy single-window callers. */
   window: RentalCheckoutWindow;
+  windows: RentalCheckoutWindow[];
   organization: CanonicalRentalOrganization;
   totalAmountCents: number;
   availabilitySlotIds: string[];
@@ -86,94 +70,13 @@ const normalizeString = (value: unknown): string | null => {
   return normalized || null;
 };
 
-const normalizeStringArray = (value: unknown): string[] => (
-  Array.isArray(value)
-    ? Array.from(new Set(
-      value
-        .map((entry) => normalizeString(entry))
-        .filter((entry): entry is string => Boolean(entry)),
-    ))
-    : []
-);
-
 const toRecord = (value: unknown): Record<string, unknown> | null => (
   value && typeof value === 'object' ? value as Record<string, unknown> : null
 );
 
-const dateOnlyValueInTimeZone = (date: Date, timeZone: string): number => {
-  const parts = localDatePartsInTimeZone(date, timeZone);
-  if (!parts) {
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  }
-  return Date.UTC(parts.year, parts.month - 1, parts.day);
-};
-
-const endMinutesInTimeZone = (start: Date, end: Date, timeZone: string): number => {
-  const endMinutes = minutesInTimeZone(end, timeZone);
-  return endMinutes === 0 && dateOnlyValueInTimeZone(end, timeZone) > dateOnlyValueInTimeZone(start, timeZone)
-    ? 24 * 60
-    : endMinutes;
-};
-
-/**
- * A repeating rental availability row describes a single local-day window.
- * A checkout range that crosses more than that cannot be treated as available
- * merely because its first day happens to match the recurrence.
- */
-const rentalSlotCoversWindow = (
-  slot: CanonicalRentalAvailabilitySlot,
-  start: Date,
-  end: Date,
-  timeZone: string,
-): boolean => {
-  if (slot.archivedAt) return false;
-  const slotTimeZone = resolveTimeZone(slot.timeZone, timeZone);
-  const slotStart = parseDateInputInTimeZone(slot.startDate, slotTimeZone);
-  const slotEnd = parseDateInputInTimeZone(slot.endDate, slotTimeZone);
-  if (slot.repeating === false) {
-    return Boolean(
-      slotStart
-      && slotEnd
-      && start.getTime() >= slotStart.getTime()
-      && end.getTime() <= slotEnd.getTime(),
-    );
-  }
-
-  const startDay = dateOnlyValueInTimeZone(start, slotTimeZone);
-  const endDay = dateOnlyValueInTimeZone(end, slotTimeZone);
-  const crossesAtMidnight = endDay === startDay + 24 * 60 * 60 * 1000
-    && endMinutesInTimeZone(start, end, slotTimeZone) === 24 * 60;
-  if (endDay !== startDay && !crossesAtMidnight) {
-    return false;
-  }
-
-  const slotDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-    ? slot.daysOfWeek.map((entry) => Number(entry)).filter((entry) => Number.isInteger(entry))
-    : typeof slot.dayOfWeek === 'number'
-      ? [slot.dayOfWeek]
-      : [];
-  if (slotDays.length && !slotDays.includes(mondayDayInTimeZone(start, slotTimeZone))) {
-    return false;
-  }
-
-  const startMinutes = minutesInTimeZone(start, slotTimeZone);
-  const endMinutes = endMinutesInTimeZone(start, end, slotTimeZone);
-  if (typeof slot.startTimeMinutes === 'number' && startMinutes < slot.startTimeMinutes) {
-    return false;
-  }
-  if (typeof slot.endTimeMinutes === 'number' && endMinutes > slot.endTimeMinutes) {
-    return false;
-  }
-  if (slotStart && startDay < dateOnlyValueInTimeZone(slotStart, slotTimeZone)) {
-    return false;
-  }
-  if (slotEnd && startDay > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
-    return false;
-  }
-  if (slotEnd && endDay > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
-    return false;
-  }
-  return true;
+const extractEntityId = (value: unknown): string | null => {
+  const record = toRecord(value);
+  return record ? normalizeString(record.$id ?? record.id) : normalizeString(value);
 };
 
 const unavailable = (): CanonicalRentalCheckoutResult => ({
@@ -182,39 +85,94 @@ const unavailable = (): CanonicalRentalCheckoutResult => ({
   error: 'One or more selected fields are unavailable for rental.',
 });
 
+const uniqueInOrder = (values: string[]): string[] => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+};
+
 /**
- * Treats browser event/time-slot data only as a selection request. The actual
- * rental organization, available fields, dates, pricing and required documents
- * are re-derived from persisted inventory before a lock or payment is created.
+ * Treats browser event/time-slot data only as a selection request. Persisted
+ * fields and slots remain authoritative for organization, availability,
+ * pricing, and required documents.
  */
 export const resolveCanonicalRentalCheckout = async ({
   session,
   event,
   timeSlot,
+  rentalSelections,
   client = prisma,
   requireAvailability = true,
 }: {
   session: RentalSession;
   event: unknown;
   timeSlot: unknown;
+  rentalSelections?: unknown;
   client?: PrismaLike;
   requireAvailability?: boolean;
 }): Promise<CanonicalRentalCheckoutResult> => {
-  const requested = extractRentalCheckoutWindow({ event, timeSlot });
-  if (!requested.ok) {
-    return requested;
+  const eventRecord = toRecord(event);
+  const exactSelectionRows = Array.isArray(rentalSelections) && rentalSelections.length > 0
+    ? rentalSelections
+    : null;
+  let selections: RentalSelectionInput[];
+  let eventId: string;
+  let legacyWindow: RentalCheckoutWindow | null = null;
+
+  if (exactSelectionRows) {
+    const parsedSelections = rentalSelectionsSchema.safeParse(exactSelectionRows);
+    if (!parsedSelections.success) {
+      return { ok: false, status: 400, error: 'Rental selections are invalid.' };
+    }
+    const requestedEventId = extractEntityId(eventRecord);
+    if (!requestedEventId) {
+      return { ok: false, status: 400, error: 'Event id is required for rental checkout.' };
+    }
+    eventId = requestedEventId;
+    selections = parsedSelections.data;
+  } else {
+    const requested = extractRentalCheckoutWindow({ event, timeSlot });
+    if (!requested.ok) {
+      return requested;
+    }
+    legacyWindow = requested.window;
+    eventId = requested.window.eventId;
+    if (requested.window.fieldIds.length > MAX_RENTAL_FIELDS_PER_CHECKOUT) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Rental checkout supports at most ${MAX_RENTAL_FIELDS_PER_CHECKOUT} fields at a time.`,
+      };
+    }
+    selections = [{
+      scheduledFieldIds: requested.window.fieldIds,
+      startDate: requested.window.start.toISOString(),
+      endDate: requested.window.end.toISOString(),
+      timeZone: requested.window.timeZone,
+      repeating: false,
+    }];
   }
-  if (requested.window.fieldIds.length > MAX_RENTAL_FIELDS_PER_CHECKOUT) {
+
+  const requestedFieldIds = uniqueInOrder(
+    selections.flatMap((selection) => normalizeRentalStringArray(selection.scheduledFieldIds)),
+  );
+  if (!requestedFieldIds.length) {
+    return unavailable();
+  }
+  if (requestedFieldIds.length > MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER) {
     return {
       ok: false,
       status: 400,
-      error: `Rental checkout supports at most ${MAX_RENTAL_FIELDS_PER_CHECKOUT} fields at a time.`,
+      error: `Rental checkout supports at most ${MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER} field windows at a time.`,
     };
   }
 
   const fields = await client.fields.findMany({
     where: {
-      id: { in: requested.window.fieldIds },
+      id: { in: requestedFieldIds },
       archivedAt: null,
     },
     select: {
@@ -227,51 +185,49 @@ export const resolveCanonicalRentalCheckout = async ({
       long: true,
     },
   }) as CanonicalRentalField[];
-  if (fields.length !== requested.window.fieldIds.length) {
+  if (fields.length !== requestedFieldIds.length) {
     return unavailable();
   }
   const fieldById = new Map(fields.map((field) => [field.id, field]));
-  const orderedFields = requested.window.fieldIds
+  const orderedFields = requestedFieldIds
     .map((fieldId) => fieldById.get(fieldId))
     .filter((field): field is CanonicalRentalField => Boolean(field));
-  if (orderedFields.length !== requested.window.fieldIds.length) {
+  if (orderedFields.length !== requestedFieldIds.length) {
     return unavailable();
   }
 
-  const facilityIds = Array.from(new Set(
+  const facilityIds = uniqueInOrder(
     orderedFields
       .map((field) => normalizeString(field.facilityId))
       .filter((id): id is string => Boolean(id)),
-  ));
+  );
   const facilities = facilityIds.length
     ? await client.facilities.findMany({
       where: { id: { in: facilityIds } },
       select: { id: true, organizationId: true },
     }) as Array<{ id: string; organizationId: string | null }>
     : [];
-  const organizationByFacilityId = new Map(
-    facilities.map((facility) => [facility.id, normalizeString(facility.organizationId)]),
-  );
   if (facilities.length !== facilityIds.length) {
     return unavailable();
   }
-
-  const hasConflictingFieldFacilityOwnership = orderedFields.some((field) => {
+  const organizationByFacilityId = new Map(
+    facilities.map((facility) => [facility.id, normalizeString(facility.organizationId)]),
+  );
+  if (orderedFields.some((field) => {
     const fieldOrganizationId = normalizeString(field.organizationId);
     const facilityOrganizationId = organizationByFacilityId.get(normalizeString(field.facilityId) ?? '') ?? null;
     return Boolean(fieldOrganizationId && facilityOrganizationId && fieldOrganizationId !== facilityOrganizationId);
-  });
-  if (hasConflictingFieldFacilityOwnership) {
+  })) {
     return unavailable();
   }
 
-  const organizationIds = Array.from(new Set(
+  const organizationIds = uniqueInOrder(
     orderedFields
       .map((field) => normalizeString(field.organizationId)
         ?? organizationByFacilityId.get(normalizeString(field.facilityId) ?? '')
         ?? null)
       .filter((id): id is string => Boolean(id)),
-  ));
+  );
   if (organizationIds.length !== 1) {
     return unavailable();
   }
@@ -282,27 +238,15 @@ export const resolveCanonicalRentalCheckout = async ({
       ownerId: true,
       publicPageEnabled: true,
       coordinates: true,
+      timeZone: true,
     },
   }) as CanonicalRentalOrganization | null;
   if (!organization) {
     return unavailable();
   }
 
-  const eventRecord = toRecord(event);
-  const timeSlotRecord = toRecord(timeSlot);
-  const timeZone = resolveTimeZoneFromFieldOrOrganization(orderedFields[0], organization);
-  const start = parseDateInputInTimeZone(timeSlotRecord?.startDate ?? eventRecord?.start, timeZone);
-  const end = parseDateInputInTimeZone(timeSlotRecord?.endDate ?? eventRecord?.end, timeZone);
-  if (!start || !end || end.getTime() <= start.getTime()) {
-    return {
-      ok: false,
-      status: 400,
-      error: 'Rental checkout requires a valid start/end time window.',
-    };
-  }
-
   const canonicalEvent = await client.events.findUnique({
-    where: { id: requested.window.eventId },
+    where: { id: eventId },
     select: {
       id: true,
       archivedAt: true,
@@ -331,12 +275,15 @@ export const resolveCanonicalRentalCheckout = async ({
     }
   }
 
-  const rentalSlotIds = Array.from(new Set(orderedFields.flatMap((field) => normalizeStringArray(field.rentalSlotIds))));
+  const rentalSlotIds = uniqueInOrder(
+    orderedFields.flatMap((field) => normalizeRentalStringArray(field.rentalSlotIds)),
+  );
   const availabilitySlots = rentalSlotIds.length
     ? await client.timeSlots.findMany({
       where: {
         id: { in: rentalSlotIds },
         archivedAt: null,
+        price: { not: null },
       },
       select: {
         id: true,
@@ -353,52 +300,59 @@ export const resolveCanonicalRentalCheckout = async ({
         requiredTemplateIds: true,
         hostRequiredTemplateIds: true,
       },
-    }) as CanonicalRentalAvailabilitySlot[]
+    }) as RentalAvailabilitySlot[]
     : [];
-  const slotById = new Map(availabilitySlots.map((slot) => [slot.id, slot]));
 
-  const availabilitySlotIds: string[] = [];
-  const requiredTemplateIds = new Set<string>();
-  const hostRequiredTemplateIds = new Set<string>();
-  let totalAmountCents = 0;
-  const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / (60 * 1000)));
-  for (const field of orderedFields) {
-    const matchingSlot = normalizeStringArray(field.rentalSlotIds)
-      .map((slotId) => slotById.get(slotId))
-      .find((slot): slot is CanonicalRentalAvailabilitySlot => Boolean(slot && rentalSlotCoversWindow(slot, start, end, timeZone)));
-    if (!matchingSlot && requireAvailability) {
-      return unavailable();
-    }
-    if (!matchingSlot) continue;
-
-    availabilitySlotIds.push(matchingSlot.id);
-    const price = typeof matchingSlot.price === 'number' && matchingSlot.price > 0
-      ? Math.round((matchingSlot.price * durationMinutes) / 60)
-      : 0;
-    totalAmountCents += price;
-    normalizeStringArray(matchingSlot.requiredTemplateIds).forEach((templateId) => requiredTemplateIds.add(templateId));
-    normalizeStringArray(matchingSlot.hostRequiredTemplateIds).forEach((templateId) => hostRequiredTemplateIds.add(templateId));
+  const validation = validateRentalSelections({
+    selections,
+    fields: orderedFields,
+    slots: availabilitySlots,
+    organization,
+    now: requireAvailability ? new Date() : null,
+    requireAvailability,
+  });
+  if (!validation.ok) {
+    return validation.error === 'Rental selections must start in the future.'
+      || validation.error === 'Rental selections must include valid start and end times.'
+      ? { ok: false, status: 400, error: validation.error }
+      : unavailable();
   }
+  if (validation.distinctFieldWindowCount > MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Rental checkout supports at most ${MAX_ACTIVE_RENTAL_CHECKOUT_LOCKS_PER_USER} field windows at a time.`,
+    };
+  }
+
+  const baseWindow = {
+    eventId: canonicalEvent?.id ?? eventId,
+    noFixedEndDateTime: false,
+    organizationId: organization.id,
+    eventType: canonicalEvent?.eventType ?? legacyWindow?.eventType ?? 'EVENT',
+    parentEvent: canonicalEvent?.parentEvent ?? legacyWindow?.parentEvent ?? null,
+  };
+  const windows = validation.selections.map((selection) => ({
+    ...baseWindow,
+    fieldIds: selection.fieldIds,
+    start: selection.start,
+    end: selection.end,
+    timeZone: selection.timeZone,
+  }));
+  const items = validation.selections.flatMap((selection) => selection.items);
 
   return {
     ok: true,
     checkout: {
-      window: {
-        eventId: canonicalEvent?.id ?? requested.window.eventId,
-        fieldIds: orderedFields.map((field) => field.id),
-        start,
-        end,
-        timeZone,
-        noFixedEndDateTime: false,
-        organizationId: organization.id,
-        eventType: canonicalEvent?.eventType ?? 'EVENT',
-        parentEvent: canonicalEvent?.parentEvent ?? null,
-      },
+      window: windows[0],
+      windows,
       organization,
-      totalAmountCents,
-      availabilitySlotIds,
-      requiredTemplateIds: Array.from(requiredTemplateIds),
-      hostRequiredTemplateIds: Array.from(hostRequiredTemplateIds),
+      totalAmountCents: validation.selections.reduce((sum, selection) => sum + selection.totalCents, 0),
+      availabilitySlotIds: uniqueInOrder(items.map((item) => item.availabilitySlotId)),
+      requiredTemplateIds: uniqueInOrder(validation.selections.flatMap((selection) => selection.requiredTemplateIds)),
+      hostRequiredTemplateIds: uniqueInOrder(
+        validation.selections.flatMap((selection) => selection.hostRequiredTemplateIds),
+      ),
       event: canonicalEvent,
     },
   };
