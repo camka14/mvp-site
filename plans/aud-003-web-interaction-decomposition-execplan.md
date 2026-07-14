@@ -16,7 +16,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
 - [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract.
-- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup. Completed: weekly-session parsing, generation, explicit occurrence resolution, and shared division-entry identity moved behind direct tests. Remaining: division/pool/payment-plan calculations and public-detail presentation helpers.
+- [ ] Milestone 2: extract pure event-detail calculations and their tests without changing state or markup. Completed: weekly-session parsing/generation/selection, shared division-entry identity, tournament pool-to-bracket registration, installment normalization/labels, and division option construction moved behind direct tests. Remaining: public-detail presentation helpers.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
@@ -42,6 +42,9 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: weekly-session generation depended implicitly on the wall clock even though the rest of the calculation was deterministic.
   Evidence: the inline helper called `new Date()` while deriving its anchor. The extracted `buildWeeklySessionOptions` accepts an optional reference date whose default preserves production behavior, allowing boundary tests without global fake timers.
+
+- Observation: putting shared date parsing in either extracted domain module would create a cycle between weekly-session labeling and division-entry identity.
+  Evidence: `weeklySessions.ts` resolves division labels through `getDivisionIdFromEventEntry`, while division option construction also needs date parsing for installment and age-cutoff inputs. The common parser now lives in dependency-neutral `dateValues.ts`; focused tests load both modules together and TypeScript resolves the graph cleanly.
 
 ## Decision Log
 
@@ -200,6 +203,15 @@ First extraction evidence on 2026-07-14:
 
 The four new direct tests cover local date parsing, invalid/non-weekly slots, multi-day bounded occurrence generation with canonical division labels, and selected-occurrence validation outside the generated three-week window.
 
+Second pure-calculation extraction evidence on 2026-07-14:
+
+    PASS 5 suites / 26 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 6,916 -> 6,499 lines
+
+The four new direct division-registration tests cover tournament pool-to-bracket registration, league playoff exclusion, event defaults versus division payment-plan overrides, and identifier/amount/date/relative-day/presentation normalization. The shared date parser was moved to `dateValues.ts` so the extracted weekly-session and division-registration modules do not form a circular dependency.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -210,3 +222,4 @@ Use existing React, React Hook Form, Mantine, service modules, Jest, Testing Lib
 
 Revision note (2026-07-14): Created the self-contained AUD-003 continuation after current-source mapping showed that the earlier EventForm helper/view extraction was complete but orchestration remained concentrated, while EventDetailSheet still combined loading, registration, payment, signing, authentication, and rendering.
 Revision note (2026-07-14): Recorded the first partial pure-calculation milestone after extracting weekly-session generation and selection with 22 passing focused tests, TypeScript, targeted lint, and a 303-line net reduction in the facade.
+Revision note (2026-07-14): Continued Milestone 2 by extracting division, tournament-pool, and installment calculations with 26 passing focused tests, TypeScript, targeted lint, and a further 417-line reduction in the event-detail facade.
