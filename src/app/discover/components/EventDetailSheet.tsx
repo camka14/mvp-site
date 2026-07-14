@@ -90,6 +90,7 @@ import { useEventSigningController } from './eventDetail/hooks/useEventSigningCo
 import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegistrationQuestionsController';
 import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
 import { useEventJoinFinalizationController } from './eventDetail/hooks/useEventJoinFinalizationController';
+import { useRegistrationConfirmationController } from './eventDetail/hooks/useRegistrationConfirmationController';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -1014,6 +1015,17 @@ export default function EventDetailSheet({
         setJoinNotice,
         setManualPaymentOpened: setShowManualPaymentModal,
     });
+    const { confirmRegistrationAfterPayment } = useRegistrationConfirmationController({
+        event: currentEvent,
+        user,
+        selectedTeamId,
+        occurrence: selectedWeeklyOccurrence,
+        reload: loadEventDetails,
+        navigateToCompletion: navigateToPublicEventCompletion,
+        setConfirming: setConfirmingPurchase,
+        setJoinError,
+        setJoinNotice,
+    });
 
     const {
         signLinks,
@@ -1542,105 +1554,6 @@ export default function EventDetailSheet({
             setJoinError(error instanceof Error ? error.message : 'Failed to withdraw team');
         } finally {
             setJoining(false);
-        }
-    };
-
-    // After successful payment, poll for up to 30s until the webhook-backed registration is reflected
-    const confirmRegistrationAfterPayment = async ({ pendingPayment = false }: { pendingPayment?: boolean } = {}) => {
-        if (!user || !currentEvent) return;
-        setConfirmingPurchase(true);
-        setJoinError(null);
-
-        const deadline = Date.now() + 30_000; // 30 seconds
-        const pollIntervalMs = 2000; // 2 seconds
-        const targetTeamId = selectedTeamId || null;
-
-        try {
-            if (currentEvent.teamSignup && !targetTeamId) {
-                throw new Error('Team is required to complete registration.');
-            }
-
-            while (Date.now() < deadline) {
-                if (selectedWeeklyOccurrence) {
-                    const snapshot = await eventService.getEventParticipants(currentEvent.$id, selectedWeeklyOccurrence);
-                    const participantTeamIds = Array.from(new Set(
-                        (snapshot.participants.teamIds ?? [])
-                            .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
-                            .filter((teamId): teamId is string => teamId.length > 0),
-                    ));
-                    const participantUserIds = Array.from(new Set(
-                        (snapshot.participants.userIds ?? [])
-                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
-                            .filter((userId): userId is string => userId.length > 0),
-                    ));
-                    const participantTeams = Array.isArray(snapshot.teams) ? snapshot.teams : [];
-                    const targetTeamRegistered = Boolean(
-                        targetTeamId
-                        && (
-                            participantTeamIds.includes(targetTeamId)
-                            || participantTeams.some((team) => {
-                                const teamRecord = team as { $id?: unknown; id?: unknown; parentTeamId?: unknown };
-                                const eventTeamId = typeof teamRecord.$id === 'string'
-                                    ? teamRecord.$id.trim()
-                                    : typeof teamRecord.id === 'string'
-                                        ? teamRecord.id.trim()
-                                        : '';
-                                const parentTeamId = typeof teamRecord.parentTeamId === 'string'
-                                    ? teamRecord.parentTeamId.trim()
-                                    : '';
-                                return eventTeamId === targetTeamId || parentTeamId === targetTeamId;
-                            })
-                        ),
-                    );
-                    const registered = currentEvent.teamSignup
-                        ? targetTeamRegistered
-                        : participantUserIds.includes(user.$id);
-
-                    if (registered) {
-                        await loadEventDetails();
-                        setConfirmingPurchase(false);
-                        if (pendingPayment) {
-                            setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
-                            return;
-                        }
-                        navigateToPublicEventCompletion();
-                        return;
-                    }
-                } else {
-                    const latest = await eventService.getEventWithRelations(currentEvent.$id);
-                    if (latest) {
-                        const registered = latest.teamSignup
-                            ? (targetTeamId
-                                ? Object.values(latest.teams || {}).some(t => t.parentTeamId === targetTeamId || t.$id === targetTeamId)
-                                : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
-                            : (latest.players || []).some(p => p.$id === user.$id);
-
-                        if (registered) {
-                            await loadEventDetails();
-                            setConfirmingPurchase(false);
-                            if (pendingPayment) {
-                                setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
-                                return;
-                            }
-                            navigateToPublicEventCompletion();
-                            return;
-                        }
-                    }
-                }
-
-                await new Promise(res => setTimeout(res, pollIntervalMs));
-            }
-
-            if (pendingPayment) {
-                await loadEventDetails();
-                setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
-            } else {
-                setJoinError('Timed out');
-            }
-        } catch (e) {
-            setJoinError(e instanceof Error ? e.message : 'Error confirming purchase.');
-        } finally {
-            setConfirmingPurchase(false);
         }
     };
 
