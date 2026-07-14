@@ -53,6 +53,8 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 19:00Z) Milestone 4ad: moved the affiliate handoff, weekly-session picker, division/age summary, registration entry composition, refund surface, and payment-trust footer into the 376-line render-only `EventJoinCard`; four direct view regressions, all 21 facade regressions, TypeScript, focused ESLint, and diff checks pass.
 - [x] (2026-07-14 19:11Z) Milestone 4ae: moved mutually exclusive phase/preview ownership into `useRegistrationWorkflowController` and public URL/logo/weekly occurrence derivation into `useWeeklyEventSelectionModel`; eight direct hook regressions, all 21 facade regressions, TypeScript, focused ESLint, and diff checks pass.
 - [x] (2026-07-14 17:28Z) Milestone 4af: moved inline-auth feedback/profile continuation, schedule/bracket navigation, weekly-occurrence routing, and public-completion navigation into the 132-line `useEventDetailNavigationController`; five direct navigation regressions plus all 25 existing facade/summary regressions, TypeScript, focused ESLint, and diff checks pass.
+- [x] (2026-07-14 17:34Z) Milestone 4ag: moved event image fallback, identity badges, host label, and schedule/location/capacity hero presentation into the 87-line render-only `EventDetailHero`; three direct view regressions plus the six-suite/33-test facade gate, TypeScript, focused ESLint, and diff checks pass.
+- [x] (2026-07-14 17:37Z) Milestone 4ah: moved participant dropdowns, capacity expansion, free-agent action selection, QR visibility, team options, and mobile join expansion into the 63-line `useEventDetailPresentationController`; four direct state regressions plus the four-suite/25-test facade gate, TypeScript, focused ESLint, and diff checks pass.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [x] (2026-07-14 22:46Z) Milestone 5a: moved paid-settings cleanup, Stripe eligibility/onboarding, tax/refund preview derivation, installment commands, and manual-payment mode/links into `useEventPaymentController` without copying the React Hook Form draft.
 - [x] (2026-07-14 16:32Z) Milestone 5b: moved immutable/default construction, source resets, dirty baselines, external draft notifications, and normalization-stable rebasing into focused EventForm lifecycle hooks.
@@ -646,6 +648,18 @@ EventForm submission-controller evidence on 2026-07-14:
 
 Five direct controller tests cover the exact seven-method imperative contract, normalized draft/question output, deduplicated schema and React Hook Form errors, staffing validation/reset, affiliate gating, and detached canonical staff application. React Hook Form remains the only persisted draft owner; the controller reads through `getValues` and applies canonical staff state through the existing form setter.
 
+Event-detail hero and presentation-state evidence on 2026-07-14:
+
+    PASS hero/facade gate: 6 suites / 33 tests
+    PASS presentation/facade gate: 4 suites / 25 tests
+    PASS npx tsc --noEmit
+    PASS focused ESLint and git diff --check
+    EventDetailSheet.tsx: 1,244 -> 1,202 lines
+    EventDetailHero.tsx: 87 lines
+    useEventDetailPresentationController.ts: 63 lines
+
+Three direct hero tests cover complete identity, optional label omission, and image fallback. Four direct presentation-controller tests cover independent participant dropdowns, free-agent selection, capacity/team/mobile toggles, and QR lifecycle. These moves preserve the facade's observable markup and state transitions while removing another visual responsibility and eight independent transient state owners.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -692,3 +706,4 @@ Revision note (2026-07-14): Continued Milestone 4 by extracting public choices, 
 Revision note (2026-07-14): Continued Milestone 5 by extracting EventForm resource hydration, field synchronization, resource selection, and rental-lock derivation; the combined 39-suite safety net passes 323 tests and the facade is now 3,430 lines.
 Revision note (2026-07-14): Continued Milestone 4 by extracting event-detail navigation and inline-auth coordination; five direct controller tests plus the complete facade/summary gate pass, and the facade is now 1,244 lines.
 Revision note (2026-07-14): Continued Milestone 5 by extracting draft construction, validation, canonical staff application, and the exact imperative handle; the serial 11-suite EventForm gate passes 170 tests, and the facade is now 2,622 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting the event hero and consolidating transient presentation state; both direct gates, TypeScript, and focused ESLint pass, and the facade is now 1,202 lines.
