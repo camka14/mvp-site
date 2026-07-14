@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, TournamentConfig, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -49,13 +49,10 @@ import {
     deriveScheduleParticipantCount,
     DIVISION_GENDER_OPTIONS,
     getDefaultDivisionTypeSelectionsForSport,
-    normalizeDivisionKeys,
     normalizeDivisionDetailEntry,
     normalizePlayoffDivisionDetailEntry,
     normalizePlayoffDivisionParticipantCount,
     parseCompositeDivisionTypeId,
-    resolveSportInput,
-    applyDivisionAgeCutoff,
 } from './eventForm/divisionForm';
 import {
     getEventOfficialUserIds,
@@ -85,10 +82,8 @@ import {
     normalizePendingStaffInvite,
     type PendingStaffInvite,
 } from './eventForm/staffInvites';
-import { stringArraysEqual } from './eventForm/shared';
 import {
     leagueConfigEqual,
-    tournamentConfigEqual,
 } from './eventForm/formEquality';
 import {
     SECTION_ANIMATION_DURATION_MS,
@@ -98,9 +93,7 @@ import {
     buildTournamentConfig,
     derivePoolTeamCount,
     extractTournamentConfigFromEvent,
-    normalizeLeagueConfigForSetMode,
     normalizeNumber,
-    normalizeTournamentConfigForSetMode,
 } from './eventForm/configDefaults';
 import {
     buildMobileEditUnsupportedReasons,
@@ -108,9 +101,6 @@ import {
     sumInstallmentAmounts,
 } from './eventForm/paymentPlanHelpers';
 import { sanitizeMatchRulesOverrideForEditor } from './eventForm/matchRulesHelpers';
-import {
-    parseDateValue,
-} from './eventForm/dateHelpers';
 import {
     buildEventFormSectionNavigationItems,
     getVisibleSectionNavigationItems,
@@ -127,6 +117,7 @@ import { DivisionSummaryList } from './eventForm/sections/DivisionSummaryList';
 import { useEventFormSectionNavigation } from './eventForm/hooks/useEventFormSectionNavigation';
 import { useDivisionCommitController } from './eventForm/hooks/useDivisionCommitController';
 import { useDivisionEditorController } from './eventForm/hooks/useDivisionEditorController';
+import { useEventDivisionNormalization } from './eventForm/hooks/useEventDivisionNormalization';
 import {
     useEventFormDefaults,
     useEventFormLifecycle,
@@ -892,339 +883,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue,
     });
 
-    useEffect(() => {
-        if (sportsLoading) {
-            return;
-        }
-        const selectedSportId = String(getValues('sportId') ?? '').trim();
-        const currentSportConfig = getValues('sportConfig') as Sport | null | undefined;
-        const currentSportConfigId = currentSportConfig && typeof currentSportConfig === 'object'
-            ? String((currentSportConfig as any).$id ?? '')
-            : '';
-
-        if (!selectedSportId) {
-            if (currentSportConfig) {
-                setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
-            }
-            return;
-        }
-
-        const selected = sportsById.get(selectedSportId) ?? null;
-        if (selected && currentSportConfigId !== selected.$id) {
-            setValue('sportConfig', selected, { shouldDirty: false, shouldValidate: false });
-            return;
-        }
-        if (!selected && currentSportConfig) {
-            setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
-        }
-    }, [eventData.sportId, getValues, setValue, sportsLoading, sportsById]);
-
-    useEffect(() => {
-        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        if (!currentDetails.length) {
-            const currentDivisionIds = normalizeDivisionKeys(getValues('divisions'));
-            if (currentDivisionIds.length) {
-                setValue('divisions', [], { shouldDirty: false, shouldValidate: true });
-            }
-            return;
-        }
-
-        const idsFromDetails = normalizeDivisionKeys(currentDetails.map((detail) => detail.id));
-        const currentDivisionIds = normalizeDivisionKeys(getValues('divisions'));
-        if (!stringArraysEqual(idsFromDetails, currentDivisionIds)) {
-            setValue('divisions', idsFromDetails, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [eventData.$id, eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, getValues, setValue]);
-
-    useEffect(() => {
-        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        if (!currentDetails.length) {
-            return;
-        }
-        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
-        const referenceDate = parseDateValue(eventData.start ?? null);
-        const nextDetails = currentDetails.map((detail) => applyDivisionAgeCutoff({
-            ...detail,
-            sportId: detail.sportId ?? (sportInput || undefined),
-        }, sportInput, referenceDate));
-
-        const changed = nextDetails.some((detail, index) => {
-            const current = currentDetails[index];
-            if (!current) {
-                return true;
-            }
-            return detail.ageCutoffDate !== current.ageCutoffDate
-                || detail.ageCutoffLabel !== current.ageCutoffLabel
-                || detail.ageCutoffSource !== current.ageCutoffSource
-                || detail.sportId !== current.sportId;
-        });
-
-        if (changed) {
-            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: false });
-        }
-    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, setValue]);
-
-    useEffect(() => {
-        if (eventData.eventType === 'LEAGUE') {
-            return;
-        }
-
-        if (eventData.splitLeaguePlayoffDivisions) {
-            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
-        }
-        if ((eventData.playoffDivisionDetails || []).length > 0) {
-            setValue('playoffDivisionDetails', [], { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        eventData.eventType,
-        eventData.playoffDivisionDetails,
-        eventData.splitLeaguePlayoffDivisions,
-        setValue,
-    ]);
-
-    useEffect(() => {
-        if (
-            eventData.eventType !== 'LEAGUE'
-            || !leagueData.includePlayoffs
-            || !eventData.splitLeaguePlayoffDivisions
-        ) {
-            return;
-        }
-        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        if (!currentDetails.length) {
-            return;
-        }
-        let changed = false;
-        const nextDetails = currentDetails.map((detail) => {
-            const playoffTeamCount = Number.isFinite(detail.playoffTeamCount)
-                ? Math.max(0, Math.trunc(detail.playoffTeamCount as number))
-                : 0;
-            if (playoffTeamCount <= 0) {
-                if (!Array.isArray(detail.playoffPlacementDivisionIds) || detail.playoffPlacementDivisionIds.length === 0) {
-                    return detail;
-                }
-                changed = true;
-                return {
-                    ...detail,
-                    playoffPlacementDivisionIds: [],
-                };
-            }
-            const currentMapping = Array.isArray(detail.playoffPlacementDivisionIds)
-                ? detail.playoffPlacementDivisionIds
-                : [];
-            const nextMapping = currentMapping.slice(0, playoffTeamCount);
-            while (nextMapping.length < playoffTeamCount) {
-                nextMapping.push('');
-            }
-            if (stringArraysEqual(currentMapping, nextMapping)) {
-                return detail;
-            }
-            changed = true;
-            return {
-                ...detail,
-                playoffPlacementDivisionIds: nextMapping,
-            };
-        });
-        if (changed) {
-            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.splitLeaguePlayoffDivisions,
-        leagueData.includePlayoffs,
-        setValue,
-    ]);
-
-    useEffect(() => {
-        if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs || !eventData.singleDivision) {
-            return;
-        }
-        if (typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2) {
-            return;
-        }
-        const fallbackFromDivision = eventData.divisionDetails?.[0]?.playoffTeamCount
-            ?? eventData.divisionDetails?.[0]?.maxParticipants
-            ?? eventData.maxParticipants
-            ?? 2;
-        setLeagueData((prev) => ({
-            ...prev,
-            playoffTeamCount: Math.max(2, Math.trunc(fallbackFromDivision)),
-        }), { shouldDirty: false });
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.maxParticipants,
-        eventData.singleDivision,
-        leagueData.includePlayoffs,
-        leagueData.playoffTeamCount,
-        setLeagueData,
-    ]);
-
-    useEffect(() => {
-        if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs || eventData.singleDivision) {
-            return;
-        }
-        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        if (!currentDetails.length) {
-            return;
-        }
-        let changed = false;
-        const nextDetails = currentDetails.map((detail) => {
-            if (typeof detail.playoffTeamCount === 'number' && detail.playoffTeamCount >= 2) {
-                return detail;
-            }
-            changed = true;
-            return {
-                ...detail,
-                playoffTeamCount: Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2)),
-            };
-        });
-        if (changed) {
-            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.maxParticipants,
-        eventData.singleDivision,
-        leagueData.includePlayoffs,
-        setValue,
-    ]);
-
-    useEffect(() => {
-        const selectedSport = (
-            eventData.sportId ? sportsById.get(eventData.sportId) : null
-        ) ?? eventData.sportConfig;
-        const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
-        setLeagueData((prev) => {
-            const normalized = normalizeLeagueConfigForSetMode(prev, requiresSets);
-            return leagueConfigEqual(prev, normalized) ? prev : normalized;
-        }, { shouldDirty: false });
-    }, [eventData.sportConfig, eventData.sportId, setLeagueData, sportsById]);
-
-    useEffect(() => {
-        setDivisionEditor((prev) => {
-            if (prev.divisionKind !== 'LEAGUE') {
-                return prev;
-            }
-            const normalized = normalizeLeagueConfigForSetMode(prev.leagueConfig, currentSportRequiresSets);
-            if (leagueConfigEqual(prev.leagueConfig, normalized)) {
-                return prev;
-            }
-            return {
-                ...prev,
-                leagueConfig: normalized,
-            };
-        });
-    }, [currentSportRequiresSets]);
-
-    useEffect(() => {
-        const selectedSport = (
-            eventData.sportId ? sportsById.get(eventData.sportId) : null
-        ) ?? eventData.sportConfig;
-        const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
-        if (requiresSets) {
-            return;
-        }
-
-        const normalizedPlayoff = normalizeTournamentConfigForSetMode(playoffData, false);
-        if (!tournamentConfigEqual(playoffData, normalizedPlayoff)) {
-            setPlayoffData(normalizedPlayoff, { shouldDirty: false });
-        }
-
-        const currentPlayoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
-            ? eventData.playoffDivisionDetails
-            : [];
-        if (!currentPlayoffDivisions.length) {
-            const currentLeagueDivisions = Array.isArray(eventData.divisionDetails)
-                ? eventData.divisionDetails
-                : [];
-            let leagueChanged = false;
-            const nextLeagueDivisions = currentLeagueDivisions.map((division) => {
-                if (!division.playoffConfig) {
-                    return division;
-                }
-                const previousConfig = buildTournamentConfig(division.playoffConfig);
-                const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
-                if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
-                    return division;
-                }
-                leagueChanged = true;
-                return {
-                    ...division,
-                    playoffConfig: normalizedConfig,
-                };
-            });
-
-            if (leagueChanged) {
-                setValue('divisionDetails', nextLeagueDivisions, { shouldDirty: false, shouldValidate: true });
-            }
-            return;
-        }
-
-        let changed = false;
-        const nextPlayoffDivisions = currentPlayoffDivisions.map((division) => {
-            const previousConfig = buildTournamentConfig(division.playoffConfig);
-            const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
-            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
-                return division;
-            }
-            changed = true;
-            return {
-                ...division,
-                playoffConfig: normalizedConfig,
-            };
-        });
-
-        if (changed) {
-            setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: false, shouldValidate: true });
-        }
-
-        const currentLeagueDivisions = Array.isArray(eventData.divisionDetails)
-            ? eventData.divisionDetails
-            : [];
-        let leagueChanged = false;
-        const nextLeagueDivisions = currentLeagueDivisions.map((division) => {
-            if (!division.playoffConfig) {
-                return division;
-            }
-            const previousConfig = buildTournamentConfig(division.playoffConfig);
-            const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
-            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
-                return division;
-            }
-            leagueChanged = true;
-            return {
-                ...division,
-                playoffConfig: normalizedConfig,
-            };
-        });
-
-        if (leagueChanged) {
-            setValue('divisionDetails', nextLeagueDivisions, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        eventData.divisionDetails,
-        eventData.playoffDivisionDetails,
-        eventData.sportConfig,
-        eventData.sportId,
+    useEventDivisionNormalization({
+        currentSportRequiresSets,
+        eventData,
+        getValues,
+        hasExternalRentalField,
+        leagueData,
         playoffData,
+        setDivisionEditor,
+        setLeagueData,
         setPlayoffData,
         setValue,
         sportsById,
-    ]);
+        sportsLoading,
+    });
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
-    useEffect(() => {
-        if (!eventData.singleDivision || hasExternalRentalField) {
-            return;
-        }
-        if (!eventData.splitLeaguePlayoffDivisions) {
-            return;
-        }
-        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
-    }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
