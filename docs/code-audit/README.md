@@ -2080,8 +2080,8 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
   - `src/app/events/[id]/schedule/components/EventForm.tsx`: **4,365 lines / 208,378 bytes**.
 - Impact: state ownership, effect dependencies, permissions, validation, and error states are difficult to review and test exhaustively; unrelated feature edits share a large blast radius.
 - Suggested direction: after behavior coverage exists, identify cohesive state/controllers and view sections that can be separated without creating parallel sources of truth.
-- Runtime behavior: pending.
-- Fix status: **not changed; reporting only**.
+- Runtime behavior: focused component/controller coverage passes; production-build browser acceptance remains pending.
+- Fix status: **decomposition in progress on the audited branch**. `EventDetailSheet.tsx` is now 1,244 lines and imports no event, payment, or registration service, while `EventForm.tsx` is now 2,622 lines with React Hook Form retained as its sole persisted draft owner. Focused controllers own stale request rejection, registration phase exclusivity, signing, checkout, navigation, resources, slots, division editing, staffing, and submission. All new interaction owners remain below 600 lines and their direct regressions pass, but the approximately 600/700-line facade targets plus production-build browser acceptance have not yet been reached, so AUD-003 remains open.
 
 ### AUD-004 — Mobile screen/repository responsibilities are concentrated in multi-thousand-line files
 
