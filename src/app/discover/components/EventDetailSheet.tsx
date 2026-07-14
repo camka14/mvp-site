@@ -25,12 +25,9 @@ import { useEventDetailPresentationController } from './eventDetail/hooks/useEve
 import { createEventJoinActions } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
-import { EventDetailContent } from './eventDetail/EventDetailContent';
+import { EventDetailMainContent } from './eventDetail/EventDetailMainContent';
 import { EventDetailOverlays } from './eventDetail/EventDetailOverlays';
-import {
-    EventDetailHostManageActions,
-    EventDetailRegistrationPanels,
-} from './eventDetail/EventDetailRegistrationPanels';
+import { EventDetailRegistrationPanels } from './eventDetail/EventDetailRegistrationPanels';
 import { useApp } from '@/app/providers';
 import {
     trackEventOutboundClicked,
@@ -53,8 +50,6 @@ interface EventDetailSheetProps {
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const SIGN_MODAL_Z_INDEX = SHEET_POPOVER_Z_INDEX + 200;
-const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
-const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const JOIN_API_TIMEOUT_MS = 5_000;
 
 export default function EventDetailSheet({
@@ -105,28 +100,10 @@ export default function EventDetailSheet({
         userTeamsLoading: Boolean(userTeamsLoading),
     });
     const {
-        playersDropdownOpened: showPlayersDropdown,
-        teamsDropdownOpened: showTeamsDropdown,
-        freeAgentsDropdownOpened: showFreeAgentsDropdown,
-        capacityBreakdownOpened: showCapacityBreakdown,
         selectedFreeAgentActionUser,
-        qrCodeOpened: showQrCodeModal,
-        teamJoinOptionsOpened: showTeamJoinOptions,
-        mobileJoinExpanded,
         setCapacityBreakdownOpened: setShowCapacityBreakdown,
-        openPlayersDropdown,
-        closePlayersDropdown,
-        openTeamsDropdown,
-        closeTeamsDropdown,
-        openFreeAgentsDropdown,
         closeFreeAgentsDropdown,
-        toggleCapacityBreakdown,
-        openFreeAgentActions,
         closeFreeAgentActions,
-        openQrCode,
-        closeQrCode,
-        toggleTeamJoinOptions,
-        toggleMobileJoin,
     } = presentationController;
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
@@ -143,26 +120,10 @@ export default function EventDetailSheet({
         setConfirmingPurchase,
         setPaymentPlanPreview,
         reset: resetRegistrationWorkflow,
-        showRegistrationQuestionsModal,
-        showPasswordModal,
         showSignModal,
-        showCheckoutPreviewModal,
-        showBillingAddressModal,
-        showPaymentModal,
-        showManualPaymentModal,
-        confirmingPurchase,
         paymentPlanPreview,
     } = registrationWorkflowController;
-    const {
-        anchorRef: joinCardAnchorRef,
-        cardRef: joinCardRef,
-        layout: {
-            docked: joinCardDocked,
-            height: joinCardHeight,
-            left: joinCardLeft,
-            width: joinCardWidth,
-        },
-    } = useJoinCardDocking({ active: isActive, inline: renderInline });
+    const joinCardDocking = useJoinCardDocking({ active: isActive, inline: renderInline });
 
     const weeklyModel = useWeeklyEventSelectionModel({
         event: currentEvent,
@@ -172,7 +133,6 @@ export default function EventDetailSheet({
         eventPublicUrl: currentEventPublicUrl,
         organizationLogoId: currentOrganizationLogoId,
         isWeeklyParentEvent,
-        weeklySessionOptions,
         selectedWeeklyOccurrenceOption,
         selectedWeeklyOccurrence,
         weeklySelectionRequired,
@@ -194,27 +154,9 @@ export default function EventDetailSheet({
         setWorkflowPhase: setRegistrationWorkflowPhase,
     });
     const {
-        paymentData,
-        pendingCheckout: pendingEventCheckout,
-        holdExpiresAt: registrationHoldExpiresAt,
-        discountCode,
-        discountPreview,
-        discountPreviewLoading,
-        discountPreviewError,
         saveProgress: saveEventRegistrationProgress,
         clearProgress: clearEventRegistrationProgress,
         prepareCheckout: prepareEventCheckout,
-        startCheckout: startEventCheckout,
-        applyDiscountPreview: handleApplyDiscountPreview,
-        closeCheckoutPreview,
-        continueCheckoutPreview,
-        changeDiscountCode: handleCheckoutDiscountCodeChange,
-        clearDiscountCode: clearCheckoutDiscount,
-        expireHold: handleEventRegistrationHoldExpired,
-        closeBillingAddress,
-        continueAfterBillingAddress,
-        closePayment,
-        clearPaymentData,
     } = checkoutController;
     const divisionRegistrationModel = useEventDivisionRegistrationModel({
         event: currentEvent,
@@ -262,24 +204,17 @@ export default function EventDetailSheet({
         hasAgeLimits,
         eventHasStarted,
         joinClosedMessage,
-        userDob,
         registrationByDivisionType,
-        allDivisionOptions,
         divisionOptions,
-        publicDivisionGroups,
         divisionDisplayNameIndex,
-        eventDivisionLabels,
         selectedDivisionOption,
-        handlePublicDivisionSelect,
         resolvedDivisionSelectionPayload,
         isDivisionSelectionMissing,
         selectedDivisionAtCapacity,
-        participantDivisionCapacityRows,
         selectedDivisionBilling,
         checkoutEvent,
         paymentPlanPreviewRows,
         isMinor,
-        isAdult,
         selfRegistrationBlockedReason,
         canRegisterChild,
         isEventHost,
@@ -288,27 +223,6 @@ export default function EventDetailSheet({
 
     const {
         maxAuthDob,
-        auth: {
-            opened: showAuthModal,
-            mode: authModalMode,
-            form: authModalForm,
-            loading: authModalLoading,
-            error: authModalError,
-            verificationEmail: authVerificationEmail,
-            verificationMessage: authVerificationMessage,
-            verificationMessageType: authVerificationMessageType,
-            resendingVerification: authResendingVerification,
-            open: openAuthModal,
-            close: closeAuthModal,
-            toggleMode: toggleAuthModalMode,
-            updateField: handleAuthModalInputChange,
-            submit: submitAuthModal,
-            resendVerification: handleAuthModalResendVerification,
-            continueWithGoogle: handleAuthModalGoogle,
-        },
-        viewSchedule: handleViewSchedule,
-        viewBracket: handleBracketClick,
-        selectWeeklySession: handleWeeklySessionSelect,
         navigateToCompletion: navigateToPublicEventCompletion,
     } = navigationController;
     useDivisionSelectionSynchronization({
@@ -343,15 +257,11 @@ export default function EventDetailSheet({
         setManualPaymentOpened: setShowManualPaymentModal,
     });
     const {
-        manualPaymentBill,
         registeringChild,
         setRegisteringChild,
-        childRegistration,
-        childConsent,
         childRegistrationChildId,
         ensureWeeklyOccurrenceSelected,
         finalizeJoin,
-        submitManualProof: handleManualPaymentProofSubmit,
         resetChildRegistrationState,
     } = joinFinalizationController;
     const registrationConfirmationController = useRegistrationConfirmationController({
@@ -365,8 +275,6 @@ export default function EventDetailSheet({
         setJoinError,
         setJoinNotice,
     });
-
-    const { confirmRegistrationAfterPayment } = registrationConfirmationController;
 
     const signingController = useEventSigningController({
         event: currentEvent,
@@ -382,21 +290,7 @@ export default function EventDetailSheet({
         setJoinNotice,
     });
     const {
-        signLinks,
-        currentSignIndex,
-        password,
-        setPassword,
-        passwordError,
-        confirmingPassword,
-        recordingSignature,
-        textAccepted,
-        setTextAccepted,
         beginSigningFlow,
-        cancelPasswordConfirmation,
-        confirmPasswordAndStartSigning,
-        handleSignedDocument,
-        handleTextAcceptance,
-        cancelSigning,
         resetSigningState,
     } = signingController;
 
@@ -421,9 +315,6 @@ export default function EventDetailSheet({
     const {
         shouldAsk: shouldAskRegistrationQuestions,
         open: openRegistrationQuestionsStep,
-        close: closeRegistrationQuestionsStep,
-        updateAnswer: updateRegistrationQuestionAnswer,
-        submit: submitRegistrationQuestionsStep,
         reset: resetRegistrationQuestions,
     } = registrationQuestionsController;
 
@@ -483,30 +374,12 @@ export default function EventDetailSheet({
         canRegisterChild,
     });
     const {
-        totalParticipants,
-        participantCapacity,
-        eventAtCapacity,
-        spotsLeft,
-        eventFillPercent,
-        normalizedFreeAgentIds,
-        normalizedWaitlistIds,
-        normalizedParticipantUserIds,
-        normalizedFreeAgentIdSet,
         normalizedWaitlistIdSet,
-        isUserRegistered,
-        isUserWaitlisted,
-        isUserFreeAgent,
-        activeChildren,
-        hasRefundTarget,
-        shouldShowChildRegistrationPanel,
-        childOptions,
         selectedChild,
         selectedChildEligible,
-        selectedChildHasEmail,
         selectedChildIsFreeAgent,
         selectedChildIsWaitlisted,
         selectedChildIsRegistered,
-        showChildRegistrationStatus,
     } = participantModel;
 
     // Update the join event handlers
@@ -518,8 +391,8 @@ export default function EventDetailSheet({
         user,
         hostUser,
         teams,
-        participantCapacity,
-        spotsLeft,
+        participantCapacity: participantModel.participantCapacity,
+        spotsLeft: participantModel.spotsLeft,
         selectedDivisionBillingPriceCents: selectedDivisionBilling.priceCents,
         selectedDivisionOption,
         divisionDisplayNameIndex,
@@ -528,45 +401,6 @@ export default function EventDetailSheet({
         isWeeklyParentEvent,
         now: todayForDob,
     });
-    const {
-        affiliateActionUrl,
-        isAffiliateEvent,
-        isEvergreenProgram,
-        eventScheduleDisplayText,
-        startDateValue,
-        endDateValue,
-        sharesSingleDayWindow,
-        sportLabel,
-        organization,
-        hostedByLabel,
-        hostedByHandle,
-        hostedByHref,
-        mapLat,
-        mapLng,
-        eventAddress,
-        mapEmbedSrc,
-        eventPriceSummary,
-        showSecurePaymentNote,
-        showPoweredByBracketIqNote,
-        registrationCutoffSummary,
-        refundSummary,
-        eventTypeLabel,
-        registrationTypeLabel,
-        spotsSummary,
-        eventLocationSummary,
-        shouldShowHostedByHeroLabel,
-        officialPositionsSummary,
-        assistantHostNames,
-        officialNames,
-        canViewStaffSection,
-        eventDisplayTimeZone,
-        schedulePreviewItems,
-        scheduleDateChips,
-        supportsScheduleDetails,
-        canShowScheduleButton,
-        showParticipantsSection,
-        scheduleButtonLabel,
-    } = publicModel;
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
     const joinActions = createEventJoinActions({
         event: currentEvent,
@@ -606,17 +440,6 @@ export default function EventDetailSheet({
         setPaymentPlanPreview,
     });
     const { continuePaymentPlanPreview } = joinActions;
-    const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
-    const publicRegistrationStatusLabel = eventHasStarted
-        ? 'Registration closed'
-        : joinAtCapacity
-            ? 'Waitlist available'
-            : 'Registration is open';
-    const publicRegistrationStatusClassName = eventHasStarted
-        ? 'border-slate-200 bg-slate-100 text-slate-700'
-        : joinAtCapacity
-            ? 'border-amber-200 bg-amber-50 text-amber-900'
-            : 'border-emerald-200 bg-emerald-50 text-emerald-900';
     const freeAgentJoinBlockedReason = weeklySelectionRequired
         ? 'Select a weekly session before joining as a free agent.'
         : selfRegistrationBlockedReason;
@@ -656,8 +479,8 @@ export default function EventDetailSheet({
                 setSelectedTeamId(teamId);
                 saveEventRegistrationProgress({ selectedTeamId: teamId || null });
             }}
-            onViewBracket={handleBracketClick}
-            onViewSchedule={handleViewSchedule}
+            onViewBracket={navigationController.viewBracket}
+            onViewSchedule={navigationController.viewSchedule}
             participantActions={participantActions}
             participantModel={participantModel}
             paymentFailedTeamIds={paymentFailedTeamIds}
@@ -673,167 +496,42 @@ export default function EventDetailSheet({
         />
     );
     const content = (
-        <EventDetailContent
-            renderInline={renderInline}
+        <EventDetailMainContent
+            currentEvent={currentEvent}
+            divisionModel={divisionRegistrationModel}
+            eventImageFallbackUrl={eventImageFallbackUrl}
+            eventImageUrl={eventImageUrl}
+            freeAgents={freeAgents}
+            hasUser={Boolean(user)}
+            hostUser={hostUser}
+            isLoadingEvent={isLoadingEvent}
+            joinCardDocking={joinCardDocking}
+            joinError={joinError}
+            joinNotice={joinNotice}
+            navigationController={navigationController}
+            onAffiliateClick={() => {
+                if (!publicModel.affiliateActionUrl) {
+                    return;
+                }
+                trackEventOutboundClicked(currentEvent, publicModel.affiliateActionUrl, 'event_detail');
+                trackEventRegistrationStarted(currentEvent, 'affiliate', {
+                    destination_selected: true,
+                });
+            }}
+            onClearWeeklyOccurrence={onWeeklyOccurrenceChange
+                ? () => onWeeklyOccurrenceChange(null)
+                : undefined}
             onClose={onClose}
+            onRefundSuccess={loadEventDetails}
+            participantModel={participantModel}
+            players={players}
+            presentationController={presentationController}
+            publicModel={publicModel}
+            registrationPanel={registrationPanel}
+            renderInline={renderInline}
             sheetPopoverZIndex={SHEET_POPOVER_Z_INDEX}
-            heroProps={{
-                imageUrl: eventImageUrl,
-                imageFallbackUrl: eventImageFallbackUrl,
-                eventName: currentEvent.name,
-                eventTypeLabel,
-                sportLabel,
-                registrationTypeLabel,
-                showHostedByLabel: shouldShowHostedByHeroLabel,
-                hostedByLabel,
-                scheduleLabel: eventScheduleDisplayText,
-                locationLabel: eventLocationSummary,
-                spotsLabel: spotsSummary,
-            }}
-            overviewProps={{
-                description: currentEvent.description,
-                organization,
-                hostUser,
-                hostedByHref,
-                hostedByLabel,
-                hostedByHandle,
-                isAffiliateEvent,
-                registrationStatusClassName: publicRegistrationStatusClassName,
-                registrationStatusLabel: publicRegistrationStatusLabel,
-                isEvergreenProgram,
-                sharesSingleDayWindow,
-                scheduleDisplayText: eventScheduleDisplayText,
-                startDate: startDateValue,
-                endDate: endDateValue,
-                displayTimeZone: eventDisplayTimeZone,
-                locationSummary: eventLocationSummary,
-                address: eventAddress,
-                mapEmbedSrc,
-            }}
-            programDetailsProps={{
-                allDivisionOptionCount: allDivisionOptions.length,
-                eligibleDivisionCount: divisionOptions.length,
-                divisionGroups: publicDivisionGroups,
-                registrationByDivisionType,
-                selectedDivisionId: selectedDivisionOption?.id,
-                selectedDivisionTypeKey: selectedDivisionOption?.divisionTypeKey,
-                onDivisionSelect: handlePublicDivisionSelect,
-                supportsScheduleDetails,
-                scheduleDateChips,
-                schedulePreviewItems,
-                eventType: currentEvent.eventType,
-                canViewStaffSection,
-                sportLabel,
-                hostedByLabel,
-                assistantHostNames,
-                officialNames,
-                officialSchedulingMode: currentEvent.officialSchedulingMode,
-                officialPositionsSummary,
-            }}
-            summaryProps={{
-                event: currentEvent,
-                isTeamSignup,
-                priceCents: selectedDivisionBilling.priceCents,
-                eventMinAge,
-                eventMaxAge,
-                divisionLabels: eventDivisionLabels,
-                mapEmbedSrc,
-                mapLat,
-                mapLng,
-                participantCapacity,
-                registrationCutoffSummary,
-            }}
-            showParticipantsSection={showParticipantsSection}
-            participantsProps={{
-                isTeamSignup,
-                participantCapacity,
-                totalParticipants,
-                freeAgentCount: normalizedFreeAgentIds.length,
-                waitlistCount: normalizedWaitlistIds.length,
-                spotsLeft,
-                fillPercent: eventFillPercent,
-                divisionCapacityRows: participantDivisionCapacityRows,
-                capacityBreakdownOpened: showCapacityBreakdown,
-                players,
-                teams,
-                freeAgents,
-                loading: isLoadingEvent,
-                onToggleCapacityBreakdown: toggleCapacityBreakdown,
-                onOpenPlayers: openPlayersDropdown,
-                onOpenTeams: openTeamsDropdown,
-                onOpenFreeAgents: openFreeAgentsDropdown,
-            }}
-            joinCardProps={{
-                renderInline,
-                mobileExpanded: mobileJoinExpanded,
-                registrationTypeLabel,
-                selectedDivisionOption,
-                priceCents: selectedDivisionBilling.priceCents,
-                eventPriceSummary,
-                joinError,
-                joinNotice,
-                event: currentEvent,
-                eventImageUrl,
-                affiliateActionUrl,
-                isAffiliateEvent,
-                isWeeklyParentEvent,
-                selectedWeeklyOccurrenceOption,
-                weeklySessionOptions,
-                weeklySelectionRequired,
-                hasAgeLimits,
-                eventMinAge,
-                eventMaxAge,
-                divisionOptionCount: divisionOptions.length,
-                registrationCutoffSummary,
-                refundSummary,
-                isDivisionSelectionMissing,
-                registrationByDivisionType,
-                hasUser: Boolean(user),
-                isUserRegistered: Boolean(isUserRegistered),
-                totalParticipants,
-                participantCapacity,
-                canShowScheduleButton,
-                hostManageQrActions: (
-                    <EventDetailHostManageActions
-                        onOpenQrCode={presentationController.openQrCode}
-                        onViewSchedule={handleViewSchedule}
-                        scheduleButtonLabel={scheduleButtonLabel}
-                    />
-                ),
-                isTournament: currentEvent.eventType === 'TOURNAMENT',
-                registrationPanel,
-                hasRefundTarget,
-                activeChildren,
-                selectedWeeklyOccurrence,
-                eventStartDate,
-                showSecurePaymentNote,
-                showPoweredByBracketIqNote,
-                onToggleMobile: toggleMobileJoin,
-                onAffiliateClick: () => {
-                    if (!affiliateActionUrl) {
-                        return;
-                    }
-                    trackEventOutboundClicked(currentEvent, affiliateActionUrl, 'event_detail');
-                    trackEventRegistrationStarted(currentEvent, 'affiliate', {
-                        destination_selected: true,
-                    });
-                },
-                onClearWeeklyOccurrence: onWeeklyOccurrenceChange
-                    ? () => onWeeklyOccurrenceChange(null)
-                    : undefined,
-                onWeeklySessionSelect: (session) => {
-                    void handleWeeklySessionSelect(session);
-                },
-                onAuthenticate: openAuthModal,
-                onViewBracket: handleBracketClick,
-                onRefundSuccess: loadEventDetails,
-            }}
-            joinCardAnchorRef={joinCardAnchorRef}
-            joinCardRef={joinCardRef}
-            joinCardDocked={joinCardDocked}
-            joinCardHeight={joinCardHeight}
-            joinCardLeft={joinCardLeft}
-            joinCardWidth={joinCardWidth}
+            teams={teams}
+            weeklyModel={weeklyModel}
         />
     );
 
@@ -859,7 +557,7 @@ export default function EventDetailSheet({
                 onInviteFreeAgentToTeam={handleInviteFreeAgentToTeam}
                 onParticipantReload={() => loadEventDetails(currentEvent.$id, { automatic: false })}
                 onSetJoinNotice={setJoinNotice}
-                participantsVisible={showParticipantsSection}
+                participantsVisible={publicModel.showParticipantsSection}
                 paymentPlanPreviewRows={paymentPlanPreviewRows}
                 players={players}
                 presentationController={presentationController}
