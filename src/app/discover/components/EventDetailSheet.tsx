@@ -26,13 +26,10 @@ import {
     formatAffiliateEventPriceRange,
     formatEventDivisionPriceRange,
     formatPrice,
-    RegistrationQuestionAnswerInput,
 } from '@/types';
-import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
-import { paymentService } from '@/lib/paymentService';
+import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import type { FamilyChild } from '@/lib/familyService';
-import { registrationService, type DivisionRegistrationSelection } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
@@ -115,11 +112,11 @@ import {
     type ParticipantDivisionCapacityRow,
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
-import type { JoinIntent } from './eventDetail/eventRegistrationCommands';
 import {
     createEventJoinActions,
     type PaymentPlanPreviewState,
 } from './eventDetail/eventJoinActions';
+import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -1444,7 +1441,7 @@ export default function EventDetailSheet({
             timeZone: eventDisplayTimeZone,
         }).format(value);
     const schedulePreviewItems = (() => {
-        const nowMs = Date.now();
+        const nowMs = todayForDob.getTime();
         const allMatchRows = (currentEvent.matches ?? [])
             .map((match) => {
                 const start = parseDateValue(match.start ?? null);
@@ -1647,6 +1644,24 @@ export default function EventDetailSheet({
     const freeAgentJoinBlockedReason = weeklySelectionRequired
                                 ? 'Select a weekly session before joining as a free agent.'
         : selfRegistrationBlockedReason;
+    const {
+        handleLeaveWaitlist,
+        handleLeaveFreeAgents,
+        handleJoinFreeAgents,
+    } = createEventParticipantActions({
+        event: currentEvent,
+        user,
+        occurrence: selectedWeeklyOccurrence,
+        selection: resolvedDivisionSelectionPayload,
+        isMinor,
+        freeAgentJoinBlockedReason,
+        shouldAskRegistrationQuestions,
+        openRegistrationQuestionsStep,
+        reload: loadEventDetails,
+        setJoining,
+        setJoinError,
+        setJoinNotice,
+    });
     const childPrimaryActionLabel = isTeamSignup
         ? (joiningChildFreeAgent
             ? 'Updating…'
@@ -2602,20 +2617,7 @@ export default function EventDetailSheet({
                                                                 fullWidth
                                                                 color="red"
                                                                 variant="light"
-                                                                onClick={async () => {
-                                                                    if (!user) return;
-                                                                    setJoining(true);
-                                                                    setJoinError(null);
-                                                                    try {
-                                                                        await eventService.removeFromWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
-                                                                        setJoinNotice('Removed from waitlist.');
-                                                                        await loadEventDetails();
-                                                                    } catch (e) {
-                                                                        setJoinError(e instanceof Error ? e.message : 'Failed to leave waitlist');
-                                                                    } finally {
-                                                                        setJoining(false);
-                                                                    }
-                                                                }}
+                                                                onClick={() => { void handleLeaveWaitlist(); }}
                                                                 disabled={selfWaitlistLeaveDisabled}
                                                             >
                                                                 {eventHasStarted ? 'Unavailable' : (joining ? 'Updating…' : 'Leave Waitlist')}
@@ -2816,19 +2818,7 @@ export default function EventDetailSheet({
                                                             You are listed as a free agent
                                                         </div>
                                                         <button
-                                                            onClick={async () => {
-                                                                if (!user) return;
-                                                                setJoining(true);
-                                                                setJoinError(null);
-                                                                try {
-                                                                    await eventService.removeFreeAgent(currentEvent.$id, user.$id, selectedWeeklyOccurrence);
-                                                                    await loadEventDetails();
-                                                                } catch (e) {
-                                                                    setJoinError(e instanceof Error ? e.message : 'Failed to leave free agents');
-                                                                } finally {
-                                                                    setJoining(false);
-                                                                }
-                                                            }}
+                                                            onClick={() => { void handleLeaveFreeAgents(); }}
                                                             disabled={joining || eventHasStarted}
                                                             className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || eventHasStarted) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
                                                         >
@@ -2837,51 +2827,7 @@ export default function EventDetailSheet({
                                                     </div>
                                                 ) : (
                                                     <button
-                                                        onClick={async () => {
-                                                            if (!user) return;
-                                                            if (freeAgentJoinBlockedReason) {
-                                                                setJoinError(freeAgentJoinBlockedReason);
-                                                                return;
-                                                            }
-                                                            if (isMinor) {
-                                                                const minorIntent: JoinIntent = { mode: 'user' };
-                                                                if (shouldAskRegistrationQuestions(minorIntent)) {
-                                                                    openRegistrationQuestionsStep(minorIntent);
-                                                                    return;
-                                                                }
-                                                            }
-                                                            setJoining(true);
-                                                            setJoinError(null);
-                                                            try {
-                                                                if (isMinor) {
-                                                                    trackEventRegistrationStarted(currentEvent, 'free_agent', {
-                                                                        division_id: resolvedDivisionSelectionPayload?.divisionId,
-                                                                        division_type_id: resolvedDivisionSelectionPayload?.divisionTypeId,
-                                                                        slot_id: selectedWeeklyOccurrence?.slotId,
-                                                                        occurrence_date: selectedWeeklyOccurrence?.occurrenceDate,
-                                                                        requires_parent_approval: true,
-                                                                    });
-                                                                    const result = await registrationService.registerSelfForEvent(
-                                                                        currentEvent.$id,
-                                                                        resolvedDivisionSelectionPayload,
-                                                                    );
-                                                                    if (result.requiresParentApproval) {
-                                                                        setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
-                                                                    } else {
-                                                                        setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
-                                                                    }
-                                                                    await loadEventDetails();
-                                                                    return;
-                                                                }
-                                                                // Free Agent listing is free; no payment
-                                                                await eventService.addFreeAgent(currentEvent.$id, user.$id, selectedWeeklyOccurrence);
-                                                                await loadEventDetails();
-                                                            } catch (e) {
-                                                                setJoinError(e instanceof Error ? e.message : 'Failed to join as free agent');
-                                                            } finally {
-                                                                setJoining(false);
-                                                            }
-                                                        }}
+                                                        onClick={() => { void handleJoinFreeAgents(); }}
                                                         disabled={joining || Boolean(freeAgentJoinBlockedReason)}
                                                         className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || freeAgentJoinBlockedReason) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
                                                     >
