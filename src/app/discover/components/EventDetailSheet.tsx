@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import Image from 'next/image';
 import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
@@ -99,6 +99,12 @@ import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEvent
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useSigningStatusPoll } from './eventDetail/hooks/useSigningStatusPoll';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
+import {
+    initialRegistrationWorkflowState,
+    isRegistrationWorkflowPhase,
+    registrationWorkflowReducer,
+    type RegistrationWorkflowPhase,
+} from './eventDetail/registrationWorkflow';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -495,29 +501,22 @@ export default function EventDetailSheet({
     const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
     const [showCapacityBreakdown, setShowCapacityBreakdown] = useState(false);
     const [selectedFreeAgentActionUser, setSelectedFreeAgentActionUser] = useState<UserData | null>(null);
-    const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [manualPaymentBill, setManualPaymentBill] = useState<Bill | null>(null);
-    const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
     const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
-    const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
-    const [showCheckoutPreviewModal, setShowCheckoutPreviewModal] = useState(false);
     const [discountCode, setDiscountCode] = useState('');
     const [discountPreview, setDiscountPreview] = useState<DiscountPreview | null>(null);
     const [discountPreviewLoading, setDiscountPreviewLoading] = useState(false);
     const [discountPreviewError, setDiscountPreviewError] = useState<string | null>(null);
     const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
-    const [confirmingPurchase, setConfirmingPurchase] = useState(false);
-    const [showSignModal, setShowSignModal] = useState(false);
     const [signLinks, setSignLinks] = useState<SignStep[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
     const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
     const [pendingSignatureOperationId, setPendingSignatureOperationId] = useState<string | null>(null);
-    const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [password, setPassword] = useState('');
     const [passwordError, setPasswordError] = useState<string | null>(null);
     const [confirmingPassword, setConfirmingPassword] = useState(false);
@@ -529,9 +528,60 @@ export default function EventDetailSheet({
     const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
-    const [showRegistrationQuestionsModal, setShowRegistrationQuestionsModal] = useState(false);
     const [registrationQuestionsIntent, setRegistrationQuestionsIntent] = useState<JoinIntent | null>(null);
-    const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
+    const [paymentPlanPreviewState, setPaymentPlanPreviewState] = useState<PaymentPlanPreviewState | null>(null);
+    const [registrationWorkflow, dispatchRegistrationWorkflow] = useReducer(
+        registrationWorkflowReducer,
+        initialRegistrationWorkflowState,
+    );
+    const setRegistrationWorkflowPhase = useCallback((
+        phase: Exclude<RegistrationWorkflowPhase, 'idle'>,
+        opened: boolean,
+    ) => {
+        dispatchRegistrationWorkflow({ type: opened ? 'open' : 'close', phase });
+    }, []);
+    const setShowRegistrationQuestionsModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('questions', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowPasswordModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('password', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowSignModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('signing', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowCheckoutPreviewModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('checkout-preview', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowBillingAddressModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('billing-address', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowPaymentModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('payment', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setShowManualPaymentModal = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('manual-proof', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setConfirmingPurchase = useCallback((opened: boolean) => {
+        setRegistrationWorkflowPhase('confirming', opened);
+    }, [setRegistrationWorkflowPhase]);
+    const setPaymentPlanPreview = useCallback((preview: PaymentPlanPreviewState | null) => {
+        setPaymentPlanPreviewState(preview);
+        setRegistrationWorkflowPhase('payment-plan-preview', Boolean(preview));
+    }, [setRegistrationWorkflowPhase]);
+    const resetRegistrationWorkflow = useCallback(() => {
+        dispatchRegistrationWorkflow({ type: 'reset' });
+    }, []);
+    const showRegistrationQuestionsModal = isRegistrationWorkflowPhase(registrationWorkflow, 'questions');
+    const showPasswordModal = isRegistrationWorkflowPhase(registrationWorkflow, 'password');
+    const showSignModal = isRegistrationWorkflowPhase(registrationWorkflow, 'signing');
+    const showCheckoutPreviewModal = isRegistrationWorkflowPhase(registrationWorkflow, 'checkout-preview');
+    const showBillingAddressModal = isRegistrationWorkflowPhase(registrationWorkflow, 'billing-address');
+    const showPaymentModal = isRegistrationWorkflowPhase(registrationWorkflow, 'payment');
+    const showManualPaymentModal = isRegistrationWorkflowPhase(registrationWorkflow, 'manual-proof');
+    const confirmingPurchase = isRegistrationWorkflowPhase(registrationWorkflow, 'confirming');
+    const paymentPlanPreview = isRegistrationWorkflowPhase(registrationWorkflow, 'payment-plan-preview')
+        ? paymentPlanPreviewState
+        : null;
     const [showQrCodeModal, setShowQrCodeModal] = useState(false);
     const joinCardAnchorRef = useRef<HTMLDivElement | null>(null);
     const joinCardRef = useRef<HTMLDivElement | null>(null);
@@ -654,7 +704,11 @@ export default function EventDetailSheet({
         setPendingEventCheckout(null);
         setShowBillingAddressModal(false);
         setJoinError('Registration hold expired. Start registration again to reserve a new spot.');
-    }, [clearEventRegistrationProgress]);
+    }, [
+        clearEventRegistrationProgress,
+        setShowBillingAddressModal,
+        setShowPaymentModal,
+    ]);
     useEffect(() => {
         const draft = loadRegistrationProgress(eventRegistrationProgressKey);
         if (!draft) {
@@ -1158,13 +1212,12 @@ export default function EventDetailSheet({
         }
         setJoinError(null);
         setJoinNotice(null);
-        setShowSignModal(false);
+        resetRegistrationWorkflow();
         setSignLinks([]);
         setCurrentSignIndex(0);
         setPendingJoin(null);
         setPendingSignedDocumentId(null);
         setPendingSignatureOperationId(null);
-        setShowPasswordModal(false);
         setShowCapacityBreakdown(false);
         setPassword('');
         setPasswordError(null);
@@ -1177,12 +1230,11 @@ export default function EventDetailSheet({
         setChildRegistration(null);
         setChildConsent(null);
         setChildRegistrationChildId(null);
-        setShowRegistrationQuestionsModal(false);
         setRegistrationQuestionsIntent(null);
-        setPaymentPlanPreview(null);
+        setPaymentPlanPreviewState(null);
         setSelectedDivisionId('');
         setSelectedDivisionTypeKey('');
-    }, [isActive]);
+    }, [isActive, resetRegistrationWorkflow]);
 
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
@@ -1426,7 +1478,7 @@ export default function EventDetailSheet({
         setPendingSignatureOperationId(null);
         setShowPasswordModal(true);
         return true;
-    }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, user]);
+    }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, setShowPasswordModal, user]);
 
     const startEventCheckout = useCallback(async ({
         event: checkoutEvent,
@@ -1508,6 +1560,9 @@ export default function EventDetailSheet({
         selectedTeamId,
         selectedWeeklyOccurrence,
         discountCode,
+        setShowBillingAddressModal,
+        setShowCheckoutPreviewModal,
+        setShowPaymentModal,
         user,
     ]);
 
@@ -1531,7 +1586,7 @@ export default function EventDetailSheet({
             setShowCheckoutPreviewModal(false);
             setShowBillingAddressModal(true);
         }
-    }, []);
+    }, [setShowBillingAddressModal, setShowCheckoutPreviewModal]);
 
     const handleApplyDiscountPreview = useCallback(async () => {
         if (!pendingEventCheckout || !user) {
@@ -1878,6 +1933,7 @@ export default function EventDetailSheet({
         selectedTeamId,
         selectedWeeklyOccurrence,
         prepareEventCheckout,
+        setShowManualPaymentModal,
         teams.length,
         user,
         userTeams,
@@ -1910,7 +1966,7 @@ export default function EventDetailSheet({
         setJoinError(null);
         setRegistrationQuestionsIntent(intent);
         setShowRegistrationQuestionsModal(true);
-    }, []);
+    }, [setShowRegistrationQuestionsModal]);
 
     const submitRegistrationQuestionsStep = useCallback(async () => {
         if (!registrationQuestionsIntent || !currentEvent || !user) {
@@ -1984,6 +2040,7 @@ export default function EventDetailSheet({
         resolvedDivisionSelectionPayload,
         saveEventRegistrationProgress,
         selectedWeeklyOccurrence,
+        setShowRegistrationQuestionsModal,
         user,
         validateRegistrationQuestionAnswers,
     ]);
@@ -1995,7 +2052,7 @@ export default function EventDetailSheet({
         setPendingJoin(null);
         setJoining(false);
         setJoinError('Password confirmation canceled.');
-    }, []);
+    }, [setShowPasswordModal]);
 
     const confirmPasswordAndStartSigning = useCallback(async () => {
         if (!pendingJoin || !currentEvent || !user || !authUser?.email) {
@@ -2065,6 +2122,8 @@ export default function EventDetailSheet({
         loadRequiredSignLinksForIntent,
         password,
         pendingJoin,
+        setShowPasswordModal,
+        setShowSignModal,
         signLinks,
         user,
     ]);
@@ -2152,7 +2211,7 @@ export default function EventDetailSheet({
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, setShowSignModal, signLinks]);
 
     const handleTextAcceptance = useCallback(async () => {
         const currentLink = signLinks[currentSignIndex];
@@ -2188,7 +2247,7 @@ export default function EventDetailSheet({
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks, textAccepted]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, setShowSignModal, signLinks, textAccepted]);
 
     useEffect(() => {
         setTextAccepted(false);
@@ -2252,7 +2311,7 @@ export default function EventDetailSheet({
         }
         setJoining(false);
         setJoiningChildFreeAgent(false);
-    }, [currentSignIndex, finalizeJoin, pendingJoin, signLinks.length]);
+    }, [currentSignIndex, finalizeJoin, pendingJoin, setShowSignModal, signLinks.length]);
 
     const handleSigningPollError = useCallback((message: string) => {
         setJoinError(message || 'Failed to confirm signature.');
@@ -2264,7 +2323,7 @@ export default function EventDetailSheet({
         setPendingJoin(null);
         setJoining(false);
         setJoiningChildFreeAgent(false);
-    }, []);
+    }, [setShowSignModal]);
 
     const pendingSigningLink = signLinks[currentSignIndex];
     const pendingSignerUserId = !user
@@ -2731,7 +2790,7 @@ export default function EventDetailSheet({
         setTextAccepted(false);
         setJoining(false);
         setJoinError('Signature process canceled.');
-    }, []);
+    }, [setShowPasswordModal, setShowSignModal]);
 
     // After successful payment, poll for up to 30s until the webhook-backed registration is reflected
     const confirmRegistrationAfterPayment = async ({ pendingPayment = false }: { pendingPayment?: boolean } = {}) => {

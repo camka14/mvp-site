@@ -22,6 +22,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 14:39Z) Milestone 3b: moved all event-detail reads and their cancellation rules into `useEventDetailDataController`, with pure participant projection in `eventDetailData.ts`.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
 - [x] (2026-07-14 14:42Z) Milestone 4a: consolidated operation and signed-document polling into `useSigningStatusPoll`, including in-flight suppression, timeout/error handling, cleanup, and event-scope invalidation; the registration reducer and views remain.
+- [x] (2026-07-14 15:19Z) Milestone 4b: replaced the independent questions, payment-plan preview, password, signing, checkout preview, billing address, payment, manual-proof, and confirmation visibility flags with one tested registration workflow phase. Stateless registration commands, the owning controller, and the dialog/view split remain.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
@@ -73,6 +74,9 @@ After this plan is complete, users must see the same event details, registration
 - Observation: operation-backed and document-backed signing used separate effects with duplicated completion and failure transitions.
   Evidence: one poll hook now chooses the operation path when an operation id exists, otherwise uses the signed-document fallback, permits only one in-flight request, and calls one pair of typed completion/error actions. A scope-change test proves the same pending target is not restarted for a newly selected event.
 
+- Observation: registration transitions often open the next dialog before closing the previous dialog.
+  Evidence: callbacks such as checkout preparation and signing progression intentionally call `open(next)` and then `close(previous)`. The reducer treats a close for a no-longer-active phase as stale, so that cleanup cannot clear the newly opened phase. A direct reducer test locks this ordering rule down.
+
 ## Decision Log
 
 - Decision: preserve `EventDetailSheet.tsx` and `EventForm.tsx` as stable public facades until the final milestone.
@@ -85,6 +89,10 @@ After this plan is complete, users must see the same event details, registration
 
 - Decision: represent event registration as one discriminated workflow step rather than a collection of modal booleans.
   Rationale: questions, password confirmation, signing, checkout preview, billing address, payment, manual proof, and final confirmation are mutually exclusive phases of one workflow. One reducer makes invalid combinations unrepresentable and gives cancellation one explicit transition.
+  Date/Author: 2026-07-14 / Codex
+
+- Decision: keep stable boolean-shaped compatibility setters while converting the existing callbacks to the reducer.
+  Rationale: the facade has many already-characterized transitions. Mapping those call sites through stable `open`/`close` actions makes phase exclusivity effective immediately without combining the state-model change with the larger command/controller extraction. The setters are temporary facade adapters and are not a second source of truth.
   Date/Author: 2026-07-14 / Codex
 
 - Decision: keep React Hook Form as the sole persisted `EventFormValues` owner.
@@ -101,7 +109,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules, reducing `EventDetailSheet.tsx` from 7,219 to 6,136 lines while retaining its public API and rendered markup. The direct presentation tests also corrected one composite skill/age parsing defect. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one signing poll owner and one mutually exclusive registration phase, reducing contradictory-dialog risk while preserving the facade API and rendered markup. `EventDetailSheet.tsx` currently measures 5,511 lines, down from 7,219; the remaining command/controller and view extraction is still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -295,6 +303,16 @@ First Milestone 4 extraction evidence on 2026-07-14:
 
 Five direct polling tests cover confirmed operations, terminal failures, the document fallback, unmount cleanup, and event-scope changes. The registration component suite still proves explicit pre-poll cancellation and deferred operation cleanup through the public UI.
 
+Registration workflow reducer evidence on 2026-07-14:
+
+    PASS 12 suites / 190 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 5,452 -> 5,511 lines
+    registrationWorkflow.ts: 47 lines
+
+Four direct reducer cases cover exclusive transitions, stale close protection, all checkout/payment phases, and reset identity. The temporary facade adapters add 59 net lines while removing eight independent modal/confirmation booleans; every registration visibility read now derives from the single phase. The component suites retain questions, team-join/payment-plan, signing, and checkout behavior through the public UI. Payload and service orchestration remain in the facade until the owning registration controller milestone.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -312,3 +330,4 @@ Revision note (2026-07-14): Completed Milestone 1 with registration-phase, signi
 Revision note (2026-07-14): Began Milestone 3 by extracting the inline-auth controller with explicit request invalidation and 14 passing focused tests; event hydration remains the next ownership boundary.
 Revision note (2026-07-14): Completed Milestone 3 by consolidating all event-detail reads and stale-result rejection into one 367-line controller; the ten-suite safety net passes 176 tests and the facade is now 5,546 lines.
 Revision note (2026-07-14): Began Milestone 4 by extracting one event-scoped signing poll owner with five direct tests; the reducer and render-only dialog split remain.
+Revision note (2026-07-14): Continued Milestone 4 by making registration visibility a single reducer-owned phase with stale-close protection; the 12-suite safety net passes 190 tests, while registration commands, controller payloads, and dialog views remain to be extracted.
