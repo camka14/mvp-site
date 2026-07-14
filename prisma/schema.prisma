@@ -406,6 +406,7 @@ model AppReleases {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
+  @@unique([platform, versionName, buildNumber], map: "AppReleases_platform_versionName_buildNumber_key")
   @@index([platform, isActive])
   @@index([platform, buildNumber])
   @@index([platform, versionName])

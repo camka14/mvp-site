@@ -76,7 +76,11 @@ export function buildAppVersionResponse(
   latestVersion: ReturnType<typeof serializeRelease> | null;
   releases: ReturnType<typeof serializeRelease>[];
 } {
-  const active = releases.filter((release) => release.isActive);
+  // The database constraint is authoritative, but deployments can briefly run
+  // this code before the migration reaches every environment. Collapse an
+  // accidental duplicate identity so one release cannot produce repeated or
+  // churning update prompts during that rollout window.
+  const active = coalesceReleaseIdentities(releases.filter((release) => release.isActive));
   const latest = latestAppRelease(active);
   if (!latest) {
     return {
@@ -99,6 +103,46 @@ export function buildAppVersionResponse(
       .sort(compareReleaseRowsAsc)
       .map(serializeRelease),
   };
+}
+
+function coalesceReleaseIdentities(releases: AppReleaseRow[]): AppReleaseRow[] {
+  const groups = new Map<string, AppReleaseRow[]>();
+  releases.forEach((release) => {
+    const key = JSON.stringify([
+      release.platform,
+      release.versionName,
+      release.buildNumber,
+    ]);
+    groups.set(key, [...(groups.get(key) ?? []), release]);
+  });
+
+  return Array.from(groups.values()).map((group) => {
+    const ordered = [...group].sort(compareReleaseRowsDesc);
+    const preferred = ordered[0];
+    if (ordered.length === 1) return preferred;
+
+    const changes = Array.from(new Set(
+      [...ordered]
+        .reverse()
+        .flatMap((release) => release.changes)
+        .map((change) => change.trim())
+        .filter(Boolean),
+    ));
+    const updateUrl = ordered.find((release) => release.updateUrl?.trim())?.updateUrl ?? null;
+    const earliestCreatedAt = ordered
+      .map((release) => ({ value: release.createdAt, timestamp: toTimestamp(release.createdAt) }))
+      .filter(({ timestamp }) => timestamp > 0)
+      .sort((left, right) => left.timestamp - right.timestamp)[0]?.value
+      ?? preferred.createdAt;
+
+    return {
+      ...preferred,
+      changes,
+      hasBreakingChanges: ordered.some((release) => release.hasBreakingChanges),
+      updateUrl,
+      createdAt: earliestCreatedAt,
+    };
+  });
 }
 
 function serializeRelease(release: AppReleaseRow) {
@@ -128,7 +172,10 @@ function compareReleaseRowsDesc(left: AppReleaseRow, right: AppReleaseRow): numb
   const versionComparison = compareVersionNames(left.versionName, right.versionName);
   if (versionComparison !== 0) return -versionComparison;
 
-  return toTimestamp(right.createdAt) - toTimestamp(left.createdAt);
+  const createdAtComparison = toTimestamp(right.createdAt) - toTimestamp(left.createdAt);
+  if (createdAtComparison !== 0) return createdAtComparison;
+
+  return left.id.localeCompare(right.id);
 }
 
 function compareReleaseRowsAsc(left: AppReleaseRow, right: AppReleaseRow): number {

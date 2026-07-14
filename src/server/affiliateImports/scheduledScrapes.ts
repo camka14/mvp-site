@@ -1,5 +1,7 @@
 import { createHash } from 'crypto';
+import { Client } from 'pg';
 import { prisma } from '@/lib/prisma';
+import { resolvePrismaPgPoolConfig } from '@/lib/prismaConfig';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { runAffiliateSourceScrape } from './service';
 
@@ -181,17 +183,53 @@ export const isAffiliateSourceDue = (
   return now.getTime() - latestStartedAt.getTime() >= intervalMs;
 };
 
-const acquireSchedulerLock = async (): Promise<boolean> => {
-  const rows = await (prisma as any).$queryRawUnsafe(
-    `SELECT pg_try_advisory_lock(${SCHEDULER_LOCK_ID}) AS locked`,
-  );
-  return Array.isArray(rows) && rows.some((row) => row?.locked === true);
+type SchedulerLockLease = {
+  release: () => Promise<void>;
 };
 
-const releaseSchedulerLock = async (): Promise<void> => {
-  await (prisma as any).$queryRawUnsafe(
-    `SELECT pg_advisory_unlock(${SCHEDULER_LOCK_ID}) AS unlocked`,
-  );
+const acquireSchedulerLock = async (): Promise<SchedulerLockLease | null> => {
+  // Session advisory locks belong to one PostgreSQL connection. A Prisma raw
+  // query may use any pooled connection, so keep a dedicated client checked out
+  // for the entire scheduler run and release the lock through that same client.
+  const { max: _poolMax, ...clientConfig } = resolvePrismaPgPoolConfig();
+  const client = new Client(clientConfig);
+
+  try {
+    await client.connect();
+    const result = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS locked',
+      [SCHEDULER_LOCK_ID],
+    );
+    const locked = result.rows.some((row) => row.locked === true);
+    if (!locked) {
+      await client.end();
+      return null;
+    }
+
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        try {
+          const unlockResult = await client.query<{ unlocked: boolean }>(
+            'SELECT pg_advisory_unlock($1) AS unlocked',
+            [SCHEDULER_LOCK_ID],
+          );
+          if (!unlockResult.rows.some((row) => row.unlocked === true)) {
+            throw new Error('Affiliate scrape scheduler advisory lock was not owned by its dedicated connection');
+          }
+        } finally {
+          // Closing the connection also releases the session lock if PostgreSQL
+          // rejected the explicit unlock or the connection became unhealthy.
+          await client.end();
+        }
+      },
+    };
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw error;
+  }
 };
 
 const latestRunForSource = async (sourceId: string): Promise<AffiliateRunScheduleRow | null> => (
@@ -575,8 +613,8 @@ export const runDueAffiliateScrapes = async (
   options: RunDueAffiliateScrapesOptions = {},
 ): Promise<RunDueAffiliateScrapesResult> => {
   const startedAt = options.now ?? new Date();
-  const lockAcquired = await acquireSchedulerLock();
-  if (!lockAcquired) {
+  const schedulerLock = await acquireSchedulerLock();
+  if (!schedulerLock) {
     const finishedAt = new Date();
     return {
       startedAt,
@@ -646,6 +684,6 @@ export const runDueAffiliateScrapes = async (
     }
     return result;
   } finally {
-    await releaseSchedulerLock();
+    await schedulerLock.release();
   }
 };

@@ -247,4 +247,38 @@ describe('GET /api/app-version', () => {
       'Adds richer update history.',
     ]);
   });
+
+  it('coalesces duplicate active release identities during a rolling migration', async () => {
+    prismaMock.appReleases.findMany.mockResolvedValue([
+      androidRelease,
+      {
+        ...androidRelease,
+        id: 'manually_seeded_duplicate',
+        changes: ['Adds a required data migration.'],
+        hasBreakingChanges: true,
+        updateUrl: 'https://play.google.com/store/apps/details?id=com.razumly.mvp',
+        createdAt: new Date('2026-05-18T12:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(new NextRequest(
+      'http://localhost/api/app-version?platform=ANDROID&versionName=1.5.5&buildNumber=39',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.updateAvailable).toBe(true);
+    expect(payload.updateRequired).toBe(true);
+    expect(payload.releases).toHaveLength(1);
+    expect(payload.releases[0]).toEqual(expect.objectContaining({
+      platform: 'ANDROID',
+      versionName: '1.5.6',
+      buildNumber: 40,
+      changes: [
+        'Improves event detail division controls.',
+        'Adds a required data migration.',
+      ],
+    }));
+    expect(payload.latestVersion).toEqual(payload.releases[0]);
+  });
 });

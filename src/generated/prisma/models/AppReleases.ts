@@ -269,6 +269,7 @@ export type AppReleasesOrderByWithRelationInput = {
 
 export type AppReleasesWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  platform_versionName_buildNumber?: Prisma.AppReleasesPlatformVersionNameBuildNumberCompoundUniqueInput
   AND?: Prisma.AppReleasesWhereInput | Prisma.AppReleasesWhereInput[]
   OR?: Prisma.AppReleasesWhereInput[]
   NOT?: Prisma.AppReleasesWhereInput | Prisma.AppReleasesWhereInput[]
@@ -281,7 +282,7 @@ export type AppReleasesWhereUniqueInput = Prisma.AtLeast<{
   updateUrl?: Prisma.StringNullableFilter<"AppReleases"> | string | null
   createdAt?: Prisma.DateTimeFilter<"AppReleases"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"AppReleases"> | Date | string
-}, "id">
+}, "id" | "platform_versionName_buildNumber">
 
 export type AppReleasesOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -414,6 +415,12 @@ export type StringNullableListFilter<$PrismaModel = never> = {
   hasEvery?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel>
   hasSome?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel>
   isEmpty?: boolean
+}
+
+export type AppReleasesPlatformVersionNameBuildNumberCompoundUniqueInput = {
+  platform: $Enums.AppReleasePlatformEnum
+  versionName: string
+  buildNumber: number
 }
 
 export type AppReleasesCountOrderByAggregateInput = {

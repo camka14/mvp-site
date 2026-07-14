@@ -1,7 +1,6 @@
 /** @jest-environment node */
 
 const prismaMock = {
-  $queryRawUnsafe: jest.fn(),
   affiliateScrapeSources: {
     findMany: jest.fn(),
     update: jest.fn(),
@@ -14,12 +13,27 @@ const prismaMock = {
   },
 };
 
+const mockPgClient = {
+  connect: jest.fn(),
+  query: jest.fn(),
+  end: jest.fn(),
+};
+const mockPgClientConstructor = jest.fn(() => mockPgClient);
+
 const runAffiliateSourceScrapeMock = jest.fn();
 const isEmailEnabledMock = jest.fn();
 const sendEmailMock = jest.fn();
 const lightweightFetchMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/prismaConfig', () => ({
+  resolvePrismaPgPoolConfig: () => ({
+    connectionString: 'postgresql://test:test@localhost:5432/test',
+    connectionTimeoutMillis: 1000,
+    max: 3,
+  }),
+}));
+jest.mock('pg', () => ({ Client: mockPgClientConstructor }));
 jest.mock('@/server/affiliateImports/service', () => ({
   runAffiliateSourceScrape: (...args: any[]) => runAffiliateSourceScrapeMock(...args),
 }));
@@ -39,7 +53,13 @@ describe('scheduled affiliate scrapes', () => {
     delete process.env.AFFILIATE_SCRAPE_SUMMARY_EMAIL_TO;
     delete process.env.ADMIN_NOTIFICATION_EMAIL_TO;
     delete process.env.NEXT_PUBLIC_APP_URL;
-    prismaMock.$queryRawUnsafe.mockResolvedValue([{ locked: true }]);
+    mockPgClient.connect.mockResolvedValue(undefined);
+    mockPgClient.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('pg_try_advisory_lock')
+        ? [{ locked: true }]
+        : [{ unlocked: true }],
+    }));
+    mockPgClient.end.mockResolvedValue(undefined);
     prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([]);
     prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
     prismaMock.affiliateScrapeRuns.findFirst.mockResolvedValue(null);
@@ -157,6 +177,17 @@ describe('scheduled affiliate scrapes', () => {
       subject: expect.stringContaining('5 pending approval'),
       text: expect.stringContaining('Failing Source: failed (ScrapingDog timeout)'),
     }));
+    expect(mockPgClientConstructor).toHaveBeenCalledTimes(1);
+    expect(mockPgClient.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT pg_try_advisory_lock($1) AS locked',
+      [4201042026],
+    );
+    expect(mockPgClient.query).toHaveBeenLastCalledWith(
+      'SELECT pg_advisory_unlock($1) AS unlocked',
+      [4201042026],
+    );
+    expect(mockPgClient.end).toHaveBeenCalledTimes(1);
   });
 
   it('checks non-daily sources lightly and reports detected changes without a full scrape', async () => {
@@ -269,7 +300,7 @@ describe('scheduled affiliate scrapes', () => {
   });
 
   it('skips work when another scheduler owns the advisory lock', async () => {
-    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([{ locked: false }]);
+    mockPgClient.query.mockResolvedValueOnce({ rows: [{ locked: false }] });
 
     const result = await runDueAffiliateScrapes({
       now: new Date('2026-07-04T12:00:00.000Z'),
@@ -279,6 +310,32 @@ describe('scheduled affiliate scrapes', () => {
     expect(prismaMock.affiliateScrapeSources.findMany).not.toHaveBeenCalled();
     expect(runAffiliateSourceScrapeMock).not.toHaveBeenCalled();
     expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(mockPgClient.end).toHaveBeenCalledTimes(1);
+    expect(mockPgClient.query).not.toHaveBeenCalledWith(
+      'SELECT pg_advisory_unlock($1) AS unlocked',
+      expect.anything(),
+    );
+  });
+
+  it('releases the advisory lock on the same dedicated connection when loading work fails', async () => {
+    prismaMock.affiliateScrapeSources.findMany.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(runDueAffiliateScrapes({
+      now: new Date('2026-07-04T12:00:00.000Z'),
+    })).rejects.toThrow('database unavailable');
+
+    expect(mockPgClientConstructor).toHaveBeenCalledTimes(1);
+    expect(mockPgClient.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT pg_try_advisory_lock($1) AS locked',
+      [4201042026],
+    );
+    expect(mockPgClient.query).toHaveBeenNthCalledWith(
+      2,
+      'SELECT pg_advisory_unlock($1) AS unlocked',
+      [4201042026],
+    );
+    expect(mockPgClient.end).toHaveBeenCalledTimes(1);
   });
 
   it('dry-runs due sources without scraping or sending email', async () => {
