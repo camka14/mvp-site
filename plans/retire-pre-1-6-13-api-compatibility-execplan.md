@@ -17,6 +17,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - [x] (2026-07-14 09:31Z) Read `PLANS.md`, the `LEG-001` finding, the current server compatibility helpers, generated Prisma delegate, current mobile DTOs, and the mobile v1.6.13 tag.
 - [x] (2026-07-14 09:31Z) Counted the current removal surface: 124 web files call `withLegacyFields` or `withLegacyList`, six call `stripLegacyFieldsDeep`, 17 use generic parsing helpers from `legacyFormat.ts`, 11 production files mention `volleyBallTeams`, and 15 mobile DTO files declare `$id` aliases with 129 legacy-field references.
 - [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases.
+- [x] (2026-07-14 12:05Z) Added the first canonical-only compatibility-floor fixture for event, team, match, and user payloads. The same two tests passed from the exact `v1.6.13` tag (`50045cc3`) and were checked in at current mobile commit `245f6a0a`; organization, field, chat, billing, Wear OS, and watchOS coverage is still required before response aliases can be removed.
 - [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
 - [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them.
 - [ ] Replace every API response wrapper with the canonical response shape, remove the open-ended-event rewrite, and delete `src/server/legacyFormat.ts`.
@@ -41,6 +42,9 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - Observation: the profile schedule route test still depended on a partial Prisma mock that predated normalized team membership.
   Evidence: the first focused run failed eight cases with `Canonical team membership requires TeamRegistrations and TeamStaffAssignments delegates.` Adding `teamRegistrations` and `teamStaffAssignments` mocks and canonical rows made all 11 cases pass; no production fallback was restored.
 
+- Observation: canonical-only core resource payloads are executable at the exact v1.6.13 compatibility floor even when every Appwrite dollar-prefixed alias is omitted.
+  Evidence: `CanonicalOnlyContractFloorTest` passed two tests from detached tag commit `50045cc3`, decoding canonical event, team, match, and user IDs plus canonical timestamps. Its event fixture uses `end: null` with `noFixedEndDateTime: true`; the v1.6.13 wire DTO accepts the null before its non-null domain model applies the established open-ended fallback.
+
 ## Decision Log
 
 - Decision: Treat the checked-in mobile tag `v1.6.13` as the compatibility floor and prove its actual route and field behavior from source and executable JSON fixtures.
@@ -61,7 +65,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-Research, the executable plan, and the generated-delegate slice are complete. Web production and tests now have zero `volleyBallTeams` references outside generated history. The HTTP response contract is unchanged so far; the next slice is the canonical-only v1.6.13 fixture inventory, followed by explicit request-alias rejection.
+Research, the executable plan, the generated-delegate slice, and the first exact-tag canonical fixture are complete. Web production and tests now have zero `volleyBallTeams` references outside generated history. Event, team, match, and user canonical payloads have executable v1.6.13 proof, but the remaining resource-family inventory must be covered before the HTTP response contract changes. The next slice expands that fixture to organization, field, chat, billing, Wear OS, and watchOS, followed by explicit request-alias rejection.
 
 ## Context and Orientation
 
@@ -190,6 +194,16 @@ Delegate-slice evidence:
     npx tsc --noEmit --pretty false: exit 0
     git diff --check: no output
 
+Compatibility-floor fixture evidence:
+
+    exact supported tag: v1.6.13 at 50045cc3
+    current fixture commit: 245f6a0a
+    command: ./gradlew :core:network:testDebugUnitTest --tests \
+      'com.razumly.mvp.core.network.dto.CanonicalOnlyContractFloorTest'
+    exact-tag result: 2 tests passed, BUILD SUCCESSFUL
+    covered so far: event, team, match, user
+    still required: organization, field, chat, billing, Wear OS, watchOS
+
 ## Interfaces and Dependencies
 
 `src/server/requestParsing.ts` must own the generic parsing functions after `legacyFormat.ts` is removed:
@@ -204,3 +218,5 @@ The v1.6.13 fixture runner must use the repository's existing Kotlin serializati
 Revision note (2026-07-14 09:31Z): created this self-contained plan after tracing the central server helper, distributed team-delegate fallbacks, current mobile DTO aliases, and the v1.6.13 canonical event DTO. The staged order keeps every checkpoint executable while requiring oldest-supported-client proof before any external contract removal.
 
 Revision note (2026-07-14 09:39Z): recorded completion of the generated-team-delegate slice and the profile schedule mock repair discovered during focused validation. The next milestone remains oldest-supported-client contract proof before changing HTTP response fields.
+
+Revision note (2026-07-14 12:05Z): recorded the first exact-v1.6.13 canonical-only fixture checkpoint. It proves four core resource families but deliberately leaves the milestone open until every required mobile, Wear OS, and watchOS family has executable coverage.
