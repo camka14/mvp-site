@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import Image from 'next/image';
 import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
@@ -88,6 +88,7 @@ import { useRegistrationQuestionsController } from './eventDetail/hooks/useRegis
 import { useEventCheckoutController } from './eventDetail/hooks/useEventCheckoutController';
 import { useEventJoinFinalizationController } from './eventDetail/hooks/useEventJoinFinalizationController';
 import { useRegistrationConfirmationController } from './eventDetail/hooks/useRegistrationConfirmationController';
+import { useJoinCardDocking } from './eventDetail/hooks/useJoinCardDocking';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -337,12 +338,16 @@ export default function EventDetailSheet({
         ? paymentPlanPreviewState
         : null;
     const [showQrCodeModal, setShowQrCodeModal] = useState(false);
-    const joinCardAnchorRef = useRef<HTMLDivElement | null>(null);
-    const joinCardRef = useRef<HTMLDivElement | null>(null);
-    const [joinCardDocked, setJoinCardDocked] = useState(false);
-    const [joinCardHeight, setJoinCardHeight] = useState(0);
-    const [joinCardLeft, setJoinCardLeft] = useState(0);
-    const [joinCardWidth, setJoinCardWidth] = useState(0);
+    const {
+        anchorRef: joinCardAnchorRef,
+        cardRef: joinCardRef,
+        layout: {
+            docked: joinCardDocked,
+            height: joinCardHeight,
+            left: joinCardLeft,
+            width: joinCardWidth,
+        },
+    } = useJoinCardDocking({ active: isActive, inline: renderInline });
 
     // Team-signup join controls
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
@@ -821,49 +826,6 @@ export default function EventDetailSheet({
 
     const todayForDob = new Date();
     const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
-
-    useEffect(() => {
-        if (!isActive || !renderInline) {
-            setJoinCardDocked(false);
-            return undefined;
-        }
-
-        const updateJoinCardDock = () => {
-            const anchor = joinCardAnchorRef.current;
-            const card = joinCardRef.current;
-            if (!anchor || !card || window.innerWidth < 1024) {
-                setJoinCardDocked(false);
-                return;
-            }
-
-            const anchorRect = anchor.getBoundingClientRect();
-            const cardRect = card.getBoundingClientRect();
-            const measuredHeight = cardRect.height || joinCardHeight;
-            const holdingBottomGap = 96;
-            const holdingTop = Math.max(24, window.innerHeight - measuredHeight - holdingBottomGap);
-
-            setJoinCardHeight(measuredHeight);
-            setJoinCardLeft(anchorRect.left);
-            setJoinCardWidth(anchorRect.width);
-            setJoinCardDocked(anchorRect.top <= holdingTop);
-        };
-
-        updateJoinCardDock();
-        window.addEventListener('scroll', updateJoinCardDock, { passive: true });
-        window.addEventListener('resize', updateJoinCardDock);
-
-        let resizeObserver: ResizeObserver | null = null;
-        if (typeof ResizeObserver !== 'undefined' && joinCardRef.current) {
-            resizeObserver = new ResizeObserver(updateJoinCardDock);
-            resizeObserver.observe(joinCardRef.current);
-        }
-
-        return () => {
-            window.removeEventListener('scroll', updateJoinCardDock);
-            window.removeEventListener('resize', updateJoinCardDock);
-            resizeObserver?.disconnect();
-        };
-    }, [isActive, joinCardHeight, renderInline]);
 
     const handleInlineAuthAuthenticated = useCallback(() => {
         setJoinError(null);
