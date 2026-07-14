@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useReducer } from 'react';
+import React, { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { Button, Text, ActionIcon, Group } from '@mantine/core';
 import { useRouter } from 'next/navigation';
@@ -20,11 +20,7 @@ import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import {
     normalizePriceCents,
 } from './eventDetail/divisionRegistration';
-import {
-    buildWeeklySessionOptions,
-    resolveSelectedWeeklySessionOption,
-    type WeeklySessionOption,
-} from './eventDetail/weeklySessions';
+import type { WeeklySessionOption } from './eventDetail/weeklySessions';
 import { useInlineEventAuthController } from './eventDetail/hooks/useInlineEventAuthController';
 import { useEventDetailDataController } from './eventDetail/hooks/useEventDetailDataController';
 import { useEventSigningController } from './eventDetail/hooks/useEventSigningController';
@@ -37,13 +33,9 @@ import { useDivisionSelectionSynchronization } from './eventDetail/hooks/useDivi
 import { useEventDetailInactiveReset } from './eventDetail/hooks/useEventDetailInactiveReset';
 import { useEventDivisionRegistrationModel } from './eventDetail/hooks/useEventDivisionRegistrationModel';
 import { useEventParticipantModel } from './eventDetail/hooks/useEventParticipantModel';
+import { useRegistrationWorkflowController } from './eventDetail/hooks/useRegistrationWorkflowController';
+import { useWeeklyEventSelectionModel } from './eventDetail/hooks/useWeeklyEventSelectionModel';
 import { collectUniqueUserIds } from './eventDetail/eventDetailData';
-import {
-    initialRegistrationWorkflowState,
-    isRegistrationWorkflowPhase,
-    registrationWorkflowReducer,
-    type RegistrationWorkflowPhase,
-} from './eventDetail/registrationWorkflow';
 import {
     CheckoutPreviewDialog,
     PasswordConfirmationDialog,
@@ -60,10 +52,7 @@ import {
     EventParticipantsSection,
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
-import {
-    createEventJoinActions,
-    type PaymentPlanPreviewState,
-} from './eventDetail/eventJoinActions';
+import { createEventJoinActions } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
 import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
 import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard';
@@ -75,7 +64,7 @@ import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualR
 import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
 import { EventJoinCard } from './eventDetail/EventJoinCard';
 import { useApp } from '@/app/providers';
-import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
+import { EventQrCodeModal } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
@@ -162,41 +151,22 @@ export default function EventDetailSheet({
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
     const [selectedChildId, setSelectedChildId] = useState('');
     const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
-    const [paymentPlanPreviewState, setPaymentPlanPreviewState] = useState<PaymentPlanPreviewState | null>(null);
-    const [registrationWorkflow, dispatchRegistrationWorkflow] = useReducer(
-        registrationWorkflowReducer,
-        initialRegistrationWorkflowState,
-    );
-    const setRegistrationWorkflowPhase = useCallback((
-        phase: Exclude<RegistrationWorkflowPhase, 'idle'>,
-        opened: boolean,
-    ) => {
-        dispatchRegistrationWorkflow({ type: opened ? 'open' : 'close', phase });
-    }, []);
-    const setShowManualPaymentModal = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('manual-proof', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setConfirmingPurchase = useCallback((opened: boolean) => {
-        setRegistrationWorkflowPhase('confirming', opened);
-    }, [setRegistrationWorkflowPhase]);
-    const setPaymentPlanPreview = useCallback((preview: PaymentPlanPreviewState | null) => {
-        setPaymentPlanPreviewState(preview);
-        setRegistrationWorkflowPhase('payment-plan-preview', Boolean(preview));
-    }, [setRegistrationWorkflowPhase]);
-    const resetRegistrationWorkflow = useCallback(() => {
-        dispatchRegistrationWorkflow({ type: 'reset' });
-    }, []);
-    const showRegistrationQuestionsModal = isRegistrationWorkflowPhase(registrationWorkflow, 'questions');
-    const showPasswordModal = isRegistrationWorkflowPhase(registrationWorkflow, 'password');
-    const showSignModal = isRegistrationWorkflowPhase(registrationWorkflow, 'signing');
-    const showCheckoutPreviewModal = isRegistrationWorkflowPhase(registrationWorkflow, 'checkout-preview');
-    const showBillingAddressModal = isRegistrationWorkflowPhase(registrationWorkflow, 'billing-address');
-    const showPaymentModal = isRegistrationWorkflowPhase(registrationWorkflow, 'payment');
-    const showManualPaymentModal = isRegistrationWorkflowPhase(registrationWorkflow, 'manual-proof');
-    const confirmingPurchase = isRegistrationWorkflowPhase(registrationWorkflow, 'confirming');
-    const paymentPlanPreview = isRegistrationWorkflowPhase(registrationWorkflow, 'payment-plan-preview')
-        ? paymentPlanPreviewState
-        : null;
+    const {
+        setPhase: setRegistrationWorkflowPhase,
+        setManualPaymentOpened: setShowManualPaymentModal,
+        setConfirmingPurchase,
+        setPaymentPlanPreview,
+        reset: resetRegistrationWorkflow,
+        showRegistrationQuestionsModal,
+        showPasswordModal,
+        showSignModal,
+        showCheckoutPreviewModal,
+        showBillingAddressModal,
+        showPaymentModal,
+        showManualPaymentModal,
+        confirmingPurchase,
+        paymentPlanPreview,
+    } = useRegistrationWorkflowController();
     const [showQrCodeModal, setShowQrCodeModal] = useState(false);
     const {
         anchorRef: joinCardAnchorRef,
@@ -213,54 +183,18 @@ export default function EventDetailSheet({
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
     const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
 
-    const currentEventPublicUrl = React.useMemo(
-        () => (currentEvent.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
-        [currentEvent.$id],
-    );
-    const currentOrganizationLogoId = React.useMemo(() => {
-        const organization = currentEvent.organization;
-        if (organization && typeof organization === 'object' && typeof organization.logoId === 'string') {
-            return organization.logoId;
-        }
-        return null;
-    }, [currentEvent.organization]);
-    const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
-    const weeklySessionOptions = React.useMemo(
-        () => (isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : []),
-        [currentEvent, isWeeklyParentEvent],
-    );
-    const normalizedSelectedOccurrence = React.useMemo<WeeklyOccurrenceSelection | null>(() => {
-        const slotId = typeof selectedOccurrence?.slotId === 'string' ? selectedOccurrence.slotId.trim() : '';
-        const occurrenceDate = typeof selectedOccurrence?.occurrenceDate === 'string' ? selectedOccurrence.occurrenceDate.trim() : '';
-        if (!slotId || !occurrenceDate) {
-            return null;
-        }
-        return { slotId, occurrenceDate };
-    }, [selectedOccurrence]);
-    const selectedWeeklyOccurrenceOption = React.useMemo(
-        () => (
-            normalizedSelectedOccurrence
-                ? weeklySessionOptions.find((option) => (
-                    option.slotId === normalizedSelectedOccurrence.slotId
-                    && option.occurrenceDate === normalizedSelectedOccurrence.occurrenceDate
-                )) ?? resolveSelectedWeeklySessionOption(currentEvent, normalizedSelectedOccurrence)
-                : null
-        ),
-        [currentEvent, normalizedSelectedOccurrence, weeklySessionOptions],
-    );
-    const selectedWeeklyOccurrence = React.useMemo<WeeklyOccurrenceSelection | undefined>(
-        () => {
-            if (!selectedWeeklyOccurrenceOption) {
-                return undefined;
-            }
-            return {
-                slotId: selectedWeeklyOccurrenceOption.slotId,
-                occurrenceDate: selectedWeeklyOccurrenceOption.occurrenceDate,
-            };
-        },
-        [selectedWeeklyOccurrenceOption],
-    );
-    const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
+    const {
+        eventPublicUrl: currentEventPublicUrl,
+        organizationLogoId: currentOrganizationLogoId,
+        isWeeklyParentEvent,
+        weeklySessionOptions,
+        selectedWeeklyOccurrenceOption,
+        selectedWeeklyOccurrence,
+        weeklySelectionRequired,
+    } = useWeeklyEventSelectionModel({
+        event: currentEvent,
+        selectedOccurrence,
+    });
     const {
         paymentData,
         pendingCheckout: pendingEventCheckout,
@@ -571,7 +505,7 @@ export default function EventDetailSheet({
         resetChildRegistrationState,
         setJoiningChildFreeAgent,
         resetRegistrationQuestions,
-        setPaymentPlanPreviewState,
+        setPaymentPlanPreviewState: setPaymentPlanPreview,
         setSelectedDivisionId,
         setSelectedDivisionTypeKey,
     });
