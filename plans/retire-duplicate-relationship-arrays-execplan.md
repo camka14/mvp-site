@@ -19,7 +19,8 @@ This plan resolves audit finding `DATA-007` in `docs/code-audit/README.md`.
 - [x] (2026-07-14 07:31Z) Audited current mobile organization, user, network DTO, repository, Room-cache, and UI consumers in the sibling `mvp-app` checkout.
 - [x] (2026-07-14 07:31Z) Chose a two-stage compatibility and column-removal rollout because both legacy fields are required by the Prisma model and have no database defaults.
 - [x] (2026-07-14 07:49Z) Incorporated an independent plan review that found omitted payment-failure, official-scheduling, social, participant-snapshot, admin-user, and admin-organization response paths, corrected the physical column nullability, and made stale-link classification executable.
-- [ ] Implement and validate the compatibility release, including derived response helpers, write rejection, defaults, the discrepancy audit, and focused regression tests.
+- [x] (2026-07-14 08:05Z) Implemented the isolated compatibility database slice: the preparation migration, Prisma defaults and product index, regenerated client, read-only discrepancy audit, exact-key classification reconciliation, package command, and nine focused pure tests.
+- [ ] Complete the compatibility release (completed: database defaults/index and audit tooling; remaining: derived response helpers, write rejection, creation cleanup, business-read replacement, mobile compatibility work, and their focused route/repository tests).
 - [ ] Deploy the compatibility release and its preparation migration, run the strict audit against live data, classify every discrepancy, and observe the release for one full 24-hour period.
 - [ ] Implement and validate the final Prisma schema removal and destructive migration only after the compatibility release is proven live.
 - [ ] Deploy the new application build before applying the destructive live migration, then verify web and current mobile behavior against the migrated database.
@@ -62,6 +63,9 @@ This plan resolves audit finding `DATA-007` in `docs/code-audit/README.md`.
 
 - Observation: full profile and organization resources are also returned outside the primary user and organization routes.
   Evidence: `buildEventParticipantSnapshot(...)` in `src/server/events/eventRegistrations.ts` returns full `UserData` rows, `src/app/api/admin/users/route.ts` returns full user rows, and the admin organization list, organization-verification list/update, and manager verification-sync routes return full organization rows. Partial nested organization summaries that explicitly select only `id`, `name`, or logo fields do not expose `productIds` today and must not gain it.
+
+- Observation: the first executable local audit proves that strict classification is necessary rather than theoretical.
+  Evidence: the read-only local run reported 4 legacy-only live-team links and 4 orphan IDs; non-strict mode exited `0`, while strict mode exited `2` with 4 unclassified links and 0 invalid classification entries. No detailed report was written during this check.
 
 ## Decision Log
 
@@ -123,7 +127,7 @@ This plan resolves audit finding `DATA-007` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-No implementation has been performed yet. At completion, record the two deployment commits, preparation and removal migration names, strict-audit summary, number and disposition of any legacy-only links, focused and full test results, live schema query, browser observations, mobile/emulator observations, and any rollback or retry that occurred.
+The isolated preparation-migration and audit-tooling slice is implemented but not committed or deployed. Its nine focused pure tests, ESLint, Prisma validation/generation/client verification, local non-strict execution, strict exit-code gate, and scoped whitespace checks pass. The remaining compatibility response and mobile work must be completed before the preparation migration or application is deployed. At full completion, record the two deployment commits, preparation and removal migration names, strict-audit summary, number and disposition of any legacy-only links, focused and full test results, live schema query, browser observations, mobile/emulator observations, and any rollback or retry that occurred.
 
 ## Context and Orientation
 
@@ -457,3 +461,5 @@ The mobile compatibility boundary remains: server responses retain `teamIds` and
 Revision note (2026-07-14): created this self-contained plan after auditing the current web and mobile contracts. The two-stage rollout, non-backfill decision for ambiguous user arrays, computed compatibility aliases, and field-free-build-before-drop ordering were chosen to remove duplicate persistence without granting access or breaking existing clients.
 
 Revision note (2026-07-14 07:49Z): expanded the plan after independent review found runtime reads and response boundaries outside the primary routes. This revision inventories every full resource response, replaces payment-failure and official-scheduling array reads, adds mobile social-cache protection, corrects physical nullability, defines an exact-key ignored classification ledger and strict exit semantics, orders the preparation migration before the application deploy, and gives focused commands explicit expected suite counts.
+
+Revision note (2026-07-14 08:05Z): recorded completion and validation of the isolated preparation-migration and read-only audit-tooling slice, plus the aggregate local audit evidence, so the next implementer can resume at the response, business-read, creation-cleanup, and mobile compatibility work without repeating this slice.

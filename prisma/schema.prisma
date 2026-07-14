@@ -735,7 +735,7 @@ model UserData {
   dobVerified                      Boolean?
   dobVerifiedAt                    DateTime?
   ageVerificationProvider          String?
-  teamIds                          String[]
+  teamIds                          String[]  @default([])
   friendIds                        String[]
   userName                         String
   hasStripeAccount                 Boolean?
@@ -2189,7 +2189,7 @@ model Organizations {
   verificationReviewNotes           String?
   verificationReviewUpdatedAt       DateTime?
   coordinates                       Json?
-  productIds                        String[]
+  productIds                        String[]                                  @default([])
   publicSlug                        String?                                   @unique
   publicPageEnabled                 Boolean                                   @default(false)
   publicWidgetsEnabled              Boolean                                   @default(false)
@@ -2244,6 +2244,8 @@ model Products {
   isActive        Boolean?
   stripeProductId String?
   stripePriceId   String?
+
+  @@index([organizationId])
 }
 
 model Subscriptions {

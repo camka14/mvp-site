@@ -22,6 +22,7 @@
     "test:ci": "jest --runInBand --coverage && npm run coverage:check-routes",
     "coverage:check-routes": "node scripts/check-route-coverage.mjs",
     "cleanup:user-teamids": "tsx scripts/cleanup-user-teamids-canonical.ts",
+    "audit:duplicate-relationships": "tsx scripts/audit-duplicate-relationship-arrays.ts",
     "reconcile:team-chats": "tsx scripts/reconcile-team-chats.ts",
     "backfill:event-templates": "tsx scripts/backfill-event-template-records.ts",
     "affiliate:scrape:due": "tsx scripts/run-due-affiliate-scrapes.ts",
