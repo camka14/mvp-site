@@ -24,6 +24,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 14:42Z) Milestone 4a: consolidated operation and signed-document polling into `useSigningStatusPoll`, including in-flight suppression, timeout/error handling, cleanup, and event-scope invalidation; the registration reducer and views remain.
 - [x] (2026-07-14 15:19Z) Milestone 4b: replaced the independent questions, payment-plan preview, password, signing, checkout preview, billing address, payment, manual-proof, and confirmation visibility flags with one tested registration workflow phase. Stateless registration commands, the owning controller, and the dialog/view split remain.
 - [x] (2026-07-14 15:39Z) Milestone 4c: extracted registration-question, payment-plan preview, password confirmation, signing, and checkout preview markup into typed render-only dialog components. Their actions remain facade-owned until the registration controller/command milestone.
+- [x] (2026-07-14 16:06Z) Milestone 4d: extracted inline event authentication and free-agent action dialogs behind typed values/actions. The auth controller remains the sole state/service owner, and the dialog module has no service dependencies.
 - [ ] Milestone 5: extract EventForm lifecycle, payment, resource, slot, division-synchronization, and submission controllers while keeping React Hook Form as the only persisted draft owner.
 - [ ] Milestone 6: split the two oversized existing EventForm controllers and move the remaining section composition into a render-only component.
 - [ ] Milestone 7: run focused Jest, TypeScript, production build, and browser acceptance at desktop and mobile widths; record exact evidence in this plan and the audit ledger.
@@ -114,7 +115,7 @@ After this plan is complete, users must see the same event details, registration
 
 ## Outcomes & Retrospective
 
-Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one signing poll owner, one mutually exclusive registration phase, and render-only registration dialogs, reducing contradictory-dialog risk while preserving the facade API and rendered behavior. `EventDetailSheet.tsx` currently measures 5,281 lines, down from 7,219; the remaining command/controller and broader view extraction is still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
+Planning and current-source mapping are complete. Milestone 2 moved weekly-session, division registration/eligibility, payment-plan, organization, schedule, and public-display calculations into focused modules. Milestone 3 moved event hydration and inline authentication behind request-safe controllers. Milestone 4 now has one signing poll owner, one mutually exclusive registration phase, and render-only registration/authentication dialogs, reducing contradictory-dialog risk while preserving the facade API and rendered behavior. `EventDetailSheet.tsx` currently measures 5,172 lines, down from 7,219; the remaining command/controller and broader view extraction is still substantial. The prior EventForm extraction remains valuable and is incorporated rather than discarded. Completion requires both facades to meet the ownership and runtime acceptance criteria below; moving lines into equally broad hooks is not sufficient.
 
 ## Context and Orientation
 
@@ -328,6 +329,16 @@ Registration dialog extraction evidence on 2026-07-14:
 
 Five direct dialog tests prove question edits/submission, payment-plan presentation/continuation, password forwarding, text-waiver acceptance, and discount checkout actions. Existing facade tests continue to exercise the same titles, controls, phase transitions, and registration behaviors through the extracted views. The new dialog module imports no service and owns no workflow state.
 
+Auxiliary event-detail dialog evidence on 2026-07-14:
+
+    PASS 14 suites / 198 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+    EventDetailSheet.tsx: 5,281 -> 5,172 lines
+    EventDetailDialogs.tsx: 208 lines
+
+Three direct dialog tests cover login field/action forwarding, signup/verification resend rendering, and free-agent invite/close actions. Inline authentication request invalidation and service ownership remain in `useInlineEventAuthController`; the new view module imports only Mantine, user display helpers, and controller types.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -347,3 +358,4 @@ Revision note (2026-07-14): Completed Milestone 3 by consolidating all event-det
 Revision note (2026-07-14): Began Milestone 4 by extracting one event-scoped signing poll owner with five direct tests; the reducer and render-only dialog split remain.
 Revision note (2026-07-14): Continued Milestone 4 by making registration visibility a single reducer-owned phase with stale-close protection; the 12-suite safety net passes 190 tests, while registration commands, controller payloads, and dialog views remain to be extracted.
 Revision note (2026-07-14): Continued Milestone 4 by extracting five typed registration dialogs with no service dependencies; the 13-suite safety net passes 195 tests and the facade is now 5,281 lines.
+Revision note (2026-07-14): Continued Milestone 4 by extracting typed inline-auth and free-agent action dialogs; authentication requests remain controller-owned and the facade is now 5,172 lines.

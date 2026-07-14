@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import Image from 'next/image';
-import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, PasswordInput, Stack, Collapse, Progress, TextInput, FileInput } from '@mantine/core';
+import { Avatar, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Stack, Collapse, Progress, FileInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     CalendarDays,
@@ -111,6 +111,10 @@ import {
     RegistrationQuestionsDialog,
     SigningDialog,
 } from './eventDetail/EventRegistrationDialogs';
+import {
+    FreeAgentActionsDialog,
+    InlineEventAuthDialog,
+} from './eventDetail/EventDetailDialogs';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -1185,11 +1189,6 @@ export default function EventDetailSheet({
         onSignedIn: handleInlineAuthSignedIn,
         onProfileCompletionRequired: handleInlineAuthProfileCompletionRequired,
     });
-    const handleAuthModalSubmit = useCallback((submitEvent: React.FormEvent<HTMLFormElement>) => {
-        submitEvent.preventDefault();
-        return submitAuthModal();
-    }, [submitAuthModal]);
-
     useEffect(() => {
         if (!divisionOptions.length) {
             setSelectedDivisionId('');
@@ -2527,6 +2526,10 @@ export default function EventDetailSheet({
 
     const openFreeAgentActions = useCallback((agent: UserData) => {
         setSelectedFreeAgentActionUser(agent);
+    }, []);
+
+    const closeFreeAgentActions = useCallback(() => {
+        setSelectedFreeAgentActionUser(null);
     }, []);
 
     const handleInviteFreeAgentToTeam = useCallback(() => {
@@ -5025,143 +5028,31 @@ export default function EventDetailSheet({
                 />
             )}
 
-            <Modal
+            <InlineEventAuthDialog
                 opened={showAuthModal}
+                mode={authModalMode}
+                form={authModalForm}
+                loading={authModalLoading}
+                error={authModalError}
+                maxDateOfBirth={maxAuthDob}
+                verificationEmail={authVerificationEmail}
+                verificationMessage={authVerificationMessage}
+                verificationMessageType={authVerificationMessageType}
+                resendingVerification={authResendingVerification}
+                onFieldChange={handleAuthModalInputChange}
+                onToggleMode={toggleAuthModalMode}
+                onResendVerification={handleAuthModalResendVerification}
+                onContinueWithGoogle={handleAuthModalGoogle}
+                onSubmit={submitAuthModal}
                 onClose={closeAuthModal}
-                centered
-                title={authModalMode === 'login' ? 'Sign in to register' : 'Create account'}
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <form onSubmit={handleAuthModalSubmit}>
-                    <Stack gap="sm">
-                        <Text size="sm" c="dimmed">
-                            {authModalMode === 'login'
-                                ? 'Sign in to continue with registration.'
-                                : 'Create an account to continue with registration.'}
-                        </Text>
-                        {authModalMode === 'signup' && (
-                            <>
-                                <TextInput
-                                    label="First name"
-                                    value={authModalForm.firstName}
-                                    onChange={(changeEvent) => handleAuthModalInputChange('firstName', changeEvent.currentTarget.value)}
-                                    required
-                                />
-                                <TextInput
-                                    label="Last name"
-                                    value={authModalForm.lastName}
-                                    onChange={(changeEvent) => handleAuthModalInputChange('lastName', changeEvent.currentTarget.value)}
-                                    required
-                                />
-                                <TextInput
-                                    label="Username"
-                                    value={authModalForm.userName}
-                                    onChange={(changeEvent) => handleAuthModalInputChange('userName', changeEvent.currentTarget.value)}
-                                    required
-                                />
-                                <TextInput
-                                    label="Date of birth"
-                                    type="date"
-                                    value={authModalForm.dateOfBirth}
-                                    onChange={(changeEvent) => handleAuthModalInputChange('dateOfBirth', changeEvent.currentTarget.value)}
-                                    max={maxAuthDob}
-                                    required
-                                />
-                            </>
-                        )}
-                        <TextInput
-                            label="Email address"
-                            type="email"
-                            value={authModalForm.email}
-                            onChange={(changeEvent) => handleAuthModalInputChange('email', changeEvent.currentTarget.value)}
-                            required
-                        />
-                        <PasswordInput
-                            label="Password"
-                            value={authModalForm.password}
-                            onChange={(changeEvent) => handleAuthModalInputChange('password', changeEvent.currentTarget.value)}
-                            required
-                            minLength={8}
-                        />
-                        {authVerificationMessage && (
-                            <Alert color={authVerificationMessageType === 'success' ? 'green' : 'yellow'} variant="light">
-                                <Text size="sm">{authVerificationMessage}</Text>
-                                {authVerificationEmail && (
-                                    <Button
-                                        type="button"
-                                        variant="subtle"
-                                        size="compact-sm"
-                                        mt="xs"
-                                        loading={authResendingVerification}
-                                        onClick={() => { void handleAuthModalResendVerification(); }}
-                                    >
-                                        Resend verification email
-                                    </Button>
-                                )}
-                            </Alert>
-                        )}
-                        {authModalError && (
-                            <Alert color="red" variant="light">
-                                {authModalError}
-                            </Alert>
-                        )}
-                        <Button type="submit" fullWidth loading={authModalLoading}>
-                            {authModalMode === 'login' ? 'Sign in' : 'Create account'}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="subtle"
-                            onClick={toggleAuthModalMode}
-                        >
-                            {authModalMode === 'login'
-                                ? "Don't have an account? Sign up"
-                                : 'Already have an account? Sign in'}
-                        </Button>
-                        <Group gap="xs" align="center" wrap="nowrap">
-                            <div className="h-px flex-1 bg-gray-200" />
-                            <Text size="xs" c="dimmed">or</Text>
-                            <div className="h-px flex-1 bg-gray-200" />
-                        </Group>
-                        <Button
-                            type="button"
-                            fullWidth
-                            variant="default"
-                            onClick={() => { void handleAuthModalGoogle(); }}
-                            disabled={authModalLoading}
-                        >
-                            Continue with Google
-                        </Button>
-                    </Stack>
-                </form>
-            </Modal>
+            />
 
-            <Modal
-                opened={Boolean(selectedFreeAgentActionUser)}
-                onClose={() => setSelectedFreeAgentActionUser(null)}
-                centered
-                title={selectedFreeAgentActionUser ? getUserFullName(selectedFreeAgentActionUser) : 'Free Agent Actions'}
-                zIndex={SIGN_MODAL_Z_INDEX}
-            >
-                <Stack gap="sm">
-                    {selectedFreeAgentActionUser && getUserHandle(selectedFreeAgentActionUser) && (
-                        <Text size="sm" c="dimmed">
-                            {getUserHandle(selectedFreeAgentActionUser)}
-                        </Text>
-                    )}
-                    <Button
-                        onClick={handleInviteFreeAgentToTeam}
-                        disabled={!selectedFreeAgentActionUser || !currentEvent?.$id}
-                    >
-                        Invite to Team
-                    </Button>
-                    <Button
-                        variant="default"
-                        onClick={() => setSelectedFreeAgentActionUser(null)}
-                    >
-                        Close
-                    </Button>
-                </Stack>
-            </Modal>
+            <FreeAgentActionsDialog
+                user={selectedFreeAgentActionUser}
+                eventId={currentEvent?.$id ?? null}
+                onInvite={handleInviteFreeAgentToTeam}
+                onClose={closeFreeAgentActions}
+            />
 
             <RegistrationQuestionsDialog
                 opened={showRegistrationQuestionsModal}
