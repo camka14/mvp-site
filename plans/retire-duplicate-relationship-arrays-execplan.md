@@ -20,7 +20,7 @@ This plan resolves audit finding `DATA-007` in `docs/code-audit/README.md`.
 - [x] (2026-07-14 07:31Z) Chose a two-stage compatibility and column-removal rollout because both legacy fields are required by the Prisma model and have no database defaults.
 - [x] (2026-07-14 07:49Z) Incorporated an independent plan review that found omitted payment-failure, official-scheduling, social, participant-snapshot, admin-user, and admin-organization response paths, corrected the physical column nullability, and made stale-link classification executable.
 - [x] (2026-07-14 08:05Z) Implemented the isolated compatibility database slice: the preparation migration, Prisma defaults and product index, regenerated client, read-only discrepancy audit, exact-key classification reconciliation, package command, and nine focused pure tests.
-- [ ] Complete the compatibility release (completed: database defaults/index and audit tooling; remaining: derived response helpers, write rejection, creation cleanup, business-read replacement, mobile compatibility work, and their focused route/repository tests).
+- [x] (2026-07-14 08:34Z) Implemented and validated the compatibility application across web and mobile: derived aliases, rejected/ignored writes, creation cleanup, failed-payment and official-scheduling replacements, rolling-deploy mobile cache handling, 25 passing focused web suites (221 tests), clean TypeScript, 39 passing mobile repository/auth tests, and iOS simulator compilation.
 - [ ] Deploy the compatibility release and its preparation migration, run the strict audit against live data, classify every discrepancy, and observe the release for one full 24-hour period.
 - [ ] Implement and validate the final Prisma schema removal and destructive migration only after the compatibility release is proven live.
 - [ ] Deploy the new application build before applying the destructive live migration, then verify web and current mobile behavior against the migrated database.
@@ -127,7 +127,9 @@ This plan resolves audit finding `DATA-007` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-The isolated preparation-migration and audit-tooling slice is implemented but not committed or deployed. Its nine focused pure tests, ESLint, Prisma validation/generation/client verification, local non-strict execution, strict exit-code gate, and scoped whitespace checks pass. The remaining compatibility response and mobile work must be completed before the preparation migration or application is deployed. At full completion, record the two deployment commits, preparation and removal migration names, strict-audit summary, number and disposition of any legacy-only links, focused and full test results, live schema query, browser observations, mobile/emulator observations, and any rollback or retry that occurred.
+The additive preparation and audit tooling are committed in web commit `0e77dc28` with migration `20260714080000_prepare_duplicate_relationship_array_retirement`. The compatibility application is committed in web commit `4621725f`, and the mobile rolling-deploy protections are committed in mobile commit `2124ce63`. Validation for this stage includes nine passing audit-tool tests, 25 passing focused web suites with 221 tests, a clean web TypeScript check, 39 passing mobile repository/auth tests, successful iOS simulator compilation, Prisma validation/generation/client verification for the preparation slice, local non-strict and strict audit execution, and clean scoped whitespace checks.
+
+The local read-only audit reported 250 exact organization-product projections, no normalized-only or conflicting product links, 122 exact user-team projections, 101 normalized-only user-team links, four legacy-only links requiring classification, four orphan IDs, no contradictions, and no invalid ledger entries. Strict mode correctly exited `2` while those four live-team links remained unclassified. Neither compatibility commit nor the preparation migration has been deployed yet, so `DATA-007` remains open. Remaining work is to deploy the compatibility stage, classify every live discrepancy through the authorized roster workflow and exact-key ledger, achieve a clean strict live audit, observe the deployment for 24 hours, complete browser and emulator verification, then implement and deploy the field-free application before the destructive column-removal migration. At full completion, record the removal migration name, live schema query, browser observations, mobile/emulator observations, and any rollback or retry that occurred.
 
 ## Context and Orientation
 
@@ -241,16 +243,18 @@ After the compatibility implementation, regenerate and validate Prisma, run the 
       src/server/__tests__/organizationProductIds.test.ts \
       src/server/teams/__tests__/teamMembership.test.ts \
       src/server/events/__tests__/eventRegistrations.test.ts \
-      src/server/repositories/__tests__/events.loadWithRelationsOfficialMembership.test.ts \
+      src/server/repositories/__tests__/events.officialMemberships.test.ts \
       src/server/scheduler/__tests__/officialStaffingModes.test.ts \
       src/app/api/organizations/__tests__/organizationsRoute.test.ts \
       src/app/api/organizations/__tests__/organizationByIdRoute.test.ts \
-      src/app/api/organizations/__tests__/organizationVerificationRoutes.test.ts \
+      'src/app/api/organizations/[id]/verification/sync/__tests__/route.test.ts' \
       src/app/api/admin/organizations/__tests__/route.test.ts \
       src/app/api/admin/organization-verifications/__tests__/route.test.ts \
+      'src/app/api/admin/organization-verifications/[id]/__tests__/route.test.ts' \
       src/app/api/users/__tests__/usersRoute.test.ts \
       src/app/api/users/__tests__/userByIdRoute.test.ts \
       src/app/api/users/__tests__/socialRoutes.test.ts \
+      src/server/__tests__/socialGraph.test.ts \
       src/app/api/users/social/blocked/__tests__/route.test.ts \
       'src/app/api/users/social/blocked/[targetUserId]/__tests__/route.test.ts' \
       src/app/api/admin/users/__tests__/route.test.ts \
@@ -263,7 +267,7 @@ After the compatibility implementation, regenerate and validate Prisma, run the 
     npx tsc --noEmit --pretty false
     git diff --check
 
-Expect Jest to report 23 suites passed and 0 failed, TypeScript to exit `0`, and `git diff --check` to print nothing. If a suite is split or renamed during implementation, update this command and the expected suite count in the plan before proceeding.
+Expect Jest to report 25 suites passed and 0 failed, TypeScript to exit `0`, and `git diff --check` to print nothing. If a suite is split or renamed during implementation, update this command and the expected suite count in the plan before proceeding.
 
 Run the read-only audit locally, classify any local discrepancies, and require strict mode to pass. Then load the live URL through the repository's normal secret-loading method and repeat the non-strict, review, and strict sequence. Never paste either URL into logs or this plan. The following names are examples; use the same timestamp for each report and its ledger.
 
@@ -302,16 +306,18 @@ After the final removal implementation, repeat the focused tests and add the mig
       src/server/__tests__/organizationProductIds.test.ts \
       src/server/teams/__tests__/teamMembership.test.ts \
       src/server/events/__tests__/eventRegistrations.test.ts \
-      src/server/repositories/__tests__/events.loadWithRelationsOfficialMembership.test.ts \
+      src/server/repositories/__tests__/events.officialMemberships.test.ts \
       src/server/scheduler/__tests__/officialStaffingModes.test.ts \
       src/app/api/organizations/__tests__/organizationsRoute.test.ts \
       src/app/api/organizations/__tests__/organizationByIdRoute.test.ts \
-      src/app/api/organizations/__tests__/organizationVerificationRoutes.test.ts \
+      'src/app/api/organizations/[id]/verification/sync/__tests__/route.test.ts' \
       src/app/api/admin/organizations/__tests__/route.test.ts \
       src/app/api/admin/organization-verifications/__tests__/route.test.ts \
+      'src/app/api/admin/organization-verifications/[id]/__tests__/route.test.ts' \
       src/app/api/users/__tests__/usersRoute.test.ts \
       src/app/api/users/__tests__/userByIdRoute.test.ts \
       src/app/api/users/__tests__/socialRoutes.test.ts \
+      src/server/__tests__/socialGraph.test.ts \
       src/app/api/users/social/blocked/__tests__/route.test.ts \
       'src/app/api/users/social/blocked/[targetUserId]/__tests__/route.test.ts' \
       src/app/api/admin/users/__tests__/route.test.ts \
