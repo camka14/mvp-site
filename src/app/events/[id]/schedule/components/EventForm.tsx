@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, TournamentConfig, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TournamentConfig } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -112,6 +112,7 @@ import { useEventFormSubmissionController } from './eventForm/hooks/useEventForm
 import { useEventFormInvariantSynchronization } from './eventForm/hooks/useEventFormInvariantSynchronization';
 import { useEventFormReferenceHydration } from './eventForm/hooks/useEventFormReferenceHydration';
 import { useEventFormConfigurationActions } from './eventForm/hooks/useEventFormConfigurationActions';
+import { useEventFormCatalogController } from './eventForm/hooks/useEventFormCatalogController';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -175,7 +176,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     onDraftStateChange,
 }, ref) => {
     const open = isOpen ?? true;
-    const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
+    const {
+        eventTagOptions,
+        hydratedOrganization,
+        setHydratedOrganization,
+    } = useEventFormCatalogController({ organization });
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
     const resolvedOrganizationFields = resolvedOrganization?.fields;
@@ -204,27 +209,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => buildSportOptions(sports), [sports]);
-    const [eventTagOptions, setEventTagOptions] = useState<EventTag[]>([]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        fetch('/api/event-tags', { signal: controller.signal })
-            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load tags')))
-            .then((body) => {
-                setEventTagOptions(Array.isArray(body?.tags) ? body.tags : []);
-            })
-            .catch((error) => {
-                if (error.name !== 'AbortError') {
-                    setEventTagOptions([]);
-                }
-            });
-        return () => controller.abort();
-    }, []);
-
-    useEffect(() => {
-        setHydratedOrganization(organization ?? null);
-    }, [organization]);
-
     const {
         buildDefaultFormValues,
         hasImmutableFields,
