@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useReducer } from 'react';
 import Image from 'next/image';
-import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Stack } from '@mantine/core';
+import { Button, Paper, Alert, Text, ActionIcon, Group, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     CalendarDays,
@@ -76,6 +76,8 @@ import { EventDetailSheetSummary } from './eventDetail/EventDetailSheetSummary';
 import { PublicEventOverview } from './eventDetail/PublicEventOverview';
 import { PublicEventProgramDetails } from './eventDetail/PublicEventProgramDetails';
 import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
+import { EventIndividualRegistrationPanel } from './eventDetail/EventIndividualRegistrationPanel';
+import { EventTeamRegistrationPanel } from './eventDetail/EventTeamRegistrationPanel';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -1289,272 +1291,101 @@ export default function EventDetailSheet({
                                     </>
                                 ) : (
                                     <div className="space-y-3">
-                                        {!isTeamSignup ? (
-                                            <div className="space-y-3">
-                                                {selfRegistrationBlockedReason && (
-                                                    <Alert color="yellow" variant="light">
-                                                        {selfRegistrationBlockedReason}
-                                                    </Alert>
-                                                )}
-                                                {!selfRegistrationBlockedReason && isMinor && (
-                                                    <Alert color="blue" variant="light">
-                                                        Your join request will be sent to a linked parent/guardian for approval.
-                                                    </Alert>
-                                                )}
-
-                                                {showSelfWaitlistActions ? (
-                                                    isUserWaitlisted ? (
-                                                        <div className="space-y-2">
-                                                            <Text size="sm" c="blue" fw={500} ta="center">
-                                                                {"✓ You're on the waitlist"}
-                                                            </Text>
-                                                            <Button
-                                                                fullWidth
-                                                                color="red"
-                                                                variant="light"
-                                                                onClick={() => { void handleLeaveWaitlist(); }}
-                                                                disabled={selfWaitlistLeaveDisabled}
-                                                            >
-                                                                {eventHasStarted ? 'Unavailable' : (joining ? 'Updating…' : 'Leave Waitlist')}
-                                                            </Button>
-                                                        </div>
-                                                    ) : (
-                                                        <Button
-                                                            fullWidth
-                                                            color="orange"
-                                                            onClick={() => { void handleJoinWaitlist(); }}
-                                                            disabled={selfWaitlistJoinDisabled}
-                                                        >
-                                                            {eventHasStarted
-                                                                ? 'Unavailable'
-                                                                : joining
-                                                                ? (isMinor ? 'Sending…' : 'Adding…')
-                                                                : (isMinor ? 'Send' : 'Join Waitlist')}
-                                                        </Button>
-                                                    )
-                                                ) : (
-                                                    <Button
-                                                        fullWidth
-                                                        color="blue"
-                                                            onClick={() => { void handleJoinEvent(); }}
-                                                            disabled={selfJoinDisabled}
-                                                        >
-                                                            {eventHasStarted
-                                                                ? 'Unavailable'
-                                                                : confirmingPurchase
-                                                            ? 'Confirming purchase…'
-                                                                    : joining
-                                                                        ? 'Submitting…'
-                                                                        : isMinor
-                                                                            ? 'Send'
-                                                                    : selectedDivisionBilling.priceCents > 0
-                                                                    ? (currentUserPaymentFailed ? 'Complete payment' : `Join Event - ${formatPrice(selectedDivisionBilling.priceCents)}`)
-                                                                    : 'Join Event'}
-                                                    </Button>
-                                                )}
-
-                                                {canShowScheduleButton && (
-                                                    <div className="mt-2">
-                                                        {renderHostManageQrActions()}
-                                                    </div>
-                                                )}
-
-                                                {childRegistrationPanel}
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-6">
-                                                {eventHasStarted && (
-                                                    <Alert color="yellow" variant="light">
-                                                        {isWeeklyParentEvent && selectedWeeklyOccurrenceOption
-                                            ? 'This weekly session has already started. Joining and leaving are no longer available.'
-                                                            : 'This event has already started. Joining and leaving are no longer available.'}
-                                                    </Alert>
-                                                )}
-                                                <Button fullWidth disabled={eventHasStarted} onClick={() => setShowTeamJoinOptions(prev => !prev)}>
-                                                    {showTeamJoinOptions ? 'Hide Team Options' : 'View Team Options'}
-                                                </Button>
-
-                                                {showTeamJoinOptions && (
-                                                    <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                        {isLoadingTeams ? (
-                                                            <div className="text-sm text-gray-600">Loading your teams...</div>
-                                                        ) : userTeams.length > 0 ? (
-                                                            <div className="space-y-4">
-                                                                <div>
-                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                                        Select your team
-                                                                    </label>
-                                                                    <MantineSelect
-                                                                        placeholder="Choose a team"
-                                                                        data={userTeams.map(t => ({
-                                                                            value: t.$id,
-                                                                            label: t.name || 'Team',
-                                                                        }))}
-                                                                        value={selectedTeamId}
-                                                                        onChange={(value) => {
-                                                                            const nextValue = value || '';
-                                                                            setSelectedTeamId(nextValue);
-                                                                            saveEventRegistrationProgress({
-                                                                                selectedTeamId: nextValue || null,
-                                                                            });
-                                                                        }}
-                                                                        searchable
-                                                                        comboboxProps={sharedComboboxProps}
-                                                                    />
-                                                                </div>
-
-                                                                {/* Manage Teams Button Section - Matching Hide/Show button height */}
-                                                                <div className="flex justify-center">
-                                                                    <Button variant="default"
-                                                                        onClick={() => {
-                                                                            router.push(`/teams?event=${currentEvent.$id}`);
-                                                                            onClose();
-                                                                        }}
-                                                                    >
-                                                                        Manage Teams
-                                                                    </Button>
-                                                                </div>
-
-                                                                {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
-                                                                <div className="flex flex-col items-center gap-2 pt-2">
-                                                                    {showTeamWaitlistActions ? (
-                                                                        <Button
-                                                                            onClick={() => { void handleJoinTeamWaitlist(); }}
-                                                                            disabled={
-                                                                                joining
-                                                                                || eventHasStarted
-                                                                                || weeklySelectionRequired
-                                                                                || !selectedTeamId
-                                                                                || (!selectedTeamIsWaitlisted && isDivisionSelectionMissing)
-                                                                            }
-                                                                            color="orange"
-                                                                        >
-                                                                            {eventHasStarted
-                                                                                ? 'Unavailable'
-                                                                                : joining
-                                                                                ? 'Updating...'
-                                                                                : (selectedTeamIsWaitlisted ? 'Leave Waitlist' : 'Join Waitlist')}
-                                                                        </Button>
-                                                                    ) : (
-                                                                        <Button
-                                                                            onClick={() => { void handleJoinAsTeam(); }}
-                                                                            disabled={
-                                                                                joining
-                                                                                || eventHasStarted
-                                                                                || weeklySelectionRequired
-                                                                                || !selectedTeamId
-                                                                                || confirmingPurchase
-                                                                                || isDivisionSelectionMissing
-                                                                                || selectedTeamIsRegistered
-                                                                            }
-                                                                            color={selectedTeamIsRegistered ? 'gray' : 'green'}
-                                                                        >
-                                                                            {eventHasStarted
-                                                                                ? 'Unavailable'
-                                                                                : selectedTeamIsRegistered
-                                                                                ? 'Already in Event'
-                                                                                : confirmingPurchase
-                                                                                ? 'Confirming purchase...'
-	                                                                                : joining
-	                                                                                    ? 'Joining...'
-	                                                                                    : !selectedTeamId
-	                                                                                        ? 'Choose a team'
-	                                                                                    : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
-	                                                                                        ? (selectedTeamPaymentFailed ? 'Complete payment' : `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`)
-	                                                                                        : 'Join Event'}
-                                                                        </Button>
-                                                                    )}
-                                                                    {selectedTeamIsRegistered && (
-                                                                        <Button
-                                                                            onClick={() => { void handleWithdrawTeam(); }}
-                                                                            disabled={joining || eventHasStarted || weeklySelectionRequired || !selectedTeamId}
-                                                                            color={!isFreeForUser && selectedDivisionBilling.priceCents > 0 ? 'orange' : 'red'}
-                                                                            variant="light"
-                                                                        >
-                                                                            {joining
-                                                                                ? 'Withdrawing...'
-                                                                                : 'Withdraw Team'}
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-center space-y-3">
-                                                                <p className="text-sm text-gray-600">
-                                                                    You have no managed teams for {currentEvent.sport?.name}.
-                                                                </p>
-                                                                <Button variant="default"
-                                                                    onClick={() => {
-                                                                        router.push(`/teams?event=${currentEvent.$id}`);
-                                                                        onClose();
-                                                                    }}
-                                                                >
-                                                                    Create Team
-                                                                </Button>
-                                                                {/* Total participants below actions */}
-                                                                <div style={{ textAlign: 'center' }}>
-                                                                    <Text size="sm" c="dimmed">
-                                                                        {totalParticipants} / {participantCapacity} total participants
-                                                                    </Text>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </Paper>
-
-                                                )}
-                                                {!selfRegistrationBlockedReason && isMinor && (
-                                                    <Alert color="blue" variant="light">
-                                                        Tap Send to request parent/guardian approval before joining as a free agent.
-                                                    </Alert>
-                                                )}
-                                                {isUserFreeAgent ? (
-                                                    <div className="space-y-2">
-                                                        <div className="w-full py-2 px-4 rounded-lg bg-purple-50 text-purple-700 text-center font-medium">
-                                                            You are listed as a free agent
-                                                        </div>
-                                                        <button
-                                                            onClick={() => { void handleLeaveFreeAgents(); }}
-                                                            disabled={joining || eventHasStarted}
-                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || eventHasStarted) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
-                                                        >
-                                                            {eventHasStarted ? 'Unavailable' : (joining ? 'Updating…' : 'Leave Free Agent List')}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => { void handleJoinFreeAgents(); }}
-                                                        disabled={joining || Boolean(freeAgentJoinBlockedReason)}
-                                                        className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || freeAgentJoinBlockedReason) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
-                                                    >
-                                                        {joining
-                                                            ? (isMinor ? 'Sending…' : 'Adding…')
-                                                            : freeAgentJoinBlockedReason
-                                                                ? 'Unavailable'
-                                                                : isMinor
-                                                                    ? 'Send'
-                                                                    : 'Join as Free Agent (Free)'}
-                                                    </button>
-                                                )}
-
-                                                {childRegistrationPanel}
-
-                                                {/* View Schedule / Bracket Buttons */}
-                                                {canShowScheduleButton && (
-                                                    <div className="mt-2">
-                                                        {renderHostManageQrActions()}
-                                                    </div>
-                                                )}
-
-                                                {!renderInline && currentEvent.eventType === 'TOURNAMENT' &&
-                                                    <button
-                                                        onClick={handleBracketClick}
-                                                        className="w-full mt-2 py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700"
-                                                    >
-                                                        View Tournament Bracket
-                                                    </button>
-                                                }
-                                            </div>
-                                        )}
+                                        {isTeamSignup ? (
+                                                <EventTeamRegistrationPanel
+                                                    eventHasStarted={eventHasStarted}
+                                                    selectedWeeklySession={Boolean(
+                                                        isWeeklyParentEvent && selectedWeeklyOccurrenceOption,
+                                                    )}
+                                                    showTeamJoinOptions={showTeamJoinOptions}
+                                                    isLoadingTeams={isLoadingTeams}
+                                                    userTeams={userTeams}
+                                                    selectedTeamId={selectedTeamId}
+                                                    showTeamWaitlistActions={showTeamWaitlistActions}
+                                                    joining={joining}
+                                                    weeklySelectionRequired={weeklySelectionRequired}
+                                                    selectedTeamIsWaitlisted={selectedTeamIsWaitlisted}
+                                                    isDivisionSelectionMissing={isDivisionSelectionMissing}
+                                                    selectedTeamIsRegistered={selectedTeamIsRegistered}
+                                                    confirmingPurchase={confirmingPurchase}
+                                                    isFreeForUser={isFreeForUser}
+                                                    priceCents={selectedDivisionBilling.priceCents}
+                                                    selectedTeamPaymentFailed={selectedTeamPaymentFailed}
+                                                    selfRegistrationBlockedReason={selfRegistrationBlockedReason}
+                                                    isMinor={isMinor}
+                                                    isUserFreeAgent={isUserFreeAgent}
+                                                    freeAgentJoinBlockedReason={freeAgentJoinBlockedReason}
+                                                    childRegistrationPanel={childRegistrationPanel}
+                                                    canShowScheduleButton={canShowScheduleButton}
+                                                    hostManageQrActions={renderHostManageQrActions()}
+                                                    renderInline={renderInline}
+                                                    isTournament={currentEvent.eventType === 'TOURNAMENT'}
+                                                    sportName={
+                                                        typeof currentEvent.sport === 'string'
+                                                            ? currentEvent.sport
+                                                            : currentEvent.sport?.name
+                                                    }
+                                                    totalParticipants={totalParticipants}
+                                                    participantCapacity={participantCapacity}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    onToggleTeamOptions={() => {
+                                                        setShowTeamJoinOptions((visible) => !visible);
+                                                    }}
+                                                    onSelectedTeamChange={(teamId) => {
+                                                        setSelectedTeamId(teamId);
+                                                        saveEventRegistrationProgress({
+                                                            selectedTeamId: teamId || null,
+                                                        });
+                                                    }}
+                                                    onManageTeams={() => {
+                                                        router.push(`/teams?event=${currentEvent.$id}`);
+                                                        onClose();
+                                                    }}
+                                                    onJoinTeamWaitlist={() => {
+                                                        void handleJoinTeamWaitlist();
+                                                    }}
+                                                    onJoinAsTeam={() => {
+                                                        void handleJoinAsTeam();
+                                                    }}
+                                                    onWithdrawTeam={() => {
+                                                        void handleWithdrawTeam();
+                                                    }}
+                                                    onLeaveFreeAgents={() => {
+                                                        void handleLeaveFreeAgents();
+                                                    }}
+                                                    onJoinFreeAgents={() => {
+                                                        void handleJoinFreeAgents();
+                                                    }}
+                                                    onViewBracket={handleBracketClick}
+                                                />
+                                            ) : (
+                                                <EventIndividualRegistrationPanel
+                                                    selfRegistrationBlockedReason={selfRegistrationBlockedReason}
+                                                    isMinor={isMinor}
+                                                    showSelfWaitlistActions={showSelfWaitlistActions}
+                                                    isUserWaitlisted={isUserWaitlisted}
+                                                    selfWaitlistLeaveDisabled={selfWaitlistLeaveDisabled}
+                                                    selfWaitlistJoinDisabled={selfWaitlistJoinDisabled}
+                                                    selfJoinDisabled={selfJoinDisabled}
+                                                    eventHasStarted={eventHasStarted}
+                                                    joining={joining}
+                                                    confirmingPurchase={confirmingPurchase}
+                                                    priceCents={selectedDivisionBilling.priceCents}
+                                                    currentUserPaymentFailed={currentUserPaymentFailed}
+                                                    canShowScheduleButton={canShowScheduleButton}
+                                                    hostManageQrActions={renderHostManageQrActions()}
+                                                    childRegistrationPanel={childRegistrationPanel}
+                                                    onLeaveWaitlist={() => {
+                                                        void handleLeaveWaitlist();
+                                                    }}
+                                                    onJoinWaitlist={() => {
+                                                        void handleJoinWaitlist();
+                                                    }}
+                                                    onJoinEvent={() => {
+                                                        void handleJoinEvent();
+                                                    }}
+                                                />
+                                            )}
                                     </div>
                                 )}
                                     </>
