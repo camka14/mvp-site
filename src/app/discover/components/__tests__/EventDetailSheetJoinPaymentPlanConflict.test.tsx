@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 import { buildEvent, buildUser } from '../../../../../test/factories';
@@ -47,6 +47,7 @@ jest.mock('@/lib/userService', () => ({
 jest.mock('@/lib/teamService', () => ({
   teamService: {
     getTeamsByIds: jest.fn(),
+    getRegistrationQuestions: jest.fn(),
   },
 }));
 
@@ -72,6 +73,7 @@ jest.mock('@/lib/billingAddressService', () => ({
 jest.mock('@/lib/boldsignService', () => ({
   boldsignService: {
     createSignLinks: jest.fn(),
+    getOperationStatus: jest.fn(),
   },
 }));
 
@@ -110,6 +112,8 @@ import { eventService } from '@/lib/eventService';
 import { familyService } from '@/lib/familyService';
 import { paymentService } from '@/lib/paymentService';
 import { registrationService } from '@/lib/registrationService';
+import { signedDocumentService } from '@/lib/signedDocumentService';
+import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 
 const completeBillingAddressProfile = {
@@ -125,10 +129,22 @@ const completeBillingAddressProfile = {
   },
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe('EventDetailSheet payment-plan join conflicts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+    (teamService.getRegistrationQuestions as jest.Mock).mockResolvedValue([]);
     (billingAddressService.getBillingAddressProfile as jest.Mock).mockResolvedValue(completeBillingAddressProfile);
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       participants: {
@@ -151,6 +167,181 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
       participantCapacity: null,
       divisionWarnings: [],
     });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    Reflect.deleteProperty(global, 'fetch');
+  });
+
+  it('keeps registration phases exclusive and cancels required-document signing cleanly', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      $id: 'event_registration_phases',
+      teamSignup: false,
+      singleDivision: true,
+      divisions: ['open'],
+      divisionDetails: [{ id: 'open', name: 'Open', price: 0 }] as any,
+      start: futureStart,
+      price: 0,
+      requiredTemplateIds: ['template_waiver'],
+    });
+    const user = buildUser({ $id: 'user_registration_phases', dateOfBirth: '1990-01-01' });
+
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser: { $id: user.$id, email: 'user@example.com', name: user.fullName },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+    });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getRegistrationQuestions as jest.Mock).mockResolvedValue([{
+      id: 'question_1',
+      prompt: 'Why do you want to join?',
+      answerType: 'LONG_TEXT',
+      required: true,
+      sortOrder: 0,
+    }]);
+    (boldsignService.createSignLinks as jest.Mock).mockResolvedValue([{
+      templateId: 'template_waiver',
+      documentId: 'document_waiver',
+      type: 'TEXT',
+      title: 'Participation waiver',
+      content: 'I agree to participate safely.',
+      signerContext: 'participant',
+    }]);
+    (apiRequest as jest.Mock).mockResolvedValue({ ok: true });
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    await waitFor(() => {
+      expect(teamService.getRegistrationQuestions).toHaveBeenCalledWith('EVENT', event.$id);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Join Event/i }));
+
+    const questionsDialog = await screen.findByRole('dialog', { name: 'Registration questions' });
+    expect(screen.queryByRole('dialog', { name: 'Confirm your password' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Sign required documents' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Payment plan preview' })).not.toBeInTheDocument();
+
+    fireEvent.change(within(questionsDialog).getByLabelText(/Why do you want to join/), {
+      target: { value: 'To play with my community.' },
+    });
+    fireEvent.click(within(questionsDialog).getByRole('button', { name: 'Continue' }));
+
+    const passwordDialog = await screen.findByRole('dialog', { name: 'Confirm your password' });
+    expect(screen.getByRole('dialog', { name: 'Registration questions' })).not.toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'Sign required documents' })).not.toBeInTheDocument();
+    fireEvent.change(within(passwordDialog).getByLabelText(/Password/), { target: { value: 'test-password' } });
+    fireEvent.click(within(passwordDialog).getByRole('button', { name: 'Continue' }));
+
+    const signingDialog = await screen.findByRole('dialog', { name: 'Sign required documents' });
+    const questionsDialogAfterSigning = screen.queryByRole('dialog', { name: 'Registration questions' });
+    if (questionsDialogAfterSigning) {
+      expect(questionsDialogAfterSigning).not.toBeVisible();
+    }
+    expect(screen.getByRole('dialog', { name: 'Confirm your password' })).not.toBeVisible();
+    const signingCloseButton = signingDialog.querySelector<HTMLButtonElement>('.mantine-Modal-close');
+    expect(signingCloseButton).not.toBeNull();
+    fireEvent.click(signingCloseButton!);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'Sign required documents' })).not.toBeVisible();
+      expect(screen.getByText('Signature process canceled.')).toBeInTheDocument();
+    });
+    expect(registrationService.registerSelfForEvent).not.toHaveBeenCalled();
+    expect(signedDocumentService.isDocumentSigned).not.toHaveBeenCalled();
+  });
+
+  it('cancels an in-flight signing status poll when the event detail unmounts', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      $id: 'event_signing_poll_cleanup',
+      teamSignup: false,
+      singleDivision: true,
+      divisions: ['open'],
+      divisionDetails: [{ id: 'open', name: 'Open', price: 0 }] as any,
+      start: futureStart,
+      price: 0,
+      requiredTemplateIds: ['template_waiver'],
+    });
+    const user = buildUser({ $id: 'user_signing_poll_cleanup', dateOfBirth: '1990-01-01' });
+    const operationStatus = createDeferred<{ status: string }>();
+    const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
+    const fetchSpy = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ operationId: 'operation_waiver' }),
+    } as Response);
+    Object.defineProperty(global, 'fetch', {
+      configurable: true,
+      writable: true,
+      value: fetchSpy,
+    });
+
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser: { $id: user.$id, email: 'user@example.com', name: user.fullName },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+    });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (boldsignService.createSignLinks as jest.Mock).mockResolvedValue([{
+      templateId: 'template_waiver',
+      documentId: 'document_waiver',
+      type: 'TEXT',
+      title: 'Participation waiver',
+      content: 'I agree to participate safely.',
+      signerContext: 'participant',
+    }]);
+    (boldsignService.getOperationStatus as jest.Mock).mockReturnValue(operationStatus.promise);
+    (apiRequest as jest.Mock).mockResolvedValue({ ok: true });
+
+    const { unmount } = renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    await waitFor(() => {
+      expect(teamService.getRegistrationQuestions).toHaveBeenCalledWith('EVENT', event.$id);
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Join Event/i }));
+
+    const passwordDialog = await screen.findByRole('dialog', { name: 'Confirm your password' });
+    fireEvent.change(within(passwordDialog).getByLabelText(/Password/), {
+      target: { value: 'test-password' },
+    });
+    fireEvent.click(within(passwordDialog).getByRole('button', { name: 'Continue' }));
+
+    const signingDialog = await screen.findByRole('dialog', { name: 'Sign required documents' });
+    fireEvent.click(within(signingDialog).getByRole('checkbox', { name: 'I agree to the waiver above.' }));
+    fireEvent.click(within(signingDialog).getByRole('button', { name: 'Accept and continue' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith('/api/documents/record-signature', expect.any(Object));
+      expect(boldsignService.getOperationStatus).toHaveBeenCalledWith('operation_waiver');
+    });
+
+    unmount();
+    expect(clearIntervalSpy).toHaveBeenCalled();
+
+    await act(async () => {
+      operationStatus.resolve({ status: 'CONFIRMED' });
+      await operationStatus.promise;
+      await Promise.resolve();
+    });
+
+    expect(registrationService.registerSelfForEvent).not.toHaveBeenCalled();
+    expect(boldsignService.getOperationStatus).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces create-bill conflicts (409) and stops loading when no signing links are required', async () => {

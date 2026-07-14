@@ -15,7 +15,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:15Z) Reconciled AUD-003 against current source and measured `EventDetailSheet.tsx` at 7,219 lines, `EventForm.tsx` at 4,376 lines, `useDivisionEditorController.ts` at 843 lines, and `useStaffOfficialController.ts` at 892 lines.
 - [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
-- [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract. Completed: stale event-load response rejection with a deferred out-of-order regression. Remaining: registration/signing, slot/division, and consolidated imperative-contract cases.
+- [x] (2026-07-14 14:27Z) Milestone 1: characterized stale event loads, registration-step exclusivity, signing cancellation and in-flight poll cleanup, superseded slot-conflict requests, normalized division commits, and the complete `EventFormHandle` imperative contract.
 - [x] (2026-07-14 14:14Z) Milestone 2: extracted weekly-session calculations, division/registration eligibility and payment-plan calculations, organization/schedule/display presentation helpers, and their direct tests without changing state ownership or markup.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
@@ -51,6 +51,12 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: event-detail request deduplication did not prevent an older event response from overwriting a newly selected event.
   Evidence: a deferred regression loaded event B first, then resolved event A; before the fix, the hero changed back to A. Each hydration now owns a generation token, validates the current event after every await, and only the active generation may publish data or clear loading state.
+
+- Observation: closed Mantine dialogs do not have one uniform test-DOM lifetime.
+  Evidence: the registration-questions dialog is removed before signing opens, while the password and signing dialogs may remain mounted but invisible during their exit transitions. Characterization therefore asserts that exactly the current phase is visible instead of requiring every previous dialog to remain in or leave the DOM.
+
+- Observation: the existing signing status effect already rejects a deferred operation response after unmount.
+  Evidence: the new in-flight poll test reaches text-waiver acceptance, observes the immediate operation-status request, unmounts, resolves the deferred response as confirmed, and proves cleanup clears the interval without finalizing registration or scheduling another request.
 
 ## Decision Log
 
@@ -235,6 +241,16 @@ First Milestone 1 characterization evidence on 2026-07-14:
 
 The deferred event-switch regression proves a late response for event A cannot replace already-rendered event B. The generation guard also suppresses stale participant/free-agent side effects and prevents an obsolete request from clearing the current request's loading state.
 
+Completed Milestone 1 characterization evidence on 2026-07-14:
+
+    PASS 8 suites / 168 tests
+    PASS registration phase exclusivity and explicit signing cancellation
+    PASS deferred signing-operation cleanup after unmount
+    PASS latest-request-wins slot-conflict resolution
+    PASS normalized division commit and all seven EventFormHandle methods
+
+The characterization suite confirms that prior registration phases are not visible together, an in-flight signing response cannot finalize after cleanup, a late slot-conflict response cannot replace the current result, and division edits update the canonical form draft once. Existing dirty-baseline and same-id reload cases continue to cover form opening/reset behavior.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -248,3 +264,4 @@ Revision note (2026-07-14): Recorded the first partial pure-calculation mileston
 Revision note (2026-07-14): Continued Milestone 2 by extracting division, tournament-pool, and installment calculations with 26 passing focused tests, TypeScript, targeted lint, and a further 417-line reduction in the event-detail facade.
 Revision note (2026-07-14): Completed Milestone 2 by extracting public-detail presentation and eligibility rules with 33 passing focused tests, TypeScript, targeted lint, and a further 363-line reduction in the event-detail facade.
 Revision note (2026-07-14): Added the first Milestone 1 deferred-response characterization and closed the stale event-hydration race it exposed with 34 passing focused tests, TypeScript, and targeted lint.
+Revision note (2026-07-14): Completed Milestone 1 with registration-phase, signing-poll cleanup, slot-request invalidation, normalized division-commit, and full imperative-handle coverage; the combined safety net passes 168 tests across eight suites.

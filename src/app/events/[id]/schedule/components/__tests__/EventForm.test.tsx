@@ -15,6 +15,16 @@ jest.setTimeout(20000);
 let mockDateTimePickerValuesByLabel: Record<string, string> = {};
 let mockLeagueFieldsProps: any[] = [];
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 jest.mock('@mantine/core', () => {
   const actual = jest.requireActual('@mantine/core');
   return {
@@ -451,6 +461,32 @@ describe('EventForm dirty state', () => {
     officials: [
       { $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' },
     ],
+  });
+
+  it('exposes every imperative form command, including registration question drafts', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(jest.fn(), formRef, {}, null, { isCreateMode: true });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    expect(Object.keys(formRef.current!).sort()).toEqual([
+      'applyCanonicalStaffState',
+      'commitDirtyBaseline',
+      'getDraft',
+      'getRegistrationQuestionDrafts',
+      'getValidationErrors',
+      'validate',
+      'validatePendingStaffAssignments',
+    ]);
+    expect(formRef.current!.getDraft()).toEqual(expect.objectContaining({ name: 'Test Event' }));
+    expect(formRef.current!.getRegistrationQuestionDrafts()).toEqual([]);
+    expect(formRef.current!.getValidationErrors()).toEqual([]);
+    await act(async () => {
+      await formRef.current!.validatePendingStaffAssignments();
+    });
   });
 
   it('allows event payment plan totals to drive price instead of matching the existing price', async () => {
@@ -1186,6 +1222,76 @@ describe('EventForm dirty state', () => {
       const draft = formRef.current?.getDraft();
       expect(draft?.timeSlots?.[0]?.startDate).toBe('2026-05-04T09:00:00');
     });
+  });
+
+  it('ignores a late slot-conflict response after the event schedule changes', async () => {
+    const firstRequest = createDeferred<{ events: any[]; rentalSlots: any[] }>();
+    const secondRequest = createDeferred<{ events: any[]; rentalSlots: any[] }>();
+    let requestCount = 0;
+    mockDateTimePickerValuesByLabel['Start Date & Time'] = '2026-05-04T09:00:00';
+    (eventService.getBlockingForFieldInRange as jest.Mock).mockImplementation(() => {
+      requestCount += 1;
+      return requestCount === 1 ? firstRequest.promise : secondRequest.promise;
+    });
+
+    renderForm(jest.fn(), undefined, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      start: '2026-04-20T09:00:00',
+      end: '2026-06-01T17:00:00',
+      noFixedEndDateTime: false,
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [{
+        $id: 'slot_1',
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+        dayOfWeek: 0,
+        daysOfWeek: [0],
+        divisions: ['open'],
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 21 * 60,
+        repeating: true,
+        startDate: '2026-04-20T09:00:00',
+        endDate: '2026-06-01T17:00:00',
+      }],
+    });
+
+    await waitFor(() => {
+      expect(eventService.getBlockingForFieldInRange).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Date & Time' }));
+
+    await waitFor(() => {
+      expect(eventService.getBlockingForFieldInRange).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      secondRequest.resolve({ events: [], rentalSlots: [] });
+      await secondRequest.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('league-conflict-count')).toHaveTextContent('0');
+    });
+
+    await act(async () => {
+      firstRequest.resolve({
+        events: [{
+          $id: 'stale_blocking_event',
+          name: 'Stale blocking event',
+          eventType: 'EVENT',
+          start: '2026-04-20T09:00:00',
+          end: '2026-04-20T17:00:00',
+        }],
+        rentalSlots: [],
+      });
+      await firstRequest.promise;
+    });
+
+    expect(screen.getByTestId('league-conflict-count')).toHaveTextContent('0');
   });
 
   it('keeps external timeslot field conflicts as warnings during validation', async () => {
@@ -2028,6 +2134,47 @@ describe('EventForm dirty state', () => {
     expect(divisionSettingsSection).not.toBeNull();
     expect(screen.queryByLabelText('Max Participants')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Division Max Participants')).toBeInTheDocument();
+  });
+
+  it('commits one normalized division patch to the form draft', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(jest.fn(), formRef, {
+      singleDivision: false,
+      divisions: [],
+      divisionDetails: [],
+      maxParticipants: null,
+    });
+
+    const selectFirstAvailableOption = (label: string) => {
+      const select = screen.getByLabelText(label) as HTMLSelectElement;
+      const option = Array.from(select.options).find((candidate) => candidate.value.length > 0);
+      expect(option).toBeDefined();
+      fireEvent.change(select, { target: { value: option!.value } });
+      return option!.value;
+    };
+
+    const selectedGender = selectFirstAvailableOption('Gender');
+    const selectedSkill = selectFirstAvailableOption('Skill Division');
+    const selectedAge = selectFirstAvailableOption('Age Division');
+    fireEvent.change(screen.getByLabelText('Division Name'), { target: { value: 'River City Open' } });
+    fireEvent.change(screen.getByLabelText('Division Max Participants'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Division' }));
+
+    await waitFor(() => {
+      const draft = formRef.current!.getDraft();
+      expect(draft.divisionDetails).toHaveLength(1);
+      expect(draft.divisions).toEqual([draft.divisionDetails?.[0]?.id]);
+      expect(draft.divisionDetails?.[0]).toEqual(expect.objectContaining({
+        name: 'River City Open',
+        gender: selectedGender,
+        skillDivisionTypeId: selectedSkill,
+        ageDivisionTypeId: selectedAge,
+        maxParticipants: 8,
+        price: 0,
+      }));
+      expect(draft.maxParticipants).toBe(8);
+    });
   });
 
   it('warns for division max teams below two without coercing the input to two', async () => {
