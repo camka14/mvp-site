@@ -356,8 +356,8 @@ export default function EventDetailSheet({
     const [mobileJoinExpanded, setMobileJoinExpanded] = useState(false);
 
     const currentEventPublicUrl = React.useMemo(
-        () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
-        [currentEvent?.$id],
+        () => (currentEvent.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
+        [currentEvent.$id],
     );
     const currentOrganizationLogoId = React.useMemo(() => {
         const organization = currentEvent.organization;
@@ -378,7 +378,7 @@ export default function EventDetailSheet({
             return null;
         }
         return { slotId, occurrenceDate };
-    }, [selectedOccurrence?.occurrenceDate, selectedOccurrence?.slotId]);
+    }, [selectedOccurrence]);
     const selectedWeeklyOccurrenceOption = React.useMemo(
         () => (
             normalizedSelectedOccurrence
@@ -448,12 +448,12 @@ export default function EventDetailSheet({
     );
     const eventImageUrl = React.useMemo(
         () => getEventImageUrl({
-            imageId: currentEvent?.imageId,
+            imageId: currentEvent.imageId,
             width: 1200,
             height: 675,
             placeholderUrl: eventImageFallbackUrl,
         }),
-        [currentEvent?.imageId, eventImageFallbackUrl],
+        [currentEvent.imageId, eventImageFallbackUrl],
     );
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
@@ -494,8 +494,8 @@ export default function EventDetailSheet({
         [divisionOptions],
     );
     const divisionDisplayNameIndex = React.useMemo(
-        () => buildDivisionDisplayNameIndex(currentEvent?.divisionDetails),
-        [currentEvent?.divisionDetails],
+        () => buildDivisionDisplayNameIndex(currentEvent.divisionDetails),
+        [currentEvent.divisionDetails],
     );
     const eventDivisionLabels = React.useMemo(() => {
         const nameById = new Map<string, string>();
@@ -556,7 +556,7 @@ export default function EventDetailSheet({
         });
 
         return labels;
-    }, [currentEvent?.divisions, currentEvent?.sport, currentEvent?.sportId, allDivisionOptions]);
+    }, [currentEvent.divisions, currentEvent.sport, currentEvent.sportId, allDivisionOptions]);
     const selectedDivisionOption = React.useMemo(() => {
         if (!divisionOptions.length) {
             return null;
@@ -646,9 +646,9 @@ export default function EventDetailSheet({
         [currentEvent, teams],
     );
     const participantDivisionCapacityRows = React.useMemo<ParticipantDivisionCapacityRow[]>(() => {
-        const sportInput = typeof currentEvent?.sport === 'string'
+        const sportInput = typeof currentEvent.sport === 'string'
             ? currentEvent.sport
-            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
+            : currentEvent.sport?.name ?? currentEvent.sportId ?? null;
         return divisionCapacityBreakdown.map((row) => ({
             id: row.divisionId,
             label: resolveDivisionDisplayName({
@@ -663,7 +663,7 @@ export default function EventDetailSheet({
                 ? Math.min(100, Math.round((row.filled / row.capacity) * 100))
                 : 0,
         }));
-    }, [currentEvent?.sport, currentEvent?.sportId, divisionCapacityBreakdown, divisionDisplayNameIndex]);
+    }, [currentEvent.sport, currentEvent.sportId, divisionCapacityBreakdown, divisionDisplayNameIndex]);
     const selectedDivisionBilling = React.useMemo(() => {
         if (!currentEvent) {
             return {
@@ -758,7 +758,7 @@ export default function EventDetailSheet({
         const normalizedAmounts = normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts);
         const normalizedDueDates = normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates);
         const normalizedRelativeDueDays = normalizeInstallmentDueRelativeDayValues(selectedDivisionBilling.installmentDueRelativeDays);
-        const useRelativeDueDates = currentEvent?.eventType === 'WEEKLY_EVENT' && !currentEvent?.parentEvent;
+        const useRelativeDueDates = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
         const rowCount = Math.max(
             selectedDivisionBilling.installmentCount || 0,
             normalizedAmounts.length,
@@ -774,8 +774,8 @@ export default function EventDetailSheet({
                 : formatInstallmentDueDateLabel(normalizedDueDates[index] ?? ''),
         }));
     }, [
-        currentEvent?.eventType,
-        currentEvent?.parentEvent,
+        currentEvent.eventType,
+        currentEvent.parentEvent,
         selectedDivisionBilling.installmentAmounts,
         selectedDivisionBilling.installmentCount,
         selectedDivisionBilling.installmentDueDates,
@@ -922,7 +922,7 @@ export default function EventDetailSheet({
             kind: 'event',
             redirectUrl: publicCompletion.redirectUrl,
         });
-    }, [clearEventRegistrationProgress, publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
+    }, [clearEventRegistrationProgress, publicCompletion, router]);
 
     const {
         manualPaymentBill,
@@ -1064,7 +1064,7 @@ export default function EventDetailSheet({
     const closeFreeAgentsDropdown = useCallback(() => setShowFreeAgentsDropdown(false), []);
 
     const handleInviteFreeAgentToTeam = useCallback(() => {
-        if (!selectedFreeAgentActionUser || !currentEvent?.$id) {
+        if (!selectedFreeAgentActionUser || !currentEvent.$id) {
             return;
         }
         const params = new URLSearchParams({
@@ -1074,7 +1074,7 @@ export default function EventDetailSheet({
         setShowFreeAgentsDropdown(false);
         setSelectedFreeAgentActionUser(null);
         router.push(`/teams?${params.toString()}`);
-    }, [currentEvent?.$id, router, selectedFreeAgentActionUser]);
+    }, [currentEvent.$id, router, selectedFreeAgentActionUser]);
 
     // Update the join event handlers
     if (!currentEvent) return null;
