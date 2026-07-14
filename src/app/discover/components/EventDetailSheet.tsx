@@ -13,48 +13,20 @@ import {
 } from 'lucide-react';
 import {
     Event,
-    Match,
     UserData,
     Team,
-    getEventDateTime,
-    getUserFullName,
-    getUserHandle,
     getEventImageFallbackUrl,
     getEventImageUrl,
-    formatAffiliateEventPriceRange,
-    formatEventDivisionPriceRange,
     formatPrice,
 } from '@/types';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { formatAgeRange } from '@/lib/age';
-import { formatDisplayDate, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
-import { getFieldDisplayName } from '@/lib/fieldUtils';
-import { formatEnumDisplayLabel } from '@/lib/enumUtils';
-import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
-import { resolveDivisionDisplayName } from '@/lib/divisionDisplay';
-import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import {
-    getDivisionIdFromEventEntry,
-    getNormalizedDivisionAliases,
     normalizePriceCents,
 } from './eventDetail/divisionRegistration';
 import {
-    buildScheduleTimeslotGroups,
-    formatReadOnlyValueList,
-    formatRefundSummary,
-    formatRegistrationCutoffSummary,
-    formatSlotTimeRange,
-    getDayOfWeekLabel,
-    getOrganizationHostedByHref,
-    getOrganizationName,
-    getSportLabel,
-    normalizeComparableLabel,
-    uniqueNonEmptyStrings,
-} from './eventDetail/eventDetailPresentation';
-import {
     buildWeeklySessionOptions,
-    parseDateValue,
     resolveSelectedWeeklySessionOption,
     type WeeklySessionOption,
 } from './eventDetail/weeklySessions';
@@ -103,6 +75,7 @@ import { EventTeamParticipantCard } from './eventDetail/EventTeamParticipantCard
 import { EventDetailSheetSummary } from './eventDetail/EventDetailSheetSummary';
 import { PublicEventOverview } from './eventDetail/PublicEventOverview';
 import { PublicEventProgramDetails } from './eventDetail/PublicEventProgramDetails';
+import { buildEventDetailPublicModel } from './eventDetail/eventDetailPublicModel';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -693,287 +666,60 @@ export default function EventDetailSheet({
     if (!currentEvent) return null;
     if (!isActive) return null;
 
-    const { date, time } = getEventDateTime(currentEvent);
-    const affiliateActionUrl = normalizeExternalHttpUrl(currentEvent.affiliateUrl) ?? '';
-    const isAffiliateEvent = affiliateActionUrl.length > 0;
-    const normalizedDateDisplayMode = typeof currentEvent.dateDisplayMode === 'string'
-        ? currentEvent.dateDisplayMode.trim().toUpperCase()
-        : 'SCHEDULED';
-    const isEvergreenProgram = normalizedDateDisplayMode === 'NO_FIXED_DATE' || normalizedDateDisplayMode === 'ONGOING';
-    const eventScheduleDisplayText = isEvergreenProgram
-        ? (currentEvent.dateDisplayText?.trim() || currentEvent.scheduleText?.trim() || 'No fixed start date')
-        : `${date} at ${time}`;
-    const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
-    const startDateValue = parseDateValue(currentEvent.start ?? null);
-    const endDateValue = parseDateValue(currentEvent.end ?? null);
-    const sharesSingleDayWindow = Boolean(
-        startDateValue
-        && endDateValue
-        && startDateValue.toDateString() === endDateValue.toDateString(),
-    );
-    const sportLabel = getSportLabel(currentEvent);
-    const organization = typeof currentEvent.organization === 'object' && currentEvent.organization
-        ? currentEvent.organization
-        : null;
-    const organizationName = getOrganizationName(currentEvent.organization);
-    const isOrganizationEvent = typeof currentEvent.organizationId === 'string' && currentEvent.organizationId.trim().length > 0;
-    const hostedByLabel = (() => {
-        if (isOrganizationEvent && organizationName) {
-            return organizationName;
-        }
-        if (hostUser) {
-            return getUserFullName(hostUser);
-        }
-        if (organizationName) {
-            return organizationName;
-        }
-        const normalizedHostId = typeof currentEvent.hostId === 'string' ? currentEvent.hostId.trim() : '';
-        return normalizedHostId || 'Hosted by organizer';
-    })();
-    const hostedByHandle = !isOrganizationEvent && hostUser ? getUserHandle(hostUser) : null;
-    const hostedByHref = getOrganizationHostedByHref({
-        organization,
-        organizationId: currentEvent.organizationId,
-        affiliateUrl: affiliateActionUrl,
+    const {
+        affiliateActionUrl,
         isAffiliateEvent,
+        isEvergreenProgram,
+        eventScheduleDisplayText,
+        startDateValue,
+        endDateValue,
+        sharesSingleDayWindow,
+        sportLabel,
+        organization,
+        hostedByLabel,
+        hostedByHandle,
+        hostedByHref,
+        mapLat,
+        mapLng,
+        eventAddress,
+        mapEmbedSrc,
+        eventPriceSummary,
+        showSecurePaymentNote,
+        showPoweredByBracketIqNote,
+        registrationCutoffSummary,
+        refundSummary,
+        eventTypeLabel,
+        registrationTypeLabel,
+        spotsSummary,
+        eventLocationSummary,
+        shouldShowHostedByHeroLabel,
+        officialPositionsSummary,
+        assistantHostNames,
+        officialNames,
+        canViewStaffSection,
+        eventDisplayTimeZone,
+        schedulePreviewItems,
+        scheduleDateChips,
+        supportsScheduleDetails,
+        canShowScheduleButton,
+        showParticipantsSection,
+        scheduleButtonLabel,
+    } = buildEventDetailPublicModel({
+        event: currentEvent,
+        user,
+        hostUser,
+        teams,
+        participantCapacity,
+        spotsLeft,
+        selectedDivisionBillingPriceCents: selectedDivisionBilling.priceCents,
+        selectedDivisionOption,
+        divisionDisplayNameIndex,
+        isEventHost,
+        renderInline,
+        isWeeklyParentEvent,
+        now: todayForDob,
     });
-    const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
-    const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
-    const mapLng = hasCoordinates ? Number(currentEvent.coordinates[0]) : undefined;
-    const hasValidCoords = typeof mapLat === 'number' && typeof mapLng === 'number' && !Number.isNaN(mapLat) && !Number.isNaN(mapLng);
-    const eventAddress = (currentEvent.address || '').trim();
-    const mapQuery = eventAddress.length > 0
-        ? eventAddress
-        : (hasValidCoords ? `${mapLat},${mapLng}` : '');
-    const encodedMapQuery = encodeURIComponent(mapQuery);
-    const mapEmbedSrc = mapQuery
-        ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
-        : null;
-    const eventPriceSummary = isAffiliateEvent
-        ? formatAffiliateEventPriceRange(currentEvent)
-        : `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
-    const usesManualRegistrationPayments = currentEvent.registrationPaymentMode === 'MANUAL'
-        || (currentEvent.manualPaymentLinks ?? []).length > 0
-        || Boolean(currentEvent.manualPaymentInstructions?.trim());
-    const showSecurePaymentNote = !isAffiliateEvent
-        && !usesManualRegistrationPayments
-        && normalizePriceCents(selectedDivisionBilling.priceCents) > 0;
-    const showPoweredByBracketIqNote = !isAffiliateEvent;
-    const registrationCutoffSummary = formatRegistrationCutoffSummary(currentEvent.registrationCutoffHours);
-    const refundSummary = formatRefundSummary(currentEvent.cancellationRefundHours);
-    const eventTypeLabel = isEvergreenProgram
-        ? 'Program'
-        : formatEnumDisplayLabel(currentEvent.eventType, 'Event');
-    const registrationTypeLabel = isTeamSignup ? 'Team registration' : 'Individual registration';
-    const spotsSummary = participantCapacity > 0
-        ? `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`
-        : 'Open capacity';
-    const eventLocationSummary = currentEvent.location || 'Location coming soon';
-    const shouldShowHostedByHeroLabel = Boolean(
-        hostedByLabel
-        && normalizeComparableLabel(hostedByLabel) !== normalizeComparableLabel(eventLocationSummary)
-    );
-    const officialPositionsSummary = uniqueNonEmptyStrings(
-        (currentEvent.officialPositions ?? [])
-            .slice()
-            .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
-            .map((position) => {
-                const normalizedName = position.name?.trim() || 'Official';
-                const normalizedCount = Number.isFinite(Number(position.count))
-                    ? Math.max(1, Math.trunc(Number(position.count)))
-                    : 1;
-                return `${normalizedName} x${normalizedCount}`;
-            }),
-    ).join(', ') || 'None';
-    const assistantHostNames = (() => {
-        const hydratedIds = new Set((currentEvent.assistantHosts ?? []).map((entry) => entry.$id));
-        return uniqueNonEmptyStrings([
-            ...(currentEvent.assistantHosts ?? []).map((entry) => getUserFullName(entry)),
-            ...((currentEvent.assistantHostIds ?? []).filter((entry) => !hydratedIds.has(entry))),
-        ]);
-    })();
-    const officialNames = (() => {
-        const hydratedIds = new Set((currentEvent.officials ?? []).map((entry) => entry.$id));
-        return uniqueNonEmptyStrings([
-            ...(currentEvent.officials ?? []).map((entry) => getUserFullName(entry)),
-            ...((currentEvent.officialIds ?? []).filter((entry) => !hydratedIds.has(entry))),
-        ]);
-    })();
-    const normalizedViewerId = typeof user?.$id === 'string' ? user.$id.trim() : '';
-    const organizationHostIds = typeof currentEvent.organization === 'object' && currentEvent.organization
-        ? collectOrganizationHostIds(currentEvent.organization)
-        : [];
-    const canViewStaffSection = Boolean(
-        normalizedViewerId
-        && (
-            currentEvent.hostId === normalizedViewerId
-            || (currentEvent.assistantHostIds ?? []).includes(normalizedViewerId)
-            || (currentEvent.officialIds ?? []).includes(normalizedViewerId)
-            || organizationHostIds.includes(normalizedViewerId)
-        ),
-    );
-    const readOnlyFieldCount = (() => {
-        if (Array.isArray(currentEvent.fields) && currentEvent.fields.length > 0) {
-            return currentEvent.fields.length;
-        }
-        if (Array.isArray(currentEvent.fieldIds) && currentEvent.fieldIds.length > 0) {
-            return currentEvent.fieldIds.length;
-        }
-        if (typeof currentEvent.fieldCount === 'number' && Number.isFinite(currentEvent.fieldCount)) {
-            return Math.max(0, Math.trunc(currentEvent.fieldCount));
-        }
-        return 0;
-    })();
-    const scheduleFieldNamesById = new Map((currentEvent.fields ?? []).map((field) => [field.$id, field]));
-    const fallbackDivisionIds = Array.isArray(currentEvent.divisions)
-        ? currentEvent.divisions
-            .map((entry) => getDivisionIdFromEventEntry(entry))
-            .filter((entry): entry is string => Boolean(entry))
-        : [];
-    const scheduleTimeslotGroups = buildScheduleTimeslotGroups(currentEvent.timeSlots ?? []);
-    const teamNameById = new Map(teams.map((team) => [team.$id, team.name || 'Team']));
-    const selectedDivisionScheduleAliases = new Set<string>([
-        ...getNormalizedDivisionAliases(selectedDivisionOption?.id),
-        ...getNormalizedDivisionAliases(selectedDivisionOption?.key),
-        ...getNormalizedDivisionAliases(selectedDivisionOption?.divisionTypeKey),
-    ]);
-    const matchesSelectedScheduleDivision = (value: unknown): boolean => {
-        if (selectedDivisionScheduleAliases.size === 0) {
-            return false;
-        }
-        const aliases = new Set<string>();
-        if (value && typeof value === 'object') {
-            const row = value as { id?: unknown; $id?: unknown; key?: unknown; name?: unknown };
-            [row.id, row.$id, row.key, row.name].forEach((entry) => {
-                getNormalizedDivisionAliases(entry).forEach((alias) => aliases.add(alias));
-            });
-        } else {
-            getNormalizedDivisionAliases(value).forEach((alias) => aliases.add(alias));
-        }
-        return Array.from(aliases).some((alias) => selectedDivisionScheduleAliases.has(alias));
-    };
-    const getMatchTeamLabel = (match: Match, side: 'team1' | 'team2'): string => {
-        const hydratedTeam = match[side];
-        if (hydratedTeam && typeof hydratedTeam === 'object' && typeof hydratedTeam.name === 'string' && hydratedTeam.name.trim().length > 0) {
-            return hydratedTeam.name.trim();
-        }
-        const teamId = side === 'team1' ? match.team1Id : match.team2Id;
-        if (teamId && teamNameById.has(teamId)) {
-            return teamNameById.get(teamId) ?? 'Team';
-        }
-        const seed = side === 'team1' ? match.team1Seed : match.team2Seed;
-        return typeof seed === 'number' ? `Seed ${seed}` : 'TBD';
-    };
-    const eventDisplayTimeZone = normalizeTimeZone(currentEvent.timeZone);
-    const formatEventWeekday = (value: Date): string =>
-        new Intl.DateTimeFormat(undefined, {
-            weekday: 'short',
-            timeZone: eventDisplayTimeZone,
-        }).format(value);
-    const schedulePreviewItems = (() => {
-        const nowMs = todayForDob.getTime();
-        const allMatchRows = (currentEvent.matches ?? [])
-            .map((match) => {
-                const start = parseDateValue(match.start ?? null);
-                if (!start) {
-                    return null;
-                }
-                const fieldLabel = match.field
-                    ? getFieldDisplayName(match.field, match.fieldId ?? undefined)
-                    : match.fieldId
-                        ? getFieldDisplayName({ $id: match.fieldId, name: scheduleFieldNamesById.get(match.fieldId)?.name ?? '' }, match.fieldId)
-                        : 'Field TBD';
-                return {
-                    id: match.$id,
-                    startMs: start.getTime(),
-                    dateKey: formatDisplayDate(start, { year: '2-digit', timeZone: eventDisplayTimeZone }),
-                    dateLabel: formatDisplayDate(start, { year: '2-digit', timeZone: eventDisplayTimeZone }),
-                    dayLabel: formatEventWeekday(start),
-                    timeLabel: formatDisplayTime(start, { timeZone: eventDisplayTimeZone }),
-                    title: `${getMatchTeamLabel(match, 'team1')} vs ${getMatchTeamLabel(match, 'team2')}`,
-                    meta: fieldLabel,
-                    matchesSelectedDivision: matchesSelectedScheduleDivision(match.division),
-                };
-            })
-            .filter((row): row is NonNullable<typeof row> => row !== null)
-            .sort((left, right) => left.startMs - right.startMs);
-        const selectedDivisionMatchRows = allMatchRows.filter((row) => row.matchesSelectedDivision);
-        const matchRows = selectedDivisionMatchRows.length > 0 ? selectedDivisionMatchRows : allMatchRows;
-        const preferredMatches = matchRows.filter((row) => row.startMs >= nowMs);
-        const selectedMatches = (preferredMatches.length > 0 ? preferredMatches : matchRows).slice(0, 4);
-        if (selectedMatches.length > 0) {
-            return selectedMatches;
-        }
-
-        const timeslotRows = scheduleTimeslotGroups
-            .flatMap(([dayOfWeek, slots]) => slots.map((slot) => {
-                const slotDivisionIds = Array.isArray(slot.divisions) && slot.divisions.length
-                    ? slot.divisions
-                    : [];
-                const fieldNames = uniqueNonEmptyStrings(
-                    (
-                        Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
-                            ? slot.scheduledFieldIds
-                            : typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
-                                ? [slot.scheduledFieldId]
-                                : []
-                    ).map((fieldId: string) => {
-                        const resolved = scheduleFieldNamesById.get(fieldId);
-                        return getFieldDisplayName(
-                            { $id: fieldId, name: resolved?.name ?? '' },
-                            fieldId,
-                        );
-                    }),
-                );
-                const divisionNames = uniqueNonEmptyStrings(
-                    (
-                        slotDivisionIds.length
-                            ? slotDivisionIds
-                            : fallbackDivisionIds
-                    ).map((divisionId: string) => resolveDivisionDisplayName({
-                        division: divisionId,
-                        divisionNameIndex: divisionDisplayNameIndex,
-                        sportInput: sportLabel,
-                    }) ?? divisionId),
-                );
-                const dayLabel = getDayOfWeekLabel(dayOfWeek);
-                return {
-                    id: slot.$id,
-                    startMs: typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : Number.MAX_SAFE_INTEGER,
-                    dateKey: dayLabel,
-                    dateLabel: dayLabel,
-                    dayLabel: 'Weekly',
-                    timeLabel: formatSlotTimeRange(slot.startTimeMinutes, slot.endTimeMinutes),
-                    title: formatReadOnlyValueList(fieldNames, 'Fields TBD'),
-                    meta: formatReadOnlyValueList(divisionNames, 'All divisions'),
-                    matchesSelectedDivision: slotDivisionIds.some((divisionId) => matchesSelectedScheduleDivision(divisionId)),
-                };
-            }))
-            .sort((left, right) => left.startMs - right.startMs);
-        const selectedDivisionTimeslotRows = timeslotRows.filter((row) => row.matchesSelectedDivision);
-        return (selectedDivisionTimeslotRows.length > 0 ? selectedDivisionTimeslotRows : timeslotRows)
-            .slice(0, 4);
-    })();
-    const scheduleDateChips = Array.from(
-        schedulePreviewItems.reduce((entries, item) => {
-            if (!entries.has(item.dateKey)) {
-                entries.set(item.dateKey, {
-                    key: item.dateKey,
-                    dayLabel: item.dayLabel,
-                    dateLabel: item.dateLabel,
-                });
-            }
-            return entries;
-        }, new Map<string, { key: string; dayLabel: string; dateLabel: string }>()),
-    ).map(([, value]) => value).slice(0, 5);
-    const supportsScheduleDetails = currentEvent.eventType === 'LEAGUE'
-        || currentEvent.eventType === 'TOURNAMENT'
-        || currentEvent.eventType === 'WEEKLY_EVENT'
-        || Boolean(readOnlyFieldCount)
-        || Boolean(currentEvent.timeSlots?.length);
-    const canShowScheduleButton = isEventHost && !renderInline && !isWeeklyParentEvent;
-    const showParticipantsSection = !isWeeklyParentEvent;
-    const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
+    const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const renderHostManageQrActions = () => (
         <Group grow gap="sm" wrap="wrap">
             <Button
