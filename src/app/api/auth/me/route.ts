@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken, setAuthCookie, signSessionToken } from '@/lib/authServer';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
@@ -90,7 +89,7 @@ export async function GET(req: NextRequest) {
         sessionVersion: user.sessionVersion ?? 0,
       },
       token: refreshed,
-      profile: profileWithDerivedTeamIds ? withLegacyFields(applyNameCaseToUserFields(profileWithDerivedTeamIds)) : null,
+      profile: profileWithDerivedTeamIds ? applyNameCaseToUserFields(profileWithDerivedTeamIds) : null,
       ...buildProfileCompletionState({ authUser: user, profile }),
       requiresEmailVerification: false,
       verificationEmailSent: false,

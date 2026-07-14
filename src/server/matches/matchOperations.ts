@@ -494,7 +494,6 @@ export const normalizeScores = (value: unknown): Record<string, number> => {
 
 export const serializeMatchSegmentRow = (row: any): MatchSegment => ({
   id: String(row.id),
-  $id: String(row.id),
   eventId: row.eventId ?? null,
   matchId: String(row.matchId),
   sequence: normalizePositiveInt(row.sequence, 1),
@@ -514,7 +513,6 @@ export const serializeMatchSegmentRow = (row: any): MatchSegment => ({
 
 export const serializeMatchIncidentRow = (row: any): MatchIncident => ({
   id: String(row.id),
-  $id: String(row.id),
   eventId: row.eventId ?? null,
   matchId: String(row.matchId),
   segmentId: row.segmentId ?? null,
@@ -568,7 +566,6 @@ export const buildLegacySegments = (params: {
     }
     return {
       id: `${params.matchId}_segment_${sequence}`,
-      $id: `${params.matchId}_segment_${sequence}`,
       eventId: params.eventId ?? null,
       matchId: params.matchId,
       sequence,

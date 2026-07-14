@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { loadCanonicalTeamById, withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import {
@@ -306,7 +305,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json(
     {
-      users: withLegacyList(applyUserPrivacyList(orderedUsers, visibilityContext)),
+      users: applyUserPrivacyList(orderedUsers, visibilityContext),
       eventIds,
       freeAgentIds,
       eventTeams,

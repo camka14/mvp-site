@@ -5,7 +5,6 @@ import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import {
   inferDivisionDetails,
@@ -406,7 +405,7 @@ const hasVersionedProfileChanges = (
 };
 
 const withTeamRoleAliases = (team: Record<string, any>) => {
-  const formatted = withLegacyFields(team);
+  const formatted = team;
   const assistantCoachIds = toUniqueStrings((formatted as any).assistantCoachIds ?? (formatted as any).coachIds);
   return {
     ...formatted,

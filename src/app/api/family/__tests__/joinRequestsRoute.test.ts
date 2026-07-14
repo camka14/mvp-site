@@ -34,7 +34,6 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const withLegacyFieldsMock = jest.fn((row) => ({ ...row, $id: row.id }));
 const dispatchRequiredEventDocumentsMock = jest.fn();
 const listActiveChildIdsForParentMock = jest.fn();
 const acceptTeamInviteWithGuardianRulesMock = jest.fn();
@@ -42,7 +41,6 @@ const declineTeamInviteWithGuardianRulesMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
-jest.mock('@/server/legacyFormat', () => ({ withLegacyFields: withLegacyFieldsMock }));
 jest.mock('@/lib/eventConsentDispatch', () => ({
   dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
 }));

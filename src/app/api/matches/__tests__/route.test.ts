@@ -4,8 +4,6 @@ import { NextRequest } from 'next/server';
 
 const matchesFindManyMock = jest.fn();
 const eventsFindManyMock = jest.fn();
-const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
-const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 const parseDateInputMock = jest.fn((value: string | null) => (value ? new Date(value) : null));
 
 jest.mock('@/lib/prisma', () => ({
@@ -17,12 +15,6 @@ jest.mock('@/lib/prisma', () => ({
       findMany: (...args: any[]) => eventsFindManyMock(...args),
     },
   },
-}));
-
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
-  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
-  parseDateInput: (value: string | null) => parseDateInputMock(value),
 }));
 
 import { GET } from '@/app/api/matches/route';
@@ -80,7 +72,7 @@ describe('/api/matches GET', () => {
       id: 'm1',
       eventId: 'event_1',
       fieldId: 'field_1',
-      $id: 'm1',
+      id: 'm1',
       start: '2026-03-01T10:00:00.000Z',
       end: '2026-03-01T11:00:00.000Z',
     })]);

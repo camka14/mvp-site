@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   canAdministerBillPayment,
   cancelBillPaymentPlanForAction,
@@ -28,7 +27,7 @@ export async function POST(
       bill,
       now: new Date(),
     });
-    return NextResponse.json({ bill: withLegacyFields(updatedBill) }, { status: 200 });
+    return NextResponse.json({ bill: updatedBill }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to cancel payment plan';
     const status = message.includes('already completed') || message.includes('cannot be cancelled') ? 409 : 400;

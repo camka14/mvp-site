@@ -89,6 +89,19 @@ jest.mock('@/lib/organizationService', () => ({
   },
 }));
 
+const mockGetEventStaffState = jest.fn();
+const mockPutEventStaffState = jest.fn();
+jest.mock('@/lib/eventStaffService', () => {
+  const actual = jest.requireActual('@/lib/eventStaffService');
+  return {
+    ...actual,
+    eventStaffService: {
+      getEventStaffState: (...args: unknown[]) => mockGetEventStaffState(...args),
+      putEventStaffState: (...args: unknown[]) => mockPutEventStaffState(...args),
+    },
+  };
+});
+
 let capturedEventFormProps: any = null;
 let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
@@ -123,6 +136,7 @@ jest.mock('../components/EventForm', () => {
       validatePendingStaffAssignments: async () => mockValidatePendingStaffAssignments(),
       commitDirtyBaseline: () => mockCommitDirtyBaseline(),
       submitPendingStaffInvites: (eventId: string) => mockSubmitPendingStaffInvites(eventId),
+      applyCanonicalStaffState: jest.fn(),
     }));
     return (
       <div data-testid="event-form">
@@ -414,6 +428,26 @@ describe('League schedule page', () => {
     });
 
     jest.clearAllMocks();
+    mockGetEventStaffState.mockResolvedValue({
+      contractVersion: 1,
+      eventId: 'event_1',
+      revision: 'staff-revision-1',
+      assistantHostIds: [],
+      officialPositions: [],
+      eventOfficials: [],
+      officialIds: [],
+      staffInvites: [],
+    });
+    mockPutEventStaffState.mockResolvedValue({
+      contractVersion: 1,
+      eventId: 'event_1',
+      revision: 'staff-revision-2',
+      assistantHostIds: [],
+      officialPositions: [],
+      eventOfficials: [],
+      officialIds: [],
+      staffInvites: [],
+    });
     apiRequestMock.mockReset();
     (eventService.getEvent as jest.Mock).mockReset();
     (eventService.getEventById as jest.Mock).mockReset();
@@ -2208,7 +2242,10 @@ describe('League schedule page', () => {
     expect(eventService.createEvent).not.toHaveBeenCalled();
     expect(mockCommitDirtyBaseline).toHaveBeenCalledTimes(1);
     expect(mockValidatePendingStaffAssignments).toHaveBeenCalledTimes(1);
-    expect(mockSubmitPendingStaffInvites).toHaveBeenCalledWith('event_unpublished');
+    expect(mockPutEventStaffState).toHaveBeenCalledWith(
+      'event_unpublished',
+      expect.objectContaining({ contractVersion: 1 }),
+    );
   });
 
   it('saves a private league without changing lifecycle state', async () => {

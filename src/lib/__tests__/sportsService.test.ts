@@ -28,8 +28,10 @@ describe('sportsService', () => {
     apiRequestMock.mockResolvedValue({
       sports: [
         {
-          $id: 'Indoor Soccer',
+          id: 'Indoor Soccer',
           name: 'Indoor Soccer',
+          createdAt: '2026-07-14T10:00:00.000Z',
+          updatedAt: '2026-07-14T10:05:00.000Z',
           officialPositionTemplates: [
             { name: 'Referee', count: 2 },
           ],
@@ -65,6 +67,11 @@ describe('sportsService', () => {
     expect(sport.officialPositionTemplates).toEqual([
       { name: 'Referee', count: 2 },
     ]);
+    expect(sport).toEqual(expect.objectContaining({
+      $id: 'Indoor Soccer',
+      $createdAt: '2026-07-14T10:00:00.000Z',
+      $updatedAt: '2026-07-14T10:05:00.000Z',
+    }));
   });
 
   it('hydrates cached sports with preserved match rules templates', async () => {

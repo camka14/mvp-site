@@ -16,6 +16,10 @@ import { normalizeBracketSeed } from '@/lib/bracketSeeds';
 type ApiEntity = {
   $id?: string | number | null;
   id?: string | number | null;
+  $createdAt?: string | Date | null;
+  createdAt?: string | Date | null;
+  $updatedAt?: string | Date | null;
+  updatedAt?: string | Date | null;
 };
 
 const normalizeId = (value: unknown): string | undefined => {
@@ -28,20 +32,26 @@ const normalizeId = (value: unknown): string | undefined => {
   return undefined;
 };
 
-const withLegacyId = <T extends ApiEntity | null | undefined>(input: T): T => {
+export const normalizeApiEntity = <T extends ApiEntity | null | undefined>(input: T): T => {
   if (!input || typeof input !== 'object') {
     return input;
   }
   const next = { ...(input as Record<string, unknown>) } as Record<string, unknown>;
-  const id = normalizeId((next.$id as unknown) ?? next.id);
-  if (id && !next.$id) {
+  const id = normalizeId(next.id ?? (next.$id as unknown));
+  if (id) {
     next.$id = id;
+  }
+  if (next.createdAt !== undefined) {
+    next.$createdAt = next.createdAt;
+  }
+  if (next.updatedAt !== undefined) {
+    next.$updatedAt = next.updatedAt;
   }
   return next as T;
 };
 
 export const normalizeApiMatch = (input: Match): Match => {
-  const match = withLegacyId(input) as Match & {
+  const match = normalizeApiEntity(input) as Match & {
     field?: Field | string | null;
     team1?: Team | string | null;
     team2?: Team | string | null;
@@ -60,26 +70,26 @@ export const normalizeApiMatch = (input: Match): Match => {
     team1Seed: normalizeBracketSeed((match as any).team1Seed),
     team2Seed: normalizeBracketSeed((match as any).team2Seed),
     segments: Array.isArray(match.segments)
-      ? match.segments.map((segment) => withLegacyId(segment))
+      ? match.segments.map((segment) => normalizeApiEntity(segment))
       : match.segments,
     incidents: Array.isArray(match.incidents)
-      ? match.incidents.map((incident) => withLegacyId(incident))
+      ? match.incidents.map((incident) => normalizeApiEntity(incident))
       : match.incidents,
-    field: withLegacyId(match.field as Field | null) ?? match.field,
-    team1: withLegacyId(match.team1 as Team | null) ?? match.team1,
-    team2: withLegacyId(match.team2 as Team | null) ?? match.team2,
-    official: withLegacyId(match.official as UserData | null) ?? match.official,
-    teamOfficial: withLegacyId(match.teamOfficial as Team | null) ?? match.teamOfficial,
-    division: withLegacyId(match.division as Division | null) ?? match.division,
-    previousLeftMatch: withLegacyId(match.previousLeftMatch as Match | null) ?? match.previousLeftMatch,
-    previousRightMatch: withLegacyId(match.previousRightMatch as Match | null) ?? match.previousRightMatch,
-    winnerNextMatch: withLegacyId(match.winnerNextMatch as Match | null) ?? match.winnerNextMatch,
-    loserNextMatch: withLegacyId(match.loserNextMatch as Match | null) ?? match.loserNextMatch,
+    field: normalizeApiEntity(match.field as Field | null) ?? match.field,
+    team1: normalizeApiEntity(match.team1 as Team | null) ?? match.team1,
+    team2: normalizeApiEntity(match.team2 as Team | null) ?? match.team2,
+    official: normalizeApiEntity(match.official as UserData | null) ?? match.official,
+    teamOfficial: normalizeApiEntity(match.teamOfficial as Team | null) ?? match.teamOfficial,
+    division: normalizeApiEntity(match.division as Division | null) ?? match.division,
+    previousLeftMatch: normalizeApiEntity(match.previousLeftMatch as Match | null) ?? match.previousLeftMatch,
+    previousRightMatch: normalizeApiEntity(match.previousRightMatch as Match | null) ?? match.previousRightMatch,
+    winnerNextMatch: normalizeApiEntity(match.winnerNextMatch as Match | null) ?? match.winnerNextMatch,
+    loserNextMatch: normalizeApiEntity(match.loserNextMatch as Match | null) ?? match.loserNextMatch,
   };
 };
 
-const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
-  const slot = withLegacyId(input) as TimeSlot & { event?: Event | string; field?: Field | string };
+export const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
+  const slot = normalizeApiEntity(input) as TimeSlot & { event?: Event | string; field?: Field | string };
   const normalizedFieldIds: string[] = Array.from(
     new Set<string>(
       (Array.isArray((slot as any).scheduledFieldIds) && (slot as any).scheduledFieldIds.length
@@ -120,13 +130,13 @@ const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
           ),
         )
       : [],
-    event: withLegacyId(slot.event as Event | null) ?? slot.event,
-    field: withLegacyId(slot.field as Field | null) ?? slot.field,
+    event: normalizeApiEntity(slot.event as Event | null) ?? slot.event,
+    field: normalizeApiEntity(slot.field as Field | null) ?? slot.field,
   };
 };
 
-const normalizeApiField = (input: Field): Field => {
-  const field = withLegacyId(input) as Field & {
+export const normalizeApiField = (input: Field): Field => {
+  const field = normalizeApiEntity(input) as Field & {
     organization?: Organization | string;
     facility?: Facility | string | null;
     matches?: Match[];
@@ -135,8 +145,8 @@ const normalizeApiField = (input: Field): Field => {
 
   return {
     ...field,
-    organization: withLegacyId(field.organization as Organization | null) ?? field.organization,
-    facility: withLegacyId(field.facility as Facility | null) ?? field.facility,
+    organization: normalizeApiEntity(field.organization as Organization | null) ?? field.organization,
+    facility: normalizeApiEntity(field.facility as Facility | null) ?? field.facility,
     matches: Array.isArray(field.matches) ? field.matches.map(normalizeApiMatch) : field.matches,
     rentalSlots: Array.isArray(field.rentalSlots)
       ? field.rentalSlots.map(normalizeApiTimeSlot)
@@ -144,8 +154,8 @@ const normalizeApiField = (input: Field): Field => {
   };
 };
 
-const normalizeApiTeam = (input: Team): Team => {
-  const team = withLegacyId(input) as Team & {
+export const normalizeApiTeam = (input: Team): Team => {
+  const team = normalizeApiEntity(input) as Team & {
     division?: Division | string;
     players?: UserData[];
     captain?: UserData | string;
@@ -155,11 +165,11 @@ const normalizeApiTeam = (input: Team): Team => {
 
   return {
     ...team,
-    division: withLegacyId(team.division as Division | null) ?? team.division,
-    players: Array.isArray(team.players) ? team.players.map((player) => withLegacyId(player) as UserData) : team.players,
-    captain: withLegacyId(team.captain as UserData | null) ?? team.captain,
+    division: normalizeApiEntity(team.division as Division | null) ?? team.division,
+    players: Array.isArray(team.players) ? team.players.map((player) => normalizeApiEntity(player) as UserData) : team.players,
+    captain: normalizeApiEntity(team.captain as UserData | null) ?? team.captain,
     pendingPlayers: Array.isArray(team.pendingPlayers)
-      ? team.pendingPlayers.map((player) => withLegacyId(player) as UserData)
+      ? team.pendingPlayers.map((player) => normalizeApiEntity(player) as UserData)
       : team.pendingPlayers,
     matches: Array.isArray(team.matches) ? team.matches.map(normalizeApiMatch) : team.matches,
   };
@@ -169,7 +179,7 @@ export const normalizeApiEvent = (input?: Event | null): Event | null => {
   if (!input) {
     return null;
   }
-  const event = withLegacyId(input) as Event & {
+  const event = normalizeApiEntity(input) as Event & {
     sport?: Sport | string;
     organization?: Organization | string;
     leagueScoringConfig?: LeagueScoringConfig | string;
@@ -183,19 +193,19 @@ export const normalizeApiEvent = (input?: Event | null): Event | null => {
 
   return {
     ...event,
-    sport: withLegacyId(event.sport as Sport | null) ?? event.sport,
-    organization: withLegacyId(event.organization as Organization | null) ?? event.organization,
+    sport: normalizeApiEntity(event.sport as Sport | null) ?? event.sport,
+    organization: normalizeApiEntity(event.organization as Organization | null) ?? event.organization,
     leagueScoringConfig:
-      withLegacyId(event.leagueScoringConfig as LeagueScoringConfig | null) ?? event.leagueScoringConfig,
+      normalizeApiEntity(event.leagueScoringConfig as LeagueScoringConfig | null) ?? event.leagueScoringConfig,
     teams: Array.isArray(event.teams) ? event.teams.map(normalizeApiTeam) : event.teams,
     fields: Array.isArray(event.fields) ? event.fields.map(normalizeApiField) : event.fields,
     timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots.map(normalizeApiTimeSlot) : event.timeSlots,
     matches: Array.isArray(event.matches) ? event.matches.map(normalizeApiMatch) : event.matches,
     officials: Array.isArray(event.officials)
-      ? event.officials.map((official) => withLegacyId(official) as UserData)
+      ? event.officials.map((official) => normalizeApiEntity(official) as UserData)
       : event.officials,
     players: Array.isArray(event.players)
-      ? event.players.map((player) => withLegacyId(player) as UserData)
+      ? event.players.map((player) => normalizeApiEntity(player) as UserData)
       : event.players,
   };
 };

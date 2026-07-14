@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
@@ -97,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
     });
 
     return NextResponse.json({
-      registration: withLegacyFields(declined),
+      registration: declined,
       action: 'declined',
     }, { status: 200 });
   }
@@ -184,7 +183,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
   ].filter((value) => value.trim().length > 0);
 
   return NextResponse.json({
-    registration: withLegacyFields(approved),
+    registration: approved,
     action: 'approved',
     consent: needsConsent
       ? {

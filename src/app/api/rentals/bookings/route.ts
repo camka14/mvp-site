@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
-import { attachFacilitiesToFieldRows, withLegacyFieldPayload } from '@/server/fieldFacilityPayload';
-import { withLegacyFields } from '@/server/legacyFormat';
+import { attachFacilitiesToFieldRows, toFieldResponse } from '@/server/fieldFacilityPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -162,13 +161,13 @@ export async function GET(req: NextRequest) {
     }),
   );
   const fieldById = new Map<string, any>(
-    fields.map((field: any) => [String(field.id), withLegacyFieldPayload(field)]),
+    fields.map((field: any) => [String(field.id), toFieldResponse(field)]),
   );
   const organizationById = new Map<string, any>(
-    bookingOrganizations.map((organization: any) => [String(organization.id), withLegacyFields(organization)]),
+    bookingOrganizations.map((organization: any) => [String(organization.id), organization]),
   );
   const facilityById = new Map<string, any>(
-    bookingItemFacilities.map((facility: any) => [String(facility.id), withLegacyFields(facility)]),
+    bookingItemFacilities.map((facility: any) => [String(facility.id), facility]),
   );
   const itemsByBookingId = new Map<string, any[]>();
   items.forEach((item: any) => {
@@ -179,13 +178,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     bookings: bookings
       .map((booking: any) => ({
-        ...withLegacyFields(booking),
+        ...booking,
         organization: organizationById.get(String(booking.organizationId)) ?? null,
         items: (itemsByBookingId.get(String(booking.id)) ?? []).map((item: any) => {
           const facility = item.facilityId ? facilityById.get(String(item.facilityId)) ?? null : null;
           const field = fieldById.get(String(item.fieldId)) ?? null;
           return {
-            ...withLegacyFields(item),
+            ...item,
             start: item.start instanceof Date ? item.start.toISOString() : item.start,
             end: item.end instanceof Date ? item.end.toISOString() : item.end,
             facility,

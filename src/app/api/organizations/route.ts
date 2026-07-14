@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   ORG_TAX_AGREEMENT_VERSION,
   normalizeOrganizationDefaultEventTaxHandling,
@@ -339,7 +338,7 @@ export async function GET(req: NextRequest) {
       const organizationId = typeof facility.organizationId === 'string' ? facility.organizationId : '';
       if (!organizationId) return;
       const facilities = affiliateFacilitiesByOrganizationId.get(organizationId) ?? [];
-      facilities.push(withLegacyFields(facility));
+      facilities.push(facility);
       affiliateFacilitiesByOrganizationId.set(organizationId, facilities);
     });
   }
@@ -366,7 +365,7 @@ export async function GET(req: NextRequest) {
       }));
 
   return NextResponse.json({
-    organizations: withLegacyList(responseRows),
+    organizations: responseRows,
     pagination: {
       limit: normalizedLimit,
       offset: normalizedOffset,
@@ -459,5 +458,5 @@ export async function POST(req: NextRequest) {
     });
   });
 
-  return NextResponse.json(withLegacyFields({ ...organization, productIds: [], tags }), { status: 201 });
+  return NextResponse.json({ ...organization, productIds: [], tags }, { status: 201 });
 }

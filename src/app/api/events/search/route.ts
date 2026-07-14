@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import {
@@ -72,20 +71,16 @@ const isUsableUserLocation = (lat: unknown, lon: unknown): boolean => {
   return !(lat === 0 && lon === 0);
 };
 
-const withLegacyEvent = (row: any) => {
-  const normalizedRow = {
-    ...row,
-    end: row.end ?? (row.noFixedEndDateTime === true ? row.start : row.end),
-  };
-  const legacy = withLegacyFields(normalizedRow);
-  if (!Array.isArray((legacy as any).divisions)) {
-    (legacy as any).divisions = Array.isArray((legacy as any).divisionDetails)
-      ? (legacy as any).divisionDetails
+const toEventResponse = (row: any) => {
+  const response = { ...row };
+  if (!Array.isArray((response as any).divisions)) {
+    (response as any).divisions = Array.isArray((response as any).divisionDetails)
+      ? (response as any).divisionDetails
           .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
           .filter((id: string | null): id is string => Boolean(id))
       : [];
   }
-  return legacy;
+  return response;
 };
 
 const normalizeDivisionKey = (value: unknown): string | null => {
@@ -723,7 +718,7 @@ export async function POST(req: NextRequest) {
   const normalized = eventsWithParticipants.map((event) => {
     const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
     const organizationId = typeof event.organizationId === 'string' ? event.organizationId : '';
-    return withLegacyEvent({
+    return toEventResponse({
       ...event,
       organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(event.id) ?? [],

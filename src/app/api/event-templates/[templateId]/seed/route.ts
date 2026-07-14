@@ -7,6 +7,7 @@ import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import {
   buildSeedEventFromTemplate,
   getEventTemplate,
+  serializeSeedEvent,
 } from '@/server/eventTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -66,5 +67,5 @@ export async function POST(req: NextRequest, context: RouteContext) {
     hostId: session.userId,
   });
 
-  return NextResponse.json({ event }, { status: 200 });
+  return NextResponse.json({ event: serializeSeedEvent(event) }, { status: 200 });
 }

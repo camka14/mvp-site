@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 const removeSchema = z.object({
@@ -36,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    return NextResponse.json(withLegacyFields(updated), { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to remove admin message', error);

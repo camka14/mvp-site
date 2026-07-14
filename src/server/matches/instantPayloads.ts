@@ -1,5 +1,3 @@
-import { withLegacyFields } from '@/server/legacyFormat';
-
 const EXPLICIT_OFFSET_SUFFIX = /([+-]\d{2}:?\d{2}|Z)$/i;
 
 const parseExplicitInstantString = (value: string): Date | null => {
@@ -32,13 +30,18 @@ export const serializeInstantField = (value: unknown): string | null => {
   return null;
 };
 
-export const serializeMatchRecordLegacy = <T extends Record<string, any>>(match: T) => ({
-  ...withLegacyFields(match),
-  start: serializeInstantField(match.start),
-  end: serializeInstantField(match.end),
-  actualStart: serializeInstantField(match.actualStart),
-  actualEnd: serializeInstantField(match.actualEnd),
-});
+export const serializeMatchRecord = <T extends Record<string, any>>(match: T) => {
+  const canonicalFields = Object.fromEntries(
+    Object.entries(match).filter(([key]) => !key.startsWith('$')),
+  );
+  return {
+    ...canonicalFields,
+    start: serializeInstantField(match.start),
+    end: serializeInstantField(match.end),
+    actualStart: serializeInstantField(match.actualStart),
+    actualEnd: serializeInstantField(match.actualEnd),
+  };
+};
 
-export const serializeMatchRecordsLegacy = <T extends Record<string, any>>(matches: T[]) =>
-  matches.map((match) => serializeMatchRecordLegacy(match));
+export const serializeMatchRecords = <T extends Record<string, any>>(matches: T[]) =>
+  matches.map((match) => serializeMatchRecord(match));

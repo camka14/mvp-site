@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ModerationReportStatusEnum, ModerationReportTargetTypeEnum } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -118,10 +117,10 @@ export async function GET(req: NextRequest) {
     ]);
 
     const reportersById = new Map(
-      reporters.map((reporter) => [reporter.id, withLegacyFields(applyNameCaseToUserFields(reporter))]),
+      reporters.map((reporter) => [reporter.id, applyNameCaseToUserFields(reporter)]),
     );
     const reviewersById = new Map(
-      reviewers.map((reviewer) => [reviewer.id, withLegacyFields(applyNameCaseToUserFields(reviewer))]),
+      reviewers.map((reviewer) => [reviewer.id, applyNameCaseToUserFields(reviewer)]),
     );
     const chatOwnersById = new Map(chatOwners.map((chat) => [chat.id, chat.hostId]));
     const eventOwnersById = new Map(eventOwners.map((event) => [event.id, event.hostId]));
@@ -130,7 +129,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
-        reports: withLegacyList(reports).map((report) => ({
+        reports: reports.map((report) => ({
           ...report,
           reporter: reportersById.get(report.reporterUserId) ?? null,
           reviewer: report.reviewedByUserId ? reviewersById.get(report.reviewedByUserId) ?? null : null,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOptionalSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { parseDateInput } from '@/server/requestParsing';
 import { getVisibleEventIds } from '@/server/eventVisibility';
 import { canManageScheduledFields } from '@/server/timeSlotAccess';
@@ -674,7 +673,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
     : [];
 
   return NextResponse.json({
-    events: [...filteredEvents, ...rentalBookingEvents].map((event) => withLegacyFields(event)),
-    rentalSlots: filteredRentalSlots.map((slot) => withLegacyFields(slot)),
+    events: [...filteredEvents, ...rentalBookingEvents].map((event) => event),
+    rentalSlots: filteredRentalSlots.map((slot) => slot),
   }, { status: 200 });
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { getSocialGraphForUser } from '@/server/socialGraph';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
 import { applyUserPrivacyList, createVisibilityContext } from '@/server/userPrivacy';
@@ -18,17 +17,13 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json(
       {
-        user: withLegacyFields(applyNameCaseToUserFields(socialGraph.user)),
-        friends: withLegacyList(applyUserPrivacyList(socialGraph.friends, visibilityContext)),
-        following: withLegacyList(applyUserPrivacyList(socialGraph.following, visibilityContext)),
-        followers: withLegacyList(applyUserPrivacyList(socialGraph.followers, visibilityContext)),
-        incomingFriendRequests: withLegacyList(
-          applyUserPrivacyList(socialGraph.incomingFriendRequests, visibilityContext),
-        ),
-        outgoingFriendRequests: withLegacyList(
-          applyUserPrivacyList(socialGraph.outgoingFriendRequests, visibilityContext),
-        ),
-        blocked: withLegacyList(applyUserPrivacyList(socialGraph.blocked, visibilityContext)),
+        user: applyNameCaseToUserFields(socialGraph.user),
+        friends: applyUserPrivacyList(socialGraph.friends, visibilityContext),
+        following: applyUserPrivacyList(socialGraph.following, visibilityContext),
+        followers: applyUserPrivacyList(socialGraph.followers, visibilityContext),
+        incomingFriendRequests: applyUserPrivacyList(socialGraph.incomingFriendRequests, visibilityContext),
+        outgoingFriendRequests: applyUserPrivacyList(socialGraph.outgoingFriendRequests, visibilityContext),
+        blocked: applyUserPrivacyList(socialGraph.blocked, visibilityContext),
       },
       { status: 200 },
     );

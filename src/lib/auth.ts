@@ -27,18 +27,21 @@ export interface AuthSessionResult {
 
 const normalizeUserData = (user: UserData | null): UserData | null => {
   if (!user) return null;
+  const raw = user as UserData & {
+    id?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
   const normalizedUser = {
     ...user,
+    $id: raw.id ?? user.$id,
+    $createdAt: raw.createdAt ?? user.$createdAt,
+    $updatedAt: raw.updatedAt ?? user.$updatedAt,
     firstName: normalizeOptionalName(user.firstName) ?? '',
     lastName: normalizeOptionalName(user.lastName) ?? '',
     onboardingIntent: normalizeOnboardingIntent(user.onboardingIntent),
     accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   };
-  if (normalizedUser.$id) return normalizedUser;
-  const raw = user as UserData & { id?: string };
-  if (raw.id) {
-    return { ...normalizedUser, $id: raw.id };
-  }
   return normalizedUser;
 };
 
@@ -160,12 +163,13 @@ const buildAuthSessionResult = (data: AuthPayload): AuthSessionResult => {
   if (!data.user) throw new Error('Authentication failed');
   const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
   const mapped = mapAuthUser(data.user, data.session);
+  const profile = normalizeUserData(data.profile ?? null);
   authService.setCurrentAuthUser(mapped);
-  if (data.profile) authService.setCurrentUserData(data.profile as UserData);
+  if (profile) authService.setCurrentUserData(profile);
   authService.setGuest(false);
   return {
     user: mapped,
-    profile: (data.profile as UserData) ?? null,
+    profile,
     session: data.session ?? null,
     token: data.token ?? null,
     requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
@@ -277,11 +281,12 @@ export const authService = {
       };
     }
     const mapped = mapAuthUser(data.user, data.session);
+    const profile = normalizeUserData(data.profile ?? null);
     this.setCurrentAuthUser(mapped);
-    if (data.profile) this.setCurrentUserData(data.profile as UserData);
+    if (profile) this.setCurrentUserData(profile);
     return {
       user: mapped,
-      profile: (data.profile as UserData) ?? null,
+      profile,
       session: data.session ?? null,
       token: data.token ?? null,
       requiresProfileCompletion,

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { registerPushDeviceTarget, unregisterPushDeviceTarget } from '@/server/pushNotifications';
 import {
   getRetainedDirectMessagePair,
@@ -219,7 +218,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
       });
     }
 
-    return NextResponse.json({ topicId, topic: record ? withLegacyFields(record) : null }, { status: 200 });
+    return NextResponse.json({ topicId, topic: record ? record : null }, { status: 200 });
   } catch (error) {
     return asRouteErrorResponse(error);
   }
@@ -295,7 +294,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
         },
       });
 
-    return NextResponse.json({ topicId, topic: withLegacyFields(record) }, { status: 200 });
+    return NextResponse.json({ topicId, topic: record }, { status: 200 });
   } catch (error) {
     return asRouteErrorResponse(error);
   }

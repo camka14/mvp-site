@@ -23,6 +23,7 @@ import { Copy, Eye, Radio, RotateCw, Send, Settings2 } from 'lucide-react';
 import BroadcastControlRoom from '@/components/broadcast/BroadcastControlRoom';
 import { DEFAULT_BROADCAST_OVERLAY_CONFIG, parseBroadcastOverlayConfig } from '@/server/broadcast/schemas';
 import type { BroadcastOverlayConfigV1, MatchPresentationStateV1 } from '@/server/broadcast/types';
+import { normalizeApiEntity } from '@/lib/apiMappers';
 
 type AdminEventOption = { $id: string; name?: string | null; organizationId?: string | null };
 type OverlayRow = {
@@ -98,7 +99,9 @@ export default function AdminBroadcastOverlaysPanel({ active, refreshKey }: Admi
     const response = await fetch('/api/admin/events?limit=100&offset=0', { credentials: 'include' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.error || 'Unable to load events.');
-    const nextEvents = Array.isArray(payload.events) ? payload.events as AdminEventOption[] : [];
+    const nextEvents = Array.isArray(payload.events)
+      ? payload.events.map((event: AdminEventOption & { id?: string }) => normalizeApiEntity(event)) as AdminEventOption[]
+      : [];
     setEvents(nextEvents);
     setEventId((current) => current && nextEvents.some((event) => event.$id === current) ? current : nextEvents[0]?.$id ?? null);
   }, []);

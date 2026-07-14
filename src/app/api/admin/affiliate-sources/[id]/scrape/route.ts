@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import { runAffiliateSourceScrape } from '@/server/affiliateImports/service';
 
@@ -21,8 +20,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const result = await runAffiliateSourceScrape(sourceId, { requestedByUserId: session.userId });
     return NextResponse.json(
       {
-        run: withLegacyFields(result.run),
-        candidates: withLegacyList(result.candidates),
+        run: result.run,
+        candidates: result.candidates,
       },
       { status: 200 },
     );

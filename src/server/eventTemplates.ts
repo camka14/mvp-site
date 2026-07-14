@@ -690,6 +690,33 @@ export const buildSeedEventFromTemplate = (
   } as Event;
 };
 
+const serializeSeedValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(serializeSeedValue);
+  }
+  if (!value || typeof value !== 'object' || value instanceof Date) {
+    return value;
+  }
+
+  const row = value as Record<string, unknown>;
+  const response: Record<string, unknown> = {};
+  const canonicalId = normalizeId(row.id) ?? normalizeId(row.$id);
+  for (const [key, entry] of Object.entries(row)) {
+    if (key.startsWith('$')) {
+      continue;
+    }
+    response[key] = serializeSeedValue(entry);
+  }
+  if (canonicalId) {
+    response.id = canonicalId;
+  }
+  return response;
+};
+
+export const serializeSeedEvent = (event: Event): Record<string, unknown> => (
+  serializeSeedValue(event) as Record<string, unknown>
+);
+
 export const archiveEventTemplate = async (
   templateId: string,
   client: PrismaClientLike = prisma,

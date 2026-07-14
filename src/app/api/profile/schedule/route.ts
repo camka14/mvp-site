@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { parseDateInput } from '@/server/requestParsing';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
-import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
+import { serializeMatchRecords } from '@/server/matches/instantPayloads';
 import {
   getScheduleTeamsDelegate,
   loadProfileScheduleScope,
@@ -235,10 +234,10 @@ export async function GET(req: NextRequest) {
   ]);
 
   return NextResponse.json({
-    events: withLegacyList(eventDtos),
-    matches: serializeMatchRecordsLegacy(matches),
-    fields: withLegacyList(fields),
-    teams: withLegacyList(teams as Record<string, any>[]),
+    events: eventDtos,
+    matches: serializeMatchRecords(matches),
+    fields: fields,
+    teams: teams as Record<string, any>[],
     pagination: {
       limit,
       hasMore,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { followUser } from '@/server/socialGraph';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
 
@@ -20,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const user = await followUser(session.userId, parsed.data.targetUserId);
-    return NextResponse.json({ user: withLegacyFields(user) }, { status: 200 });
+    return NextResponse.json({ user: user }, { status: 200 });
   } catch (error) {
     return toSocialErrorResponse(error);
   }

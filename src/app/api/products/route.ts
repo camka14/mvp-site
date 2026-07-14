@@ -3,7 +3,6 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import type { Product, ProductType } from '@/types';
@@ -55,7 +54,7 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    products: withLegacyList(products).map((product) => ({
+    products: products.map((product) => ({
       ...product,
       productType: deriveProductTypeFromTaxCategory(
         product.taxCategory as Product['taxCategory'],
@@ -147,7 +146,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({
-    ...withLegacyFields(product),
+    ...product,
     productType: deriveProductTypeFromTaxCategory(
       product.taxCategory as Product['taxCategory'],
       product.period as Product['period'],

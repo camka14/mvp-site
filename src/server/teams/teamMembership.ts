@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { normalizeOptionalName } from '@/lib/nameCase';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { upsertEventRegistration, type RegistrationLifecycleStatus } from '@/server/events/eventRegistrations';
 import {
   TEAM_JOIN_POLICY_CLOSED,
@@ -389,7 +388,7 @@ export const serializeCanonicalTeam = (params: {
   const captainRegistration = activePlayerRegistrations.find((row) => Boolean(row.isCaptain))
     ?? (managerUserId ? (activePlayerRegistrations.find((row) => row.userId === managerUserId) ?? null) : null);
 
-  return withLegacyFields({
+  return {
     ...params.team,
     visibility: normalizeTeamVisibility(params.team.visibility),
     joinPolicy,
@@ -403,7 +402,7 @@ export const serializeCanonicalTeam = (params: {
     headCoachId: normalizeId(headCoachAssignment?.userId),
     coachIds: assistantCoachAssignments.map((row) => row.userId),
     assistantCoachIds: assistantCoachAssignments.map((row) => row.userId),
-    playerRegistrations: params.playerRegistrations.map((row) => withLegacyFields({
+    playerRegistrations: params.playerRegistrations.map((row) => ({
       ...row,
       registrantId: normalizeId(row.userId) ?? '',
       parentId: normalizeId(row.parentId),
@@ -415,17 +414,17 @@ export const serializeCanonicalTeam = (params: {
       consentDocumentId: normalizeId(row.consentDocumentId),
       consentStatus: normalizeId(row.consentStatus),
     })),
-    staffAssignments: params.staffAssignments.map((row) => withLegacyFields({
+    staffAssignments: params.staffAssignments.map((row) => ({
       ...row,
       role: String(row.role ?? '').toUpperCase(),
     })),
-  });
+  };
 };
 
-const serializeLegacyEventTeam = (
+const serializeEventTeam = (
   team: EventTeamRow,
   registrationSettings?: TeamRegistrationSettingsSource | null,
-) => withLegacyFields({
+) => ({
   ...team,
   joinPolicy: registrationSettings ? resolveSerializedTeamJoinPolicy(registrationSettings) : TEAM_JOIN_POLICY_CLOSED,
   openRegistration: registrationSettings
@@ -446,15 +445,15 @@ const serializeLegacyEventTeam = (
   pending: normalizeIdList(team.pending),
 });
 
-const serializeLegacyEventTeamsWithRegistrationSettings = async (
+const serializeEventTeamsWithRegistrationSettings = async (
   client: PrismaLike,
   rows: EventTeamRow[],
-): Promise<Array<ReturnType<typeof serializeLegacyEventTeam>>> => {
+): Promise<Array<ReturnType<typeof serializeEventTeam>>> => {
   const settingsByTeamId = await loadRegistrationSettingsByTeamId(
     client,
     rows.map((row) => row.parentTeamId),
   );
-  return rows.map((row) => serializeLegacyEventTeam(
+  return rows.map((row) => serializeEventTeam(
     row,
     settingsByTeamId.get(normalizeId(row.parentTeamId) ?? ''),
   ));
@@ -619,7 +618,7 @@ export const listTeamsByIds = async (
   }
 
   const eventId = normalizeId(options.eventId);
-  const teamsById = new Map<string, ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeLegacyEventTeam>>();
+  const teamsById = new Map<string, ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeEventTeam>>();
   const eventTeamsDelegate = getEventTeamsDelegate(client);
   if (eventId && eventTeamsDelegate?.findMany) {
     const rows = await eventTeamsDelegate.findMany({
@@ -628,7 +627,7 @@ export const listTeamsByIds = async (
         eventId,
       },
     }) as EventTeamRow[];
-    const serializedRows = await serializeLegacyEventTeamsWithRegistrationSettings(client, rows);
+    const serializedRows = await serializeEventTeamsWithRegistrationSettings(client, rows);
     rows.forEach((row, index) => {
       teamsById.set(row.id, serializedRows[index]);
     });
@@ -699,7 +698,7 @@ export const listTeamsByIds = async (
       const rows = await eventTeamsDelegate.findMany({
         where: { id: { in: remainingIds } },
       }) as EventTeamRow[];
-      const serializedRows = await serializeLegacyEventTeamsWithRegistrationSettings(client, rows);
+      const serializedRows = await serializeEventTeamsWithRegistrationSettings(client, rows);
       rows.forEach((row, index) => {
         teamsById.set(row.id, serializedRows[index]);
       });
@@ -708,7 +707,7 @@ export const listTeamsByIds = async (
 
   return normalizedIds
     .map((teamId) => teamsById.get(teamId))
-    .filter((team): team is ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeLegacyEventTeam> => Boolean(team));
+    .filter((team): team is ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeEventTeam> => Boolean(team));
 };
 
 export const listCanonicalTeamsForUser = async (params: {
@@ -783,7 +782,7 @@ export const listCanonicalTeamsForUser = async (params: {
       skip: params.offset ?? 0,
       orderBy: { name: 'asc' },
     }) ?? [];
-    return (rows as EventTeamRow[]).map((row) => serializeLegacyEventTeam(row));
+    return (rows as EventTeamRow[]).map((row) => serializeEventTeam(row));
   }
 
   let teamIds: string[] = [];

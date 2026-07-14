@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -47,7 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         })
       : [];
     const sendersById = new Map(
-      senders.map((sender) => [sender.id, withLegacyFields(applyNameCaseToUserFields(sender))]),
+      senders.map((sender) => [sender.id, applyNameCaseToUserFields(sender)]),
     );
 
     const nextIndex = index + messages.length;
@@ -55,8 +54,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json(
       {
-        group: withLegacyFields(group),
-        messages: withLegacyList(messages).map((message) => ({
+        group: group,
+        messages: messages.map((message) => ({
           ...message,
           sender: sendersById.get(message.userId) ?? null,
         })),

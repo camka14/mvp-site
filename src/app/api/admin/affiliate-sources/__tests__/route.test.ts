@@ -45,7 +45,7 @@ describe('/api/admin/affiliate-sources', () => {
 
     expect(res.status).toBe(200);
     expect(json.sources).toHaveLength(1);
-    expect(json.sources[0].$id).toBe('source_1');
+    expect(json.sources[0].id).toBe('source_1');
   });
 
   it('creates a source with a saved mapping', async () => {
@@ -78,7 +78,7 @@ describe('/api/admin/affiliate-sources', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.source.$id).toBe('source_1');
+    expect(json.source.id).toBe('source_1');
     expect(createAffiliateSourceMock).toHaveBeenCalledWith(
       expect.objectContaining({ sourceKey: 'underdog-portland' }),
       'admin_1',

@@ -110,7 +110,8 @@ describe('POST /api/billing/bills', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(201);
-    expect(payload.bill).toEqual(expect.objectContaining({ $id: 'bill_1' }));
+    expect(payload.bill).toEqual(expect.objectContaining({ id: 'bill_1' }));
+    expect(payload.bill).not.toHaveProperty('$id');
     expect(txMock.bills.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -489,9 +490,9 @@ describe('GET /api/billing/bills', () => {
     expect(payload.bills).toEqual([
       expect.objectContaining({
         id: 'bill_event_team_1',
-        $id: 'bill_event_team_1',
       }),
     ]);
+    expect(payload.bills[0]).not.toHaveProperty('$id');
   });
 
   it('returns a deterministic offset page with explicit continuation metadata', async () => {
@@ -606,7 +607,8 @@ describe('GET /api/billing/bills', () => {
         },
       }),
     );
-    expect(payload.bills[0]).toEqual(expect.objectContaining({ $id: 'bill_parent_team_1' }));
+    expect(payload.bills[0]).toEqual(expect.objectContaining({ id: 'bill_parent_team_1' }));
+    expect(payload.bills[0]).not.toHaveProperty('$id');
   });
 
   it('rejects a TEAM bill list for an unrelated caller', async () => {

@@ -42,8 +42,8 @@ describe('GET /api/admin/organization-verifications', () => {
 
     expect(response.status).toBe(200);
     expect(payload.organizations).toEqual([
-      expect.objectContaining({ $id: 'org_1', productIds: ['product_1', 'product_2'] }),
-      expect.objectContaining({ $id: 'org_2', productIds: [] }),
+      expect.objectContaining({ id: 'org_1', productIds: ['product_1', 'product_2'] }),
+      expect.objectContaining({ id: 'org_2', productIds: [] }),
     ]);
     expect(prismaMock.products.findMany).toHaveBeenCalledTimes(1);
   });

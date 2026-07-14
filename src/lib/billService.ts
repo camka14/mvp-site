@@ -12,7 +12,7 @@ class BillService {
         const rows = response.bills || [];
         const billsWithPayments = await Promise.all(
             rows.map(async (row) => {
-                const payments = await this.fetchBillPayments(row.$id ?? row.id);
+                const payments = await this.fetchBillPayments(row.id ?? row.$id);
                 return this.mapRowToBill({ ...row, payments });
             }),
         );
@@ -69,7 +69,7 @@ class BillService {
         if (!result.bill) {
             throw new Error('Failed to create bill');
         }
-        return result.bill;
+        return this.mapRowToBill(result.bill);
     }
 
     async getBill(billId: string): Promise<Bill | null> {
@@ -77,8 +77,8 @@ class BillService {
         if (result.error) {
             throw new Error(result.error);
         }
-        const bill = result.bill ?? null;
-        if (!bill) return null;
+        if (!result.bill) return null;
+        const bill = this.mapRowToBill(result.bill);
         const payments = await this.fetchBillPayments(bill.$id);
         return { ...bill, payments };
     }
@@ -129,7 +129,7 @@ class BillService {
         if (!result.bill) {
             throw new Error('Failed to mark bill payment pending');
         }
-        return result.bill;
+        return this.mapRowToBill(result.bill);
     }
 
     async cancelPayment(params: {
@@ -146,7 +146,7 @@ class BillService {
         if (!result.bill) {
             throw new Error('Failed to cancel bill payment');
         }
-        return result.bill;
+        return this.mapRowToBill(result.bill);
     }
 
     async submitManualPaymentProof(params: {
@@ -178,7 +178,7 @@ class BillService {
         if (result.error) {
             throw new Error(result.error);
         }
-        return result.children ?? [];
+        return (result.children ?? []).map((child) => this.mapRowToBill(child));
     }
 
     private mapRowToBill(row: any): Bill {
@@ -231,7 +231,7 @@ class BillService {
             : [];
 
         return {
-            $id: row.$id,
+            $id: row.id ?? row.$id,
             ownerType: row.ownerType,
             ownerId: row.ownerId,
             organizationId: row.organizationId ?? null,
@@ -265,7 +265,7 @@ class BillService {
         };
 
         return {
-            $id: row.$id ?? row.id ?? '',
+            $id: row.id ?? row.$id ?? '',
             billId: row.billId ?? '',
             sequence: toNumber(row.sequence),
             dueDate: row.dueDate ?? '',

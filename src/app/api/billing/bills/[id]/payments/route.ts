@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
 import { handleApiRouteError } from '@/server/http/routeErrors';
 
@@ -22,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { billId: id },
       orderBy: { sequence: 'asc' },
     });
-    return NextResponse.json({ payments: withLegacyList(payments) }, { status: 200 });
+    return NextResponse.json({ payments: payments }, { status: 200 });
   } catch (error) {
     return handleApiRouteError(error, 'Failed to load bill payments');
   }

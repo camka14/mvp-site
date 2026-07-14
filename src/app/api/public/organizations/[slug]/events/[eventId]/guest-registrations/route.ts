@@ -13,7 +13,6 @@ import {
   type DispatchRequiredEventDocumentsResult,
 } from '@/lib/eventConsentDispatch';
 import { normalizeRequiredSignerType } from '@/lib/templateSignerTypes';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   buildEventParticipantSnapshot,
   syncDivisionTeamMembershipFromRegistrations,
@@ -1187,7 +1186,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       child: result.child,
       children: (result as any).children ?? undefined,
       team: result.team,
-      registration: withLegacyFields(refreshedRegistration),
+      registration: refreshedRegistration,
       priceCents,
       requiresPayment: priceCents > 0,
       requiredTemplateIds,

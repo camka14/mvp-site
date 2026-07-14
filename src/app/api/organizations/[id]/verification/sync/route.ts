@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import {
   findManagedOrganizationStripeAccount,
@@ -53,7 +52,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const [updatedWithProductIds] = await withDerivedOrganizationProductIds([updatedOrganization], prisma);
-    return NextResponse.json(withLegacyFields(updatedWithProductIds), { status: 200 });
+    return NextResponse.json(updatedWithProductIds, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to sync organization verification status', error);

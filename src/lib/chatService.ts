@@ -61,7 +61,7 @@ export interface ChatTermsConsentState {
 const DEFAULT_PAGE_LIMIT = 20;
 
 const toMessage = (row: any): Message => ({
-    $id: row.$id,
+    $id: row.id ?? row.$id,
     userId: row.userId,
     body: row.body,
     chatId: row.chatId,
@@ -79,7 +79,7 @@ class ChatService {
             const response = await apiRequest<{ groups?: any[] }>(`/api/chat/groups?${params.toString()}`);
 
             return (response.groups ?? []).map((row: any) => ({
-                $id: row.$id,
+                $id: row.id ?? row.$id,
                 name: row.name,
                 userIds: row.userIds,
                 hostId: row.hostId,
@@ -89,8 +89,8 @@ class ChatService {
                 displayName: row.displayName,
                 imageUrl: row.imageUrl,
                 unreadCount: Number.isFinite(row.unreadCount) ? Number(row.unreadCount) : 0,
-                $createdAt: row.$createdAt,
-                $updatedAt: row.$updatedAt
+                $createdAt: row.createdAt ?? row.$createdAt,
+                $updatedAt: row.updatedAt ?? row.$updatedAt
             }));
         } catch (error) {
             console.error('Failed to get chat groups:', error);
@@ -205,14 +205,7 @@ class ChatService {
             }
 
             // Return properly mapped message
-            return {
-                $id: response.$id,
-                userId: response.userId,
-                body: response.body,
-                chatId: response.chatId,
-                sentTime: response.sentTime,
-                readByIds: response.readByIds || []
-            };
+            return toMessage(response);
         } catch (error) {
             console.error('Failed to send message:', error);
             throw error;
@@ -234,7 +227,7 @@ class ChatService {
 
             // Return properly mapped chat group
             return {
-                $id: response.$id,
+                $id: response.id ?? response.$id,
                 name: response.name,
                 userIds: response.userIds,
                 hostId: response.hostId,
@@ -258,7 +251,7 @@ class ChatService {
             });
 
             return {
-                $id: response.$id,
+                $id: response.id ?? response.$id,
                 name: response.name,
                 userIds: response.userIds,
                 hostId: response.hostId,
@@ -279,7 +272,7 @@ class ChatService {
             });
 
             return {
-                $id: response.$id,
+                $id: response.id ?? response.$id,
                 name: response.name,
                 userIds: response.userIds,
                 hostId: response.hostId,

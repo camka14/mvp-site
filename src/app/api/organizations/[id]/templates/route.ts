@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import {
@@ -120,7 +119,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { organizationId: id },
     orderBy: { createdAt: 'desc' },
   });
-  return NextResponse.json({ templates: withLegacyList(templates) }, { status: 200 });
+  return NextResponse.json({ templates: templates }, { status: 200 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -190,7 +189,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    return NextResponse.json({ template: withLegacyFields(record) }, { status: 201 });
+    return NextResponse.json({ template: record }, { status: 201 });
   }
 
   if (!isBoldSignConfigured()) {

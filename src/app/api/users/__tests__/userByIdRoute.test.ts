@@ -39,9 +39,6 @@ jest.mock('@/lib/permissions', () => {
     requireSession: requireSessionMock,
   };
 });
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 
 import { PATCH as patchUserById } from '@/app/api/users/[id]/route';
 
@@ -107,7 +104,7 @@ describe('PATCH /api/users/[id]', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json.user.$id).toBe('user_1');
+    expect(json.user.id).toBe('user_1');
     expect(json.user.teamIds).toEqual(['team_current']);
     expect(prismaMock.userData.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'user_1' },

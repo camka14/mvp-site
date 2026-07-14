@@ -11,7 +11,7 @@ import {
   Team as SchedulerTeam,
   TimeSlot as SchedulerTimeSlot,
 } from '@/server/scheduler/types';
-import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeEvent, serializeMatches } from '@/server/scheduler/serialize';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 
 import TournamentBracketView from '../TournamentBracketView';
@@ -593,8 +593,8 @@ const buildScheduledLeagueBracket = (playoffTeamCount: number): TournamentBracke
     }),
   }, context);
 
-  const serializedEvent = serializeEventLegacy(scheduled.event);
-  const serializedMatches = serializeMatchesLegacy(scheduled.matches);
+  const serializedEvent = serializeEvent(scheduled.event);
+  const serializedMatches = serializeMatches(scheduled.matches);
   const tournament = normalizeApiEvent({
     ...serializedEvent,
     matches: serializedMatches,
@@ -692,8 +692,8 @@ const buildRescheduledNineTeamLeagueBracket = (): TournamentBracket => {
   }, context);
 
   const rescheduled = rescheduleEventMatchesPreservingLocks(initial.event);
-  const serializedEvent = serializeEventLegacy(rescheduled.event);
-  const serializedMatches = serializeMatchesLegacy(rescheduled.matches);
+  const serializedEvent = serializeEvent(rescheduled.event);
+  const serializedMatches = serializeMatches(rescheduled.matches);
   const tournament = normalizeApiEvent({
     ...serializedEvent,
     matches: serializedMatches,

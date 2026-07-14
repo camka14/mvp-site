@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { parseAccountVisibility } from '@/lib/accountVisibility';
 import { applyNameCaseToUserFields, formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { getBlockingStaffInvite } from '@/lib/staff';
 import {
   findUserNameConflictUserId,
@@ -126,7 +125,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     eventId: parseContextId(query.get('eventId')),
   });
   const [userWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([user], prisma);
-  return NextResponse.json({ user: withLegacyFields(applyUserPrivacy(userWithDerivedTeamIds, visibilityContext)) }, { status: 200 });
+  return NextResponse.json({ user: applyUserPrivacy(userWithDerivedTeamIds, visibilityContext) }, { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -325,7 +324,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
     const [updatedWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([updated], prisma);
-    return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updatedWithDerivedTeamIds)) }, { status: 200 });
+    return NextResponse.json({ user: applyNameCaseToUserFields(updatedWithDerivedTeamIds) }, { status: 200 });
   } catch (error) {
     if (isPrismaUserNameUniqueError(error)) {
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });

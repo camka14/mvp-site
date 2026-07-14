@@ -318,7 +318,7 @@ class TeamService {
 
         return value
             .map((row: any): TeamPlayerRegistration | null => {
-                const id = typeof row?.$id === 'string' ? row.$id : (typeof row?.id === 'string' ? row.id : '');
+                const id = typeof row?.id === 'string' ? row.id : (typeof row?.$id === 'string' ? row.$id : '');
                 const userId = typeof row?.userId === 'string'
                     ? row.userId
                     : (typeof row?.registrantId === 'string' ? row.registrantId : '');
@@ -367,10 +367,10 @@ class TeamService {
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
 
         const teamId =
-            typeof row.$id === 'string' && row.$id.trim().length > 0
-                ? row.$id
-                : typeof row.id === 'string' && row.id.trim().length > 0
-                    ? row.id
+            typeof row.id === 'string' && row.id.trim().length > 0
+                ? row.id
+                : typeof row.$id === 'string' && row.$id.trim().length > 0
+                    ? row.$id
                     : row.$id;
 
         const team: Team = {
@@ -430,8 +430,8 @@ class TeamService {
               visibility: typeof row.visibility === 'string' && row.visibility.trim().length > 0
                   ? row.visibility
                   : 'PUBLIC',
-              $createdAt: row.$createdAt,
-              $updatedAt: row.$updatedAt,
+              $createdAt: row.createdAt ?? row.$createdAt,
+              $updatedAt: row.updatedAt ?? row.$updatedAt,
             currentSize: playerIds.length,
             isFull: playerIds.length >= teamSize,
             avatarUrl: '',

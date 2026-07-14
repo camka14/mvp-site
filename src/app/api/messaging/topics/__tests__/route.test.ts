@@ -15,13 +15,9 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
-}));
 
 import { POST as postTopic } from '@/app/api/messaging/topics/route';
 import { DELETE as deleteTopicById, POST as postTopicById } from '@/app/api/messaging/topics/[topicId]/route';

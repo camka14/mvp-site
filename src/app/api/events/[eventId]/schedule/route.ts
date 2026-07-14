@@ -13,7 +13,7 @@ import {
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { rescheduleEventMatchesPreservingLocks } from '@/server/scheduler/reschedulePreservingLocks';
-import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeEvent, serializeMatches } from '@/server/scheduler/serialize';
 import {
   applyLeagueDivisionPlayoffReassignment,
   isTournamentPoolPlayStandingsEvent,
@@ -276,8 +276,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return NextResponse.json(
       {
         preview: typeof result.preview === 'boolean' ? result.preview : false,
-        event: serializeEventLegacy(result.event),
-        matches: serializeMatchesLegacy(result.matches),
+        event: serializeEvent(result.event),
+        matches: serializeMatches(result.matches),
         warnings: Array.isArray((result as { warnings?: unknown[] }).warnings)
           ? (result as { warnings: unknown[] }).warnings
           : [],

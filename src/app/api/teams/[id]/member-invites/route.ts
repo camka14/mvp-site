@@ -53,9 +53,6 @@ const roleToStaffType = (role: InviteRole): string | null => {
 
 const mapInviteRecord = (invite: Record<string, any>) => ({
   ...invite,
-  $id: invite.id,
-  $createdAt: invite.createdAt,
-  $updatedAt: invite.updatedAt,
 });
 
 const hasOrganizationTeamManagementAccess = async (

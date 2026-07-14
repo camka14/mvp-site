@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
 import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { loadEventWithRelations } from '@/server/repositories/events';
-import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeMatches } from '@/server/scheduler/serialize';
 import { loadLockedEventStaffSnapshot } from '@/server/events/eventStaffReconciliation';
 import { GET as getEvent } from '../route';
 import { GET as getParticipants } from '../participants/route';
@@ -217,15 +216,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     return NextResponse.json({
       event: canonicalEventPayload,
       participantSnapshot: participantPayload,
-      matches: canViewSchedule ? serializeMatchesLegacy(matches) : [],
+      matches: canViewSchedule ? serializeMatches(matches) : [],
       fields: canViewSchedule
-        ? orderByIds(fieldIds, fieldRows).map((field) => withLegacyFields(field))
+        ? orderByIds(fieldIds, fieldRows).map((field) => field)
         : [],
       timeSlots: canViewSchedule
-        ? orderByIds(timeSlotIds, timeSlotRows).map((slot) => withLegacyFields(slot))
+        ? orderByIds(timeSlotIds, timeSlotRows).map((slot) => slot)
         : [],
       leagueScoringConfig: canViewSchedule && leagueScoringConfig
-        ? withLegacyFields(leagueScoringConfig)
+        ? leagueScoringConfig
         : null,
       staffInvites: managedStaffState?.staffInvites
         ?? (Array.isArray(eventPayload?.staffInvites) ? eventPayload.staffInvites : []),

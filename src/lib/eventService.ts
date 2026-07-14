@@ -54,6 +54,17 @@ import type {
 import type { DeleteOrArchiveResult } from "@/lib/deleteOutcome";
 import { deleteOutcomeSucceeded } from "@/lib/deleteOutcome";
 
+const readApiEntityId = (value: unknown): string | undefined => {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const row = value as { id?: unknown; $id?: unknown };
+  const candidate = row.id ?? row.$id;
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : undefined;
+};
+
 export interface LeagueGenerationOptions {
   dryRun?: boolean;
   participantCount?: number;
@@ -512,11 +523,7 @@ class EventService {
       ? this.mapRowToEvent(response.event)
       : undefined;
     const normalizeSnapshotEntity = <T extends Record<string, unknown>>(row: T): T & { $id?: string } => {
-      const id = typeof row?.$id === "string" && row.$id.trim().length > 0
-        ? row.$id
-        : typeof row?.id === "string" && row.id.trim().length > 0
-          ? row.id
-          : undefined;
+      const id = readApiEntityId(row);
       return id ? { ...row, $id: id } : row;
     };
     return {
@@ -1334,7 +1341,7 @@ class EventService {
         : false);
 
     return {
-      $id: row.$id,
+      $id: row.id ?? row.$id,
       name: row.name,
       description: row.description,
       affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
@@ -1419,8 +1426,8 @@ class EventService {
       cancellationRefundHours: row.cancellationRefundHours,
       registrationCutoffHours: row.registrationCutoffHours,
       seedColor: row.seedColor,
-      $createdAt: row.$createdAt,
-      $updatedAt: row.$updatedAt,
+      $createdAt: row.createdAt ?? row.$createdAt,
+      $updatedAt: row.updatedAt ?? row.$updatedAt,
       eventType: (normalizedEventType ?? "EVENT") as EventType,
       sport: row.sport,
       sportId: row.sportId,
@@ -1679,7 +1686,7 @@ class EventService {
       staffInvites: Array.isArray(row.staffInvites)
         ? row.staffInvites
             .map((invite: any) => {
-              const inviteId = String(invite?.$id ?? invite?.id ?? "").trim();
+              const inviteId = String(invite?.id ?? invite?.$id ?? "").trim();
               if (!inviteId) {
                 return null;
               }
@@ -1836,7 +1843,7 @@ class EventService {
       ? rows.map(
           (row) =>
             ({
-              $id: String(row.$id ?? row.id ?? ""),
+              $id: String(row.id ?? row.$id ?? ""),
               eventType:
                 typeof row.eventType === "string" ? row.eventType : "EVENT",
               parentEvent:
@@ -2107,8 +2114,8 @@ class EventService {
           value
             .map((item) => {
               if (typeof item === "string") return item;
-              if (item && typeof item === "object" && "$id" in item) {
-                return (item as { $id?: string }).$id ?? "";
+              if (item && typeof item === "object") {
+                return readApiEntityId(item) ?? "";
               }
               return "";
             })
@@ -2169,10 +2176,10 @@ class EventService {
     const playerRegistrations = Array.isArray(row.playerRegistrations)
       ? (row.playerRegistrations as unknown[])
         .map((registration: any): TeamPlayerRegistration | null => {
-          const id = typeof registration?.$id === "string"
-            ? registration.$id
-            : typeof registration?.id === "string"
-              ? registration.id
+          const id = typeof registration?.id === "string"
+            ? registration.id
+            : typeof registration?.$id === "string"
+              ? registration.$id
               : "";
           const userId = typeof registration?.userId === "string"
             ? registration.userId
@@ -2226,7 +2233,7 @@ class EventService {
     }
 
     const team: Team = {
-      $id: String(row.$id ?? row.id ?? ""),
+      $id: String(row.id ?? row.$id ?? ""),
       name: row.name ?? "",
       division,
       divisionTypeId:
@@ -2241,7 +2248,7 @@ class EventService {
         typeof row.captainId === "string"
           ? row.captainId
           : row.captain && typeof row.captain === "object"
-            ? ((row.captain as { $id?: string }).$id ?? undefined)
+            ? readApiEntityId(row.captain)
             : undefined,
       managerId:
         typeof row.managerId === "string" && row.managerId.trim().length > 0
@@ -2249,7 +2256,7 @@ class EventService {
           : typeof row.captainId === "string"
             ? row.captainId
             : row.captain && typeof row.captain === "object"
-              ? ((row.captain as { $id?: string }).$id ?? undefined)
+              ? readApiEntityId(row.captain)
               : undefined,
       headCoachId:
         typeof row.headCoachId === "string" && row.headCoachId.trim().length > 0
@@ -2275,8 +2282,8 @@ class EventService {
       teamSize,
       profileImageId:
         row.profileImage || row.profileImageId || row.profileImageID,
-      $createdAt: row.$createdAt,
-      $updatedAt: row.$updatedAt,
+      $createdAt: row.createdAt ?? row.$createdAt,
+      $updatedAt: row.updatedAt ?? row.$updatedAt,
       currentSize: playerIds.length,
       isFull: playerIds.length >= teamSize,
       avatarUrl: "",
@@ -2294,6 +2301,9 @@ class EventService {
     if (Array.isArray(existing) && existing.length) {
       return existing.map((entry) => ({
         ...entry,
+        $id: readApiEntityId(entry) ?? "",
+        $createdAt: entry.createdAt ?? entry.$createdAt,
+        $updatedAt: entry.updatedAt ?? entry.$updatedAt,
         fullName: `${entry.firstName || ""} ${entry.lastName || ""}`.trim(),
         avatarUrl: entry.avatarUrl ?? "",
       })) as UserData[];
@@ -2345,15 +2355,15 @@ class EventService {
       typeof row.long === "number" ? row.long : Number(row.long ?? 0);
 
     const field: Field = {
-      $id: String(row.$id ?? row.id ?? ""),
+      $id: String(row.id ?? row.$id ?? ""),
       name: row.name ?? "",
       location: row.location ?? "",
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
       createdAt: row.createdAt ?? row.$createdAt ?? null,
       updatedAt: row.updatedAt ?? row.$updatedAt ?? null,
-      $createdAt: typeof row.$createdAt === "string" ? row.$createdAt : undefined,
-      $updatedAt: typeof row.$updatedAt === "string" ? row.$updatedAt : undefined,
+      $createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.$createdAt === "string" ? row.$createdAt : undefined,
+      $updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.$updatedAt === "string" ? row.$updatedAt : undefined,
       divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
       organization: row.organization ?? row.organizationId ?? undefined,
       rentalSlotIds: Array.isArray(row.rentalSlotIds)
@@ -2539,10 +2549,7 @@ class EventService {
       return this.fetchOrganizationById(input);
     }
 
-    if (
-      typeof input === "object" &&
-      "$id" in (input as Record<string, unknown>)
-    ) {
+    if (typeof input === "object" && readApiEntityId(input)) {
       return this.mapOrganizationRow(input as any);
     }
 
@@ -2574,7 +2581,7 @@ class EventService {
       : undefined;
 
     return {
-      $id: String(row.$id ?? row.id ?? ""),
+      $id: String(row.id ?? row.$id ?? ""),
       name: row.name ?? "",
       description: row.description ?? undefined,
       website: row.website ?? undefined,
@@ -2637,8 +2644,8 @@ class EventService {
             : undefined,
       publicSlug:
         typeof row.publicSlug === "string" ? row.publicSlug : null,
-      $createdAt: row.$createdAt,
-      $updatedAt: row.$updatedAt,
+      $createdAt: row.createdAt ?? row.$createdAt,
+      $updatedAt: row.updatedAt ?? row.$updatedAt,
     };
   }
 
@@ -2647,6 +2654,10 @@ class EventService {
       row?.leagueScoringConfig &&
       typeof row.leagueScoringConfig === "object"
     ) {
+      const id = readApiEntityId(row.leagueScoringConfig);
+      if (id) {
+        row.leagueScoringConfig = { ...row.leagueScoringConfig, $id: id };
+      }
       return;
     }
 
@@ -2666,7 +2677,8 @@ class EventService {
       const config = await apiRequest<any>(
         `/api/league-scoring-configs/${configId}`,
       );
-      row.leagueScoringConfig = config;
+      const id = readApiEntityId(config);
+      row.leagueScoringConfig = id ? { ...config, $id: id } : config;
     } catch (error) {
       console.error("Failed to fetch league scoring config:", error);
       row.leagueScoringConfig = null;
@@ -2684,8 +2696,8 @@ class EventService {
     const eventId =
       typeof input.eventId === "string"
         ? input.eventId
-        : input.event && typeof input.event === "object" && "$id" in input.event
-          ? ((input.event as { $id?: string }).$id ?? undefined)
+        : input.event && typeof input.event === "object"
+          ? readApiEntityId(input.event)
           : undefined;
 
     const fieldId =
@@ -2693,10 +2705,8 @@ class EventService {
         ? input.fieldId
         : typeof input.field === "string"
           ? input.field
-          : input.field &&
-              typeof input.field === "object" &&
-              "$id" in input.field
-            ? ((input.field as { $id?: string }).$id ?? undefined)
+          : input.field && typeof input.field === "object"
+            ? readApiEntityId(input.field)
             : undefined;
 
     const team1Id =
@@ -2704,10 +2714,8 @@ class EventService {
         ? input.team1Id
         : typeof input.team1 === "string"
           ? input.team1
-          : input.team1 &&
-              typeof input.team1 === "object" &&
-              "$id" in input.team1
-            ? ((input.team1 as { $id?: string }).$id ?? undefined)
+          : input.team1 && typeof input.team1 === "object"
+            ? readApiEntityId(input.team1)
             : undefined;
 
     const team2Id =
@@ -2715,10 +2723,8 @@ class EventService {
         ? input.team2Id
         : typeof input.team2 === "string"
           ? input.team2
-          : input.team2 &&
-              typeof input.team2 === "object" &&
-              "$id" in input.team2
-            ? ((input.team2 as { $id?: string }).$id ?? undefined)
+          : input.team2 && typeof input.team2 === "object"
+            ? readApiEntityId(input.team2)
             : undefined;
 
     const officialId =
@@ -2726,10 +2732,8 @@ class EventService {
         ? input.officialId
         : typeof input.official === "string"
           ? input.official
-          : input.official &&
-              typeof input.official === "object" &&
-              "$id" in input.official
-            ? ((input.official as { $id?: string }).$id ?? undefined)
+          : input.official && typeof input.official === "object"
+            ? readApiEntityId(input.official)
             : undefined;
 
     const teamOfficialId =
@@ -2737,10 +2741,8 @@ class EventService {
         ? input.teamOfficialId
         : typeof input.teamOfficial === "string"
           ? input.teamOfficial
-          : input.teamOfficial &&
-              typeof input.teamOfficial === "object" &&
-              "$id" in input.teamOfficial
-            ? ((input.teamOfficial as { $id?: string }).$id ?? undefined)
+          : input.teamOfficial && typeof input.teamOfficial === "object"
+            ? readApiEntityId(input.teamOfficial)
             : undefined;
 
     let resolvedOfficialId = officialId;
@@ -2751,10 +2753,7 @@ class EventService {
       input.official &&
       typeof input.official === "object"
     ) {
-      const candidateId =
-        "$id" in input.official
-          ? (input.official as { $id?: string }).$id
-          : undefined;
+      const candidateId = readApiEntityId(input.official);
       const looksLikeTeam =
         Array.isArray((input.official as any).playerIds) ||
         typeof (input.official as any).teamSize === "number";
@@ -2774,7 +2773,7 @@ class EventService {
     }
 
     const match: Match = {
-      $id: (input?.$id ?? input?.id) as string,
+      $id: (input?.id ?? input?.$id) as string,
       start: input.start,
       end: input.end,
       locked: Boolean(input.locked),
@@ -2822,14 +2821,14 @@ class EventService {
       segments: Array.isArray(input.segments)
         ? input.segments.map((segment: any) => ({
             ...segment,
-            $id: segment.$id ?? segment.id,
+            $id: segment.id ?? segment.$id,
             scores: { ...(segment.scores ?? {}) },
           }))
         : [],
       incidents: Array.isArray(input.incidents)
         ? input.incidents.map((incident: any) => ({
             ...incident,
-            $id: incident.$id ?? incident.id,
+            $id: incident.id ?? incident.$id,
           }))
         : [],
     };
@@ -2969,7 +2968,7 @@ class EventService {
     ) as NonNullable<TimeSlot["daysOfWeek"]>;
 
     const slot: TimeSlot = {
-      $id: row.$id ?? row.id,
+      $id: row.id ?? row.$id,
       dayOfWeek: (normalizedDays[0] ??
         Number(row.dayOfWeek ?? 0)) as TimeSlot["dayOfWeek"],
       daysOfWeek: normalizedDays,
@@ -3038,8 +3037,12 @@ class EventService {
   }
 
   private async ensureSportRelationship(row: any): Promise<void> {
-    if (row?.sport && typeof row.sport === "object" && "$id" in row.sport) {
-      return;
+    if (row?.sport && typeof row.sport === "object") {
+      const id = readApiEntityId(row.sport);
+      if (id && typeof row.sport.name === "string" && row.sport.name.trim().length > 0) {
+        row.sport = { ...row.sport, $id: id };
+        return;
+      }
     }
 
     const normalizedState =
@@ -3047,6 +3050,7 @@ class EventService {
     const isTemplateEvent = normalizedState === "TEMPLATE";
     const sportId =
       (row?.sport && typeof row.sport === "string" ? row.sport : undefined) ??
+      readApiEntityId(row?.sport) ??
       (typeof row?.sportId === "string" ? row.sportId : undefined);
 
     if (!sportId) {
@@ -3122,12 +3126,13 @@ class EventService {
       throw new Error("Event record is missing sport relationship data.");
     }
 
-    const sport = input as Sport;
-    if (!sport.$id || !sport.name) {
+    const sport = input as Sport & { id?: string };
+    const id = readApiEntityId(sport);
+    if (!id || !sport.name) {
       throw new Error("Sport relationship is missing required fields.");
     }
 
-    return sport;
+    return { ...sport, $id: id };
   }
 
   private resolveLeagueScoringConfig(

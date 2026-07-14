@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 
@@ -100,7 +99,7 @@ export async function GET(req: NextRequest) {
     ],
   });
 
-  return NextResponse.json({ facilities: withLegacyList(facilities) }, { status: 200 });
+  return NextResponse.json({ facilities: facilities }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -152,5 +151,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json(withLegacyFields(facility), { status: 201 });
+  return NextResponse.json(facility, { status: 201 });
 }

@@ -52,7 +52,7 @@ describe('organizationService', () => {
     apiRequestMock.mockImplementation(async (url) => {
       if (url === '/api/organizations/org_1') {
         return {
-        $id: 'org_1',
+        id: 'org_1',
         name: 'Test Org',
         productIds: [],
         };
@@ -93,7 +93,7 @@ describe('organizationService', () => {
     apiRequestMock.mockImplementation(async (url) => {
       if (url === '/api/organizations/org_1') {
         return {
-          $id: 'org_1',
+          id: 'org_1',
           name: 'Test Org',
         };
       }
@@ -119,8 +119,8 @@ describe('organizationService', () => {
 
   it('never sends the derived productIds alias in organization creates or updates', async () => {
     apiRequestMock
-      .mockResolvedValueOnce({ $id: 'org_1', name: 'Created', productIds: [] })
-      .mockResolvedValueOnce({ $id: 'org_1', name: 'Updated', productIds: [] });
+      .mockResolvedValueOnce({ id: 'org_1', name: 'Created', productIds: [] })
+      .mockResolvedValueOnce({ id: 'org_1', name: 'Updated', productIds: [] });
 
     await organizationService.createOrganization({
       name: 'Created',
@@ -148,7 +148,6 @@ describe('organizationService', () => {
         return {
           organizations: [
             {
-              $id: 'org_affiliate_rental',
               id: 'org_affiliate_rental',
               name: 'Affiliate Rental Org',
               ownerId: 'owner_1',

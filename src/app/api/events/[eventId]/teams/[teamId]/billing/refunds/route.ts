@@ -6,7 +6,6 @@ import { requireSession } from '@/lib/permissions';
 import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { canManageEvent } from '@/server/accessControl';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
@@ -288,7 +287,7 @@ export async function POST(
 
   return NextResponse.json(
     {
-      payment: withLegacyFields(updatedPayment),
+      payment: updatedPayment,
       refundedAmountCents: appliedRefundAmountCents,
       remainingRefundableAmountCents,
       refundId,

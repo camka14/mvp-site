@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import {
   createAffiliateSource,
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest) {
   try {
     await requireRazumlyAdmin(req);
     const sources = await listAffiliateSources();
-    return NextResponse.json({ sources: withLegacyList(sources) }, { status: 200 });
+    return NextResponse.json({ sources: sources }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to load affiliate scrape sources', error);
@@ -45,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     const source = await createAffiliateSource(parsed.data, session.userId);
-    return NextResponse.json({ source: withLegacyFields(source) }, { status: 201 });
+    return NextResponse.json({ source: source }, { status: 201 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to create affiliate scrape source', error);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseDateInput } from '@/server/requestParsing';
-import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
+import { serializeMatchRecords } from '@/server/matches/instantPayloads';
 import { getVisibleEventIds } from '@/server/eventVisibility';
 
 export const dynamic = 'force-dynamic';
@@ -86,5 +86,5 @@ export async function GET(req: NextRequest) {
     orderBy: { start: 'asc' },
   });
 
-  return NextResponse.json({ matches: serializeMatchRecordsLegacy(matches) }, { status: 200 });
+  return NextResponse.json({ matches: serializeMatchRecords(matches) }, { status: 200 });
 }

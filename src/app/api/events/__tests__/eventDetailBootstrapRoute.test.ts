@@ -17,7 +17,7 @@ const prismaMock = {
   },
 };
 const loadEventWithRelationsMock = jest.fn();
-const serializeMatchesLegacyMock = jest.fn();
+const serializeMatchesMock = jest.fn();
 const getEventMock = jest.fn();
 const getParticipantsMock = jest.fn();
 const getTeamComplianceMock = jest.fn();
@@ -40,7 +40,7 @@ jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: unknown[]) => loadEventWithRelationsMock(...args),
 }));
 jest.mock('@/server/scheduler/serialize', () => ({
-  serializeMatchesLegacy: (...args: unknown[]) => serializeMatchesLegacyMock(...args),
+  serializeMatches: (...args: unknown[]) => serializeMatchesMock(...args),
 }));
 jest.mock('@/app/api/events/[eventId]/route', () => ({
   GET: (...args: unknown[]) => getEventMock(...args),
@@ -67,6 +67,8 @@ describe('GET /api/events/[eventId]/detail', () => {
     getEventMock.mockResolvedValue(okJson({
       id: 'event_1',
       name: 'Event One',
+      end: null,
+      noFixedEndDateTime: true,
       hostId: 'host_1',
       teamSignup: true,
       fieldIds: ['field_2', 'field_1'],
@@ -132,7 +134,7 @@ describe('GET /api/events/[eventId]/detail', () => {
         match_early: { id: 'match_early', start: new Date('2026-01-01T10:00:00.000Z') },
       },
     });
-    serializeMatchesLegacyMock.mockImplementation((matches: any[]) => (
+    serializeMatchesMock.mockImplementation((matches: any[]) => (
       matches.map((match) => ({ id: match.id }))
     ));
     prismaMock.fields.findMany.mockResolvedValue([
@@ -154,6 +156,9 @@ describe('GET /api/events/[eventId]/detail', () => {
 
     expect(response.status).toBe(200);
     expect(payload.event.id).toBe('event_1');
+    expect(payload.event.end).toBeNull();
+    expect(payload.event.noFixedEndDateTime).toBe(true);
+    expect(payload.event).not.toHaveProperty('$id');
     expect(payload.participantSnapshot.participantCount).toBe(1);
     expect(payload.matches).toEqual([{ id: 'match_early' }, { id: 'match_late' }]);
     expect(payload.fields.map((field: any) => field.id)).toEqual(['field_2', 'field_1']);
@@ -241,7 +246,7 @@ describe('GET /api/events/[eventId]/detail', () => {
       expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
       expect(prismaMock.timeSlots.findMany).not.toHaveBeenCalled();
       expect(prismaMock.leagueScoringConfigs.findUnique).not.toHaveBeenCalled();
-      expect(serializeMatchesLegacyMock).not.toHaveBeenCalled();
+      expect(serializeMatchesMock).not.toHaveBeenCalled();
     },
   );
 });

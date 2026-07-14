@@ -34,17 +34,11 @@ const prismaMock = {
     findMany: (...args: any[]) => productsFindManyMock(...args),
   },
 };
-
-const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 const requireSessionMock = jest.fn();
 const sendAdminOrganizationCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
-}));
 jest.mock('@/server/adminNotifications', () => ({
   sendAdminOrganizationCreatedNotification: (...args: any[]) => sendAdminOrganizationCreatedNotificationMock(...args),
 }));
@@ -166,7 +160,7 @@ describe('/api/organizations', () => {
       },
     }));
     expect(json.organizations).toEqual([
-      expect.objectContaining({ $id: 'org_facility', name: 'Facility Org' }),
+      expect.objectContaining({ id: 'org_facility', name: 'Facility Org' }),
     ]);
   });
 
@@ -224,13 +218,13 @@ describe('/api/organizations', () => {
     });
     expect(json.organizations).toEqual([
       expect.objectContaining({
-        $id: 'org_affiliate_rental',
+        id: 'org_affiliate_rental',
         logoUrl: 'http://localhost/api/avatars/initials?name=Affiliate%20Rental%20Org&size=96&format=png',
         imageUrl: 'http://localhost/api/avatars/initials?name=Affiliate%20Rental%20Org&size=96&format=png',
         status: 'UNLISTED',
         facilities: [
           expect.objectContaining({
-            $id: 'facility_affiliate',
+            id: 'facility_affiliate',
             name: 'Affiliate Rental Court',
             coordinates: [-122.4314, 45.5001],
             affiliateUrl: 'https://example.com/book',
@@ -261,7 +255,7 @@ describe('/api/organizations', () => {
     });
     expect(json.organizations).toEqual([
       expect.objectContaining({
-        $id: 'org_hidden',
+        id: 'org_hidden',
         status: 'UNLISTED',
         productIds: ['product_current'],
       }),
@@ -323,7 +317,7 @@ describe('/api/organizations', () => {
       where: { id: { in: ['org_hidden'] } },
     }));
     expect(payload.organizations[0]).toEqual(expect.objectContaining({
-      $id: 'org_hidden',
+      id: 'org_hidden',
       name: 'Hidden Organization',
       status: 'UNLISTED',
     }));
@@ -354,7 +348,7 @@ describe('/api/organizations', () => {
     expect(response.status).toBe(200);
     expect(payload.organizations).toEqual([
       expect.objectContaining({
-        $id: 'org_hidden',
+        id: 'org_hidden',
         name: 'Hidden Organization',
         status: 'UNLISTED',
       }),
@@ -383,7 +377,7 @@ describe('/api/organizations', () => {
 
     expect(response.status).toBe(200);
     expect(payload.organizations).toEqual([
-      expect.objectContaining({ $id: 'org_public', name: 'Public Organization', status: 'LISTED' }),
+      expect.objectContaining({ id: 'org_public', name: 'Public Organization', status: 'LISTED' }),
     ]);
     expect(payload.organizations[0]).not.toHaveProperty('ownerId');
     expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');

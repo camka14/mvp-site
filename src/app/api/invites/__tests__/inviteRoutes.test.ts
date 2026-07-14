@@ -165,7 +165,8 @@ describe('/api/invites', () => {
       take: 51,
     });
     expect(json.invites).toHaveLength(1);
-    expect(json.invites[0].$id).toBe('invite_1');
+    expect(json.invites[0].id).toBe('invite_1');
+    expect(json.invites[0]).not.toHaveProperty('$id');
     expect(json.nextCursor).toBeNull();
   });
 
@@ -231,7 +232,7 @@ describe('/api/invites', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.invites.map((invite: { $id: string }) => invite.$id)).toEqual(['declined_1']);
+    expect(json.invites.map((invite: { id: string }) => invite.id)).toEqual(['declined_1']);
     expect(prismaMock.invites.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         AND: [
@@ -279,7 +280,7 @@ describe('/api/invites', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.invites.map((invite: { $id: string }) => invite.$id)).toEqual(['invite_3', 'invite_2']);
+    expect(json.invites.map((invite: { id: string }) => invite.id)).toEqual(['invite_3', 'invite_2']);
     expect(json.nextCursor).toEqual(expect.any(String));
     expect(json.nextCursor).not.toContain('invite_2');
   });
@@ -339,8 +340,10 @@ describe('/api/invites', () => {
     expect(res.status).toBe(201);
     expect(Array.isArray(json.invites)).toBe(true);
     expect(json.invites).toHaveLength(1);
-    expect(json.invites[0].$id).toBe('invite_1');
-    expect(json.invites[0].$createdAt).toBe('2020-01-01T00:00:00.000Z');
+    expect(json.invites[0].id).toBe('invite_1');
+    expect(json.invites[0].createdAt).toBe('2020-01-01T00:00:00.000Z');
+    expect(json.invites[0]).not.toHaveProperty('$id');
+    expect(json.invites[0]).not.toHaveProperty('$createdAt');
     expect(json.invites[0].type).toBe('TEAM');
 
     expect(ensureAuthUserAndUserDataByEmailMock).toHaveBeenCalledWith(
@@ -394,7 +397,7 @@ describe('/api/invites', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.invites[0].$id).toBe('invite_placeholder');
+    expect(json.invites[0].id).toBe('invite_placeholder');
     expect(ensureAuthUserAndUserDataByEmailMock).not.toHaveBeenCalled();
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
   });
@@ -436,7 +439,7 @@ describe('/api/invites', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.invites[0].$id).toBe('invite_existing_team');
+    expect(json.invites[0].id).toBe('invite_existing_team');
     expect(prismaMock.invites.create).not.toHaveBeenCalled();
     expect(prismaMock.invites.update).toHaveBeenCalledWith({
       where: { id: 'invite_existing_team' },
@@ -524,7 +527,7 @@ describe('/api/invites', () => {
 
     expect(res.status).toBe(201);
     expect(json.invites[0]).toEqual(expect.objectContaining({
-      $id: 'invite_failed_email',
+      id: 'invite_failed_email',
       status: 'FAILED',
     }));
   });

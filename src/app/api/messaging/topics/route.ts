@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   getRetainedDirectMessagePair,
   getMinorChatParticipantIds,
@@ -97,5 +96,5 @@ export async function POST(req: NextRequest) {
       },
     });
 
-  return NextResponse.json({ topicId, topic: withLegacyFields(record) }, { status: 200 });
+  return NextResponse.json({ topicId, topic: record }, { status: 200 });
 }

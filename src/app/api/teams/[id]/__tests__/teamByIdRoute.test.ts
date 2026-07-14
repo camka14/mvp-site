@@ -98,9 +98,6 @@ const requireSessionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 jest.mock('@/server/razumlyAdmin', () => ({
   evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
 }));

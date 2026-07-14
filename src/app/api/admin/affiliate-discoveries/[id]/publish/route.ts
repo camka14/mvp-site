@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import { publishAffiliateCandidate } from '@/server/affiliateImports/service';
 
@@ -19,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const published = await publishAffiliateCandidate(candidateId, { publishedByUserId: session.userId });
-    return NextResponse.json({ published: withLegacyFields(published) }, { status: 200 });
+    return NextResponse.json({ published: published }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     const message = error instanceof Error ? error.message : 'Failed to publish affiliate discovery.';

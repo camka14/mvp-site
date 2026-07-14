@@ -42,7 +42,8 @@ describe('/api/admin/affiliate-discoveries/[id]/publish', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.published.$id).toBe('event_1');
+    expect(json.published.id).toBe('event_1');
+    expect(json.published).not.toHaveProperty('$id');
     expect(publishAffiliateCandidateMock).toHaveBeenCalledWith('candidate_1', { publishedByUserId: 'admin_1' });
   });
 

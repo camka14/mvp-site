@@ -123,7 +123,7 @@ class FacilityService {
       : null;
 
     return {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       organizationId: String(row.organizationId ?? ''),
       name: row.name ?? '',
       location: row.location ?? '',
@@ -139,8 +139,8 @@ class FacilityService {
       sortOrder,
       createdAt: row.createdAt ?? row.$createdAt ?? null,
       updatedAt: row.updatedAt ?? row.$updatedAt ?? null,
-      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : null,
-      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : null,
+      $createdAt: typeof row.createdAt === 'string' ? row.createdAt : typeof row.$createdAt === 'string' ? row.$createdAt : null,
+      $updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : typeof row.$updatedAt === 'string' ? row.$updatedAt : null,
     };
   }
 

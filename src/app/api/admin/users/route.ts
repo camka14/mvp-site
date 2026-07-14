@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
@@ -202,7 +201,7 @@ export async function GET(req: NextRequest) {
     const authById = new Map(authRows.map((row) => [row.id, row]));
     const userRowsWithDerivedTeamIds = await withDerivedCanonicalTeamIds(userRows, prisma);
 
-    const users = withLegacyList(userRowsWithDerivedTeamIds.map(applyNameCaseToUserFields)).map((user) => {
+    const users = userRowsWithDerivedTeamIds.map(applyNameCaseToUserFields).map((user) => {
       const authUser = authById.get(user.id);
       return {
         ...user,

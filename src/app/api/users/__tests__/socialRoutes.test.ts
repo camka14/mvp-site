@@ -3,8 +3,6 @@
 import { NextRequest } from 'next/server';
 
 const requireSessionMock = jest.fn();
-const withLegacyFieldsMock = jest.fn((row) => ({ ...row, $id: row.id }));
-const withLegacyListMock = jest.fn((rows) => rows.map((row: any) => ({ ...row, $id: row.id })));
 
 const getSocialGraphForUserMock = jest.fn();
 const sendFriendRequestMock = jest.fn();
@@ -19,10 +17,6 @@ const applyUserPrivacyMock = jest.fn((row) => row);
 const applyUserPrivacyListMock = jest.fn((rows) => rows);
 
 jest.mock('@/lib/permissions', () => ({ requireSession: (request: NextRequest) => requireSessionMock(request) }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
-}));
 jest.mock('@/server/socialGraph', () => ({
   getSocialGraphForUser: (userId: string) => getSocialGraphForUserMock(userId),
   sendFriendRequest: (senderId: string, targetUserId: string) => sendFriendRequestMock(senderId, targetUserId),
@@ -85,7 +79,7 @@ describe('social routes', () => {
 
     expect(response.status).toBe(200);
     expect(getSocialGraphForUserMock).toHaveBeenCalledWith('user_1');
-    expect(payload.user.$id).toBe('user_1');
+    expect(payload.user.id).toBe('user_1');
     expect(payload.user.teamIds).toEqual(['team_current']);
     expect(payload.friends[0].teamIds).toEqual(['team_friend']);
     expect(payload.friends).toHaveLength(1);

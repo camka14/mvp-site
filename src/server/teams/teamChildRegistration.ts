@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 import type { RegistrationQuestionAnswerSnapshotItem } from '@/server/registrationQuestions';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
@@ -14,7 +13,7 @@ const toUniqueStrings = (value: unknown): string[] => {
 };
 
 export const withTeamRoleAliases = (team: Record<string, any>) => {
-  const formatted = withLegacyFields(team);
+  const formatted = team;
   const assistantCoachIds = toUniqueStrings((formatted as any).assistantCoachIds ?? (formatted as any).coachIds);
   return {
     ...formatted,
@@ -147,7 +146,7 @@ export const reserveChildTeamRegistrationForGuardian = async ({
     payload: {
       registrationId: result.registrationId,
       status: result.status,
-      registration: registration ? withLegacyFields(registration) : null,
+      registration: registration ? registration : null,
       consent: signatureState.eligibleTemplateIds.length > 0
         ? {
           documentId: nextConsentDocumentId,

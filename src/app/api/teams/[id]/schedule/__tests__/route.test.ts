@@ -51,15 +51,6 @@ jest.mock('@/server/accessControl', () => ({
 jest.mock('@/server/razumlyAdmin', () => ({
   evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  parseDateInput: (value: unknown) => {
-    if (!value) return null;
-    const parsed = new Date(String(value));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  },
-  withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 jest.mock('@/server/events/eventRegistrations', () => ({
   withDerivedEventParticipantIds: (...args: any[]) => withDerivedEventParticipantIdsMock(...args),
 }));
@@ -161,9 +152,9 @@ describe('GET /api/teams/[id]/schedule', () => {
     }));
     expect(json.fields).toHaveLength(1);
     expect(json.teams).toEqual(expect.arrayContaining([
-      expect.objectContaining({ $id: 'canonical_team_1', name: 'Summit United' }),
-      expect.objectContaining({ $id: 'event_team_1', name: 'Summit United' }),
-      expect.objectContaining({ $id: 'event_team_2', name: 'Riverside FC' }),
+      expect.objectContaining({ id: 'canonical_team_1', name: 'Summit United' }),
+      expect.objectContaining({ id: 'event_team_1', name: 'Summit United' }),
+      expect.objectContaining({ id: 'event_team_2', name: 'Riverside FC' }),
     ]));
 
     expect(prismaMock.teams.findMany).toHaveBeenCalledWith(
@@ -242,7 +233,7 @@ describe('GET /api/teams/[id]/schedule', () => {
 
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
-    expect(json.events[0].$id).toBe('event_2');
+    expect(json.events[0].id).toBe('event_2');
     expect(json.matches).toHaveLength(1);
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

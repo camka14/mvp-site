@@ -1,7 +1,7 @@
-import { serializeMatchesLegacy } from '../serialize';
+import { serializeMatches } from '../serialize';
 import { Division, Match, Team, UserData } from '../types';
 
-describe('scheduler legacy serialization', () => {
+describe('scheduler API serialization', () => {
   it('includes roster players and registrations for match scoring dialogs', () => {
     const division = new Division('open', 'Open');
     const player = new UserData({
@@ -41,14 +41,34 @@ describe('scheduler legacy serialization', () => {
       bufferMs: 0,
       eventId: 'event_1',
     });
+    match.segments = [{
+      id: 'segment_1',
+      $id: 'obsolete_segment_alias',
+      eventId: 'event_1',
+      matchId: 'match_1',
+      sequence: 1,
+      status: 'NOT_STARTED',
+      scores: {},
+      winnerEventTeamId: null,
+    }];
+    match.incidents = [{
+      id: 'incident_1',
+      $id: 'obsolete_incident_alias',
+      eventId: 'event_1',
+      matchId: 'match_1',
+      segmentId: 'segment_1',
+      sequence: 1,
+      type: 'NOTE',
+      occurredAt: '2026-03-01T10:00:00.000Z',
+    }];
 
-    const [serialized] = serializeMatchesLegacy([match]);
+    const [serialized] = serializeMatches([match]);
 
     expect(serialized.team1).toEqual(expect.objectContaining({
-      $id: 'team_1',
+      id: 'team_1',
       playerIds: ['player_1'],
       players: [expect.objectContaining({
-        $id: 'player_1',
+        id: 'player_1',
         firstName: 'Alex',
         lastName: 'Morgan',
       })],
@@ -59,5 +79,12 @@ describe('scheduler legacy serialization', () => {
         position: 'Forward',
       })],
     }));
+    expect(serialized).not.toHaveProperty('$id');
+    expect(serialized.team1).not.toHaveProperty('$id');
+    expect(serialized.team1?.players[0]).not.toHaveProperty('$id');
+    expect(serialized.segments[0]).toEqual(expect.objectContaining({ id: 'segment_1' }));
+    expect(serialized.segments[0]).not.toHaveProperty('$id');
+    expect(serialized.incidents[0]).toEqual(expect.objectContaining({ id: 'incident_1' }));
+    expect(serialized.incidents[0]).not.toHaveProperty('$id');
   });
 });

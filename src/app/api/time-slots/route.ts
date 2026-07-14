@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
   localDatePartsInTimeZone,
@@ -150,7 +149,7 @@ const resolvePublicRentalSlotIds = async (
   return rentalSlotIds.filter((slotId) => requested.has(slotId));
 };
 
-const toPublicRentalSlot = (slot: Record<string, any>) => withLegacyFields({
+const toPublicRentalSlot = (slot: Record<string, any>) => ({
   id: slot.id ?? slot.$id,
   dayOfWeek: slot.dayOfWeek ?? null,
   daysOfWeek: Array.isArray(slot.daysOfWeek) ? slot.daysOfWeek : [],
@@ -352,7 +351,7 @@ export async function GET(req: NextRequest) {
     const normalizedDivisions = normalizeDivisionKeys((slot as any).divisions);
     const normalizedRequiredTemplateIds = normalizeTemplateIds((slot as any).requiredTemplateIds);
     const normalizedHostRequiredTemplateIds = normalizeTemplateIds((slot as any).hostRequiredTemplateIds);
-    return withLegacyFields({
+    return {
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
       daysOfWeek: normalizedDays,
@@ -361,7 +360,7 @@ export async function GET(req: NextRequest) {
       divisions: normalizedDivisions,
       requiredTemplateIds: normalizedRequiredTemplateIds,
       hostRequiredTemplateIds: normalizedHostRequiredTemplateIds,
-    } as any);
+    } as any;
   });
 
   return NextResponse.json({
@@ -433,7 +432,7 @@ export async function POST(req: NextRequest) {
     });
     await persistTimeSlotDivisions(data.id, divisions, now);
 
-    return NextResponse.json(withLegacyFields({
+    return NextResponse.json({
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
       daysOfWeek: normalizedDays,
@@ -443,7 +442,7 @@ export async function POST(req: NextRequest) {
       divisions,
       requiredTemplateIds,
       hostRequiredTemplateIds,
-    } as any), { status: 201 });
+    } as any, { status: 201 });
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return NextResponse.json(

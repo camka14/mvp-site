@@ -10,7 +10,6 @@ const messagesCountMock = jest.fn();
 const messagesFindFirstMock = jest.fn();
 const isChatGroupMemberMock = jest.fn();
 const archiveChatGroupMock = jest.fn();
-const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
 jest.mock('@/lib/permissions', () => ({
   requireSession: (...args: any[]) => requireSessionMock(...args),
@@ -35,11 +34,6 @@ jest.mock('@/lib/prisma', () => ({
 jest.mock('@/server/chatAccess', () => ({
   ...jest.requireActual('@/server/chatAccess'),
   isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
-}));
-
-jest.mock('@/server/legacyFormat', () => ({
-  stripLegacyFieldsDeep: (value: any) => value,
-  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
 }));
 
 jest.mock('@/server/moderation', () => ({
@@ -98,7 +92,7 @@ describe('/api/chat/groups/[id]', () => {
       unreadCount: 3,
       lastMessage: expect.objectContaining({
         id: 'message_2',
-        $id: 'message_2',
+        id: 'message_2',
         body: 'Latest update',
       }),
     }));

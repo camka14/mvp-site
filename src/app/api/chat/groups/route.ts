@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { handleRouteError } from '@/server/http/routeErrors';
 import {
   getCanonicalDirectMessagePair,
@@ -94,7 +93,7 @@ export async function GET(req: NextRequest) {
         ],
       });
       latestMessages.forEach((message) => {
-        lastMessageByGroupId.set(message.chatId, withLegacyFields(message));
+        lastMessageByGroupId.set(message.chatId, message);
       });
     }
 
@@ -104,7 +103,7 @@ export async function GET(req: NextRequest) {
       lastMessage: lastMessageByGroupId.get(group.id) ?? null,
     }));
 
-    return NextResponse.json({ groups: withLegacyList(groupsWithUnread) }, { status: 200 });
+    return NextResponse.json({ groups: groupsWithUnread }, { status: 200 });
   } catch (error) {
     return handleRouteError(error, 'Failed to load chat groups');
   }
@@ -189,7 +188,7 @@ export async function POST(req: NextRequest) {
         })
       : await prisma.chatGroup.create({ data: createData });
 
-    return NextResponse.json(withLegacyFields(group), { status: 201 });
+    return NextResponse.json(group, { status: 201 });
   } catch (error) {
     return handleRouteError(error, 'Failed to create chat group');
   }

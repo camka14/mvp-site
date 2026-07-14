@@ -129,7 +129,7 @@ class OrganizationService {
 
   private mapInvite(row: Record<string, unknown>): Invite {
     return {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       type: normalizeInviteType(row.type) ?? 'STAFF',
       email: typeof row.email === 'string' ? row.email : undefined,
       status: normalizeInviteStatus(row.status) ?? undefined,
@@ -141,14 +141,14 @@ class OrganizationService {
       createdBy: typeof row.createdBy === 'string' ? row.createdBy : null,
       firstName: typeof row.firstName === 'string' ? row.firstName : undefined,
       lastName: typeof row.lastName === 'string' ? row.lastName : undefined,
-      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
-      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+      $createdAt: typeof row.createdAt === 'string' ? row.createdAt : typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
     };
   }
 
   private mapStaffMember(row: Record<string, unknown>): StaffMember {
     return {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       organizationId: String(row.organizationId ?? ''),
       userId: String(row.userId ?? ''),
       types: normalizeStaffMemberTypes(row.types),
@@ -156,8 +156,8 @@ class OrganizationService {
       role: row.role && typeof row.role === 'object'
         ? this.mapOrganizationRole(row.role as Record<string, unknown>)
         : null,
-      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
-      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+      $createdAt: typeof row.createdAt === 'string' ? row.createdAt : typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
     };
   }
 
@@ -166,7 +166,7 @@ class OrganizationService {
       ? row.kind as OrganizationRole['kind']
       : 'STAFF';
     return {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       organizationId: String(row.organizationId ?? ''),
       name: typeof row.name === 'string' ? row.name : 'Staff',
       kind,
@@ -176,15 +176,15 @@ class OrganizationService {
       permissions: Array.isArray(row.permissions)
         ? row.permissions.filter((permission): permission is string => typeof permission === 'string')
         : [],
-      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
-      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+      $createdAt: typeof row.createdAt === 'string' ? row.createdAt : typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
     };
   }
 
   private mapOrganizationTag(row: Record<string, unknown>): OrganizationTag {
     return {
       id: typeof row.id === 'string' ? row.id : undefined,
-      $id: typeof row.$id === 'string' ? row.$id : typeof row.id === 'string' ? row.id : undefined,
+      $id: typeof row.id === 'string' ? row.id : typeof row.$id === 'string' ? row.$id : undefined,
       name: typeof row.name === 'string' ? row.name : '',
       slug: typeof row.slug === 'string' ? row.slug : undefined,
       organizationCount: typeof row.organizationCount === 'number' ? row.organizationCount : undefined,
@@ -238,7 +238,7 @@ class OrganizationService {
     const derivedOfficialIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'OFFICIAL');
 
     const organization: Organization = {
-      $id: row.$id,
+      $id: row.id ?? row.$id,
       name: row.name ?? '',
       description: row.description ?? undefined,
       website: row.website ?? undefined,
@@ -321,8 +321,8 @@ class OrganizationService {
           .map((value: unknown) => this.mapOrganizationTag(value as Record<string, unknown>))
           .filter((tag) => tag.name.trim().length > 0)
         : [],
-      $createdAt: row.$createdAt,
-      $updatedAt: row.$updatedAt,
+      $createdAt: row.createdAt ?? row.$createdAt,
+      $updatedAt: row.updatedAt ?? row.$updatedAt,
       events: [],
       teams: [],
       fields: [],

@@ -16,9 +16,6 @@ jest.mock('@/lib/prisma', () => ({
 jest.mock('@/lib/permissions', () => ({
   requireSession: (...args: unknown[]) => requireSessionMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: Record<string, unknown>) => ({ ...row, $id: row.id }),
-}));
 jest.mock('@/server/teams/teamGuardianInvites', () => ({
   listActiveChildIdsForParent: (...args: unknown[]) => listActiveChildIdsForParentMock(...args),
 }));
@@ -62,7 +59,7 @@ describe('GET /api/invites/[id]', () => {
     expect(response.status).toBe(200);
     expect(payload.invite).toEqual(expect.objectContaining({
       id: 'invite_1',
-      $id: 'invite_1',
+      id: 'invite_1',
       teamId: 'team_from_server',
       userId: 'player_1',
     }));

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { buildRefundApprovalPreview, type RefundRequestRow } from '@/server/refunds/refundExecution';
 
@@ -83,5 +82,5 @@ export async function GET(req: NextRequest) {
     approvalPreview: buildRefundApprovalPreview(refund as RefundRequestRow),
   }));
 
-  return NextResponse.json({ refunds: withLegacyList(refundsWithApprovalPreview) }, { status: 200 });
+  return NextResponse.json({ refunds: refundsWithApprovalPreview }, { status: 200 });
 }

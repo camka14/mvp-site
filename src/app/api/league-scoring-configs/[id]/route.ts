@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,5 +9,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!config) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  return NextResponse.json(withLegacyFields(config), { status: 200 });
+  return NextResponse.json(config, { status: 200 });
 }

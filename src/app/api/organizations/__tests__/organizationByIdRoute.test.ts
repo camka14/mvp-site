@@ -107,7 +107,7 @@ describe('/api/organizations/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual(expect.objectContaining({
-      $id: 'org_1',
+      id: 'org_1',
       name: 'Test Org',
     }));
     expect(payload).not.toHaveProperty('ownerId');
@@ -117,6 +117,7 @@ describe('/api/organizations/[id]', () => {
     expect(payload).not.toHaveProperty('embedAllowedDomains');
     expect(payload).not.toHaveProperty('staffMembers');
     expect(payload).not.toHaveProperty('productIds');
+    expect(payload).not.toHaveProperty('$id');
     expect(prismaMock.staffMembers.findMany).not.toHaveBeenCalled();
     expect(prismaMock.sensitiveUserData.findMany).not.toHaveBeenCalled();
   });
@@ -142,7 +143,8 @@ describe('/api/organizations/[id]', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toEqual(expect.objectContaining({ $id: 'org_1', name: 'Public Org' }));
+    expect(payload).toEqual(expect.objectContaining({ id: 'org_1', name: 'Public Org' }));
+    expect(payload).not.toHaveProperty('$id');
     expect(payload).not.toHaveProperty('ownerId');
     expect(payload).not.toHaveProperty('hasStripeAccount');
     expect(payload).not.toHaveProperty('verificationReviewNotes');

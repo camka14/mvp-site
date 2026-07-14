@@ -24,7 +24,6 @@ jest.mock('@/server/inviteUsers', () => ({
   ensureAuthUserAndUserDataByEmail: (...args: any[]) => ensureUserMock(...args),
 }));
 jest.mock('@/server/inviteEmails', () => ({ sendInviteEmails: async (rows: any[]) => rows }));
-jest.mock('@/server/legacyFormat', () => ({ withLegacyFields: (row: any) => ({ ...row, $id: row.id }) }));
 
 import { POST } from '@/app/api/users/invite/route';
 

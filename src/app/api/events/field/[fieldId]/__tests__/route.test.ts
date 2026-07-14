@@ -176,9 +176,9 @@ describe('/api/events/field/[fieldId]', () => {
     expect(payload.events).toEqual([
       expect.objectContaining({
         id: 'event_1',
-        $id: 'event_1',
       }),
     ]);
+    expect(payload.events[0]).not.toHaveProperty('$id');
   });
 
   it('returns league time slots as rental window blockers', async () => {
@@ -234,8 +234,8 @@ describe('/api/events/field/[fieldId]', () => {
     expect(payload.events).toEqual([
       expect.objectContaining({
         id: 'league_1',
-        $id: 'league_1',
       }),
     ]);
+    expect(payload.events[0]).not.toHaveProperty('$id');
   });
 });

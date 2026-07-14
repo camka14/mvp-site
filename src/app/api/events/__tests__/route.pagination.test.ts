@@ -59,10 +59,6 @@ jest.mock('@/server/scheduler/scheduleEvent', () => ({
   scheduleEvent: jest.fn(),
   ScheduleError: class ScheduleError extends Error {},
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  parseDateInput: jest.fn(),
-  withLegacyFields: (row: Record<string, unknown>) => ({ ...row }),
-}));
 jest.mock('@/server/eventCreationNotifications', () => ({ notifySocialAudienceOfEventCreation: jest.fn() }));
 jest.mock('@/server/contentFilter', () => ({
   assertEventContentAllowed: jest.fn(),
@@ -89,15 +85,18 @@ jest.mock('@/lib/manualRegistrationPayments', () => ({
 
 import { GET } from '@/app/api/events/route';
 
-const event = (id: string) => ({
+const event = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
   start: new Date(`2026-07-0${id.at(-1)}T09:00:00.000Z`),
+  end: new Date(`2026-07-0${id.at(-1)}T10:00:00.000Z`),
+  noFixedEndDateTime: false,
   organizationId: 'organization_1',
   eventType: 'EVENT',
   fieldIds: [],
   timeSlotIds: [],
   userIds: [],
   teamSignup: false,
+  ...overrides,
 });
 
 describe('GET /api/events pagination', () => {
@@ -110,7 +109,11 @@ describe('GET /api/events pagination', () => {
   });
 
   it('uses a stable offset page and exposes only page rows with truthful metadata', async () => {
-    prismaMock.events.findMany.mockResolvedValue([event('event_1'), event('event_2'), event('event_3')]);
+    prismaMock.events.findMany.mockResolvedValue([
+      event('event_1', { end: null, noFixedEndDateTime: true }),
+      event('event_2'),
+      event('event_3'),
+    ]);
 
     const response = await GET(new NextRequest(
       'http://localhost/api/events?organizationId=organization_1&limit=2&offset=3',
@@ -123,8 +126,12 @@ describe('GET /api/events pagination', () => {
       take: 3,
       orderBy: [{ start: 'asc' }, { id: 'asc' }],
     }));
-    await expect(response.json()).resolves.toEqual(expect.objectContaining({
-      events: [expect.objectContaining({ id: 'event_1' }), expect.objectContaining({ id: 'event_2' })],
+    const payload = await response.json();
+    expect(payload).toEqual(expect.objectContaining({
+      events: [
+        expect.objectContaining({ id: 'event_1', end: null, noFixedEndDateTime: true }),
+        expect.objectContaining({ id: 'event_2', end: '2026-07-02T10:00:00.000Z' }),
+      ],
       pagination: {
         limit: 2,
         offset: 3,
@@ -132,6 +139,7 @@ describe('GET /api/events pagination', () => {
         hasMore: true,
       },
     }));
+    expect(payload.events[0]).not.toHaveProperty('$id');
   });
 
   it('normalizes malformed limits and negative offsets without removing existing list access', async () => {

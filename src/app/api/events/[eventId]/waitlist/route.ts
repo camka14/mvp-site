@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import {
   deleteEventRegistration,
@@ -154,7 +153,7 @@ async function updateWaitlist(
       }
       return NextResponse.json(
         {
-          event: withLegacyFields(event),
+          event: event,
           requiresParentApproval: true,
         },
         { status: 200 },
@@ -223,7 +222,7 @@ async function updateWaitlist(
 
   const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
   return NextResponse.json(
-    { event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event) },
+    { event: refreshedEvent ? refreshedEvent : event },
     { status: 200 },
   );
 }

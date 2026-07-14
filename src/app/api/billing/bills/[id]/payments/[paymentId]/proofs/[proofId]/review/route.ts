@@ -8,7 +8,6 @@ import {
   loadBillPaymentForAction,
   reviewManualBillPaymentProofForAction,
 } from '@/server/billing/billPaymentActions';
-import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +68,7 @@ export async function POST(
       reviewNote: parsed.data.reviewNote,
       now: new Date(),
     });
-    return NextResponse.json({ bill: withLegacyFields(bill ?? loaded.bill) }, { status: 200 });
+    return NextResponse.json({ bill: bill ?? loaded.bill }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to review proof of payment.';
     return NextResponse.json({ error: message }, { status: 400 });

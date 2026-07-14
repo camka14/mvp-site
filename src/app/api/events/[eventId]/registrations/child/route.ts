@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import {
   resolveEventDivisionSelection,
@@ -219,7 +218,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     });
 
     return NextResponse.json({
-      registration: withLegacyFields(existingRegistration),
+      registration: existingRegistration,
       consent: needsConsent
         ? {
             documentId: existingRegistration.consentDocumentId ?? consentDocumentId ?? null,
@@ -285,7 +284,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   }
 
   return NextResponse.json({
-    registration: withLegacyFields(registration),
+    registration: registration,
     consent: needsConsent
         ? {
           documentId: consentDocumentId ?? null,

@@ -45,9 +45,6 @@ jest.mock('@/lib/permissions', () => ({
 jest.mock('@/lib/age', () => ({
   calculateAgeOnDate: jest.fn(),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (value: any) => value,
-}));
 jest.mock('@/server/teams/teamMembership', () => ({
   loadCanonicalTeamById: jest.fn(),
 }));

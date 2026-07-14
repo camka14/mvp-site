@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   resolveEventDivisionSelection,
   validateRegistrantAgeForSelection,
@@ -165,7 +164,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     if (existingRequest) {
       return NextResponse.json(
         {
-          registration: withLegacyFields(existingRequest),
+          registration: existingRequest,
           requiresParentApproval: true,
           consent: {
             status: existingRequest.consentStatus ?? 'guardian_approval_required',
@@ -206,7 +205,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
     return NextResponse.json(
       {
-        registration: withLegacyFields(registration),
+        registration: registration,
         requiresParentApproval: true,
         consent: {
           status: 'guardian_approval_required',
@@ -363,7 +362,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   }
 
   return NextResponse.json({
-    registration: withLegacyFields(registration),
+    registration: registration,
     warnings: consentDispatch?.errors.length ? consentDispatch.errors : undefined,
   }, { status: 200 });
 }

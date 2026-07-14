@@ -53,7 +53,8 @@ describe('GET /api/admin/organizations', () => {
     expect(res.status).toBe(200);
     expect(json.total).toBe(2);
     expect(json.organizations).toHaveLength(2);
-    expect(json.organizations[0].$id).toBe('org_1');
+    expect(json.organizations[0].id).toBe('org_1');
+    expect(json.organizations[0]).not.toHaveProperty('$id');
     expect(json.organizations[0].productIds).toEqual(['product_1', 'product_2']);
     expect(json.organizations[1].productIds).toEqual([]);
     expect(prismaMock.products.findMany).toHaveBeenCalledTimes(1);

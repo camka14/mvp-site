@@ -11,7 +11,7 @@ import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, sideFrom } from '@/server/scheduler/types';
-import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeMatches } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import {
   collectMatchScheduleChanges,
@@ -27,6 +27,7 @@ import {
   resolveMatchSetPointTargets,
   type MatchPolicyOverrideInput,
 } from '@/server/matches/matchPolicy';
+import { findDollarPrefixedFields } from '@/server/requestParsing';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,6 @@ type BulkMatchCreateInput = z.infer<typeof bulkMatchCreateSchema>;
 const scoreMapSchema = z.record(z.string(), z.number());
 const bulkMatchSegmentSchema = z.object({
   id: z.string().optional(),
-  $id: z.string().optional(),
   eventId: z.string().nullable().optional(),
   matchId: z.string().nullable().optional(),
   sequence: z.number().int().positive(),
@@ -61,7 +61,6 @@ const matchRulesSnapshotSchema = z.record(z.string(), z.unknown()).nullable().op
 
 const bulkMatchUpdateSchema = z.object({
   id: z.string().optional(),
-  $id: z.string().optional(),
   locked: z.boolean().optional(),
   matchId: z.number().int().nullable().optional(),
   status: z.string().nullable().optional(),
@@ -173,8 +172,7 @@ const normalizeBulkMatchSegments = (
   return [...segments]
     .sort((left, right) => left.sequence - right.sequence)
     .map((segment) => ({
-      id: segment.id ?? segment.$id ?? `${matchId}_segment_${segment.sequence}`,
-      $id: segment.$id ?? segment.id ?? `${matchId}_segment_${segment.sequence}`,
+      id: segment.id ?? `${matchId}_segment_${segment.sequence}`,
       eventId,
       matchId,
       sequence: segment.sequence,
@@ -349,9 +347,6 @@ const resolveMatchId = (entry: BulkMatchUpdateInput): string | null => {
   if (typeof entry.id === 'string' && entry.id.trim().length > 0) {
     return entry.id.trim();
   }
-  if (typeof entry.$id === 'string' && entry.$id.trim().length > 0) {
-    return entry.$id.trim();
-  }
   return null;
 };
 
@@ -453,7 +448,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     const event = await loadEventWithRelations(eventId);
     const matches = Object.values(event.matches)
       .sort((left, right) => matchStartTime(left) - matchStartTime(right));
-    return NextResponse.json({ matches: serializeMatchesLegacy(matches) }, { status: 200 });
+    return NextResponse.json({ matches: serializeMatches(matches) }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof Error && error.message === 'Event not found') {
@@ -467,6 +462,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
+  const obsoleteFields = findDollarPrefixedFields(body);
+  if (obsoleteFields.length > 0) {
+    return NextResponse.json({
+      error: 'Dollar-prefixed compatibility fields are no longer supported.',
+      fields: obsoleteFields,
+    }, { status: 400 });
+  }
   const parsed = bulkUpdateSchema.safeParse(body ?? {});
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
@@ -976,7 +978,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       };
     });
 
-    const serializedMatches = serializeMatchesLegacy(result.matches);
+    const serializedMatches = serializeMatches(result.matches);
     publishEventMatchChanges({
       eventId,
       matches: serializedMatches,

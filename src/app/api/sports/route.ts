@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureDefaultSports } from '@/server/defaultSports';
 import { dedupeCanonicalSports, normalizeCanonicalSportName } from '@/server/canonicalSports';
-import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +103,7 @@ export async function GET(_req: NextRequest) {
   }
 
   return NextResponse.json(
-    { sports: withLegacyList(dedupeCanonicalSports(sports)) },
+    { sports: dedupeCanonicalSports(sports) },
     { status: 200 },
   );
 }

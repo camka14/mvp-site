@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -72,14 +71,14 @@ export async function GET(req: NextRequest) {
         : Promise.resolve([]),
     ]);
 
-    const lastMessageByChatId = new Map(messages.map((message) => [message.chatId, withLegacyFields(message)]));
+    const lastMessageByChatId = new Map(messages.map((message) => [message.chatId, message]));
     const membersById = new Map(
-      members.map((member) => [member.id, withLegacyFields(applyNameCaseToUserFields(member))]),
+      members.map((member) => [member.id, applyNameCaseToUserFields(member)]),
     );
 
     return NextResponse.json(
       {
-        groups: withLegacyList(groups).map((group) => ({
+        groups: groups.map((group) => ({
           ...group,
           memberUsers: group.userIds
             .map((userId: string) => membersById.get(userId))

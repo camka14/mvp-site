@@ -47,10 +47,6 @@ const prismaMock = {
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-  withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
-}));
 jest.mock('@/server/accessControl', () => ({
   canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
 }));
@@ -278,7 +274,7 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
     expect(payload.freeAgentEventTeamIdsByUserId).toEqual({
       free_registration: ['event_team_1'],
     });
-    expect(payload.users.map((row: any) => row.$id)).toEqual(['free_registration']);
+    expect(payload.users.map((row: any) => row.id)).toEqual(['free_registration']);
     expect(payload.users[0].teamIds).toEqual(['team_current', 'team_staff']);
   });
 });

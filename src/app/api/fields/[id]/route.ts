@@ -6,7 +6,7 @@ import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { findPresentKeys, findUnknownKeys } from '@/server/http/strictPatch';
 import { getFacilityForOrganization } from '@/server/facilities';
-import { attachFacilitiesToFieldRows, withLegacyFieldPayload } from '@/server/fieldFacilityPayload';
+import { attachFacilitiesToFieldRows, toFieldResponse } from '@/server/fieldFacilityPayload';
 import { deleteOrArchiveField, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 
 export const dynamic = 'force-dynamic';
@@ -139,7 +139,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   const [fieldWithFacility] = await attachFacilitiesToFieldRows([field]);
-  return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? field), { status: 200 });
+  return NextResponse.json(toFieldResponse(fieldWithFacility ?? field), { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -285,7 +285,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   const [fieldWithFacility] = await attachFacilitiesToFieldRows([updated]);
-  return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? updated), { status: 200 });
+  return NextResponse.json(toFieldResponse(fieldWithFacility ?? updated), { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

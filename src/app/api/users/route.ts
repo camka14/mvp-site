@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import {
   applyUserPrivacyList,
   createVisibilityContext,
@@ -61,7 +60,7 @@ export async function GET(req: NextRequest) {
       .map((id) => byId.get(id))
       .filter((user): user is NonNullable<typeof user> => Boolean(user));
     return NextResponse.json(
-      { users: withLegacyList(applyUserPrivacyList(orderedUsers, visibilityContext)) },
+      { users: applyUserPrivacyList(orderedUsers, visibilityContext) },
       { status: 200 },
     );
   }
@@ -111,7 +110,7 @@ export async function GET(req: NextRequest) {
     .filter((user) => isVisibleInGenericSearch(user, visibilityContext) && !excludedEmailUserIds.has(user.id))
     .slice(0, 20);
   return NextResponse.json(
-    { users: withLegacyList(applyUserPrivacyList(filteredUsers, visibilityContext)) },
+    { users: applyUserPrivacyList(filteredUsers, visibilityContext) },
     { status: 200 },
   );
 }

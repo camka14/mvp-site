@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { ModerationReportTargetTypeEnum, Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   createModerationReport,
   removeUserFromChatGroup,
@@ -175,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        report: withLegacyFields(result.report),
+        report: result.report,
         hiddenEventIds: result.hiddenEventIds,
         removedChatIds: result.removedChatIds,
       },

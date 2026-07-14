@@ -17,8 +17,17 @@ const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return res.json() as Promise<T>;
 };
 
-const normalizeUserDataNames = (user: UserData): UserData => ({
+type CanonicalApiEntity = {
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+const normalizeUserDataNames = (user: UserData & CanonicalApiEntity): UserData => ({
   ...user,
+  $id: user.id ?? user.$id,
+  $createdAt: user.createdAt ?? user.$createdAt,
+  $updatedAt: user.updatedAt ?? user.$updatedAt,
   firstName: normalizeOptionalName(user.firstName) ?? '',
   lastName: normalizeOptionalName(user.lastName) ?? '',
   blockedUserIds: Array.isArray(user.blockedUserIds) ? user.blockedUserIds : [],
@@ -32,10 +41,18 @@ const normalizeUserDataNames = (user: UserData): UserData => ({
 
 const normalizeUserDataList = (users: UserData[]): UserData[] => users.map(normalizeUserDataNames);
 
-const normalizeInviteNames = (invite: Invite): Invite => ({
+const normalizeInviteNames = (invite: Invite & CanonicalApiEntity): Invite => ({
   ...invite,
+  $id: invite.id ?? invite.$id,
+  $createdAt: invite.createdAt ?? invite.$createdAt,
+  $updatedAt: invite.updatedAt ?? invite.$updatedAt,
   firstName: normalizeOptionalName(invite.firstName) ?? undefined,
   lastName: normalizeOptionalName(invite.lastName) ?? undefined,
+});
+
+const normalizeSubscription = (subscription: Subscription & CanonicalApiEntity): Subscription => ({
+  ...subscription,
+  $id: subscription.id ?? subscription.$id,
 });
 
 interface UpdateProfileData {
@@ -296,7 +313,7 @@ class UserService {
       const params = new URLSearchParams();
       params.set('userId', _userId);
       const response = await apiFetch<{ subscriptions?: Subscription[] }>(`/api/subscriptions?${params.toString()}`);
-      return response.subscriptions ?? [];
+      return (response.subscriptions ?? []).map(normalizeSubscription);
     } catch (error) {
       console.error('Failed to list user subscriptions:', error);
       return [];
@@ -335,7 +352,12 @@ class UserService {
         const response = await apiFetch<{ invites?: Invite[]; nextCursor?: string | null }>(
           `/api/invites?${requestParams.toString()}`,
         );
-        (response.invites ?? []).forEach((invite) => invitesById.set(invite.$id, normalizeInviteNames(invite)));
+        (response.invites ?? []).forEach((invite) => {
+          const normalizedInvite = normalizeInviteNames(invite);
+          if (normalizedInvite.$id) {
+            invitesById.set(normalizedInvite.$id, normalizedInvite);
+          }
+        });
         const nextCursor = response.nextCursor?.trim() || null;
         if (nextCursor && (nextCursor === cursor || seenCursors.has(nextCursor))) {
           throw new Error('Invite pagination returned a repeated cursor');

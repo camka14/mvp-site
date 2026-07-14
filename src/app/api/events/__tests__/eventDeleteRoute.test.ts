@@ -242,7 +242,7 @@ describe('event DELETE route', () => {
         archiveReason: 'delete_requested',
       }),
     });
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(billPaymentsMock.deleteMany).not.toHaveBeenCalled();
     expect(billsMock.deleteMany).not.toHaveBeenCalled();
     expect(eventsMock.delete).not.toHaveBeenCalled();

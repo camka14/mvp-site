@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import {
   deleteAffiliateCandidate,
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Affiliate discovery not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ candidate: withLegacyFields(candidate) }, { status: 200 });
+    return NextResponse.json({ candidate: candidate }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to load affiliate discovery', error);
@@ -45,7 +44,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const candidate = await deleteAffiliateCandidate(candidateId);
-    return NextResponse.json({ deleted: true, candidate: withLegacyFields(candidate) }, { status: 200 });
+    return NextResponse.json({ deleted: true, candidate: candidate }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     const message = error instanceof Error ? error.message : 'Failed to delete affiliate discovery.';
@@ -74,8 +73,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await reclassifyAffiliateCandidate(candidateId, listingKind);
     return NextResponse.json({
-      candidate: withLegacyFields(result.candidate),
-      target: withLegacyFields(result.target),
+      candidate: result.candidate,
+      target: result.target,
     }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;

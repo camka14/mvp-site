@@ -224,7 +224,7 @@ class LeagueService {
     ) as NonNullable<TimeSlot['daysOfWeek']>;
 
     const schedule: TimeSlot = {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
       daysOfWeek: normalizedDays,
       startTimeMinutes: startTime,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   canManageBillPayment,
   loadBillPaymentForAction,
@@ -46,7 +45,7 @@ export async function POST(
     if (!bill) {
       return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
     }
-    return NextResponse.json({ bill: withLegacyFields(bill) }, { status: 200 });
+    return NextResponse.json({ bill: bill }, { status: 200 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to mark bill payment pending' },

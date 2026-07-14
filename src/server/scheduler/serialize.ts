@@ -89,6 +89,10 @@ const serializeUser = (user: UserData) => ({
   userName: user.userName,
 });
 
+const withoutDollarPrefixedFields = <T extends Record<string, unknown>>(row: T): Omit<T, `$${string}`> => (
+  Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith('$'))) as Omit<T, `$${string}`>
+);
+
 const serializeMatch = (match: Match) => ({
   id: match.id,
   matchId: match.matchId ?? null,
@@ -111,8 +115,8 @@ const serializeMatch = (match: Match) => ({
   winnerEventTeamId: match.winnerEventTeamId ?? null,
   matchRulesSnapshot: match.matchRulesSnapshot ?? null,
   resolvedMatchRules: match.resolvedMatchRules ?? null,
-  segments: (match.segments ?? []).map((segment) => ({ ...segment })),
-  incidents: (match.incidents ?? []).map((incident) => ({ ...incident })),
+  segments: (match.segments ?? []).map((segment) => withoutDollarPrefixedFields({ ...segment })),
+  incidents: (match.incidents ?? []).map((incident) => withoutDollarPrefixedFields({ ...incident })),
   officialId: match.official?.id ?? null,
   officialIds: (match.officialAssignments ?? []).map((assignment) => ({ ...assignment })),
   teamOfficialId: match.teamOfficial?.id ?? null,
@@ -245,185 +249,4 @@ export const serializeEvent = (event: Tournament | League) => {
 };
 
 export const serializeMatches = (matches: Match[]) => matches.map(serializeMatch);
-
-const serializeTeamLegacy = (team: Team) => ({
-  $id: team.id,
-  id: team.id,
-  captainId: team.captainId,
-  division: team.division?.id ?? team.division,
-  name: team.name,
-  playerIds: team.playerIds ?? [],
-  players: (team.players ?? []).map(serializeUserLegacy),
-  playerRegistrations: (team.playerRegistrations ?? []).map((registration) => ({
-    id: registration.id,
-    teamId: registration.teamId ?? null,
-    userId: registration.userId,
-    status: registration.status,
-    jerseyNumber: registration.jerseyNumber ?? null,
-    position: registration.position ?? null,
-    isCaptain: registration.isCaptain ?? false,
-  })),
-});
-
-const serializeFieldLegacy = (field: PlayingField) => ({
-  $id: field.id,
-  id: field.id,
-  organizationId: field.organizationId ?? null,
-  divisions: field.divisions.map((division) => division.id),
-  name: field.name,
-});
-
-const serializeTimeSlotLegacy = (slot: TimeSlot) => {
-  const normalizedDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-    ? slot.daysOfWeek
-    : [slot.dayOfWeek];
-  const normalizedFieldIds = Array.isArray(slot.fieldIds) && slot.fieldIds.length
-    ? slot.fieldIds
-    : slot.field
-      ? [slot.field]
-      : [];
-  return {
-    $id: slot.id,
-    id: slot.id,
-    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
-    daysOfWeek: normalizedDays,
-    startDate: slot.startDate?.toISOString(),
-    endDate: slot.endDate ? slot.endDate.toISOString() : null,
-    repeating: slot.repeating,
-    startTimeMinutes: slot.startTimeMinutes,
-    endTimeMinutes: slot.endTimeMinutes,
-    price: slot.price ?? null,
-    scheduledFieldId: normalizedFieldIds[0] ?? null,
-    scheduledFieldIds: normalizedFieldIds,
-    divisions: slot.divisions.map((division) => division.id),
-  };
-};
-
-const serializeUserLegacy = (user: UserData) => ({
-  $id: user.id,
-  id: user.id,
-  firstName: user.firstName,
-  lastName: user.lastName,
-  userName: user.userName,
-});
-
-const serializeMatchLegacy = (match: Match) => ({
-  $id: match.id,
-  id: match.id,
-  matchId: match.matchId ?? null,
-  eventId: match.eventId,
-  start: match.start ? match.start.toISOString() : null,
-  end: match.end ? match.end.toISOString() : null,
-  locked: Boolean(match.locked),
-  division: match.division?.id ?? null,
-  fieldId: match.field?.id ?? null,
-  team1Id: match.team1?.id ?? null,
-  team2Id: match.team2?.id ?? null,
-  team1Seed: match.team1Seed ?? null,
-  team2Seed: match.team2Seed ?? null,
-  status: match.status ?? null,
-  resultStatus: match.resultStatus ?? null,
-  resultType: match.resultType ?? null,
-  actualStart: match.actualStart ? match.actualStart.toISOString() : null,
-  actualEnd: match.actualEnd ? match.actualEnd.toISOString() : null,
-  statusReason: match.statusReason ?? null,
-  winnerEventTeamId: match.winnerEventTeamId ?? null,
-  matchRulesSnapshot: match.matchRulesSnapshot ?? null,
-  resolvedMatchRules: match.resolvedMatchRules ?? null,
-  segments: (match.segments ?? []).map((segment) => ({ ...segment })),
-  incidents: (match.incidents ?? []).map((incident) => ({ ...incident })),
-  officialId: match.official?.id ?? null,
-  officialIds: (match.officialAssignments ?? []).map((assignment) => ({ ...assignment })),
-  teamOfficialId: match.teamOfficial?.id ?? null,
-  teamOfficialSeed: null,
-  team1Points: match.team1Points ?? [],
-  team2Points: match.team2Points ?? [],
-  setResults: match.setResults ?? [],
-  losersBracket: match.losersBracket ?? false,
-  winnerNextMatchId: match.winnerNextMatch?.id ?? null,
-  loserNextMatchId: match.loserNextMatch?.id ?? null,
-  previousLeftId: match.previousLeftMatch?.id ?? null,
-  previousRightId: match.previousRightMatch?.id ?? null,
-  side: match.side ?? null,
-  officialCheckedIn: match.officialCheckedIn ?? false,
-  team1: match.team1 ? serializeTeamLegacy(match.team1) : null,
-  team2: match.team2 ? serializeTeamLegacy(match.team2) : null,
-  teamOfficial: match.teamOfficial ? serializeTeamLegacy(match.teamOfficial) : null,
-  official: match.official ? serializeUserLegacy(match.official) : null,
-  field: match.field ? serializeFieldLegacy(match.field) : null,
-});
-
-export const serializeEventLegacy = (event: Tournament | League) => {
-  const base = serializeEvent(event);
-  return {
-    ...base,
-    $id: base.id,
-    id: base.id,
-    divisions: event.divisions.map((division) => division.id),
-    divisionDetails: event.divisions.map((division) => ({
-      $id: division.id,
-      id: division.id,
-      name: division.name,
-      kind: division.kind,
-      teamIds: [...(division.teamIds ?? [])],
-      playoffTeamCount: division.playoffTeamCount,
-      playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
-      standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
-      standingsConfirmedAt: division.standingsConfirmedAt ? division.standingsConfirmedAt.toISOString() : null,
-      standingsConfirmedBy: division.standingsConfirmedBy ?? null,
-      playoffConfig: division.playoffConfig
-        ? {
-            ...division.playoffConfig,
-            winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
-            loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
-          }
-        : null,
-      leagueConfig: division.leagueConfig
-        ? {
-            ...division.leagueConfig,
-            pointsToVictory: Array.isArray(division.leagueConfig.pointsToVictory)
-              ? [...division.leagueConfig.pointsToVictory]
-              : undefined,
-          }
-        : null,
-    })),
-    playoffDivisionDetails: event instanceof League
-      ? event.playoffDivisions.map((division) => ({
-          $id: division.id,
-          id: division.id,
-          name: division.name,
-          kind: division.kind,
-          teamIds: [...(division.teamIds ?? [])],
-          playoffTeamCount: division.playoffTeamCount,
-          playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
-          standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
-          standingsConfirmedAt: division.standingsConfirmedAt ? division.standingsConfirmedAt.toISOString() : null,
-          standingsConfirmedBy: division.standingsConfirmedBy ?? null,
-          playoffConfig: division.playoffConfig
-            ? {
-                ...division.playoffConfig,
-                winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
-                loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
-              }
-            : null,
-          leagueConfig: division.leagueConfig
-            ? {
-                ...division.leagueConfig,
-                pointsToVictory: Array.isArray(division.leagueConfig.pointsToVictory)
-                  ? [...division.leagueConfig.pointsToVictory]
-                  : undefined,
-              }
-            : null,
-        }))
-      : [],
-    fields: Object.values(event.fields).map(serializeFieldLegacy),
-    teams: Object.values(event.teams).map(serializeTeamLegacy),
-    timeSlots: event.timeSlots.map(serializeTimeSlotLegacy),
-    officials: event.officials.map(serializeUserLegacy),
-    matches: Object.values(event.matches).map(serializeMatchLegacy),
-  };
-};
-
-export const serializeMatchesLegacy = (matches: Match[]) => matches.map(serializeMatchLegacy);
-
 

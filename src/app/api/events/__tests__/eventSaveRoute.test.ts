@@ -221,7 +221,8 @@ describe('event save route', () => {
     );
 
     const json = await res.json();
-    expect(json.event.$id).toBe('event_1');
+    expect(json.event.id).toBe('event_1');
+    expect(json.event).not.toHaveProperty('$id');
     expect(json.event.divisionFieldIds).toEqual({ open: ['field_1'] });
     expect(notifySocialAudienceOfEventCreationMock).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'event_1',

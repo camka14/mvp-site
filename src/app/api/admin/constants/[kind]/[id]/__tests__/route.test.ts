@@ -82,6 +82,7 @@ describe('PATCH /api/admin/constants/[kind]/[id]', () => {
 
     expect(res.status).toBe(200);
     expect(updateAdminConstantByKindMock).toHaveBeenCalledWith('sports', 'sport_1', { name: 'Soccer' });
-    expect(json.record.$id).toBe('sport_1');
+    expect(json.record.id).toBe('sport_1');
+    expect(json.record).not.toHaveProperty('$id');
   });
 });

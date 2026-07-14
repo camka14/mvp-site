@@ -54,9 +54,6 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 jest.mock('@/server/officials/eventOfficials', () => ({
   getEventOfficialIdsByEventIds: (...args: any[]) => getEventOfficialIdsByEventIdsMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 
 import { POST as searchEvents } from '@/app/api/events/search/route';
 
@@ -136,7 +133,7 @@ describe('POST /api/events/search', () => {
     expect(prismaMock.teams.findMany).not.toHaveBeenCalled();
     expect(prismaMock.canonicalTeams.findMany).not.toHaveBeenCalled();
     expect(prismaMock.eventRegistrations.findMany).not.toHaveBeenCalled();
-    expect(json.events.map((event: any) => event.$id)).toEqual([
+    expect(json.events.map((event: any) => event.id)).toEqual([
       'event_team',
       'event_canonical',
       'event_registered_canonical',
@@ -180,7 +177,7 @@ describe('POST /api/events/search', () => {
     ]));
     expect(json.events).toEqual([
       expect.objectContaining({
-        $id: 'event_troutdale_basketball',
+        id: 'event_troutdale_basketball',
         name: "Men's Basketball League",
         eventType: 'LEAGUE',
         affiliateUrl: 'https://www.troutdaleindoorsports.com/baksetball',
@@ -260,7 +257,7 @@ describe('POST /api/events/search', () => {
       expect.objectContaining({ id: 'event_1' }),
       expect.objectContaining({ id: 'event_2' }),
     ]);
-    expect(json.events.map((event: any) => event.$id)).toEqual(['event_1', 'event_2']);
+    expect(json.events.map((event: any) => event.id)).toEqual(['event_1', 'event_2']);
     expect(json.pagination).toEqual({ hasMore: true, nextOffset: 2, totalCount: 42 });
 
     jest.clearAllMocks();
@@ -317,7 +314,7 @@ describe('POST /api/events/search', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.events.count).not.toHaveBeenCalled();
-    expect(json.events.map((event: any) => event.$id)).toEqual(['near']);
+    expect(json.events.map((event: any) => event.id)).toEqual(['near']);
     expect(json.pagination).toEqual({ hasMore: false, nextOffset: 1, totalCount: 1 });
   });
 
@@ -340,10 +337,10 @@ describe('POST /api/events/search', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json.events.map((event: any) => event.$id)).toEqual(['bad', 'good']);
+    expect(json.events.map((event: any) => event.id)).toEqual(['bad', 'good']);
   });
 
-  it('serializes no-fixed-date rows with a start fallback end for mobile compatibility', async () => {
+  it('preserves a null end for open-ended events', async () => {
     const start = new Date('2026-08-01T18:00:00.000Z');
     prismaMock.events.findMany.mockResolvedValue([
       {
@@ -370,8 +367,8 @@ describe('POST /api/events/search', () => {
 
     expect(response.status).toBe(200);
     expect(json.events[0]).toEqual(expect.objectContaining({
-      $id: 'evergreen',
-      end: start.toISOString(),
+      id: 'evergreen',
+      end: null,
       noFixedEndDateTime: true,
     }));
   });
@@ -398,7 +395,7 @@ describe('POST /api/events/search', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json.events.map((event: any) => event.$id)).toEqual(['good', 'bad']);
+    expect(json.events.map((event: any) => event.id)).toEqual(['good', 'bad']);
     expect(json.pagination).toEqual({ hasMore: false, nextOffset: 2, totalCount: 2 });
   });
 });

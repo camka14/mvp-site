@@ -63,16 +63,10 @@ const prismaMock = {
   },
 };
 
-const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
-
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
   getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
   requireSession: (...args: any[]) => requireSessionMock(...args),
-}));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 
 import { GET as usersGet, POST as usersPost } from '@/app/api/users/route';
@@ -128,7 +122,7 @@ describe('users list route', () => {
       where: { id: { in: ['user_1', 'user_2'] } },
       take: 2,
     }));
-    expect(json.users.map((user: any) => user.$id)).toEqual(['user_1', 'user_2']);
+    expect(json.users.map((user: any) => user.id)).toEqual(['user_1', 'user_2']);
     expect(json.users.map((user: any) => user.teamIds)).toEqual([['team_a'], ['team_b']]);
   });
 
@@ -196,7 +190,7 @@ describe('users list route', () => {
       where: { id: { in: ['user_visible', 'user_sensitive_test', 'user_auth_test'] } },
       select: { id: true, email: true },
     }));
-    expect(json.users.map((user: any) => user.$id)).toEqual(['user_visible']);
+    expect(json.users.map((user: any) => user.id)).toEqual(['user_visible']);
   });
 
   it('filters private-to-organization accounts from outsider search', async () => {
@@ -223,7 +217,7 @@ describe('users list route', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.users.map((user: any) => user.$id)).toEqual(['user_public']);
+    expect(json.users.map((user: any) => user.id)).toEqual(['user_public']);
   });
 
   it('shows private-to-organization accounts to viewers from the same organization', async () => {
@@ -253,7 +247,7 @@ describe('users list route', () => {
       where: { organizationId: { in: ['org_1'] } },
       select: { userId: true },
     }));
-    expect(json.users.map((user: any) => user.$id)).toEqual(['user_private']);
+    expect(json.users.map((user: any) => user.id)).toEqual(['user_private']);
   });
 
   it('returns an empty list for invalid search payload', async () => {

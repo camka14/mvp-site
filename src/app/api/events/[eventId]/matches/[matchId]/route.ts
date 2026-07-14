@@ -12,7 +12,7 @@ import {
   isScheduleWindowExceededError,
   type MatchUpdate,
 } from '@/server/scheduler/updateMatch';
-import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeMatches } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import {
   collectMatchScheduleChanges,
@@ -43,6 +43,7 @@ import {
 } from '@/server/matches/matchPolicy';
 import { parseMatchInstantInput } from '@/server/matches/instantPayloads';
 import { assertCanViewEventSchedule } from '@/server/eventVisibility';
+import { findDollarPrefixedFields } from '@/server/requestParsing';
 import {
   assertLegacySetScoreUpdateAllowed,
   assertSetSegmentOperationsAllowed,
@@ -403,7 +404,6 @@ const ensureCanonicalSegmentForIncident = (match: any, segmentId: string | null)
 
   segments.push({
     id: segmentId!,
-    $id: segmentId!,
     eventId: normalizeIdToken(match.eventId),
     matchId,
     sequence,
@@ -977,7 +977,6 @@ const applySegmentOperations = (
       ? segments[existingIndex]
       : {
           id: operation.id ?? `${match.id}_segment_${operation.sequence}`,
-          $id: operation.id ?? `${match.id}_segment_${operation.sequence}`,
           eventId: event.id,
           matchId: match.id,
           sequence: operation.sequence,
@@ -985,10 +984,11 @@ const applySegmentOperations = (
           scores: {},
           winnerEventTeamId: null,
         } as MatchSegment;
+    const canonicalExisting: MatchSegment = { ...existing };
+    delete canonicalExisting.$id;
     const next: MatchSegment = {
-      ...existing,
+      ...canonicalExisting,
       id: operation.id ?? existing.id,
-      $id: operation.id ?? existing.$id ?? existing.id,
       eventId: event.id,
       matchId: match.id,
       sequence: operation.sequence,
@@ -1251,7 +1251,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     if (!match) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
-    return NextResponse.json({ match: serializeMatchesLegacy([match])[0] }, { status: 200 });
+    return NextResponse.json({ match: serializeMatches([match])[0] }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof Error && error.message === 'Event not found') {
@@ -1266,6 +1266,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
   try {
     const session = await requireSession(req);
     const body = await req.json().catch(() => null);
+    const obsoleteFields = findDollarPrefixedFields(body);
+    if (obsoleteFields.length > 0) {
+      return NextResponse.json({
+        error: 'Dollar-prefixed compatibility fields are no longer supported.',
+        fields: obsoleteFields,
+      }, { status: 400 });
+    }
     const parsed = updateSchema.safeParse(body ?? {});
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
@@ -1643,7 +1650,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       };
     }, MATCH_UPDATE_TRANSACTION_OPTIONS);
 
-    const serializedMatch = serializeMatchesLegacy([result.match])[0];
+    const serializedMatch = serializeMatches([result.match])[0];
     if (!result.replayed) {
       publishEventMatchChanges({
         eventId,

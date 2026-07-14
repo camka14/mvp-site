@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -75,10 +74,10 @@ export async function GET(req: NextRequest) {
         })
       : [];
     const organizationsById = new Map(
-      organizationRows.map((organization) => [organization.id, withLegacyFields(organization)]),
+      organizationRows.map((organization) => [organization.id, organization]),
     );
 
-    const teams = withLegacyList(teamRows).map((team) => ({
+    const teams = teamRows.map((team) => ({
       ...team,
       organization: team.organizationId ? organizationsById.get(team.organizationId) ?? null : null,
     }));

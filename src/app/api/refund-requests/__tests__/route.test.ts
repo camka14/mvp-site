@@ -542,7 +542,7 @@ describe('refund request routes', () => {
 
       expect(response.status).toBe(200);
       expect(payload.refunds[0]).toEqual(expect.objectContaining({
-        $id: 'refund_1',
+        id: 'refund_1',
         requestedByUserId: 'requester_1',
         slotId: 'slot_1',
         occurrenceDate: '2026-07-17',
@@ -580,8 +580,10 @@ describe('refund request routes', () => {
           scopeHash: previewScope.scopeHash,
           isValid: true,
         },
-        $createdAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
       }));
+      expect(payload.refunds[0]).not.toHaveProperty('$id');
+      expect(payload.refunds[0]).not.toHaveProperty('$createdAt');
       expect(prismaMock.refundRequests.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           select: expect.objectContaining({

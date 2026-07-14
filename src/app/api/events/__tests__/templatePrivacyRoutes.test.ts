@@ -57,11 +57,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const getTokenFromRequestMock = jest.fn();
 const verifySessionTokenMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  requireSession: requireSessionMock,
+  getOptionalSession: (...args: unknown[]) => getOptionalSessionMock(...args),
+}));
 jest.mock('@/lib/authServer', () => ({
   getTokenFromRequest: (...args: any[]) => getTokenFromRequestMock(...args),
   verifySessionToken: (...args: any[]) => verifySessionTokenMock(...args),
@@ -85,6 +89,7 @@ const jsonPost = (url: string, body: any) =>
 describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getOptionalSessionMock.mockResolvedValue(null);
     prismaMock.events.count.mockReset();
     prismaMock.events.findMany.mockReset();
     prismaMock.events.findUnique.mockReset();
@@ -236,7 +241,13 @@ describe('event template privacy routes', () => {
   });
 
   it('allows reading a private event by direct link without requiring manager auth', async () => {
-    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      state: 'PRIVATE',
+      hostId: 'host_1',
+      end: null,
+      noFixedEndDateTime: true,
+    });
 
     const res = await eventGet(
       new NextRequest('http://localhost/api/events/event_1'),
@@ -245,6 +256,13 @@ describe('event template privacy routes', () => {
 
     expect(res.status).toBe(200);
     expect(requireSessionMock).not.toHaveBeenCalled();
+    const payload = await res.json();
+    expect(payload).toEqual(expect.objectContaining({
+      id: 'event_1',
+      end: null,
+      noFixedEndDateTime: true,
+    }));
+    expect(payload).not.toHaveProperty('$id');
   });
 
   it('allows reading a private event when requester is host', async () => {
@@ -854,7 +872,7 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
+        where: expect.objectContaining({ archivedAt: null }),
       }),
     );
   });
@@ -1022,8 +1040,10 @@ describe('event template privacy routes', () => {
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          NOT: { state: 'TEMPLATE' },
+          id: { in: ['event_published', 'event_template'] },
+          archivedAt: null,
         }),
+        select: expect.objectContaining({ state: true }),
       }),
     );
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +22,6 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    subscriptions: withLegacyList(subscriptions),
+    subscriptions: subscriptions,
   }, { status: 200 });
 }

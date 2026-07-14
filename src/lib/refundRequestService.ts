@@ -15,7 +15,7 @@ type RefundApprovalScopeExpectation = {
 class RefundRequestService {
   private mapRowToRefundRequest(row: Record<string, any>): RefundRequest {
     return {
-      $id: row.$id,
+      $id: row.id ?? row.$id,
       eventId: row.eventId ?? '',
       userId: row.userId ?? '',
       requestedByUserId: row.requestedByUserId ?? undefined,
@@ -35,8 +35,8 @@ class RefundRequestService {
       scopeVersion: Number.isFinite(row.scopeVersion) ? row.scopeVersion : 1,
       scopeHash: row.scopeHash ?? undefined,
       approvalPreview: row.approvalPreview ?? undefined,
-      $createdAt: row.$createdAt,
-      $updatedAt: row.$updatedAt,
+      $createdAt: row.createdAt ?? row.$createdAt,
+      $updatedAt: row.updatedAt ?? row.$updatedAt,
     };
   }
 

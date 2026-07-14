@@ -12,8 +12,6 @@ const requireSessionMock = jest.fn();
 const ensureUserHasAcceptedChatTermsMock = jest.fn();
 const getChatGroupMemberIdsMock = jest.fn();
 const getChatTeamIdsForUserMock = jest.fn();
-const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
-const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -41,11 +39,6 @@ jest.mock('@/server/chatAccess', () => ({
   getChatGroupMemberIds: (...args: any[]) => getChatGroupMemberIdsMock(...args),
   getChatTeamIdsForUser: (...args: any[]) => getChatTeamIdsForUserMock(...args),
   isReservedTeamChatGroupId: (id: string) => id.startsWith('team:'),
-}));
-
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
-  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
 }));
 
 import { GET, POST } from '@/app/api/chat/groups/route';
@@ -104,9 +97,9 @@ describe('/api/chat/groups GET', () => {
     expect(messagesFindManyMock).toHaveBeenCalledTimes(1);
     expect(json.groups).toHaveLength(2);
     expect(json.groups[0].unreadCount).toBe(3);
-    expect(json.groups[0].lastMessage?.$id).toBe('msg_1');
+    expect(json.groups[0].lastMessage?.id).toBe('msg_1');
     expect(json.groups[1].unreadCount).toBe(0);
-    expect(json.groups[1].lastMessage?.$id).toBe('msg_2');
+    expect(json.groups[1].lastMessage?.id).toBe('msg_2');
   });
 
   it('returns 403 when requesting another user without admin access', async () => {
@@ -221,7 +214,7 @@ describe('/api/chat/groups POST', () => {
       },
     }));
     expect(chatGroupCreateMock).not.toHaveBeenCalled();
-    expect(json.$id).toBe('existing_chat');
+    expect(json.id).toBe('existing_chat');
   });
 
   it('creates a distinct ordinary group when more than two participants are supplied', async () => {

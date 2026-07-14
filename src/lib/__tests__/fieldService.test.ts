@@ -27,7 +27,7 @@ describe('fieldService', () => {
   });
 
   it('creates a field via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A' });
+    apiRequestMock.mockResolvedValue({ id: 'field_1', name: 'Court A' });
 
     const field = await fieldService.createField({ name: 'Court A', sportIds: ['Basketball'] });
 
@@ -42,7 +42,7 @@ describe('fieldService', () => {
   });
 
   it('updates a field via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', sportIds: ['Basketball'] });
+    apiRequestMock.mockResolvedValue({ id: 'field_1', name: 'Court A', sportIds: ['Basketball'] });
 
     const field = await fieldService.updateField({ $id: 'field_1', name: 'Court A', sportIds: ['Basketball'] });
 

@@ -250,7 +250,6 @@ describe('DELETE /api/auth/account', () => {
         userName: 'taylor_user',
         friendIds: [],
         followingIds: [],
-        teamIds: [],
       }),
     }));
     expect(prismaMock.authUser.deleteMany).toHaveBeenCalledWith({ where: { id: 'user_1' } });

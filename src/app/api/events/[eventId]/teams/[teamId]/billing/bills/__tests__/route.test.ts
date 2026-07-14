@@ -149,7 +149,8 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
         }),
       }),
     );
-    expect(payload.bill).toEqual(expect.objectContaining({ id: 'bill_new_1', $id: 'bill_new_1' }));
+    expect(payload.bill).toEqual(expect.objectContaining({ id: 'bill_new_1' }));
+    expect(payload.bill).not.toHaveProperty('$id');
   });
 
   it('creates a team bill against the parent team when billing an event team slot', async () => {

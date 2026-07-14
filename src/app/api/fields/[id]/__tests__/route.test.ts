@@ -92,11 +92,13 @@ describe('PATCH /api/fields/[id]', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json.$id).toBe('field_1');
+    expect(json.id).toBe('field_1');
     expect(json.facility).toMatchObject({
-      $id: 'facility_1',
+      id: 'facility_1',
       name: 'Main Facility',
     });
+    expect(json).not.toHaveProperty('$id');
+    expect(json.facility).not.toHaveProperty('$id');
   });
 
   it('rejects immutable organization ownership updates', async () => {
@@ -162,7 +164,8 @@ describe('PATCH /api/fields/[id]', () => {
       }),
     );
     const json = await response.json();
-    expect(json.$id).toBe('field_1');
+    expect(json.id).toBe('field_1');
+    expect(json).not.toHaveProperty('$id');
   });
 
   it('rejects updating a field location without selected coordinates', async () => {

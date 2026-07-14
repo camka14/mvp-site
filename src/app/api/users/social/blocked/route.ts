@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   buildBlockReportMetadata,
   createModerationReport,
@@ -128,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        user: withLegacyFields(applyNameCaseToUserFields(result.user)),
+        user: applyNameCaseToUserFields(result.user),
         removedChatIds: result.removedChatIds,
       },
       { status: 200 },

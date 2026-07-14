@@ -23,7 +23,7 @@ const jsonResponse = (payload: unknown, ok = true): Response => ({
 
 const sourceRows = [
   {
-    $id: 'source_1',
+    id: 'source_1',
     name: 'First Source',
     sourceKey: 'first-source',
     listUrl: 'https://example.com/first',
@@ -36,7 +36,7 @@ const sourceRows = [
     scrapeIntervalMinutes: null,
   },
   {
-    $id: 'source_2',
+    id: 'source_2',
     name: 'Second Source',
     sourceKey: 'second-source',
     listUrl: 'https://example.com/second',

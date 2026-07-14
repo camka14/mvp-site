@@ -50,8 +50,8 @@ describe('userService.listInvites', () => {
         ok: true,
         json: async () => ({
           invites: [
-            { $id: 'invite_1', type: 'TEAM', status: 'PENDING' },
-            { $id: 'invite_2', type: 'TEAM', status: 'PENDING' },
+            { id: 'invite_1', type: 'TEAM', status: 'PENDING' },
+            { id: 'invite_2', type: 'TEAM', status: 'PENDING' },
           ],
           nextCursor: 'cursor_page_2',
         }),
@@ -60,8 +60,8 @@ describe('userService.listInvites', () => {
         ok: true,
         json: async () => ({
           invites: [
-            { $id: 'invite_2', type: 'TEAM', status: 'PENDING' },
-            { $id: 'invite_3', type: 'TEAM', status: 'PENDING' },
+            { id: 'invite_2', type: 'TEAM', status: 'PENDING' },
+            { id: 'invite_3', type: 'TEAM', status: 'PENDING' },
           ],
           nextCursor: null,
         }),

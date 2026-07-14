@@ -446,7 +446,6 @@ describe('listTeamsByIds', () => {
     expect(teams).toHaveLength(2);
     expect(teams[0]).toMatchObject({
       id: 'team_1',
-      $id: 'team_1',
       name: 'Canonical Team',
       playerIds: ['player_1'],
       captainId: 'player_1',
@@ -456,13 +455,14 @@ describe('listTeamsByIds', () => {
     });
     expect(teams[1]).toMatchObject({
       id: 'event_team_1',
-      $id: 'event_team_1',
       name: 'Event Snapshot',
       parentTeamId: 'team_2',
       openRegistration: true,
       registrationPriceCents: 1500,
       requiredTemplateIds: ['template_1'],
     });
+    expect(teams[0]).not.toHaveProperty('$id');
+    expect(teams[1]).not.toHaveProperty('$id');
 
     expect(canonicalFindManyMock).toHaveBeenCalledWith({
       where: { id: { in: ['team_1', 'event_team_1'] } },
@@ -552,7 +552,6 @@ describe('listTeamsByIds', () => {
     expect(teams).toHaveLength(1);
     expect(teams[0]).toMatchObject({
       id: 'shadow_id',
-      $id: 'shadow_id',
       name: 'Event Team',
       eventId: 'event_1',
       parentTeamId: 'canonical_team_1',
@@ -560,6 +559,7 @@ describe('listTeamsByIds', () => {
       registrationPriceCents: 1750,
       requiredTemplateIds: ['template_event'],
     });
+    expect(teams[0]).not.toHaveProperty('$id');
     expect(eventTeamsFindManyMock).toHaveBeenCalledWith({
       where: {
         id: { in: ['shadow_id'] },

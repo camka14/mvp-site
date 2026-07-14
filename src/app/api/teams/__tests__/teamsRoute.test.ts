@@ -29,10 +29,6 @@ jest.mock('@/lib/permissions', () => ({
   getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
   requireSession: (...args: any[]) => requireSessionMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-  withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
-}));
 jest.mock('@/server/teamChatSync', () => ({
   syncTeamChatByTeamId: (...args: any[]) => syncTeamChatByTeamIdMock(...args),
 }));
@@ -240,7 +236,7 @@ describe('/api/teams route', () => {
     expect(payload.teams).toEqual([
       expect.objectContaining({
         id: 'shared_id',
-        $id: 'shared_id',
+        id: 'shared_id',
         name: 'Sea Glass Smash',
         eventId: 'event_1',
         parentTeamId: 'sea_glass_canonical',

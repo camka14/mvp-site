@@ -18,10 +18,6 @@ jest.mock('@/server/billing/billDiscountSummaries', () => ({
   loadBillDiscountSummaries: jest.fn().mockResolvedValue(new Map()),
   withBillDiscountAmounts: (bill: unknown) => bill,
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: Record<string, unknown>) => ({ ...row, $id: row.id }),
-  withLegacyList: (rows: Array<Record<string, unknown>>) => rows.map((row) => ({ ...row, $id: row.id })),
-}));
 
 import { GET as getBill } from '@/app/api/billing/bills/[id]/route';
 import { GET as getBillPayments } from '@/app/api/billing/bills/[id]/payments/route';
@@ -89,7 +85,7 @@ describe('bill read routes', () => {
     expect(billResponse.status).toBe(200);
     expect(paymentsResponse.status).toBe(200);
     await expect(paymentsResponse.json()).resolves.toEqual({
-      payments: [expect.objectContaining({ $id: 'payment_1' })],
+      payments: [expect.objectContaining({ id: 'payment_1' })],
     });
   });
 });

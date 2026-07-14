@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { withLegacyList } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 
@@ -65,7 +64,7 @@ export async function GET(req: NextRequest) {
     const organizationsWithProductIds = await withDerivedOrganizationProductIds(organizationRows, prisma);
     return NextResponse.json(
       {
-        organizations: withLegacyList(organizationsWithProductIds),
+        organizations: organizationsWithProductIds,
         total,
         limit,
         offset,

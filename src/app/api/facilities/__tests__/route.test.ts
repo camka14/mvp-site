@@ -66,9 +66,10 @@ describe('/api/facilities', () => {
       }),
     );
     expect(json.facilities[0]).toEqual(expect.objectContaining({
-      $id: 'facility_1',
+      id: 'facility_1',
       name: 'River City Sports Complex',
     }));
+    expect(json.facilities[0]).not.toHaveProperty('$id');
   });
 
   it('creates a facility with field management permission', async () => {
@@ -129,7 +130,8 @@ describe('/api/facilities', () => {
         }),
       }),
     );
-    expect(json.$id).toBe('facility_1');
+    expect(json.id).toBe('facility_1');
+    expect(json).not.toHaveProperty('$id');
     expect(json.operatingHours).toEqual({
       version: 1,
       weekly: [

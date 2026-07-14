@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { archiveChatGroup } from '@/server/moderation';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 import {
@@ -36,7 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         userIds: group.userIds,
         hostId: group.hostId,
       });
-      return NextResponse.json(withLegacyFields(archived), { status: 200 });
+      return NextResponse.json(archived, { status: 200 });
     }
 
     const restoredDirectPair = !group.teamId && isDirectMessageCandidateGroupId(group.id)
@@ -66,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt: new Date(),
       },
     });
-    return NextResponse.json(withLegacyFields(restored), { status: 200 });
+    return NextResponse.json(restored, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to update admin chat group state', error);

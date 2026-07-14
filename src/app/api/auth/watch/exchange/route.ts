@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { setAuthCookie, signSessionToken, verifyWatchSetupToken } from '@/lib/authServer';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
@@ -79,7 +78,7 @@ export async function POST(req: NextRequest) {
       user: toPublicUser(user),
       session,
       token,
-      profile: profileWithDerivedTeamIds ? withLegacyFields(applyNameCaseToUserFields(profileWithDerivedTeamIds)) : null,
+      profile: profileWithDerivedTeamIds ? applyNameCaseToUserFields(profileWithDerivedTeamIds) : null,
       ...buildProfileCompletionState({ authUser: user, profile }),
       requiresEmailVerification: !user.emailVerifiedAt,
       verificationEmailSent: false,

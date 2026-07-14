@@ -67,7 +67,7 @@ class ProductService {
     const period = normalizeProductPeriod(row?.period);
 
     return {
-      $id: row?.$id ?? row?.id,
+      $id: row?.id ?? row?.$id,
       organizationId: row?.organizationId ?? '',
       name: row?.name ?? 'Product',
       description: row?.description ?? row?.desc ?? undefined,
@@ -79,7 +79,7 @@ class ProductService {
       isActive: row?.isActive ?? true,
       stripeProductId: row?.stripeProductId ?? null,
       stripePriceId: row?.stripePriceId ?? null,
-      $createdAt: row?.$createdAt,
+      $createdAt: row?.createdAt ?? row?.$createdAt,
     };
   }
 
@@ -90,11 +90,11 @@ class ProductService {
     const statusRaw = typeof row?.status === 'string' ? row.status.toUpperCase() : 'ACTIVE';
 
     return {
-      $id: row?.$id ?? row?.id,
+      $id: row?.id ?? row?.$id,
       productId: row?.productId ?? '',
       userId: row?.userId ?? '',
       organizationId: row?.organizationId ?? undefined,
-      startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
+      startDate: row?.startDate ?? row?.createdAt ?? row?.$createdAt ?? new Date().toISOString(),
       priceCents,
       period,
       status: statusRaw as Subscription['status'],

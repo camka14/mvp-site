@@ -58,8 +58,8 @@ const deleteMatchesByEventMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn();
 const scheduleEventMock = jest.fn();
-const serializeEventLegacyMock = jest.fn();
-const serializeMatchesLegacyMock = jest.fn();
+const serializeEventMock = jest.fn();
+const serializeMatchesMock = jest.fn();
 const rescheduleEventMatchesPreservingLocksMock = jest.fn();
 const applyMatchUpdatesMock = jest.fn();
 const applyPersistentAutoLockMock = jest.fn();
@@ -110,8 +110,8 @@ jest.mock('@/server/scheduler/scheduleEvent', () => ({
 }));
 
 jest.mock('@/server/scheduler/serialize', () => ({
-  serializeEventLegacy: (...args: any[]) => serializeEventLegacyMock(...args),
-  serializeMatchesLegacy: (...args: any[]) => serializeMatchesLegacyMock(...args),
+  serializeEvent: (...args: any[]) => serializeEventMock(...args),
+  serializeMatches: (...args: any[]) => serializeMatchesMock(...args),
 }));
 
 jest.mock('@/server/scheduler/reschedulePreservingLocks', () => ({
@@ -360,6 +360,44 @@ describe('schedule routes', () => {
     process.env = originalEnv;
   });
 
+  it('rejects obsolete dollar-prefixed fields in bulk match updates before persistence', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [{
+          id: 'match_1',
+          segments: [{ sequence: 1, $id: 'obsolete_segment_id' }],
+        }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      fields: ['matches[0].segments[0].$id'],
+    }));
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects obsolete dollar-prefixed fields in individual match updates before persistence', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        $updatedAt: '2026-04-17T10:00:00.000Z',
+        locked: true,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      fields: ['$updatedAt'],
+    }));
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it('returns hydrated match lists with incidents', async () => {
     const laterMatch = {
       id: 'match_later',
@@ -378,9 +416,9 @@ describe('schedule routes', () => {
         match_earlier: earlierMatch,
       },
     });
-    serializeMatchesLegacyMock.mockReturnValueOnce([
-      { $id: 'match_earlier', incidents: [{ $id: 'incident_1', incidentType: 'GOAL' }] },
-      { $id: 'match_later', incidents: [] },
+    serializeMatchesMock.mockReturnValueOnce([
+      { id: 'match_earlier', incidents: [{ id: 'incident_1', incidentType: 'GOAL' }] },
+      { id: 'match_later', incidents: [] },
     ]);
 
     const res = await matchesGet(new NextRequest('http://localhost/api/events/event_1/matches'), {
@@ -390,8 +428,8 @@ describe('schedule routes', () => {
 
     expect(res.status).toBe(200);
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
-    expect(serializeMatchesLegacyMock).toHaveBeenCalledWith([earlierMatch, laterMatch]);
-    expect(json.matches[0].incidents).toEqual([{ $id: 'incident_1', incidentType: 'GOAL' }]);
+    expect(serializeMatchesMock).toHaveBeenCalledWith([earlierMatch, laterMatch]);
+    expect(json.matches[0].incidents).toEqual([{ id: 'incident_1', incidentType: 'GOAL' }]);
   });
 
   it('returns a hydrated match detail with incidents', async () => {
@@ -405,8 +443,8 @@ describe('schedule routes', () => {
         match_1: match,
       },
     });
-    serializeMatchesLegacyMock.mockReturnValueOnce([
-      { $id: 'match_1', incidents: [{ $id: 'incident_1', incidentType: 'GOAL' }] },
+    serializeMatchesMock.mockReturnValueOnce([
+      { id: 'match_1', incidents: [{ id: 'incident_1', incidentType: 'GOAL' }] },
     ]);
 
     const res = await matchGet(new NextRequest('http://localhost/api/events/event_1/matches/match_1'), {
@@ -416,8 +454,8 @@ describe('schedule routes', () => {
 
     expect(res.status).toBe(200);
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
-    expect(serializeMatchesLegacyMock).toHaveBeenCalledWith([match]);
-    expect(json.match.incidents).toEqual([{ $id: 'incident_1', incidentType: 'GOAL' }]);
+    expect(serializeMatchesMock).toHaveBeenCalledWith([match]);
+    expect(json.match.incidents).toEqual([{ id: 'incident_1', incidentType: 'GOAL' }]);
   });
 
   it('does not load match schedule data when event visibility rejects the viewer', async () => {
@@ -462,8 +500,8 @@ describe('schedule routes', () => {
       event: { id: 'event_1' },
       matches: [{ id: 'match_1' }],
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
       eventDocument: {
@@ -525,8 +563,8 @@ describe('schedule routes', () => {
       eventId: 'event_1',
       reason: 'SCHEDULE_CHANGE',
     });
-    expect(json.event.$id).toBe('event_1');
-    expect(json.matches[0].$id).toBe('match_1');
+    expect(json.event.id).toBe('event_1');
+    expect(json.matches[0].id).toBe('match_1');
     expect(prismaMock.$transaction).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
@@ -555,8 +593,8 @@ describe('schedule routes', () => {
       hostId: 'host_1',
       matches: {},
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([]);
 
     const res = await schedulePost(jsonRequest(
       'https://internal.service.local/api/events/schedule',
@@ -614,8 +652,8 @@ describe('schedule routes', () => {
       event: { id: 'event_1' },
       matches: [{ id: 'match_1' }],
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await scheduleByIdPost(
       jsonRequest('http://localhost/api/events/event_1/schedule', {
@@ -683,8 +721,8 @@ describe('schedule routes', () => {
       eventId: 'event_1',
       reason: 'SCHEDULE_CHANGE',
     });
-    expect(json.event.$id).toBe('event_1');
-    expect(json.matches[0].$id).toBe('match_1');
+    expect(json.event.id).toBe('event_1');
+    expect(json.matches[0].id).toBe('match_1');
     expect(prismaMock.$transaction).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
@@ -842,8 +880,8 @@ describe('schedule routes', () => {
         },
       ],
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_locked', locked: true }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_locked', locked: true }]);
 
     const res = await scheduleByIdPost(
       jsonRequest('http://localhost/api/events/event_1/schedule', {}),
@@ -893,8 +931,8 @@ describe('schedule routes', () => {
       matches: [{ id: 'match_1', locked: false, team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }],
       warnings: [],
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }]);
 
     const res = await scheduleByIdPost(
       jsonRequest('http://localhost/api/events/event_1/schedule', {}),
@@ -958,8 +996,8 @@ describe('schedule routes', () => {
       { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
       { id: 'team_2', captainId: 'captain_2', managerId: 'manager_2', headCoachId: null, coachIds: [], playerIds: ['player_2'] },
     ]);
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await scheduleByIdPost(
       jsonRequest('http://localhost/api/events/event_1/schedule', {}),
@@ -1000,8 +1038,8 @@ describe('schedule routes', () => {
       event: { id: 'event_1' },
       matches: [{ id: 'match_real_only' }],
     });
-    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_real_only' }]);
+    serializeEventMock.mockReturnValue({ id: 'event_1' });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_real_only' }]);
 
     const res = await scheduleByIdPost(
       jsonRequest('http://localhost/api/events/event_1/schedule', {
@@ -1029,7 +1067,7 @@ describe('schedule routes', () => {
     );
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalledWith('event_1', [{ id: 'match_real_only' }], prismaMock);
-    expect(json.matches).toEqual([{ $id: 'match_real_only' }]);
+    expect(json.matches).toEqual([{ id: 'match_real_only' }]);
   });
 
   it('rejects match updates when user is not host', async () => {
@@ -1116,7 +1154,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1221,8 +1259,8 @@ describe('schedule routes', () => {
       timeSlots: [],
     };
     loadEventWithRelationsMock.mockResolvedValue(event);
-    serializeMatchesLegacyMock.mockImplementation((matches: Array<{ id: string }>) => (
-      matches.map((match) => ({ $id: match.id }))
+    serializeMatchesMock.mockImplementation((matches: Array<{ id: string }>) => (
+      matches.map((match) => ({ id: match.id }))
     ));
     const body = {
       clientOperationId: 'phone:match_1:10',
@@ -1252,7 +1290,7 @@ describe('schedule routes', () => {
 
     expect(first.status).toBe(200);
     expect(retry.status).toBe(200);
-    expect(await retry.json()).toEqual(expect.objectContaining({ replayed: true, match: { $id: 'match_1' } }));
+    expect(await retry.json()).toEqual(expect.objectContaining({ replayed: true, match: { id: 'match_1' } }));
     expect(saveMatchesMock).toHaveBeenCalledTimes(1);
     expect(matchOperationReceiptRows).toHaveLength(1);
   });
@@ -1295,7 +1333,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', teamOfficialId: 'team_3', officialCheckedIn: false }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', teamOfficialId: 'team_3', officialCheckedIn: false }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1316,7 +1354,7 @@ describe('schedule routes', () => {
       }),
     );
     expect(saveMatchesMock).toHaveBeenCalled();
-    expect(json.match.$id).toBe('match_1');
+    expect(json.match.id).toBe('match_1');
   });
 
   it('rejects swap attempts that include non-swap fields', async () => {
@@ -1397,7 +1435,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1487,7 +1525,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1581,7 +1619,7 @@ describe('schedule routes', () => {
       match.actualEnd = new Date('2026-04-19T11:00:00.000Z');
       return { updatedMatch: match, seededTeamIds: [] };
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', status: 'COMPLETE' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', status: 'COMPLETE' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1696,7 +1734,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -1730,7 +1768,7 @@ describe('schedule routes', () => {
     });
     const { event, persistedSnapshot, mobileConfirmation } = buildOfficialMobileSetConfirmation();
     loadEventWithRelationsMock.mockResolvedValue(event);
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', mobileConfirmation),
@@ -1900,7 +1938,7 @@ describe('schedule routes', () => {
       matches: { match_1: { id: 'match_1' } },
       teams: {},
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamOfficialId: 'team_1', locked: true }),
@@ -1916,7 +1954,7 @@ describe('schedule routes', () => {
       expect.objectContaining({ locked: true }),
     );
     expect(saveMatchesMock).toHaveBeenCalled();
-    expect(json.match.$id).toBe('match_1');
+    expect(json.match.id).toBe('match_1');
   });
 
   it('locks a single match immediately when official check-in is saved', async () => {
@@ -1944,7 +1982,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', locked: true, officialCheckedIn: true }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', locked: true, officialCheckedIn: true }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', { officialCheckedIn: true }),
@@ -2016,7 +2054,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -2120,7 +2158,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -2209,7 +2247,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', team1Points: [1, 0], incidents: [] }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', team1Points: [1, 0], incidents: [] }]);
 
     const scorePayload = {
       segmentId: 'match_1_segment_1',
@@ -2438,7 +2476,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', team1Points: [1] }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', team1Points: [1] }]);
 
     const res = await matchIncidentPost(
       jsonRequest('http://localhost/api/events/event_1/matches/match_1/incidents', {
@@ -2597,7 +2635,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -2739,7 +2777,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
@@ -2799,7 +2837,7 @@ describe('schedule routes', () => {
       },
       teams: {},
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }, { $id: 'match_2' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }, { id: 'match_2' }]);
 
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
@@ -2967,7 +3005,7 @@ describe('schedule routes', () => {
       { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
       { id: 'team_2', captainId: 'captain_2', managerId: 'manager_2', headCoachId: null, coachIds: [], playerIds: ['player_2'] },
     ]);
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
@@ -3063,7 +3101,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', locked: true, officialCheckedIn: true }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1', locked: true, officialCheckedIn: true }]);
 
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
@@ -3139,7 +3177,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockImplementation((items: any[]) => items.map((item) => ({ $id: item.id })));
+    serializeMatchesMock.mockImplementation((items: any[]) => items.map((item) => ({ id: item.id })));
 
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
@@ -3195,9 +3233,9 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockImplementation((matches: Array<any>) =>
+    serializeMatchesMock.mockImplementation((matches: Array<any>) =>
       matches.map((match) => ({
-        $id: match.id,
+        id: match.id,
         start: match.start ?? null,
         end: match.end ?? null,
       })),
@@ -3359,7 +3397,7 @@ describe('schedule routes', () => {
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'placeholder' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'placeholder' }]);
 
     const cycleRes = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
@@ -3585,7 +3623,7 @@ describe('schedule routes', () => {
       { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
       { id: 'team_3', captainId: 'captain_3', managerId: 'manager_3', headCoachId: null, coachIds: [], playerIds: ['player_3'] },
     ]);
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', { finalize: true }),

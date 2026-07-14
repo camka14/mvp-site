@@ -39,7 +39,7 @@ import { userService } from '@/lib/userService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
 import { hasStaffMemberType } from '@/lib/staff';
-import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
+import { normalizeApiEvent, normalizeApiField, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
@@ -2853,7 +2853,7 @@ function EventScheduleContent() {
         if (Array.isArray(timeSlotsResponse?.timeSlots)) {
           hydratedEvent.timeSlots = timeSlotsResponse.timeSlots.map((row) => {
             const slot = row as Record<string, unknown>;
-            const slotId = normalizeIdToken(slot.$id ?? slot.id) ?? createClientId();
+            const slotId = normalizeIdToken(slot.id ?? slot.$id) ?? createClientId();
             const rawFieldIds = Array.isArray(slot.scheduledFieldIds)
               ? slot.scheduledFieldIds
               : typeof slot.scheduledFieldId === 'string'
@@ -2932,7 +2932,7 @@ function EventScheduleContent() {
           `/api/fields?ids=${fieldIdsToHydrate.join(',')}`,
         );
         if (Array.isArray(fieldsResponse?.fields)) {
-          hydratedEvent.fields = fieldsResponse.fields as unknown as Field[];
+          hydratedEvent.fields = fieldsResponse.fields.map((field) => normalizeApiField(field as unknown as Field));
         }
       } catch (fieldsError) {
         console.error('Failed to hydrate fields for event form:', fieldsError);

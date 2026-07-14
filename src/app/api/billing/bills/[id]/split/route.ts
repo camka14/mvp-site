@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
 import { acquireBillSplitLock } from '@/server/billing/billSplitLock';
 
@@ -212,5 +211,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const createdChildren = children.filter((child): child is NonNullable<typeof child> => Boolean(child));
-  return NextResponse.json({ children: withLegacyList(createdChildren) }, { status: 200 });
+  return NextResponse.json({ children: createdChildren }, { status: 200 });
 }

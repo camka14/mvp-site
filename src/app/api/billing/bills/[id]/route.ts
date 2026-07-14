@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { loadBillDiscountSummaries, withBillDiscountAmounts } from '@/server/billing/billDiscountSummaries';
 import { canManageBillPayment } from '@/server/billing/billPaymentActions';
 import { handleApiRouteError } from '@/server/http/routeErrors';
@@ -25,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     const discountAmountsByBillId = await loadBillDiscountSummaries(prisma, [{ ...bill, payments }]);
     return NextResponse.json({
-      bill: withLegacyFields(withBillDiscountAmounts(bill, discountAmountsByBillId)),
+      bill: withBillDiscountAmounts(bill, discountAmountsByBillId),
     }, { status: 200 });
   } catch (error) {
     return handleApiRouteError(error, 'Failed to load bill');

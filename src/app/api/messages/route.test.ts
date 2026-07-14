@@ -34,11 +34,6 @@ jest.mock('@/server/chatAccess', () => ({
   isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
 }));
 
-jest.mock('@/server/legacyFormat', () => ({
-  parseDateInput: (value?: string) => (value ? new Date(value) : null),
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
-
 import { POST } from '@/app/api/messages/route';
 
 const createRequest = (body: unknown) => new NextRequest('http://localhost/api/messages', {

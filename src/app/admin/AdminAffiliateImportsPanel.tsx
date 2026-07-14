@@ -19,6 +19,7 @@ import {
   Title,
 } from '@mantine/core';
 import { ExternalLink, Play, Trash2, UploadCloud } from 'lucide-react';
+import { normalizeApiEntity } from '@/lib/apiMappers';
 
 type AdminAffiliateSourceRow = {
   $id: string;
@@ -131,6 +132,14 @@ const stringifyCandidateForReview = (candidate: AdminAffiliateCandidateRow): str
 const openExternal = (url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
+
+const normalizeAffiliateSource = (row: Record<string, unknown>): AdminAffiliateSourceRow => (
+  normalizeApiEntity(row) as AdminAffiliateSourceRow
+);
+
+const normalizeAffiliateCandidate = (row: Record<string, unknown>): AdminAffiliateCandidateRow => (
+  normalizeApiEntity(row) as AdminAffiliateCandidateRow
+);
 
 const hasPublishedTarget = (candidate: AdminAffiliateCandidateRow): boolean => {
   const kind = String(candidate.listingKind ?? '').toUpperCase();
@@ -300,8 +309,12 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
       if (!candidatesRes.ok) {
         throw new Error(candidatesPayload?.error || 'Failed to load affiliate discoveries.');
       }
-      setSources(Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : []);
-      setCandidates(Array.isArray(candidatesPayload.candidates) ? candidatesPayload.candidates : []);
+      setSources(Array.isArray(sourcesPayload.sources)
+        ? sourcesPayload.sources.map((source: Record<string, unknown>) => normalizeAffiliateSource(source))
+        : []);
+      setCandidates(Array.isArray(candidatesPayload.candidates)
+        ? candidatesPayload.candidates.map((candidate: Record<string, unknown>) => normalizeAffiliateCandidate(candidate))
+        : []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load affiliate imports.');
     } finally {
@@ -404,7 +417,9 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
       if (!res.ok) {
         throw new Error(payload?.error || 'Failed to reclassify affiliate discovery.');
       }
-      const updatedCandidate = payload?.candidate as AdminAffiliateCandidateRow | undefined;
+      const updatedCandidate = payload?.candidate && typeof payload.candidate === 'object'
+        ? normalizeAffiliateCandidate(payload.candidate)
+        : undefined;
       if (updatedCandidate?.$id) {
         setCandidates((current) => current.map((entry) => (
           entry.$id === updatedCandidate.$id ? updatedCandidate : entry

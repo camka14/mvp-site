@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { findDollarPrefixedFields } from '@/server/requestParsing';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { handleRouteError } from '@/server/http/routeErrors';
@@ -76,11 +75,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }),
     ]);
 
-    return NextResponse.json(withLegacyFields({
+    return NextResponse.json({
       ...group,
       unreadCount,
-      lastMessage: lastMessage ? withLegacyFields(lastMessage) : null,
-    }), { status: 200 });
+      lastMessage: lastMessage ? lastMessage : null,
+    }, { status: 200 });
   } catch (error) {
     return handleRouteError(error, 'Failed to load chat group');
   }
@@ -222,7 +221,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         userIds: data.userIds,
         hostId: data.hostId,
       });
-      return NextResponse.json(withLegacyFields(archived), { status: 200 });
+      return NextResponse.json(archived, { status: 200 });
     }
 
     const updated = await prisma.chatGroup.update({
@@ -233,7 +232,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    return NextResponse.json(withLegacyFields(updated), { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     return handleRouteError(error, 'Failed to update chat group');
   }
@@ -267,7 +266,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       hostId: existing.hostId,
     });
 
-    return NextResponse.json(withLegacyFields(deletedGroup), { status: 200 });
+    return NextResponse.json(deletedGroup, { status: 200 });
   } catch (error) {
     return handleRouteError(error, 'Failed to delete chat group');
   }

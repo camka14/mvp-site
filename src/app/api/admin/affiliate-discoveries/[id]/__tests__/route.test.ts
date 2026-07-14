@@ -50,7 +50,7 @@ describe('/api/admin/affiliate-discoveries/[id]', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.candidate.$id).toBe('candidate_1');
+    expect(json.candidate.id).toBe('candidate_1');
   });
 
   it('returns 403 when delete caller is not an allowed admin', async () => {
@@ -74,7 +74,7 @@ describe('/api/admin/affiliate-discoveries/[id]', () => {
 
     expect(res.status).toBe(200);
     expect(json.deleted).toBe(true);
-    expect(json.candidate.$id).toBe('candidate_1');
+    expect(json.candidate.id).toBe('candidate_1');
     expect(deleteAffiliateCandidateMock).toHaveBeenCalledWith('candidate_1');
   });
 
@@ -103,9 +103,9 @@ describe('/api/admin/affiliate-discoveries/[id]', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.candidate.$id).toBe('candidate_1');
+    expect(json.candidate.id).toBe('candidate_1');
     expect(json.candidate.listingKind).toBe('TEAM');
-    expect(json.target.$id).toBe('team_1');
+    expect(json.target.id).toBe('team_1');
     expect(reclassifyAffiliateCandidateMock).toHaveBeenCalledWith('candidate_1', 'TEAM');
   });
 

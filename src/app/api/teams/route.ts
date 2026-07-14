@@ -7,7 +7,6 @@ import { getRequestOrigin } from '@/lib/requestOrigin';
 import { isValidOptionalExternalHttpUrl, normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import {
   inferDivisionDetails,
@@ -124,7 +123,7 @@ const resolveValidatedRequiredTemplateIds = async (
 };
 
 const withTeamRoleAliases = (team: Record<string, any>) => {
-  const formatted = withLegacyFields(team);
+  const formatted = team;
   const assistantCoachIds = uniqueStrings(
     Array.isArray((formatted as any).assistantCoachIds)
       ? (formatted as any).assistantCoachIds
@@ -138,7 +137,7 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 };
 
 const withTeamRoleAliasesList = (teams: Record<string, any>[]) => (
-  withLegacyList(teams).map((team) => withTeamRoleAliases(team))
+  teams.map((team) => withTeamRoleAliases(team))
 );
 
 const getTeamsDelegate = (client: any) => client?.teams;

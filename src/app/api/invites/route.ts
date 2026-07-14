@@ -12,7 +12,6 @@ import {
   normalizeInviteType,
   normalizeStaffMemberTypes,
 } from '@/lib/staff';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { getRequestOrigin } from '@/lib/requestOrigin';
@@ -70,7 +69,7 @@ class InviteRouteError extends Error {
   }
 }
 
-const mapInviteRecord = (invite: Record<string, any>) => withLegacyFields({
+const mapInviteRecord = (invite: Record<string, any>) => ({
   ...invite,
   type: normalizeInviteType(invite.type) ?? invite.type,
   status: normalizeInviteStatus(invite.status) ?? 'PENDING',

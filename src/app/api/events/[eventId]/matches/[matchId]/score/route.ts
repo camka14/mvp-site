@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
-import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeMatches } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import { assertSetScoreUpdateAllowed } from '@/server/matches/setScoringRules';
 import {
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       return { match, replayed: false };
     });
 
-    const serializedMatch = serializeMatchesLegacy([result.match])[0];
+    const serializedMatch = serializeMatches([result.match])[0];
     if (!result.replayed) {
       publishEventMatchChanges({
         eventId,

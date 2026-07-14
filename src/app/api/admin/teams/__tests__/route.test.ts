@@ -58,7 +58,8 @@ describe('GET /api/admin/teams', () => {
 
     expect(res.status).toBe(200);
     expect(json.total).toBe(1);
-    expect(json.teams[0].$id).toBe('team_1');
+    expect(json.teams[0].id).toBe('team_1');
+    expect(json.teams[0]).not.toHaveProperty('$id');
     expect(json.teams[0].organization?.name).toBe('City Org');
     expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

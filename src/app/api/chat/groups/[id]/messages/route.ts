@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 import { handleRouteError } from '@/server/http/routeErrors';
 import { isChatGroupMember } from '@/server/chatAccess';
 
@@ -51,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const remainingCount = Math.max(totalCount - nextIndex, 0);
 
     return NextResponse.json({
-      messages: withLegacyList(messages),
+      messages: messages,
       pagination: {
         index,
         limit,

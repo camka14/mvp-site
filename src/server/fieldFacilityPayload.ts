@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma';
-import { withLegacyFields } from '@/server/legacyFormat';
 
 type FieldRow = Record<string, any> & {
   facilityId?: string | null;
@@ -43,9 +42,9 @@ export const attachFacilitiesToFieldRows = async <T extends FieldRow>(
   }));
 };
 
-export const withLegacyFieldPayload = <T extends FieldRow>(field: T) => (
-  withLegacyFields({
+export const toFieldResponse = <T extends FieldRow>(field: T) => (
+  {
     ...field,
-    facility: field.facility ? withLegacyFields(field.facility) : field.facility ?? null,
-  })
+    facility: field.facility ?? null,
+  }
 );

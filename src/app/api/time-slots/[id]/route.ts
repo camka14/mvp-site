@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { findDollarPrefixedFields } from '@/server/requestParsing';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
@@ -363,14 +362,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ?? (updated.scheduledFieldId ? [updated.scheduledFieldId] : []),
   );
   const normalizedDivisions = payloadDivisions ?? normalizeDivisionKeys((updated as any).divisions);
-  return NextResponse.json(withLegacyFields({
+  return NextResponse.json({
     ...updated,
     dayOfWeek: normalizedDays[0] ?? updated.dayOfWeek ?? null,
     daysOfWeek: normalizedDays,
     scheduledFieldId: normalizedFieldIds[0] ?? null,
     scheduledFieldIds: normalizedFieldIds,
     divisions: normalizedDivisions,
-  } as any), { status: 200 });
+  } as any, { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -3,7 +3,6 @@ import { calculateAgeOnDate } from '@/lib/age';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { handleApiRouteError } from '@/server/http/routeErrors';
 import { loadAndBuildRegistrationAnswerSnapshot } from '@/server/registrationQuestions';
 import { requireVerifiedEmailForTeamRegistrationIfPaid } from '@/server/paidRegistrationGate';
@@ -22,7 +21,7 @@ const toUniqueStrings = (value: unknown): string[] => {
 };
 
 const withTeamRoleAliases = (team: Record<string, any>) => {
-  const formatted = withLegacyFields(team);
+  const formatted = team;
   const assistantCoachIds = toUniqueStrings((formatted as any).assistantCoachIds ?? (formatted as any).coachIds);
   return {
     ...formatted,
@@ -145,7 +144,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         message: isExistingManagerInvite
           ? 'A parent or guardian must accept the pending team invitation before you can join this team.'
           : 'A parent or guardian must accept this team join request before you can be added to the team.',
-        invite: invite ? withLegacyFields(invite) : null,
+        invite: invite ? invite : null,
         team: withTeamRoleAliases(teamRow as Record<string, any>),
       }, { status: 200 });
     }
@@ -233,7 +232,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({
       registrationId: result.registrationId,
       status: result.status,
-      registration: registration ? withLegacyFields(registration) : null,
+      registration: registration ? registration : null,
       consent: signatureState.eligibleTemplateIds.length > 0
         ? {
           documentId: nextConsentDocumentId,

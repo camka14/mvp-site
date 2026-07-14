@@ -26,9 +26,6 @@ const prismaMock = {
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyList: (items: any[]) => items,
-}));
 
 import { GET } from '@/app/api/sports/route';
 

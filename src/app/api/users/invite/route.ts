@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
@@ -161,7 +160,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (authUserExisted) {
-      notEmailedRecords.push({ ...withLegacyFields(record), reason: 'user_exists' });
+      notEmailedRecords.push({ ...record, reason: 'user_exists' });
     } else {
       sentRecords.push(record);
     }
@@ -169,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   const baseUrl = getRequestOrigin(req);
   const updatedSent = await sendInviteEmails(sentRecords, baseUrl);
-  const sent = updatedSent.map((record) => withLegacyFields(record));
+  const sent = updatedSent.map((record) => record);
 
   return NextResponse.json({ sent, not_sent: [...notSent, ...notEmailedRecords], failed }, { status: 200 });
 }

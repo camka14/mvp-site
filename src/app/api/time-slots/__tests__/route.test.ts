@@ -50,29 +50,6 @@ jest.mock('@/server/timeSlotAccess', () => ({
   canManageScheduledFields: (...args: unknown[]) => canManageScheduledFieldsMock(...args),
   canManageTimeSlot: (...args: unknown[]) => canManageTimeSlotMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  parseDateInput: (value: unknown) => {
-    if (value === null || value === undefined || value === '') {
-      return null;
-    }
-    const parsed = value instanceof Date ? value : new Date(String(value));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  },
-  stripLegacyFieldsDeep: (value: unknown) => {
-    if (Array.isArray(value)) {
-      return value.map((entry) => (entry && typeof entry === 'object'
-        ? Object.fromEntries(Object.entries(entry).filter(([key]) => !key.startsWith('$')))
-        : entry));
-    }
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).filter(([key]) => !key.startsWith('$')),
-      );
-    }
-    return value;
-  },
-  withLegacyFields: (value: any) => ({ ...value, $id: value.id ?? value.$id ?? null }),
-}));
 
 import { GET, POST } from '@/app/api/time-slots/route';
 import { DELETE, PATCH } from '@/app/api/time-slots/[id]/route';
@@ -113,7 +90,7 @@ describe('time-slots routes', () => {
     prismaMock.timeSlots.update.mockResolvedValue({});
   });
 
-  it('GET applies array-aware field/day filters and returns canonical arrays with legacy aliases', async () => {
+  it('GET applies array-aware field/day filters and returns canonical arrays', async () => {
     prismaMock.timeSlots.findMany.mockResolvedValueOnce([
       {
         id: 'slot_1',
@@ -325,7 +302,7 @@ describe('time-slots routes', () => {
       hasMore: false,
     });
     expect(payload.timeSlots[0]).toEqual(expect.objectContaining({
-      $id: 'slot_public',
+      id: 'slot_public',
       price: 1800,
       daysOfWeek: [1, 3],
     }));
@@ -462,7 +439,7 @@ describe('time-slots routes', () => {
     );
   });
 
-  it('PATCH persists canonical arrays while preserving legacy aliases in the response', async () => {
+  it('PATCH persists canonical arrays while using canonical identifiers in the response', async () => {
     prismaMock.timeSlots.update.mockResolvedValueOnce({
       id: 'slot_patch',
       dayOfWeek: 2,

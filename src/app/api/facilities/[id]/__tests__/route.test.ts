@@ -102,7 +102,8 @@ describe('PATCH /api/facilities/[id]', () => {
         }),
       }),
     );
-    expect(json.$id).toBe('facility_1');
+    expect(json.id).toBe('facility_1');
+    expect(json).not.toHaveProperty('$id');
     expect(json.operatingHours).toEqual({
       version: 1,
       weekly: [

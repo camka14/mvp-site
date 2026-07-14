@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
@@ -238,5 +237,5 @@ export async function POST(
     return createdBill;
   });
 
-  return NextResponse.json({ bill: withLegacyFields(bill) }, { status: 201 });
+  return NextResponse.json({ bill: bill }, { status: 201 });
 }

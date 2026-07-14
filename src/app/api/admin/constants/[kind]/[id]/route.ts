@@ -5,7 +5,6 @@ import {
   parseAdminConstantKind,
   updateAdminConstantByKind,
 } from '@/server/adminConstants';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
 export async function PATCH(
@@ -19,7 +18,7 @@ export async function PATCH(
     const payload = await req.json().catch(() => null);
     const patch = normalizePatchForKind(parsedKind, payload);
     const updated = await updateAdminConstantByKind(parsedKind, id, patch);
-    return NextResponse.json({ record: withLegacyFields(updated) }, { status: 200 });
+    return NextResponse.json({ record: updated }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof AdminConstantsInputError) {

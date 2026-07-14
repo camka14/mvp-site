@@ -22,7 +22,12 @@ import {
 
 import Loading from '@/components/ui/Loading';
 import type { Event, Field, Match, Team } from '@/types';
-import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
+import {
+  normalizeApiEvent,
+  normalizeApiField,
+  normalizeApiMatch,
+  normalizeApiTeam,
+} from '@/lib/apiMappers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
@@ -249,10 +254,10 @@ export default function ScheduleCalendarPanel({
         ? payload.matches.map((match) => normalizeApiMatch(match))
         : [];
       const normalizedFields = Array.isArray(payload.fields)
-        ? payload.fields
+        ? payload.fields.map((field) => normalizeApiField(field))
         : [];
       const normalizedTeams = Array.isArray(payload.teams)
-        ? payload.teams
+        ? payload.teams.map((team) => normalizeApiTeam(team))
         : [];
 
       if (requestGeneration !== requestGenerationRef.current) return;

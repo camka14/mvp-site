@@ -12,10 +12,10 @@ let inflightPromise: Promise<Sport[]> | null = null;
 const normalizeClientSportName = (value: unknown): string =>
   String(value ?? '').trim().toLowerCase();
 
-const clientSportId = (row: any): string => String(row?.$id ?? row?.id ?? '');
+const clientSportId = (row: any): string => String(row?.id ?? row?.$id ?? '');
 
 const clientSportCreatedAt = (row: any): number => {
-  const value = row?.$createdAt ?? row?.createdAt;
+  const value = row?.createdAt ?? row?.$createdAt;
   if (value == null) return Number.POSITIVE_INFINITY;
   const timestamp = new Date(String(value)).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
@@ -98,7 +98,7 @@ const mapRowToSport = (row: any): Sport => {
   }
 
   return {
-    $id: String(row.$id ?? ''),
+    $id: String(row.id ?? row.$id ?? ''),
     name: String(row.name ?? ''),
     officialPositionTemplates: normalizeOfficialPositionTemplates(row.officialPositionTemplates),
     matchRulesTemplate: normalizeMatchRulesTemplate(row.matchRulesTemplate),
@@ -145,8 +145,8 @@ const mapRowToSport = (row: any): Sport => {
     useEnablePenaltyUnsporting: Boolean(row.useEnablePenaltyUnsporting),
     usePenaltyPointsUnsporting: Boolean(row.usePenaltyPointsUnsporting),
     usePointPrecision: Boolean(row.usePointPrecision),
-    $createdAt: String(row.$createdAt ?? ''),
-    $updatedAt: String(row.$updatedAt ?? ''),
+    $createdAt: String(row.createdAt ?? row.$createdAt ?? ''),
+    $updatedAt: String(row.updatedAt ?? row.$updatedAt ?? ''),
   };
 };
 

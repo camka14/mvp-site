@@ -182,15 +182,15 @@ class FieldService {
       : [];
 
     const field: Field = {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       name: row.name ?? '',
       location: row.location ?? '',
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
       createdAt: row.createdAt ?? row.$createdAt ?? null,
       updatedAt: row.updatedAt ?? row.$updatedAt ?? null,
-      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
-      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+      $createdAt: typeof row.createdAt === 'string' ? row.createdAt : typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
       heading: Number.isFinite(heading) ? heading : undefined,
       inUse: inUse,
       divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
@@ -257,7 +257,7 @@ class FieldService {
       ? row.hostRequiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
       : [];
     const slot: TimeSlot = {
-      $id: String(row.$id ?? row.id ?? ''),
+      $id: String(row.id ?? row.$id ?? ''),
       dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
       daysOfWeek: normalizedDays,
       repeating: row.repeating === undefined ? false : Boolean(row.repeating),

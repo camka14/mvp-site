@@ -93,7 +93,8 @@ describe('field routes', () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json.$id).toBe('field_1');
+    expect(json.id).toBe('field_1');
+    expect(json).not.toHaveProperty('$id');
     expect(prismaMock.fields.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -245,11 +246,13 @@ describe('field routes', () => {
     expect(prismaMock.facilities.findMany).toHaveBeenCalledWith({
       where: { id: { in: ['facility_org_1'] } },
     });
-    expect(json.fields[0].$id).toBe('field_1');
+    expect(json.fields[0].id).toBe('field_1');
     expect(json.fields[0].facility).toMatchObject({
-      $id: 'facility_org_1',
+      id: 'facility_org_1',
       name: 'River City Sports Complex',
     });
+    expect(json.fields[0]).not.toHaveProperty('$id');
+    expect(json.fields[0].facility).not.toHaveProperty('$id');
   });
 
   it('filters fields by sport ids', async () => {
@@ -384,7 +387,7 @@ describe('field routes', () => {
       hasMore: false,
     });
     expect(payload.fields[0]).toEqual(expect.objectContaining({
-      $id: 'field_public',
+      id: 'field_public',
       name: 'Court A',
       rentalSlotIds: ['slot_public'],
     }));
@@ -393,6 +396,7 @@ describe('field routes', () => {
     expect(payload.fields[0]).not.toHaveProperty('updatedAt');
     expect(payload.fields[0]).not.toHaveProperty('createdBy');
     expect(payload.fields[0]).not.toHaveProperty('inUse');
+    expect(payload.fields[0]).not.toHaveProperty('$id');
     expect(payload.fields[0].facility).not.toHaveProperty('organizationId');
     expect(payload.fields[0].facility).not.toHaveProperty('operatingHours');
     expect(payload.fields[0].facility).not.toHaveProperty('affiliateUrl');

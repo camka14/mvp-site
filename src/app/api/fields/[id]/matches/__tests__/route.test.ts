@@ -13,7 +13,7 @@ jest.mock('@/server/eventVisibility', () => ({
   getVisibleEventIds: (...args: unknown[]) => getVisibleEventIdsMock(...args),
 }));
 jest.mock('@/server/matches/instantPayloads', () => ({
-  serializeMatchRecordsLegacy: (matches: unknown[]) => matches,
+  serializeMatchRecords: (matches: unknown[]) => matches,
 }));
 
 import { GET } from '@/app/api/fields/[id]/matches/route';

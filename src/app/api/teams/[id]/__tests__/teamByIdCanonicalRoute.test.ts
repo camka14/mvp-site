@@ -121,9 +121,6 @@ jest.mock('@/lib/permissions', () => ({
   getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
   requireSession: (...args: any[]) => requireSessionMock(...args),
 }));
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 jest.mock('@/lib/requestOrigin', () => ({ getRequestOrigin: () => 'http://localhost' }));
 jest.mock('@/server/inviteEmails', () => ({ sendInviteEmails: (...args: any[]) => sendInviteEmailsMock(...args) }));
 jest.mock('@/server/teams/teamMembership', () => ({

@@ -33,15 +33,6 @@ const requireSessionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
-jest.mock('@/server/legacyFormat', () => ({
-  parseDateInput: (value: unknown) => {
-    if (!value) return null;
-    const parsed = new Date(String(value));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  },
-  withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
-  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-}));
 
 import { GET } from '@/app/api/profile/schedule/route';
 
@@ -345,7 +336,7 @@ describe('GET /api/profile/schedule', () => {
 
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
-    expect(json.events[0].$id).toBe('hosted_event_1');
+    expect(json.events[0].id).toBe('hosted_event_1');
     expect(json.events[0].name).toBe('Test map');
 
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
@@ -518,7 +509,7 @@ describe('GET /api/profile/schedule', () => {
 
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
-    expect(json.events[0].$id).toBe('event_1');
+    expect(json.events[0].id).toBe('event_1');
     expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {

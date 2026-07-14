@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageEvent, hasOrganizationStaffAccess } from '@/server/accessControl';
 import { canManageCanonicalTeam } from '@/server/teams/teamMembership';
 import {
@@ -189,7 +188,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json(
     {
-      ...withLegacyFields(result.updated),
+      ...result.updated,
       refundedAmountCents: refundSummary.refundedAmountCents,
       stripeRefundIds: refundSummary.stripeRefundIds,
       refundedPaymentIds: result.updatedPayments.map((payment: { id: string }) => payment.id),

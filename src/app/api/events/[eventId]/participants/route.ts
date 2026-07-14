@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import {
@@ -82,9 +81,9 @@ const payloadSchema = z.object({
 const PAID_ONLINE_CHECKOUT_REQUIRED_ERROR = 'Paid online registration must be completed through checkout.';
 const ACTIVE_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED', 'PAYMENT_FAILED'] as const;
 
-const withLegacyEvent = (row: any) => {
-  const legacy = withLegacyFields(row);
-  return legacy;
+const toEventResponse = (row: any) => {
+  const response = { ...row };
+  return response;
 };
 
 const extractId = (value: any): string | undefined => {
@@ -1029,7 +1028,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   }
   if (isWeeklyParentEvent(event) && (!slotId || !occurrenceDate)) {
     return NextResponse.json({
-      event: withLegacyEvent(event),
+      event: toEventResponse(event),
       participants: {
         teamIds: [],
         userIds: [],
@@ -1086,11 +1085,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
         })
       : undefined;
     return NextResponse.json({
-      event: withLegacyEvent(event),
+      event: toEventResponse(event),
       participants: snapshot.participants,
       registrations: manageModeRequested ? snapshot.registrations : viewerPaymentFailedRegistrations,
-      teams: snapshot.teams.map((team) => withLegacyFields(team)),
-      users: snapshot.users.map((user) => withLegacyFields(user)),
+      teams: snapshot.teams.map((team) => team),
+      users: snapshot.users.map((user) => user),
       participantCount: snapshot.participantCount,
       participantCapacity: snapshot.participantCapacity,
       occurrence: snapshot.occurrence,
@@ -1412,8 +1411,8 @@ async function updateParticipants(
       });
 
       return NextResponse.json({
-        event: withLegacyEvent(event),
-        registration: withLegacyFields(requestRegistration),
+        event: toEventResponse(event),
+        registration: requestRegistration,
         requiresParentApproval: true,
       }, { status: 200 });
     }
@@ -1672,8 +1671,8 @@ async function updateParticipants(
       }
       const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
       return NextResponse.json({
-        event: withLegacyEvent(refreshedEvent ?? event),
-        bill: result.bill ? withLegacyFields(result.bill) : undefined,
+        event: toEventResponse(refreshedEvent ?? event),
+        bill: result.bill ? result.bill : undefined,
         warnings: warnings.length ? warnings : undefined,
       }, { status: 200 });
     }
@@ -1902,7 +1901,7 @@ async function updateParticipants(
     });
 
     return NextResponse.json({
-      event: withLegacyEvent(updatedEvent),
+      event: toEventResponse(updatedEvent),
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
@@ -2044,9 +2043,9 @@ async function updateParticipants(
     });
 
     return NextResponse.json({
-      event: withLegacyEvent(event),
-      registration: withLegacyFields(result.registration),
-      bill: result.bill ? withLegacyFields(result.bill) : undefined,
+      event: toEventResponse(event),
+      registration: result.registration,
+      bill: result.bill ? result.bill : undefined,
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
@@ -2088,7 +2087,7 @@ async function updateParticipants(
   });
 
   return NextResponse.json({
-    event: withLegacyEvent(updatedEvent),
+    event: toEventResponse(updatedEvent),
     warnings: warnings.length ? warnings : undefined,
   }, { status: 200 });
 }

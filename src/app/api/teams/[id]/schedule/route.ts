@@ -4,11 +4,10 @@ import { requireSession } from '@/lib/permissions';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { hasOrgPermission } from '@/server/accessControl';
 import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
-import { withLegacyList } from '@/server/legacyFormat';
 import { parseDateInput } from '@/server/requestParsing';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
-import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
+import { serializeMatchRecords } from '@/server/matches/instantPayloads';
 import {
   getEventTeamsDelegate,
   isAdminOnlyCanonicalTeam,
@@ -268,9 +267,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   ));
 
   return NextResponse.json({
-    events: withLegacyList(eventDtos),
-    matches: serializeMatchRecordsLegacy(matches),
-    fields: withLegacyList(fields),
-    teams: withLegacyList(teams),
+    events: eventDtos,
+    matches: serializeMatchRecords(matches),
+    fields: fields,
+    teams: teams,
   });
 }

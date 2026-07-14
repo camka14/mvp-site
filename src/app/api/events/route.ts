@@ -24,7 +24,6 @@ import {
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { parseDateInput } from '@/server/requestParsing';
 import {
   cleanDivisionDisplayName,
@@ -497,75 +496,75 @@ const getDivisionDetailsForEvents = async (
   return detailsByEventId;
 };
 
-const withLegacyEvent = (row: any) => {
-  const legacy = withLegacyFields(row);
-  if (!Array.isArray((legacy as any).divisions)) {
-    (legacy as any).divisions = Array.isArray((legacy as any).divisionDetails)
-      ? (legacy as any).divisionDetails
+const toEventResponse = (row: any) => {
+  const response = { ...row };
+  if (!Array.isArray((response as any).divisions)) {
+    (response as any).divisions = Array.isArray((response as any).divisionDetails)
+      ? (response as any).divisionDetails
           .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
           .filter((id: string | null): id is string => Boolean(id))
       : [];
   }
-  if (!Array.isArray(legacy.waitListIds)) {
-    (legacy as any).waitListIds = [];
+  if (!Array.isArray(response.waitListIds)) {
+    (response as any).waitListIds = [];
   }
-  if (!Array.isArray(legacy.freeAgentIds)) {
-    (legacy as any).freeAgentIds = [];
+  if (!Array.isArray(response.freeAgentIds)) {
+    (response as any).freeAgentIds = [];
   }
-  if (!Array.isArray(legacy.officialIds)) {
-    (legacy as any).officialIds = [];
+  if (!Array.isArray(response.officialIds)) {
+    (response as any).officialIds = [];
   }
-  if (!Array.isArray((legacy as any).officialPositions)) {
-    (legacy as any).officialPositions = [];
+  if (!Array.isArray((response as any).officialPositions)) {
+    (response as any).officialPositions = [];
   }
-  if (!Array.isArray((legacy as any).eventOfficials)) {
-    (legacy as any).eventOfficials = [];
+  if (!Array.isArray((response as any).eventOfficials)) {
+    (response as any).eventOfficials = [];
   }
-  if (typeof (legacy as any).officialSchedulingMode !== 'string') {
-    (legacy as any).officialSchedulingMode = 'SCHEDULE';
+  if (typeof (response as any).officialSchedulingMode !== 'string') {
+    (response as any).officialSchedulingMode = 'SCHEDULE';
   }
-  if ((legacy as any).officialSchedulingMode === 'TEAM_STAFFING') {
-    (legacy as any).doTeamsOfficiate = true;
+  if ((response as any).officialSchedulingMode === 'TEAM_STAFFING') {
+    (response as any).doTeamsOfficiate = true;
   }
-  if (!Array.isArray((legacy as any).assistantHostIds)) {
-    (legacy as any).assistantHostIds = [];
+  if (!Array.isArray((response as any).assistantHostIds)) {
+    (response as any).assistantHostIds = [];
   }
-  if (!Array.isArray(legacy.requiredTemplateIds)) {
-    (legacy as any).requiredTemplateIds = [];
+  if (!Array.isArray(response.requiredTemplateIds)) {
+    (response as any).requiredTemplateIds = [];
   }
-  (legacy as any).registrationPaymentMode = normalizeRegistrationPaymentMode((legacy as any).registrationPaymentMode);
-  (legacy as any).manualPaymentLinks = normalizeManualPaymentLinks((legacy as any).manualPaymentLinks);
-  (legacy as any).manualPaymentInstructions = normalizeManualPaymentInstructions(
-    (legacy as any).manualPaymentInstructions,
+  (response as any).registrationPaymentMode = normalizeRegistrationPaymentMode((response as any).registrationPaymentMode);
+  (response as any).manualPaymentLinks = normalizeManualPaymentLinks((response as any).manualPaymentLinks);
+  (response as any).manualPaymentInstructions = normalizeManualPaymentInstructions(
+    (response as any).manualPaymentInstructions,
   );
-  if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
-    (legacy as any).noFixedEndDateTime = false;
+  if (typeof (response as any).noFixedEndDateTime !== 'boolean') {
+    (response as any).noFixedEndDateTime = false;
   }
-  if ((legacy as any).doTeamsOfficiate !== true) {
-    (legacy as any).teamOfficialsMaySwap = false;
-  } else if (typeof (legacy as any).teamOfficialsMaySwap !== 'boolean') {
-    (legacy as any).teamOfficialsMaySwap = false;
+  if ((response as any).doTeamsOfficiate !== true) {
+    (response as any).teamOfficialsMaySwap = false;
+  } else if (typeof (response as any).teamOfficialsMaySwap !== 'boolean') {
+    (response as any).teamOfficialsMaySwap = false;
   }
-  const legacyTeamCheckInMode = typeof (legacy as any).teamCheckInMode === 'string'
-    ? (legacy as any).teamCheckInMode.trim().toUpperCase()
+  const legacyTeamCheckInMode = typeof (response as any).teamCheckInMode === 'string'
+    ? (response as any).teamCheckInMode.trim().toUpperCase()
     : 'OFF';
-  (legacy as any).teamCheckInMode =
-    (legacy as any).teamSignup === true && ['OFF', 'EVENT', 'MATCH'].includes(legacyTeamCheckInMode)
+  (response as any).teamCheckInMode =
+    (response as any).teamSignup === true && ['OFF', 'EVENT', 'MATCH'].includes(legacyTeamCheckInMode)
       ? legacyTeamCheckInMode
       : 'OFF';
-  const legacyOpenMinutes = Number((legacy as any).teamCheckInOpenMinutesBefore);
-  (legacy as any).teamCheckInOpenMinutesBefore = Number.isFinite(legacyOpenMinutes)
+  const legacyOpenMinutes = Number((response as any).teamCheckInOpenMinutesBefore);
+  (response as any).teamCheckInOpenMinutesBefore = Number.isFinite(legacyOpenMinutes)
     ? Math.max(0, Math.trunc(legacyOpenMinutes))
     : 60;
-  (legacy as any).allowMatchRosterEdits =
-    (legacy as any).teamSignup === true && typeof (legacy as any).allowMatchRosterEdits === 'boolean'
-      ? Boolean((legacy as any).allowMatchRosterEdits)
+  (response as any).allowMatchRosterEdits =
+    (response as any).teamSignup === true && typeof (response as any).allowMatchRosterEdits === 'boolean'
+      ? Boolean((response as any).allowMatchRosterEdits)
       : false;
-  (legacy as any).allowTemporaryMatchPlayers =
-    (legacy as any).allowMatchRosterEdits === true && typeof (legacy as any).allowTemporaryMatchPlayers === 'boolean'
-      ? Boolean((legacy as any).allowTemporaryMatchPlayers)
+  (response as any).allowTemporaryMatchPlayers =
+    (response as any).allowMatchRosterEdits === true && typeof (response as any).allowTemporaryMatchPlayers === 'boolean'
+      ? Boolean((response as any).allowTemporaryMatchPlayers)
       : false;
-  return legacy;
+  return response;
 };
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
@@ -678,7 +677,7 @@ const buildEventResponsePayload = async (event: any) => {
     getEventTagsForEventIds([event.id]),
   ]);
 
-  return withLegacyEvent({
+  return toEventResponse({
     ...event,
     officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
     officialPositions,
@@ -966,7 +965,7 @@ export async function GET(req: NextRequest) {
   const normalized = eventsWithParticipantIds.map((row) => {
     const divisionDetails = divisionDetailsByEventId.get(row.id) ?? [];
     const organizationId = typeof row.organizationId === 'string' ? row.organizationId : '';
-    return withLegacyEvent({
+    return toEventResponse({
       ...row,
       organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(row.id) ?? [],

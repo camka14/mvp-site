@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { clearBlockReports } from '@/server/moderation';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
@@ -43,7 +42,7 @@ export async function DELETE(
     });
 
     return NextResponse.json(
-      { user: withLegacyFields(applyNameCaseToUserFields(updatedUser)) },
+      { user: applyNameCaseToUserFields(updatedUser) },
       { status: 200 },
     );
   } catch (error) {

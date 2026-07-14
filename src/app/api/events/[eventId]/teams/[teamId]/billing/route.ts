@@ -200,7 +200,6 @@ export async function GET(
         const refundableAmountCents = Math.max(0, payment.amountCents - refundedAmountCents);
         return {
           ...payment,
-          $id: payment.id,
           refundedAmountCents,
           refundableAmountCents,
           isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
@@ -226,7 +225,6 @@ export async function GET(
       return {
         ...bill,
         ...withBillDiscountAmounts(bill, discountAmountsByBillId),
-        $id: bill.id,
         ownerName: ownerDisplayName,
         paidAmountCents,
         refundedAmountCents,
@@ -456,19 +454,18 @@ export async function GET(
       const refundableAmountCents = Math.max(0, payment.amountCents - refundedAmountCents);
       return {
         ...payment,
-        $id: payment.id,
-      refundedAmountCents,
-      refundableAmountCents,
-      isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
-      manualPaymentProofs: (proofsByPaymentId.get(payment.id) ?? []).map((proof: any) => ({
-        id: proof.id,
-        status: proof.status ?? null,
-        fileId: proof.fileId,
-        fileUrl: `/api/files/${encodeURIComponent(proof.fileId)}`,
-        amountAcceptedCents: proof.amountAcceptedCents ?? null,
-      })),
-    };
-  });
+        refundedAmountCents,
+        refundableAmountCents,
+        isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
+        manualPaymentProofs: (proofsByPaymentId.get(payment.id) ?? []).map((proof: any) => ({
+          id: proof.id,
+          status: proof.status ?? null,
+          fileId: proof.fileId,
+          fileUrl: `/api/files/${encodeURIComponent(proof.fileId)}`,
+          amountAcceptedCents: proof.amountAcceptedCents ?? null,
+        })),
+      };
+    });
 
     const paidAmountCents = payments.reduce((sum, payment) => (
       sum + Math.min(
@@ -482,7 +479,6 @@ export async function GET(
     return {
       ...bill,
       ...withBillDiscountAmounts(bill, discountAmountsByBillId),
-      $id: bill.id,
       ownerName,
       paidAmountCents,
       refundedAmountCents,

@@ -8,6 +8,7 @@ import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldResolvedLocation } from '@/lib/fieldUtils';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
+import { normalizeApiEvent } from '@/lib/apiMappers';
 import { organizationService } from '@/lib/organizationService';
 import { paymentService } from '@/lib/paymentService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
@@ -64,7 +65,11 @@ const seedEventTemplate = async (
   if (!response?.event) {
     throw new Error('Template seed response did not include an event.');
   }
-  return response.event;
+  const event = normalizeApiEvent(response.event);
+  if (!event) {
+    throw new Error('Template seed response did not include a valid event.');
+  }
+  return event;
 };
 
 export type TemplateRentalResourcePrompt = {

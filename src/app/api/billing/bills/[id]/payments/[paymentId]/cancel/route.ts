@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   canManageBillPayment,
   cancelProcessingBillPaymentForAction,
@@ -32,7 +31,7 @@ export async function POST(
     if (!bill) {
       return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
     }
-    return NextResponse.json({ bill: withLegacyFields(bill) }, { status: 200 });
+    return NextResponse.json({ bill: bill }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to cancel pending bill payment';
     const status = message.includes('already completed') || message.includes('cannot be cancelled') ? 409 : 400;

@@ -12,6 +12,12 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import {
+  normalizeApiEntity,
+  normalizeApiEvent,
+  normalizeApiField,
+  normalizeApiTeam,
+} from '@/lib/apiMappers';
+import {
   organizationVerificationStatusLabel,
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
@@ -190,6 +196,46 @@ const initialPageState = <T,>(query = ''): PageState<T> => ({
   query,
 });
 
+const normalizeAdminUser = (row: Record<string, any>): AdminUserRow => (
+  normalizeApiEntity(row) as AdminUserRow
+);
+
+const normalizeAdminChatGroup = (row: Record<string, any>): AdminChatGroupRow => {
+  const group = normalizeApiEntity(row) as Record<string, any>;
+  return {
+    ...group,
+    memberUsers: Array.isArray(group.memberUsers)
+      ? group.memberUsers.map((user: Record<string, any>) => normalizeAdminUser(user))
+      : [],
+    lastMessage: group.lastMessage && typeof group.lastMessage === 'object'
+      ? normalizeApiEntity(group.lastMessage) as AdminChatGroupRow['lastMessage']
+      : null,
+  } as AdminChatGroupRow;
+};
+
+const normalizeAdminMessage = (row: Record<string, any>): AdminChatMessageRow => {
+  const message = normalizeApiEntity(row) as Record<string, any>;
+  return {
+    ...message,
+    sender: message.sender && typeof message.sender === 'object'
+      ? normalizeAdminUser(message.sender)
+      : null,
+  } as AdminChatMessageRow;
+};
+
+const normalizeAdminModerationReport = (row: Record<string, any>): AdminModerationReportRow => {
+  const report = normalizeApiEntity(row) as Record<string, any>;
+  return {
+    ...report,
+    reporter: report.reporter && typeof report.reporter === 'object'
+      ? normalizeAdminUser(report.reporter)
+      : null,
+    reviewer: report.reviewer && typeof report.reviewer === 'object'
+      ? normalizeAdminUser(report.reviewer)
+      : null,
+  } as AdminModerationReportRow;
+};
+
 type AdminDashboardClientProps = {
   initialAdminEmail: string;
 };
@@ -249,7 +295,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load events.');
       }
       setEventsState({
-        items: Array.isArray(payload.events) ? payload.events : [],
+        items: Array.isArray(payload.events)
+          ? payload.events.map((event: Event) => normalizeApiEvent(event)).filter((event: Event | null): event is Event => Boolean(event))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -285,7 +333,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load organizations.');
       }
       setOrganizationsState({
-        items: Array.isArray(payload.organizations) ? payload.organizations : [],
+        items: Array.isArray(payload.organizations)
+          ? payload.organizations.map((organization: Organization) => normalizeApiEntity(organization))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -321,7 +371,17 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load teams.');
       }
       setTeamsState({
-        items: Array.isArray(payload.teams) ? payload.teams : [],
+        items: Array.isArray(payload.teams)
+          ? payload.teams.map((team: Team & { organization?: Organization | null }) => {
+            const normalized = normalizeApiTeam(team) as AdminTeamRow;
+            return {
+              ...normalized,
+              organization: team.organization
+                ? normalizeApiEntity(team.organization)
+                : null,
+            };
+          })
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -357,7 +417,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load verification queue.');
       }
       setVerificationState({
-        items: Array.isArray(payload.organizations) ? payload.organizations : [],
+        items: Array.isArray(payload.organizations)
+          ? payload.organizations.map((organization: Organization) => normalizeApiEntity(organization))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -393,7 +455,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load fields.');
       }
       setFieldsState({
-        items: Array.isArray(payload.fields) ? payload.fields : [],
+        items: Array.isArray(payload.fields)
+          ? payload.fields.map((field: Field) => normalizeApiField(field) as AdminFieldRow)
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -435,7 +499,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load users.');
       }
       setUsersState({
-        items: Array.isArray(payload.users) ? payload.users : [],
+        items: Array.isArray(payload.users)
+          ? payload.users.map((user: Record<string, any>) => normalizeAdminUser(user))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -471,7 +537,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load chat groups.');
       }
       setChatsState({
-        items: Array.isArray(payload.groups) ? payload.groups : [],
+        items: Array.isArray(payload.groups)
+          ? payload.groups.map((group: Record<string, any>) => normalizeAdminChatGroup(group))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -507,7 +575,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         throw new Error(payload?.error || 'Failed to load moderation queue.');
       }
       setModerationState({
-        items: Array.isArray(payload.reports) ? payload.reports : [],
+        items: Array.isArray(payload.reports)
+          ? payload.reports.map((report: Record<string, any>) => normalizeAdminModerationReport(report))
+          : [],
         total: Number(payload.total ?? 0),
         limit: Number(payload.limit ?? DEFAULT_LIMIT),
         offset: Number(payload.offset ?? 0),
@@ -641,8 +711,12 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       if (!res.ok) {
         throw new Error(payload?.error || 'Failed to load chat inspector.');
       }
-      setSelectedChatGroup(payload.group ?? null);
-      setSelectedChatMessages(Array.isArray(payload.messages) ? payload.messages : []);
+      setSelectedChatGroup(payload.group && typeof payload.group === 'object'
+        ? normalizeAdminChatGroup(payload.group)
+        : null);
+      setSelectedChatMessages(Array.isArray(payload.messages)
+        ? payload.messages.map((message: Record<string, any>) => normalizeAdminMessage(message))
+        : []);
     } catch (error) {
       setSelectedChatGroup(null);
       setSelectedChatMessages([]);

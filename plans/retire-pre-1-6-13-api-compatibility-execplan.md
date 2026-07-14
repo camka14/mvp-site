@@ -19,8 +19,8 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - [ ] Build an executable v1.6.13 endpoint/field inventory and contract fixture before removing response aliases. (Completed 2026-07-14 14:04Z: added the source and endpoint inventory in `docs/code-audit/leg-001-v1.6.13-contract.md`, tied it to exact tag `50045cc3` and executable fixture commit `245f6a0a`, and documented canonical decoding for app, Wear OS, and watchOS resource families. Remaining: expand executable fixtures beyond event/team/match/user where the sibling mobile worktree can be changed without colliding with active mobile audit work.)
 - [x] (2026-07-14 12:05Z) Added the first canonical-only compatibility-floor fixture for event, team, match, and user payloads. The same two tests passed from the exact `v1.6.13` tag (`50045cc3`) and were checked in at current mobile commit `245f6a0a`; organization, field, chat, billing, Wear OS, and watchOS coverage is still required before response aliases can be removed.
 - [x] (2026-07-14 09:39Z) Removed every non-generated `volleyBallTeams` reference from web production and tests. Ten focused suites passed 89 tests on the first run; the profile schedule suite then passed 11 tests after its stale partial Prisma mock gained the normalized membership delegates required by DATA-007. TypeScript and whitespace checks passed.
-- [ ] Move generic request/date parsing out of `legacyFormat.ts`, reject dollar-prefixed input fields, and remove obsolete alias routes only after proving v1.6.13 does not call them. (Completed 2026-07-14 14:04Z: moved all production `parseDateInput` imports to `src/server/requestParsing.ts`; event, chat-group, and time-slot PATCH handlers reject nested dollar-prefixed fields before database work; removed ten proven-unused client aliases while retaining the external BoldSign callback; 51 request tests and 44 route-retirement/canonical-route tests pass. Remaining: delete the obsolete helper body and test-only mocks during response-wrapper removal.)
-- [ ] Replace every API response wrapper with the canonical response shape, remove the open-ended-event rewrite, and delete `src/server/legacyFormat.ts`.
+- [x] (2026-07-14 14:04Z) Moved generic request/date parsing out of `legacyFormat.ts`, made event, chat-group, match, and time-slot writes reject nested dollar-prefixed input fields before database work, removed ten proven-unused client aliases, and retained the externally configured BoldSign callback. The obsolete helper and its test-only mocks were deleted with the response slice.
+- [x] (2026-07-14 15:42Z) Removed all 124 `withLegacyFields`/`withLegacyList` response call sites and deleted `src/server/legacyFormat.ts`. Canonical list, detail, search, nested participant/detail, scheduler, match, team, organization, field, billing, chat, user, and admin responses now keep `id` and preserve `end: null`; browser adapters derive the existing internal `$id` view-model field from canonical `id` at the HTTP boundary. The focused response and open-ended-event batches cover 160 test executions across 20 suite executions, and TypeScript passed.
 - [ ] Remove legacy DTO fallbacks from the current Android/iOS/Wear/watchOS clients after server and v1.6.13 fixture coverage proves canonical decoding.
 - [ ] Run focused and broad automated checks, then browser and emulator/watch contract smoke tests from exact commits.
 - [ ] Update `docs/code-audit/README.md` with commit and runtime evidence and mark `LEG-001` complete only when the production searches are empty or every remaining match is a historical test fixture.
@@ -51,6 +51,12 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 - Observation: request objects decoded by Next.js during Jest route tests can originate in a different JavaScript realm.
   Evidence: a prototype-identity plain-object check missed those objects and allowed obsolete keys through. `Object.prototype.toString.call(value) === '[object Object]'` recognizes JSON objects across realms; after the correction all four request-contract suites passed 51 tests.
 
+- Observation: deleting server response aliases exposed several browser services and direct admin screens whose TypeScript models still use `$id` internally.
+  Evidence: canonical-only chat, refund, sport, bill, organization, user, product, event, field, and admin fixtures initially produced blank internal identities until their HTTP-boundary adapters copied canonical `id`, `createdAt`, and `updatedAt` into the existing view models. The adapters now prefer canonical values when both forms are present.
+
+- Observation: the event-template seed route returned an internal `Event` view model directly even though it never imported `legacyFormat.ts`.
+  Evidence: `buildSeedEventFromTemplate` creates internal `$id` fields for the draft event, fields, and time slots. The route now uses the domain-specific `serializeSeedEvent` response serializer, and its regression asserts that nested canonical IDs are present and no dollar-prefixed key is serialized.
+
 ## Decision Log
 
 - Decision: Treat the checked-in mobile tag `v1.6.13` as the compatibility floor and prove its actual route and field behavior from source and executable JSON fixtures.
@@ -79,7 +85,7 @@ This plan resolves audit finding `LEG-001` in `docs/code-audit/README.md`.
 
 ## Outcomes & Retrospective
 
-Research, the executable plan, the generated-delegate slice, and the first exact-tag canonical fixture are complete. Web production and tests now have zero `volleyBallTeams` references outside generated history. Event, team, match, and user canonical payloads have executable v1.6.13 proof, but the remaining resource-family inventory must be covered before the HTTP response contract changes. The next slice expands that fixture to organization, field, chat, billing, Wear OS, and watchOS, followed by explicit request-alias rejection.
+The web compatibility removal is complete in checkpoint slices. Production and tests have zero non-generated `volleyBallTeams` references, zero `legacyFormat`, `withLegacyFields`, `withLegacyList`, or `stripLegacyFieldsDeep` references, and no direct dollar-prefixed response properties in App Router API handlers. Obsolete request keys fail before writes, ten unused aliases are absent, open-ended events remain `end: null` in list/detail/search/nested responses, and browser services consume canonical-only payloads without changing the internal UI model in this slice. Exact v1.6.13 executable proof covers event, team, match, and user; source-level inventory covers organization, field, chat, billing, Wear OS, and watchOS. Full Jest, coverage, optimized build, and runtime smoke evidence remain before the overall plan can close, as does current-mobile DTO cleanup in its isolated worktree.
 
 ## Context and Orientation
 
@@ -226,6 +232,18 @@ Endpoint-inventory and alias-retirement evidence:
     retained external callback alias: /api/boldsign/webhook
     focused suites: 4 passed / 44 tests
 
+Canonical-response evidence:
+
+    rg -n 'legacyFormat|withLegacyFields|withLegacyList|stripLegacyFieldsDeep' src --glob '*.{ts,tsx}'
+    # no output
+
+    rg -n --glob 'route.ts' '\$createdAt\s*:|\$updatedAt\s*:|\$id\s*:' src/app/api
+    # no output
+
+    open-ended list/detail/search/nested suites: 8 passed / 98 tests
+    canonical browser-adapter suites: 12 suites / 62 tests after one invite-pagination boundary fix
+    npx tsc --noEmit --pretty false: exit 0
+
 ## Interfaces and Dependencies
 
 `src/server/requestParsing.ts` must own the generic parsing functions after `legacyFormat.ts` is removed:
@@ -246,3 +264,5 @@ Revision note (2026-07-14 12:05Z): recorded the first exact-v1.6.13 canonical-on
 Revision note (2026-07-14 13:55Z): recorded the first request-contract checkpoint. Generic date parsing now lives outside the legacy response module, the three handlers that formerly stripped obsolete fields reject them before database work, exact-tag route evidence classifies ten removable client aliases, and cross-realm JSON handling is covered by focused tests.
 
 Revision note (2026-07-14 14:04Z): added the self-contained v1.6.13 resource and endpoint inventory, recorded removal of the ten unused client route aliases, and retained the externally configured BoldSign webhook alias. Canonical billing and retired lookup tests plus the route-absence contract pass 44 tests.
+
+Revision note (2026-07-14 15:42Z): recorded the canonical-response slice, deletion of the universal legacy formatter, explicit nullable-end coverage at list/detail/search/nested boundaries, client-side canonical adapters, and the indirect event-template seed response discovered during source tracing. Broad and runtime validation remain intentionally open.

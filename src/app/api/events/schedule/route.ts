@@ -14,7 +14,7 @@ import {
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
-import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { serializeEvent, serializeMatches } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import {
@@ -209,8 +209,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         preview: typeof result.preview === 'boolean' ? result.preview : false,
-        event: serializeEventLegacy(result.event),
-        matches: serializeMatchesLegacy(result.matches),
+        event: serializeEvent(result.event),
+        matches: serializeMatches(result.matches),
       },
       { status: 200 },
     );

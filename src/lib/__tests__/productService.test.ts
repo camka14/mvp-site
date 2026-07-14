@@ -18,7 +18,7 @@ describe('productService', () => {
       apiRequestMock.mockResolvedValue({
         products: [
           {
-            $id: 'prod_1',
+            id: 'prod_1',
             organizationId: 'org_1',
             name: 'Monthly Membership',
             priceCents: 1999,
@@ -46,7 +46,7 @@ describe('productService', () => {
       apiRequestMock.mockResolvedValue({
         products: [
           {
-            $id: 'prod_single_1',
+            id: 'prod_single_1',
             organizationId: 'org_1',
             name: 'Day Pass',
             priceCents: 1500,

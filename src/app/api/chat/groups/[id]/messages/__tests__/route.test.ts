@@ -8,7 +8,6 @@ const messagesCountMock = jest.fn();
 const requireSessionMock = jest.fn();
 const ensureUserHasAcceptedChatTermsMock = jest.fn();
 const isChatGroupMemberMock = jest.fn();
-const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -29,10 +28,6 @@ jest.mock('@/lib/permissions', () => ({
 jest.mock('@/server/chatAccess', () => ({
   ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
   isChatGroupMember: (...args: any[]) => isChatGroupMemberMock(...args),
-}));
-
-jest.mock('@/server/legacyFormat', () => ({
-  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 
 import { GET } from '@/app/api/chat/groups/[id]/messages/route';
@@ -81,7 +76,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
       order: 'desc',
     });
     expect(json.messages).toHaveLength(2);
-    expect(json.messages[0].$id).toBe('m_1');
+    expect(json.messages[0].id).toBe('m_1');
   });
 
   it('returns 403 for users outside the chat group', async () => {
@@ -190,7 +185,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
       skip: 0,
       take: 10,
     });
-    expect(json.messages[0].$id).toBe('m_removed');
+    expect(json.messages[0].id).toBe('m_removed');
   });
 
   it('loads messages even when chat terms consent is missing', async () => {

@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { listActiveChildIdsForParent } from '@/server/teams/teamGuardianInvites';
 import {
   removeCanonicalPendingInvitee,
@@ -44,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ invite: withLegacyFields(invite) }, { status: 200 });
+  return NextResponse.json({ invite: invite }, { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

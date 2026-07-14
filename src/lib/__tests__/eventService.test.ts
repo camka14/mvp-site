@@ -44,6 +44,19 @@ const baseEventRow = {
   divisions: [],
 };
 
+const canonicalEventRow: Record<string, any> = {
+  ...baseEventRow,
+  id: 'evt_1',
+  end: null,
+  noFixedEndDateTime: true,
+  createdAt: '2025-01-01T00:00:00Z',
+  updatedAt: '2025-01-01T00:00:00Z',
+  sport: { id: 'sport_1', name: 'Volleyball' },
+};
+delete canonicalEventRow.$id;
+delete canonicalEventRow.$createdAt;
+delete canonicalEventRow.$updatedAt;
+
 describe('eventService', () => {
   beforeEach(() => {
     apiRequestMock.mockReset();
@@ -51,12 +64,15 @@ describe('eventService', () => {
   });
 
   it('fetches event by id via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ ...baseEventRow });
+    apiRequestMock.mockResolvedValue({ ...canonicalEventRow });
 
     const event = await eventService.getEvent('evt_1');
 
     expect(apiRequestMock).toHaveBeenCalledWith('/api/events/evt_1');
     expect(event?.$id).toBe('evt_1');
+    expect(event?.end).toBeNull();
+    expect(event?.$createdAt).toBe('2025-01-01T00:00:00Z');
+    expect(event?.sport).toEqual(expect.objectContaining({ $id: 'sport_1' }));
   });
 
   it('preserves rental booking metadata for overlap-only field blockers', async () => {

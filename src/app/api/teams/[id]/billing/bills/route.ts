@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageRegistrationQuestionScope } from '@/server/registrationQuestionAccess';
 
 export const dynamic = 'force-dynamic';
@@ -132,5 +131,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   });
 
-  return NextResponse.json({ bill: withLegacyFields(bill) }, { status: 201 });
+  return NextResponse.json({ bill: bill }, { status: 201 });
 }

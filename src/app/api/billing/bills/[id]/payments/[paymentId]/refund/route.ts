@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import {
   canAdministerBillPayment,
   loadBillPaymentForAction,
@@ -53,7 +52,7 @@ export async function POST(
     });
     return NextResponse.json(
       {
-        payment: withLegacyFields(result.payment),
+        payment: result.payment,
         refundedAmountCents: result.refundedAmountCents,
         remainingRefundableAmountCents: result.remainingRefundableAmountCents,
         refundId: result.refundId,

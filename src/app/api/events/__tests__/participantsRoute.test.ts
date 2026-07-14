@@ -140,6 +140,8 @@ describe('GET /api/events/[eventId]/participants', () => {
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       name: 'Public Event',
+      end: null,
+      noFixedEndDateTime: true,
       state: 'PUBLISHED',
       hostId: 'host_1',
       assistantHostIds: [],
@@ -173,11 +175,18 @@ describe('GET /api/events/[eventId]/participants', () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+    const payload = await response.json();
+    expect(payload).toEqual(expect.objectContaining({
       participantCount: 1,
       participantCapacity: 10,
       weeklySelectionRequired: false,
     }));
+    expect(payload.event).toEqual(expect.objectContaining({
+      id: 'event_1',
+      end: null,
+      noFixedEndDateTime: true,
+    }));
+    expect(payload.event).not.toHaveProperty('$id');
     expect(getOptionalSessionMock).toHaveBeenCalled();
     expect(canManageEventMock).not.toHaveBeenCalled();
     expect(buildEventParticipantSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -729,7 +738,8 @@ describe('POST /api/events/[eventId]/participants', () => {
       }),
       expect.anything(),
     );
-    expect(payload.event.$id).toBe('weekly_parent');
+    expect(payload.event.id).toBe('weekly_parent');
+    expect(payload.event).not.toHaveProperty('$id');
   });
 
   it('creates the weekly payment-plan bill in the registration transaction', async () => {
@@ -836,7 +846,8 @@ describe('POST /api/events/[eventId]/participants', () => {
         status: 'PENDING',
       }),
     }));
-    expect(payload.bill.$id).toBe('bill_weekly_1');
+    expect(payload.bill.id).toBe('bill_weekly_1');
+    expect(payload.bill).not.toHaveProperty('$id');
   });
 
   it('registers the canonical team without mutating legacy teamIds arrays', async () => {

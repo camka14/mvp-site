@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization, hasOrgPermission } from '@/server/accessControl';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
@@ -130,7 +129,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (org.status !== DEFAULT_ORGANIZATION_STATUS || org.publicPageEnabled !== true) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    return NextResponse.json(withLegacyFields(toPublicOrganizationSummary(org)), { status: 200 });
+    return NextResponse.json(toPublicOrganizationSummary(org), { status: 200 });
   }
 
   const viewerPermissions = (
@@ -141,7 +140,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     )))
   ).filter((permission): permission is OrganizationPermission => Boolean(permission));
   if (viewerPermissions.length === 0) {
-    return NextResponse.json(withLegacyFields(toPublicOrganizationSummary(org)), { status: 200 });
+    return NextResponse.json(toPublicOrganizationSummary(org), { status: 200 });
   }
 
   const viewerCanManageOrganization = viewerPermissions.includes(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
@@ -193,7 +192,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const [organizationWithProductIds] = await withDerivedOrganizationProductIds([org], prisma);
 
   return NextResponse.json(
-    withLegacyFields({
+    {
       ...organizationWithProductIds,
       tags: tagsByOrganizationId.get(org.id) ?? [],
       staffMembers: viewerCanManageStaffRoster
@@ -208,7 +207,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       viewerCanManageOrganization,
       viewerCanAccessUsers,
       viewerPermissions,
-    }),
+    },
     { status: 200 },
   );
 }
@@ -393,5 +392,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     : (await getOrganizationTagsForOrganizationIds([id])).get(id) ?? [];
   const [updatedWithProductIds] = await withDerivedOrganizationProductIds([updated], prisma);
 
-  return NextResponse.json(withLegacyFields({ ...updatedWithProductIds, tags }), { status: 200 });
+  return NextResponse.json({ ...updatedWithProductIds, tags }, { status: 200 });
 }

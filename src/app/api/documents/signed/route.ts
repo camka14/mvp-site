@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +67,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json({ signedDocuments: withLegacyList(docs) }, { status: 200 });
+  return NextResponse.json({ signedDocuments: docs }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

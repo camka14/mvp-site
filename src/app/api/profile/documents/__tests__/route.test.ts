@@ -13,6 +13,9 @@ const prismaMock = {
   teamRegistrations: {
     findMany: jest.fn(),
   },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   parentChildLinks: {
     findMany: jest.fn(),
   },
@@ -54,6 +57,7 @@ describe('GET /api/profile/documents', () => {
     });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
     prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'user@example.com' });
     prismaMock.sensitiveUserData.findMany.mockResolvedValue([]);

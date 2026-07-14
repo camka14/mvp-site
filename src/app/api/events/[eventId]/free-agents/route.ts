@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
@@ -272,14 +271,14 @@ async function updateFreeAgents(
     });
     return NextResponse.json({
       event: {
-        ...(refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event)),
+        ...(refreshedEvent ? refreshedEvent : event),
         teamIds: snapshot.participants.teamIds,
         userIds: snapshot.participants.userIds,
         waitListIds: snapshot.participants.waitListIds,
         freeAgentIds: snapshot.participants.freeAgentIds,
       },
       participants: snapshot.participants,
-      registration: withLegacyFields(registration),
+      registration: registration,
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
@@ -298,7 +297,7 @@ async function updateFreeAgents(
   });
   return NextResponse.json({
     event: {
-      ...(refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event)),
+      ...(refreshedEvent ? refreshedEvent : event),
       teamIds: snapshot.participants.teamIds,
       userIds: snapshot.participants.userIds,
       waitListIds: snapshot.participants.waitListIds,

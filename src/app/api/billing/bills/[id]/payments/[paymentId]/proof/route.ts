@@ -8,7 +8,6 @@ import {
   loadBillPaymentForAction,
   submitManualBillPaymentProofForAction,
 } from '@/server/billing/billPaymentActions';
-import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +60,7 @@ export async function POST(
       userId: session.userId,
       now: new Date(),
     });
-    return NextResponse.json({ proof: withLegacyFields(proof) }, { status: 201 });
+    return NextResponse.json({ proof: proof }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to submit proof of payment.';
     return NextResponse.json({ error: message }, { status: 400 });

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withLegacyList } from '@/server/legacyFormat';
 import { loadAdminConstants } from '@/server/adminConstants';
 import { requireRazumlyAdmin } from '@/server/razumlyAdmin';
 
@@ -8,9 +7,9 @@ export async function GET(req: NextRequest) {
     const session = await requireRazumlyAdmin(req);
     const constants = await loadAdminConstants();
     return NextResponse.json({
-      sports: withLegacyList(constants.sports),
-      divisions: withLegacyList(constants.divisions),
-      leagueScoringConfigs: withLegacyList(constants.leagueScoringConfigs),
+      sports: constants.sports,
+      divisions: constants.divisions,
+      leagueScoringConfigs: constants.leagueScoringConfigs,
       editableFields: constants.editableFields,
       adminEmail: session.adminEmail,
     }, { status: 200 });

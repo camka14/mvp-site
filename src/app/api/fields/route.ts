@@ -6,7 +6,7 @@ import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { ensureDefaultFacilityForOrganization, getFacilityForOrganization } from '@/server/facilities';
-import { attachFacilitiesToFieldRows, withLegacyFieldPayload } from '@/server/fieldFacilityPayload';
+import { attachFacilitiesToFieldRows, toFieldResponse } from '@/server/fieldFacilityPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,8 +172,8 @@ export async function GET(req: NextRequest) {
   const pageRows = fields.slice(0, limit);
   const fieldsWithFacilities = await attachFacilitiesToFieldRows(pageRows);
   const responseRows = session
-    ? fieldsWithFacilities.map(withLegacyFieldPayload)
-    : fieldsWithFacilities.map((field) => withLegacyFieldPayload(toPublicFieldPayload(field)));
+    ? fieldsWithFacilities.map(toFieldResponse)
+    : fieldsWithFacilities.map((field) => toFieldResponse(toPublicFieldPayload(field)));
 
   return NextResponse.json({
     fields: responseRows,
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
     );
 
     const [fieldWithFacility] = await attachFacilitiesToFieldRows([record]);
-    return NextResponse.json(withLegacyFieldPayload(fieldWithFacility ?? record), { status: 201 });
+    return NextResponse.json(toFieldResponse(fieldWithFacility ?? record), { status: 201 });
   } catch (error) {
     if (isPrismaSchemaContractError(error)) {
       return NextResponse.json(
