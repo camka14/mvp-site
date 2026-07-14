@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 import { buildEvent, buildTimeSlot, buildUser } from '../../../../../test/factories';
@@ -114,6 +114,16 @@ const toIsoDateString = (value: Date): string => {
 
 const toMondayIndex = (value: Date): number => (value.getDay() + 6) % 7;
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 describe('EventDetailSheet details layout', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -131,6 +141,69 @@ describe('EventDetailSheet details layout', () => {
       participantCount: 0,
       participantCapacity: 10,
       occurrence: null,
+    });
+  });
+
+  it('ignores a late event-detail response after switching to another event', async () => {
+    const sourceEventA = buildEvent({ $id: 'event_a', name: 'Source Event A' });
+    const sourceEventB = buildEvent({ $id: 'event_b', name: 'Source Event B' });
+    const loadedEventA = buildEvent({ $id: 'event_a', name: 'Late Loaded Event A' });
+    const loadedEventB = buildEvent({ $id: 'event_b', name: 'Current Loaded Event B' });
+    const eventALoad = createDeferred<ReturnType<typeof buildEvent>>();
+    const eventBLoad = createDeferred<ReturnType<typeof buildEvent>>();
+    const user = buildUser({ $id: 'user_stale_load', dateOfBirth: '1990-01-01' });
+
+    (useApp as jest.Mock).mockReturnValue({
+      user,
+      authUser: { $id: user.$id, email: 'user@example.com', name: user.fullName },
+    });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockImplementation((eventId: string) => {
+      if (eventId === sourceEventA.$id) return eventALoad.promise;
+      if (eventId === sourceEventB.$id) return eventBLoad.promise;
+      return Promise.resolve(null);
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue(null);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+
+    function EventSwitcher() {
+      const [selectedEvent, setSelectedEvent] = React.useState(sourceEventA);
+      return (
+        <>
+          <button type="button" onClick={() => setSelectedEvent(sourceEventB)}>Show event B</button>
+          <EventDetailSheet event={selectedEvent} isOpen={true} onClose={jest.fn()} />
+        </>
+      );
+    }
+
+    renderWithMantine(<EventSwitcher />);
+
+    await waitFor(() => {
+      expect(eventService.getEventWithRelations).toHaveBeenCalledWith(sourceEventA.$id);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show event B' }));
+
+    await waitFor(() => {
+      expect(eventService.getEventWithRelations).toHaveBeenCalledWith(sourceEventB.$id);
+    });
+
+    await act(async () => {
+      eventBLoad.resolve(loadedEventB);
+      await eventBLoad.promise;
+    });
+    expect(await screen.findByText('Current Loaded Event B')).toBeInTheDocument();
+
+    await act(async () => {
+      eventALoad.resolve(loadedEventA);
+      await eventALoad.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Current Loaded Event B')).toBeInTheDocument();
+      expect(screen.queryByText('Late Loaded Event A')).not.toBeInTheDocument();
     });
   });
 

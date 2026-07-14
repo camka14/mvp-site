@@ -677,6 +677,7 @@ export default function EventDetailSheet({
     const [hostUser, setHostUser] = useState<UserData | null>(null);
     const eventRef = React.useRef<Event | null>(event);
     const loadedEventDetailsKeyRef = useRef<string | null>(null);
+    const eventDetailsRequestGenerationRef = useRef(0);
     const joinCardAnchorRef = useRef<HTMLDivElement | null>(null);
     const joinCardRef = useRef<HTMLDivElement | null>(null);
     const [joinCardDocked, setJoinCardDocked] = useState(false);
@@ -1496,12 +1497,26 @@ export default function EventDetailSheet({
             loadedEventDetailsKeyRef.current = loadKey;
         }
 
+        const requestGeneration = eventDetailsRequestGenerationRef.current + 1;
+        eventDetailsRequestGenerationRef.current = requestGeneration;
+        const normalizedTargetId = normalizeRequestToken(targetId);
+        const isCurrentRequest = () => (
+            eventDetailsRequestGenerationRef.current === requestGeneration
+            && normalizeRequestToken(eventRef.current?.$id) === normalizedTargetId
+        );
+
         setIsLoadingEvent(true);
         try {
             // Fetch full event with relationships for accurate editing context
             let latest = renderInline ? sourceEvent : await eventService.getEventWithRelations(targetId);
+            if (!isCurrentRequest()) {
+                return;
+            }
             if (!latest && !renderInline) {
                 latest = await eventService.getEvent(targetId);
+                if (!isCurrentRequest()) {
+                    return;
+                }
             }
             const baseEvent = latest || sourceEvent;
             if (!baseEvent) {
@@ -1517,6 +1532,9 @@ export default function EventDetailSheet({
                 if (selectedOccurrence?.slotId && selectedOccurrence?.occurrenceDate) {
                     try {
                         const snapshot = await eventService.getEventParticipants(targetId, selectedOccurrence);
+                        if (!isCurrentRequest()) {
+                            return;
+                        }
                         const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
                         setCurrentUserPaymentFailed(failedState.userFailed);
                         setPaymentFailedTeamIds(failedState.teamIds);
@@ -1603,6 +1621,9 @@ export default function EventDetailSheet({
             } else {
                 try {
                     const snapshot = await eventService.getEventParticipants(targetId);
+                    if (!isCurrentRequest()) {
+                        return;
+                    }
                     const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
                     setCurrentUserPaymentFailed(failedState.userFailed);
                     setPaymentFailedTeamIds(failedState.teamIds);
@@ -1678,7 +1699,13 @@ export default function EventDetailSheet({
                     if (shouldLoadFreeAgents) {
                         try {
                             eventFreeAgents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
+                            if (!isCurrentRequest()) {
+                                return;
+                            }
                         } catch (freeAgentError) {
+                            if (!isCurrentRequest()) {
+                                return;
+                            }
                             console.error('Failed to load free agents:', freeAgentError);
                             eventFreeAgents = [];
                         }
@@ -1686,6 +1713,9 @@ export default function EventDetailSheet({
                 }
             }
 
+            if (!isCurrentRequest()) {
+                return;
+            }
             setDetailedEvent(resolvedEvent);
             setPlayers(eventPlayers);
             const isSchedulableSlotEvent = resolvedEvent.eventType === 'LEAGUE' || resolvedEvent.eventType === 'TOURNAMENT';
@@ -1696,9 +1726,14 @@ export default function EventDetailSheet({
             setFreeAgents(eventFreeAgents);
 
         } catch (error) {
+            if (!isCurrentRequest()) {
+                return;
+            }
             console.error('Failed to load event details:', error);
         } finally {
-            setIsLoadingEvent(false);
+            if (isCurrentRequest()) {
+                setIsLoadingEvent(false);
+            }
         }
     }, [renderInline, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId, user?.$id]);
 
@@ -1769,6 +1804,10 @@ export default function EventDetailSheet({
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
         }
+
+        return () => {
+            eventDetailsRequestGenerationRef.current += 1;
+        };
     }, [event, event?.$id, isActive, loadEventDetails]);
 
     const handleViewSchedule = (tab?: string) => {

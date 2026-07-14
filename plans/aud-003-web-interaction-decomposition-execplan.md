@@ -15,7 +15,7 @@ After this plan is complete, users must see the same event details, registration
 - [x] (2026-07-14 21:15Z) Reconciled AUD-003 against current source and measured `EventDetailSheet.tsx` at 7,219 lines, `EventForm.tsx` at 4,376 lines, `useDivisionEditorController.ts` at 843 lines, and `useStaffOfficialController.ts` at 892 lines.
 - [x] (2026-07-14 21:20Z) Mapped cohesive responsibilities, current focused tests, and browser flows for both components.
 - [x] (2026-07-14 21:25Z) Read the applicable React decomposition guidance: separate computations/effects by dependency, never define stateful components inside a component, and use lazy loading only for genuinely deferred heavy UI.
-- [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract.
+- [ ] Milestone 1: add characterization tests for stale event loads, registration-step exclusivity, signing cancellation/polling, slot-request cancellation, division commits, and the `EventFormHandle` imperative contract. Completed: stale event-load response rejection with a deferred out-of-order regression. Remaining: registration/signing, slot/division, and consolidated imperative-contract cases.
 - [x] (2026-07-14 14:14Z) Milestone 2: extracted weekly-session calculations, division/registration eligibility and payment-plan calculations, organization/schedule/display presentation helpers, and their direct tests without changing state ownership or markup.
 - [ ] Milestone 3: extract event-detail data loading and inline authentication controllers with explicit cancellation and one reload boundary.
 - [ ] Milestone 4: introduce one registration workflow reducer, then move event-detail views and dialogs behind typed view models and actions.
@@ -48,6 +48,9 @@ After this plan is complete, users must see the same event details, registration
 
 - Observation: public division skill parsing greedily consumed part of the `_age_` suffix for composite IDs.
   Evidence: a direct `skill_premier_age_18plus` grouping regression initially rendered the skill row as `18+`. The extracted parser now stops at the first `_age_` separator, and the test proves `Premier` and `18+` remain distinct skill and age labels.
+
+- Observation: event-detail request deduplication did not prevent an older event response from overwriting a newly selected event.
+  Evidence: a deferred regression loaded event B first, then resolved event A; before the fix, the hero changed back to A. Each hydration now owns a generation token, validates the current event after every await, and only the active generation may publish data or clear loading state.
 
 ## Decision Log
 
@@ -224,6 +227,14 @@ Final Milestone 2 evidence on 2026-07-14:
 
 Six direct presentation tests cover normalized lists, safe organization destinations, policy/staffing summaries, 12-hour time boundaries, ordered multi-day schedule groups, and gender/age/skill division grouping. The division-registration suite now also covers inactive family links plus event- and division-level age eligibility.
 
+First Milestone 1 characterization evidence on 2026-07-14:
+
+    PASS 6 suites / 34 tests
+    PASS npx tsc --noEmit
+    PASS targeted ESLint and git diff --check
+
+The deferred event-switch regression proves a late response for event A cannot replace already-rendered event B. The generation guard also suppresses stale participant/free-agent side effects and prevents an obsolete request from clearing the current request's loading state.
+
 ## Interfaces and Dependencies
 
 Keep the default `EventDetailSheet` export and its existing `EventDetailSheetProps` compatible. Internal event-detail modules should export named types/functions. `useEventDetailDataController` must return immutable data/loading/error fields plus `reload`; its implementation owns request identity and service calls. `useInlineEventAuthController` owns authentication transient state and actions. `useEventRegistrationController` exposes a discriminated state object and intent/action functions; views never mutate its state directly. `useSigningStatusPoll` accepts the active signing identity and callbacks and owns only the polling lifecycle.
@@ -236,3 +247,4 @@ Revision note (2026-07-14): Created the self-contained AUD-003 continuation afte
 Revision note (2026-07-14): Recorded the first partial pure-calculation milestone after extracting weekly-session generation and selection with 22 passing focused tests, TypeScript, targeted lint, and a 303-line net reduction in the facade.
 Revision note (2026-07-14): Continued Milestone 2 by extracting division, tournament-pool, and installment calculations with 26 passing focused tests, TypeScript, targeted lint, and a further 417-line reduction in the event-detail facade.
 Revision note (2026-07-14): Completed Milestone 2 by extracting public-detail presentation and eligibility rules with 33 passing focused tests, TypeScript, targeted lint, and a further 363-line reduction in the event-detail facade.
+Revision note (2026-07-14): Added the first Milestone 1 deferred-response characterization and closed the stale event-hydration race it exposed with 34 passing focused tests, TypeScript, and targeted lint.
