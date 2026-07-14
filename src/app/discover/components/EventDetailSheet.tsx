@@ -117,6 +117,7 @@ import {
     type PaymentPlanPreviewState,
 } from './eventDetail/eventJoinActions';
 import { createEventParticipantActions } from './eventDetail/eventParticipantActions';
+import { ChildRegistrationPanel } from './eventDetail/ChildRegistrationPanel';
 import { useApp } from '@/app/providers';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
@@ -1662,129 +1663,37 @@ export default function EventDetailSheet({
         setJoinError,
         setJoinNotice,
     });
-    const childPrimaryActionLabel = isTeamSignup
-        ? (joiningChildFreeAgent
-            ? 'Updating…'
-            : (selectedChildIsFreeAgent ? 'Remove child from free agents' : 'Add child as free agent'))
-        : childWaitlistMode
-            ? (registeringChild
-                ? 'Updating…'
-                : (selectedChildIsWaitlisted ? 'Remove child from waitlist' : 'Add child to waitlist'))
-            : (registeringChild ? 'Registering…' : 'Register child');
-    const childJoinDisabled = !canRegisterChild
-        || !selectedChildId
-        || (isTeamSignup
-            ? (!selectedChildEligible || joiningChildFreeAgent)
-            : childWaitlistMode
-                ? (
-                    registeringChild
-                    || (!selectedChildIsWaitlisted && (weeklySelectionRequired || !selectedChildEligible || isDivisionSelectionMissing || selectedChildIsRegistered))
-                )
-                : (weeklySelectionRequired || !selectedChildEligible || registeringChild || isDivisionSelectionMissing));
-    const childRegistrationPanel = shouldShowChildRegistrationPanel ? (
-        <Paper withBorder p="sm" radius="md" className="space-y-3">
-            <Text size="sm" fw={600}>
-                {isTeamSignup ? 'Child Free Agent' : (childWaitlistMode ? 'Child Waitlist' : 'Register a child')}
-            </Text>
-            {childrenError && (
-                <Alert color="red" variant="light">
-                    {childrenError}
-                </Alert>
-            )}
-            {childrenLoading ? (
-                <Text size="sm" c="dimmed">Loading children...</Text>
-            ) : (
-                <MantineSelect
-                    placeholder="Select a child"
-                    data={childOptions}
-                    value={selectedChildId}
-                    onChange={(value) => setSelectedChildId(value || '')}
-                    comboboxProps={sharedComboboxProps}
-                />
-            )}
-            {!childrenLoading && childOptions.length === 0 && (
-                <Text size="xs" c="dimmed">
-                    No active children linked yet. Add one from your profile.
-                </Text>
-            )}
-            {isTeamSignup && (
-                <Text size="xs" c="dimmed">
-                    Team registration is only for teams. Child profiles can join as free agents.
-                </Text>
-            )}
-            {!isTeamSignup && childWaitlistMode && (
-                <Text size="xs" c="dimmed">
-                    Manage the selected child&apos;s waitlist status.
-                </Text>
-            )}
-            {selectedChild && !selectedChildHasEmail && !isTeamSignup && (
-                <Alert color="yellow" variant="light">
-                    The selected child can register now, but child-signature steps remain pending until an email is added.
-                </Alert>
-            )}
-            {!isTeamSignup && childWaitlistMode && selectedChildIsRegistered && (
-                <Alert color="green" variant="light">
-                    The selected child is already registered for this event.
-                </Alert>
-            )}
-            {!isTeamSignup && childWaitlistMode && selectedChildIsWaitlisted && (
-                <Alert color="blue" variant="light">
-                    The selected child is currently on the waitlist.
-                </Alert>
-            )}
-            <Button
-                fullWidth
-                variant="light"
-                onClick={handleRegisterChild}
-                disabled={childJoinDisabled}
-            >
-                {childPrimaryActionLabel}
-            </Button>
-            {hasAgeLimits && (
-                <Text size="xs" c="dimmed">
-                    Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}.
-                </Text>
-            )}
-            {!isTeamSignup && showChildRegistrationStatus && childRegistration?.status && (
-                <Text size="xs" c="dimmed">
-                    Registration status: {childRegistration.status}
-                </Text>
-            )}
-            {!isTeamSignup && showChildRegistrationStatus && childConsent?.status && (
-                <Text size="xs" c="dimmed">
-                    Consent status: {childConsent.status}
-                </Text>
-            )}
-            {!isTeamSignup && showChildRegistrationStatus && (childConsent?.parentSignLink || childConsent?.childSignLink) && (
-                <Group gap="xs">
-                    {childConsent.parentSignLink && (
-                        <Button
-                            component="a"
-                            href={childConsent.parentSignLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            size="xs"
-                        >
-                            Parent Sign
-                        </Button>
-                    )}
-                    {childConsent.childSignLink && (
-                        <Button
-                            component="a"
-                            href={childConsent.childSignLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            size="xs"
-                            variant="light"
-                        >
-                            Child Sign
-                        </Button>
-                    )}
-                </Group>
-            )}
-        </Paper>
-    ) : null;
-
+    const childRegistrationPanel = (
+        <ChildRegistrationPanel
+            visible={shouldShowChildRegistrationPanel}
+            isTeamSignup={isTeamSignup}
+            waitlistMode={childWaitlistMode}
+            childrenError={childrenError}
+            childrenLoading={childrenLoading}
+            childOptions={childOptions}
+            selectedChildId={selectedChildId}
+            selectedChildPresent={Boolean(selectedChild)}
+            selectedChildHasEmail={selectedChildHasEmail}
+            selectedChildEligible={selectedChildEligible}
+            selectedChildIsFreeAgent={selectedChildIsFreeAgent}
+            selectedChildIsWaitlisted={selectedChildIsWaitlisted}
+            selectedChildIsRegistered={selectedChildIsRegistered}
+            joiningChildFreeAgent={joiningChildFreeAgent}
+            registeringChild={registeringChild}
+            canRegisterChild={canRegisterChild}
+            weeklySelectionRequired={weeklySelectionRequired}
+            isDivisionSelectionMissing={isDivisionSelectionMissing}
+            hasAgeLimits={hasAgeLimits}
+            eventMinAge={eventMinAge}
+            eventMaxAge={eventMaxAge}
+            showRegistrationStatus={showChildRegistrationStatus}
+            registration={childRegistration}
+            consent={childConsent}
+            comboboxProps={sharedComboboxProps}
+            onChildChange={setSelectedChildId}
+            onAction={() => { void handleRegisterChild(); }}
+        />
+    );
     const joinCardFrameClassName = renderInline
         ? `fixed inset-x-0 bottom-0 z-50 max-h-[82vh] overflow-y-auto px-4 pb-4 pt-3 lg:inset-auto lg:p-0 ${
             joinCardDocked
