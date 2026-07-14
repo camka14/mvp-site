@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useImperative
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import { eventService } from '@/lib/eventService';
 import type { EventStaffDraft, EventStaffSnapshot } from '@/lib/eventStaffService';
-import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
+import { getEventImageUrl, Event, UserData, Team, LeagueConfig, Field, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, RegistrationQuestionDraft, EventTag } from '@/types';
 import { useSports } from '@/app/hooks/useSports';
 
 import { TextInput, Textarea, NumberInput, Checkbox, Group, Button, Loader, Text, Collapse, Badge, Alert, Stack, Select as MantineSelect } from '@mantine/core';
@@ -23,10 +22,8 @@ import {
     parseLocalDateTime,
 } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
-import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
 import { resolveTournamentSetMode } from './tournamentSetMode';
-import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import {
     buildEventTypeOptions,
     hasAffiliateUrl,
@@ -69,8 +66,6 @@ import {
     normalizePlacementDivisionIds,
     normalizePlayoffDivisionDetailEntry,
     normalizePlayoffDivisionParticipantCount,
-    normalizeSlotDivisionIdsWithLookup,
-    normalizeSlotDivisionKeysWithLookup,
     parseCompositeDivisionTypeId,
     type PlayoffDivisionDetailForm,
     resolveSportInput,
@@ -83,8 +78,6 @@ import {
     normalizeOfficialSchedulingMode,
     normalizeSportOfficialPositionTemplates,
 } from './eventForm/officials';
-import { toFieldIdList } from './eventForm/resourceGroups';
-import { isRentalLockedTimeSlot } from './eventForm/rentalResources';
 import { buildEventFormSchema } from './eventForm/schema';
 import {
     dedupeValidationErrors,
@@ -107,39 +100,15 @@ import {
 } from './eventForm/eventTypeTags';
 import { buildEventDraft } from './eventForm/buildEventDraft';
 import {
-    createLeagueSlotForm,
-    normalizeSlotFieldIds,
-    normalizeWeekdays,
-} from './eventForm/slotForm';
-import {
-    normalizeSlotState,
-} from './eventForm/slotValidation';
-import {
-    buildAutoResolvedSlotUpdate,
-    buildExternalSlotConflicts,
-    buildSlotConflictCheckKey,
-    buildSlotConflictContext,
-    CONFLICT_LOOKUP_END,
-    CONFLICT_LOOKUP_START,
-    normalizeSlotBoundaryOverrideForForm,
-    slotCanCheckExternalConflicts,
-    snapshotToSlotForm,
-    type SlotConflictContext,
-    type SlotConflictPayload,
-} from './eventForm/slotConflictHelpers';
-import {
     buildLeagueScheduleError,
-    buildLeagueScheduleWarning,
 } from './eventForm/scheduleMessages';
 import {
     normalizePendingStaffInvite,
     type PendingStaffInvite,
 } from './eventForm/staffInvites';
-import { stringArraysEqual, stringSetsEqual } from './eventForm/shared';
+import { stringArraysEqual } from './eventForm/shared';
 import {
     leagueConfigEqual,
-    leagueSlotsEqual,
-    slotConflictsEqual,
     tournamentConfigEqual,
 } from './eventForm/formEquality';
 import {
@@ -188,6 +157,7 @@ import {
 } from './eventForm/hooks/useEventFormLifecycle';
 import { useEventPaymentController } from './eventForm/hooks/useEventPaymentController';
 import { useEventResourceController } from './eventForm/hooks/useEventResourceController';
+import { useEventSlotController } from './eventForm/hooks/useEventSlotController';
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
@@ -233,24 +203,8 @@ const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
-const createSlotForm = createLeagueSlotForm;
 
 export type { EventFormHandle, EventFormProps, RentalPurchaseContext } from './eventForm/types';
-
-const minutesFromDate = (value: Date): number => value.getHours() * 60 + value.getMinutes();
-
-const withMinutesOnDate = (date: Date, minutes: number): Date => {
-    const normalized = Math.max(0, Math.trunc(minutes));
-    return new Date(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-        Math.floor(normalized / 60),
-        normalized % 60,
-        0,
-        0,
-    );
-};
 
 const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     isOpen,
@@ -268,8 +222,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 }, ref) => {
     const open = isOpen ?? true;
     const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
-    const previousEditableScheduleModeRef = useRef<boolean | null>(null);
-    const slotConflictRequestRef = useRef(0);
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
@@ -521,24 +473,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
-    const setLeagueSlots = useCallback(
-        (
-            updater: React.SetStateAction<LeagueSlotForm[]>,
-            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-        ) => {
-            const current = getValues('leagueSlots');
-            const next = typeof updater === 'function' ? (updater as (prev: LeagueSlotForm[]) => LeagueSlotForm[])(current) : updater;
-            if (leagueSlotsEqual(current, next)) {
-                return;
-            }
-            setValue('leagueSlots', next, {
-                shouldDirty: options.shouldDirty ?? true,
-                shouldValidate: options.shouldValidate ?? true,
-            });
-        },
-        [getValues, setValue],
-    );
-
     const setJoinAsParticipant = useCallback(
         (value: boolean) => {
             if (Object.is(getValues('joinAsParticipant'), value)) {
@@ -600,10 +534,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ],
     );
     const slotDivisionKeys = slotDivisionLookup.keys;
-    const slotDivisionKeysRef = useRef<string[]>(slotDivisionKeys);
-    useEffect(() => {
-        slotDivisionKeysRef.current = slotDivisionKeys;
-    }, [slotDivisionKeys]);
     const {
         eventLocalFields,
         eventSupportsScheduleSlots,
@@ -654,61 +584,44 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue,
         slotDivisionKeys,
     });
+    const {
+        handleAddSlot,
+        handleAutoResolveSlotConflict,
+        handleRemoveSlot,
+        handleUpdateSlot,
+        leagueWarning,
+    } = useEventSlotController({
+        activeEditingEvent,
+        clearErrors,
+        eventEnd: eventData.end,
+        eventId: eventData.$id,
+        eventStart: eventData.start,
+        eventSupportsScheduleSlots,
+        eventTimeZone: eventData.timeZone,
+        eventType: eventData.eventType,
+        fields,
+        getValues,
+        hasExternalRentalField,
+        hasImmutableTimeSlots,
+        immutableFields,
+        immutableTimeSlots,
+        isAffiliateEvent,
+        isEditMode,
+        leagueSlots,
+        parentEvent: eventData.parentEvent,
+        rentalLockedSlotsForDraft,
+        resolvedOrganizationId,
+        setLeagueData,
+        setPlayoffData,
+        setValue,
+        singleDivision: eventData.singleDivision,
+        slotDivisionKeys,
+        slotDivisionLookup,
+    });
     const divisionOptions = useMemo(
         () => slotDivisionLookup.options,
         [slotDivisionLookup],
     );
-    const slotConflictEventId = activeEditingEvent?.$id ?? eventData.$id ?? '';
-    const slotConflictCheckKey = useMemo(() => buildSlotConflictCheckKey({
-        eventId: slotConflictEventId,
-        eventType: eventData.eventType,
-        parentEvent: eventData.parentEvent,
-        eventStart: eventData.start,
-        eventEnd: eventData.end,
-        slots: leagueSlots,
-    }), [
-        eventData.end,
-        eventData.eventType,
-        eventData.parentEvent,
-        eventData.start,
-        leagueSlots,
-        slotConflictEventId,
-    ]);
-    const slotConflictContext = useMemo<SlotConflictContext>(() => buildSlotConflictContext({
-        eventId: slotConflictEventId,
-        eventStart: eventData.start,
-        eventEnd: eventData.end,
-    }), [eventData.end, eventData.start, slotConflictEventId]);
-    const { hasPendingExternalConflictChecks, hasExternalSlotConflictWarnings } = useMemo(() => {
-        if (isAffiliateEvent || !supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
-            return {
-                hasPendingExternalConflictChecks: false,
-                hasExternalSlotConflictWarnings: false,
-            };
-        }
-
-        let hasPending = false;
-        let hasConflicts = false;
-        for (const slot of leagueSlots) {
-            if (!slotCanCheckExternalConflicts(slot, slotConflictContext)) {
-                continue;
-            }
-            if (slot.checking) {
-                hasPending = true;
-            }
-            if (slot.conflicts.length > 0) {
-                hasConflicts = true;
-            }
-            if (hasPending && hasConflicts) {
-                break;
-            }
-        }
-
-        return {
-            hasPendingExternalConflictChecks: hasPending,
-            hasExternalSlotConflictWarnings: hasConflicts,
-        };
-    }, [eventData.eventType, eventData.parentEvent, leagueSlots, slotConflictContext]);
     const divisionTypeOptions = useMemo(
         () => buildDivisionTypeOptionsForEvent(
             eventData.sportConfig ?? eventData.sportId,
@@ -891,17 +804,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData,
         setPendingStaffInvites,
     });
-
-    // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
-    const updateLeagueSlots = useCallback((
-        updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[],
-        options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
-    ) => {
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-        setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType), options);
-    }, [eventData.eventType, hasImmutableTimeSlots, setLeagueSlots]);
 
     const handleLeagueScoringConfigChange = useCallback(
         (key: keyof LeagueScoringConfig, value: LeagueScoringConfig[keyof LeagueScoringConfig]) => {
@@ -1547,44 +1449,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, setValue]);
 
     useEffect(() => {
-        const selectedDivisionKeys = slotDivisionKeys;
-        if (!selectedDivisionKeys.length) {
-            return;
-        }
-        const selectedDivisionSet = new Set(selectedDivisionKeys);
-        const enforceAllSlotDivisions = Boolean(eventData.singleDivision);
-        const hasMismatch = leagueSlots.some((slot) => {
-            const currentRaw = normalizeDivisionKeys(slot.divisions);
-            const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
-            if (!stringArraysEqual(currentRaw, current)) {
-                return true;
-            }
-            if (enforceAllSlotDivisions) {
-                return !stringSetsEqual(current, selectedDivisionKeys);
-            }
-            const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
-            return filtered.length === 0 || !stringArraysEqual(current, filtered);
-        });
-        if (!hasMismatch) {
-            return;
-        }
-        updateLeagueSlots(
-            (prev) =>
-                prev.map((slot) => {
-                    const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
-                    const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
-                    return {
-                        ...slot,
-                        divisions: enforceAllSlotDivisions
-                            ? selectedDivisionKeys
-                            : (filtered.length ? filtered : selectedDivisionKeys),
-                    };
-                }),
-            { shouldDirty: false },
-        );
-    }, [eventData.singleDivision, leagueSlots, slotDivisionKeys, slotDivisionLookup, updateLeagueSlots]);
-
-    useEffect(() => {
         if (eventData.eventType === 'LEAGUE') {
             return;
         }
@@ -1835,536 +1699,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         sportsById,
     ]);
 
-    // Clear slot field references that point to fields no longer selected/available.
-    useEffect(() => {
-        const availableFieldIds = toFieldIdList(fields);
-        if (!availableFieldIds.length) {
-            return;
-        }
-        const validIds = new Set(availableFieldIds);
-
-        const hasInvalidSlots = leagueSlots.some((slot) => {
-            const slotFieldIds = normalizeSlotFieldIds(slot);
-            return slotFieldIds.some((fieldId) => !validIds.has(fieldId));
-        });
-        if (!hasInvalidSlots) {
-            return;
-        }
-
-        updateLeagueSlots(prev => prev.map(slot => {
-            const slotFieldIds = normalizeSlotFieldIds(slot);
-            const nextFieldIds = slotFieldIds.filter((fieldId) => validIds.has(fieldId));
-            if (stringSetsEqual(slotFieldIds, nextFieldIds)) {
-                return slot;
-            }
-            return {
-                ...slot,
-                scheduledFieldId: nextFieldIds[0],
-                scheduledFieldIds: nextFieldIds,
-            };
-        }), { shouldDirty: false });
-    }, [fields, leagueSlots, updateLeagueSlots]);
-
-    useEffect(() => {
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-
-        let payload: SlotConflictPayload;
-        try {
-            payload = JSON.parse(slotConflictCheckKey) as SlotConflictPayload;
-        } catch {
-            return;
-        }
-
-        const clearConflicts = () => {
-            setLeagueSlots((prev) => {
-                let changed = false;
-                const next = prev.map((slot) => {
-                    if (!slot.conflicts.length && slot.checking === false) {
-                        return slot;
-                    }
-                    changed = true;
-                    return {
-                        ...slot,
-                        conflicts: [],
-                        checking: false,
-                    };
-                });
-                return changed ? next : prev;
-            }, { shouldDirty: false });
-        };
-
-        if (!supportsScheduleSlotsForEvent(payload.eventType, payload.parentEvent) || payload.slots.length === 0) {
-            clearConflicts();
-            return;
-        }
-
-        const context: SlotConflictContext = {
-            eventId: payload.eventId,
-            eventStart: payload.eventStart,
-            eventEnd: payload.eventEnd,
-        };
-        const slotForms = payload.slots.map((slot) => snapshotToSlotForm(slot));
-        const eligibleSlots = slotForms.filter((slot) => slotCanCheckExternalConflicts(slot, context));
-        const fieldIds = Array.from(
-            new Set(
-                eligibleSlots.flatMap((slot) => normalizeSlotFieldIds(slot)),
-            ),
-        );
-        if (!fieldIds.length) {
-            clearConflicts();
-            return;
-        }
-
-        const requestId = slotConflictRequestRef.current + 1;
-        slotConflictRequestRef.current = requestId;
-        setLeagueSlots((prev) => {
-            let changed = false;
-            const next = prev.map((slot) => {
-                const shouldCheck = slotCanCheckExternalConflicts(slot, context);
-                if (slot.checking === shouldCheck) {
-                    return slot;
-                }
-                changed = true;
-                return {
-                    ...slot,
-                    checking: shouldCheck,
-                };
-            });
-            return changed ? next : prev;
-        }, { shouldDirty: false });
-
-        let cancelled = false;
-        const loadConflicts = async () => {
-            try {
-                const blockingByFieldRows = await Promise.all(fieldIds.map(async (fieldId) => {
-                    const blocking = await eventService.getBlockingForFieldInRange(
-                        fieldId,
-                        CONFLICT_LOOKUP_START,
-                        CONFLICT_LOOKUP_END,
-                        {
-                            organizationId: resolvedOrganizationId || undefined,
-                            excludeEventId: context.eventId || undefined,
-                        },
-                    );
-                    return [fieldId, blocking] as const;
-                }));
-                if (cancelled || slotConflictRequestRef.current !== requestId) {
-                    return;
-                }
-
-                const eventsByFieldId = new Map(
-                    blockingByFieldRows.map(([fieldId, blocking]) => [fieldId, blocking.events]),
-                );
-                const conflictsBySlotKey = new Map(
-                    slotForms.map((slot) => [
-                        slot.key,
-                        slotCanCheckExternalConflicts(slot, context)
-                            ? buildExternalSlotConflicts(slot, eventsByFieldId, context)
-                            : [],
-                    ]),
-                );
-
-                setLeagueSlots((prev) => {
-                    let changed = false;
-                    const next = prev.map((slot) => {
-                        const nextConflicts = conflictsBySlotKey.get(slot.key) ?? [];
-                        if (slot.checking === false && slotConflictsEqual(slot.conflicts, nextConflicts)) {
-                            return slot;
-                        }
-                        changed = true;
-                        return {
-                            ...slot,
-                            conflicts: nextConflicts,
-                            checking: false,
-                        };
-                    });
-                    return changed ? next : prev;
-                }, { shouldDirty: false });
-            } catch (error) {
-                if (cancelled || slotConflictRequestRef.current !== requestId) {
-                    return;
-                }
-                console.warn('Failed to load event scheduling conflicts:', error);
-                setLeagueSlots((prev) => {
-                    let changed = false;
-                    const next = prev.map((slot) => {
-                        if (slot.checking === false && slot.conflicts.length === 0) {
-                            return slot;
-                        }
-                        changed = true;
-                        return {
-                            ...slot,
-                            conflicts: [],
-                            checking: false,
-                        };
-                    });
-                    return changed ? next : prev;
-                }, { shouldDirty: false });
-            }
-        };
-
-        void loadConflicts();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [hasImmutableTimeSlots, resolvedOrganizationId, setLeagueSlots, slotConflictCheckKey]);
-
-    // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
-    const handleAddSlot = () => {
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-        clearErrors('leagueSlots');
-        updateLeagueSlots(prev => [...prev, createSlotForm(undefined, slotDivisionKeys)]);
-    };
-
-    // Drops a specific slot by index, leaving at least one slot for the scheduler UI to edit.
-    const handleRemoveSlot = (index: number) => {
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-        updateLeagueSlots(prev => {
-            if (prev.length <= 1) return prev;
-            return prev.filter((_, idx) => idx !== index);
-        });
-    };
-
-    // Applies granular updates coming back from LeagueFields inputs before revalidating the array.
-    const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
-        const isDivisionOnlyUpdate = Object.keys(updates).every((key) => key === 'divisions');
-        const isResourceOnlyUpdate = Object.keys(updates).every((key) => (
-            key === 'scheduledFieldId'
-            || key === 'scheduledFieldIds'
-            || key === 'sourceType'
-            || key === 'rentalBookingId'
-            || key === 'rentalBookingItemId'
-            || key === 'rentalLocked'
-            || key === 'price'
-            || key === 'requiredTemplateIds'
-            || key === 'hostRequiredTemplateIds'
-            || key === 'error'
-        ));
-        const allowRentalDivisionEditOnLockedSlots = hasExternalRentalField && !eventData.singleDivision;
-        const allowRentalResourceEditOnLockedSlots = hasExternalRentalField && isResourceOnlyUpdate;
-        const allowUpdateOnLockedSlots = hasImmutableTimeSlots && (
-            (allowRentalDivisionEditOnLockedSlots && isDivisionOnlyUpdate)
-            || allowRentalResourceEditOnLockedSlots
-        );
-        if (hasImmutableTimeSlots && !allowUpdateOnLockedSlots) {
-            return;
-        }
-        const current = leagueSlots[index];
-        if (!current) return;
-
-        const updated: LeagueSlotForm = {
-            ...current,
-            ...updates,
-        };
-        const normalizedDays = normalizeWeekdays(updated);
-        const normalizedFieldIds = normalizeSlotFieldIds(updated);
-        const selectedDivisionKeys = slotDivisionKeys;
-        const normalizedDivisions = normalizeSlotDivisionKeysWithLookup(updated.divisions, slotDivisionLookup);
-        const normalizedStartDate = formatLocalDateTime(updated.startDate ?? null);
-        const normalizedEndDate = formatLocalDateTime(updated.endDate ?? null);
-        updated.scheduledFieldId = normalizedFieldIds[0];
-        updated.scheduledFieldIds = normalizedFieldIds;
-        updated.divisions = eventData.singleDivision
-            ? selectedDivisionKeys
-            : (normalizedDivisions.length ? normalizedDivisions : selectedDivisionKeys);
-        updated.startDate = normalizedStartDate || undefined;
-        updated.endDate = normalizedEndDate || undefined;
-
-        const repeating = updated.repeating !== false;
-        if (repeating) {
-            const parsedStart = parseLocalDateTime(updated.startDate ?? null);
-            const parsedEnd = parseLocalDateTime(updated.endDate ?? null);
-            const nextDays = normalizedDays.length
-                ? normalizedDays
-                : parsedStart
-                    ? [((parsedStart.getDay() + 6) % 7)]
-                    : [];
-            if (nextDays.length) {
-                updated.dayOfWeek = nextDays[0] as LeagueSlotForm['dayOfWeek'];
-                updated.daysOfWeek = nextDays as LeagueSlotForm['daysOfWeek'];
-            } else {
-                updated.dayOfWeek = undefined;
-                updated.daysOfWeek = [];
-            }
-
-            if (!Number.isFinite(updated.startTimeMinutes) && parsedStart) {
-                updated.startTimeMinutes = parsedStart.getHours() * 60 + parsedStart.getMinutes();
-            }
-            if (!Number.isFinite(updated.endTimeMinutes) && parsedEnd) {
-                updated.endTimeMinutes = parsedEnd.getHours() * 60 + parsedEnd.getMinutes();
-            }
-        } else {
-            let slotStart = parseLocalDateTime(updated.startDate ?? null);
-            let slotEnd = parseLocalDateTime(updated.endDate ?? null);
-            let startMinutes = Number.isFinite(updated.startTimeMinutes) ? Number(updated.startTimeMinutes) : null;
-            let endMinutes = Number.isFinite(updated.endTimeMinutes) ? Number(updated.endTimeMinutes) : null;
-            if (!slotStart) {
-                const fallbackEventStart = parseLocalDateTime(eventData.start ?? null);
-                if (fallbackEventStart) {
-                    slotStart = fallbackEventStart;
-                }
-            }
-            if (startMinutes === null && slotStart) {
-                startMinutes = minutesFromDate(slotStart);
-            }
-            if (!slotEnd && slotStart) {
-                const fallbackEventEnd = parseLocalDateTime(eventData.end ?? null);
-                if (fallbackEventEnd && fallbackEventEnd.getTime() > slotStart.getTime()) {
-                    slotEnd = fallbackEventEnd;
-                } else {
-                    const durationMinutes = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
-                        ? endMinutes - startMinutes
-                        : 60;
-                    slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
-                }
-            }
-            if (!slotEnd && slotStart) {
-                slotEnd = new Date(slotStart);
-            }
-            if (endMinutes === null && slotEnd) {
-                endMinutes = minutesFromDate(slotEnd);
-            }
-
-            if (slotStart && startMinutes !== null) {
-                const normalizedStart = withMinutesOnDate(slotStart, startMinutes);
-                const dayOfWeek = ((normalizedStart.getDay() + 6) % 7);
-                updated.dayOfWeek = dayOfWeek as LeagueSlotForm['dayOfWeek'];
-                updated.daysOfWeek = [dayOfWeek] as LeagueSlotForm['daysOfWeek'];
-                updated.startDate = formatLocalDateTime(normalizedStart);
-                updated.startTimeMinutes = startMinutes;
-            } else {
-                updated.dayOfWeek = undefined;
-                updated.daysOfWeek = [];
-                updated.startDate = undefined;
-                updated.startTimeMinutes = undefined;
-            }
-
-            if (slotEnd && endMinutes !== null) {
-                const normalizedEnd = withMinutesOnDate(slotEnd, endMinutes);
-                updated.endDate = formatLocalDateTime(normalizedEnd);
-                updated.endTimeMinutes = endMinutes;
-            } else {
-                updated.endDate = undefined;
-                updated.endTimeMinutes = undefined;
-            }
-        }
-
-        if (allowUpdateOnLockedSlots) {
-            setLeagueSlots(prev => {
-                const next = [...prev];
-                next[index] = updated;
-                return normalizeSlotState(next, eventData.eventType);
-            });
-        } else {
-            updateLeagueSlots(prev => {
-                const next = [...prev];
-                next[index] = updated;
-                return next;
-            });
-        }
-
-        clearErrors('leagueSlots');
-    };
-
-    const handleAutoResolveSlotConflict = (index: number) => {
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-
-        const slot = leagueSlots[index];
-        if (!slot || slot.conflicts.length === 0) {
-            return;
-        }
-
-        const context: SlotConflictContext = {
-            eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
-            eventStart: eventData.start ?? undefined,
-            eventEnd: eventData.end ?? undefined,
-        };
-        const updates = buildAutoResolvedSlotUpdate(slot, context);
-        if (!updates) {
-            return;
-        }
-
-        handleUpdateSlot(index, updates);
-    };
-
-    // Hydrate schedule state and slots when opening the modal for an existing event.
-    useEffect(() => {
-        if (isEditMode) {
-            return;
-        }
-        if (hasImmutableTimeSlots) {
-            return;
-        }
-        if (activeEditingEvent && supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)) {
-            if (activeEditingEvent.eventType === 'LEAGUE' || activeEditingEvent.eventType === 'TOURNAMENT') {
-                const source = activeEditingEvent.leagueConfig || activeEditingEvent;
-                const includePlayoffsOrPools = Boolean((source as any)?.includePlayoffsOrPools ?? source?.includePlayoffs);
-                setLeagueData({
-                    gamesPerOpponent: source?.gamesPerOpponent ?? 1,
-                    includePlayoffs: includePlayoffsOrPools,
-                    playoffTeamCount: source?.playoffTeamCount ?? undefined,
-                    usesSets: source?.usesSets ?? false,
-                    matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes),
-                    restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
-                    setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
-                    setsPerMatch: normalizeNumber(source?.setsPerMatch),
-                    pointsToVictory: Array.isArray(source?.pointsToVictory) ? source.pointsToVictory as number[] : undefined,
-                }, { shouldDirty: false });
-
-                if (activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.includePlayoffs) {
-                    const extractedPlayoff = extractTournamentConfigFromEvent(activeEditingEvent);
-                    if (extractedPlayoff) {
-                        setPlayoffData(extractedPlayoff, { shouldDirty: false });
-                    } else {
-                        setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
-                    }
-                } else {
-                    setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
-                }
-            } else {
-                setLeagueData({
-                    gamesPerOpponent: 1,
-                    includePlayoffs: false,
-                    playoffTeamCount: undefined,
-                    usesSets: false,
-                    matchDurationMinutes: 60,
-                    restTimeMinutes: 0,
-                    setDurationMinutes: undefined,
-                    setsPerMatch: undefined,
-                }, { shouldDirty: false });
-                setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
-            }
-
-            const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
-            const activeEventSlotsForEditor = supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)
-                ? (activeEditingEvent.timeSlots || []).filter((slot) => !isRentalLockedTimeSlot(slot))
-                : (activeEditingEvent.timeSlots || []);
-            const slots = mergeSlotPayloadsForForm(activeEventSlotsForEditor, fallbackFieldId)
-                .map((slot) => createSlotForm(
-                    slot,
-                    slotDivisionKeysRef.current,
-                    activeEditingEvent.start,
-                    activeEditingEvent.end,
-                ));
-
-            const initialSlots = slots.length > 0
-                ? slots
-                : [createSlotForm(undefined, slotDivisionKeysRef.current)];
-            setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType), { shouldDirty: false });
-        } else if (!activeEditingEvent) {
-            setLeagueData({
-                gamesPerOpponent: 1,
-                includePlayoffs: false,
-                playoffTeamCount: undefined,
-                usesSets: false,
-                matchDurationMinutes: 60,
-                    restTimeMinutes: 0,
-                    setDurationMinutes: undefined,
-                    setsPerMatch: undefined,
-                }, { shouldDirty: false });
-            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeysRef.current)], 'EVENT'), { shouldDirty: false });
-            setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
-        }
-    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, isEditMode, setLeagueData, setLeagueSlots, setPlayoffData]);
-
-    useEffect(() => {
-        if (!hasImmutableTimeSlots) {
-            return;
-        }
-        const fallbackFieldId = immutableFields[0]?.$id;
-        const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(
-                slot,
-                slotDivisionKeysRef.current,
-                eventData.start,
-                eventData.end,
-            ));
-        const normalizedSlots = normalizeSlotState(slotForms, eventData.eventType);
-        setLeagueSlots((prev) => (leagueSlotsEqual(prev, normalizedSlots) ? prev : normalizedSlots), { shouldDirty: false });
-    }, [
-        hasImmutableTimeSlots,
-        immutableTimeSlots,
-        immutableFields,
-        createSlotForm,
-        eventData.eventType,
-        eventData.start,
-        eventData.end,
-        setLeagueSlots,
-    ]);
-
-    useEffect(() => {
-        const previousMode = previousEditableScheduleModeRef.current;
-        previousEditableScheduleModeRef.current = eventSupportsScheduleSlots;
-        if (previousMode === null || previousMode === eventSupportsScheduleSlots || !eventSupportsScheduleSlots) {
-            return;
-        }
-        if (!rentalLockedSlotsForDraft.length) {
-            return;
-        }
-
-        const dateValuesMatch = (left?: string | null, right?: string | null): boolean => {
-            const parsedLeft = parseLocalDateTime(left ?? null);
-            const parsedRight = parseLocalDateTime(right ?? null);
-            if (!parsedLeft && !parsedRight) {
-                return true;
-            }
-            return Boolean(parsedLeft && parsedRight && parsedLeft.getTime() === parsedRight.getTime());
-        };
-
-        const slotMatchesLockedRental = (slot: LeagueSlotForm, lockedSlot: TimeSlot): boolean => {
-            const slotFieldIds = normalizeSlotFieldIds(slot);
-            const lockedFieldIds = normalizeSlotFieldIds(lockedSlot);
-            if (!slotFieldIds.length || !stringSetsEqual(slotFieldIds, lockedFieldIds)) {
-                return false;
-            }
-            if (dateValuesMatch(slot.startDate, lockedSlot.startDate) && dateValuesMatch(slot.endDate, lockedSlot.endDate)) {
-                return true;
-            }
-            return slot.startTimeMinutes === lockedSlot.startTimeMinutes
-                && slot.endTimeMinutes === lockedSlot.endTimeMinutes
-                && normalizeWeekdays(slot).some((day) => normalizeWeekdays(lockedSlot).includes(day));
-        };
-
-        setLeagueSlots((previousSlots) => {
-            const seededFromRentalDefaults = previousSlots.length > 0
-                && previousSlots.every((slot) => rentalLockedSlotsForDraft.some((lockedSlot) => (
-                    slotMatchesLockedRental(slot, lockedSlot)
-                )));
-            if (!seededFromRentalDefaults) {
-                return previousSlots;
-            }
-            return normalizeSlotState(
-                [createSlotForm(undefined, slotDivisionKeysRef.current, eventData.start, eventData.end, eventData.timeZone)],
-                eventData.eventType,
-                eventData.parentEvent,
-            );
-        }, { shouldDirty: false });
-    }, [
-        createSlotForm,
-        eventData.end,
-        eventData.eventType,
-        eventData.parentEvent,
-        eventData.start,
-        eventData.timeZone,
-        eventSupportsScheduleSlots,
-        rentalLockedSlotsForDraft,
-        setLeagueSlots,
-    ]);
-
-    // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
-    useEffect(() => {
-        updateLeagueSlots(prev => prev, { shouldDirty: false });
-    }, [eventData.eventType, updateLeagueSlots]);
-
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
     useEffect(() => {
         if (!eventData.singleDivision || hasExternalRentalField) {
@@ -2472,11 +1806,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 .catch(() => { /* ignore */ });
         }
     }, [isEditMode, eventData.location, eventData.coordinates, setEventData]);
-
-    const leagueWarning = buildLeagueScheduleWarning({
-        hasPendingExternalConflictChecks,
-        hasExternalSlotConflictWarnings,
-    });
 
     const leagueError = buildLeagueScheduleError(errors.leagueSlots);
 
