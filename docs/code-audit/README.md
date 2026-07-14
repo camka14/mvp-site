@@ -37,9 +37,10 @@ recorded where the affected surface is reachable.
 | **Completed — other severity, Wear interaction batch (3)** | `APP-030`, `APP-031`, `APP-034` | Mobile `668ee373` removes the duplicate empty-list action, adds confirmation-gated incident deletion through the existing optimistic/outbox match-patch path, and renders familiar unpadded match minutes. The complete Wear suite passed 29/29 tests and the debug build compiled and assembled. The exact commit installed on a 384x384 round Wear OS emulator: the timer rendered `73:17`, delete confirmation fit the viewport, confirming removed the selected incident locally, and fresh logs contained no crash, ANR, or OOM. Independent review found no blocker. |
 | **Completed — other severity, mobile input-control batch (4)** | `APP-051`, `APP-053`, `APP-054`, `APP-057` | Mobile `ddb3f0e0` separates integer and decimal keyboard contracts, preserves unloaded dropdown selections, exposes enabled labeled button semantics plus press feedback and coordinate-tap handling for picker fields, and makes tag collapse/reopen work through touch and accessibility activation. Four pure logic and four Compose interaction tests passed, the iOS simulator target compiled, and independent review passed after the accessibility-reopen blocker was closed. The exact Android commit assembled, installed, and cold-launched; a UI-tree-derived Birthday-field tap opened the picker, with no crash, ANR, or OOM. |
 | **Completed — other severity, mobile cleanup/release batch (13)** | `APP-021`, `APP-023`, `AUD-005`, `LEG-004`, `LEG-005`, `LEG-006`, `LEG-007`, `LEG-008`, `LEG-010`, `LEG-011`, `LEG-012`, `LEG-013`, `LEG-014` | Mobile `5d6478e1` centralizes the audited dependency/plugin versions, enables the strict release-size settings, generates all logo variants from one checked source, and removes the verified dead resources, helpers, experiments, and temporary probes. Independent review found no blockers; `bash scripts/tests/mobile-cleanup-contract.sh` passed. A clean exact-commit run passed logo verification, 57/57 Match Content tests, all 29 Wear tests and its debug assembly, Android debug assembly, iOS simulator compilation, and strict-R8/resource-shrunk `bundleRelease` plus `assembleRelease`; the artifacts were 62 MiB (debug APK), 17 MiB (release APK), and 26 MiB (AAB). The exact release APK was aligned and debug-signed only for local smoke testing, then reached Login on two cold launches (17.2 s and 12.8 s); the exact debug APK likewise reached Login twice after installation (26.2 s and 16.3 s). Each idle run kept an active process and produced no fatal exception, ANR, OOM, Room, or migration failure. One earlier debug launch at 98% emulator CPU produced a platform startup ANR during DexFile ZIP extraction before application code, while Google Messages was also ANRing; both idle reruns passed. |
-| **Remaining / not yet reconciled (17)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
+| **Completed — other severity, constrained mobile UI batch (6)** | `APP-010`, `APP-058`, `APP-060`, `APP-062`, `APP-127`, `APP-128` | Mobile `c8996ab2` removes the visible no-op Follow action, measures and constrains coach-mark cards, places event lifecycle pills in normal flow on Compose and native iOS, removes competing member-row click handlers, supplies bracket empty states, and moves schedule FAB publication out of composition. The exact 16-test Compose/pure-logic batch, Android assembly/install/two cold launches, and iOS simulator compilation passed. Native iOS visual smoke on exact follow-up commit `bdd209b1` rendered both lifecycle variants without overlap, clipping, compression, or constraint warnings. |
+| **Remaining / not yet reconciled (11)** | All other headings in this report | Do not infer completion from an old or partial implementation. Each item must receive a current-source review, a focused regression test where code changes, and browser/emulator evidence when reachable. |
 
-Current strict count: **210 completed, 17 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
+Current strict count: **216 completed, 11 remaining or not yet reconciled, 227 total findings**. This count deliberately excludes any pre-existing change that has not yet been revalidated against the current audit scenario.
 
 ## Baseline and scope
 
@@ -1055,7 +1056,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: the menu exposes Follow (`ReadOnlyHostContent.kt:184-194`), while its only handler displays “not available yet” (`EventDetailScreen.kt:2279-2285`). No organization-follow repository/API path exists.
 - Impact: a primary visible action is a dead end rather than a disabled/hidden future feature.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` removes the visible no-op Follow action and its unused mode plumbing instead of presenting an action that can only report “not available yet.” The focused read-only host-row regression passed in the exact 16-test UI batch; Android exact-commit assembly/install/cold launch and iOS simulator compilation also passed.
 
 ### APP-011 — Organization review browsing is permanently capped at 50
 
@@ -1311,7 +1312,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `GuideHost.kt:62,197-224` positions/clamps the coach-mark card using a fixed 188dp estimated height, while the actual title, body, progress, and buttons are not height-constrained and can grow with copy or font scale.
 - Impact: long localized text or large accessibility fonts can make the real card extend below the calculated safe area, clipping guidance or its navigation buttons offscreen.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` measures the actual guide-card size before placement, clamps that measured size to the safe viewport, and gives oversized body copy a bounded scroll region while retaining the navigation controls. Placement and constrained large-content Compose regressions passed in the exact 16-test UI batch; Android exact-commit assembly/install/cold launch and iOS simulator compilation also passed.
 
 ### APP-059 — Slow billing-address resolution can overwrite newer manual input
 
@@ -1327,7 +1328,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: the event card's normal content column ends with the date/price row and reserves no bottom badge space (`EventCard.kt:283-401`). Draft/private lifecycle text is a separate sibling aligned over the same box at `BottomCenter` with only 12dp bottom padding (`:402-419`).
 - Impact: cards with lifecycle labels can draw that label over the date/price row, reducing legibility and tap confidence in a high-frequency discovery surface.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` moves the lifecycle pill into the normal card content flow below the date/price row in both Compose and the native iOS renderer. The Compose regression passed in the exact 16-test UI batch. Native iOS smoke on exact commit `bdd209b1` rendered both Draft and Private cards with the pill in its own final row, visible date/price/title content, no overlap or clipping, and no Auto Layout warnings; Android exact-commit assembly/install/cold launch also passed.
 
 ### APP-061 — Long team rosters can push dialog actions offscreen
 
@@ -1343,7 +1344,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Repository: `mvp-app`
 - Evidence: `TeamDetailsDialog.kt:253-277` passes a clickable modifier that toggles compliance to `PlayerCardWithActions`; that component appends a second row-level clickable for its action popup (`PlayerCardWithActions.kt:65-72`). A separate compliance strip is already clickable.
 - Impact: a member-row tap can be consumed by one of two nested modifier handlers, unexpectedly toggling compliance, opening the popup, or behaving differently as modifier order changes.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` removes the member row's competing compliance click handler; compliance expansion remains owned by the dedicated compliance strip while the player card retains its action-popup interaction. The focused Compose interaction regression passed in the exact 16-test UI batch; Android exact-commit assembly/install/cold launch and iOS simulator compilation also passed.
 
 ### APP-063 — SearchBox exposes a submit callback that is never called and owns unsynchronizable query state
 
@@ -1887,7 +1888,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `TournamentBracketView` initializes its measured bracket heights to zero/unspecified and only assigns them inside `calculateMaxHeight` when `displayRounds.isNotEmpty()` (`TournamentBracketView.kt:89-133,182-232`). The `LazyRow` is then rendered at `animatedBoxHeight`, which resolves to `0.dp`, and the composable has no empty-state branch (`:302-319`). `EventDetailScreen` mounts this view directly for the Bracket tab without wrapping an empty-state message (`EventDetailScreen.kt:2975-2983`).
 - Impact: before a bracket is built, after all bracket matches are removed, or when bracket data fails to materialize without an error, participants see an apparently broken blank tab with no explanation of whether the bracket is pending, unavailable, or empty.
 - Suggested direction: render a deliberate empty/loading/error state before the measured bracket layout, with host guidance to build/manage the bracket and participant copy that the bracket has not been published yet.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` detects an empty or all-null round set before measured bracket layout and renders explicit participant or host guidance instead of a zero-height `LazyRow`. Pure-state and Compose UI regressions cover both messages and the non-empty branch; the exact 16-test UI batch, Android assembly/install/cold launch, and iOS simulator compilation passed.
 
 ### APP-128 — Schedule rendering writes parent FAB state during composition
 
@@ -1896,7 +1897,7 @@ Initial first-party UI-name inventory found 52 files whose names end in or conta
 - Evidence: `ScheduleView` invokes the supplied `showFab` state setter directly from the composable body both in its empty branch and on every normal composition (`ScheduleView.kt:171-179,275-277`). `EventDetailScreen` supplies a lambda that mutates its own `showFab` snapshot state. The bracket view already handles the same scroll-driven callback from `LaunchedEffect` (`TournamentBracketView.kt:148-174`), demonstrating the safe pattern used elsewhere.
 - Impact: this creates a backward snapshot write while the parent/child composition is executing, causing avoidable extra recompositions and making the floating dock susceptible to flicker or unstable state when other schedule inputs change.
 - Suggested direction: derive the desired visibility locally and publish it from `LaunchedEffect`/`snapshotFlow` only when the value changes; never call a parent state setter from the composition body.
-- Fix status: **not changed; reporting only**.
+- Fix status: **completed in the audited mobile branch; release deployment pending**. `c8996ab2` publishes empty-state and scroll-derived FAB visibility from `LaunchedEffect` through the latest callback rather than mutating parent snapshot state during composition. The focused weekly-schedule Compose regression passed in the exact 16-test UI batch; Android exact-commit assembly/install/cold launch and iOS simulator compilation also passed.
 
 ### APP-129 — “Show only my matches” reads legacy team arrays instead of canonical active membership
 
