@@ -34,31 +34,16 @@ import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
-import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
-import {
-    evaluateDivisionAgeEligibility,
-    extractDivisionTokenFromId,
-    inferDivisionDetails,
-} from '@/lib/divisionTypes';
-import { buildDivisionDisplayNameIndex, resolveDivisionDisplayName } from '@/lib/divisionDisplay';
+import { evaluateDivisionAgeEligibility } from '@/lib/divisionTypes';
+import { resolveDivisionDisplayName } from '@/lib/divisionDisplay';
 import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import {
-    buildDivisionOptionsForEvent,
-    formatInstallmentDueDateLabel,
-    formatInstallmentRelativeDueDayLabel,
     getDivisionIdFromEventEntry,
     getNormalizedDivisionAliases,
-    normalizeInstallmentAmountsCents,
-    normalizeInstallmentDueDateValues,
-    normalizeInstallmentDueRelativeDayValues,
-    normalizeDivisionKey,
     normalizePriceCents,
     isActiveFamilyChild,
-    isDivisionOptionEligibleForRegistrant,
-    type EventDivisionOption,
 } from './eventDetail/divisionRegistration';
 import {
-    buildPublicDivisionGroups,
     buildScheduleTimeslotGroups,
     formatReadOnlyValueList,
     formatRefundSummary,
@@ -87,6 +72,7 @@ import { useRegistrationConfirmationController } from './eventDetail/hooks/useRe
 import { useJoinCardDocking } from './eventDetail/hooks/useJoinCardDocking';
 import { useDivisionSelectionSynchronization } from './eventDetail/hooks/useDivisionSelectionSynchronization';
 import { useEventDetailInactiveReset } from './eventDetail/hooks/useEventDetailInactiveReset';
+import { useEventDivisionRegistrationModel } from './eventDetail/hooks/useEventDivisionRegistrationModel';
 import { collectUniqueUserIds, normalizeUserId } from './eventDetail/eventDetailData';
 import {
     initialRegistrationWorkflowState,
@@ -108,7 +94,6 @@ import {
 import {
     EventParticipantDropdowns,
     EventParticipantsSection,
-    type ParticipantDivisionCapacityRow,
 } from './eventDetail/EventParticipantsSection';
 import { ManualPaymentProofDialog } from './eventDetail/ManualPaymentProofDialog';
 import {
@@ -157,12 +142,6 @@ const WEEKLY_SESSION_CARD_GAP_PX = 8;
 const WEEKLY_SESSION_LIST_MAX_HEIGHT_PX = (
     WEEKLY_SESSION_VISIBLE_ROWS * WEEKLY_SESSION_CARD_HEIGHT_PX
 ) + ((WEEKLY_SESSION_VISIBLE_ROWS - 1) * WEEKLY_SESSION_CARD_GAP_PX);
-
-type DivisionSelectionPayload = {
-    divisionId?: string;
-    divisionTypeId?: string;
-    divisionTypeKey?: string;
-};
 
 export default function EventDetailSheet({
     event,
@@ -359,7 +338,6 @@ export default function EventDetailSheet({
         setJoinError,
         setWorkflowPhase: setRegistrationWorkflowPhase,
     });
-    const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
         [currentEvent],
@@ -373,376 +351,50 @@ export default function EventDetailSheet({
         }),
         [currentEvent.imageId, eventImageFallbackUrl],
     );
-    const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
-    const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
-    const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
-    const eventStartDate = effectiveEventStartDate;
-    const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
-    const joinClosedMessage = isWeeklyParentEvent && selectedWeeklyOccurrenceOption
-        ? 'This weekly session has already started. Joining is closed.'
-        : 'This event has already started. Joining is closed.';
-    const userDob = parseDateValue(user?.dateOfBirth ?? null);
-    const selectedChildForDivisionFilter = React.useMemo(() => {
-        if (currentEvent?.teamSignup || !selectedChildId) {
-            return null;
-        }
-        return children.find((child) => child.userId === selectedChildId && isActiveFamilyChild(child)) ?? null;
-    }, [children, currentEvent?.teamSignup, selectedChildId]);
-    const selectedChildDobForDivisionFilter = parseDateValue(selectedChildForDivisionFilter?.dateOfBirth ?? null);
-    const divisionRegistrantDob = selectedChildDobForDivisionFilter ?? userDob;
-    const registrationByDivisionType = Boolean(currentEvent?.registrationByDivisionType);
-    const allDivisionOptions = React.useMemo(
-        () => buildDivisionOptionsForEvent(currentEvent),
-        [currentEvent],
-    );
-    const divisionOptions = React.useMemo(
-        () => allDivisionOptions.filter((division) => (
-            isDivisionOptionEligibleForRegistrant({
-                division,
-                dateOfBirth: divisionRegistrantDob,
-                eventStartDate,
-                eventMinAge,
-                eventMaxAge,
-            })
-        )),
-        [allDivisionOptions, divisionRegistrantDob, eventMaxAge, eventMinAge, eventStartDate],
-    );
-    const publicDivisionGroups = React.useMemo(
-        () => buildPublicDivisionGroups(divisionOptions),
-        [divisionOptions],
-    );
-    const divisionDisplayNameIndex = React.useMemo(
-        () => buildDivisionDisplayNameIndex(currentEvent.divisionDetails),
-        [currentEvent.divisionDetails],
-    );
-    const eventDivisionLabels = React.useMemo(() => {
-        const nameById = new Map<string, string>();
-        allDivisionOptions.forEach((option) => {
-            const normalizedId = normalizeDivisionKey(option.id);
-            if (normalizedId && !nameById.has(normalizedId)) {
-                nameById.set(normalizedId, option.name);
-            }
-        });
-
-        const labels: string[] = [];
-        const seen = new Set<string>();
-        const appendLabel = (value: string | null | undefined) => {
-            if (typeof value !== 'string') return;
-            const trimmed = value.trim();
-            if (!trimmed.length) return;
-            const dedupeKey = trimmed.toLowerCase();
-            if (seen.has(dedupeKey)) return;
-            seen.add(dedupeKey);
-            labels.push(trimmed);
-        };
-
-        if (!Array.isArray(currentEvent?.divisions)) {
-            return labels;
-        }
-
-        currentEvent.divisions.forEach((division) => {
-            const divisionId = getDivisionIdFromEventEntry(division);
-            const fromOptions = divisionId ? nameById.get(divisionId) : null;
-            if (fromOptions) {
-                appendLabel(fromOptions);
-                return;
-            }
-
-            if (division && typeof division === 'object') {
-                const explicitName = typeof division.name === 'string' ? division.name : null;
-                if (explicitName) {
-                    appendLabel(explicitName);
-                    return;
-                }
-            }
-
-            if (divisionId) {
-                const inferred = inferDivisionDetails({
-                    identifier: extractDivisionTokenFromId(divisionId) ?? divisionId,
-                    sportInput:
-                        typeof currentEvent.sport === 'string'
-                            ? currentEvent.sport
-                            : currentEvent.sport?.name ?? currentEvent.sportId ?? undefined,
-                });
-                appendLabel(inferred.defaultName || divisionId);
-                return;
-            }
-
-            if (typeof division === 'string') {
-                appendLabel(division);
-            }
-        });
-
-        return labels;
-    }, [currentEvent.divisions, currentEvent.sport, currentEvent.sportId, allDivisionOptions]);
-    const selectedDivisionOption = React.useMemo(() => {
-        if (!divisionOptions.length) {
-            return null;
-        }
-        if (registrationByDivisionType) {
-            const matchingByType = divisionOptions.filter((option) => option.divisionTypeKey === selectedDivisionTypeKey);
-            if (matchingByType.length) {
-                return [...matchingByType].sort((left, right) => left.name.localeCompare(right.name))[0];
-            }
-            return divisionOptions[0];
-        }
-        return divisionOptions.find((option) => option.id === selectedDivisionId) ?? divisionOptions[0];
-    }, [divisionOptions, registrationByDivisionType, selectedDivisionId, selectedDivisionTypeKey]);
-    const handlePublicDivisionSelect = (division: EventDivisionOption) => {
-        if (registrationByDivisionType) {
-            setSelectedDivisionTypeKey(division.divisionTypeKey);
-            saveEventRegistrationProgress({
-                selectedDivisionTypeKey: division.divisionTypeKey,
-            });
-            return;
-        }
-        setSelectedDivisionId(division.id);
-        saveEventRegistrationProgress({
-            selectedDivisionId: division.id,
-        });
-    };
-    const divisionSelectionPayload = React.useMemo<DivisionSelectionPayload>(() => {
-        if (!selectedDivisionOption) {
-            return {};
-        }
-        if (registrationByDivisionType) {
-            return {
-                divisionTypeKey: selectedDivisionTypeKey || selectedDivisionOption.divisionTypeKey,
-                divisionTypeId: selectedDivisionOption.divisionTypeId,
-                divisionId: selectedDivisionOption.id,
-            };
-        }
-        return {
-            divisionId: selectedDivisionOption.id,
-            divisionTypeId: selectedDivisionOption.divisionTypeId,
-            divisionTypeKey: selectedDivisionOption.divisionTypeKey,
-        };
-    }, [registrationByDivisionType, selectedDivisionOption, selectedDivisionTypeKey]);
-    const resolvedDivisionSelectionPayload = React.useMemo<DivisionSelectionPayload>(() => (
-        selectedWeeklyOccurrence
-            ? {
-                ...divisionSelectionPayload,
-                slotId: selectedWeeklyOccurrence.slotId ?? undefined,
-                occurrenceDate: selectedWeeklyOccurrence.occurrenceDate ?? undefined,
-            }
-            : divisionSelectionPayload
-    ), [divisionSelectionPayload, selectedWeeklyOccurrence]);
-    const isDivisionSelectionMissing = React.useMemo(() => {
-        if (!allDivisionOptions.length) {
-            return false;
-        }
-        if (!divisionOptions.length) {
-            return true;
-        }
-        if (registrationByDivisionType) {
-            return !(selectedDivisionTypeKey || selectedDivisionOption?.divisionTypeKey);
-        }
-        return !(selectedDivisionId || selectedDivisionOption?.id);
-    }, [
-        allDivisionOptions.length,
-        divisionOptions.length,
+    const {
+        eventStartDate,
+        eventMinAge,
+        eventMaxAge,
+        hasAgeLimits,
+        eventHasStarted,
+        joinClosedMessage,
+        userDob,
         registrationByDivisionType,
-        selectedDivisionId,
+        allDivisionOptions,
+        divisionOptions,
+        publicDivisionGroups,
+        divisionDisplayNameIndex,
+        eventDivisionLabels,
         selectedDivisionOption,
+        handlePublicDivisionSelect,
+        resolvedDivisionSelectionPayload,
+        isDivisionSelectionMissing,
+        selectedDivisionAtCapacity,
+        participantDivisionCapacityRows,
+        selectedDivisionBilling,
+        checkoutEvent,
+        paymentPlanPreviewRows,
+        isMinor,
+        isAdult,
+        selfRegistrationBlockedReason,
+        canRegisterChild,
+        isEventHost,
+        isFreeForUser,
+    } = useEventDivisionRegistrationModel({
+        event: currentEvent,
+        user,
+        children,
+        teams,
+        selectedChildId,
+        selectedDivisionId,
         selectedDivisionTypeKey,
-    ]);
-    const selectedDivisionCapacitySnapshot = React.useMemo(
-        () => resolveDivisionCapacitySnapshot({
-            event: currentEvent,
-            divisionId: selectedDivisionOption?.id,
-            eligibleTeamIds: teams.map((team) => team.$id),
-        }),
-        [currentEvent, selectedDivisionOption?.id, teams],
-    );
-    const selectedDivisionAtCapacity = isDivisionAtCapacity(selectedDivisionCapacitySnapshot);
-    const divisionCapacityBreakdown = React.useMemo(
-        () => buildDivisionCapacityBreakdown({
-            event: currentEvent,
-            excludePlayoffs: true,
-            eligibleTeamIds: teams.map((team) => team.$id),
-        }),
-        [currentEvent, teams],
-    );
-    const participantDivisionCapacityRows = React.useMemo<ParticipantDivisionCapacityRow[]>(() => {
-        const sportInput = typeof currentEvent.sport === 'string'
-            ? currentEvent.sport
-            : currentEvent.sport?.name ?? currentEvent.sportId ?? null;
-        return divisionCapacityBreakdown.map((row) => ({
-            id: row.divisionId,
-            label: resolveDivisionDisplayName({
-                division: row.divisionId,
-                divisionNameIndex: divisionDisplayNameIndex,
-                sportInput,
-            }) ?? row.name ?? 'Division',
-            filled: row.filled,
-            capacity: row.capacity,
-            spotsLeft: row.capacity > 0 ? Math.max(0, row.capacity - row.filled) : 0,
-            fillPercent: row.capacity > 0
-                ? Math.min(100, Math.round((row.filled / row.capacity) * 100))
-                : 0,
-        }));
-    }, [currentEvent.sport, currentEvent.sportId, divisionCapacityBreakdown, divisionDisplayNameIndex]);
-    const selectedDivisionBilling = React.useMemo(() => {
-        if (!currentEvent) {
-            return {
-                priceCents: 0,
-                allowPaymentPlans: false,
-                installmentCount: 0,
-                installmentAmounts: [] as number[],
-                installmentDueDates: [] as string[],
-                installmentDueRelativeDays: [] as number[],
-            };
-        }
-
-        const eventPriceCents = normalizePriceCents(currentEvent.price);
-        const eventAllowPaymentPlans = Boolean(currentEvent.allowPaymentPlans);
-        const eventInstallmentAmounts = normalizeInstallmentAmountsCents(currentEvent.installmentAmounts);
-        const eventInstallmentDueDates = normalizeInstallmentDueDateValues(currentEvent.installmentDueDates);
-        const eventInstallmentDueRelativeDays = normalizeInstallmentDueRelativeDayValues((currentEvent as any).installmentDueRelativeDays);
-        const eventInstallmentCount = Number.isFinite(Number(currentEvent.installmentCount))
-            ? Math.max(0, Math.trunc(Number(currentEvent.installmentCount)))
-            : eventInstallmentAmounts.length;
-
-        if (!selectedDivisionOption) {
-            return {
-                priceCents: eventPriceCents,
-                allowPaymentPlans: eventAllowPaymentPlans,
-                installmentCount: eventAllowPaymentPlans ? (eventInstallmentCount || eventInstallmentAmounts.length || 0) : 0,
-                installmentAmounts: eventAllowPaymentPlans ? eventInstallmentAmounts : [],
-                installmentDueDates: eventAllowPaymentPlans ? eventInstallmentDueDates : [],
-                installmentDueRelativeDays: eventAllowPaymentPlans ? eventInstallmentDueRelativeDays : [],
-            };
-        }
-
-        const divisionPriceCents = typeof selectedDivisionOption.priceCents === 'number'
-            ? normalizePriceCents(selectedDivisionOption.priceCents)
-            : eventPriceCents;
-        const divisionAllowPaymentPlans = typeof selectedDivisionOption.allowPaymentPlans === 'boolean'
-            ? selectedDivisionOption.allowPaymentPlans
-            : eventAllowPaymentPlans;
-        const divisionInstallmentAmounts = divisionAllowPaymentPlans
-            ? (
-                (selectedDivisionOption.installmentAmounts?.length
-                    ? selectedDivisionOption.installmentAmounts
-                    : eventInstallmentAmounts)
-            ).map((value) => normalizePriceCents(value))
-            : [];
-        const divisionInstallmentDueDates = divisionAllowPaymentPlans
-            ? (
-                selectedDivisionOption.installmentDueDates?.length
-                    ? selectedDivisionOption.installmentDueDates
-                    : eventInstallmentDueDates
-            )
-            : [];
-        const divisionInstallmentDueRelativeDays = divisionAllowPaymentPlans
-            ? (
-                selectedDivisionOption.installmentDueRelativeDays?.length
-                    ? selectedDivisionOption.installmentDueRelativeDays
-                    : eventInstallmentDueRelativeDays
-            )
-            : [];
-        const divisionInstallmentCount = divisionAllowPaymentPlans
-            ? (
-                typeof selectedDivisionOption.installmentCount === 'number'
-                    ? Math.max(0, Math.trunc(selectedDivisionOption.installmentCount))
-                    : (divisionInstallmentAmounts.length || eventInstallmentCount || 0)
-            )
-            : 0;
-
-        return {
-            priceCents: divisionPriceCents,
-            allowPaymentPlans: divisionAllowPaymentPlans,
-            installmentCount: divisionInstallmentCount,
-            installmentAmounts: divisionInstallmentAmounts,
-            installmentDueDates: divisionInstallmentDueDates,
-            installmentDueRelativeDays: divisionInstallmentDueRelativeDays,
-        };
-    }, [currentEvent, selectedDivisionOption]);
-    const checkoutEvent = React.useMemo(() => {
-        if (!currentEvent) {
-            return null;
-        }
-        return {
-            ...currentEvent,
-            price: selectedDivisionBilling.priceCents,
-            allowPaymentPlans: selectedDivisionBilling.allowPaymentPlans,
-            installmentCount: selectedDivisionBilling.installmentCount,
-            installmentAmounts: selectedDivisionBilling.installmentAmounts,
-            installmentDueDates: selectedDivisionBilling.installmentDueDates,
-            installmentDueRelativeDays: selectedDivisionBilling.installmentDueRelativeDays,
-        };
-    }, [currentEvent, selectedDivisionBilling]);
-    const paymentPlanPreviewRows = React.useMemo(() => {
-        const normalizedAmounts = normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts);
-        const normalizedDueDates = normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates);
-        const normalizedRelativeDueDays = normalizeInstallmentDueRelativeDayValues(selectedDivisionBilling.installmentDueRelativeDays);
-        const useRelativeDueDates = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
-        const rowCount = Math.max(
-            selectedDivisionBilling.installmentCount || 0,
-            normalizedAmounts.length,
-            useRelativeDueDates ? normalizedRelativeDueDays.length : normalizedDueDates.length,
-        );
-
-        return Array.from({ length: rowCount }, (_, index) => ({
-            id: `${index}-${normalizedAmounts[index] ?? 0}-${useRelativeDueDates ? normalizedRelativeDueDays[index] ?? '' : normalizedDueDates[index] ?? ''}`,
-            installmentNumber: index + 1,
-            amountCents: normalizedAmounts[index] ?? 0,
-            dueDateLabel: useRelativeDueDates
-                ? formatInstallmentRelativeDueDayLabel(normalizedRelativeDueDays[index] ?? 0)
-                : formatInstallmentDueDateLabel(normalizedDueDates[index] ?? ''),
-        }));
-    }, [
-        currentEvent.eventType,
-        currentEvent.parentEvent,
-        selectedDivisionBilling.installmentAmounts,
-        selectedDivisionBilling.installmentCount,
-        selectedDivisionBilling.installmentDueDates,
-        selectedDivisionBilling.installmentDueRelativeDays,
-    ]);
-    const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
-    const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
-    const isMinor = typeof userAge === 'number' && Number.isFinite(userAge) && userAge < 18;
-    const isAdult = typeof userAge === 'number' && Number.isFinite(userAge) && userAge >= 18;
-    const ageWithinLimits = !hasAgeLimits
-        || (typeof userAge === 'number' && Number.isFinite(userAge) && isAgeWithinRange(userAge, eventMinAge, eventMaxAge));
-    const selectedDivisionAgeForUser = React.useMemo(() => {
-        if (!selectedDivisionOption) {
-            return null;
-        }
-        return evaluateDivisionAgeEligibility({
-            dateOfBirth: userDob ?? undefined,
-            divisionTypeId: selectedDivisionOption.divisionTypeId,
-            sportInput: selectedDivisionOption.sportId ?? undefined,
-            referenceDate: eventStartDate ?? undefined,
-        });
-    }, [eventStartDate, selectedDivisionOption, userDob]);
-    const selfRegistrationBlockedReason = (() => {
-        if (!user) return null;
-        if (eventHasStarted) {
-            return joinClosedMessage;
-        }
-        if (!hasValidUserAge) {
-            return 'Add your date of birth to your profile to register for events.';
-        }
-        if (!ageWithinLimits) {
-            return `This event is limited to ages ${formatAgeRange(eventMinAge, eventMaxAge)}.`;
-        }
-        if (
-            selectedDivisionAgeForUser?.applies
-            && selectedDivisionAgeForUser.eligible === false
-        ) {
-            return selectedDivisionAgeForUser.message
-                ? `Selected division age requirement: ${selectedDivisionAgeForUser.message}.`
-                : 'You are not age-eligible for the selected division.';
-        }
-        return null;
-    })();
-    const canRegisterChild = isAdult && !eventHasStarted;
-
-    const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
-    const isFreeEvent = Boolean(currentEvent) && selectedDivisionBilling.priceCents === 0;
-    const shouldBypassHostPayment = Boolean(currentEvent && isEventHost && !currentEvent.teamSignup);
-    const isFreeForUser = isFreeEvent || shouldBypassHostPayment;
+        selectedWeeklyOccurrence,
+        selectedWeeklyOccurrenceOption,
+        isWeeklyParentEvent,
+        saveRegistrationProgress: saveEventRegistrationProgress,
+        onSelectedDivisionIdChange: setSelectedDivisionId,
+        onSelectedDivisionTypeKeyChange: setSelectedDivisionTypeKey,
+    });
 
     const todayForDob = new Date();
     const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
