@@ -92,11 +92,113 @@ const dateOnlyValueInTimeZone = (date: Date, timeZone: string): number => {
   return Date.UTC(parts.year, parts.month - 1, parts.day);
 };
 
-const endMinutesInTimeZone = (start: Date, end: Date, timeZone: string): number => {
-  const endMinutes = minutesInTimeZone(end, timeZone);
-  return endMinutes === 0 && dateOnlyValueInTimeZone(end, timeZone) > dateOnlyValueInTimeZone(start, timeZone)
-    ? 24 * 60
+const MINUTES_PER_DAY = 24 * 60;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const recurringSelectionEndMinutes = (
+  start: Date,
+  end: Date,
+  timeZone: string,
+): number | null => {
+  const startDateValue = dateOnlyValueInTimeZone(start, timeZone);
+  const endDateValue = dateOnlyValueInTimeZone(end, timeZone);
+  const daySpan = (endDateValue - startDateValue) / MILLISECONDS_PER_DAY;
+  if (!Number.isInteger(daySpan) || daySpan < 0 || daySpan > 1) {
+    return null;
+  }
+  return minutesInTimeZone(end, timeZone) + (daySpan * MINUTES_PER_DAY);
+};
+
+type RentalSlotMinuteBounds = {
+  startMinutes: number;
+  normalizedEndMinutes: number;
+  durationMinutes: number;
+  isOvernight: boolean;
+};
+
+const resolveRentalSlotMinuteBounds = (
+  slot: Record<string, any>,
+  slotStart: Date | null,
+  slotEnd: Date | null,
+  slotTimeZone: string,
+): RentalSlotMinuteBounds | null => {
+  const startMinutes = typeof slot.startTimeMinutes === 'number'
+    ? slot.startTimeMinutes
+    : slotStart
+      ? minutesInTimeZone(slotStart, slotTimeZone)
+      : null;
+  const endMinutes = typeof slot.endTimeMinutes === 'number'
+    ? slot.endTimeMinutes
+    : slotEnd
+      ? minutesInTimeZone(slotEnd, slotTimeZone)
+      : null;
+  if (startMinutes === null || endMinutes === null || startMinutes === endMinutes) {
+    return null;
+  }
+
+  const isOvernight = endMinutes < startMinutes;
+  const normalizedEndMinutes = isOvernight
+    ? endMinutes + MINUTES_PER_DAY
     : endMinutes;
+  const durationMinutes = normalizedEndMinutes - startMinutes;
+  if (durationMinutes <= 0) {
+    return null;
+  }
+  return {
+    startMinutes,
+    normalizedEndMinutes,
+    durationMinutes,
+    isOvernight,
+  };
+};
+
+const normalizedRentalSlotDurationMinutes = (
+  slot: Record<string, any>,
+  fallbackTimeZone: string,
+): number => {
+  const slotTimeZone = resolveTimeZone(slot.timeZone, fallbackTimeZone);
+  const slotStart = parseDateInputInTimeZone(slot.startDate, slotTimeZone);
+  const slotEnd = parseDateInputInTimeZone(slot.endDate, slotTimeZone);
+  if (slot.repeating === false) {
+    if (!slotStart || !slotEnd) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const elapsedMinutes = Math.trunc(
+      (slotEnd.getTime() - slotStart.getTime()) / (60 * 1000),
+    );
+    return elapsedMinutes > 0 ? elapsedMinutes : Number.POSITIVE_INFINITY;
+  }
+  return resolveRentalSlotMinuteBounds(slot, slotStart, slotEnd, slotTimeZone)?.durationMinutes
+    ?? Number.POSITIVE_INFINITY;
+};
+
+const compareCoveringRentalSlots = (
+  left: Record<string, any>,
+  right: Record<string, any>,
+  fallbackTimeZone: string,
+): number => {
+  const leftDuration = normalizedRentalSlotDurationMinutes(left, fallbackTimeZone);
+  const rightDuration = normalizedRentalSlotDurationMinutes(right, fallbackTimeZone);
+  if (leftDuration !== rightDuration) {
+    return leftDuration < rightDuration ? -1 : 1;
+  }
+
+  const leftPrice = typeof left.price === 'number' && Number.isFinite(left.price)
+    ? left.price
+    : Number.POSITIVE_INFINITY;
+  const rightPrice = typeof right.price === 'number' && Number.isFinite(right.price)
+    ? right.price
+    : Number.POSITIVE_INFINITY;
+  if (leftPrice !== rightPrice) {
+    return leftPrice < rightPrice ? -1 : 1;
+  }
+
+  const leftId = String(left.id);
+  const rightId = String(right.id);
+  if (leftId === rightId) {
+    return 0;
+  }
+  return leftId < rightId ? -1 : 1;
 };
 
 const rentalSlotCoversSelection = (
@@ -128,27 +230,42 @@ const rentalSlotCoversSelection = (
   }
 
   const selectionStartMinutes = minutesInTimeZone(selectionStart, slotTimeZone);
-  const selectionEndMinutes = endMinutesInTimeZone(selectionStart, selectionEnd, slotTimeZone);
-  if (
-    typeof slot.startTimeMinutes === 'number'
-    && selectionStartMinutes < slot.startTimeMinutes
-  ) {
+  const selectionEndMinutes = recurringSelectionEndMinutes(
+    selectionStart,
+    selectionEnd,
+    slotTimeZone,
+  );
+  if (selectionEndMinutes === null) {
     return false;
   }
-  if (
-    typeof slot.endTimeMinutes === 'number'
-    && selectionEndMinutes > slot.endTimeMinutes
-  ) {
+  const slotMinuteBounds = resolveRentalSlotMinuteBounds(
+    slot,
+    slotStart,
+    slotEnd,
+    slotTimeZone,
+  );
+  if (!slotMinuteBounds) {
+    return false;
+  }
+  if (selectionStartMinutes < slotMinuteBounds.startMinutes) {
+    return false;
+  }
+  if (selectionEndMinutes > slotMinuteBounds.normalizedEndMinutes) {
     return false;
   }
 
-  if (slotStart && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) < dateOnlyValueInTimeZone(slotStart, slotTimeZone)) {
+  const selectionAnchorDateValue = dateOnlyValueInTimeZone(selectionStart, slotTimeZone);
+  if (slotStart && selectionAnchorDateValue < dateOnlyValueInTimeZone(slotStart, slotTimeZone)) {
     return false;
   }
-  if (slotEnd && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
+  if (slotEnd && selectionAnchorDateValue > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
     return false;
   }
-  if (slotEnd && dateOnlyValueInTimeZone(selectionEnd, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
+  if (
+    slotEnd
+    && !slotMinuteBounds.isOvernight
+    && dateOnlyValueInTimeZone(selectionEnd, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)
+  ) {
     return false;
   }
   return true;
@@ -259,9 +376,10 @@ const validateRentalSelections = ({
       const rentalSlotIds = normalizeStringArray(field.rentalSlotIds);
       const matchedSlot = rentalSlotIds
         .map((slotId) => slotById.get(slotId))
-        .find((slot): slot is Record<string, any> => (
+        .filter((slot): slot is Record<string, any> => (
           slot ? rentalSlotCoversSelection(slot, start, end, selectionTimeZone) : false
-        ));
+        ))
+        .sort((left, right) => compareCoveringRentalSlots(left, right, selectionTimeZone))[0];
       if (!matchedSlot) {
         return { ok: false, error: `${field.name || 'Selected field'} is not available for the selected time.` };
       }
