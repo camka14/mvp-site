@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   await requireSession(req);
   return NextResponse.json(
-    { error: 'This legacy endpoint has been removed. Use PATCH /api/users/:id or POST /api/users/ensure.' },
+    { error: 'This legacy endpoint has been removed. Use PATCH /api/users/:id or an authorized scoped invitation flow.' },
     { status: 410 },
   );
 }

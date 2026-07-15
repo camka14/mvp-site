@@ -55,14 +55,31 @@ export async function GET(req: NextRequest) {
     subjectType,
     subjectIds,
   });
-  const firstResponse = responses[0] as Record<string, unknown> | undefined;
-  const scopeType = normalizeRegistrationQuestionScopeType(firstResponse?.scopeType);
-  const scopeId = String(firstResponse?.scopeId ?? '').trim();
-  const canManage = scopeType && scopeId
-    ? await canManageRegistrationQuestionScope({ session, scopeType, scopeId })
-    : false;
-  if (!canManage) {
+  if (!responses.length) {
+    return NextResponse.json({ responses: [] }, { status: 200 });
+  }
+
+  // A batch can span multiple team or event scopes. Authorizing only the
+  // first unordered row would allow a manager of one scope to retrieve every
+  // other response included in the request.
+  const scopes = new Map<string, { scopeType: NonNullable<ReturnType<typeof normalizeRegistrationQuestionScopeType>>; scopeId: string }>();
+  for (const response of responses as Array<Record<string, unknown>>) {
+    const scopeType = normalizeRegistrationQuestionScopeType(response.scopeType);
+    const scopeId = String(response.scopeId ?? '').trim();
+    if (!scopeType || !scopeId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    scopes.set(`${scopeType}:${scopeId}`, { scopeType, scopeId });
+  }
+
+  const permissions = await Promise.all(
+    Array.from(scopes.values()).map(({ scopeType, scopeId }) =>
+      canManageRegistrationQuestionScope({ session, scopeType, scopeId }),
+    ),
+  );
+  if (permissions.some((canManage) => !canManage)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+
   return NextResponse.json({ responses }, { status: 200 });
 }

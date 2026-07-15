@@ -21,12 +21,8 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'firstName',
   'lastName',
   'dateOfBirth',
-  'dobVerified',
-  'dobVerifiedAt',
-  'ageVerificationProvider',
   'friendIds',
   'userName',
-  'hasStripeAccount',
   'followingIds',
   'friendRequestIds',
   'friendRequestSentIds',
@@ -36,6 +32,12 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'onboardingIntent',
   'accountVisibility',
   'notificationSettings',
+]);
+const USER_SERVER_MANAGED_FIELDS = new Set<string>([
+  'dobVerified',
+  'dobVerifiedAt',
+  'ageVerificationProvider',
+  'hasStripeAccount',
 ]);
 const USER_IMMUTABLE_FIELDS = new Set<string>([
   'id',
@@ -158,8 +160,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
   }
 
+  const serverManagedKeys = findPresentKeys(parsed.payload, USER_SERVER_MANAGED_FIELDS);
+  if (serverManagedKeys.length) {
+    return NextResponse.json(
+      { error: 'Server-managed user fields cannot be updated directly.', fields: serverManagedKeys },
+      { status: 403 },
+    );
+  }
+
   const unknownKeys = findUnknownKeys(parsed.payload, [
     ...USER_MUTABLE_FIELDS,
+    ...USER_SERVER_MANAGED_FIELDS,
     ...USER_IMMUTABLE_FIELDS,
   ]);
   if (unknownKeys.length) {

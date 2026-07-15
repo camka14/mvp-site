@@ -8,6 +8,7 @@ const organizationTagsFindManyMock = jest.fn();
 const organizationTagAssignmentsFindManyMock = jest.fn();
 const createMock = jest.fn();
 const authUserFindUniqueMock = jest.fn();
+const staffMembersFindManyMock = jest.fn();
 const prismaMock = {
   authUser: {
     findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
@@ -20,6 +21,9 @@ const prismaMock = {
   },
   organizationTagAssignments: {
     findMany: (...args: any[]) => organizationTagAssignmentsFindManyMock(...args),
+  },
+  staffMembers: {
+    findMany: (...args: any[]) => staffMembersFindManyMock(...args),
   },
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
@@ -49,6 +53,7 @@ describe('/api/organizations', () => {
     authUserFindUniqueMock.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
     organizationTagsFindManyMock.mockResolvedValue([]);
     organizationTagAssignmentsFindManyMock.mockResolvedValue([]);
+    staffMembersFindManyMock.mockResolvedValue([]);
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
@@ -65,12 +70,15 @@ describe('/api/organizations', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(findManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ OR: expect.any(Array), status: 'LISTED' }),
-        take: 40,
-      }),
-    );
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { status: 'LISTED' },
+          { OR: expect.any(Array) },
+        ],
+      },
+      take: 40,
+    }));
     expect(json.organizations.map((organization: any) => organization.name)).toEqual([
       'Indoor',
       'Indoor Soccer Arena',
@@ -130,8 +138,8 @@ describe('/api/organizations', () => {
     });
     expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
       where: {
-        status: 'LISTED',
         AND: [
+          { status: 'LISTED' },
           { id: { in: ['org_facility'] } },
         ],
       },
@@ -211,7 +219,8 @@ describe('/api/organizations', () => {
     ]);
   });
 
-  it('keeps unlisted organizations available for owner-scoped management lists', async () => {
+  it('keeps unlisted organizations available for the authenticated owner management list', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     findManyMock.mockResolvedValue([
       { id: 'org_hidden', name: 'Demo Org', ownerId: 'owner_1', status: 'UNLISTED' },
     ]);
@@ -229,6 +238,128 @@ describe('/api/organizations', () => {
     expect(json.organizations).toEqual([
       expect.objectContaining({ $id: 'org_hidden', status: 'UNLISTED' }),
     ]);
+  });
+
+  it('rejects anonymous owner-scoped organization lists before querying organizations', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?ownerId=owner_1&limit=25',
+    ));
+
+    expect(response.status).toBe(401);
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an authenticated user who requests another owner\'s private organization list', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'outsider_1', isAdmin: false });
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?ownerId=owner_1&limit=25',
+    ));
+
+    expect(response.status).toBe(403);
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects anonymous organization ID lookups before querying organizations', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?ids=org_hidden&limit=25',
+    ));
+
+    expect(response.status).toBe(401);
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('allows an authenticated ID lookup while returning only the public organization projection', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'viewer_1', isAdmin: false });
+    findManyMock.mockResolvedValue([{
+      id: 'org_hidden',
+      name: 'Hidden Organization',
+      ownerId: 'owner_1',
+      status: 'UNLISTED',
+      hasStripeAccount: true,
+      verificationReviewNotes: 'Internal review note',
+    }]);
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?ids=org_hidden&limit=25',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['org_hidden'] } },
+    }));
+    expect(payload.organizations[0]).toEqual(expect.objectContaining({
+      $id: 'org_hidden',
+      name: 'Hidden Organization',
+      status: 'UNLISTED',
+    }));
+    expect(payload.organizations[0]).not.toHaveProperty('ownerId');
+    expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
+    expect(payload.organizations[0]).not.toHaveProperty('verificationReviewNotes');
+  });
+
+  it('allows a pending staff invitee to resolve an unlisted organization by ID without exposing internal fields', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'invitee_1', isAdmin: false });
+    findManyMock.mockResolvedValue([{
+      id: 'org_hidden',
+      name: 'Hidden Organization',
+      ownerId: 'owner_1',
+      status: 'UNLISTED',
+      hasStripeAccount: true,
+      verificationReviewNotes: 'Internal review note',
+      taxResponsibilityAcceptedByUserId: 'owner_1',
+      embedAllowedDomains: ['internal.example.com'],
+    }]);
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?ids=org_hidden&limit=25',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.organizations).toEqual([
+      expect.objectContaining({
+        $id: 'org_hidden',
+        name: 'Hidden Organization',
+        status: 'UNLISTED',
+      }),
+    ]);
+    expect(payload.organizations[0]).not.toHaveProperty('ownerId');
+    expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
+    expect(payload.organizations[0]).not.toHaveProperty('verificationReviewNotes');
+    expect(payload.organizations[0]).not.toHaveProperty('taxResponsibilityAcceptedByUserId');
+    expect(payload.organizations[0]).not.toHaveProperty('embedAllowedDomains');
+  });
+
+  it('returns an anonymous listed discovery result without internal organization fields', async () => {
+    findManyMock.mockResolvedValue([{
+      id: 'org_public',
+      name: 'Public Organization',
+      status: 'LISTED',
+      ownerId: 'owner_1',
+      hasStripeAccount: true,
+      verificationReviewNotes: 'Internal review note',
+      taxResponsibilityAcceptedByUserId: 'owner_1',
+      embedAllowedDomains: ['internal.example.com'],
+    }]);
+
+    const response = await organizationsGet(new NextRequest('http://localhost/api/organizations?limit=25'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.organizations).toEqual([
+      expect.objectContaining({ $id: 'org_public', name: 'Public Organization', status: 'LISTED' }),
+    ]);
+    expect(payload.organizations[0]).not.toHaveProperty('ownerId');
+    expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
+    expect(payload.organizations[0]).not.toHaveProperty('verificationReviewNotes');
+    expect(payload.organizations[0]).not.toHaveProperty('taxResponsibilityAcceptedByUserId');
+    expect(payload.organizations[0]).not.toHaveProperty('embedAllowedDomains');
   });
 
   it('ignores client hasStripeAccount values when creating organizations', async () => {

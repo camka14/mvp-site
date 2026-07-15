@@ -64,12 +64,35 @@ describe('/api/organizations/[id]', () => {
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
   });
 
-  it('returns viewerCanAccessUsers=false for signed-in outsiders', async () => {
+  it('does not expose an unlisted organization to an anonymous detail request', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Hidden Org',
+      status: 'UNLISTED',
+      publicPageEnabled: false,
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+
+    expect(response.status).toBe(404);
+    expect(prismaMock.staffMembers.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns only the public organization summary to a signed-in outsider', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'outsider_1', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
       name: 'Test Org',
+      hasStripeAccount: true,
+      verificationReviewNotes: 'Internal review note',
+      taxResponsibilityAcceptedByUserId: 'owner_1',
+      embedAllowedDomains: ['internal.example.com'],
     });
 
     const response = await GET(
@@ -79,9 +102,49 @@ describe('/api/organizations/[id]', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.viewerCanManageOrganization).toBe(false);
-    expect(payload.viewerCanAccessUsers).toBe(false);
+    expect(payload).toEqual(expect.objectContaining({
+      $id: 'org_1',
+      name: 'Test Org',
+    }));
+    expect(payload).not.toHaveProperty('ownerId');
+    expect(payload).not.toHaveProperty('hasStripeAccount');
+    expect(payload).not.toHaveProperty('verificationReviewNotes');
+    expect(payload).not.toHaveProperty('taxResponsibilityAcceptedByUserId');
+    expect(payload).not.toHaveProperty('embedAllowedDomains');
+    expect(payload).not.toHaveProperty('staffMembers');
+    expect(prismaMock.staffMembers.findMany).not.toHaveBeenCalled();
     expect(prismaMock.sensitiveUserData.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns the same curated summary to an anonymous request only when the public organization page is enabled', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Public Org',
+      status: 'LISTED',
+      publicPageEnabled: true,
+      hasStripeAccount: true,
+      verificationReviewNotes: 'Internal review note',
+      taxResponsibilityAcceptedByUserId: 'owner_1',
+      embedAllowedDomains: ['internal.example.com'],
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({ $id: 'org_1', name: 'Public Org' }));
+    expect(payload).not.toHaveProperty('ownerId');
+    expect(payload).not.toHaveProperty('hasStripeAccount');
+    expect(payload).not.toHaveProperty('verificationReviewNotes');
+    expect(payload).not.toHaveProperty('taxResponsibilityAcceptedByUserId');
+    expect(payload).not.toHaveProperty('embedAllowedDomains');
+    expect(payload).not.toHaveProperty('staffMembers');
+    expect(prismaMock.staffMembers.findMany).not.toHaveBeenCalled();
   });
 
   it('returns full organization management flags for verified razumly admins', async () => {
