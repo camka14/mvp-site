@@ -326,6 +326,15 @@ class OrganizationService {
           .map((value: unknown) => this.mapOrganizationTag(value as Record<string, unknown>))
           .filter((tag) => tag.name.trim().length > 0)
         : [],
+      divisionSummary: row.divisionSummary && typeof row.divisionSummary === 'object'
+        ? {
+          count: Number.isFinite(Number(row.divisionSummary.count))
+            ? Math.max(0, Math.trunc(Number(row.divisionSummary.count)))
+            : 0,
+          minPrice: typeof row.divisionSummary.minPrice === 'number' ? row.divisionSummary.minPrice : null,
+          maxPrice: typeof row.divisionSummary.maxPrice === 'number' ? row.divisionSummary.maxPrice : null,
+        }
+        : undefined,
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
       events: [],

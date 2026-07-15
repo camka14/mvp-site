@@ -24,7 +24,7 @@ import {
   syncOrganizationTags,
 } from '@/server/organizationTags';
 import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
-import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
+import { buildDivisionDiscoveryWhere, summarizeOrganizationDivisions } from '@/server/divisionDiscovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -416,12 +416,14 @@ export async function GET(req: NextRequest) {
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
         divisions: publicDivisionsByOrganizationId.get(organization.id) ?? [],
+        divisionSummary: summarizeOrganizationDivisions(publicDivisionsByOrganizationId.get(organization.id) ?? []),
         facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
       }))
     : visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
         divisions: publicDivisionsByOrganizationId.get(organization.id) ?? [],
+        divisionSummary: summarizeOrganizationDivisions(publicDivisionsByOrganizationId.get(organization.id) ?? []),
       }));
 
   return NextResponse.json({

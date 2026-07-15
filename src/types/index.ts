@@ -1044,6 +1044,11 @@ export interface Organization {
   viewerCanAccessUsers?: boolean;
   viewerPermissions?: string[];
   tags?: OrganizationTag[];
+  divisionSummary?: {
+    count: number;
+    minPrice: number | null;
+    maxPrice: number | null;
+  };
   $createdAt?: string;
   $updatedAt?: string;
 

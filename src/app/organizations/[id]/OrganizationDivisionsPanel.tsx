@@ -191,7 +191,7 @@ export default function OrganizationDivisionsPanel({
       <Group justify="space-between" mb="md">
         <div>
           <Title order={5}>{summary ? 'Divisions Offered' : 'Club Divisions'}</Title>
-          {!summary && <Text size="sm" c="dimmed">Current club offerings and total per-player prices.</Text>}
+          {!summary && <Text size="sm" c="dimmed">Current club offerings and total per-player season prices.</Text>}
         </div>
         <Group gap="xs">
           {summary && onViewAll && visibleDivisions.length > 0 && (
@@ -215,7 +215,7 @@ export default function OrganizationDivisionsPanel({
                 <Table.Th>Gender</Table.Th>
                 <Table.Th>Age</Table.Th>
                 <Table.Th>Skill</Table.Th>
-                <Table.Th>Price</Table.Th>
+                <Table.Th>Season price</Table.Th>
                 {canManage && !summary && <Table.Th aria-label="Actions" />}
               </Table.Tr>
             </Table.Thead>
@@ -265,10 +265,10 @@ export default function OrganizationDivisionsPanel({
             <Select label="Gender" data={genderOptions} value={draft.gender} onChange={(value) => setDraft((current) => ({ ...current, gender: value ?? 'C' }))} required />
             <Select label="Age" data={ageOptions} value={draft.ageDivisionTypeId} onChange={(value) => setDraft((current) => ({ ...current, ageDivisionTypeId: value ?? '' }))} required searchable />
           </Group>
-          <Select label="Skill" data={skillOptions} value={draft.skillDivisionTypeId} onChange={(value) => setDraft((current) => ({ ...current, skillDivisionTypeId: value ?? '' }))} required searchable />
-          <TextInput label="Division name" description="Leave blank to use the generated gender, skill, and age name." value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.currentTarget.value }))} />
+          <Select label="Filter skill level" description="Choose a standard skill level used by Discover filters." data={skillOptions} value={draft.skillDivisionTypeId} onChange={(value) => setDraft((current) => ({ ...current, skillDivisionTypeId: value ?? '' }))} required searchable />
+          <TextInput label="Division name" description="Use the club's custom division or team name, or leave blank to generate one." value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.currentTarget.value }))} />
           <Group grow align="flex-start">
-            <NumberInput label="Total price per player" prefix="$" decimalScale={2} min={0} value={draft.priceDollars} onChange={(value) => setDraft((current) => ({ ...current, priceDollars: Number(value) || 0 }))} />
+            <NumberInput label="Division season price" description="Total per-player price for the club season." prefix="$" decimalScale={2} min={0} value={draft.priceDollars} onChange={(value) => setDraft((current) => ({ ...current, priceDollars: Number(value) || 0 }))} />
             <NumberInput label="Capacity" description="Optional" min={1} value={draft.maxParticipants ?? ''} onChange={(value) => setDraft((current) => ({ ...current, maxParticipants: value === '' ? null : Number(value) }))} />
           </Group>
           <Textarea label="Description" autosize minRows={3} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.currentTarget.value }))} />

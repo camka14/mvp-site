@@ -3,7 +3,6 @@
 import React from 'react';
 import Image from 'next/image';
 import type { Organization } from '@/types';
-import { formatDisplayDate } from '@/lib/dateUtils';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
 
 interface OrganizationCardProps {
@@ -19,6 +18,27 @@ function getOrgLogoUrl(org: Organization, size: number = 56): string {
   const label = (org.name || 'Org').trim() || 'Org';
   return `/api/avatars/initials?name=${encodeURIComponent(label)}&size=${size}`;
 }
+
+const formatDivisionPrice = (price: number): string => new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: price % 100 === 0 ? 0 : 2,
+  maximumFractionDigits: 2,
+}).format(price / 100);
+
+export const formatOrganizationDivisionSummary = (organization: Organization): string => {
+  const summary = organization.divisionSummary;
+  const count = summary?.count ?? organization.divisions?.length ?? 0;
+  const countLabel = `${count} division${count === 1 ? '' : 's'}`;
+  if (summary?.minPrice === null || summary?.minPrice === undefined) {
+    return count > 0 ? `${countLabel} · Price not specified` : countLabel;
+  }
+  const minPrice = formatDivisionPrice(summary.minPrice);
+  const maxPrice = summary.maxPrice === null || summary.maxPrice === undefined
+    ? minPrice
+    : formatDivisionPrice(summary.maxPrice);
+  return `${countLabel} · ${minPrice === maxPrice ? minPrice : `${minPrice}–${maxPrice}`}`;
+};
 
 export default function OrganizationCard({ organization, onClick, actions }: OrganizationCardProps) {
   return (
@@ -70,7 +90,7 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
             </svg>
             {organization.location || '—'}
           </div>
-          <div className="text-slate-400">Created {organization.$createdAt ? formatDisplayDate(organization.$createdAt) : '—'}</div>
+          <div className="text-right text-slate-500">{formatOrganizationDivisionSummary(organization)}</div>
         </div>
       </div>
     </div>

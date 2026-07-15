@@ -539,7 +539,11 @@ export default function EventsTabContent<TEventType extends string = Event['even
         </div>
       </div>
 
-      <DivisionDiscoveryFilters value={divisionFilters} onChange={setDivisionFilters} />
+      <DivisionDiscoveryFilters
+        value={divisionFilters}
+        onChange={setDivisionFilters}
+        selectedSports={selectedSports}
+      />
 
       {setHideWeeklyChildren && (
         <div>

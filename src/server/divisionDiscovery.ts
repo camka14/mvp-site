@@ -9,6 +9,25 @@ type DivisionDiscoveryWhereInput = {
   priceMax?: number | null;
 };
 
+export type OrganizationDivisionSummary = {
+  count: number;
+  minPrice: number | null;
+  maxPrice: number | null;
+};
+
+export const summarizeOrganizationDivisions = (
+  divisions: Array<{ price?: number | null }>,
+): OrganizationDivisionSummary => {
+  const prices = divisions
+    .map((division) => division.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price >= 0);
+  return {
+    count: divisions.length,
+    minPrice: prices.length > 0 ? Math.min(...prices) : null,
+    maxPrice: prices.length > 0 ? Math.max(...prices) : null,
+  };
+};
+
 const unique = (values: string[] | undefined): string[] => Array.from(new Set(
   (values ?? []).map((value) => value.trim()).filter(Boolean),
 ));

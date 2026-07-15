@@ -110,6 +110,9 @@ const kmToMiles = (value: number): number => value / KM_PER_MILE;
 const milesToKm = (value: number): number => value * KM_PER_MILE;
 const clampMiles = (value: number): number =>
   Math.min(DISTANCE_SLIDER_MAX_MILES, Math.max(DISTANCE_SLIDER_MIN_MILES, Math.round(value)));
+const stringArraysEqual = (left: string[], right: string[]): boolean => (
+  left.length === right.length && left.every((value, index) => value === right[index])
+);
 
 export default function DiscoverPage() {
   return (
@@ -267,12 +270,14 @@ function DiscoverPageContent() {
    * Organizations tab state
    */
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsLoadingMore, setOrganizationsLoadingMore] = useState(false);
   const [hasMoreOrganizations, setHasMoreOrganizations] = useState(true);
-  const [organizationOffset, setOrganizationOffset] = useState(0);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
+  const organizationOffsetRef = useRef(0);
+  const hasMoreOrganizationsRef = useRef(true);
+  const organizationRequestInFlightRef = useRef(false);
+  const latestOrganizationRequestRef = useRef(0);
   const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(() => (
     urlPreset.tab === 'organizations' && urlPreset.distanceMiles !== null
       ? milesToKm(urlPreset.distanceMiles)
@@ -383,10 +388,14 @@ function DiscoverPageContent() {
 
   useEffect(() => {
     if (sportsLoading) return;
-    setSelectedSports((current) => resolveDiscoverSportFilters(current, sportOptions));
-    setTeamSelectedSports((current) =>
-      current.filter((sport) => sportOptions.includes(sport))
-    );
+    setSelectedSports((current) => {
+      const resolved = resolveDiscoverSportFilters(current, sportOptions);
+      return stringArraysEqual(current, resolved) ? current : resolved;
+    });
+    setTeamSelectedSports((current) => {
+      const resolved = current.filter((sport) => sportOptions.includes(sport));
+      return stringArraysEqual(current, resolved) ? current : resolved;
+    });
   }, [sportOptions, sportsLoading]);
 
   const teamDivisionTypeOptions = useMemo(
@@ -612,12 +621,17 @@ function DiscoverPageContent() {
    * Organizations fetching
    */
   const loadOrganizations = useCallback(async (reset = false) => {
-    if (organizationsLoading || organizationsLoadingMore) return;
-    if (organizationsLoaded && !reset) return;
-    const nextOffset = reset ? 0 : organizationOffset;
-    if (!reset && !hasMoreOrganizations) return;
-    if (reset || !organizationsLoaded) {
+    if (!reset && organizationRequestInFlightRef.current) return;
+    const nextOffset = reset ? 0 : organizationOffsetRef.current;
+    if (!reset && !hasMoreOrganizationsRef.current) return;
+
+    const requestId = latestOrganizationRequestRef.current + 1;
+    latestOrganizationRequestRef.current = requestId;
+    organizationRequestInFlightRef.current = true;
+
+    if (reset) {
       setOrganizationsLoading(true);
+      setOrganizationsLoadingMore(false);
     } else {
       setOrganizationsLoadingMore(true);
     }
@@ -633,24 +647,24 @@ function DiscoverPageContent() {
         divisionPriceMin: organizationDivisionFilters.priceMinDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMinDollars * 100),
         divisionPriceMax: organizationDivisionFilters.priceMaxDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMaxDollars * 100),
       });
+      if (requestId !== latestOrganizationRequestRef.current) return;
       setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
-      setOrganizationOffset(page.pagination.nextOffset);
+      organizationOffsetRef.current = page.pagination.nextOffset;
+      hasMoreOrganizationsRef.current = page.pagination.hasMore;
       setHasMoreOrganizations(page.pagination.hasMore);
-      setOrganizationsLoaded(true);
     } catch (error) {
+      if (requestId !== latestOrganizationRequestRef.current) return;
       console.error('Failed to load organizations:', error);
       setOrganizationsError('Failed to load organizations. Please try again.');
     } finally {
-      setOrganizationsLoading(false);
-      setOrganizationsLoadingMore(false);
+      if (requestId === latestOrganizationRequestRef.current) {
+        organizationRequestInFlightRef.current = false;
+        setOrganizationsLoading(false);
+        setOrganizationsLoadingMore(false);
+      }
     }
   }, [
-    hasMoreOrganizations,
     mergeOrganizationsById,
-    organizationOffset,
-    organizationsLoaded,
-    organizationsLoading,
-    organizationsLoadingMore,
     selectedOrganizationTags,
     selectedSports,
     organizationDivisionFilters,
@@ -772,20 +786,17 @@ function DiscoverPageContent() {
     if (activeTab === 'rentals') {
       loadRentals();
     }
-    if (activeTab === 'organizations') {
-      loadOrganizations();
-    }
     if (activeTab === 'teams') {
       loadTeams();
     }
-  }, [activeTab, loadOrganizations, loadRentals, loadTeams]);
+  }, [activeTab, loadRentals, loadTeams]);
 
   useEffect(() => {
     if (activeTab !== 'organizations') {
       return;
     }
     void loadOrganizations(true);
-  }, [activeTab, loadOrganizations, selectedOrganizationTags]);
+  }, [activeTab, loadOrganizations]);
 
   const handleCreateEventNavigation = useCallback(() => {
     if (!user) {
@@ -1543,6 +1554,12 @@ function OrganizationsTabContent(props: {
         )}
       </div>
 
+      <DivisionDiscoveryFilters
+        value={divisionFilters}
+        onChange={setDivisionFilters}
+        selectedSports={selectedSports}
+      />
+
       {location && (
         <div>
           <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
@@ -1707,8 +1724,6 @@ function OrganizationsTabContent(props: {
           )}
         </div>
       </div>
-
-      <DivisionDiscoveryFilters value={divisionFilters} onChange={setDivisionFilters} />
     </div>
   );
 }

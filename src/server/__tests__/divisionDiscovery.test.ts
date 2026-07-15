@@ -1,4 +1,4 @@
-import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
+import { buildDivisionDiscoveryWhere, summarizeOrganizationDivisions } from '@/server/divisionDiscovery';
 
 describe('buildDivisionDiscoveryWhere', () => {
   it('places every event division filter on one Prisma division predicate', () => {
@@ -24,5 +24,23 @@ describe('buildDivisionDiscoveryWhere', () => {
 
   it('returns null when no division filter is active', () => {
     expect(buildDivisionDiscoveryWhere({ scope: 'ORGANIZATION' })).toBeNull();
+  });
+
+  it('summarizes active organization division prices without treating unspecified prices as free', () => {
+    expect(summarizeOrganizationDivisions([
+      { price: 12500 },
+      { price: null },
+      { price: 17500 },
+    ])).toEqual({
+      count: 3,
+      minPrice: 12500,
+      maxPrice: 17500,
+    });
+
+    expect(summarizeOrganizationDivisions([{ price: null }])).toEqual({
+      count: 1,
+      minPrice: null,
+      maxPrice: null,
+    });
   });
 });
