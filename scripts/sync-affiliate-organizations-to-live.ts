@@ -38,6 +38,7 @@ const ORGANIZATION_COLUMNS = [
   'ownerId',
   'website',
   'sports',
+  'enabledFeatures',
   'status',
   'hasStripeAccount',
   'verificationStatus',
