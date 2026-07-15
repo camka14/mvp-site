@@ -69,6 +69,7 @@ describe('GET /api/admin/events', () => {
         where: expect.objectContaining({
           NOT: { state: 'TEMPLATE' },
         }),
+        orderBy: [{ start: 'desc' }, { id: 'asc' }],
       }),
     );
   });

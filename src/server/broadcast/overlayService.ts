@@ -28,7 +28,29 @@ export const listBroadcastOverlaysForEvent = async (eventId: string) => {
     prisma.broadcastOverlayStates.findMany({ where: { eventId } }),
   ]);
   const statesByOverlayId = new Map(states.map((state) => [state.overlayId, state]));
-  return overlays.map((overlay) => ({ ...overlay, state: statesByOverlayId.get(overlay.id) ?? null }));
+  return Promise.all(overlays.map(async (overlay) => {
+    const state = statesByOverlayId.get(overlay.id) ?? null;
+    if (!state || state.scoringMode !== 'AUTOMATIC' || !state.activeMatchId) {
+      return { ...overlay, state };
+    }
+
+    try {
+      // Score writes can originate in another app/server process. Keep the
+      // manager read model aligned with the official match rows even when a
+      // realtime fanout was missed.
+      const presentationState = await buildMatchPresentationState({
+        overlay,
+        state,
+        eventId,
+        matchId: state.activeMatchId,
+      });
+      return { ...overlay, state: { ...state, presentationState } };
+    } catch {
+      // A stale/deleted active match must not make the management workspace
+      // unreadable; the post-commit schedule refresh will resolve it.
+      return { ...overlay, state };
+    }
+  }));
 };
 
 export const createBroadcastOverlay = async (input: {

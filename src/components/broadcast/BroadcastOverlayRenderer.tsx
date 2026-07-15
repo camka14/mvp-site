@@ -35,7 +35,7 @@ const anchorStyle = (config: BroadcastOverlayConfigV1): React.CSSProperties => {
   const style: React.CSSProperties = {
     transform: `${transformBase} scale(${config.transform.scale})`.trim(),
     transformOrigin: anchor.replace('_', ' ').toLowerCase(),
-    maxWidth: `min(${config.transform.maxWidth}px, calc(100vw - ${safe * 2}vw))`,
+    maxWidth: `min(${config.transform.maxWidth}px, calc(100% - ${safe * 2}%))`,
   };
   if (vertical === 'top') style.top = isVerticalCenter ? `calc(50% + ${y}%)` : `calc(${safe}% + ${y}%)`;
   if (vertical === 'bottom') style.bottom = `calc(${safe}% - ${y}%)`;
@@ -114,12 +114,26 @@ const SetRow = ({ state }: { state: MatchPresentationStateV1 }) => (
 
 export default function BroadcastOverlayRenderer({ config, state, event, preview = false }: BroadcastOverlayRendererProps) {
   const [now, setNow] = useState(() => Date.now());
+  const [previewScale, setPreviewScale] = useState<number | null>(preview ? null : 1);
 
   useEffect(() => {
     if (!config.display.showTimer || state.clock.mode !== 'RUNNING') return undefined;
     const interval = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(interval);
   }, [config.display.showTimer, state.clock.mode, state.clock.startedAt]);
+
+  useEffect(() => {
+    if (!preview) {
+      setPreviewScale(1);
+      return undefined;
+    }
+    const updatePreviewScale = () => {
+      setPreviewScale(Math.min(window.innerWidth / 1920, window.innerHeight / 1080));
+    };
+    updatePreviewScale();
+    window.addEventListener('resize', updatePreviewScale);
+    return () => window.removeEventListener('resize', updatePreviewScale);
+  }, [preview]);
 
   const clock = formatClock(state, now);
   const shouldAnimateScore = event?.type === 'POINT_AWARDED' && event.animate && !config.motion.reducedMotion;
@@ -130,8 +144,13 @@ export default function BroadcastOverlayRenderer({ config, state, event, preview
       : styles.surfaceDark;
   const visible = state.presentation.scoreboardVisible || preview;
 
-  return (
-    <main className={styles.canvas} data-testid="broadcast-overlay-canvas" data-preview={preview ? 'true' : 'false'}>
+  const canvas = (
+    <main
+      className={styles.canvas}
+      data-testid="broadcast-overlay-canvas"
+      data-preview={preview ? 'true' : 'false'}
+      style={preview ? { width: '1920px', height: '1080px' } : undefined}
+    >
       <AnimatePresence initial={false}>
         {visible ? (
           <motion.div
@@ -173,5 +192,21 @@ export default function BroadcastOverlayRenderer({ config, state, event, preview
         ) : null}
       </AnimatePresence>
     </main>
+  );
+
+  if (!preview) return canvas;
+
+  return (
+    <div className={styles.previewViewport} data-testid="broadcast-preview-viewport">
+      <div
+        className={styles.previewStage}
+        style={{
+          transform: `scale(${previewScale ?? 1})`,
+          visibility: previewScale === null ? 'hidden' : 'visible',
+        }}
+      >
+        {canvas}
+      </div>
+    </div>
   );
 }

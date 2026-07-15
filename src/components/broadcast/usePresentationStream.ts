@@ -14,6 +14,8 @@ type SnapshotPayload = {
   state: MatchPresentationStateV1;
 };
 
+const SNAPSHOT_RECONCILIATION_INTERVAL_MS = 1_500;
+
 const getCapabilityFromHash = (): string | null => {
   if (typeof window === 'undefined') return null;
   const token = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token');
@@ -157,8 +159,15 @@ export function usePresentationStream(overlayId: string) {
     }
     disposedRef.current = false;
     void connect();
+    // Keep the program output correct when the score write originated in a
+    // separate process that cannot fan out over this browser source's socket.
+    // The protected snapshot rebuilds automatic scores from official match data.
+    const reconciliationTimer = window.setInterval(() => {
+      void loadSnapshot().catch(() => undefined);
+    }, SNAPSHOT_RECONCILIATION_INTERVAL_MS);
     return () => {
       disposedRef.current = true;
+      window.clearInterval(reconciliationTimer);
       if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
       socketRef.current?.close();

@@ -165,6 +165,32 @@ export const assertSetScoreUpdateAllowed = (params: {
   }
 };
 
+/**
+ * Resolves a completed volleyball-style set from the official score values.
+ * Score entry may arrive before a separate lifecycle action, so the score
+ * route owns the deterministic completion transition.
+ */
+export const resolveSetCompletionForMatch = (params: {
+  event: any;
+  match: any;
+  sequence: number;
+  scores: Record<string, number>;
+}): { winnerEventTeamId: string; target: number } | null => {
+  if (!matchUsesSetScoring(params.event, params.match)) return null;
+
+  const target = resolveSetVictoryTargetForMatch(params.event, params.match, params.sequence);
+  const [team1Id, team2Id] = matchTeamIds(params.match);
+  if (!target || !team1Id || !team2Id) return null;
+
+  const team1Score = nonNegativeScore(params.scores[team1Id]);
+  const team2Score = nonNegativeScore(params.scores[team2Id]);
+  const scoreState = getSetScoreState(team1Score, team2Score, target);
+  if (!scoreState.isValidFinalScore) return null;
+
+  const winnerEventTeamId = team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null;
+  return winnerEventTeamId ? { winnerEventTeamId, target } : null;
+};
+
 export const assertSetSegmentOperationsAllowed = (
   event: any,
   match: any,

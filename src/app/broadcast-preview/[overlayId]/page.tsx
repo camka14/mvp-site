@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import BroadcastOverlayRenderer from '@/components/broadcast/BroadcastOverlayRenderer';
 import { prisma } from '@/lib/prisma';
+import { buildMatchPresentationState } from '@/server/broadcast/presentation';
 import { parseBroadcastOverlayConfig, parseMatchPresentationState } from '@/server/broadcast/schemas';
 import { resolveRazumlyAdminFromToken } from '@/server/razumlyAdmin';
 
@@ -29,5 +30,20 @@ export default async function BroadcastPreviewPage({
   if (!overlay || !state) redirect('/admin');
   const showLive = query.mode === 'live';
   const config = parseBroadcastOverlayConfig(showLive && overlay.publishedConfig ? overlay.publishedConfig : overlay.draftConfig);
-  return <BroadcastOverlayRenderer config={config} state={parseMatchPresentationState(state.presentationState)} preview />;
+  const storedState = parseMatchPresentationState(state.presentationState);
+  let presentationState = storedState;
+  if (storedState.scoringMode === 'AUTOMATIC' && state.activeMatchId) {
+    try {
+      presentationState = await buildMatchPresentationState({
+        overlay,
+        state,
+        eventId: overlay.eventId,
+        matchId: state.activeMatchId,
+      });
+    } catch {
+      // Keep the previously persisted preview available while a schedule
+      // mutation is in progress or a selected match has just been removed.
+    }
+  }
+  return <BroadcastOverlayRenderer config={config} state={presentationState} preview />;
 }

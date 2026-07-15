@@ -45,6 +45,35 @@ const asNonNegativeInteger = (value: string | number): number => {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
 };
 
+const normalizeManualScore = (
+  score: MatchPresentationStateV1['score'],
+  competition: MatchPresentationStateV1['competition'],
+): MatchPresentationStateV1['score'] => {
+  const setsBySequence = new Map(score.sets.map((set) => [set.sequence, set]));
+  const setCount = Math.max(
+    1,
+    competition.bestOf,
+    score.currentSet,
+    ...score.sets.map((set) => set.sequence),
+  );
+  const fallbackTarget = competition.setTargets[competition.setTargets.length - 1] ?? 21;
+
+  return {
+    ...score,
+    sets: Array.from({ length: setCount }, (_, index) => {
+      const sequence = index + 1;
+      return setsBySequence.get(sequence) ?? {
+        sequence,
+        team1Points: sequence === score.currentSet ? score.points[0] : 0,
+        team2Points: sequence === score.currentSet ? score.points[1] : 0,
+        target: competition.setTargets[index] ?? fallbackTarget,
+        complete: false,
+        winnerTeamId: null,
+      };
+    }),
+  };
+};
+
 export default function BroadcastControlRoom({
   state,
   disabled = false,
@@ -52,13 +81,17 @@ export default function BroadcastControlRoom({
   onCommand,
 }: BroadcastControlRoomProps) {
   const presentation = state.presentationState;
-  const [manualPoints, setManualPoints] = useState<[number, number]>(presentation.score.points);
+  const [manualScore, setManualScore] = useState(() => normalizeManualScore(presentation.score, presentation.competition));
   const [obsBridgeAvailable, setObsBridgeAvailable] = useState(false);
   const [obsNotice, setObsNotice] = useState<string | null>(null);
+  // Parent refreshes replace presentation objects on a polling interval. A
+  // stable value signature prevents that background refresh from discarding
+  // an on-air producer edit that has not been applied yet.
+  const persistedScoreSignature = `${state.revision}:${JSON.stringify(presentation.score)}`;
 
   useEffect(() => {
-    setManualPoints(presentation.score.points);
-  }, [presentation.score.points[0], presentation.score.points[1], state.revision]);
+    setManualScore(normalizeManualScore(presentation.score, presentation.competition));
+  }, [persistedScoreSignature]);
 
   useEffect(() => {
     setObsBridgeAvailable(typeof window.obsstudio?.saveReplayBuffer === 'function');
@@ -92,7 +125,57 @@ export default function BroadcastControlRoom({
   const applyManualPoints = async () => {
     await onCommand({
       type: 'APPLY_MANUAL_PRESENTATION_CHANGE',
-      change: { score: { points: manualPoints } },
+      change: { score: manualScore },
+    });
+  };
+
+  const setManualCurrentSet = (value: string | number) => {
+    const nextCurrentSet = Math.max(1, Math.min(presentation.competition.bestOf, asNonNegativeInteger(value)));
+    setManualScore((current) => {
+      const normalized = normalizeManualScore(current, presentation.competition);
+      const selectedSet = normalized.sets.find((set) => set.sequence === nextCurrentSet);
+      return {
+        ...normalized,
+        currentSet: nextCurrentSet,
+        points: selectedSet ? [selectedSet.team1Points, selectedSet.team2Points] : [0, 0],
+      };
+    });
+  };
+
+  const updateManualSetScore = (sequence: number, teamIndex: 0 | 1, value: string | number) => {
+    const points = asNonNegativeInteger(value);
+    setManualScore((current) => {
+      const normalized = normalizeManualScore(current, presentation.competition);
+      const sets = normalized.sets.map((set) => {
+        if (set.sequence !== sequence) return set;
+        return teamIndex === 0 ? { ...set, team1Points: points } : { ...set, team2Points: points };
+      });
+      const selectedSet = sets.find((set) => set.sequence === normalized.currentSet);
+      return {
+        ...normalized,
+        sets,
+        points: selectedSet ? [selectedSet.team1Points, selectedSet.team2Points] : normalized.points,
+      };
+    });
+  };
+
+  const updateManualCurrentPoints = (teamIndex: 0 | 1, value: string | number) => {
+    const points = asNonNegativeInteger(value);
+    setManualScore((current) => {
+      const normalized = normalizeManualScore(current, presentation.competition);
+      const nextPoints: [number, number] = teamIndex === 0
+        ? [points, normalized.points[1]]
+        : [normalized.points[0], points];
+      return {
+        ...normalized,
+        points: nextPoints,
+        sets: normalized.sets.map((set) => {
+          if (set.sequence !== normalized.currentSet) return set;
+          return teamIndex === 0
+            ? { ...set, team1Points: points }
+            : { ...set, team2Points: points };
+        }),
+      };
     });
   };
 
@@ -198,18 +281,68 @@ export default function BroadcastControlRoom({
               <NumberInput
                 label={`${presentation.teams[0].displayName} points`}
                 min={0}
-                value={manualPoints[0]}
+                value={manualScore.points[0]}
                 disabled={disabled}
-                onChange={(value) => setManualPoints((current) => [asNonNegativeInteger(value), current[1]])}
+                onChange={(value) => updateManualCurrentPoints(0, value)}
               />
               <NumberInput
                 label={`${presentation.teams[1].displayName} points`}
                 min={0}
-                value={manualPoints[1]}
+                value={manualScore.points[1]}
                 disabled={disabled}
-                onChange={(value) => setManualPoints((current) => [current[0], asNonNegativeInteger(value)])}
+                onChange={(value) => updateManualCurrentPoints(1, value)}
               />
             </SimpleGrid>
+            <SimpleGrid cols={{ base: 1, sm: 3 }}>
+              <NumberInput
+                label="Current set"
+                min={1}
+                max={presentation.competition.bestOf}
+                value={manualScore.currentSet}
+                disabled={disabled}
+                onChange={setManualCurrentSet}
+              />
+              <NumberInput
+                label={`${presentation.teams[0].displayName} sets won`}
+                min={0}
+                max={presentation.competition.bestOf}
+                value={manualScore.setsWon[0]}
+                disabled={disabled}
+                onChange={(value) => setManualScore((current) => ({ ...current, setsWon: [asNonNegativeInteger(value), current.setsWon[1]] }))}
+              />
+              <NumberInput
+                label={`${presentation.teams[1].displayName} sets won`}
+                min={0}
+                max={presentation.competition.bestOf}
+                value={manualScore.setsWon[1]}
+                disabled={disabled}
+                onChange={(value) => setManualScore((current) => ({ ...current, setsWon: [current.setsWon[0], asNonNegativeInteger(value)] }))}
+              />
+            </SimpleGrid>
+            {manualScore.sets.length ? (
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>Set scores</Text>
+                {manualScore.sets.map((set) => (
+                  <SimpleGrid key={set.sequence} cols={{ base: 1, sm: 3 }}>
+                    <Text size="sm" pt="sm">Set {set.sequence}</Text>
+                    <NumberInput
+                      label={`Set ${set.sequence} ${presentation.teams[0].displayName}`}
+                      min={0}
+                      value={set.team1Points}
+                      disabled={disabled}
+                      onChange={(value) => updateManualSetScore(set.sequence, 0, value)}
+                    />
+                    <NumberInput
+                      label={`Set ${set.sequence} ${presentation.teams[1].displayName}`}
+                      min={0}
+                      value={set.team2Points}
+                      disabled={disabled}
+                      onChange={(value) => updateManualSetScore(set.sequence, 1, value)}
+                    />
+                  </SimpleGrid>
+                ))}
+              </Stack>
+            ) : null}
             <Group grow>
               <Button color="orange" disabled={disabled} onClick={() => void applyManualPoints()}>
                 Apply presentation scores

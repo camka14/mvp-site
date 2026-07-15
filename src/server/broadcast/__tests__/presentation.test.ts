@@ -88,6 +88,23 @@ describe('broadcast match presentation projection', () => {
     expect(projected.teams[0].playerNames).toEqual(['Alex Rivera']);
     expect(projected.teams[0].playerNames.join(' ')).not.toContain('Private');
     expect(projected.event).toMatchObject({ name: 'River City Beach Open', court: 'Court 2' });
+
+    client.matchSegments.findMany.mockResolvedValueOnce([
+      { sequence: 1, status: 'COMPLETED', scores: { team_1: 21, team_2: 19 }, winnerEventTeamId: 'team_1' },
+      // Some score writers persist the final points before the segment
+      // lifecycle/winner. The broadcast projection must still advance.
+      { sequence: 2, status: 'IN_PROGRESS', scores: { team_1: 15, team_2: 21 }, winnerEventTeamId: null },
+      { sequence: 3, status: 'NOT_STARTED', scores: {}, winnerEventTeamId: null },
+    ]);
+    const scoreFinalProjection = await buildMatchPresentationState({
+      overlay: baseOverlay,
+      state: { revision: 4, scoringMode: 'AUTOMATIC', presentationState: stored, activeMatchId: 'match_1' },
+      eventId: 'event_1',
+      matchId: 'match_1',
+      client,
+    });
+    expect(scoreFinalProjection.score).toMatchObject({ currentSet: 3, points: [0, 0], setsWon: [1, 1] });
+    expect(scoreFinalProjection.score.sets[1]).toMatchObject({ complete: true, winnerTeamId: 'team_2' });
   });
 
   it('uses the beach fallback when a legacy match has no resolved set configuration', async () => {

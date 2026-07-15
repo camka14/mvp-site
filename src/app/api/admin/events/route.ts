@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       prisma.events.count({ where }),
       prisma.events.findMany({
         where,
-        orderBy: { start: 'desc' },
+        orderBy: [{ start: 'desc' }, { id: 'asc' }],
         skip: offset,
         take: limit,
       }),
