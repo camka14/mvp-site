@@ -109,7 +109,7 @@ let mockEventFormDirtyState = false;
 let mockEventFormValidationErrors: Array<{ path: string; message: string }> = [];
 let mockCommitDirtyBaseline = jest.fn();
 let mockValidatePendingStaffAssignments = jest.fn();
-let mockSubmitPendingStaffInvites = jest.fn();
+let mockApplyCanonicalStaffState = jest.fn();
 jest.mock('../components/EventForm', () => {
   const React = require('react');
   const { forwardRef, useEffect, useImperativeHandle, useState } = React;
@@ -135,8 +135,7 @@ jest.mock('../components/EventForm', () => {
       getRegistrationQuestionDrafts: () => [],
       validatePendingStaffAssignments: async () => mockValidatePendingStaffAssignments(),
       commitDirtyBaseline: () => mockCommitDirtyBaseline(),
-      submitPendingStaffInvites: (eventId: string) => mockSubmitPendingStaffInvites(eventId),
-      applyCanonicalStaffState: jest.fn(),
+      applyCanonicalStaffState: (snapshot: unknown) => mockApplyCanonicalStaffState(snapshot),
     }));
     return (
       <div data-testid="event-form">
@@ -410,7 +409,7 @@ describe('League schedule page', () => {
     mockEventFormValidationErrors = [];
     mockCommitDirtyBaseline = jest.fn();
     mockValidatePendingStaffAssignments = jest.fn();
-    mockSubmitPendingStaffInvites = jest.fn();
+    mockApplyCanonicalStaffState = jest.fn();
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -459,6 +458,8 @@ describe('League schedule page', () => {
     (eventService.createEvent as jest.Mock).mockReset();
     (eventService.scheduleEvent as jest.Mock).mockReset();
     (eventService.getEventParticipants as jest.Mock).mockReset();
+    mockGetEventStaffState.mockReset();
+    mockPutEventStaffState.mockReset();
     (leagueService.deleteMatchesByEvent as jest.Mock).mockReset();
     (leagueService.deleteWeeklySchedulesForEvent as jest.Mock).mockReset();
     (organizationService.getOrganizationById as jest.Mock).mockReset();
@@ -507,6 +508,26 @@ describe('League schedule page', () => {
     });
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(undefined);
     (eventService.getEventDetailBootstrap as jest.Mock).mockResolvedValue(undefined);
+    mockGetEventStaffState.mockImplementation(async (eventId: string) => ({
+      contractVersion: 1,
+      eventId,
+      revision: `revision_before_${eventId}`,
+      assistantHostIds: [],
+      officialPositions: [{ id: 'position_1', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [],
+      officialIds: [],
+      staffInvites: [],
+    }));
+    mockPutEventStaffState.mockImplementation(async (eventId: string, input: any) => ({
+      contractVersion: 1,
+      eventId,
+      revision: `revision_after_${eventId}`,
+      assistantHostIds: input.assistantHostIds ?? [],
+      officialPositions: [{ id: 'position_1', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: input.eventOfficials ?? [],
+      officialIds: (input.eventOfficials ?? []).map((official: any) => official.userId),
+      staffInvites: [],
+    }));
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event: null,
       participants: {
@@ -2246,6 +2267,14 @@ describe('League schedule page', () => {
       'event_unpublished',
       expect.objectContaining({ contractVersion: 1 }),
     );
+    expect(eventService.updateEvent).toHaveBeenCalledWith(
+      'event_unpublished',
+      expect.any(Object),
+      expect.objectContaining({ omitStaffAssignments: true }),
+    );
+    expect(mockGetEventStaffState).toHaveBeenCalledWith('event_unpublished');
+    expect(mockPutEventStaffState).toHaveBeenCalledTimes(1);
+    expect(mockApplyCanonicalStaffState).toHaveBeenCalledTimes(1);
   });
 
   it('saves a private league without changing lifecycle state', async () => {
@@ -2876,7 +2905,22 @@ describe('League schedule page', () => {
       seedColor: 0,
       waitListIds: [],
       freeAgentIds: [],
-      officialIds: [],
+      assistantHostIds: ['assistant_1'],
+      officialIds: ['official_1'],
+      officialPositions: [{ id: 'position_client_1', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [{
+        id: 'official_client_1',
+        userId: 'official_1',
+        positionIds: ['position_client_1'],
+        fieldIds: [],
+        isActive: true,
+      }],
+      pendingStaffInvites: [{
+        firstName: 'Casey',
+        lastName: 'Official',
+        email: 'casey@example.com',
+        roles: ['OFFICIAL'],
+      }],
       fields: [
         {
           $id: 'field_local_1',
@@ -2936,6 +2980,24 @@ describe('League schedule page', () => {
       divisions: ['open'],
       scheduledFieldId: 'field_local_1',
     });
+    expect(payload.assistantHostIds).toEqual([]);
+    expect(payload.officialIds).toEqual([]);
+    expect(payload.eventOfficials).toEqual([]);
+    expect(payload).not.toHaveProperty('pendingStaffInvites');
+    expect(mockGetEventStaffState).toHaveBeenCalledWith('event_create_league');
+    expect(mockPutEventStaffState).toHaveBeenCalledWith(
+      'event_create_league',
+      expect.objectContaining({
+        contractVersion: 1,
+        expectedRevision: 'revision_before_event_create_league',
+        assistantHostIds: ['assistant_1'],
+        eventOfficials: [expect.objectContaining({
+          userId: 'official_1',
+          positionIds: ['position_1'],
+        })],
+        pendingInvites: [expect.objectContaining({ email: 'casey@example.com' })],
+      }),
+    );
   });
 
   it('normalizes tournament create payload with weekly timeslots before schedule preview', async () => {

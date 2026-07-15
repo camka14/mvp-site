@@ -118,6 +118,30 @@ describe('agent tools dispatcher', () => {
     expect(result.result.primaryRoutes).toBeDefined();
   });
 
+  it('does not expose private event schedule context to an unrelated agent user', async () => {
+    mockPrisma.events.findUnique.mockResolvedValueOnce({
+      id: 'event-private',
+      state: 'PRIVATE',
+      hostId: 'host-1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    canManageEvent.mockResolvedValueOnce(false);
+
+    const result = await executeAgentTool({
+      name: 'get_event_schedule_context',
+      args: { eventId: 'event-private' },
+      owner: userOwner,
+      conversationId: 'conv-1',
+      pageContext: null,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.error).toContain('do not have access');
+    expect(mockPrisma.matches.findMany).not.toHaveBeenCalled();
+  });
+
   it('builds same-origin markdown links for navigation', async () => {
     const result = await executeAgentTool({
       name: 'build_site_link',
