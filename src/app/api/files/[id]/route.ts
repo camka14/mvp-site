@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
 import { SVG_IMAGE_RESPONSE_HEADERS, isSvgContentType } from '@/lib/imageUploadPolicy';
+import { assertFileReadAccess } from '@/server/fileAccess';
 import path from 'path';
 import { Readable } from 'stream';
 
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!file) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    await assertFileReadAccess(req, file.id);
 
     const storage = getStorageProvider();
     let streamResult;

@@ -32,8 +32,8 @@ describe('/api/matches GET', () => {
     jest.clearAllMocks();
   });
 
-  it('returns matches for eventIds with optional field/range filters and hides template events', async () => {
-    matchesFindManyMock.mockResolvedValue([
+  it('returns matches for public eventIds with optional field/range filters', async () => {
+    const storedMatches = [
       {
         id: 'm1',
         eventId: 'event_1',
@@ -48,7 +48,10 @@ describe('/api/matches GET', () => {
         start: new Date('2026-03-01T12:00:00.000Z'),
         end: new Date('2026-03-01T13:00:00.000Z'),
       },
-    ]);
+    ];
+    matchesFindManyMock.mockImplementation(({ where }: { where: { eventId: { in: string[] } } }) => (
+      storedMatches.filter((match) => where.eventId.in.includes(match.eventId))
+    ));
     eventsFindManyMock.mockResolvedValue([{ id: 'event_1' }]);
 
     const request = new NextRequest(
@@ -62,9 +65,16 @@ describe('/api/matches GET', () => {
     expect(eventsFindManyMock).toHaveBeenCalledWith({
       where: {
         id: { in: ['event_1', 'event_2'] },
-        NOT: { state: 'TEMPLATE' },
+        archivedAt: null,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        state: true,
+        archivedAt: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
     });
     expect(json.matches).toEqual([expect.objectContaining({
       id: 'm1',
@@ -74,6 +84,18 @@ describe('/api/matches GET', () => {
       start: '2026-03-01T10:00:00.000Z',
       end: '2026-03-01T11:00:00.000Z',
     })]);
+  });
+
+  it('does not query matches for an anonymous request containing only private events', async () => {
+    eventsFindManyMock.mockResolvedValueOnce([
+      { id: 'event_private', state: 'PRIVATE', hostId: 'host_1', assistantHostIds: [], organizationId: null },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/matches?eventIds=event_private'));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ matches: [] });
+    expect(matchesFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when eventIds are missing', async () => {

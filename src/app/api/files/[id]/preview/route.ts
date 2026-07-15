@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
 import { SVG_IMAGE_RESPONSE_HEADERS, isSvgContentType } from '@/lib/imageUploadPolicy';
+import { assertFileReadAccess } from '@/server/fileAccess';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!file) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    await assertFileReadAccess(req, file.id);
 
     const width = parseDimension(req.nextUrl.searchParams.get('w'));
     const height = parseDimension(req.nextUrl.searchParams.get('h'));

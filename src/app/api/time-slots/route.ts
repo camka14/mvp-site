@@ -10,8 +10,11 @@ import {
   resolveTimeZone,
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
+import { canManageScheduledFields } from '@/server/timeSlotAccess';
 
 export const dynamic = 'force-dynamic';
+const DEFAULT_TIME_SLOT_PAGE_SIZE = 100;
+const MAX_TIME_SLOT_PAGE_SIZE = 200;
 
 const isUniqueConstraintError = (error: unknown): boolean => {
   return Boolean(
@@ -94,6 +97,73 @@ const normalizeTemplateIds = (value: unknown): string[] => {
     ),
   );
 };
+
+const normalizePageSize = (value: string | null): number => {
+  const parsed = Number(value ?? DEFAULT_TIME_SLOT_PAGE_SIZE);
+  if (!Number.isFinite(parsed)) return DEFAULT_TIME_SLOT_PAGE_SIZE;
+  return Math.min(Math.max(Math.trunc(parsed), 1), MAX_TIME_SLOT_PAGE_SIZE);
+};
+
+const normalizeOffset = (value: string | null): number => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(Math.trunc(parsed), 0);
+};
+
+const resolvePublicRentalSlotIds = async (
+  requestedSlotIds: string[],
+  requestedFieldIds: string[],
+): Promise<string[]> => {
+  const fields = await prisma.fields.findMany({
+    where: {
+      archivedAt: null,
+      ...(requestedFieldIds.length ? { id: { in: requestedFieldIds } } : {}),
+      ...(requestedSlotIds.length ? { rentalSlotIds: { hasSome: requestedSlotIds } } : {}),
+    },
+    select: {
+      organizationId: true,
+      rentalSlotIds: true,
+    },
+  });
+  const organizationIds = Array.from(new Set(
+    fields
+      .map((field) => field.organizationId)
+      .filter((organizationId): organizationId is string => typeof organizationId === 'string' && organizationId.length > 0),
+  ));
+  if (!organizationIds.length) return [];
+
+  const publicOrganizations = await prisma.organizations.findMany({
+    where: {
+      id: { in: organizationIds },
+      status: 'LISTED',
+    },
+    select: { id: true },
+  });
+  const publicOrganizationIds = new Set(publicOrganizations.map((organization) => organization.id));
+  const rentalSlotIds = Array.from(new Set(
+    fields
+      .filter((field) => field.organizationId && publicOrganizationIds.has(field.organizationId))
+      .flatMap((field) => normalizeFieldIds(field.rentalSlotIds)),
+  ));
+  if (!requestedSlotIds.length) return rentalSlotIds;
+  const requested = new Set(requestedSlotIds);
+  return rentalSlotIds.filter((slotId) => requested.has(slotId));
+};
+
+const toPublicRentalSlot = (slot: Record<string, any>) => withLegacyFields({
+  id: slot.id ?? slot.$id,
+  createdAt: slot.createdAt ?? null,
+  updatedAt: slot.updatedAt ?? null,
+  dayOfWeek: slot.dayOfWeek ?? null,
+  daysOfWeek: Array.isArray(slot.daysOfWeek) ? slot.daysOfWeek : [],
+  startTimeMinutes: slot.startTimeMinutes ?? null,
+  endTimeMinutes: slot.endTimeMinutes ?? null,
+  startDate: slot.startDate ?? null,
+  endDate: slot.endDate ?? null,
+  timeZone: slot.timeZone ?? 'UTC',
+  repeating: slot.repeating === true,
+  price: slot.price ?? null,
+});
 
 const toDateOnlyValue = (value: Date, timeZone: string): number => {
   const parts = localDatePartsInTimeZone(value, timeZone);
@@ -183,6 +253,8 @@ export async function GET(req: NextRequest) {
   const fieldIdsParam = params.get('fieldIds');
   const rentalOnlyParam = params.get('rentalOnly');
   const dayOfWeek = params.get('dayOfWeek');
+  const limit = normalizePageSize(params.get('limit'));
+  const offset = normalizeOffset(params.get('offset'));
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const rentalOnly = rentalOnlyParam === '1' || rentalOnlyParam === 'true';
@@ -194,6 +266,23 @@ export async function GET(req: NextRequest) {
       ],
     ),
   );
+  const hasReadScope = Boolean(ids?.length || normalizedFieldIds.length);
+  if (!hasReadScope) {
+    return NextResponse.json(
+      { error: 'Time-slot reads require an id or field scope.' },
+      { status: 400 },
+    );
+  }
+
+  let session: Awaited<ReturnType<typeof requireSession>> | null = null;
+  try {
+    session = await requireSession(req);
+  } catch (error) {
+    if (!(error instanceof Response)) throw error;
+  }
+  if (!session && !rentalOnly) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const whereClauses: any[] = [];
   if (ids?.length) whereClauses.push({ id: { in: ids } });
@@ -205,7 +294,16 @@ export async function GET(req: NextRequest) {
       ],
     });
   }
-  if (rentalOnly && normalizedFieldIds.length) {
+  if (!session) {
+    const publicRentalSlotIds = await resolvePublicRentalSlotIds(ids ?? [], normalizedFieldIds);
+    if (!publicRentalSlotIds.length) {
+      return NextResponse.json({
+        timeSlots: [],
+        pagination: { limit, offset, nextOffset: offset, hasMore: false },
+      }, { status: 200 });
+    }
+    whereClauses.push({ id: { in: publicRentalSlotIds } });
+  } else if (rentalOnly && normalizedFieldIds.length) {
     const fields = await prisma.fields.findMany({
       where: { id: { in: normalizedFieldIds } },
       select: { rentalSlotIds: true },
@@ -239,9 +337,12 @@ export async function GET(req: NextRequest) {
   const slots = await prisma.timeSlots.findMany({
     where: { AND: [{ archivedAt: null }, ...whereClauses] },
     orderBy: { startDate: 'asc' },
+    take: limit + 1,
+    skip: offset,
   });
 
-  const normalizedSlots = slots.map((slot) => {
+  const pageRows = slots.slice(0, limit);
+  const normalizedSlots = pageRows.map((slot) => {
     const normalizedFieldIds = normalizeFieldIds(
       (slot as any).scheduledFieldIds
         ?? (slot.scheduledFieldId ? [slot.scheduledFieldId] : []),
@@ -265,11 +366,19 @@ export async function GET(req: NextRequest) {
     } as any);
   });
 
-  return NextResponse.json({ timeSlots: normalizedSlots }, { status: 200 });
+  return NextResponse.json({
+    timeSlots: session ? normalizedSlots : normalizedSlots.map(toPublicRentalSlot),
+    pagination: {
+      limit,
+      offset,
+      nextOffset: offset + pageRows.length,
+      hasMore: slots.length > limit,
+    },
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {
@@ -289,6 +398,12 @@ export async function POST(req: NextRequest) {
     ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
   ]);
   const scheduledFieldId = scheduledFieldIds[0] ?? data.scheduledFieldId ?? null;
+  if (!scheduledFieldIds.length) {
+    return NextResponse.json({ error: 'Time slots require at least one scheduled field.' }, { status: 400 });
+  }
+  if (!(await canManageScheduledFields(session, scheduledFieldIds))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const slotTimeZone = await resolveSlotTimeZone(scheduledFieldIds, data.timeZone);
   const startDate = parseDateInputInTimeZone(data.startDate, slotTimeZone) ?? new Date();
   const endDate = data.endDate === null ? null : parseDateInputInTimeZone(data.endDate, slotTimeZone);

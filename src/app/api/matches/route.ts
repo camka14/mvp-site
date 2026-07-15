@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseDateInput } from '@/server/legacyFormat';
 import { serializeMatchRecordsLegacy } from '@/server/matches/instantPayloads';
+import { getVisibleEventIds } from '@/server/eventVisibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,27 +58,33 @@ export async function GET(req: NextRequest) {
     return {};
   })();
 
+  const eventAccessRows = await prisma.events.findMany({
+    where: {
+      id: { in: eventIds },
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      state: true,
+      archivedAt: true,
+      hostId: true,
+      assistantHostIds: true,
+      organizationId: true,
+    },
+  });
+  const visibleEventIds = await getVisibleEventIds(req, eventAccessRows);
+  if (!visibleEventIds.size) {
+    return NextResponse.json({ matches: [] }, { status: 200 });
+  }
+
   const matches = await prisma.matches.findMany({
     where: {
-      eventId: { in: eventIds },
+      eventId: { in: Array.from(visibleEventIds) },
       ...(fieldIds.length > 0 ? { fieldId: { in: fieldIds } } : {}),
       ...rangeWhere,
     },
     orderBy: { start: 'asc' },
   });
 
-  const visibleEvents = await prisma.events.findMany({
-    where: {
-      id: { in: eventIds },
-      NOT: { state: 'TEMPLATE' },
-    },
-    select: { id: true },
-  });
-  const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
-  const filteredMatches = matches.filter((match) => {
-    const matchEventId = typeof match.eventId === 'string' ? match.eventId : '';
-    return matchEventId.length > 0 && visibleEventIds.has(matchEventId);
-  });
-
-  return NextResponse.json({ matches: serializeMatchRecordsLegacy(filteredMatches) }, { status: 200 });
+  return NextResponse.json({ matches: serializeMatchRecordsLegacy(matches) }, { status: 200 });
 }

@@ -386,6 +386,7 @@ class FieldService {
       this.chunkIds(unique).map((batch) => {
         const params = new URLSearchParams();
         params.set('ids', batch.join(','));
+        params.set('rentalOnly', '1');
         return apiRequest<{ timeSlots?: any[] }>(`/api/time-slots?${params.toString()}`);
       }),
     );

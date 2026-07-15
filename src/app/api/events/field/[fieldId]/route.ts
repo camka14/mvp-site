@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getOptionalSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { getVisibleEventIds } from '@/server/eventVisibility';
+import { canManageScheduledFields } from '@/server/timeSlotAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -430,8 +433,33 @@ const buildRentalBookingItemCalendarEvent = (
   divisions: [],
 });
 
+const buildPublicRentalBookingBlocker = (
+  item: RentalBookingItemCalendarRow,
+  fieldId: string,
+  index: number,
+) => ({
+  id: `rental-unavailable-${fieldId}-${index}-${new Date(item.start).getTime()}`,
+  name: 'Unavailable',
+  start: item.start,
+  end: item.end,
+  noFixedEndDateTime: false,
+  state: 'PRIVATE',
+  fieldIds: [fieldId],
+  timeSlotIds: [],
+  eventType: 'EVENT',
+  parentEvent: null,
+  sourceType: 'RENTAL_UNAVAILABLE',
+  sourceId: null,
+  rentalBookingId: null,
+  rentalBookingItemId: null,
+});
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
+  const session = await getOptionalSession(req);
+  const canManageField = session
+    ? await canManageScheduledFields(session, [fieldId])
+    : false;
   const search = req.nextUrl.searchParams;
   const requestedStart = parseDateInput(search.get('start'));
   const requestedEnd = parseDateInput(search.get('end'));
@@ -443,7 +471,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
 
   const where: Record<string, unknown> = {
     fieldIds: { has: fieldId },
-    NOT: { state: 'TEMPLATE' },
+    archivedAt: null,
     start: { lte: rangeEnd },
     OR: [
       { noFixedEndDateTime: true },
@@ -471,12 +499,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
           end: true,
           noFixedEndDateTime: true,
           timeSlotIds: true,
+          state: true,
+          archivedAt: true,
+          hostId: true,
+          assistantHostIds: true,
+          organizationId: true,
         },
       }
       : {}),
   });
 
+  const visibleEventIds = await getVisibleEventIds(req, events as any);
   const filteredByType = events.filter((event) => {
+    if (!visibleEventIds.has(event.id)) {
+      return false;
+    }
     const eventType = String(event.eventType ?? '').toUpperCase();
     const parentEvent = normalizeId((event as any).parentEvent);
     return shouldIncludeEventType(eventType, parentEvent);
@@ -605,7 +642,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
         rentalWindows,
       )
     ))
-    .map((item) => buildRentalBookingItemCalendarEvent(item, fieldId));
+    .map((item, index) => (
+      canManageField
+        ? buildRentalBookingItemCalendarEvent(item, fieldId)
+        : buildPublicRentalBookingBlocker(item, fieldId, index)
+    ));
 
   const eventBoundSlotIds = new Set(
     filteredEvents.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),

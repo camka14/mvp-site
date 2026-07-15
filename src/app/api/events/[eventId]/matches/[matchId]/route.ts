@@ -42,6 +42,7 @@ import {
   type MatchPolicyOverrideInput,
 } from '@/server/matches/matchPolicy';
 import { parseMatchInstantInput } from '@/server/matches/instantPayloads';
+import { assertCanViewEventSchedule } from '@/server/eventVisibility';
 import {
   assertLegacySetScoreUpdateAllowed,
   assertSetSegmentOperationsAllowed,
@@ -1230,9 +1231,21 @@ const notifyHostOfAutoRescheduleFailure = async (
   });
 };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
   try {
     const { eventId, matchId } = await params;
+    const eventAccess = await prisma.events.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        state: true,
+        archivedAt: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
+    });
+    await assertCanViewEventSchedule(req, eventAccess);
     const event = await loadEventWithRelations(eventId);
     const match = event.matches[matchId];
     if (!match) {

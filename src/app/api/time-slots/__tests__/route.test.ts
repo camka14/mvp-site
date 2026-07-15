@@ -40,9 +40,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const canManageScheduledFieldsMock = jest.fn();
+const canManageTimeSlotMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/timeSlotAccess', () => ({
+  canManageScheduledFields: (...args: unknown[]) => canManageScheduledFieldsMock(...args),
+  canManageTimeSlot: (...args: unknown[]) => canManageTimeSlotMock(...args),
+}));
 jest.mock('@/server/legacyFormat', () => ({
   parseDateInput: (value: unknown) => {
     if (value === null || value === undefined || value === '') {
@@ -81,6 +87,8 @@ describe('time-slots routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    canManageScheduledFieldsMock.mockResolvedValue(true);
+    canManageTimeSlotMock.mockResolvedValue(true);
     prismaMock.fields.findMany.mockResolvedValue([]);
     prismaMock.fields.update.mockResolvedValue({});
     prismaMock.organizations.findUnique.mockResolvedValue(null);
@@ -286,6 +294,21 @@ describe('time-slots routes', () => {
     }));
   });
 
+  it('POST rejects a caller who cannot manage the requested field inventory', async () => {
+    canManageScheduledFieldsMock.mockResolvedValueOnce(false);
+
+    const res = await POST(jsonRequest('http://localhost/api/time-slots', {
+      id: 'slot_forbidden_create',
+      scheduledFieldId: 'field_other_org',
+      dayOfWeek: 1,
+      startDate: '2026-01-05T00:00:00.000Z',
+      repeating: true,
+    }));
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.create).not.toHaveBeenCalled();
+  });
+
   it('POST converts offset-less rental slot times using the selected field timezone', async () => {
     prismaMock.fields.findMany.mockResolvedValueOnce([
       { id: 'field_1', lat: 37.8, long: -122.4, organizationId: null },
@@ -391,6 +414,34 @@ describe('time-slots routes', () => {
     }));
   });
 
+  it('PATCH rejects a caller who cannot manage the existing time slot', async () => {
+    canManageTimeSlotMock.mockResolvedValueOnce(false);
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_forbidden_patch', {
+        slot: { price: 2500 },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_forbidden_patch' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH rejects reassignment to a field the caller cannot manage', async () => {
+    canManageScheduledFieldsMock.mockResolvedValueOnce(false);
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_forbidden_reassignment', {
+        slot: { scheduledFieldId: 'field_other_org' },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_forbidden_reassignment' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
   it('PATCH strips legacy and immutable fields before prisma update', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: true });
     prismaMock.timeSlots.update.mockResolvedValueOnce({
@@ -469,6 +520,27 @@ describe('time-slots routes', () => {
       },
     });
     expect(prismaMock.timeSlots.delete).toHaveBeenCalledWith({ where: { id: 'slot_delete' } });
+    expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
+  });
+
+  it('DELETE rejects a caller who cannot manage the time slot', async () => {
+    canManageTimeSlotMock.mockResolvedValueOnce(false);
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_forbidden_delete',
+      scheduledFieldId: 'field_other_org',
+      scheduledFieldIds: ['field_other_org'],
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+    });
+
+    const res = await DELETE(
+      new NextRequest('http://localhost/api/time-slots/slot_forbidden_delete', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'slot_forbidden_delete' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.timeSlots.delete).not.toHaveBeenCalled();
     expect(prismaMock.timeSlots.update).not.toHaveBeenCalled();
   });
 

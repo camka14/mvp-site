@@ -57,11 +57,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const getTokenFromRequestMock = jest.fn();
 const verifySessionTokenMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  requireSession: requireSessionMock,
+  getOptionalSession: getOptionalSessionMock,
+}));
 jest.mock('@/lib/authServer', () => ({
   getTokenFromRequest: (...args: any[]) => getTokenFromRequestMock(...args),
   verifySessionToken: (...args: any[]) => verifySessionTokenMock(...args),
@@ -120,6 +124,7 @@ describe('event template privacy routes', () => {
     prismaMock.events.count.mockResolvedValue(0);
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
+    getOptionalSessionMock.mockResolvedValue(null);
   });
 
   it('excludes templates from GET /api/events when no state filter is provided', async () => {
@@ -854,7 +859,7 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
+        where: expect.objectContaining({ archivedAt: null }),
       }),
     );
   });
@@ -1005,12 +1010,15 @@ describe('event template privacy routes', () => {
     expect(json.events).toHaveLength(0);
   });
 
-  it('excludes template matches from GET /api/fields/:id/matches results', async () => {
+  it('excludes non-public matches from GET /api/fields/:id/matches results', async () => {
     prismaMock.matches.findMany.mockResolvedValueOnce([
       { id: 'match_published', eventId: 'event_published', fieldId: 'field_1' },
-      { id: 'match_template', eventId: 'event_template', fieldId: 'field_1' },
+      { id: 'match_private', eventId: 'event_private', fieldId: 'field_1' },
     ]);
-    prismaMock.events.findMany.mockResolvedValueOnce([{ id: 'event_published' }]);
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      { id: 'event_published', state: 'PUBLISHED', hostId: 'host_1', assistantHostIds: [], organizationId: null },
+      { id: 'event_private', state: 'PRIVATE', hostId: 'host_2', assistantHostIds: [], organizationId: null },
+    ]);
 
     const res = await matchesByFieldGet(
       new NextRequest('http://localhost/api/fields/field_1/matches'),
@@ -1022,7 +1030,7 @@ describe('event template privacy routes', () => {
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          NOT: { state: 'TEMPLATE' },
+          archivedAt: null,
         }),
       }),
     );
