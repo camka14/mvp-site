@@ -262,6 +262,25 @@ import { StaffManagementPanel } from './eventForm/sections/StaffManagementPanel'
 import { StaffSection } from './eventForm/sections/StaffSection';
 import { ManualPaymentsSection } from './eventForm/sections/ManualPaymentsSection';
 import type { EventFormHandle, EventFormProps } from './eventForm/types';
+import {
+    SetupModeControl,
+    SimpleSetupPageFrame,
+    SimpleSetupProgressRail,
+} from './eventForm/simpleSetup/SimpleSetupNavigation';
+import {
+    describeEventSetupTransition,
+    resolveEventSetupCapabilities,
+    resolveEventSetupPages,
+    resolveValidationPage,
+} from './eventForm/simpleSetup/resolveEventSetup';
+import { SimpleSetupPlanningPage } from './eventForm/simpleSetup/SimpleSetupPlanningPage';
+import { SimpleSetupDocumentsPage } from './eventForm/simpleSetup/SimpleSetupDocumentsPage';
+import type {
+    EventSetupChoices,
+    EventSetupMode,
+    EventSetupPageId,
+    EventSetupResolverInput,
+} from './eventForm/simpleSetup/types';
 
 type EventType = Event['eventType'];
 
@@ -291,11 +310,52 @@ const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-league-scoring-config': true,
     'section-schedule-config': true,
 };
+const SIMPLE_PLANNING_PAGE_IDS = new Set<EventSetupPageId>([
+    'format',
+    'participation-plan',
+    'schedule-plan',
+    'competition-plan',
+    'registration-plan',
+    'operations-plan',
+    'review-publish',
+]);
 const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const createSlotForm = createLeagueSlotForm;
+
+const buildDefaultSetupChoices = (values?: Partial<EventFormValues>): EventSetupChoices => {
+    const isExternal = Boolean(values?.isAffiliateEvent || hasAffiliateUrl(values?.affiliateUrl));
+    const hasDivisionPrice = Array.isArray(values?.divisionDetails)
+        && values.divisionDetails.some((division) => Number(division.price) > 0);
+    const hasAssignedStaff = Boolean(
+        values?.hostId
+        || values?.assistantHostIds?.length
+        || values?.officialIds?.length
+        || values?.pendingStaffInvites?.length,
+    );
+    const hasDedicatedOfficials = Boolean(
+        values?.officialIds?.length
+        || values?.eventOfficials?.length
+        || values?.officialPositions?.length,
+    );
+
+    return {
+        scheduleStyle: values?.eventType === 'EVENT' || isExternal ? 'FIXED_WINDOW' : 'WEEKLY_SLOTS',
+        resourceSource: isExternal
+            ? 'LOCATION_ONLY'
+            : values?.selectedFieldIds?.length ? 'ORGANIZATION' : 'CUSTOM',
+        customizeMatchRules: Boolean(values?.matchRulesOverride),
+        customizeScoring: false,
+        paidRegistration: Number(values?.price) > 0 || hasDivisionPrice,
+        useRequiredDocuments: Boolean(values?.requiredTemplateIds?.length),
+        useRegistrationQuestions: false,
+        useStaffAssignments: hasAssignedStaff,
+        useDedicatedOfficials: hasDedicatedOfficials,
+        useCustomOfficialPositions: Boolean(values?.officialPositions?.length),
+    };
+};
 
 export type { EventFormHandle, EventFormProps, RentalPurchaseContext } from './eventForm/types';
 
@@ -323,6 +383,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     formId,
     defaultLocation,
     isCreateMode = false,
+    initialSetupMode,
     rentalPurchase,
     templateOrganizationId: templateOrganizationIdProp,
     onDirtyStateChange,
@@ -344,6 +405,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
+    const defaultSetupMode = initialSetupMode ?? (isCreateMode ? 'SIMPLE' : 'ADVANCED');
+    const [setupMode, setSetupMode] = useState<EventSetupMode>(defaultSetupMode);
+    const [currentSimplePageId, setCurrentSimplePageId] = useState<EventSetupPageId>('format');
+    const [completedSimplePageIds, setCompletedSimplePageIds] = useState<Set<EventSetupPageId>>(() => new Set());
+    const [simpleSetupChoices, setSimpleSetupChoices] = useState<EventSetupChoices>(() => buildDefaultSetupChoices());
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
     const resolvedOrganizationFields = resolvedOrganization?.fields;
@@ -373,6 +439,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isCreateMode,
         open,
     });
+
+    useEffect(() => {
+        if (registrationQuestionDrafts.length === 0) return;
+        setSimpleSetupChoices((current) => current.useRegistrationQuestions
+            ? current
+            : { ...current, useRegistrationQuestions: true });
+    }, [registrationQuestionDrafts.length]);
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => buildSportOptions(sports), [sports]);
@@ -522,13 +595,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         onDirtyStateChange?.(false);
         const nextDefaults = buildDefaultFormValues();
+        setSetupMode(defaultSetupMode);
+        setCurrentSimplePageId('format');
+        setCompletedSimplePageIds(new Set());
+        setSimpleSetupChoices(buildDefaultSetupChoices(nextDefaults));
         previousEventTypeRef.current = nextDefaults.eventType;
         previousEventFieldLocationRef.current = defaultFieldLocationForEvent(nextDefaults.location);
-        dirtyBaselineValuesRef.current = null;
+        dirtyBaselineValuesRef.current = nextDefaults;
         reset(nextDefaults);
     }, [
         activeEditingEvent,
         buildDefaultFormValues,
+        defaultSetupMode,
         isCreateMode,
         onDirtyStateChange,
         onDraftStateChange,
@@ -551,12 +629,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const eventData = formValues;
     const isTryoutEvent = eventData.eventType === 'TRYOUT';
-    const selectedTryoutSourceDivisionIds = useMemo(
-        () => (eventData.divisionDetails ?? [])
-            .map((division) => division.sourceDivisionId)
-            .filter((divisionId): divisionId is string => Boolean(divisionId)),
-        [eventData.divisionDetails],
-    );
     const handleTryoutDivisionSelection = useCallback((sourceDivisions: Division[]) => {
         const existingDetails = eventData.divisionDetails ?? [];
         const existingBySourceId = new Map(
@@ -582,6 +654,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
         setValue('teamSignup', false, { shouldDirty: true, shouldValidate: true });
     }, [eventData.$id, eventData.divisionDetails, eventData.start, setValue]);
+    const handleTryoutPriceChange = useCallback((sourceDivisionId: string, price: number) => {
+        const nextDetails = (eventData.divisionDetails ?? []).map((division) => (
+            division.sourceDivisionId === sourceDivisionId
+                ? { ...division, price: Math.max(0, Math.trunc(price)) }
+                : division
+        ));
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.divisionDetails, setValue]);
     const lockedEventTypeTagSlugs = useMemo(
         () => getLockedEventTypeTagSlugs(eventData.eventType),
         [eventData.eventType],
@@ -3448,6 +3528,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return;
             }
 
+            // Do not absorb a user's first edit into the initialization baseline.
+            // Normalization writes are not dirty; an actual form edit is.
+            if (isDirty) {
+                pendingInitialDirtyRebaseRef.current = false;
+                setIsDirtyTrackingReady(true);
+                return;
+            }
+
             const latestDraftFingerprint = JSON.stringify(buildDraftEvent(getValues()));
             if (latestDraftFingerprint !== expectedDraftFingerprint) {
                 return;
@@ -3472,6 +3560,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fieldsLoading,
         formValues,
         getValues,
+        isDirty,
         onDirtyStateChange,
         open,
         reset,
@@ -3806,6 +3895,291 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setValue('manualPaymentInstructions', '', { shouldDirty: true, shouldValidate: true });
     }, [expandSection, setValue]);
 
+    const setupResolverInput = useMemo<EventSetupResolverInput>(() => ({
+        eventType: eventData.eventType,
+        isExternalRegistration: isAffiliateEvent,
+        singleDivision: Boolean(eventData.singleDivision),
+        teamSignup: Boolean(eventData.teamSignup),
+        includePlayoffs: Boolean(leagueData.includePlayoffs),
+        includePoolPlay: eventData.eventType === 'TOURNAMENT' && Boolean(leagueData.includePlayoffs),
+        splitLeaguePlayoffDivisions: Boolean(eventData.splitLeaguePlayoffDivisions),
+        hasImmutableRentalResources: usesRentalSlots,
+        organizationFeatures: resolvedOrganization?.enabledFeatures,
+        choices: simpleSetupChoices,
+        currentPageId: currentSimplePageId,
+        completePageIds: completedSimplePageIds,
+    }), [
+        completedSimplePageIds,
+        currentSimplePageId,
+        eventData.eventType,
+        eventData.singleDivision,
+        eventData.splitLeaguePlayoffDivisions,
+        eventData.teamSignup,
+        isAffiliateEvent,
+        leagueData.includePlayoffs,
+        resolvedOrganization?.enabledFeatures,
+        simpleSetupChoices,
+        usesRentalSlots,
+    ]);
+    const simpleSetupCapabilities = useMemo(
+        () => resolveEventSetupCapabilities(setupResolverInput),
+        [setupResolverInput],
+    );
+    const simpleSetupPages = useMemo(
+        () => resolveEventSetupPages(setupResolverInput),
+        [setupResolverInput],
+    );
+    const currentSimplePage = simpleSetupPages.find((page) => page.id === currentSimplePageId)
+        ?? simpleSetupPages[0];
+    const currentSimplePageIndex = simpleSetupPages.findIndex((page) => page.id === currentSimplePageId);
+    const previousUsedSimplePage = simpleSetupPages
+        .slice(0, Math.max(0, currentSimplePageIndex))
+        .reverse()
+        .find((page) => page.used);
+    const nextUsedSimplePage = simpleSetupPages
+        .slice(currentSimplePageIndex + 1)
+        .find((page) => page.used);
+    const isFirstUsedSimplePage = !previousUsedSimplePage;
+    const isLastUsedSimplePage = !nextUsedSimplePage;
+
+    const confirmSimpleSetupTransition = useCallback((nextInput: EventSetupResolverInput): boolean => {
+        const impact = describeEventSetupTransition(setupResolverInput, nextInput);
+        const affectsConfiguredPage = impact.pageIds.some((pageId) => completedSimplePageIds.has(pageId));
+        if (!affectsConfiguredPage || impact.categories.length === 0 || typeof window === 'undefined') {
+            return true;
+        }
+        return window.confirm(
+            `This change affects ${impact.categories.join(', ')}. Incompatible values may be cleared. Continue?`,
+        );
+    }, [completedSimplePageIds, setupResolverInput]);
+
+    const invalidateSimpleSetupPages = useCallback((pageIds: Iterable<EventSetupPageId>) => {
+        setCompletedSimplePageIds((current) => {
+            const next = new Set(current);
+            for (const pageId of pageIds) next.delete(pageId);
+            return next;
+        });
+    }, []);
+
+    const handleEventTypeChange = useCallback((nextType: Event['eventType'], applyValue: (eventType: Event['eventType']) => void) => {
+        const nextInput = { ...setupResolverInput, eventType: nextType };
+        if (!confirmSimpleSetupTransition(nextInput)) return;
+        invalidateSimpleSetupPages(describeEventSetupTransition(setupResolverInput, nextInput).pageIds);
+        clearErrors('leagueSlots');
+        const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
+        const enforcingTryoutSettings = !isAffiliateEvent && nextType === 'TRYOUT';
+        applyValue(nextType);
+        setValue(
+            'tags',
+            syncEventTypeTagsForEventType(getValues('tags'), nextType),
+            { shouldDirty: true, shouldValidate: true },
+        );
+        if (enforcingTeamSettings) {
+            setValue('teamSignup', true, { shouldDirty: true });
+            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+            return;
+        }
+        if (enforcingTryoutSettings) {
+            setValue('teamSignup', false, { shouldDirty: true });
+            setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
+            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+            setValue('divisionDetails', [], { shouldDirty: true, shouldValidate: true });
+            setValue('divisions', [], { shouldDirty: true, shouldValidate: true });
+            return;
+        }
+        setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+        const parsedStart = parseLocalDateTime(getValues('start'));
+        const parsedEnd = parseLocalDateTime(getValues('end'));
+        if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+            setValue('end', formatLocalDateTime(new Date(parsedStart.getTime() + 60 * 60 * 1000)), {
+                shouldDirty: true,
+                shouldValidate: true,
+            });
+        }
+    }, [
+        clearErrors,
+        confirmSimpleSetupTransition,
+        getValues,
+        invalidateSimpleSetupPages,
+        isAffiliateEvent,
+        setValue,
+        setupResolverInput,
+    ]);
+
+    const handleExternalRegistrationChange = useCallback((checked: boolean, applyValue: (checked: boolean) => void) => {
+        const nextInput = { ...setupResolverInput, isExternalRegistration: checked };
+        if (!confirmSimpleSetupTransition(nextInput)) return;
+        invalidateSimpleSetupPages(describeEventSetupTransition(setupResolverInput, nextInput).pageIds);
+        applyValue(checked);
+        applyAffiliateEventSimplifications(checked);
+    }, [
+        applyAffiliateEventSimplifications,
+        confirmSimpleSetupTransition,
+        invalidateSimpleSetupPages,
+        setupResolverInput,
+    ]);
+
+    const handleSimpleSingleDivisionChange = useCallback((
+        singleDivision: boolean,
+        applyValue: (singleDivision: boolean) => void,
+    ) => {
+        const nextInput = { ...setupResolverInput, singleDivision };
+        if (!confirmSimpleSetupTransition(nextInput)) return;
+        invalidateSimpleSetupPages(describeEventSetupTransition(setupResolverInput, nextInput).pageIds);
+        applyValue(singleDivision);
+    }, [confirmSimpleSetupTransition, invalidateSimpleSetupPages, setupResolverInput]);
+
+    const handleSimplePlayoffPlanningChange = useCallback((
+        updates: Pick<EventSetupResolverInput, 'includePlayoffs' | 'includePoolPlay' | 'splitLeaguePlayoffDivisions'>,
+        applyValue: () => void,
+    ) => {
+        const nextInput = { ...setupResolverInput, ...updates };
+        if (!confirmSimpleSetupTransition(nextInput)) return;
+        invalidateSimpleSetupPages(describeEventSetupTransition(setupResolverInput, nextInput).pageIds);
+        applyValue();
+    }, [confirmSimpleSetupTransition, invalidateSimpleSetupPages, setupResolverInput]);
+
+    const updateSimpleSetupChoices = useCallback((updates: Partial<EventSetupChoices>) => {
+        const turningOffConfiguredData = (
+            updates.paidRegistration === false && (
+                Number(eventData.price) > 0
+                || (eventData.divisionDetails ?? []).some((division) => Number(division.price) > 0)
+            )
+        ) || (updates.useRequiredDocuments === false && Boolean(eventData.requiredTemplateIds?.length))
+            || (updates.useRegistrationQuestions === false && registrationQuestionDrafts.length > 0)
+            || (updates.customizeMatchRules === false && Boolean(eventData.matchRulesOverride))
+            || (updates.customizeScoring === false && Boolean(eventData.leagueScoringConfig))
+            || (updates.useStaffAssignments === false && Boolean(
+                eventData.assistantHostIds?.length || eventData.pendingStaffInvites?.length,
+            ))
+            || (updates.useDedicatedOfficials === false && Boolean(
+                eventData.officialIds?.length || eventData.eventOfficials?.length,
+            ));
+        if (
+            turningOffConfiguredData
+            && typeof window !== 'undefined'
+            && !window.confirm('Turning this option off clears its configured values. Continue?')
+        ) {
+            return;
+        }
+        if (updates.paidRegistration === false) {
+            setValue('price', 0, { shouldDirty: true, shouldValidate: true });
+            setValue('allowPaymentPlans', false, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentCount', 0, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentAmounts', [], { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', [], { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueRelativeDays', [], { shouldDirty: true, shouldValidate: true });
+            setValue('divisionDetails', (eventData.divisionDetails ?? []).map((division) => ({
+                ...division,
+                price: 0,
+                allowPaymentPlans: false,
+                installmentCount: 0,
+                installmentAmounts: [],
+                installmentDueDates: [],
+                installmentDueRelativeDays: [],
+            })), { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.useRequiredDocuments === false) {
+            setValue('requiredTemplateIds', [], { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.useRegistrationQuestions === false) {
+            setRegistrationQuestionDrafts([]);
+        }
+        if (updates.customizeMatchRules === false) {
+            setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: true });
+            setValue('autoCreatePointMatchIncidents', false, { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.customizeScoring === false) {
+            setValue('leagueScoringConfig', null, { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.useStaffAssignments === false) {
+            setValue('assistantHostIds', [], { shouldDirty: true, shouldValidate: true });
+            setValue('pendingStaffInvites', [], { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.useDedicatedOfficials === false) {
+            setValue('officialIds', [], { shouldDirty: true, shouldValidate: true });
+            setValue('eventOfficials', [], { shouldDirty: true, shouldValidate: true });
+            setValue('officialSchedulingMode', 'OFF', { shouldDirty: true, shouldValidate: true });
+        }
+        if (updates.useCustomOfficialPositions === false) {
+            setValue('officialPositions', [], { shouldDirty: true, shouldValidate: true });
+        }
+        setSimpleSetupChoices((current) => ({ ...current, ...updates }));
+    }, [eventData, registrationQuestionDrafts.length, setRegistrationQuestionDrafts, setValue]);
+
+    const validateSimpleSetupPage = useCallback(async (pageId: EventSetupPageId): Promise<boolean> => {
+        if (pageId === 'format') return trigger(['eventType', 'isAffiliateEvent']);
+        if (pageId === 'basics') {
+            return trigger(isAffiliateEvent
+                ? ['name', 'sportId', 'description', 'affiliateUrl']
+                : ['name', 'sportId', 'description']);
+        }
+        if (pageId === 'participation-plan') {
+            return trigger(['teamSignup', 'teamSizeLimit', 'singleDivision', 'registrationByDivisionType']);
+        }
+        if (pageId === 'divisions') {
+            return trigger(isTryoutEvent
+                ? ['divisions', 'divisionDetails']
+                : ['divisionDetails', 'playoffDivisionDetails', 'maxParticipants']);
+        }
+        if (pageId === 'schedule-location') {
+            return trigger(['start', 'end', 'location', 'coordinates', 'selectedFieldIds', 'leagueSlots']);
+        }
+        if (pageId === 'competition-rules') {
+            return trigger(['leagueData', 'tournamentData', 'playoffData', 'matchRulesOverride', 'leagueScoringConfig']);
+        }
+        if (pageId === 'pricing-registration') {
+            return trigger(['price', 'allowPaymentPlans', 'registrationPaymentMode', 'registrationCutoffHours', 'cancellationRefundHours']);
+        }
+        if (pageId === 'documents-questions') return trigger(['requiredTemplateIds']);
+        if (pageId === 'staff-operations') {
+            return trigger(['hostId', 'assistantHostIds', 'officialIds', 'officialPositions', 'officialSchedulingMode']);
+        }
+        if (pageId === 'review-publish') {
+            const valid = await validateDraft();
+            if (!valid) {
+                const firstError = lastValidationErrorsRef.current[0];
+                if (firstError) setCurrentSimplePageId(resolveValidationPage(firstError.path));
+            }
+            return valid;
+        }
+        return true;
+    }, [isAffiliateEvent, isTryoutEvent, trigger, validateDraft]);
+
+    const selectSimpleSetupPage = useCallback((pageId: EventSetupPageId) => {
+        const page = simpleSetupPages.find((candidate) => candidate.id === pageId);
+        if (!page) return;
+        setCurrentSimplePageId(page.status === 'locked' && page.prerequisitePageId
+            ? page.prerequisitePageId
+            : page.id);
+    }, [simpleSetupPages]);
+
+    const handleSimpleSetupBack = useCallback(() => {
+        if (previousUsedSimplePage) setCurrentSimplePageId(previousUsedSimplePage.id);
+    }, [previousUsedSimplePage]);
+
+    const handleSimpleSetupNext = useCallback(async () => {
+        if (!await validateSimpleSetupPage(currentSimplePageId)) return;
+        setCompletedSimplePageIds((current) => new Set(current).add(currentSimplePageId));
+        if (nextUsedSimplePage) setCurrentSimplePageId(nextUsedSimplePage.id);
+    }, [currentSimplePageId, nextUsedSimplePage, validateSimpleSetupPage]);
+    const isSimpleDivisionsPage = setupMode === 'SIMPLE' && currentSimplePageId === 'divisions';
+    const isSimpleCompetitionRulesPage = setupMode === 'SIMPLE' && currentSimplePageId === 'competition-rules';
+    const isSimplePricingPage = setupMode === 'SIMPLE' && currentSimplePageId === 'pricing-registration';
+    const wrapSetupPage = (children: React.ReactNode) => setupMode === 'SIMPLE' ? (
+        <SimpleSetupPageFrame
+            page={currentSimplePage}
+            isFirstUsedPage={isFirstUsedSimplePage}
+            isLastUsedPage={isLastUsedSimplePage}
+            onBack={handleSimpleSetupBack}
+            onNext={() => { void handleSimpleSetupNext(); }}
+            onOpenControllerPage={selectSimpleSetupPage}
+        >
+            {children}
+        </SimpleSetupPageFrame>
+    ) : children;
+
     const sheetContent = (
         <EventFormShell
             formId={formId}
@@ -3815,8 +4189,56 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             leagueWarning={leagueWarning}
             leagueError={leagueError}
             onSelectSection={scrollToSection}
+            hideSectionNavigation={setupMode === 'SIMPLE'}
         >
-                        <BasicInformationSection
+                {wrapSetupPage(<>
+                    {setupMode === 'SIMPLE' && SIMPLE_PLANNING_PAGE_IDS.has(currentSimplePageId) ? (
+                        <SimpleSetupPlanningPage
+                            pageId={currentSimplePageId}
+                            control={control}
+                            eventData={eventData}
+                            eventTypeOptions={eventTypeOptions}
+                            capabilities={simpleSetupCapabilities}
+                            choices={simpleSetupChoices}
+                            includePlayoffs={Boolean(leagueData.includePlayoffs)}
+                            fieldCount={fieldCount}
+                            setFieldCount={setFieldCount}
+                            onChoicesChange={updateSimpleSetupChoices}
+                            onEventTypeChange={handleEventTypeChange}
+                            onExternalRegistrationChange={handleExternalRegistrationChange}
+                            onSingleDivisionChange={handleSimpleSingleDivisionChange}
+                            onIncludePlayoffsChange={(checked) => handleSimplePlayoffPlanningChange({
+                                includePlayoffs: checked,
+                                includePoolPlay: false,
+                                splitLeaguePlayoffDivisions: checked
+                                    ? setupResolverInput.splitLeaguePlayoffDivisions
+                                    : false,
+                            }, () => handleIncludePlayoffsToggle(checked))}
+                            onIncludePoolPlayChange={(checked) => {
+                                handleSimplePlayoffPlanningChange({
+                                    includePlayoffs: checked,
+                                    includePoolPlay: checked,
+                                    splitLeaguePlayoffDivisions: false,
+                                }, () => {
+                                    setLeagueData((previous) => ({
+                                        ...previous,
+                                        includePlayoffs: checked,
+                                        playoffTeamCount: checked ? previous.playoffTeamCount : undefined,
+                                    }));
+                                });
+                            }}
+                            onSplitLeaguePlayoffDivisionsChange={(checked, applyValue) => {
+                                handleSimplePlayoffPlanningChange({
+                                    includePlayoffs: setupResolverInput.includePlayoffs,
+                                    includePoolPlay: setupResolverInput.includePoolPlay,
+                                    splitLeaguePlayoffDivisions: checked,
+                                }, () => applyValue(checked));
+                            }}
+                            isImmutableField={isImmutableField}
+                        />
+                    ) : null}
+
+                    {setupMode === 'ADVANCED' || currentSimplePageId === 'basics' ? <BasicInformationSection
                             collapsed={collapsedSections['section-basic-information']}
                             control={control}
                             errors={errors}
@@ -3835,9 +4257,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             setValue={setValue}
                             onToggle={() => toggleSectionCollapse('section-basic-information')}
                             onImageChange={handleImageChange}
-                        />
+                        /> : null}
 
-                        <EventDetailsPanel
+                    {setupMode === 'ADVANCED'
+                    || currentSimplePageId === 'divisions'
+                    || currentSimplePageId === 'schedule-location'
+                    || currentSimplePageId === 'pricing-registration' ? <EventDetailsPanel
+                            title={setupMode === 'SIMPLE' && currentSimplePageId === 'divisions'
+                                ? 'Participant Eligibility'
+                                : undefined}
                             collapsed={collapsedSections['section-event-details']}
                             control={control}
                             eventData={eventData}
@@ -3859,40 +4287,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             comboboxProps={sharedComboboxProps}
                             isImmutableField={isImmutableField}
                             onToggle={() => toggleSectionCollapse('section-event-details')}
-                            onEventTypeChange={(nextType, applyValue) => {
-                                clearErrors('leagueSlots');
-                                const enforcingTeamSettings = !isAffiliateEvent && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
-                                const enforcingTryoutSettings = !isAffiliateEvent && nextType === 'TRYOUT';
-                                applyValue(nextType);
-                                setValue(
-                                    'tags',
-                                    syncEventTypeTagsForEventType(getValues('tags'), nextType),
-                                    { shouldDirty: true, shouldValidate: true },
-                                );
-                                if (enforcingTeamSettings) {
-                                    setValue('teamSignup', true, { shouldDirty: true });
-                                    setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                } else if (enforcingTryoutSettings) {
-                                    setValue('teamSignup', false, { shouldDirty: true });
-                                    setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
-                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                    setValue('divisionDetails', [], { shouldDirty: true, shouldValidate: true });
-                                    setValue('divisions', [], { shouldDirty: true, shouldValidate: true });
-                                } else {
-                                    setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                    const parsedStart = parseLocalDateTime(getValues('start'));
-                                    const parsedEnd = parseLocalDateTime(getValues('end'));
-                                    if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                        const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                        setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                    }
-                                }
-                            }}
-                            onAffiliateEventChange={(checked, applyValue) => {
-                                applyValue(checked);
-                                applyAffiliateEventSimplifications(checked);
-                            }}
+                            onEventTypeChange={handleEventTypeChange}
+                            onAffiliateEventChange={handleExternalRegistrationChange}
                             onIncludePlayoffsChange={handleIncludePlayoffsToggle}
                             onIncludePoolPlayChange={(checked) => {
                                 setLeagueData((prev) => ({
@@ -3945,8 +4341,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             templateOrganizationId={templateOrganizationId}
                             templateOptions={templateOptions}
                             normalizeNumberValue={normalizeNumber}
-                            showAffiliateListingControls={isAffiliateEvent}
-                            showRequiredDocumentControls={!isAffiliateEvent}
+                            showAffiliateListingControls={setupMode === 'ADVANCED' && isAffiliateEvent}
+                            showRequiredDocumentControls={setupMode === 'ADVANCED' && !isAffiliateEvent}
                             localFieldCreationControl={isAffiliateEvent ? null : localFieldCreationControl}
                             registrationQuestionsEditor={isAffiliateEvent ? null : registrationQuestionsEditor}
                             hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
@@ -3960,9 +4356,31 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             fieldNamesCollapsed={fieldNamesCollapsed}
                             setFieldNamesCollapsed={setFieldNamesCollapsed}
                             onLocalFieldNameChange={handleLocalFieldNameChange}
-                        />
+                            showTypeControls={setupMode === 'ADVANCED'}
+                            showScheduleTimingControls={setupMode === 'ADVANCED' || currentSimplePageId === 'schedule-location'}
+                            showRegistrationTimingControls={setupMode === 'ADVANCED' || currentSimplePageId === 'pricing-registration'}
+                            showLocationControls={setupMode === 'ADVANCED' || currentSimplePageId === 'schedule-location'}
+                            showAgeControls={setupMode === 'ADVANCED' || currentSimplePageId === 'divisions'}
+                            showRegistrationQuestions={setupMode === 'ADVANCED'}
+                            showCapacityWarning={setupMode === 'ADVANCED' || currentSimplePageId === 'divisions'}
+                        /> : null}
 
-                        {showManualPaymentsSection ? (
+                    {setupMode === 'SIMPLE' && currentSimplePageId === 'documents-questions' ? (
+                        <SimpleSetupDocumentsPage
+                            control={control}
+                            templatesLoading={templatesLoading}
+                            templatesError={templatesError}
+                            templateOrganizationId={templateOrganizationId}
+                            templateOptions={templateOptions}
+                            comboboxProps={sharedComboboxProps}
+                            showDocuments={simpleSetupChoices.useRequiredDocuments}
+                            showQuestions={simpleSetupChoices.useRegistrationQuestions}
+                            registrationQuestionsEditor={registrationQuestionsEditor}
+                            isImmutableField={isImmutableField}
+                        />
+                    ) : null}
+
+                        {showManualPaymentsSection && (setupMode === 'ADVANCED' || isSimplePricingPage) ? (
                             <ManualPaymentsSection
                                 collapsed={collapsedSections['section-manual-payments']}
                                 onToggle={() => toggleSectionCollapse('section-manual-payments')}
@@ -4025,7 +4443,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         ) : null}
 
                         <MatchRulesConfigSection
-                            visible={showMatchRulesSection}
+                            visible={showMatchRulesSection && (
+                                setupMode === 'ADVANCED'
+                                || (isSimpleCompetitionRulesPage && simpleSetupChoices.customizeMatchRules)
+                            )}
                             collapsed={collapsedSections['section-match-rules']}
                             sport={selectedSportForOfficials}
                             usesSets={eventData.eventType === 'LEAGUE'
@@ -4046,7 +4467,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             onToggle={() => toggleSectionCollapse('section-match-rules')}
                         />
 
-                        {showStaffSection ? (
+                        {showStaffSection && (setupMode === 'ADVANCED' || currentSimplePageId === 'staff-operations') ? (
                             <StaffSection
                                 collapsed={collapsedSections['section-officials']}
                                 onToggle={() => toggleSectionCollapse('section-officials')}
@@ -4127,20 +4548,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </StaffSection>
                         ) : null}
 
-                        <DivisionSettingsSection
+                        {(setupMode === 'ADVANCED'
+                        || isSimpleDivisionsPage
+                        || isSimpleCompetitionRulesPage
+                        || (isSimplePricingPage && !isTryoutEvent)) ? <DivisionSettingsSection
                             collapsed={collapsedSections['section-division-settings']}
                             title="Divisions"
                             onToggle={() => toggleSectionCollapse('section-division-settings')}
                         >
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
-                                {isTryoutEvent ? (
+                                {(setupMode === 'ADVANCED' || isSimpleDivisionsPage) && isTryoutEvent ? (
                                     <TryoutDivisionSelector
                                         organizationId={organizationHostedEventId || undefined}
-                                        selectedSourceDivisionIds={selectedTryoutSourceDivisionIds}
+                                        preferredSportId={eventData.sportConfig?.$id}
+                                        selectedDivisions={eventData.divisionDetails ?? []}
+                                        maxPriceCents={MAX_PRICE_CENTS}
                                         disabled={isImmutableField('divisions')}
                                         onChange={handleTryoutDivisionSelection}
+                                        onTryoutPriceChange={handleTryoutPriceChange}
+                                        validationMessage={
+                                            (errors.divisions?.message as string | undefined)
+                                            ?? (errors.divisionDetails?.message as string | undefined)
+                                        }
                                     />
-                                ) : (
+                                ) : setupMode === 'ADVANCED' ? (
                                 <DivisionModeControls
                                     control={control}
                                     supportsEditableTeamSignup={supportsEditableTeamSignup}
@@ -4153,7 +4584,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     hasExternalRentalField={hasExternalRentalField}
                                     isImmutableField={isImmutableField}
                                 />
-                                )}
+                                ) : null}
                                 {!isAffiliateEvent && eventData.singleDivision ? (
                                     <SingleDivisionDefaultsPanel
                                         control={control}
@@ -4173,6 +4604,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         organizerManualTaxSelected={organizerManualTaxSelected}
                                         organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
                                         connectingStripe={connectingStripe}
+                                        showCapacityControls={setupMode === 'ADVANCED' || isSimpleDivisionsPage}
+                                        showPricingControls={setupMode === 'ADVANCED' || (isSimplePricingPage && simpleSetupChoices.paidRegistration)}
+                                        showPaymentPlanControls={setupMode === 'ADVANCED' || (isSimplePricingPage && simpleSetupChoices.paidRegistration)}
+                                        showScheduleControls={setupMode === 'ADVANCED' || isSimpleCompetitionRulesPage}
                                         isImmutableField={isImmutableField}
                                         playoffTeamCountError={errors.leagueData?.playoffTeamCount?.message as string | undefined}
                                         setLeagueData={setLeagueData}
@@ -4211,7 +4646,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         comboboxProps={sharedComboboxProps}
                                         onDivisionKindChange={handleDivisionEditorKindChange}
                                     /> : null}
-                                    {!isTryoutEvent || divisionEditor.editingId ? <DivisionEditorLeaguePanel
+                                    {!isTryoutEvent ? <DivisionEditorLeaguePanel
                                         divisionEditor={divisionEditor}
                                         eventData={isAffiliateEvent ? {
                                             ...eventData,
@@ -4228,11 +4663,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         maxPriceCents={MAX_PRICE_CENTS}
                                         maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
                                         numberInputStyles={alignedDetailsFieldStyles}
+                                        hideCapacity={setupMode === 'SIMPLE' && !isSimpleDivisionsPage}
+                                        hidePrice={setupMode === 'SIMPLE' && (!isSimplePricingPage || !simpleSetupChoices.paidRegistration)}
                                         simplePriceInput={isAffiliateEvent || isTryoutEvent}
                                         showCapacityForSingleDivision={isAffiliateEvent || isTryoutEvent}
                                         showPriceForSingleDivision={isAffiliateEvent || isTryoutEvent}
-                                        showPaymentPlanControls={!isAffiliateEvent && !isTryoutEvent}
-                                        showOperationalControls={!isAffiliateEvent && !isTryoutEvent}
+                                        showPaymentPlanControls={!isAffiliateEvent && !isTryoutEvent && (
+                                            setupMode === 'ADVANCED'
+                                            || (isSimplePricingPage && simpleSetupChoices.paidRegistration)
+                                        )}
+                                        showOperationalControls={!isAffiliateEvent && !isTryoutEvent && (setupMode === 'ADVANCED' || isSimpleCompetitionRulesPage)}
                                         showSingleDivisionNotice={!isAffiliateEvent && !isTryoutEvent}
                                         genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
                                         skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
@@ -4279,7 +4719,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             }}
                                             onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
                                         /> : null}
-                                        {!isTryoutEvent || divisionEditor.editingId ? <DivisionEditorActionsAndErrors
+                                        {!isTryoutEvent ? <DivisionEditorActionsAndErrors
                                             isEditing={Boolean(divisionEditor.editingId)}
                                             disabled={isImmutableField('divisions')}
                                             editorError={divisionEditor.error}
@@ -4290,7 +4730,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onSave={handleSaveDivisionDetail}
                                             onCancelEdit={resetDivisionEditor}
                                         /> : null}
-                                        <DivisionSummaryList
+                                        {!isTryoutEvent ? <DivisionSummaryList
                                             divisionDetails={eventData.divisionDetails || []}
                                             playoffDivisionDetails={eventData.playoffDivisionDetails || []}
                                             singleDivision={eventData.singleDivision}
@@ -4314,9 +4754,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onRemoveDivision={handleRemoveDivisionDetail}
                                             onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
                                             onRemovePlayoffDivision={handleRemovePlayoffDivision}
-                                        />
+                                        /> : null}
                                         </>
-                                    ) : (
+                                    ) : !isTryoutEvent ? (
                                         <>
                                             <DivisionEditorActionsAndErrors
                                                 isEditing={Boolean(divisionEditor.editingId)}
@@ -4357,14 +4797,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 onRemovePlayoffDivision={handleRemovePlayoffDivision}
                                             />
                                         </>
-                                    )}
+                                    ) : null}
                                 </>
                             </div>
 
-                        </DivisionSettingsSection>
+                        </DivisionSettingsSection> : null}
 
                         <LeagueScoringConfigSection
-                            visible={showScoringConfigSection}
+                            visible={showScoringConfigSection && (
+                                setupMode === 'ADVANCED'
+                                || (isSimpleCompetitionRulesPage && simpleSetupChoices.customizeScoring)
+                            )}
                             collapsed={collapsedSections['section-league-scoring-config']}
                             title={scoringConfigSectionLabel}
                             value={eventData.leagueScoringConfig}
@@ -4375,7 +4818,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         />
 
                         <ScheduleConfigSection
-                            visible={showScheduleConfig}
+                            visible={showScheduleConfig && (setupMode === 'ADVANCED' || currentSimplePageId === 'schedule-location')}
                             collapsed={collapsedSections['section-schedule-config']}
                             onToggle={() => toggleSectionCollapse('section-schedule-config')}
                         >
@@ -4414,6 +4857,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
                             />
                         </ScheduleConfigSection>
+                </>)}
         </EventFormShell>
     );
 
@@ -4422,8 +4866,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            {sheetContent}
+        <div className="space-y-3">
+            <div className="sticky top-0 z-30 space-y-3 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <Text fw={700}>Event setup</Text>
+                        <Text size="xs" c="dimmed">Both modes edit the same event draft.</Text>
+                    </div>
+                    <SetupModeControl value={setupMode} onChange={setSetupMode} />
+                </div>
+                {setupMode === 'SIMPLE' ? (
+                    <SimpleSetupProgressRail pages={simpleSetupPages} onSelectPage={selectSimpleSetupPage} />
+                ) : null}
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                {sheetContent}
+            </div>
         </div>
     );
 });

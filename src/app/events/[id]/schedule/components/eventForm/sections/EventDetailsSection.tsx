@@ -6,12 +6,14 @@ import { SECTION_ANIMATION_DURATION_MS } from '../constants';
 type EventDetailsSectionProps = {
     collapsed: boolean;
     onToggle: () => void;
+    title?: string;
     children: ReactNode;
 };
 
 export const EventDetailsSection = ({
     collapsed,
     onToggle,
+    title = 'Event Details',
     children,
 }: EventDetailsSectionProps) => (
     <Paper
@@ -23,7 +25,7 @@ export const EventDetailsSection = ({
         className="scroll-mt-20 bg-gray-50"
     >
         <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold">Event Details</h3>
+            <h3 className="text-lg font-semibold">{title}</h3>
             <Button
                 type="button"
                 variant="subtle"

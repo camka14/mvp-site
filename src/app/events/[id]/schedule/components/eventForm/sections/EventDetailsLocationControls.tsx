@@ -30,8 +30,12 @@ type EventDetailsLocationControlsProps = {
     normalizeNumberValue: (value: unknown) => number | undefined;
     minAge?: unknown;
     maxAge?: unknown;
+    showLocationMap?: boolean;
     showAffiliateListingControls?: boolean;
     showRequiredDocumentControls?: boolean;
+    showAgeControls?: boolean;
+    showRegistrationQuestions?: boolean;
+    showCapacityWarning?: boolean;
     resourceControls?: ReactNode;
     localFieldNameControls?: ReactNode;
     registrationQuestionsEditor: ReactNode;
@@ -56,8 +60,12 @@ export const EventDetailsLocationControls = ({
     normalizeNumberValue,
     minAge,
     maxAge,
+    showLocationMap = true,
     showAffiliateListingControls = false,
     showRequiredDocumentControls = true,
+    showAgeControls = true,
+    showRegistrationQuestions = true,
+    showCapacityWarning = true,
     resourceControls,
     localFieldNameControls,
     registrationQuestionsEditor,
@@ -66,7 +74,7 @@ export const EventDetailsLocationControls = ({
 }: EventDetailsLocationControlsProps) => (
     <div className="space-y-6 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-            <div className="md:col-span-6" data-testid="event-details-location-map">
+            {showLocationMap ? <div className="md:col-span-6" data-testid="event-details-location-map">
                 <Controller
                     name="location"
                     control={control}
@@ -104,9 +112,9 @@ export const EventDetailsLocationControls = ({
                         {resourceControls}
                     </div>
                 ) : null}
-            </div>
+            </div> : null}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:col-span-6 gap-4 md:items-start" data-testid="event-details-map-side-controls">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 md:items-start ${showLocationMap ? 'md:col-span-6' : 'md:col-span-12'}`} data-testid="event-details-map-side-controls">
                 {showRequiredDocumentControls ? (
                     <div className="sm:col-span-2">
                         <Controller
@@ -169,7 +177,7 @@ export const EventDetailsLocationControls = ({
                         />
                     </div>
                 ) : null}
-                <div>
+                {showAgeControls ? <div>
                     <Controller
                         name="minAge"
                         control={control}
@@ -191,8 +199,8 @@ export const EventDetailsLocationControls = ({
                             />
                         )}
                     />
-                </div>
-                <div>
+                </div> : null}
+                {showAgeControls ? <div>
                     <Controller
                         name="maxAge"
                         control={control}
@@ -214,11 +222,11 @@ export const EventDetailsLocationControls = ({
                             />
                         )}
                     />
-                </div>
-                <Text size="xs" c="dimmed" className="sm:col-span-2">
+                </div> : null}
+                {showAgeControls ? <Text size="xs" c="dimmed" className="sm:col-span-2">
                     Leave age limits blank if anyone can register.
-                </Text>
-                <AnimatedSection
+                </Text> : null}
+                {showAgeControls ? <AnimatedSection
                     in={typeof minAge === 'number' || typeof maxAge === 'number'}
                     collapseClassName="sm:col-span-2"
                 >
@@ -230,8 +238,8 @@ export const EventDetailsLocationControls = ({
                             We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
                         </Text>
                     </Alert>
-                </AnimatedSection>
-                {registrationQuestionsEditor}
+                </AnimatedSection> : null}
+                {showRegistrationQuestions ? registrationQuestionsEditor : null}
                 {localFieldNameControls ? (
                     <div className="sm:col-span-2">{localFieldNameControls}</div>
                 ) : null}
@@ -239,7 +247,7 @@ export const EventDetailsLocationControls = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-            {hasUnsetTeamCapacityLimits ? (
+            {showCapacityWarning && hasUnsetTeamCapacityLimits ? (
                 <div className="md:col-span-12">
                     <Alert color="yellow" variant="light" radius="md">
                         <Text size="sm" fw={600}>Capacity limits are required before save</Text>
