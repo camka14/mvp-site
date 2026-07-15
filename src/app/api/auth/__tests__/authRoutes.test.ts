@@ -184,6 +184,7 @@ describe('auth routes', () => {
         lastName: 'User',
         userName: 'tester',
         dateOfBirth: '2000-01-01',
+        onboardingIntent: 'ORGANIZATION',
       });
 
       const res = await REGISTER_POST(req);
@@ -229,7 +230,9 @@ describe('auth routes', () => {
         authProvider: 'password',
         wasInviteClaim: false,
       }));
-      expect(prismaMock.userData.create).toHaveBeenCalled();
+      expect(prismaMock.userData.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ onboardingIntent: 'ORGANIZATION' }),
+      }));
       expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
     });
 
@@ -278,6 +281,9 @@ describe('auth routes', () => {
       expect(json.error).toMatch(/account was created/i);
       expect(prismaMock.authUser.create).toHaveBeenCalled();
       expect(prismaMock.userData.create).toHaveBeenCalled();
+      expect(prismaMock.userData.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ onboardingIntent: 'DISCOVER_EVENTS' }),
+      }));
       expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
       expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();

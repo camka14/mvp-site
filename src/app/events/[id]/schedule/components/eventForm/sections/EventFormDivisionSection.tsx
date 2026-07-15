@@ -7,7 +7,7 @@ import type {
     FieldErrors,
 } from 'react-hook-form';
 
-import type { Event } from '@/types';
+import type { Division, Event } from '@/types';
 
 import {
     buildDivisionTypeSelectOptions,
@@ -33,6 +33,7 @@ import { DivisionModeControls } from './DivisionModeControls';
 import { DivisionSettingsSection } from './DivisionSettingsSection';
 import { DivisionSummaryList } from './DivisionSummaryList';
 import { SingleDivisionDefaultsPanel } from './SingleDivisionDefaultsPanel';
+import { TryoutDivisionSelector } from '../components/TryoutDivisionSelector';
 
 type EventFormSetValue = (
     name: string,
@@ -57,7 +58,10 @@ type EventFormDivisionSectionProps = {
     maxStandardNumber: number;
     numberInputStyles: ComponentProps<typeof SingleDivisionDefaultsPanel>['numberInputStyles'];
     onSaveDivision: ComponentProps<typeof DivisionEditorActionsAndErrors>['onSave'];
+    onTryoutDivisionSelection: (divisions: Division[]) => void;
+    onTryoutPriceChange: (sourceDivisionId: string, price: number) => void;
     onToggle: () => void;
+    organizationId?: string;
     paymentController: ReturnType<typeof useEventPaymentController>;
     playoffData: EventFormValues['playoffData'];
     setLeagueData: ComponentProps<typeof SingleDivisionDefaultsPanel>['setLeagueData'];
@@ -87,7 +91,10 @@ export const EventFormDivisionSection = ({
     maxStandardNumber,
     numberInputStyles,
     onSaveDivision,
+    onTryoutDivisionSelection,
+    onTryoutPriceChange,
     onToggle,
+    organizationId,
     paymentController,
     playoffData,
     setLeagueData,
@@ -170,6 +177,19 @@ export const EventFormDivisionSection = ({
     return (
         <DivisionSettingsSection collapsed={collapsed} title="Divisions" onToggle={onToggle}>
             <div id="section-division-settings-content" className="mt-4 space-y-4">
+                {eventData.eventType === 'TRYOUT' ? (
+                    <TryoutDivisionSelector
+                        organizationId={organizationId}
+                        preferredSportId={eventData.sportId}
+                        selectedDivisions={eventData.divisionDetails ?? []}
+                        maxPriceCents={maxPriceCents}
+                        disabled={isImmutableField('divisions')}
+                        onChange={onTryoutDivisionSelection}
+                        onTryoutPriceChange={onTryoutPriceChange}
+                        validationMessage={errors.divisionDetails?.message as string | undefined}
+                    />
+                ) : (
+                    <>
                 <DivisionModeControls
                     control={control}
                     supportsEditableTeamSignup={supportsEditableTeamSignup}
@@ -379,6 +399,8 @@ export const EventFormDivisionSection = ({
                             onEditPlayoffDivision={handleEditPlayoffDivisionDetail}
                             onRemovePlayoffDivision={handleRemovePlayoffDivision}
                         />
+                    </>
+                )}
                     </>
                 )}
             </div>

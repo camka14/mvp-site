@@ -9,6 +9,14 @@ import {
 } from '../organizationTabs';
 
 describe('buildOrganizationTabs', () => {
+  it('shows club divisions only when club tools are explicitly enabled or divisions exist', () => {
+    expect(buildOrganizationTabs({ enabledFeatures: ['EVENT_MANAGEMENT'] }))
+      .not.toContainEqual({ label: 'Club Divisions', value: 'divisions' });
+    expect(buildOrganizationTabs({ enabledFeatures: ['CLUB_TEAMS'] }))
+      .toContainEqual({ label: 'Club Divisions', value: 'divisions' });
+    expect(buildOrganizationTabs({ enabledFeatures: ['EVENT_MANAGEMENT'], hasDivisions: true }))
+      .toContainEqual({ label: 'Club Divisions', value: 'divisions' });
+  });
   it('hides empty teams, facilities, and store tabs for non-members', () => {
     expect(buildOrganizationTabs({
       isOrganizationRoleMember: false,

@@ -33,6 +33,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import OrganizationDivisionsPanel from './OrganizationDivisionsPanel';
 import RentalReservationCheckout from '@/components/rentals/RentalReservationCheckout';
 import OrganizationFinancePanel from './OrganizationFinancePanel';
 import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
@@ -881,6 +882,10 @@ function OrganizationDetailContent() {
     () => Array.isArray(org?.teams) && org.teams.length > 0,
     [org?.teams],
   );
+  const hasVisibleEvents = useMemo(
+    () => Array.isArray(org?.events) && org.events.length > 0,
+    [org?.events],
+  );
   const hasVisibleProducts = useMemo(
     () => Array.isArray(org?.products) && org.products.length > 0,
     [org?.products],
@@ -899,6 +904,7 @@ function OrganizationDetailContent() {
   }, [org?.fields]);
   const availableTabs = useMemo(
     () => buildOrganizationTabs({
+      enabledFeatures: org?.enabledFeatures,
       viewerCanAccessUsers: org?.viewerCanAccessUsers,
       isOwner,
       isOrganizationRoleMember,
@@ -912,6 +918,8 @@ function OrganizationDetailContent() {
       canManageProducts,
       canManageDiscounts,
       hasTeams: hasVisibleTeams,
+      hasEvents: hasVisibleEvents,
+      hasDivisions: Array.isArray((org as any)?.divisions) && (org as any).divisions.length > 0,
       hasRentals: hasVisibleRentals,
       hasResources: organizationFieldCount > 0,
       hasProducts: hasVisibleProducts,
@@ -920,6 +928,7 @@ function OrganizationDetailContent() {
       hasVisibleProducts,
       hasVisibleRentals,
       hasVisibleTeams,
+      hasVisibleEvents,
       organizationFieldCount,
       canManageFields,
       canManageProducts,
@@ -933,6 +942,8 @@ function OrganizationDetailContent() {
       isOrganizationRoleMember,
       isOwner,
       org?.viewerCanAccessUsers,
+      org?.enabledFeatures,
+      (org as any)?.divisions,
     ],
   );
   const stripeEmailValid = useMemo(
@@ -3630,6 +3641,16 @@ function OrganizationDetailContent() {
                       <Text size="sm" c="dimmed">No events yet.</Text>
                     )}
                   </Paper>
+                  {(org.enabledFeatures?.includes('CLUB_TEAMS') || (org.divisions?.length ?? 0) > 0) && (
+                    <div style={{ marginTop: 16 }}>
+                      <OrganizationDivisionsPanel
+                        organization={org}
+                        summary
+                        onViewAll={() => handleOrganizationTabChange('divisions')}
+                        onChanged={(divisions) => setOrg((current) => current ? { ...current, divisions } : current)}
+                      />
+                    </div>
+                  )}
                   <div style={{ marginTop: 16 }}>
                     <OrganizationReviewsPanel
                       organizationId={org.$id}
@@ -4370,6 +4391,13 @@ function OrganizationDetailContent() {
                   />
                 )}
               </RentalReservationCheckout>
+            )}
+            {activeTab === 'divisions' && org && (
+              <OrganizationDivisionsPanel
+                organization={org}
+                canManage={canManageTeams || isOwner}
+                onChanged={(divisions) => setOrg((current) => current ? { ...current, divisions } : current)}
+              />
             )}
             </div>
           </>

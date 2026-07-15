@@ -21,14 +21,18 @@ This implementation intentionally does not add a program table. The organization
 - [x] (2026-07-11) Confirmed that the event form already carries separate `skillDivisionTypeId` and `ageDivisionTypeId` values but persists only a composite `divisionTypeId` on `Divisions`.
 - [x] (2026-07-11) Confirmed that `TimeSlots.divisions` and `TimeSlots.scheduledFieldIds` already support assigning selected divisions to resources without a new scheduling table.
 - [x] (2026-07-11) Created this implementation plan. No schema or application implementation was performed during planning.
-- [ ] Add organization feature flags, division scope/status/source fields, normalized age/skill fields, and the `TRYOUT` event type through additive migrations.
-- [ ] Backfill existing event divisions and organization feature flags without removing access to existing organization data.
-- [ ] Add organization-scoped division APIs, authorization, validation, and organization management/public UI.
-- [ ] Add Tryout event creation, organization-division snapshotting, timeslot/resource validation, registration, detail display, and affiliate handling.
-- [ ] Add same-row division filtering to event and organization search APIs and web Discover controls.
-- [ ] Update affiliate import mappings and setup scripts to populate normalized division fields and organization-scoped club divisions.
-- [ ] Add mobile read/filter/create parity after the backend contract is stable.
-- [ ] Run migration, focused test, typecheck, browser, Android, and iOS validation and record evidence here.
+- [x] (2026-07-12) Added organization feature flags, division scope/status/source fields, normalized age/skill fields, and the `TRYOUT` event type through an additive migration on `codex/organization-club-tryouts`.
+- [x] (2026-07-12) Added dry-run-by-default event-division normalization and organization-feature backfill scripts. Production execution remains a deployment step after migration review.
+- [x] (2026-07-12) Added organization-scoped division APIs, authorization, validation, organization management UI, public response hydration, and feature-aware organization navigation.
+- [x] (2026-07-12) Added web Tryout event creation with locked Tryouts tagging, organization-division snapshotting, per-division timeslot/resource validation, normal individual registration behavior, and affiliate outbound-link compatibility. Tryouts never invoke the match scheduler.
+- [x] (2026-07-12) Added same-row division filtering to event and organization search APIs and shared web Discover controls.
+- [x] (2026-07-12) Updated affiliate division mapping normalization so legacy and reviewed manual mappings persist canonical composite, skill, and age ids. Mappings may also identify a reviewed source organization division through `sourceDivisionId`.
+- [x] (2026-07-12) Added mobile decode, display, and server-backed Discover filter parity for Tryouts and division filters. Mobile Tryout creation is intentionally excluded because Tryouts are organization-managed on the web.
+- [x] (2026-07-12) Replaced Tryout snapshot editing with an organization-division-only selector, inline organization division modal, read-only source attributes, and per-snapshot Tryout price inputs.
+- [x] (2026-07-13) Applied the additive migrations to the isolated worktree's local database and regenerated Prisma Client. Two already-created tables were reconciled with Prisma's migration ledger only after their columns and indexes matched the pending SQL.
+- [x] (2026-07-13) Added and applied a dry-run-by-default, live-read-only club sync. A first validation run used the existing development database before the data-isolation requirement was clarified.
+- [x] (2026-07-13) Created a fresh `mvp_live_clubs` local database, applied all 152 migrations from an empty schema, and reran the club sync there with a separate `uploads-live-clubs` storage root. The isolated copy contains 211 live clubs, 168 live affiliate events, scrape provenance, tags, and 211 local image files; 188 reusable club divisions; four reviewed `TRYOUT` events; and 13 linked tryout division snapshots.
+- [x] (2026-07-13) Verified the dedicated copy through the public organization and event pages: Portland Volleyball Club lists both migrated Tryouts, the event detail renders `Tryout`, and its U11/U12/U14 choices use the linked organization division snapshots. An integrity query found zero missing or cross-organization `sourceDivisionId` links. Applying the migration to the live database remains a deployment step after the isolated branch is reviewed and merged.
 
 ## Surprises & Discoveries
 
@@ -52,6 +56,30 @@ This implementation intentionally does not add a program table. The organization
 
 - Observation: Mobile already models separate age and skill ids inside `DivisionDetail`, so normalized backend fields fit the existing mobile event payload rather than requiring a new mobile concept.
   Evidence: `core/model/src/commonMain/kotlin/com/razumly/mvp/core/data/dataTypes/DivisionDetail.kt` contains `skillDivisionTypeId` and `ageDivisionTypeId`.
+
+- Observation: Older organization payloads and existing organization-tab tests omit `enabledFeatures` entirely.
+  Evidence: Treating an absent feature array as `EVENT_MANAGEMENT` hid legacy Teams and Facilities tabs. Navigation now treats an absent field as legacy-permissive, while an explicit feature array is authoritative.
+
+- Observation: Prisma generation on this checkout adds trailing spaces to generated documentation comments, creating unrelated changes in every generated model.
+  Evidence: Stripping generated trailing whitespace reduced the generated diff from more than one hundred files to the seven schema-dependent files.
+
+- Observation: Affiliate status and event type are independent contracts.
+  Evidence: Existing affiliate behavior uses `affiliateUrl`, while leagues and tournaments retain their actual `eventType`. Tryouts therefore remain `TRYOUT` with an optional affiliate URL rather than being rejected or converted to `AFFILIATE`.
+
+- Observation: The Android production source compiles in the isolated mobile worktree after copying ignored machine-only SDK and Firebase configuration, but the focused JVM test task is blocked before the new tests run.
+  Evidence: `:composeApp:compileDebugKotlinAndroid` passes. `:composeApp:testDebugUnitTest` first encounters the existing Maps manifest placeholder and then unrelated stale common-test fixture signatures and missing fee-breakdown symbols.
+
+- Observation: The local database had two tables that matched pending migration SQL but were absent from Prisma's migration ledger.
+  Evidence: `MatchOperationReceipts` and the four broadcast-overlay tables had the expected columns and indexes. After marking those two migrations applied, `prisma migrate deploy` applied the remaining six migrations and `prisma migrate status` reported the schema current.
+
+- Observation: Live and local affiliate scrape runs can materialize the same logical candidate and event with different UUIDs.
+  Evidence: The dry run found 65 `(sourceId, dedupeKey)` candidate conflicts, each pointing to an unreferenced local `AFFILIATE_IMPORT` event. The sync now audits references before replacing those duplicate pairs with the live canonical rows.
+
+- Observation: The normal worktree database is shared with test and feature-development fixtures.
+  Evidence: The worktree's base `.env` targets `mvp` on local Postgres port 5433. The club live copy now uses `mvp_live_clubs` and `uploads-live-clubs` through ignored `.env.local` overrides, and the sync refuses any other database name or non-local host.
+
+- Observation: A `Tryouts` tag alone is not reliable event-type evidence.
+  Evidence: Central Valley FC's fall recreational league has the `Tryouts` tag but is a priced nine-division league, while FC Portland's Junior Academy registration URL contains a tryout path although the source page and event are a clinic. Title or reviewed source-page evidence is required, and league/tournament rows are excluded.
 
 ## Decision Log
 
@@ -83,6 +111,10 @@ This implementation intentionally does not add a program table. The organization
   Rationale: Copying season dues into a tryout would create an incorrect charge. Both values remain total per-player prices but represent different purchases.
   Date/Author: 2026-07-11 / Codex.
 
+- Decision: Tryout division editing must not expose the normal event division editor.
+  Rationale: A Tryout may select multiple organization divisions, but gender, age, skill, name, season price, and season capacity remain owned by the organization catalog. The event snapshot exposes only its separately owned Tryout price; missing organization divisions are created through a compact modal and then selected.
+  Date/Author: 2026-07-12 / Codex.
+
 - Decision: Reuse `TimeSlots` for Tryout sessions and do not add a tryout-session table.
   Rationale: The existing model already links one timeslot to one or more division ids and one or more resource ids and participates in resource conflict validation.
   Date/Author: 2026-07-11 / Codex.
@@ -99,9 +131,29 @@ This implementation intentionally does not add a program table. The organization
   Rationale: Feature switches must hide unused creation and management surfaces without orphaning previously published events, teams, facilities, or rentals. Tabs with existing records stay accessible for viewing and cleanup, but new creation is gated by the feature.
   Date/Author: 2026-07-11 / Codex.
 
+- Decision: Tryout creation and editing remain web organization-management workflows; mobile supports reading, filtering, registration, and affiliate outbound actions only.
+  Rationale: Tryouts require organization-owned division catalog selection and resource scheduling, and the product requirement limits creation to organization managers. Excluding Tryout from the mobile new-event picker avoids exposing a partial or unauthorized creation flow.
+  Date/Author: 2026-07-12 / Codex.
+
+- Decision: Keep the live database read-only during local club migration and make the sync dry-run by default.
+  Rationale: The local database may contain independently generated affiliate rows and schema changes not yet deployed live. Preflight checks, deterministic ids, and an explicit `--apply` protect live data and make the conversion repeatable.
+  Date/Author: 2026-07-13 / Codex.
+
+- Decision: Store the migrated club dataset in the dedicated local `mvp_live_clubs` database with a separate `uploads-live-clubs` file root.
+  Rationale: Live-derived organizations and events must not share lifecycle or cleanup operations with the normal `mvp` test database. The sync performs a hard target check before connecting so an unqualified rerun cannot write to the test or live databases.
+  Date/Author: 2026-07-13 / Codex.
+
+- Decision: Organization division prices come only from the newest matching non-Tryout division with a specified price.
+  Rationale: A Tryout fee and a club season price are different purchases. When live exposes only the Tryout fee, the organization division season price remains null and displays as not specified instead of being copied incorrectly or represented as free.
+  Date/Author: 2026-07-13 / Codex.
+
+- Decision: Use a reviewed division override for the legacy Tualatin Valley VBC Tryout candidate.
+  Rationale: The published candidate predates structured division extraction, while the official registration page identifies girls 12U through 18U. The local conversion creates those seven event snapshots and links them to seven reusable organization divisions without inventing season prices.
+  Date/Author: 2026-07-13 / Codex.
+
 ## Outcomes & Retrospective
 
-Planning is complete. The plan reuses the current division and timeslot systems, avoids a program table and a parallel club-division table, and defines a backward-compatible route from composite division ids to indexed age and skill filtering. Implementation and validation evidence remain pending.
+The isolated web and mobile branches now implement the core contract: organization feature modes, reusable club divisions, web-only Tryout creation, locked Tryouts tagging, division snapshots and resource schedules, same-row Discover filters, affiliate mapping normalization, and mobile Tryout read/filter behavior. Static web validation, focused web tests, and Android production compilation pass. Database migration/backfill execution and browser/device workflow verification remain deployment-stage work because the primary workspaces and their local database are actively used by unrelated work.
 
 ## Context and Orientation
 
@@ -213,7 +265,7 @@ Add a public Divisions section to the managed organization page and public `/o/[
 
 Add `TRYOUT` to web and backend event type unions, schemas, form options, tags, serializers, API validation, and tests. `src/app/events/[id]/schedule/components/eventForm/eventTypeTags.ts` must map it to the existing system-managed Tryouts tag. The event-type tag remains automatic and unavailable as a conflicting manual type choice.
 
-The Tryout form appears only in an organization context with `CLUB_TEAMS`. It loads active organization divisions and lets the organizer choose one or more. On save, create event-scoped division snapshots with a new event-owned id, copy sport/gender/age/skill/name eligibility fields, set `sourceDivisionId` to the selected organization division id, and initialize the event division price to zero unless the organizer enters a tryout fee. Do not copy the club registration price into the tryout fee.
+The Tryout form appears only in an organization context with `CLUB_TEAMS`. It loads active organization divisions and lets the organizer choose one or more. If none exist, the division section prompts the manager to create an organization division in a modal. Label the catalog price `Division season price`. After selection, sport, gender, age, skill, name, season price, and season capacity are read only in the Tryout form. On save, create event-scoped division snapshots with a new event-owned id, copy those eligibility fields, set `sourceDivisionId` to the selected organization division id, and initialize the event division price to zero unless the organizer enters a separately labeled `Tryout price`. Do not copy the club registration price into the tryout fee.
 
 Extend `supportsScheduleSlotsForEvent` and related event form rules so Tryouts use timeslots. Do not run league generation, tournament bracket generation, standings initialization, match scheduling, or team-officiating behavior. The form must let the organizer select organization resources and create event-local custom resources through the existing resource controls.
 
@@ -251,7 +303,7 @@ After the backend contract and web workflow pass validation, update `/Users/eles
 
 Extend `EventFilter.kt`, `EventSearchComponent.kt`, `EventSearchScreen.kt`, and the shared SearchBox filter UI with age, skill, gender, and min/max price. Filtering must be server-backed for pagination; local filtering may only reconcile cached rows against the same active filter while a request is pending.
 
-Add mobile organization division display and club-filtered organization search. Add mobile Tryout detail rendering and registration/external-link behavior. Add Tryout creation/editing only after the web payload contract is stable; it must use the same organization-division selection and timeslot/resource rules. Do not modify unrelated current mobile work, and do not create a new Room entity unless offline organization division management is explicitly required. Organization divisions can be fetched as detail data initially.
+Add mobile organization division display and club-filtered organization search. Add mobile Tryout detail rendering and registration/external-link behavior. Do not add Tryout creation or editing to mobile; the mobile new-event picker must exclude `TRYOUT` while existing Tryouts remain decodable and visible. Do not modify unrelated current mobile work, and do not create a new Room entity unless offline organization division management is explicitly required. Organization divisions can be fetched as detail data initially.
 
 ## Concrete Steps
 
@@ -290,7 +342,7 @@ Run all web/backend commands from `/Users/elesesy/StudioProjects/mvp-site`.
        npx tsc --noEmit
        git diff --check
 
-6. Start the local web application against the normal local database and verify the behavior in a browser:
+6. Start the local web application against the dedicated `mvp_live_clubs` local database and `uploads-live-clubs` storage root, then verify the behavior in a browser:
 
        npm run dev
 

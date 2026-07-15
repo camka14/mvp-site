@@ -41,6 +41,8 @@ type SingleDivisionDefaultsPanelProps = {
     organizationDefaultEventTaxHandling: ComponentProps<typeof SingleDivisionPricingControls>['organizationDefaultEventTaxHandling'];
     connectingStripe: boolean;
     simplifiedPricing?: boolean;
+    showCapacityControls?: boolean;
+    showPricingControls?: boolean;
     showPaymentPlanControls?: boolean;
     showScheduleControls?: boolean;
     title?: string;
@@ -80,6 +82,8 @@ export const SingleDivisionDefaultsPanel = ({
     organizationDefaultEventTaxHandling,
     connectingStripe,
     simplifiedPricing = false,
+    showCapacityControls = true,
+    showPricingControls = true,
     showPaymentPlanControls = true,
     showScheduleControls = true,
     title = 'Single Division',
@@ -113,7 +117,7 @@ export const SingleDivisionDefaultsPanel = ({
                 className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
                 transition={DIVISION_LAYOUT_TRANSITION}
             >
-                <SingleDivisionCapacityControls
+                {showCapacityControls ? <SingleDivisionCapacityControls
                     control={control}
                     singleDivision={Boolean(eventData.singleDivision)}
                     teamSignup={Boolean(eventData.teamSignup)}
@@ -131,7 +135,7 @@ export const SingleDivisionDefaultsPanel = ({
                             playoffTeamCount,
                         }));
                     }}
-                />
+                /> : null}
                 {showScheduleControls ? (
                     <SingleDivisionScheduleControls
                         singleDivision={Boolean(eventData.singleDivision)}
@@ -153,7 +157,7 @@ export const SingleDivisionDefaultsPanel = ({
                         onPoolDefaultsChange={onPoolDefaultsChange}
                     />
                 ) : null}
-                <SingleDivisionPricingControls
+                {showPricingControls ? <SingleDivisionPricingControls
                     visible={Boolean(eventData.singleDivision) && (!eventData.allowPaymentPlans || !showPaymentPlanControls)}
                     control={control}
                     eventType={eventData.eventType}
@@ -169,7 +173,7 @@ export const SingleDivisionDefaultsPanel = ({
                     connectingStripe={connectingStripe}
                     simplePriceInput={simplifiedPricing}
                     onConnectStripe={onConnectStripe}
-                />
+                /> : null}
                 {showPaymentPlanControls ? (
                     <SingleDivisionPaymentPlanControls
                         allowPaymentPlans={eventData.allowPaymentPlans}

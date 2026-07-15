@@ -88,6 +88,9 @@ export type DivisionsMinAggregateOutputType = {
   sortOrder: number | null
   eventId: string | null
   organizationId: string | null
+  scope: $Enums.DivisionScopeEnum | null
+  status: $Enums.DivisionStatusEnum | null
+  sourceDivisionId: string | null
   sportId: string | null
   price: number | null
   maxParticipants: number | null
@@ -113,8 +116,14 @@ export type DivisionsMinAggregateOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
+  skillDivisionTypeId: string | null
+  ageDivisionTypeId: string | null
   ratingType: string | null
   gender: string | null
+  description: string | null
+  registrationUrl: string | null
+  sourceUrl: string | null
+  lastVerifiedAt: Date | null
   ageCutoffDate: Date | null
   ageCutoffLabel: string | null
   ageCutoffSource: string | null
@@ -130,6 +139,9 @@ export type DivisionsMaxAggregateOutputType = {
   sortOrder: number | null
   eventId: string | null
   organizationId: string | null
+  scope: $Enums.DivisionScopeEnum | null
+  status: $Enums.DivisionStatusEnum | null
+  sourceDivisionId: string | null
   sportId: string | null
   price: number | null
   maxParticipants: number | null
@@ -155,8 +167,14 @@ export type DivisionsMaxAggregateOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
+  skillDivisionTypeId: string | null
+  ageDivisionTypeId: string | null
   ratingType: string | null
   gender: string | null
+  description: string | null
+  registrationUrl: string | null
+  sourceUrl: string | null
+  lastVerifiedAt: Date | null
   ageCutoffDate: Date | null
   ageCutoffLabel: string | null
   ageCutoffSource: string | null
@@ -172,6 +190,9 @@ export type DivisionsCountAggregateOutputType = {
   sortOrder: number
   eventId: number
   organizationId: number
+  scope: number
+  status: number
+  sourceDivisionId: number
   sportId: number
   price: number
   maxParticipants: number
@@ -205,8 +226,14 @@ export type DivisionsCountAggregateOutputType = {
   minRating: number
   maxRating: number
   divisionTypeId: number
+  skillDivisionTypeId: number
+  ageDivisionTypeId: number
   ratingType: number
   gender: number
+  description: number
+  registrationUrl: number
+  sourceUrl: number
+  lastVerifiedAt: number
   ageCutoffDate: number
   ageCutoffLabel: number
   ageCutoffSource: number
@@ -278,6 +305,9 @@ export type DivisionsMinAggregateInputType = {
   sortOrder?: true
   eventId?: true
   organizationId?: true
+  scope?: true
+  status?: true
+  sourceDivisionId?: true
   sportId?: true
   price?: true
   maxParticipants?: true
@@ -303,8 +333,14 @@ export type DivisionsMinAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
+  skillDivisionTypeId?: true
+  ageDivisionTypeId?: true
   ratingType?: true
   gender?: true
+  description?: true
+  registrationUrl?: true
+  sourceUrl?: true
+  lastVerifiedAt?: true
   ageCutoffDate?: true
   ageCutoffLabel?: true
   ageCutoffSource?: true
@@ -320,6 +356,9 @@ export type DivisionsMaxAggregateInputType = {
   sortOrder?: true
   eventId?: true
   organizationId?: true
+  scope?: true
+  status?: true
+  sourceDivisionId?: true
   sportId?: true
   price?: true
   maxParticipants?: true
@@ -345,8 +384,14 @@ export type DivisionsMaxAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
+  skillDivisionTypeId?: true
+  ageDivisionTypeId?: true
   ratingType?: true
   gender?: true
+  description?: true
+  registrationUrl?: true
+  sourceUrl?: true
+  lastVerifiedAt?: true
   ageCutoffDate?: true
   ageCutoffLabel?: true
   ageCutoffSource?: true
@@ -362,6 +407,9 @@ export type DivisionsCountAggregateInputType = {
   sortOrder?: true
   eventId?: true
   organizationId?: true
+  scope?: true
+  status?: true
+  sourceDivisionId?: true
   sportId?: true
   price?: true
   maxParticipants?: true
@@ -395,8 +443,14 @@ export type DivisionsCountAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
+  skillDivisionTypeId?: true
+  ageDivisionTypeId?: true
   ratingType?: true
   gender?: true
+  description?: true
+  registrationUrl?: true
+  sourceUrl?: true
+  lastVerifiedAt?: true
   ageCutoffDate?: true
   ageCutoffLabel?: true
   ageCutoffSource?: true
@@ -501,6 +555,9 @@ export type DivisionsGroupByOutputType = {
   sortOrder: number | null
   eventId: string | null
   organizationId: string | null
+  scope: $Enums.DivisionScopeEnum
+  status: $Enums.DivisionStatusEnum
+  sourceDivisionId: string | null
   sportId: string | null
   price: number | null
   maxParticipants: number | null
@@ -534,8 +591,14 @@ export type DivisionsGroupByOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
+  skillDivisionTypeId: string | null
+  ageDivisionTypeId: string | null
   ratingType: string | null
   gender: string | null
+  description: string | null
+  registrationUrl: string | null
+  sourceUrl: string | null
+  lastVerifiedAt: Date | null
   ageCutoffDate: Date | null
   ageCutoffLabel: string | null
   ageCutoffSource: string | null
@@ -576,6 +639,9 @@ export type DivisionsWhereInput = {
   sortOrder?: Prisma.IntNullableFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFilter<"Divisions"> | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFilter<"Divisions"> | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   price?: Prisma.IntNullableFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
@@ -609,8 +675,14 @@ export type DivisionsWhereInput = {
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  skillDivisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  ageDivisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  description?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  registrationUrl?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  sourceUrl?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  lastVerifiedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   ageCutoffDate?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   ageCutoffLabel?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -628,6 +700,9 @@ export type DivisionsOrderByWithRelationInput = {
   sortOrder?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  scope?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  sourceDivisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -661,8 +736,14 @@ export type DivisionsOrderByWithRelationInput = {
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  skillDivisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  ageDivisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
   ratingType?: Prisma.SortOrderInput | Prisma.SortOrder
   gender?: Prisma.SortOrderInput | Prisma.SortOrder
+  description?: Prisma.SortOrderInput | Prisma.SortOrder
+  registrationUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffLabel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -683,6 +764,9 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   sortOrder?: Prisma.IntNullableFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFilter<"Divisions"> | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFilter<"Divisions"> | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   price?: Prisma.IntNullableFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
@@ -716,8 +800,14 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  skillDivisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  ageDivisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  description?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  registrationUrl?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  sourceUrl?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  lastVerifiedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   ageCutoffDate?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   ageCutoffLabel?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -735,6 +825,9 @@ export type DivisionsOrderByWithAggregationInput = {
   sortOrder?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  scope?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  sourceDivisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -768,8 +861,14 @@ export type DivisionsOrderByWithAggregationInput = {
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  skillDivisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  ageDivisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
   ratingType?: Prisma.SortOrderInput | Prisma.SortOrder
   gender?: Prisma.SortOrderInput | Prisma.SortOrder
+  description?: Prisma.SortOrderInput | Prisma.SortOrder
+  registrationUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffLabel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -795,6 +894,9 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   sortOrder?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  scope?: Prisma.EnumDivisionScopeEnumWithAggregatesFilter<"Divisions"> | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumWithAggregatesFilter<"Divisions"> | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   price?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
@@ -828,8 +930,14 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  skillDivisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  ageDivisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  description?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  registrationUrl?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  sourceUrl?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  lastVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
   ageCutoffDate?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
   ageCutoffLabel?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
@@ -847,6 +955,9 @@ export type DivisionsCreateInput = {
   sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
+  scope?: $Enums.DivisionScopeEnum
+  status?: $Enums.DivisionStatusEnum
+  sourceDivisionId?: string | null
   sportId?: string | null
   price?: number | null
   maxParticipants?: number | null
@@ -880,8 +991,14 @@ export type DivisionsCreateInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
+  skillDivisionTypeId?: string | null
+  ageDivisionTypeId?: string | null
   ratingType?: string | null
   gender?: string | null
+  description?: string | null
+  registrationUrl?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: Date | string | null
   ageCutoffDate?: Date | string | null
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
@@ -899,6 +1016,9 @@ export type DivisionsUncheckedCreateInput = {
   sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
+  scope?: $Enums.DivisionScopeEnum
+  status?: $Enums.DivisionStatusEnum
+  sourceDivisionId?: string | null
   sportId?: string | null
   price?: number | null
   maxParticipants?: number | null
@@ -932,8 +1052,14 @@ export type DivisionsUncheckedCreateInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
+  skillDivisionTypeId?: string | null
+  ageDivisionTypeId?: string | null
   ratingType?: string | null
   gender?: string | null
+  description?: string | null
+  registrationUrl?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: Date | string | null
   ageCutoffDate?: Date | string | null
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
@@ -951,6 +1077,9 @@ export type DivisionsUpdateInput = {
   sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFieldUpdateOperationsInput | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFieldUpdateOperationsInput | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -984,8 +1113,14 @@ export type DivisionsUpdateInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  skillDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ageDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  registrationUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1003,6 +1138,9 @@ export type DivisionsUncheckedUpdateInput = {
   sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFieldUpdateOperationsInput | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFieldUpdateOperationsInput | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1036,8 +1174,14 @@ export type DivisionsUncheckedUpdateInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  skillDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ageDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  registrationUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1055,6 +1199,9 @@ export type DivisionsCreateManyInput = {
   sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
+  scope?: $Enums.DivisionScopeEnum
+  status?: $Enums.DivisionStatusEnum
+  sourceDivisionId?: string | null
   sportId?: string | null
   price?: number | null
   maxParticipants?: number | null
@@ -1088,8 +1235,14 @@ export type DivisionsCreateManyInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
+  skillDivisionTypeId?: string | null
+  ageDivisionTypeId?: string | null
   ratingType?: string | null
   gender?: string | null
+  description?: string | null
+  registrationUrl?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: Date | string | null
   ageCutoffDate?: Date | string | null
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
@@ -1107,6 +1260,9 @@ export type DivisionsUpdateManyMutationInput = {
   sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFieldUpdateOperationsInput | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFieldUpdateOperationsInput | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1140,8 +1296,14 @@ export type DivisionsUpdateManyMutationInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  skillDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ageDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  registrationUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1159,6 +1321,9 @@ export type DivisionsUncheckedUpdateManyInput = {
   sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scope?: Prisma.EnumDivisionScopeEnumFieldUpdateOperationsInput | $Enums.DivisionScopeEnum
+  status?: Prisma.EnumDivisionStatusEnumFieldUpdateOperationsInput | $Enums.DivisionStatusEnum
+  sourceDivisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1192,8 +1357,14 @@ export type DivisionsUncheckedUpdateManyInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  skillDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ageDivisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  registrationUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1219,6 +1390,9 @@ export type DivisionsCountOrderByAggregateInput = {
   sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  scope?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  sourceDivisionId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1252,8 +1426,14 @@ export type DivisionsCountOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
+  skillDivisionTypeId?: Prisma.SortOrder
+  ageDivisionTypeId?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
+  description?: Prisma.SortOrder
+  registrationUrl?: Prisma.SortOrder
+  sourceUrl?: Prisma.SortOrder
+  lastVerifiedAt?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
   ageCutoffLabel?: Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrder
@@ -1297,6 +1477,9 @@ export type DivisionsMaxOrderByAggregateInput = {
   sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  scope?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  sourceDivisionId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1322,8 +1505,14 @@ export type DivisionsMaxOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
+  skillDivisionTypeId?: Prisma.SortOrder
+  ageDivisionTypeId?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
+  description?: Prisma.SortOrder
+  registrationUrl?: Prisma.SortOrder
+  sourceUrl?: Prisma.SortOrder
+  lastVerifiedAt?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
   ageCutoffLabel?: Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrder
@@ -1339,6 +1528,9 @@ export type DivisionsMinOrderByAggregateInput = {
   sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  scope?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  sourceDivisionId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1364,8 +1556,14 @@ export type DivisionsMinOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
+  skillDivisionTypeId?: Prisma.SortOrder
+  ageDivisionTypeId?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
+  description?: Prisma.SortOrder
+  registrationUrl?: Prisma.SortOrder
+  sourceUrl?: Prisma.SortOrder
+  lastVerifiedAt?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
   ageCutoffLabel?: Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrder
@@ -1437,6 +1635,14 @@ export type NullableEnumDivisionsKindEnumFieldUpdateOperationsInput = {
   set?: $Enums.DivisionsKindEnum | null
 }
 
+export type EnumDivisionScopeEnumFieldUpdateOperationsInput = {
+  set?: $Enums.DivisionScopeEnum
+}
+
+export type EnumDivisionStatusEnumFieldUpdateOperationsInput = {
+  set?: $Enums.DivisionStatusEnum
+}
+
 export type DivisionsUpdateplayoffPlacementDivisionIdsInput = {
   set?: string[]
   push?: string | string[]
@@ -1494,6 +1700,9 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
+  scope?: boolean
+  status?: boolean
+  sourceDivisionId?: boolean
   sportId?: boolean
   price?: boolean
   maxParticipants?: boolean
@@ -1527,8 +1736,14 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
+  skillDivisionTypeId?: boolean
+  ageDivisionTypeId?: boolean
   ratingType?: boolean
   gender?: boolean
+  description?: boolean
+  registrationUrl?: boolean
+  sourceUrl?: boolean
+  lastVerifiedAt?: boolean
   ageCutoffDate?: boolean
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
@@ -1546,6 +1761,9 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
+  scope?: boolean
+  status?: boolean
+  sourceDivisionId?: boolean
   sportId?: boolean
   price?: boolean
   maxParticipants?: boolean
@@ -1579,8 +1797,14 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
+  skillDivisionTypeId?: boolean
+  ageDivisionTypeId?: boolean
   ratingType?: boolean
   gender?: boolean
+  description?: boolean
+  registrationUrl?: boolean
+  sourceUrl?: boolean
+  lastVerifiedAt?: boolean
   ageCutoffDate?: boolean
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
@@ -1598,6 +1822,9 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
+  scope?: boolean
+  status?: boolean
+  sourceDivisionId?: boolean
   sportId?: boolean
   price?: boolean
   maxParticipants?: boolean
@@ -1631,8 +1858,14 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
+  skillDivisionTypeId?: boolean
+  ageDivisionTypeId?: boolean
   ratingType?: boolean
   gender?: boolean
+  description?: boolean
+  registrationUrl?: boolean
+  sourceUrl?: boolean
+  lastVerifiedAt?: boolean
   ageCutoffDate?: boolean
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
@@ -1650,6 +1883,9 @@ export type DivisionsSelectScalar = {
   sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
+  scope?: boolean
+  status?: boolean
+  sourceDivisionId?: boolean
   sportId?: boolean
   price?: boolean
   maxParticipants?: boolean
@@ -1683,8 +1919,14 @@ export type DivisionsSelectScalar = {
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
+  skillDivisionTypeId?: boolean
+  ageDivisionTypeId?: boolean
   ratingType?: boolean
   gender?: boolean
+  description?: boolean
+  registrationUrl?: boolean
+  sourceUrl?: boolean
+  lastVerifiedAt?: boolean
   ageCutoffDate?: boolean
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
@@ -1692,7 +1934,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "sortOrder" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "sortOrder" | "eventId" | "organizationId" | "scope" | "status" | "sourceDivisionId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "skillDivisionTypeId" | "ageDivisionTypeId" | "ratingType" | "gender" | "description" | "registrationUrl" | "sourceUrl" | "lastVerifiedAt" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1707,6 +1949,9 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     sortOrder: number | null
     eventId: string | null
     organizationId: string | null
+    scope: $Enums.DivisionScopeEnum
+    status: $Enums.DivisionStatusEnum
+    sourceDivisionId: string | null
     sportId: string | null
     price: number | null
     maxParticipants: number | null
@@ -1740,8 +1985,14 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     minRating: number | null
     maxRating: number | null
     divisionTypeId: string | null
+    skillDivisionTypeId: string | null
+    ageDivisionTypeId: string | null
     ratingType: string | null
     gender: string | null
+    description: string | null
+    registrationUrl: string | null
+    sourceUrl: string | null
+    lastVerifiedAt: Date | null
     ageCutoffDate: Date | null
     ageCutoffLabel: string | null
     ageCutoffSource: string | null
@@ -2179,6 +2430,9 @@ export interface DivisionsFieldRefs {
   readonly sortOrder: Prisma.FieldRef<"Divisions", 'Int'>
   readonly eventId: Prisma.FieldRef<"Divisions", 'String'>
   readonly organizationId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly scope: Prisma.FieldRef<"Divisions", 'DivisionScopeEnum'>
+  readonly status: Prisma.FieldRef<"Divisions", 'DivisionStatusEnum'>
+  readonly sourceDivisionId: Prisma.FieldRef<"Divisions", 'String'>
   readonly sportId: Prisma.FieldRef<"Divisions", 'String'>
   readonly price: Prisma.FieldRef<"Divisions", 'Int'>
   readonly maxParticipants: Prisma.FieldRef<"Divisions", 'Int'>
@@ -2212,8 +2466,14 @@ export interface DivisionsFieldRefs {
   readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly divisionTypeId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly skillDivisionTypeId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly ageDivisionTypeId: Prisma.FieldRef<"Divisions", 'String'>
   readonly ratingType: Prisma.FieldRef<"Divisions", 'String'>
   readonly gender: Prisma.FieldRef<"Divisions", 'String'>
+  readonly description: Prisma.FieldRef<"Divisions", 'String'>
+  readonly registrationUrl: Prisma.FieldRef<"Divisions", 'String'>
+  readonly sourceUrl: Prisma.FieldRef<"Divisions", 'String'>
+  readonly lastVerifiedAt: Prisma.FieldRef<"Divisions", 'DateTime'>
   readonly ageCutoffDate: Prisma.FieldRef<"Divisions", 'DateTime'>
   readonly ageCutoffLabel: Prisma.FieldRef<"Divisions", 'String'>
   readonly ageCutoffSource: Prisma.FieldRef<"Divisions", 'String'>

@@ -7,7 +7,7 @@ import {
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
 import { getOrganizationStatus } from '@/lib/organizationStatus';
-import type { Event, Field, Invite, Organization, OrganizationRole, OrganizationTag, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
+import type { Division, Event, Field, Invite, Organization, OrganizationRole, OrganizationTag, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
@@ -28,8 +28,12 @@ import {
   normalizeOrganizationTaxClassification,
   normalizeRentalTaxHandling,
 } from '@/lib/taxPolicy';
+import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
 
 type AnyRow = Record<string, any> & { $id: string };
+type OrganizationDivisionInput = Omit<Division, 'id' | 'scope' | 'organizationId' | 'eventId' | 'maxParticipants'> & {
+  maxParticipants?: number | null;
+};
 type OrganizationFetchMode = 'base' | 'eventForm' | 'full';
 type CachedOrganizationEntry = {
   expiresAt: number;
@@ -243,6 +247,7 @@ class OrganizationService {
       description: row.description ?? undefined,
       website: row.website ?? undefined,
       sports,
+      enabledFeatures: normalizeOrganizationFeatures(row.enabledFeatures),
       logoId: row.logoId ?? row.logo_id ?? undefined,
       location: row.location ?? undefined,
       address: row.address ?? undefined,
@@ -321,6 +326,15 @@ class OrganizationService {
           .map((value: unknown) => this.mapOrganizationTag(value as Record<string, unknown>))
           .filter((tag) => tag.name.trim().length > 0)
         : [],
+      divisionSummary: row.divisionSummary && typeof row.divisionSummary === 'object'
+        ? {
+          count: Number.isFinite(Number(row.divisionSummary.count))
+            ? Math.max(0, Math.trunc(Number(row.divisionSummary.count)))
+            : 0,
+          minPrice: typeof row.divisionSummary.minPrice === 'number' ? row.divisionSummary.minPrice : null,
+          maxPrice: typeof row.divisionSummary.maxPrice === 'number' ? row.divisionSummary.maxPrice : null,
+        }
+        : undefined,
       $createdAt: row.createdAt ?? row.$createdAt,
       $updatedAt: row.updatedAt ?? row.$updatedAt,
       events: [],
@@ -379,6 +393,79 @@ class OrganizationService {
     });
     this.invalidateOrganizationCache(id);
     return this.mapRowToOrganization(response as AnyRow);
+  }
+
+  async listOrganizationDivisions(organizationId: string, manage = false): Promise<Division[]> {
+    const params = new URLSearchParams();
+    if (manage) params.set('manage', 'true');
+    const query = params.toString();
+    const response = await apiRequest<{ divisions?: AnyRow[] }>(
+      `/api/organizations/${encodeURIComponent(organizationId)}/divisions${query ? `?${query}` : ''}`,
+    );
+    return (response.divisions ?? []).map((row) => this.mapOrganizationDivision(row));
+  }
+
+  async createOrganizationDivision(
+    organizationId: string,
+    input: OrganizationDivisionInput,
+  ): Promise<Division> {
+    const response = await apiRequest<{ division: AnyRow }>(
+      `/api/organizations/${encodeURIComponent(organizationId)}/divisions`,
+      { method: 'POST', body: input },
+    );
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapOrganizationDivision(response.division);
+  }
+
+  async updateOrganizationDivision(
+    organizationId: string,
+    divisionId: string,
+    input: OrganizationDivisionInput,
+  ): Promise<Division> {
+    const response = await apiRequest<{ division: AnyRow }>(
+      `/api/organizations/${encodeURIComponent(organizationId)}/divisions/${encodeURIComponent(divisionId)}`,
+      { method: 'PATCH', body: input },
+    );
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapOrganizationDivision(response.division);
+  }
+
+  async archiveOrganizationDivision(organizationId: string, divisionId: string): Promise<Division> {
+    const response = await apiRequest<{ division: AnyRow }>(
+      `/api/organizations/${encodeURIComponent(organizationId)}/divisions/${encodeURIComponent(divisionId)}`,
+      { method: 'DELETE' },
+    );
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapOrganizationDivision(response.division);
+  }
+
+  private mapOrganizationDivision(row: AnyRow): Division {
+    return {
+      id: String(row.id ?? row.$id ?? ''),
+      name: String(row.name ?? ''),
+      key: typeof row.key === 'string' ? row.key : undefined,
+      kind: row.kind === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
+      eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
+      organizationId: typeof row.organizationId === 'string' ? row.organizationId : undefined,
+      scope: row.scope === 'ORGANIZATION' ? 'ORGANIZATION' : 'EVENT',
+      status: row.status === 'INACTIVE' || row.status === 'ARCHIVED' ? row.status : 'ACTIVE',
+      sourceDivisionId: typeof row.sourceDivisionId === 'string' ? row.sourceDivisionId : undefined,
+      sportId: typeof row.sportId === 'string' ? row.sportId : undefined,
+      price: typeof row.price === 'number' ? row.price : undefined,
+      maxParticipants: typeof row.maxParticipants === 'number' ? row.maxParticipants : undefined,
+      divisionTypeId: typeof row.divisionTypeId === 'string' ? row.divisionTypeId : undefined,
+      divisionTypeName: typeof row.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
+      skillDivisionTypeId: typeof row.skillDivisionTypeId === 'string' ? row.skillDivisionTypeId : undefined,
+      ageDivisionTypeId: typeof row.ageDivisionTypeId === 'string' ? row.ageDivisionTypeId : undefined,
+      ratingType: row.ratingType === 'AGE' ? 'AGE' : 'SKILL',
+      gender: row.gender === 'M' || row.gender === 'F' ? row.gender : 'C',
+      description: typeof row.description === 'string' ? row.description : undefined,
+      registrationUrl: typeof row.registrationUrl === 'string' ? row.registrationUrl : undefined,
+      sourceUrl: typeof row.sourceUrl === 'string' ? row.sourceUrl : undefined,
+      lastVerifiedAt: typeof row.lastVerifiedAt === 'string' ? row.lastVerifiedAt : undefined,
+      fieldIds: [],
+      teamIds: [],
+    };
   }
 
   async checkPublicSlug(
@@ -528,7 +615,17 @@ class OrganizationService {
   async listOrganizationsWithFieldsPage(
     limit: number = 100,
     offset: number = 0,
-    options: { includeAffiliateRentals?: boolean; hydrateRelations?: boolean; tagSlugs?: string[] } = {},
+    options: {
+      includeAffiliateRentals?: boolean;
+      hydrateRelations?: boolean;
+      tagSlugs?: string[];
+      sports?: string[];
+      divisionGenders?: string[];
+      skillDivisionTypeIds?: string[];
+      ageDivisionTypeIds?: string[];
+      divisionPriceMin?: number;
+      divisionPriceMax?: number;
+    } = {},
   ): Promise<{
     organizations: Organization[];
     pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
@@ -544,6 +641,12 @@ class OrganizationService {
         .map((slug) => slug.trim())
         .filter(Boolean)
         .forEach((slug) => params.append('tags', slug));
+      (options.sports ?? []).forEach((value) => params.append('sports', value));
+      (options.divisionGenders ?? []).forEach((value) => params.append('divisionGenders', value));
+      (options.skillDivisionTypeIds ?? []).forEach((value) => params.append('skillDivisionTypeIds', value));
+      (options.ageDivisionTypeIds ?? []).forEach((value) => params.append('ageDivisionTypeIds', value));
+      if (typeof options.divisionPriceMin === 'number') params.set('divisionPriceMin', String(options.divisionPriceMin));
+      if (typeof options.divisionPriceMax === 'number') params.set('divisionPriceMax', String(options.divisionPriceMax));
       const response = await apiRequest<{
         organizations?: AnyRow[];
         pagination?: { limit?: number; offset?: number; nextOffset?: number; hasMore?: boolean };
@@ -641,9 +744,13 @@ class OrganizationService {
         : Promise.resolve(undefined);
 
       const productsPromise: Promise<Product[]> = productService.listProducts(organization.$id);
+      const divisionsPromise = this.listOrganizationDivisions(
+        organization.$id,
+        Boolean(organization.viewerCanManageOrganization),
+      ).catch(() => [] as Division[]);
       const teamsPromise: Promise<Team[]> = teamService.getTeamsByOrganizationId(organization.$id, true);
 
-      const [fields, facilities, events, staffUsers, owner, products, teams] = await Promise.all([
+      const [fields, facilities, events, staffUsers, owner, products, teams, divisions] = await Promise.all([
         fieldsPromise,
         facilitiesPromise,
         this.fetchEventsByOrganization(organization.$id),
@@ -651,6 +758,7 @@ class OrganizationService {
         ownerPromise,
         productsPromise,
         teamsPromise,
+        divisionsPromise,
       ]);
 
       const staffUsersById = new Map(staffUsers.map((userEntry) => [userEntry.$id, userEntry] as const));
@@ -690,6 +798,7 @@ class OrganizationService {
         )).sort();
       }
       organization.teams = teams;
+      organization.divisions = divisions;
 
       return organization;
     }

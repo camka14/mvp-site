@@ -460,7 +460,9 @@ describe('affiliate import service', () => {
       create: expect.objectContaining({
         name: 'Open',
         price: 229500,
-        divisionTypeId: '18plus',
+        divisionTypeId: 'skill_open_age_18plus',
+        skillDivisionTypeId: 'open',
+        ageDivisionTypeId: '18plus',
         ratingType: 'AGE',
         gender: 'C',
       }),
@@ -469,7 +471,9 @@ describe('affiliate import service', () => {
       create: expect.objectContaining({
         name: 'Over 65',
         price: 169500,
-        divisionTypeId: '65plus',
+        divisionTypeId: 'skill_open_age_65plus',
+        skillDivisionTypeId: 'open',
+        ageDivisionTypeId: '65plus',
         ratingType: 'AGE',
         gender: 'C',
       }),

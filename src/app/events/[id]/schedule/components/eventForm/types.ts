@@ -27,6 +27,7 @@ export interface EventFormProps {
     formId?: string;
     defaultLocation?: DefaultLocation;
     isCreateMode?: boolean;
+    initialSetupMode?: 'SIMPLE' | 'ADVANCED';
     rentalPurchase?: RentalPurchaseContext;
     templateOrganizationId?: string;
     onDirtyStateChange?: (hasChanges: boolean) => void;

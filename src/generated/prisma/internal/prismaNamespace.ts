@@ -7444,6 +7444,9 @@ export const DivisionsScalarFieldEnum = {
   sortOrder: 'sortOrder',
   eventId: 'eventId',
   organizationId: 'organizationId',
+  scope: 'scope',
+  status: 'status',
+  sourceDivisionId: 'sourceDivisionId',
   sportId: 'sportId',
   price: 'price',
   maxParticipants: 'maxParticipants',
@@ -7477,8 +7480,14 @@ export const DivisionsScalarFieldEnum = {
   minRating: 'minRating',
   maxRating: 'maxRating',
   divisionTypeId: 'divisionTypeId',
+  skillDivisionTypeId: 'skillDivisionTypeId',
+  ageDivisionTypeId: 'ageDivisionTypeId',
   ratingType: 'ratingType',
   gender: 'gender',
+  description: 'description',
+  registrationUrl: 'registrationUrl',
+  sourceUrl: 'sourceUrl',
+  lastVerifiedAt: 'lastVerifiedAt',
   ageCutoffDate: 'ageCutoffDate',
   ageCutoffLabel: 'ageCutoffLabel',
   ageCutoffSource: 'ageCutoffSource',
@@ -8808,6 +8817,7 @@ export const OrganizationsScalarFieldEnum = {
   ownerId: 'ownerId',
   website: 'website',
   sports: 'sports',
+  enabledFeatures: 'enabledFeatures',
   status: 'status',
   hasStripeAccount: 'hasStripeAccount',
   verificationStatus: 'verificationStatus',
@@ -9492,6 +9502,34 @@ export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInput
 
 
 /**
+ * Reference to a field of type 'DivisionScopeEnum'
+ */
+export type EnumDivisionScopeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionScopeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'DivisionScopeEnum[]'
+ */
+export type ListEnumDivisionScopeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionScopeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'DivisionStatusEnum'
+ */
+export type EnumDivisionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'DivisionStatusEnum[]'
+ */
+export type ListEnumDivisionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionStatusEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'AuthMfaChallengePurposeEnum'
  */
 export type EnumAuthMfaChallengePurposeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AuthMfaChallengePurposeEnum'>
@@ -10118,6 +10156,20 @@ export type EnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = Fi
  * Reference to a field of type 'EventsOfficialSchedulingModeEnum[]'
  */
 export type ListEnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationFeatureEnum[]'
+ */
+export type ListEnumOrganizationFeatureEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationFeatureEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationFeatureEnum'
+ */
+export type EnumOrganizationFeatureEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationFeatureEnum'>
 
 
 

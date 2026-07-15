@@ -37,12 +37,19 @@ import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
 import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
-import { DISCOVER_SPORT_PARAM, parseDiscoverSportFilters, resolveDiscoverSportFilters } from '@/lib/discoverFilters';
+import {
+  DISCOVER_SPORT_PARAM,
+  parseDiscoverPreset,
+  parseDiscoverSportFilters,
+  resolveDiscoverSportFilters,
+  type DiscoverTabValue,
+} from '@/lib/discoverFilters';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
+import DivisionDiscoveryFilters, { type DivisionDiscoveryFilterValue } from './components/DivisionDiscoveryFilters';
 import {
   buildTeamDivisionFilterOptions,
   filterOpenRegistrationTeams,
@@ -76,11 +83,18 @@ type OrganizationResult = {
   relevance: number;
 };
 
-type DiscoverTab = 'events' | 'organizations' | 'rentals' | 'teams';
+type DiscoverTab = DiscoverTabValue;
 
 const EVENTS_LIMIT = 18;
 const DISCOVERY_PAGE_SIZE = 100;
 const DEFAULT_MAX_DISTANCE = 50;
+const EMPTY_DIVISION_FILTERS: DivisionDiscoveryFilterValue = {
+  genders: [],
+  skillDivisionTypeIds: [],
+  ageDivisionTypeIds: [],
+  priceMinDollars: null,
+  priceMaxDollars: null,
+};
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
 const DISTANCE_SLIDER_MAX_MILES = 100;
@@ -96,6 +110,9 @@ const kmToMiles = (value: number): number => value / KM_PER_MILE;
 const milesToKm = (value: number): number => value * KM_PER_MILE;
 const clampMiles = (value: number): number =>
   Math.min(DISTANCE_SLIDER_MAX_MILES, Math.max(DISTANCE_SLIDER_MIN_MILES, Math.round(value)));
+const stringArraysEqual = (left: string[], right: string[]): boolean => (
+  left.length === right.length && left.every((value, index) => value === right[index])
+);
 
 export default function DiscoverPage() {
   return (
@@ -114,10 +131,14 @@ function DiscoverPageContent() {
     () => parseDiscoverSportFilters(new URLSearchParams(searchParamsString)),
     [searchParamsString],
   );
+  const urlPreset = useMemo(
+    () => parseDiscoverPreset(new URLSearchParams(searchParamsString)),
+    [searchParamsString],
+  );
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
-  const { location, requestLocation } = useLocation();
+  const { location, requestLocation, setLocationFromInfo } = useLocation();
 
-  const [activeTab, setActiveTab] = useState<DiscoverTab>('events');
+  const [activeTab, setActiveTab] = useState<DiscoverTab>(() => urlPreset.tab);
 
   /**
    * Events tab state
@@ -135,19 +156,33 @@ function DiscoverPageContent() {
   const isLoadMoreRequestInFlightRef = useRef(false);
   const visibleEventIdsRef = useRef<Set<string>>(new Set());
 
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE']);
   const [selectedSports, setSelectedSports] = useState<string[]>(() => urlSelectedSports);
   const [selectedEventTags, setSelectedEventTags] = useState<string[]>([]);
+  const [eventDivisionFilters, setEventDivisionFilters] = useState<DivisionDiscoveryFilterValue>(() => ({
+    ...EMPTY_DIVISION_FILTERS,
+    skillDivisionTypeIds: urlPreset.tab === 'events' ? urlPreset.skillDivisionTypeIds : [],
+  }));
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
   const [eventTagsLoading, setEventTagsLoading] = useState(false);
   const [eventTagsError, setEventTagsError] = useState<string | null>(null);
-  const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>([]);
+  const [selectedOrganizationTags, setSelectedOrganizationTags] = useState<string[]>(() => (
+    urlPreset.tab === 'organizations' ? urlPreset.tags : []
+  ));
+  const [organizationDivisionFilters, setOrganizationDivisionFilters] = useState<DivisionDiscoveryFilterValue>(() => ({
+    ...EMPTY_DIVISION_FILTERS,
+    skillDivisionTypeIds: urlPreset.tab === 'organizations' ? urlPreset.skillDivisionTypeIds : [],
+  }));
   const [organizationTags, setOrganizationTags] = useState<OrganizationTag[]>([]);
   const [organizationTagsLoading, setOrganizationTagsLoading] = useState(false);
   const [organizationTagsError, setOrganizationTagsError] = useState<string | null>(null);
-  const [maxDistance, setMaxDistance] = useState<number | null>(null);
+  const [maxDistance, setMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'events' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
   const searchQuery = searchParams.get('q') || '';
@@ -225,19 +260,29 @@ function DiscoverPageContent() {
   const [rentalOffset, setRentalOffset] = useState(0);
   const [rentalsError, setRentalsError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
-  const [rentalsMaxDistance, setRentalsMaxDistance] = useState<number | null>(null);
+  const [rentalsMaxDistance, setRentalsMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'rentals' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
 
   /**
    * Organizations tab state
    */
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsLoadingMore, setOrganizationsLoadingMore] = useState(false);
   const [hasMoreOrganizations, setHasMoreOrganizations] = useState(true);
-  const [organizationOffset, setOrganizationOffset] = useState(0);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
-  const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(null);
+  const organizationOffsetRef = useRef(0);
+  const hasMoreOrganizationsRef = useRef(true);
+  const organizationRequestInFlightRef = useRef(false);
+  const latestOrganizationRequestRef = useRef(0);
+  const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(() => (
+    urlPreset.tab === 'organizations' && urlPreset.distanceMiles !== null
+      ? milesToKm(urlPreset.distanceMiles)
+      : null
+  ));
 
   /**
    * Teams tab state
@@ -343,10 +388,14 @@ function DiscoverPageContent() {
 
   useEffect(() => {
     if (sportsLoading) return;
-    setSelectedSports((current) => resolveDiscoverSportFilters(current, sportOptions));
-    setTeamSelectedSports((current) =>
-      current.filter((sport) => sportOptions.includes(sport))
-    );
+    setSelectedSports((current) => {
+      const resolved = resolveDiscoverSportFilters(current, sportOptions);
+      return stringArraysEqual(current, resolved) ? current : resolved;
+    });
+    setTeamSelectedSports((current) => {
+      const resolved = current.filter((sport) => sportOptions.includes(sport));
+      return stringArraysEqual(current, resolved) ? current : resolved;
+    });
   }, [sportOptions, sportsLoading]);
 
   const teamDivisionTypeOptions = useMemo(
@@ -404,6 +453,11 @@ function DiscoverPageContent() {
         eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
         sports: selectedSports.length > 0 ? selectedSports : undefined,
         tags: selectedEventTags.length > 0 ? selectedEventTags : undefined,
+        divisionGenders: eventDivisionFilters.genders.length ? eventDivisionFilters.genders as Array<'M' | 'F' | 'C'> : undefined,
+        skillDivisionTypeIds: eventDivisionFilters.skillDivisionTypeIds.length ? eventDivisionFilters.skillDivisionTypeIds : undefined,
+        ageDivisionTypeIds: eventDivisionFilters.ageDivisionTypeIds.length ? eventDivisionFilters.ageDivisionTypeIds : undefined,
+        priceMin: eventDivisionFilters.priceMinDollars === null ? undefined : Math.round(eventDivisionFilters.priceMinDollars * 100),
+        priceMax: eventDivisionFilters.priceMaxDollars === null ? undefined : Math.round(eventDivisionFilters.priceMaxDollars * 100),
         userLocation: location || undefined,
         maxDistance: location && typeof maxDistance === 'number' ? maxDistance : undefined,
         dateFrom,
@@ -415,6 +469,7 @@ function DiscoverPageContent() {
       selectedEventTypes,
       selectedSports,
       selectedEventTags,
+      eventDivisionFilters,
       location,
       maxDistance,
       debouncedSearch,
@@ -566,12 +621,17 @@ function DiscoverPageContent() {
    * Organizations fetching
    */
   const loadOrganizations = useCallback(async (reset = false) => {
-    if (organizationsLoading || organizationsLoadingMore) return;
-    if (organizationsLoaded && !reset) return;
-    const nextOffset = reset ? 0 : organizationOffset;
-    if (!reset && !hasMoreOrganizations) return;
-    if (reset || !organizationsLoaded) {
+    if (!reset && organizationRequestInFlightRef.current) return;
+    const nextOffset = reset ? 0 : organizationOffsetRef.current;
+    if (!reset && !hasMoreOrganizationsRef.current) return;
+
+    const requestId = latestOrganizationRequestRef.current + 1;
+    latestOrganizationRequestRef.current = requestId;
+    organizationRequestInFlightRef.current = true;
+
+    if (reset) {
       setOrganizationsLoading(true);
+      setOrganizationsLoadingMore(false);
     } else {
       setOrganizationsLoadingMore(true);
     }
@@ -580,26 +640,34 @@ function DiscoverPageContent() {
       const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
         hydrateRelations: false,
         tagSlugs: selectedOrganizationTags,
+        sports: selectedSports,
+        divisionGenders: organizationDivisionFilters.genders,
+        skillDivisionTypeIds: organizationDivisionFilters.skillDivisionTypeIds,
+        ageDivisionTypeIds: organizationDivisionFilters.ageDivisionTypeIds,
+        divisionPriceMin: organizationDivisionFilters.priceMinDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMinDollars * 100),
+        divisionPriceMax: organizationDivisionFilters.priceMaxDollars === null ? undefined : Math.round(organizationDivisionFilters.priceMaxDollars * 100),
       });
+      if (requestId !== latestOrganizationRequestRef.current) return;
       setOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
-      setOrganizationOffset(page.pagination.nextOffset);
+      organizationOffsetRef.current = page.pagination.nextOffset;
+      hasMoreOrganizationsRef.current = page.pagination.hasMore;
       setHasMoreOrganizations(page.pagination.hasMore);
-      setOrganizationsLoaded(true);
     } catch (error) {
+      if (requestId !== latestOrganizationRequestRef.current) return;
       console.error('Failed to load organizations:', error);
       setOrganizationsError('Failed to load organizations. Please try again.');
     } finally {
-      setOrganizationsLoading(false);
-      setOrganizationsLoadingMore(false);
+      if (requestId === latestOrganizationRequestRef.current) {
+        organizationRequestInFlightRef.current = false;
+        setOrganizationsLoading(false);
+        setOrganizationsLoadingMore(false);
+      }
     }
   }, [
-    hasMoreOrganizations,
     mergeOrganizationsById,
-    organizationOffset,
-    organizationsLoaded,
-    organizationsLoading,
-    organizationsLoadingMore,
     selectedOrganizationTags,
+    selectedSports,
+    organizationDivisionFilters,
   ]);
 
   const loadMoreOrganizations = useCallback(() => {
@@ -683,9 +751,25 @@ function DiscoverPageContent() {
     loadFirstPage();
   }, [isAuthenticated, hasGuestSession, authLoading, activeTab, loadFirstPage]);
 
+  const presetLocationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!urlPreset.location || presetLocationAppliedRef.current) {
+      return;
+    }
+    const labelParts = (urlPreset.location.label ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+    setLocationFromInfo({
+      lat: urlPreset.location.lat,
+      lng: urlPreset.location.lng,
+      city: labelParts[0],
+      state: labelParts[1],
+      formattedAddress: urlPreset.location.label ?? undefined,
+    });
+    presetLocationAppliedRef.current = true;
+  }, [setLocationFromInfo, urlPreset.location]);
+
   const locationRequestAttemptedRef = useRef(false);
   useEffect(() => {
-    if (location) {
+    if (location || urlPreset.location) {
       return;
     }
     if (locationRequestAttemptedRef.current) {
@@ -696,26 +780,23 @@ function DiscoverPageContent() {
     }
     locationRequestAttemptedRef.current = true;
     requestLocation().catch(() => {});
-  }, [location, requestLocation]);
+  }, [location, requestLocation, urlPreset.location]);
 
   useEffect(() => {
     if (activeTab === 'rentals') {
       loadRentals();
     }
-    if (activeTab === 'organizations') {
-      loadOrganizations();
-    }
     if (activeTab === 'teams') {
       loadTeams();
     }
-  }, [activeTab, loadOrganizations, loadRentals, loadTeams]);
+  }, [activeTab, loadRentals, loadTeams]);
 
   useEffect(() => {
     if (activeTab !== 'organizations') {
       return;
     }
     void loadOrganizations(true);
-  }, [activeTab, loadOrganizations, selectedOrganizationTags]);
+  }, [activeTab, loadOrganizations]);
 
   const handleCreateEventNavigation = useCallback(() => {
     if (!user) {
@@ -1060,6 +1141,8 @@ function DiscoverPageContent() {
               setSelectedStartDate={setSelectedStartDate}
               selectedEndDate={selectedEndDate}
               setSelectedEndDate={setSelectedEndDate}
+              divisionFilters={eventDivisionFilters}
+              setDivisionFilters={setEventDivisionFilters}
               sports={sportOptions}
               sportsLoading={sportsLoading}
               sportsError={sportsError?.message ?? null}
@@ -1088,6 +1171,8 @@ function DiscoverPageContent() {
               setSelectedSports={setSelectedSports}
               selectedTags={selectedOrganizationTags}
               setSelectedTags={setSelectedOrganizationTags}
+              divisionFilters={organizationDivisionFilters}
+              setDivisionFilters={setOrganizationDivisionFilters}
               organizationTags={organizationTags}
               organizationTagsLoading={organizationTagsLoading}
               organizationTagsError={organizationTagsError}
@@ -1212,6 +1297,8 @@ function OrganizationsTabContent(props: {
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
   selectedTags: string[];
   setSelectedTags: Dispatch<SetStateAction<string[]>>;
+  divisionFilters: DivisionDiscoveryFilterValue;
+  setDivisionFilters: (value: DivisionDiscoveryFilterValue) => void;
   organizationTags: OrganizationTag[];
   organizationTagsLoading: boolean;
   organizationTagsError: string | null;
@@ -1239,6 +1326,8 @@ function OrganizationsTabContent(props: {
     setSelectedSports,
     selectedTags,
     setSelectedTags,
+    divisionFilters,
+    setDivisionFilters,
     organizationTags,
     organizationTagsLoading,
     organizationTagsError,
@@ -1312,6 +1401,19 @@ function OrganizationsTabContent(props: {
     });
   });
 
+  const hasDivisionFilters = divisionFilters.genders.length > 0
+    || divisionFilters.skillDivisionTypeIds.length > 0
+    || divisionFilters.ageDivisionTypeIds.length > 0
+    || divisionFilters.priceMinDollars !== null
+    || divisionFilters.priceMaxDollars !== null;
+  if (hasDivisionFilters) {
+    activeFilters.push({
+      key: 'division-filters',
+      label: 'Division filters',
+      onRemove: () => setDivisionFilters(EMPTY_DIVISION_FILTERS),
+    });
+  }
+
   if (location && typeof maxDistance === 'number') {
     activeFilters.push({
       key: 'distance',
@@ -1324,8 +1426,9 @@ function OrganizationsTabContent(props: {
     setSearchTerm('');
     setSelectedSports([]);
     setSelectedTags([]);
+    setDivisionFilters(EMPTY_DIVISION_FILTERS);
     setMaxDistance(null);
-  }, [setSearchTerm, setSelectedSports, setSelectedTags, setMaxDistance]);
+  }, [setDivisionFilters, setSearchTerm, setSelectedSports, setSelectedTags, setMaxDistance]);
 
   const activeFilterCount = activeFilters.length;
 
@@ -1450,6 +1553,12 @@ function OrganizationsTabContent(props: {
           </Alert>
         )}
       </div>
+
+      <DivisionDiscoveryFilters
+        value={divisionFilters}
+        onChange={setDivisionFilters}
+        selectedSports={selectedSports}
+      />
 
       {location && (
         <div>

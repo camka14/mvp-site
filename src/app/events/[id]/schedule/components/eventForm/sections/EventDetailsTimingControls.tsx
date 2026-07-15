@@ -27,6 +27,8 @@ type EventDetailsTimingControlsProps = {
     onEndChange: (value: Date) => void;
     onNoFixedEndDateTimeChange: (checked: boolean) => void;
     onManualPaymentsChange: (checked: boolean) => void;
+    showScheduleControls?: boolean;
+    showRegistrationControls?: boolean;
 };
 
 export const EventDetailsTimingControls = ({
@@ -47,9 +49,11 @@ export const EventDetailsTimingControls = ({
     onEndChange,
     onNoFixedEndDateTimeChange,
     onManualPaymentsChange,
+    showScheduleControls = true,
+    showRegistrationControls = true,
 }: EventDetailsTimingControlsProps) => (
     <>
-        <div className="md:col-span-2">
+        {showScheduleControls ? <div className="md:col-span-2">
             <Controller
                 name="start"
                 control={control}
@@ -76,8 +80,8 @@ export const EventDetailsTimingControls = ({
                     />
                 )}
             />
-        </div>
-        <AnimatedSection
+        </div> : null}
+        {showScheduleControls ? <AnimatedSection
             in={eventType === 'EVENT' || supportsNoFixedEndDateTime}
             collapseClassName="md:col-span-2"
         >
@@ -127,8 +131,8 @@ export const EventDetailsTimingControls = ({
                     </div>
                 )}
             />
-        </AnimatedSection>
-        <div className="md:col-span-2">
+        </AnimatedSection> : null}
+        {showRegistrationControls ? <div className="md:col-span-2">
             <Controller
                 name="registrationCutoffHours"
                 control={control}
@@ -155,8 +159,8 @@ export const EventDetailsTimingControls = ({
                     />
                 )}
             />
-        </div>
-        <div className="md:col-span-2">
+        </div> : null}
+        {showRegistrationControls ? <div className="md:col-span-2">
             <Controller
                 name="cancellationRefundHours"
                 control={control}
@@ -231,6 +235,6 @@ export const EventDetailsTimingControls = ({
                     );
                 }}
             />
-        </div>
+        </div> : null}
     </>
 );

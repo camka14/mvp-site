@@ -16,6 +16,7 @@ import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
 import { getEventTagsForEventIds, slugifyEventTagName } from '@/server/eventTags';
+import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +38,14 @@ const filterSchema = z.object({
   userLocation: userLocationSchema.optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  priceMin: z.number().min(0).optional(),
   priceMax: z.number().optional(),
   eventTypes: z.array(z.string()).optional(),
   sports: z.array(z.string()).optional(),
   divisions: z.array(z.string()).optional(),
+  divisionGenders: z.array(z.enum(['M', 'F', 'C'])).optional(),
+  skillDivisionTypeIds: z.array(z.string()).optional(),
+  ageDivisionTypeIds: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
 }).partial();
 
@@ -218,6 +223,7 @@ const getDivisionDetailsForEvents = async (
     select: {
       eventId: true,
       id: true,
+      sourceDivisionId: true,
       key: true,
       name: true,
       sortOrder: true,
@@ -225,6 +231,8 @@ const getDivisionDetailsForEvents = async (
       price: true,
       maxParticipants: true,
       divisionTypeId: true,
+      skillDivisionTypeId: true,
+      ageDivisionTypeId: true,
       ratingType: true,
       gender: true,
     },
@@ -259,9 +267,12 @@ const getDivisionDetailsForEvents = async (
 
       return {
         id: row.id,
+        sourceDivisionId: row.sourceDivisionId ?? null,
         key: row.key ?? inferred.token,
         name: cleanDivisionDisplayName(row.name, inferred.defaultName),
         divisionTypeId,
+        skillDivisionTypeId: row.skillDivisionTypeId ?? null,
+        ageDivisionTypeId: row.ageDivisionTypeId ?? null,
         divisionTypeName,
         ratingType,
         gender,
@@ -439,27 +450,30 @@ export async function POST(req: NextRequest) {
   if (filters.eventTypes?.length) {
     where.eventType = { in: filters.eventTypes };
   }
-  if (typeof filters.priceMax === 'number') {
-    where.price = { lte: filters.priceMax };
-  }
-  if (filters.divisions?.length) {
-    const divisionFilters = normalizeDivisionKeys(filters.divisions);
-    if (divisionFilters.length) {
-      const matchingDivisionRows = await prisma.divisions.findMany({
-        where: {
-          OR: [
-            { id: { in: divisionFilters } },
-            { key: { in: divisionFilters } },
-          ],
-        },
-        select: { eventId: true },
-      });
-      const matchingEventIds = uniqueStrings(matchingDivisionRows.map((row) => row.eventId));
-      if (!matchingEventIds.length) {
-        return emptyEventsResponse(offset);
-      }
-      where.AND.push({ id: { in: matchingEventIds } });
+  const divisionFilters = normalizeDivisionKeys(filters.divisions);
+  const skillDivisionTypeIds = normalizeDivisionKeys(filters.skillDivisionTypeIds);
+  const ageDivisionTypeIds = normalizeDivisionKeys(filters.ageDivisionTypeIds);
+  const divisionGenders = Array.from(new Set(filters.divisionGenders ?? []));
+  const divisionWhere = buildDivisionDiscoveryWhere({
+    scope: 'EVENT',
+    sports: filters.sports,
+    genders: divisionGenders,
+    skillDivisionTypeIds,
+    ageDivisionTypeIds,
+    divisionIds: divisionFilters,
+    priceMin: filters.priceMin,
+    priceMax: filters.priceMax,
+  });
+  if (divisionWhere) {
+    const matchingDivisionRows = await prisma.divisions.findMany({
+      where: divisionWhere as any,
+      select: { eventId: true },
+    });
+    const matchingEventIds = uniqueStrings(matchingDivisionRows.map((row) => row.eventId));
+    if (!matchingEventIds.length) {
+      return emptyEventsResponse(offset);
     }
+    where.AND.push({ id: { in: matchingEventIds } });
   }
   if (filters.tags?.length) {
     const tagFilters = Array.from(

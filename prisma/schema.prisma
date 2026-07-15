@@ -85,7 +85,25 @@ enum EventsEventTypeEnum {
   EVENT
   LEAGUE
   WEEKLY_EVENT
+  TRYOUT
   AFFILIATE
+}
+
+enum OrganizationFeatureEnum {
+  CLUB_TEAMS
+  FACILITIES_RENTALS
+  EVENT_MANAGEMENT
+}
+
+enum DivisionScopeEnum {
+  ORGANIZATION
+  EVENT
+}
+
+enum DivisionStatusEnum {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
 }
 
 enum RegistrationPaymentModeEnum {
@@ -677,6 +695,9 @@ model Divisions {
   sortOrder                           Int?
   eventId                             String?
   organizationId                      String?
+  scope                               DivisionScopeEnum  @default(EVENT)
+  status                              DivisionStatusEnum @default(ACTIVE)
+  sourceDivisionId                    String?
   sportId                             String?
   price                               Int?
   maxParticipants                     Int?
@@ -710,8 +731,14 @@ model Divisions {
   minRating                           Float?
   maxRating                           Float?
   divisionTypeId                      String?
+  skillDivisionTypeId                 String?
+  ageDivisionTypeId                   String?
   ratingType                          String?
   gender                              String?
+  description                         String?
+  registrationUrl                     String?
+  sourceUrl                           String?
+  lastVerifiedAt                      DateTime?
   ageCutoffDate                       DateTime?
   ageCutoffLabel                      String?
   ageCutoffSource                     String?
@@ -721,6 +748,13 @@ model Divisions {
   @@index([eventId])
   @@index([eventId, kind, sortOrder])
   @@index([organizationId])
+  @@index([scope, status, organizationId])
+  @@index([scope, status, eventId])
+  @@index([scope, status, sportId, ageDivisionTypeId])
+  @@index([scope, status, sportId, skillDivisionTypeId])
+  @@index([scope, status, gender])
+  @@index([sourceDivisionId])
+  @@index([price])
   @@index([sportId])
   @@index([key])
 }
@@ -2182,6 +2216,7 @@ model Organizations {
   ownerId                           String
   website                           String?
   sports                            String[]                                  @default([])
+  enabledFeatures                   OrganizationFeatureEnum[]                 @default([EVENT_MANAGEMENT])
   status                            OrganizationsStatusEnum                   @default(LISTED)
   hasStripeAccount                  Boolean?
   verificationStatus                OrganizationsVerificationStatusEnum       @default(UNVERIFIED)

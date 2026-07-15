@@ -254,10 +254,13 @@ export async function POST(req: NextRequest) {
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: organizationId },
-      select: { id: true, ownerId: true },
+      select: { id: true, ownerId: true, enabledFeatures: true },
     });
     if (!organization || !await hasOrgPermission(session, organization, ORG_PERMISSIONS.TEAMS_MANAGE)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!organization.enabledFeatures.includes('CLUB_TEAMS')) {
+      return NextResponse.json({ error: 'Enable club and team tools before creating teams.' }, { status: 400 });
     }
   }
   let requiredTemplateIds: string[] = [];

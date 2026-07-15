@@ -7,7 +7,7 @@ type EventTypeOption = {
 };
 
 export const supportsScheduleSlots = (eventType: EventType): boolean =>
-    eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'WEEKLY_EVENT';
+    eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'WEEKLY_EVENT' || eventType === 'TRYOUT';
 
 export const hasParentEventRef = (value?: string | null): boolean =>
     typeof value === 'string' && value.trim().length > 0;
@@ -21,10 +21,10 @@ export const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?
 );
 
 export const supportsFieldCountForEvent = (eventType: EventType): boolean =>
-    eventType === 'EVENT' || eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+    eventType === 'EVENT' || eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'TRYOUT';
 
 export const supportsOrganizationFieldSelectionForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
-    eventType === 'EVENT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
+    eventType === 'EVENT' || eventType === 'TRYOUT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
 
 export const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePlayoffs: boolean): boolean => (
     eventType === 'TOURNAMENT' && includePlayoffs
@@ -32,11 +32,13 @@ export const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePla
 
 export const buildEventTypeOptions = (
     isRentalCreateFlow: boolean,
-    _isOrganizationHostedEvent: boolean = false,
+    isOrganizationHostedEvent: boolean = false,
+    clubFeaturesEnabled: boolean = false,
 ): EventTypeOption[] => [
     { value: 'EVENT', label: 'Event' },
     { value: 'TOURNAMENT', label: 'Tournament' },
     { value: 'LEAGUE', label: 'League' },
+    ...(isOrganizationHostedEvent && clubFeaturesEnabled ? [{ value: 'TRYOUT' as const, label: 'Tryout' }] : []),
     ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT' as const, label: 'Weekly Event' }]),
 ];
 

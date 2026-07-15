@@ -34,6 +34,9 @@ export interface UserAccount {
 export type DivisionGender = 'M' | 'F' | 'C';
 export type DivisionRatingType = 'AGE' | 'SKILL';
 export type DivisionKind = 'LEAGUE' | 'PLAYOFF';
+export type DivisionScope = 'ORGANIZATION' | 'EVENT';
+export type DivisionStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+export type OrganizationFeature = 'CLUB_TEAMS' | 'FACILITIES_RENTALS' | 'EVENT_MANAGEMENT';
 
 export interface DivisionType {
   id: string;
@@ -49,6 +52,9 @@ export interface Division {
   kind?: DivisionKind;
   eventId?: string;
   organizationId?: string;
+  scope?: DivisionScope;
+  status?: DivisionStatus;
+  sourceDivisionId?: string;
   sportId?: string;
   price?: number;
   maxParticipants?: number;
@@ -74,16 +80,23 @@ export interface Division {
   installmentAmounts?: number[];
   fieldIds?: string[];
   teamIds?: string[];
-  skillLevel?: string;
   minRating?: number;
   maxRating?: number;
   divisionTypeId?: string;
+  skillDivisionTypeId?: string;
+  ageDivisionTypeId?: string;
   divisionTypeName?: string;
+  /** @deprecated Use skillDivisionTypeId and divisionTypeName for new code. */
+  skillLevel?: string;
   ratingType?: DivisionRatingType;
   gender?: DivisionGender;
   ageCutoffDate?: string;
   ageCutoffLabel?: string;
   ageCutoffSource?: string;
+  description?: string;
+  registrationUrl?: string;
+  sourceUrl?: string;
+  lastVerifiedAt?: string;
 }
 
 export interface LeagueConfig {
@@ -745,7 +758,7 @@ export interface Field {
   rentalSlots?: TimeSlot[];
 }
 
-export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT' | 'AFFILIATE';
+export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT' | 'TRYOUT' | 'AFFILIATE';
 export type RegistrationPaymentMode = 'ONLINE' | 'MANUAL';
 export type ManualPaymentProvider = 'CASH_APP' | 'VENMO' | 'PAYPAL' | 'STRIPE' | 'ZELLE' | 'OTHER';
 
@@ -990,6 +1003,7 @@ export interface Organization {
   description?: string;
   website?: string;
   sports?: string[];
+  enabledFeatures?: OrganizationFeature[];
   logoId?: string;
   logoUrl?: string;
   imageUrl?: string;
@@ -1030,12 +1044,18 @@ export interface Organization {
   viewerCanAccessUsers?: boolean;
   viewerPermissions?: string[];
   tags?: OrganizationTag[];
+  divisionSummary?: {
+    count: number;
+    minPrice: number | null;
+    maxPrice: number | null;
+  };
   $createdAt?: string;
   $updatedAt?: string;
 
   // Relationships
   events?: Event[];
   teams?: Team[];
+  divisions?: Division[];
   fields?: Field[];
   facilities?: Facility[];
   officials?: UserData[];

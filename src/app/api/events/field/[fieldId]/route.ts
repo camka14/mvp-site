@@ -136,7 +136,7 @@ const fieldLinkedRentalSlotBelongsToField = (
 };
 
 const isSchedulableSlotEventType = (eventType: string): boolean =>
-  eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+  eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'TRYOUT';
 
 const isWeeklyParentEventType = (eventType: string, parentEvent: string | null): boolean =>
   eventType === 'WEEKLY_EVENT' && !parentEvent;

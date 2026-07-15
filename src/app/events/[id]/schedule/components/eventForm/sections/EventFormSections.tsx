@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { NumberInput } from '@mantine/core';
 
-import type { Event, EventTag, RegistrationQuestionDraft } from '@/types';
+import type { Division, Event, EventTag, RegistrationQuestionDraft } from '@/types';
 
 import { deriveScheduleParticipantCount } from '../divisionForm';
 import type { EventFormValues } from '../formTypes';
@@ -96,9 +96,13 @@ type EventFormSectionsProps = {
     formId?: string;
     handleSaveDivisionDetail: ReturnType<typeof useDivisionCommitController>['handleSaveDivisionDetail'];
     hasUnsetTeamCapacityLimits: boolean;
+    hideSectionNavigation?: boolean;
     isAffiliateEvent: boolean;
     isImmutableField: (fieldName: keyof Event) => boolean;
     leagueError?: string | null;
+    onTryoutDivisionSelection: (divisions: Division[]) => void;
+    onTryoutPriceChange: (sourceDivisionId: string, price: number) => void;
+    organizationId?: string;
     paymentController: ReturnType<typeof useEventPaymentController>;
     presentation: PresentationModel;
     registrationQuestions: RegistrationQuestionsModel;
@@ -125,9 +129,13 @@ export const EventFormSections = ({
     formId,
     handleSaveDivisionDetail,
     hasUnsetTeamCapacityLimits,
+    hideSectionNavigation = false,
     isAffiliateEvent,
     isImmutableField,
     leagueError,
+    onTryoutDivisionSelection,
+    onTryoutPriceChange,
+    organizationId,
     paymentController,
     presentation,
     registrationQuestions,
@@ -256,6 +264,7 @@ export const EventFormSections = ({
             leagueWarning={leagueWarning}
             leagueError={leagueError}
             onSelectSection={scrollToSection}
+            hideSectionNavigation={hideSectionNavigation}
         >
             <BasicInformationSection
                 collapsed={collapsedSections['section-basic-information']}
@@ -400,6 +409,9 @@ export const EventFormSections = ({
                 maxStandardNumber={MAX_STANDARD_NUMBER}
                 numberInputStyles={alignedDetailsFieldStyles}
                 onSaveDivision={handleSaveDivisionDetail}
+                onTryoutDivisionSelection={onTryoutDivisionSelection}
+                onTryoutPriceChange={onTryoutPriceChange}
+                organizationId={organizationId}
                 paymentController={paymentController}
                 playoffData={playoffData}
                 setLeagueData={setLeagueData}

@@ -8,6 +8,7 @@ type EventTypeTag = EventTag & {
 const EVENT_TYPE_TAGS_BY_TYPE: Record<string, EventTypeTag> = {
     LEAGUE: { name: 'League', slug: 'league' },
     TOURNAMENT: { name: 'Tournament', slug: 'tournament' },
+    TRYOUT: { name: 'Tryouts', slug: 'tryouts' },
 };
 
 const EVENT_TYPE_TAG_SLUGS = new Set(

@@ -122,13 +122,16 @@ export async function POST(req: NextRequest) {
 
   const organization = await prisma.organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, enabledFeatures: true },
   });
   if (!organization) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
   if (!(await hasOrgPermission(session, organization, ORG_PERMISSIONS.FIELDS_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (!organization.enabledFeatures.includes('FACILITIES_RENTALS')) {
+    return NextResponse.json({ error: 'Enable facility and rental tools before creating facilities.' }, { status: 400 });
   }
 
   const now = new Date();

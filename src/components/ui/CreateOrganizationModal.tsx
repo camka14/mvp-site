@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text, Select, Checkbox } from '@mantine/core';
-import type { Organization, OrganizationTag, UserData } from '@/types';
+import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text, Select, Checkbox, Stack } from '@mantine/core';
+import type { Organization, OrganizationFeature, OrganizationTag, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
 import { OrganizationTagsInput } from './OrganizationTagsInput';
@@ -21,6 +21,7 @@ import {
   normalizeOrganizationDefaultEventTaxHandling,
   normalizeOrganizationTaxClassification,
 } from '@/lib/taxPolicy';
+import { normalizeOrganizationFeatures, ORGANIZATION_FEATURE_OPTIONS } from '@/lib/organizationFeatures';
 
 interface Props {
   isOpen: boolean;
@@ -29,6 +30,8 @@ interface Props {
   organization?: Organization | null;
   onCreated?: (org: Organization) => void;
   onUpdated?: (org: Organization) => void;
+  initialFeatures?: OrganizationFeature[];
+  initialTagSlugs?: string[];
 }
 
 const DEFAULT_COORDINATES = { lat: 37.7749, lng: -122.4194 };
@@ -61,12 +64,15 @@ export default function CreateOrganizationModal({
   organization,
   onCreated,
   onUpdated,
+  initialFeatures,
+  initialTagSlugs,
 }: Props) {
   const isEditing = Boolean(organization);
   const { location: userLocation, locationInfo } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const initializedRef = useRef(false);
   const initializedOrganizationIdRef = useRef<string | null>(null);
+  const initialTagsAppliedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +83,7 @@ export default function CreateOrganizationModal({
     description: '',
     website: '',
     sports: [] as string[],
+    enabledFeatures: ['EVENT_MANAGEMENT'] as OrganizationFeature[],
     location: '',
     address: '',
     logoId: '',
@@ -151,6 +158,7 @@ export default function CreateOrganizationModal({
             .map((sport) => sport.trim())
             .filter((sport) => sport.length > 0)
           : [],
+        enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
         location: editingLabel,
         address: organization.address ?? '',
         logoId: organization.logoId ?? '',
@@ -190,6 +198,7 @@ export default function CreateOrganizationModal({
       description: '',
       website: '',
       sports: [],
+      enabledFeatures: normalizeOrganizationFeatures(initialFeatures),
       location: label,
       address: '',
       logoId: '',
@@ -204,7 +213,7 @@ export default function CreateOrganizationModal({
     setLogoUrl('');
     initializedRef.current = true;
     initializedOrganizationIdRef.current = null;
-  }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo]);
+  }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo, initialFeatures]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -226,6 +235,27 @@ export default function CreateOrganizationModal({
 
     return () => controller.abort();
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      initialTagsAppliedRef.current = false;
+      return;
+    }
+    if (isEditing || initialTagsAppliedRef.current || !initialTagSlugs?.length || !tagOptions.length) {
+      return;
+    }
+    const requested = new Set(initialTagSlugs.map((slug) => slug.trim().toLowerCase()).filter(Boolean));
+    const matchingTags = tagOptions.filter((tag) => requested.has((tag.slug ?? tag.name).trim().toLowerCase()));
+    if (matchingTags.length) {
+      setForm((previous) => ({
+        ...previous,
+        tags: Array.from(new Map(
+          [...previous.tags, ...matchingTags].map((tag) => [tag.slug ?? tag.$id ?? tag.name, tag]),
+        ).values()),
+      }));
+    }
+    initialTagsAppliedRef.current = true;
+  }, [initialTagSlugs, isEditing, isOpen, tagOptions]);
 
   useEffect(() => {
     if (!isOpen || isEditing || !userLocation) {
@@ -256,6 +286,10 @@ export default function CreateOrganizationModal({
       setError('Accept the organization tax responsibility agreement before saving.');
       return;
     }
+    if (form.enabledFeatures.length === 0) {
+      setError('Select at least one organization tool.');
+      return;
+    }
 
     setError(null);
     setSubmitting(true);
@@ -283,6 +317,7 @@ export default function CreateOrganizationModal({
           description: trimmedDescription || undefined,
           website: trimmedWebsite || undefined,
           sports: selectedSports,
+          enabledFeatures: form.enabledFeatures,
           location: trimmedLocation || undefined,
           address: trimmedAddress || undefined,
           logoId: form.logoId || undefined,
@@ -308,6 +343,7 @@ export default function CreateOrganizationModal({
           description: trimmedDescription || undefined,
           website: trimmedWebsite || undefined,
           sports: selectedSports,
+          enabledFeatures: form.enabledFeatures,
           location: trimmedLocation || undefined,
           address: trimmedAddress || undefined,
           coordinates: coordinatesPayload,
@@ -328,6 +364,7 @@ export default function CreateOrganizationModal({
           description: '',
           website: '',
           sports: [],
+          enabledFeatures: ['EVENT_MANAGEMENT'],
           location: '',
           address: '',
           logoId: '',
@@ -446,6 +483,36 @@ export default function CreateOrganizationModal({
           }}
           isValid={Boolean(form.location.trim()) && coordinatesPresent}
         />
+        <div className="space-y-3 rounded-md border border-slate-200 p-4">
+          <Text fw={600} size="sm">Organization tools</Text>
+          <Text size="xs" c="dimmed">
+            Enable only the management areas this organization uses.
+          </Text>
+          <Checkbox.Group
+            value={form.enabledFeatures}
+            onChange={(values) => setForm((prev) => ({
+              ...prev,
+              enabledFeatures: values.filter((value): value is OrganizationFeature => (
+                ORGANIZATION_FEATURE_OPTIONS.some((option) => option.value === value)
+              )),
+            }))}
+          >
+            <Stack gap="sm">
+              {ORGANIZATION_FEATURE_OPTIONS.map((option) => (
+                <Checkbox
+                  key={option.value}
+                  value={option.value}
+                  label={(
+                    <div>
+                      <Text size="sm" fw={500}>{option.label}</Text>
+                      <Text size="xs" c="dimmed">{option.description}</Text>
+                    </div>
+                  )}
+                />
+              ))}
+            </Stack>
+          </Checkbox.Group>
+        </div>
         <div className="space-y-3 rounded-md border border-slate-200 p-4">
           <Text fw={600} size="sm">Tax settings</Text>
           <Select

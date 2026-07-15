@@ -167,6 +167,7 @@ export const useEventFormConfigurationActions = ({
         clearLeagueSlotErrors();
         const enforcingTeamSettings = !isAffiliateEvent
             && (nextType === 'LEAGUE' || nextType === 'TOURNAMENT');
+        const enforcingTryoutSettings = !isAffiliateEvent && nextType === 'TRYOUT';
         applyValue(nextType);
         setValue(
             'tags',
@@ -177,6 +178,14 @@ export const useEventFormConfigurationActions = ({
             setValue('teamSignup', true, { shouldDirty: true });
             setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
             setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+            return;
+        }
+        if (enforcingTryoutSettings) {
+            setValue('teamSignup', false, { shouldDirty: true });
+            setValue('singleDivision', false, { shouldDirty: true, shouldValidate: true });
+            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+            setValue('divisionDetails', [], { shouldDirty: true, shouldValidate: true });
+            setValue('divisions', [], { shouldDirty: true, shouldValidate: true });
             return;
         }
 

@@ -29,6 +29,8 @@ describe('event tag helpers', () => {
       .toEqual(['Pickup']);
     expect(normalizeEventTypeTagInputs(['Pickup', 'League']))
       .toEqual(['Pickup', 'League']);
+    expect(normalizeEventTypeTagInputs(['Pickup', 'League', 'Tryouts'], { eventType: 'TRYOUT' }))
+      .toEqual(['Pickup', 'Tryouts']);
   });
 
   it('returns persisted tag options only and de-duplicates persisted matches', () => {

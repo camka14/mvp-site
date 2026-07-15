@@ -230,6 +230,7 @@ const getDivisionFieldMapForEvent = async (
     },
     select: {
       id: true,
+      sourceDivisionId: true,
       key: true,
       fieldIds: true,
     },
@@ -291,6 +292,7 @@ const getDivisionDetailsForEvent = async (
     },
     select: {
       id: true,
+      sourceDivisionId: true,
       key: true,
       name: true,
       sportId: true,
@@ -303,6 +305,8 @@ const getDivisionDetailsForEvent = async (
       installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
+      skillDivisionTypeId: true,
+      ageDivisionTypeId: true,
       ratingType: true,
       gender: true,
       ageCutoffDate: true,
@@ -363,9 +367,12 @@ const getDivisionDetailsForEvent = async (
     })();
     return {
       id: row?.id ?? divisionId,
+      sourceDivisionId: row?.sourceDivisionId ?? null,
       key: row?.key ?? inferred.token,
       name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
       divisionTypeId,
+      skillDivisionTypeId: row?.skillDivisionTypeId ?? null,
+      ageDivisionTypeId: row?.ageDivisionTypeId ?? null,
       divisionTypeName,
       ratingType,
       gender,
@@ -435,6 +442,7 @@ const getDivisionDetailsForEvents = async (
     select: {
       eventId: true,
       id: true,
+      sourceDivisionId: true,
       key: true,
       name: true,
       sortOrder: true,
@@ -442,6 +450,8 @@ const getDivisionDetailsForEvents = async (
       price: true,
       maxParticipants: true,
       divisionTypeId: true,
+      skillDivisionTypeId: true,
+      ageDivisionTypeId: true,
       ratingType: true,
       gender: true,
     },
@@ -478,9 +488,12 @@ const getDivisionDetailsForEvents = async (
 
       return {
         id: row.id,
+        sourceDivisionId: row.sourceDivisionId ?? null,
         key: row.key ?? inferred.token,
         name: cleanDivisionDisplayName(row.name, inferred.defaultName),
         divisionTypeId,
+        skillDivisionTypeId: row.skillDivisionTypeId ?? null,
+        ageDivisionTypeId: row.ageDivisionTypeId ?? null,
         divisionTypeName,
         ratingType,
         gender,
@@ -717,12 +730,20 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const normalized = message.toLowerCase();
   return normalized.includes('assigned to more than one division')
-    || normalized.includes('assigned to multiple divisions');
+    || normalized.includes('assigned to multiple divisions')
+    || normalized.includes('do not match the composite division type');
 };
 
 const isOrganizationFieldRequirementError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('Select or create at least one field for this event');
+};
+
+const isTryoutValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Tryout events')
+    || message.includes('club and team features')
+    || message.includes('club division');
 };
 
 const resolveSessionContext = async (
@@ -1067,13 +1088,22 @@ export async function POST(req: NextRequest) {
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: organizationId },
-      select: { id: true, ownerId: true },
+      select: { id: true, ownerId: true, enabledFeatures: true },
     });
     if (!organization) {
       return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
     }
     if (!await hasOrgPermission(session, organization, ORG_PERMISSIONS.EVENTS_MANAGE)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const eventType = typeof commandEvent.eventType === 'string' ? commandEvent.eventType.toUpperCase() : 'EVENT';
+    const requiredFeature = eventType === 'TRYOUT' ? 'CLUB_TEAMS' : 'EVENT_MANAGEMENT';
+    if (!organization.enabledFeatures.includes(requiredFeature)) {
+      return NextResponse.json({
+        error: eventType === 'TRYOUT'
+          ? 'Enable club and team features before creating tryout events.'
+          : 'Enable event management tools before creating events.',
+      }, { status: 400 });
     }
   }
 
@@ -1207,6 +1237,10 @@ export async function POST(req: NextRequest) {
     }
     if (isOrganizationFieldRequirementError(error)) {
       const message = error instanceof Error ? error.message : 'Organization field is required';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isTryoutValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid tryout event';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     if (isLeaguePlayoffTeamCountValidationError(error)) {

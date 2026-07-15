@@ -177,4 +177,38 @@ describe('CreateOrganizationModal', () => {
       );
     });
   });
+
+  it('applies club feature and tag presets to a newly created organization', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tags: [{ $id: 'tag_club', name: 'Club', slug: 'club', isSystem: true }],
+      }),
+    }) as unknown as typeof fetch;
+
+    renderWithMantine(
+      <CreateOrganizationModal
+        isOpen
+        onClose={() => undefined}
+        currentUser={{ $id: 'user_1' } as any}
+        initialFeatures={['CLUB_TEAMS', 'EVENT_MANAGEMENT']}
+        initialTagSlugs={['club']}
+      />,
+    );
+
+    await user.type(await screen.findByPlaceholderText('Organization name'), 'Northside Soccer Club');
+    expect(screen.getByLabelText(/club and team tools/i)).toBeChecked();
+    expect(screen.getByLabelText(/event management tools/i)).toBeChecked();
+    expect(await screen.findByText('Club')).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/responsible for determining taxability/i));
+    await user.click(screen.getByRole('button', { name: 'Create Organization' }));
+
+    await waitFor(() => {
+      expect(createOrganizationMock).toHaveBeenCalledWith(expect.objectContaining({
+        enabledFeatures: ['CLUB_TEAMS', 'EVENT_MANAGEMENT'],
+        tags: [expect.objectContaining({ $id: 'tag_club', slug: 'club' })],
+      }));
+    });
+  });
 });

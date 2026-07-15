@@ -20,6 +20,7 @@ import { EventDetailsTimingControls } from './EventDetailsTimingControls';
 import { EventDetailsTypeControls } from './EventDetailsTypeControls';
 
 type EventDetailsPanelProps = {
+    title?: string;
     collapsed: boolean;
     control: Control<EventFormValues>;
     eventData: EventFormValues;
@@ -73,9 +74,17 @@ type EventDetailsPanelProps = {
     fieldNamesCollapsed: boolean;
     setFieldNamesCollapsed: Dispatch<SetStateAction<boolean>>;
     onLocalFieldNameChange: (fieldId: string, name: string) => void;
+    showTypeControls?: boolean;
+    showScheduleTimingControls?: boolean;
+    showRegistrationTimingControls?: boolean;
+    showLocationControls?: boolean;
+    showAgeControls?: boolean;
+    showRegistrationQuestions?: boolean;
+    showCapacityWarning?: boolean;
 };
 
 export const EventDetailsPanel = ({
+    title,
     collapsed,
     control,
     eventData,
@@ -129,13 +138,21 @@ export const EventDetailsPanel = ({
     fieldNamesCollapsed,
     setFieldNamesCollapsed,
     onLocalFieldNameChange,
+    showTypeControls = true,
+    showScheduleTimingControls = true,
+    showRegistrationTimingControls = true,
+    showLocationControls = true,
+    showAgeControls = true,
+    showRegistrationQuestions = true,
+    showCapacityWarning = true,
 }: EventDetailsPanelProps) => (
     <EventDetailsSection
+        title={title}
         collapsed={collapsed}
         onToggle={onToggle}
     >
         <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
-            <EventDetailsTypeControls
+            {showTypeControls ? <EventDetailsTypeControls
                 control={control}
                 eventType={eventData.eventType}
                 isAffiliateEvent={isAffiliateEvent}
@@ -152,8 +169,8 @@ export const EventDetailsPanel = ({
                 onAffiliateEventChange={onAffiliateEventChange}
                 onIncludePlayoffsChange={onIncludePlayoffsChange}
                 onIncludePoolPlayChange={onIncludePoolPlayChange}
-            />
-            <EventDetailsTimingControls
+            /> : null}
+            {showScheduleTimingControls || showRegistrationTimingControls ? <EventDetailsTimingControls
                 control={control}
                 eventType={eventData.eventType}
                 startValue={eventData.start}
@@ -171,10 +188,17 @@ export const EventDetailsPanel = ({
                 onEndChange={onEndChange}
                 onNoFixedEndDateTimeChange={onNoFixedEndDateTimeChange}
                 onManualPaymentsChange={onManualPaymentsChange}
-            />
+                showScheduleControls={showScheduleTimingControls}
+                showRegistrationControls={showRegistrationTimingControls}
+            /> : null}
         </div>
 
-        <EventDetailsLocationControls
+        {showLocationControls
+        || showAffiliateListingControls
+        || showRequiredDocumentControls
+        || showAgeControls
+        || showRegistrationQuestions
+        || showCapacityWarning ? <EventDetailsLocationControls
             control={control}
             coordinates={eventData.coordinates}
             defaultCoordinates={defaultCoordinates}
@@ -191,9 +215,13 @@ export const EventDetailsPanel = ({
             normalizeNumberValue={normalizeNumberValue}
             minAge={eventData.minAge}
             maxAge={eventData.maxAge}
+            showLocationMap={showLocationControls}
             showAffiliateListingControls={showAffiliateListingControls}
             showRequiredDocumentControls={showRequiredDocumentControls}
-            resourceControls={showOrganizationFields ? (
+            showAgeControls={showAgeControls}
+            showRegistrationQuestions={showRegistrationQuestions}
+            showCapacityWarning={showCapacityWarning}
+            resourceControls={showLocationControls && showOrganizationFields ? (
                 <EventDetailsResourceControls
                     control={control}
                     showOrganizationFields={showOrganizationFields}
@@ -212,7 +240,7 @@ export const EventDetailsPanel = ({
                     onLocalFieldNameChange={onLocalFieldNameChange}
                 />
             ) : null}
-            localFieldNameControls={showLocalFieldCreationControls ? (
+            localFieldNameControls={showLocationControls && showLocalFieldCreationControls ? (
                 <EventDetailsResourceControls
                     control={control}
                     showOrganizationFields={showOrganizationFields}
@@ -235,6 +263,6 @@ export const EventDetailsPanel = ({
             registrationQuestionsEditor={registrationQuestionsEditor}
             hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
             teamSignup={Boolean(eventData.teamSignup)}
-        />
+        /> : null}
     </EventDetailsSection>
 );

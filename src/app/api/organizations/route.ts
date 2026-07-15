@@ -23,6 +23,8 @@ import {
   syncOrganizationTags,
 } from '@/server/organizationTags';
 import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
+import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
+import { buildDivisionDiscoveryWhere, summarizeOrganizationDivisions } from '@/server/divisionDiscovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +38,7 @@ const createSchema = z.object({
   ownerId: z.string(),
   website: z.string().optional(),
   sports: z.array(z.string()).optional(),
+  enabledFeatures: z.array(z.enum(['CLUB_TEAMS', 'FACILITIES_RENTALS', 'EVENT_MANAGEMENT'])).min(1).optional(),
   status: z.string().optional(),
   coordinates: z.any().optional(),
   productIds: z.array(z.string()).optional(),
@@ -126,6 +129,7 @@ type OrganizationListRow = {
   logoId?: string | null;
   website?: string | null;
   sports?: string[] | null;
+  enabledFeatures?: unknown;
   status?: string | null;
   coordinates?: unknown;
   publicSlug?: string | null;
@@ -143,6 +147,7 @@ const toPublicOrganizationListRow = (organization: OrganizationListRow): Organiz
   logoId: organization.logoId ?? null,
   website: organization.website ?? null,
   sports: Array.isArray(organization.sports) ? organization.sports : [],
+  enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
   status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
   coordinates: organization.coordinates ?? null,
   publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
@@ -170,6 +175,13 @@ const parseTagSlugsParam = (params: URLSearchParams): string[] => {
   );
 };
 
+const parseListParam = (params: URLSearchParams, key: string): string[] => Array.from(new Set(
+  params.getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean),
+));
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const baseUrl = req.nextUrl.origin;
@@ -182,6 +194,14 @@ export async function GET(req: NextRequest) {
   const normalizedQuery = query.toLowerCase();
   const includeAffiliateRentals = params.get('includeAffiliateRentals') === 'true';
   const tagSlugs = parseTagSlugsParam(params);
+  const sports = parseListParam(params, 'sports');
+  const divisionGenders = parseListParam(params, 'divisionGenders').filter((value) => ['M', 'F', 'C'].includes(value));
+  const skillDivisionTypeIds = parseListParam(params, 'skillDivisionTypeIds').map((value) => value.toLowerCase());
+  const ageDivisionTypeIds = parseListParam(params, 'ageDivisionTypeIds').map((value) => value.toLowerCase());
+  const divisionPriceMinRaw = params.get('divisionPriceMin');
+  const divisionPriceMaxRaw = params.get('divisionPriceMax');
+  const divisionPriceMin = divisionPriceMinRaw === null ? null : Number(divisionPriceMinRaw);
+  const divisionPriceMax = divisionPriceMaxRaw === null ? null : Number(divisionPriceMaxRaw);
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const hasPrivateSelector = Boolean(ids?.length || ownerId || userId);
   let session: Awaited<ReturnType<typeof requireSession>> | null = null;
@@ -282,6 +302,27 @@ export async function GET(req: NextRequest) {
   if (tagFilteredOrganizationIds) {
     whereConditions.push({ id: { in: tagFilteredOrganizationIds } });
   }
+  const organizationDivisionWhere = buildDivisionDiscoveryWhere({
+    scope: 'ORGANIZATION',
+    sports,
+    genders: divisionGenders,
+    skillDivisionTypeIds,
+    ageDivisionTypeIds,
+    priceMin: divisionPriceMin,
+    priceMax: divisionPriceMax,
+  });
+  if (organizationDivisionWhere) {
+    const matchingDivisions = await prisma.divisions.findMany({
+      where: organizationDivisionWhere as any,
+      select: { organizationId: true },
+    });
+    const matchingOrganizationIds = Array.from(new Set(
+      matchingDivisions
+        .map((division) => division.organizationId)
+        .filter((organizationId): organizationId is string => Boolean(organizationId)),
+    ));
+    whereConditions.push({ id: { in: matchingOrganizationIds } });
+  }
   if (query.length > 0) {
     whereConditions.push({ OR: [
       { name: { contains: query, mode: 'insensitive' } },
@@ -324,6 +365,23 @@ export async function GET(req: NextRequest) {
   const tagsByOrganizationId = await getOrganizationTagsForOrganizationIds(
     pageRows.map((organization) => organization.id),
   );
+  const publicDivisionsByOrganizationId = new Map<string, any[]>();
+  if (pageRows.length > 0) {
+    const publicDivisions = await prisma.divisions.findMany({
+      where: {
+        organizationId: { in: pageRows.map((organization) => organization.id) },
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+      },
+      orderBy: [{ sportId: 'asc' }, { name: 'asc' }],
+    });
+    publicDivisions.forEach((division) => {
+      if (!division.organizationId) return;
+      const rows = publicDivisionsByOrganizationId.get(division.organizationId) ?? [];
+      rows.push(division);
+      publicDivisionsByOrganizationId.set(division.organizationId, rows);
+    });
+  }
 
   if (includeAffiliateRentals && pageRows.length > 0) {
     const affiliateFacilities = await (prisma as any).facilities.findMany({
@@ -357,11 +415,15 @@ export async function GET(req: NextRequest) {
     ? visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
+        divisions: publicDivisionsByOrganizationId.get(organization.id) ?? [],
+        divisionSummary: summarizeOrganizationDivisions(publicDivisionsByOrganizationId.get(organization.id) ?? []),
         facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
       }))
     : visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),
         tags: tagsByOrganizationId.get(organization.id) ?? [],
+        divisions: publicDivisionsByOrganizationId.get(organization.id) ?? [],
+        divisionSummary: summarizeOrganizationDivisions(publicDivisionsByOrganizationId.get(organization.id) ?? []),
       }));
 
   return NextResponse.json({
@@ -424,6 +486,7 @@ export async function POST(req: NextRequest) {
       ownerId: data.ownerId,
       website: data.website ?? null,
       sports: Array.isArray(data.sports) ? data.sports : [],
+      enabledFeatures: normalizeOrganizationFeatures(data.enabledFeatures),
       status,
       hasStripeAccount: false,
       coordinates: data.coordinates ?? null,

@@ -106,6 +106,7 @@ export type OrganizationsCountAggregateOutputType = {
   ownerId: number
   website: number
   sports: number
+  enabledFeatures: number
   status: number
   hasStripeAccount: number
   verificationStatus: number
@@ -217,6 +218,7 @@ export type OrganizationsCountAggregateInputType = {
   ownerId?: true
   website?: true
   sports?: true
+  enabledFeatures?: true
   status?: true
   hasStripeAccount?: true
   verificationStatus?: true
@@ -329,6 +331,7 @@ export type OrganizationsGroupByOutputType = {
   ownerId: string
   website: string | null
   sports: string[]
+  enabledFeatures: $Enums.OrganizationFeatureEnum[]
   status: $Enums.OrganizationsStatusEnum
   hasStripeAccount: boolean | null
   verificationStatus: $Enums.OrganizationsVerificationStatusEnum
@@ -389,6 +392,7 @@ export type OrganizationsWhereInput = {
   ownerId?: Prisma.StringFilter<"Organizations"> | string
   website?: Prisma.StringNullableFilter<"Organizations"> | string | null
   sports?: Prisma.StringNullableListFilter<"Organizations">
+  enabledFeatures?: Prisma.EnumOrganizationFeatureEnumNullableListFilter<"Organizations">
   status?: Prisma.EnumOrganizationsStatusEnumFilter<"Organizations"> | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
@@ -428,6 +432,7 @@ export type OrganizationsOrderByWithRelationInput = {
   ownerId?: Prisma.SortOrder
   website?: Prisma.SortOrderInput | Prisma.SortOrder
   sports?: Prisma.SortOrder
+  enabledFeatures?: Prisma.SortOrder
   status?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
   verificationStatus?: Prisma.SortOrder
@@ -471,6 +476,7 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   ownerId?: Prisma.StringFilter<"Organizations"> | string
   website?: Prisma.StringNullableFilter<"Organizations"> | string | null
   sports?: Prisma.StringNullableListFilter<"Organizations">
+  enabledFeatures?: Prisma.EnumOrganizationFeatureEnumNullableListFilter<"Organizations">
   status?: Prisma.EnumOrganizationsStatusEnumFilter<"Organizations"> | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
@@ -509,6 +515,7 @@ export type OrganizationsOrderByWithAggregationInput = {
   ownerId?: Prisma.SortOrder
   website?: Prisma.SortOrderInput | Prisma.SortOrder
   sports?: Prisma.SortOrder
+  enabledFeatures?: Prisma.SortOrder
   status?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
   verificationStatus?: Prisma.SortOrder
@@ -554,6 +561,7 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   ownerId?: Prisma.StringWithAggregatesFilter<"Organizations"> | string
   website?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
   sports?: Prisma.StringNullableListFilter<"Organizations">
+  enabledFeatures?: Prisma.EnumOrganizationFeatureEnumNullableListFilter<"Organizations">
   status?: Prisma.EnumOrganizationsStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.BoolNullableWithAggregatesFilter<"Organizations"> | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
@@ -593,6 +601,7 @@ export type OrganizationsCreateInput = {
   ownerId: string
   website?: string | null
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsCreateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: $Enums.OrganizationsStatusEnum
   hasStripeAccount?: boolean | null
   verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
@@ -632,6 +641,7 @@ export type OrganizationsUncheckedCreateInput = {
   ownerId: string
   website?: string | null
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsCreateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: $Enums.OrganizationsStatusEnum
   hasStripeAccount?: boolean | null
   verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
@@ -671,6 +681,7 @@ export type OrganizationsUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsUpdateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: Prisma.EnumOrganizationsStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
@@ -710,6 +721,7 @@ export type OrganizationsUncheckedUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsUpdateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: Prisma.EnumOrganizationsStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
@@ -749,6 +761,7 @@ export type OrganizationsCreateManyInput = {
   ownerId: string
   website?: string | null
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsCreateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: $Enums.OrganizationsStatusEnum
   hasStripeAccount?: boolean | null
   verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
@@ -788,6 +801,7 @@ export type OrganizationsUpdateManyMutationInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsUpdateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: Prisma.EnumOrganizationsStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
@@ -827,6 +841,7 @@ export type OrganizationsUncheckedUpdateManyInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
+  enabledFeatures?: Prisma.OrganizationsUpdateenabledFeaturesInput | $Enums.OrganizationFeatureEnum[]
   status?: Prisma.EnumOrganizationsStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsStatusEnum
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
@@ -854,6 +869,14 @@ export type OrganizationsUncheckedUpdateManyInput = {
   taxResponsibilityAgreementVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
+export type EnumOrganizationFeatureEnumNullableListFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationFeatureEnum[] | Prisma.ListEnumOrganizationFeatureEnumFieldRefInput<$PrismaModel> | null
+  has?: $Enums.OrganizationFeatureEnum | Prisma.EnumOrganizationFeatureEnumFieldRefInput<$PrismaModel> | null
+  hasEvery?: $Enums.OrganizationFeatureEnum[] | Prisma.ListEnumOrganizationFeatureEnumFieldRefInput<$PrismaModel>
+  hasSome?: $Enums.OrganizationFeatureEnum[] | Prisma.ListEnumOrganizationFeatureEnumFieldRefInput<$PrismaModel>
+  isEmpty?: boolean
+}
+
 export type OrganizationsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -866,6 +889,7 @@ export type OrganizationsCountOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   website?: Prisma.SortOrder
   sports?: Prisma.SortOrder
+  enabledFeatures?: Prisma.SortOrder
   status?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
   verificationStatus?: Prisma.SortOrder
@@ -967,6 +991,10 @@ export type OrganizationsCreatesportsInput = {
   set: string[]
 }
 
+export type OrganizationsCreateenabledFeaturesInput = {
+  set: $Enums.OrganizationFeatureEnum[]
+}
+
 export type OrganizationsCreateproductIdsInput = {
   set: string[]
 }
@@ -978,6 +1006,11 @@ export type OrganizationsCreateembedAllowedDomainsInput = {
 export type OrganizationsUpdatesportsInput = {
   set?: string[]
   push?: string | string[]
+}
+
+export type OrganizationsUpdateenabledFeaturesInput = {
+  set?: $Enums.OrganizationFeatureEnum[]
+  push?: $Enums.OrganizationFeatureEnum | $Enums.OrganizationFeatureEnum[]
 }
 
 export type EnumOrganizationsStatusEnumFieldUpdateOperationsInput = {
@@ -1016,6 +1049,7 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   ownerId?: boolean
   website?: boolean
   sports?: boolean
+  enabledFeatures?: boolean
   status?: boolean
   hasStripeAccount?: boolean
   verificationStatus?: boolean
@@ -1055,6 +1089,7 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   ownerId?: boolean
   website?: boolean
   sports?: boolean
+  enabledFeatures?: boolean
   status?: boolean
   hasStripeAccount?: boolean
   verificationStatus?: boolean
@@ -1094,6 +1129,7 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   ownerId?: boolean
   website?: boolean
   sports?: boolean
+  enabledFeatures?: boolean
   status?: boolean
   hasStripeAccount?: boolean
   verificationStatus?: boolean
@@ -1133,6 +1169,7 @@ export type OrganizationsSelectScalar = {
   ownerId?: boolean
   website?: boolean
   sports?: boolean
+  enabledFeatures?: boolean
   status?: boolean
   hasStripeAccount?: boolean
   verificationStatus?: boolean
@@ -1160,7 +1197,7 @@ export type OrganizationsSelectScalar = {
   taxResponsibilityAgreementVersion?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "website" | "sports" | "status" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl" | "taxOrganizationType" | "operatesAthleticFacility" | "defaultEventTaxHandling" | "defaultRentalTaxHandling" | "taxResponsibilityAcceptedAt" | "taxResponsibilityAcceptedByUserId" | "taxResponsibilityAgreementVersion", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "website" | "sports" | "enabledFeatures" | "status" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl" | "taxOrganizationType" | "operatesAthleticFacility" | "defaultEventTaxHandling" | "defaultRentalTaxHandling" | "taxResponsibilityAcceptedAt" | "taxResponsibilityAcceptedByUserId" | "taxResponsibilityAgreementVersion", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -1177,6 +1214,7 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     ownerId: string
     website: string | null
     sports: string[]
+    enabledFeatures: $Enums.OrganizationFeatureEnum[]
     status: $Enums.OrganizationsStatusEnum
     hasStripeAccount: boolean | null
     verificationStatus: $Enums.OrganizationsVerificationStatusEnum
@@ -1636,6 +1674,7 @@ export interface OrganizationsFieldRefs {
   readonly ownerId: Prisma.FieldRef<"Organizations", 'String'>
   readonly website: Prisma.FieldRef<"Organizations", 'String'>
   readonly sports: Prisma.FieldRef<"Organizations", 'String[]'>
+  readonly enabledFeatures: Prisma.FieldRef<"Organizations", 'OrganizationFeatureEnum[]'>
   readonly status: Prisma.FieldRef<"Organizations", 'OrganizationsStatusEnum'>
   readonly hasStripeAccount: Prisma.FieldRef<"Organizations", 'Boolean'>
   readonly verificationStatus: Prisma.FieldRef<"Organizations", 'OrganizationsVerificationStatusEnum'>

@@ -1,5 +1,6 @@
 import {
   buildDiscoverEventsHref,
+  parseDiscoverPreset,
   parseDiscoverSportFilters,
   resolveDiscoverSportFilters,
   sportNameToSlug,
@@ -26,5 +27,27 @@ describe('discoverFilters', () => {
   it('converts sport names and slugs for public event pages', () => {
     expect(sportNameToSlug('Beach Volleyball & Soccer')).toBe('beach-volleyball-and-soccer');
     expect(sportSlugToLabel('beach-volleyball')).toBe('Beach Volleyball');
+  });
+
+  it('parses a validated onboarding preset and rejects malformed location values', () => {
+    expect(parseDiscoverPreset(new URLSearchParams(
+      'tab=organizations&tags=club&skillDivisionTypeIds=competitive&lat=45.52&lng=-122.68&location=Portland%2C+OR&distanceMiles=50',
+    ))).toEqual({
+      tab: 'organizations',
+      tags: ['club'],
+      skillDivisionTypeIds: ['competitive'],
+      distanceMiles: 50,
+      location: { lat: 45.52, lng: -122.68, label: 'Portland, OR' },
+    });
+
+    expect(parseDiscoverPreset(new URLSearchParams(
+      'tab=unknown&lat=200&lng=oops&distanceMiles=900',
+    ))).toEqual({
+      tab: 'events',
+      tags: [],
+      skillDivisionTypeIds: [],
+      distanceMiles: null,
+      location: null,
+    });
   });
 });

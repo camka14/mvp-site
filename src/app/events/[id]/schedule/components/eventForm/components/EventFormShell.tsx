@@ -14,6 +14,7 @@ type EventFormShellProps = {
     leagueWarning?: string | null;
     leagueError?: string | null;
     onSelectSection: (sectionId: string) => void;
+    hideSectionNavigation?: boolean;
     children: ReactNode;
 };
 
@@ -25,25 +26,28 @@ export const EventFormShell = ({
     leagueWarning,
     leagueError,
     onSelectSection,
+    hideSectionNavigation = false,
     children,
 }: EventFormShellProps) => (
     <div className="w-full space-y-6">
         <div className="p-4">
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-                <SectionNavigation
+            <div className={hideSectionNavigation
+                ? 'grid grid-cols-1 gap-6'
+                : 'grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]'}>
+                {!hideSectionNavigation ? <SectionNavigation
                     items={sectionNavItems}
                     activeSectionId={activeSectionId}
                     variant="desktop"
                     onSelectSection={onSelectSection}
-                />
+                /> : null}
 
                 <div className="min-w-0">
-                    <SectionNavigation
+                    {!hideSectionNavigation ? <SectionNavigation
                         items={sectionNavItems}
                         activeSectionId={activeSectionId}
                         variant="mobile"
                         onSelectSection={onSelectSection}
-                    />
+                    /> : null}
                     <div className="w-full">
                         <form id={formId} className="space-y-8">
                             {mobileEditUnsupportedWarning && (

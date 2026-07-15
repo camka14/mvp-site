@@ -15,6 +15,7 @@ const MAX_EVENT_TAG_LENGTH = 40;
 const EVENT_TYPE_TAGS = {
   LEAGUE: { name: 'League', slug: 'league' },
   TOURNAMENT: { name: 'Tournament', slug: 'tournament' },
+  TRYOUT: { name: 'Tryouts', slug: 'tryouts' },
 } as const;
 const EVENT_TYPE_TAG_SLUGS: Set<string> = new Set(Object.values(EVENT_TYPE_TAGS).map((tag) => tag.slug));
 

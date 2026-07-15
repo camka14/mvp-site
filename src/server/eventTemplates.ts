@@ -160,7 +160,7 @@ const getCoordinates = (value: unknown): [number, number] => {
 
 const getTemplateEventType = (value: unknown): Event['eventType'] => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
-  if (['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'AFFILIATE'].includes(normalized)) {
+  if (['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE'].includes(normalized)) {
     return normalized as Event['eventType'];
   }
   return 'EVENT';

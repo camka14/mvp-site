@@ -273,6 +273,8 @@ jest.mock('@/lib/organizationService', () => ({
   organizationService: {
     getOrganizationById: jest.fn().mockResolvedValue(null),
     getOrganizationByIdForEventForm: jest.fn().mockResolvedValue(null),
+    listOrganizationDivisions: jest.fn().mockResolvedValue([]),
+    createOrganizationDivision: jest.fn(),
   },
 }));
 
@@ -301,6 +303,7 @@ describe('EventForm dirty state', () => {
     (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({ sent: [], not_sent: [], failed: [] });
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(null);
     (organizationService.getOrganizationByIdForEventForm as jest.Mock).mockResolvedValue(null);
+    (organizationService.listOrganizationDivisions as jest.Mock).mockResolvedValue([]);
     (fieldService.listFields as jest.Mock).mockResolvedValue([]);
     (apiRequest as jest.Mock).mockResolvedValue({});
     global.fetch = jest.fn().mockResolvedValue({
@@ -410,6 +413,7 @@ describe('EventForm dirty state', () => {
       event={{ ...buildEvent(), ...eventOverrides } as any}
       organization={organization as any}
       onDirtyStateChange={onDirtyStateChange}
+      initialSetupMode={extraProps.isCreateMode ? 'ADVANCED' : undefined}
       {...extraProps}
     />,
   );
@@ -486,6 +490,93 @@ describe('EventForm dirty state', () => {
     expect(formRef.current!.getValidationErrors()).toEqual([]);
     await act(async () => {
       await formRef.current!.validatePendingStaffAssignments();
+    });
+  });
+
+  it('opens new events in Simple Setup and unlocks Basics after Format', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Format' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Basics: Locked' })).toBeInTheDocument();
+    expect(screen.queryByText('Basic Information')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
+    expect(screen.getByText('Basic Information')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Format: Complete' })).toBeInTheDocument();
+  });
+
+  it('preserves the event draft when switching from Simple to Advanced Setup', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const nameInput = await screen.findByPlaceholderText('Enter event name');
+    fireEvent.change(nameInput, { target: { value: 'Shared draft event' } });
+    fireEvent.click(screen.getByLabelText('Advanced Setup'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Enter event name')).toHaveValue('Shared draft event');
+    });
+  });
+
+  it('keeps organization Tryout division settings read only while editing the Tryout price', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+    const sourceDivision = {
+      id: 'organization_division_1',
+      name: 'Girls U14 Competitive',
+      organizationId: 'org_1',
+      scope: 'ORGANIZATION',
+      status: 'ACTIVE',
+      sportId: 'volleyball',
+      gender: 'F',
+      skillDivisionTypeId: 'competitive',
+      ageDivisionTypeId: 'u14',
+      price: 42500,
+      maxParticipants: 24,
+    };
+    (organizationService.listOrganizationDivisions as jest.Mock).mockResolvedValue([sourceDivision]);
+
+    renderForm(jest.fn(), formRef, {
+      eventType: 'TRYOUT',
+      organizationId: 'org_1',
+      registrationPaymentMode: 'MANUAL',
+      teamSignup: false,
+      singleDivision: false,
+      noFixedEndDateTime: true,
+      divisions: ['tryout_division_1'],
+      divisionDetails: [{
+        ...buildEvent().divisionDetails[0],
+        id: 'tryout_division_1',
+        sourceDivisionId: sourceDivision.id,
+        name: sourceDivision.name,
+        gender: sourceDivision.gender,
+        skillDivisionTypeId: sourceDivision.skillDivisionTypeId,
+        ageDivisionTypeId: sourceDivision.ageDivisionTypeId,
+        price: 2500,
+        maxParticipants: sourceDivision.maxParticipants,
+      }],
+    }, {
+      ...buildOrganization(),
+      enabledFeatures: ['CLUB_TEAMS'],
+    });
+
+    expect((await screen.findAllByText('Girls U14 Competitive')).length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('Division name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Gender')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Tryout price for Girls U14 Competitive'), {
+      target: { value: '35' },
+    });
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft().divisionDetails?.[0]?.price).toBe(3500);
     });
   });
 
@@ -648,9 +739,7 @@ describe('EventForm dirty state', () => {
 
     renderForm(onDirtyStateChange);
 
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
+    await waitForStableDirtyState(onDirtyStateChange, false);
 
     fireEvent.change(screen.getByPlaceholderText('Enter event name'), { target: { value: 'Updated Event Name' } });
     fireEvent.blur(screen.getByPlaceholderText('Enter event name'));
@@ -665,15 +754,11 @@ describe('EventForm dirty state', () => {
 
     renderForm(onDirtyStateChange);
 
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
+    await waitForStableDirtyState(onDirtyStateChange, false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Start Date & Time' }));
 
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
-    });
+    await waitForStableDirtyState(onDirtyStateChange, true);
   });
 
   it('defaults official scheduling mode to SCHEDULE when missing on the event payload', async () => {
@@ -1481,9 +1566,7 @@ describe('EventForm dirty state', () => {
       officialIds: ['official_1'],
     });
 
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
+    await waitForStableDirtyState(onDirtyStateChange, false);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
 
@@ -1689,9 +1772,7 @@ describe('EventForm dirty state', () => {
 
     renderForm(onDirtyStateChange);
 
-    await waitFor(() => {
-      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
-    });
+    await waitForStableDirtyState(onDirtyStateChange, false);
 
     fireEvent.change(screen.getByLabelText('First name'), {
       target: { value: 'Casey' },

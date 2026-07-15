@@ -1,6 +1,7 @@
 export type OrganizationTab =
   | 'overview'
   | 'reviews'
+  | 'divisions'
   | 'events'
   | 'eventTemplates'
   | 'teams'
@@ -24,6 +25,7 @@ export type OrganizationCustomerRouteType = 'users' | 'teams';
 const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
   overview: '',
   reviews: 'reviews',
+  divisions: 'divisions',
   events: 'events',
   eventTemplates: 'event-templates',
   teams: 'teams',
@@ -41,6 +43,7 @@ const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
 const ORGANIZATION_TAB_ALIASES: Record<string, OrganizationTab> = {
   overview: 'overview',
   reviews: 'reviews',
+  divisions: 'divisions',
   events: 'events',
   eventTemplates: 'eventTemplates',
   'event-templates': 'eventTemplates',
@@ -145,6 +148,7 @@ export const pushOrganizationHistoryState = (
 };
 
 type BuildOrganizationTabsParams = {
+  enabledFeatures?: string[];
   viewerCanAccessUsers?: boolean;
   isOwner?: boolean;
   isOrganizationRoleMember?: boolean;
@@ -158,12 +162,15 @@ type BuildOrganizationTabsParams = {
   canManageProducts?: boolean;
   canManageDiscounts?: boolean;
   hasTeams?: boolean;
+  hasEvents?: boolean;
+  hasDivisions?: boolean;
   hasRentals?: boolean;
   hasResources?: boolean;
   hasProducts?: boolean;
 };
 
 export const buildOrganizationTabs = ({
+  enabledFeatures,
   viewerCanAccessUsers = false,
   isOwner = false,
   isOrganizationRoleMember = false,
@@ -177,17 +184,30 @@ export const buildOrganizationTabs = ({
   canManageProducts = false,
   canManageDiscounts = false,
   hasTeams = false,
+  hasEvents = false,
+  hasDivisions = false,
   hasRentals = false,
   hasResources = false,
   hasProducts = false,
 }: BuildOrganizationTabsParams): OrganizationTabOption[] => {
+  const hasExplicitFeatureContract = Array.isArray(enabledFeatures);
+  const clubToolsEnabled = !hasExplicitFeatureContract || enabledFeatures.includes('CLUB_TEAMS');
+  const facilityToolsEnabled = !hasExplicitFeatureContract || enabledFeatures.includes('FACILITIES_RENTALS');
+  const eventToolsEnabled = !hasExplicitFeatureContract || enabledFeatures.includes('EVENT_MANAGEMENT');
   const tabs: OrganizationTabOption[] = [
     { label: 'Overview', value: 'overview' },
     { label: 'Reviews', value: 'reviews' },
-    { label: 'Events', value: 'events' },
   ];
 
-  if (isOrganizationRoleMember || canManageTeams || hasTeams) {
+  if (eventToolsEnabled || clubToolsEnabled || hasEvents) {
+    tabs.push({ label: 'Events', value: 'events' });
+  }
+
+  if ((hasExplicitFeatureContract && clubToolsEnabled) || hasDivisions) {
+    tabs.push({ label: 'Club Divisions', value: 'divisions' });
+  }
+
+  if ((clubToolsEnabled && (isOrganizationRoleMember || canManageTeams)) || hasTeams) {
     tabs.push({ label: 'Teams', value: 'teams' });
   }
 
@@ -195,7 +215,7 @@ export const buildOrganizationTabs = ({
     tabs.push({ label: 'Customers', value: 'users' });
   }
 
-  if (isOwner || canManageTemplates) {
+  if (eventToolsEnabled && (isOwner || canManageTemplates)) {
     tabs.push({ label: 'Event Templates', value: 'eventTemplates' });
     tabs.push({ label: 'Document Templates', value: 'templates' });
   }
@@ -220,7 +240,7 @@ export const buildOrganizationTabs = ({
     tabs.push({ label: 'Public Page', value: 'publicPage' });
   }
 
-  if (isOrganizationRoleMember || canManageFields || hasRentals || hasResources) {
+  if ((facilityToolsEnabled && (isOrganizationRoleMember || canManageFields)) || hasRentals || hasResources) {
     tabs.push({ label: 'Facilities', value: 'fields' });
   }
 
