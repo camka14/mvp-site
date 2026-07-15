@@ -699,6 +699,49 @@ describe('auth routes', () => {
       });
     });
 
+    it('resolves a username to its authentication account', async () => {
+      prismaMock.userData.findFirst.mockResolvedValueOnce({ id: 'user_1' });
+      prismaMock.authUser.findUnique.mockResolvedValueOnce({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        passwordHash: 'hashed',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.authUser.update.mockResolvedValueOnce({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
+
+      const res = await LOGIN_POST(buildJsonRequest('http://localhost/api/auth/login', {
+        email: 'Camka14',
+        password: 'password123',
+      }));
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.user.id).toBe('user_1');
+      expect(prismaMock.userData.findFirst).toHaveBeenCalledWith({
+        where: {
+          userName: {
+            equals: 'camka14',
+            mode: 'insensitive',
+          },
+        },
+        select: { id: true },
+      });
+      expect(prismaMock.authUser.findUnique).toHaveBeenCalledWith({ where: { id: 'user_1' } });
+    });
+
     it('does not force MFA setup for website login when no authenticator is enabled', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',

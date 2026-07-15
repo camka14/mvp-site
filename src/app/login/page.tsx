@@ -592,17 +592,17 @@ function LoginPageContent() {
             <>
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address
+                  {isLogin ? 'Email or username' : 'Email Address'}
                 </label>
                 <input
-                  type="email"
+                  type={isLogin ? 'text' : 'email'}
                   id="email"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Enter your email"
+                  placeholder={isLogin ? 'Enter your email or username' : 'Enter your email'}
                   autoComplete={isLogin ? 'username' : 'email'}
                 />
               </div>

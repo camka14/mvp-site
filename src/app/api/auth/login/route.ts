@@ -18,7 +18,7 @@ import {
 } from '@/server/authTotpMfa';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().min(1),
   password: z.string().min(8),
   clientType: z.enum(['web']).optional(),
 });
@@ -36,8 +36,20 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, password } = parsed.data;
-  const normalizedEmail = email.toLowerCase();
-  const authUser = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
+  const normalizedIdentifier = email.toLowerCase();
+  const authUser = normalizedIdentifier.includes('@')
+    ? await prisma.authUser.findUnique({ where: { email: normalizedIdentifier } })
+    : await prisma.userData.findFirst({
+        where: {
+          userName: {
+            equals: normalizedIdentifier,
+            mode: 'insensitive',
+          },
+        },
+        select: { id: true },
+      }).then((profile) => profile
+        ? prisma.authUser.findUnique({ where: { id: profile.id } })
+        : null);
   if (!authUser) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
