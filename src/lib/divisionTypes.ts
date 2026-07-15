@@ -217,6 +217,8 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
     sportKey: 'soccer',
     aliases: ['soccer', 'futbol'],
     options: [
+      { id: 'u4', name: 'U4', ratingType: 'AGE' },
+      { id: 'u5', name: 'U5', ratingType: 'AGE' },
       { id: 'u6', name: 'U6', ratingType: 'AGE' },
       { id: 'u7', name: 'U7', ratingType: 'AGE' },
       { id: 'u8', name: 'U8', ratingType: 'AGE' },
@@ -268,6 +270,15 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
       { id: '40plus', name: '40+', ratingType: 'AGE' },
       { id: '45plus', name: '45+', ratingType: 'AGE' },
       { id: 'open', name: 'Open', ratingType: 'SKILL' },
+      { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+      { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
+      { id: 'local', name: 'Local', ratingType: 'SKILL' },
+      { id: 'national', name: 'National', ratingType: 'SKILL' },
+      { id: 'regional', name: 'Regional', ratingType: 'SKILL' },
+      { id: 'gold', name: 'Gold', ratingType: 'SKILL' },
+      { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
+      { id: 'select', name: 'Select', ratingType: 'SKILL' },
+      { id: 'developmental', name: 'Developmental', ratingType: 'SKILL' },
       { id: 'aa', name: 'AA', ratingType: 'SKILL' },
       { id: 'a', name: 'A', ratingType: 'SKILL' },
       { id: 'bb', name: 'BB', ratingType: 'SKILL' },
@@ -308,6 +319,7 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
       { id: 'a', name: 'A', ratingType: 'SKILL' },
       { id: 'b', name: 'B', ratingType: 'SKILL' },
       { id: 'c', name: 'C', ratingType: 'SKILL' },
+      { id: 'open', name: 'Open', ratingType: 'SKILL' },
     ],
   },
   {
@@ -569,7 +581,10 @@ export const getGenderDivisionTypeOptions = (): DivisionTypeParameterOption[] =>
 );
 
 export const getGlobalAgeDivisionTypeOptions = (): DivisionTypeParameterOption[] => (
-  uniqueOptions(buildCatalogOptions(GENERIC_SPORT_KEY, GENERIC_DIVISION_TYPES))
+  uniqueOptions([
+    ...buildCatalogOptions(GENERIC_SPORT_KEY, GENERIC_DIVISION_TYPES),
+    ...SPORT_DIVISION_TYPES.flatMap((catalog) => buildCatalogOptions(catalog.sportKey, catalog.options)),
+  ])
     .filter((option) => option.ratingType === 'AGE')
     .map(toParameterOption)
 );

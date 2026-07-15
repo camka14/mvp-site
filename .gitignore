@@ -18,6 +18,7 @@ e2e/.auth/
 # production
 /build
 uploads/
+uploads-live-clubs/
 
 # misc
 .DS_Store

@@ -1,6 +1,8 @@
 import {
   cleanDivisionDisplayName,
   getDivisionTypeOptionsForSport,
+  getGlobalAgeDivisionTypeOptions,
+  getSkillDivisionTypeOptionsForSport,
   getSportAgeCutoffRule,
   inferDivisionDetails,
   normalizeDivisionTypeIds,
@@ -40,6 +42,29 @@ describe('divisionTypes age alignment', () => {
     expect(volleyballAgeNames).not.toContain('12U');
     expect(hockeyAgeNames).toContain('U8');
     expect(hockeyAgeNames).not.toContain('8U');
+  });
+
+  it('keeps ordinal team labels out of the strict volleyball skill catalog', () => {
+    expect(getSkillDivisionTypeOptionsForSport('Indoor Volleyball').map((option) => option.id)).not.toEqual(
+      expect.arrayContaining(['first_team', 'second_team', 'third_team', 'fourth_team', 'fifth_team']),
+    );
+  });
+
+  it('supports team tiers published by volleyball clubs', () => {
+    expect(getSkillDivisionTypeOptionsForSport('Indoor Volleyball').map((option) => option.id)).toEqual(
+      expect.arrayContaining(['competitive', 'premier', 'local', 'national', 'regional', 'gold', 'elite', 'select', 'developmental']),
+    );
+  });
+
+  it('supports a strict open fallback for general hockey programs', () => {
+    expect(getSkillDivisionTypeOptionsForSport('Hockey')).toContainEqual({ id: 'open', name: 'Open' });
+  });
+
+  it('exposes sport-specific youth ages through the shared filter catalog', () => {
+    const globalAgeIds = getGlobalAgeDivisionTypeOptions().map((option) => option.id);
+
+    expect(globalAgeIds).toEqual(expect.arrayContaining(['u4', 'u5', 'u6', 'u7', 'u8', 'u9', 'u20']));
+    expect(new Set(globalAgeIds).size).toBe(globalAgeIds.length);
   });
 
   it('uses ultimate frisbee division and cutoff defaults', () => {

@@ -16,6 +16,7 @@ export async function GET() {
     ages: getGlobalAgeDivisionTypeOptions(),
     sportSkills: sports.map((sport) => ({
       sportId: sport.id,
+      sportName: sport.name ?? sport.id,
       skills: normalizeDivisionTypeParameterOptions((sport as any).skillDivisionTypes),
     })),
   }, { status: 200 });
