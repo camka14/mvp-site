@@ -92,6 +92,7 @@ describe('GET /api/division-types', () => {
     expect(payload.sportSkills).toEqual([
       {
         sportId: 'Football',
+        sportName: 'Football',
         skills: [
           { id: 'flag', name: 'Flag' },
           { id: 'tackle', name: 'Tackle' },
@@ -99,6 +100,7 @@ describe('GET /api/division-types', () => {
       },
       {
         sportId: 'Beach Volleyball',
+        sportName: 'Beach Volleyball',
         skills: [
           { id: 'open', name: 'Open' },
           { id: 'aa', name: 'AA' },
@@ -106,6 +108,7 @@ describe('GET /api/division-types', () => {
       },
       {
         sportId: 'Custom Sport',
+        sportName: 'Custom Sport',
         skills: [],
       },
     ]);

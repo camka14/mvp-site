@@ -25,6 +25,22 @@ jest.mock('@/components/ui/Loading', () => ({
 }));
 
 describe('EventsTabContent', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = jest.fn(
+      () => new Promise<Response>(() => undefined),
+    ) as typeof fetch;
+  });
+
+  afterAll(() => {
+    if (originalFetch) {
+      globalThis.fetch = originalFetch;
+    } else {
+      delete (globalThis as { fetch?: typeof fetch }).fetch;
+    }
+  });
+
   it('disables organization event creation and shows the field warning', () => {
     renderWithMantine(
       <EventsTabContent

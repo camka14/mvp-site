@@ -4,6 +4,12 @@
  * Safe default: dry-run. Pass --apply only after reviewing the printed plan.
  * Reviewed organizations replace previously inferred organization-scope rows;
  * event divisions and events remain intact.
+ *
+ * Usage:
+ *   npm run affiliate:clubs:sync-reviewed-divisions
+ *   npm run affiliate:clubs:sync-reviewed-divisions -- --apply
+ *   npm run affiliate:clubs:sync-reviewed-divisions -- --live
+ *   npm run affiliate:clubs:sync-reviewed-divisions -- --live --apply
  */
 
 import { createHash } from 'node:crypto';
@@ -19,7 +25,16 @@ import { reviewedClubDivisionCatalog } from './data/reviewed-club-divisions';
 dotenv.config({ path: '.env', override: false, quiet: true });
 dotenv.config({ path: '.env.local', override: true, quiet: true });
 
+const useLive = process.argv.includes('--live');
 const shouldApply = process.argv.includes('--apply');
+if (useLive) {
+  const liveUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveUrl) throw new Error('--live requires DATABASE_URL_LIVE.');
+  process.env.DATABASE_URL = liveUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.PG_POOL_MAX = '1';
+  process.env.PG_CONNECTION_TIMEOUT_MS = '15000';
+}
 const organizationFilter = process.argv
   .find((argument) => argument.startsWith('--organization='))
   ?.slice('--organization='.length)
@@ -131,7 +146,10 @@ const main = async () => {
       }
     });
   }
-  console.log(`\n${shouldApply ? 'Applied' : 'Dry-run reviewed'} ${selected.length} organization(s).`);
+  console.log(
+    `\n${shouldApply ? 'Applied' : 'Dry-run reviewed'} ${selected.length} organization(s) `
+    + `against the ${useLive ? 'live' : 'local'} database.`,
+  );
   await prisma.$disconnect();
 };
 

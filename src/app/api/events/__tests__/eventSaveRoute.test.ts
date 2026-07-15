@@ -99,7 +99,11 @@ describe('event save route', () => {
     sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
     hasOrgPermissionMock.mockResolvedValue(true);
     canManageEventMock.mockResolvedValue(true);
-    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'host_1' });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'host_1',
+      enabledFeatures: ['EVENT_MANAGEMENT'],
+    });
   });
 
   afterAll(() => {

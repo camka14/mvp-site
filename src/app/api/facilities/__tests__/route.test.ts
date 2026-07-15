@@ -76,6 +76,7 @@ describe('/api/facilities', () => {
     prismaMock.organizations.findUnique.mockResolvedValueOnce({
       id: 'org_1',
       ownerId: 'owner_1',
+      enabledFeatures: ['FACILITIES_RENTALS'],
     });
     prismaMock.facilities.create.mockResolvedValueOnce({
       id: 'facility_1',

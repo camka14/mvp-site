@@ -4,7 +4,9 @@
  *
  * The local database remains the source of truth. The command is dry-run by
  * default and requires `--apply` before it writes to DigitalOcean Spaces or the
- * live database. It never deletes live organizations or published content.
+ * live database. Existing live logo objects are reused even when their original
+ * local upload files have been cleaned up. It never deletes live organizations
+ * or published content.
  *
  * Usage:
  *   npm run affiliate:orgs:sync-live
@@ -530,10 +532,6 @@ const main = async () => {
       `Expected one logo file per org, found ${localState.files.length} files for ${localState.organizations.length} orgs.`,
     );
   }
-  for (const file of localState.files) {
-    await fs.access(resolveLocalLogoPath(file.path));
-  }
-
   const liveTagSchemaAvailable = await tableExists(liveClient, 'OrganizationTags')
     && await tableExists(liveClient, 'OrganizationTagAssignments');
   const ownerResult = await liveClient.query<{ id: string }>(

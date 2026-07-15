@@ -67,6 +67,7 @@ describe('field routes', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
+      enabledFeatures: ['FACILITIES_RENTALS'],
     });
 
     prismaMock.fields.create.mockResolvedValue({
@@ -111,6 +112,7 @@ describe('field routes', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
+      enabledFeatures: ['FACILITIES_RENTALS'],
     });
     prismaMock.facilities.findFirst.mockResolvedValueOnce(null);
 
@@ -149,6 +151,7 @@ describe('field routes', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
+      enabledFeatures: ['FACILITIES_RENTALS'],
     });
     prismaMock.fields.create.mockResolvedValue({
       id: 'field_1',
