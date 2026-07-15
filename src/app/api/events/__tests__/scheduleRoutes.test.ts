@@ -480,6 +480,17 @@ describe('schedule routes', () => {
     expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
   });
 
+  it('does not load match schedule data when event visibility rejects the viewer', async () => {
+    assertCanViewEventScheduleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+
+    const res = await matchesGet(new NextRequest('http://localhost/api/events/event_private/matches'), {
+      params: Promise.resolve({ eventId: 'event_private' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+  });
+
   it('schedules an event from an event document payload', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
