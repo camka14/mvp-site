@@ -170,6 +170,24 @@ const isCompleteSegment = (segment: any, target: number, team1Id: string | null,
   return getSetScoreState(scores[team1Id ?? ''], scores[team2Id ?? ''], target).isValidFinalScore;
 };
 
+const resolvedSegmentWinner = (
+  segment: any,
+  target: number,
+  team1Id: string | null,
+  team2Id: string | null,
+): string | null => {
+  const storedWinner = normalizeText(segment?.winnerEventTeamId);
+  if (storedWinner) return storedWinner;
+  if (!team1Id || !team2Id) return null;
+
+  const scores = jsonRecord(segment?.scores);
+  const team1Points = nonNegativeInt(scores[team1Id]);
+  const team2Points = nonNegativeInt(scores[team2Id]);
+  const scoreState = getSetScoreState(team1Points, team2Points, target);
+  if (!scoreState.isValidFinalScore) return null;
+  return team1Points > team2Points ? team1Id : team2Points > team1Points ? team2Id : null;
+};
+
 const displayNameForUser = (user: any): string | null => {
   if (!user || isMinorAtUtcDate(user.dateOfBirth)) {
     return null;
@@ -304,13 +322,14 @@ export const buildMatchPresentationState = async (input: {
   const presentationSets: PresentationSet[] = segments.map((segment: any, index: number) => {
     const target = setTargets[index] ?? setTargets[setTargets.length - 1] ?? 21;
     const scores = jsonRecord(segment.scores);
+    const winnerTeamId = resolvedSegmentWinner(segment, target, team1Id, team2Id);
     return {
       sequence: segment.sequence,
       team1Points: nonNegativeInt(scores[team1Id ?? '']),
       team2Points: nonNegativeInt(scores[team2Id ?? '']),
       target,
       complete: isCompleteSegment(segment, target, team1Id, team2Id),
-      winnerTeamId: normalizeText(segment.winnerEventTeamId) || null,
+      winnerTeamId,
     };
   });
   const currentSetIndex = presentationSets.findIndex((set) => !set.complete);

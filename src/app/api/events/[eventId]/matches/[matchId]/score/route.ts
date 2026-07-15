@@ -7,7 +7,7 @@ import { loadEventWithRelations, saveMatches } from '@/server/repositories/event
 import { acquireEventLock } from '@/server/repositories/locks';
 import { serializeMatches } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
-import { assertSetScoreUpdateAllowed } from '@/server/matches/setScoringRules';
+import { assertSetScoreUpdateAllowed, resolveSetCompletionForMatch } from '@/server/matches/setScoringRules';
 import {
   OFFICIAL_MATCH_OPEN_MINUTES_BEFORE,
   assertWindowOpen,
@@ -257,12 +257,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         previousPoints: nonNegativeScore(segment.scores?.[parsed.data.eventTeamId]),
         nextPoints: nextScore,
       });
+      const completedSet = resolveSetCompletionForMatch({
+        event,
+        match,
+        sequence: segment.sequence,
+        scores: nextScores,
+      });
       segments[segmentIndex] = {
         ...segment,
-        status: segment.status === 'COMPLETE'
+        status: completedSet
+          ? 'COMPLETE'
+          : segment.status === 'COMPLETE'
           ? segment.status
           : Object.values(nextScores).some((score) => Number(score) > 0) ? 'IN_PROGRESS' : 'NOT_STARTED',
         scores: nextScores,
+        winnerEventTeamId: completedSet?.winnerEventTeamId ?? segment.winnerEventTeamId ?? null,
+        ...(completedSet ? { endedAt: new Date().toISOString() } : {}),
         metadata: mergeClientOperationMetadata(segment.metadata ?? null, parsed.data),
       };
       match.segments = segments.sort((left, right) => left.sequence - right.sequence);

@@ -50,6 +50,9 @@ type AdminBroadcastOverlaysPanelProps = {
   refreshKey: number;
 };
 
+const ADMIN_EVENTS_PAGE_SIZE = 50;
+const OVERLAY_STATE_REFRESH_INTERVAL_MS = 1_500;
+
 const asConfig = (value: unknown): BroadcastOverlayConfigV1 => {
   try {
     return parseBroadcastOverlayConfig(value);
@@ -96,12 +99,26 @@ export default function AdminBroadcastOverlaysPanel({ active, refreshKey }: Admi
   }).filter((option) => option.value), [matches]);
 
   const loadEvents = useCallback(async () => {
-    const response = await fetch('/api/admin/events?limit=100&offset=0', { credentials: 'include' });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || 'Unable to load events.');
-    const nextEvents = Array.isArray(payload.events)
-      ? payload.events.map((event: AdminEventOption & { id?: string }) => normalizeApiEntity(event)) as AdminEventOption[]
-      : [];
+    const eventsById = new Map<string, AdminEventOption>();
+    let offset = 0;
+    let total = 0;
+
+    do {
+      const response = await fetch(`/api/admin/events?limit=${ADMIN_EVENTS_PAGE_SIZE}&offset=${offset}`, { credentials: 'include' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load events.');
+
+      const pageEvents = Array.isArray(payload.events)
+        ? payload.events.map((event: AdminEventOption & { id?: string }) => normalizeApiEntity(event)) as AdminEventOption[]
+        : [];
+      pageEvents.forEach((event) => eventsById.set(event.$id, event));
+      total = Number.isFinite(payload.total) ? Math.max(Math.trunc(payload.total), 0) : offset + pageEvents.length;
+      offset += pageEvents.length;
+
+      if (pageEvents.length === 0) break;
+    } while (offset < total);
+
+    const nextEvents = Array.from(eventsById.values());
     setEvents(nextEvents);
     setEventId((current) => current && nextEvents.some((event) => event.$id === current) ? current : nextEvents[0]?.$id ?? null);
   }, []);
@@ -116,6 +133,21 @@ export default function AdminBroadcastOverlaysPanel({ active, refreshKey }: Admi
     setSelectedOverlayId(nextSelected?.id ?? null);
     setSelectedOverlay(nextSelected);
     setDraftConfig(asConfig(nextSelected?.draftConfig ?? DEFAULT_BROADCAST_OVERLAY_CONFIG));
+  }, [selectedOverlayId]);
+
+  const refreshOverlayState = useCallback(async (nextEventId: string) => {
+    const response = await fetch(`/api/events/${encodeURIComponent(nextEventId)}/broadcast-overlays`, { credentials: 'include' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error || 'Unable to refresh broadcast score state.');
+    const nextOverlays = Array.isArray(payload.overlays) ? payload.overlays as OverlayRow[] : [];
+    setOverlays(nextOverlays);
+    setSelectedOverlay((current) => {
+      const overlayId = current?.id ?? selectedOverlayId;
+      const refreshed = nextOverlays.find((overlay) => overlay.id === overlayId) ?? null;
+      if (!refreshed || !current) return refreshed ?? current;
+      // Preserve unsaved styling/name edits while the live score state updates.
+      return { ...current, status: refreshed.status, state: refreshed.state };
+    });
   }, [selectedOverlayId]);
 
   const loadMatches = useCallback(async (nextEventId: string) => {
@@ -148,6 +180,24 @@ export default function AdminBroadcastOverlaysPanel({ active, refreshKey }: Admi
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Unable to load the event overlay workspace.'))
       .finally(() => setLoading(false));
   }, [active, eventId, loadMatches, loadOverlays, refreshKey]);
+
+  useEffect(() => {
+    if (!active || !eventId) return undefined;
+    const refreshTimer = window.setInterval(() => {
+      void refreshOverlayState(eventId).catch(() => undefined);
+    }, OVERLAY_STATE_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(refreshTimer);
+  }, [active, eventId, refreshOverlayState]);
+
+  const previewScoreSignature = useMemo(() => {
+    const score = selectedOverlay?.state?.presentationState.score;
+    if (!score) return 'no-score';
+    return [
+      score.currentSet,
+      ...score.points,
+      ...score.sets.flatMap((set) => [set.sequence, set.team1Points, set.team2Points, set.complete ? 1 : 0]),
+    ].join('-');
+  }, [selectedOverlay?.state?.presentationState]);
 
   const chooseOverlay = (overlayId: string | null) => {
     const overlay = overlays.find((candidate) => candidate.id === overlayId) ?? null;
@@ -479,7 +529,7 @@ export default function AdminBroadcastOverlaysPanel({ active, refreshKey }: Admi
               {selectedOverlay ? (
                 <iframe
                   title="Broadcast overlay preview"
-                  src={`/broadcast-preview/${encodeURIComponent(selectedOverlay.id)}?mode=${previewMode}`}
+                  src={`/broadcast-preview/${encodeURIComponent(selectedOverlay.id)}?mode=${previewMode}&score=${encodeURIComponent(previewScoreSignature)}`}
                   style={{ width: '100%', aspectRatio: '16 / 9', border: 0, background: 'linear-gradient(135deg, #334155, #0f172a)' }}
                 />
               ) : <Text size="sm" c="dimmed">The preview uses the same isolated renderer as the OBS Program Overlay.</Text>}

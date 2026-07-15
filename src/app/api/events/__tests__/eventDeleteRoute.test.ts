@@ -242,6 +242,8 @@ describe('event DELETE route', () => {
         archiveReason: 'delete_requested',
       }),
     });
+    // Archiving now also revokes any broadcast-overlay capabilities for the
+    // event, so the event update and revocation must share one transaction.
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(billPaymentsMock.deleteMany).not.toHaveBeenCalled();
     expect(billsMock.deleteMany).not.toHaveBeenCalled();

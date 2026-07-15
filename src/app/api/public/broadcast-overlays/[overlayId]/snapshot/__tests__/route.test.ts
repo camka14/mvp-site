@@ -6,6 +6,7 @@ const findOverlayStateMock = jest.fn();
 const validateBroadcastOverlayAccessTokenMock = jest.fn();
 const parseBroadcastOverlayConfigMock = jest.fn((value: unknown) => value);
 const parseMatchPresentationStateMock = jest.fn((value: unknown) => value);
+const buildMatchPresentationStateMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -31,6 +32,10 @@ jest.mock('@/server/broadcast/schemas', () => {
     parseMatchPresentationState: (...args: unknown[]) => parseMatchPresentationStateMock(...args),
   };
 });
+
+jest.mock('@/server/broadcast/presentation', () => ({
+  buildMatchPresentationState: (...args: unknown[]) => buildMatchPresentationStateMock(...args),
+}));
 
 import { GET } from '@/app/api/public/broadcast-overlays/[overlayId]/snapshot/route';
 import { BroadcastOverlayCapabilityError } from '@/server/broadcast/tokens';
@@ -107,6 +112,46 @@ describe('GET /api/public/broadcast-overlays/[overlayId]/snapshot', () => {
     });
     expect(JSON.stringify(body)).not.toContain(rawCapability);
     expect(JSON.stringify(body)).not.toContain('tokenHash');
+  });
+
+  it('rebuilds automatic snapshots from the current selected-match projection', async () => {
+    const automaticState = {
+      version: 1,
+      revision: 8,
+      scoringMode: 'AUTOMATIC',
+      score: { points: [0, 0] },
+    };
+    findOverlayStateMock.mockResolvedValue({
+      overlayId: 'overlay_1',
+      activeMatchId: 'match_1',
+      presentationState: automaticState,
+    });
+    validateBroadcastOverlayAccessTokenMock.mockResolvedValue({
+      overlay: {
+        id: 'overlay_1',
+        eventId: 'event_1',
+        publishedConfig: { version: 1, displayName: 'published-scorebug' },
+      },
+    });
+    buildMatchPresentationStateMock.mockResolvedValue({
+      ...automaticState,
+      score: { points: [3, 4] },
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/public/broadcast-overlays/overlay_1/snapshot', {
+        headers: { Authorization: `Bearer ${'a'.repeat(43)}` },
+      }),
+      params,
+    );
+
+    expect(buildMatchPresentationStateMock).toHaveBeenCalledWith({
+      overlay: expect.objectContaining({ id: 'overlay_1', eventId: 'event_1' }),
+      state: expect.objectContaining({ activeMatchId: 'match_1' }),
+      eventId: 'event_1',
+      matchId: 'match_1',
+    });
+    await expect(response.json()).resolves.toMatchObject({ state: { score: { points: [3, 4] } } });
   });
 
   it('keeps no-store capability headers when a supplied token is invalid or revoked', async () => {
