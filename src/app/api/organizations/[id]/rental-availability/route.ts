@@ -115,7 +115,7 @@ const clipConflict = (conflict: { fieldId: string; start: Date; end: Date }, ran
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ organizationId: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const rangeStart = parseIsoInstant(req.nextUrl.searchParams.get('start'));
   const rangeEnd = parseIsoInstant(req.nextUrl.searchParams.get('end'));
@@ -127,7 +127,7 @@ export async function GET(
   }
 
   try {
-    const [{ organizationId: rawOrganizationId }, session] = await Promise.all([
+    const [{ id: rawOrganizationId }, session] = await Promise.all([
       params,
       getOptionalSession(req),
     ]);

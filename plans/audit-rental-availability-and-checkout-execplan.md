@@ -34,7 +34,7 @@ The behavior is demonstrable with a test organization containing a one-time even
 
 ## Decision Log
 
-- Decision: Add one organization-scoped `GET /api/organizations/[organizationId]/rental-availability` endpoint rather than add pagination to the mobile event list.
+- Decision: Add one organization-scoped `GET /api/organizations/[id]/rental-availability` endpoint rather than add pagination to the mobile event list.
   Rationale: Availability requires data from events, scheduled matches, recurring slots, and rental booking items. The server already owns all of that data and can limit disclosure to opaque field/time blocks. Pagination of client-reconstructed events would remain incomplete, brittle, and capable of leaking schedule details.
   Date/Author: 2026-07-12 / Codex
 
@@ -68,9 +68,9 @@ The main `mvp-site` worktree can contain unrelated user-owned broadcast-overlay 
 
 First, refactor the scheduling repository without changing its observable final assertion. Introduce an exported, read-only helper such as `listFieldSchedulingConflicts(input)` in `src/server/repositories/events.ts`. Its input must contain organization ID, candidate field IDs, an inclusive/exclusive UTC window, and an optional event ID to exclude. It must use the exact existing database queries and occurrence expansion currently inside `attachFieldSchedulingConflicts`, and return a normalized list of `{ fieldId, start, end }` instead of source rows. Change the existing conflict assertion to call that helper, preserving error messages and event-update exclusions. Add regression tests showing direct events, recurring slots, scheduled matches, pending/confirmed rental booking items, and end-at-start boundary behavior all produce the correct blockers.
 
-Next, add `src/app/api/organizations/[organizationId]/rental-availability/route.ts`. Parse `start` and `end` query parameters as ISO instants, require `end > start`, reject an unreasonably large range (choose and document a maximum of 31 days), and return a typed 400 response for invalid input. Resolve the organization and all non-archived rentable fields server-side. Apply the public checkout policy: an unauthenticated caller may see only a publicly enabled organization with public rental inventory; an authenticated organization manager may see its own inventory; everyone else receives a non-enumerating not-found/forbidden response consistent with surrounding public organization routes. Derive rental slots from the persisted field `rentalSlotIds` data exactly as final checkout does. Return only fields with their rentable slots plus conflict blocks clipped to the requested range. Never return event, match, booking, customer, or payment metadata.
+Next, add `src/app/api/organizations/[id]/rental-availability/route.ts`. Parse `start` and `end` query parameters as ISO instants, require `end > start`, reject an unreasonably large range (choose and document a maximum of 31 days), and return a typed 400 response for invalid input. Resolve the organization and all non-archived rentable fields server-side. Apply the public checkout policy: an unauthenticated caller may see only a publicly enabled organization with public rental inventory; an authenticated organization manager may see its own inventory; everyone else receives a non-enumerating not-found/forbidden response consistent with surrounding public organization routes. Derive rental slots from the persisted field `rentalSlotIds` data exactly as final checkout does. Return only fields with their rentable slots plus conflict blocks clipped to the requested range. Never return event, match, booking, customer, or payment metadata.
 
-Add `src/app/api/organizations/[organizationId]/rental-availability/__tests__/route.test.ts`. The suite must prove invalid range rejection, public/private access behavior, only rentable slots returned, opaque blocker payloads, and correct clipping. Reuse the existing test conventions in `src/app/api/events/field/[fieldId]/__tests__/route.test.ts`, `src/server/repositories/__tests__/events.loadWithRelationsFieldConflicts.test.ts`, and `src/server/__tests__/rentalCheckoutAccess.test.ts` rather than adding a second business-rule implementation in tests.
+Add `src/app/api/organizations/[id]/rental-availability/__tests__/route.test.ts`. The suite must prove invalid range rejection, public/private access behavior, only rentable slots returned, opaque blocker payloads, and correct clipping. Reuse the existing test conventions in `src/app/api/events/field/[fieldId]/__tests__/route.test.ts`, `src/server/repositories/__tests__/events.loadWithRelationsFieldConflicts.test.ts`, and `src/server/__tests__/rentalCheckoutAccess.test.ts` rather than adding a second business-rule implementation in tests.
 
 Then evolve the checkout contract. Define a shared server input type `RentalSelectionInput` and a normalization function used by all three phases: purchase-intent creation, temporary rental locks, and final rental-order confirmation. It must sort selections deterministically, trim field IDs, parse ISO instants, reject invalid windows, remove exact duplicates, and reject overlaps on the same field. It must calculate a stable selection fingerprint from the normalized list. Purchase intent must receive `rentalSelections[]` rather than one synthetic all-fields time slot; it must resolve each selection with `resolveCanonicalRentalCheckout`, calculate price from those exact resolved selections, and associate the fingerprint with the intent. The lock endpoint must reserve each exact selection under the same checkout owner, detect overlapping locks rather than only identical IDs, and retain the normalized fingerprint. Final confirmation must require the matching fingerprint and make the same per-selection conflict checks before it writes booking items. A successful confirmation must create a booking item per requested selection and no interval covering a gap between selections.
 
@@ -95,7 +95,7 @@ Implement the shared helper and availability route with focused Jest tests. Befo
 
     git diff --cached --check
     npx jest --runInBand src/server/repositories/__tests__/events.loadWithRelationsFieldConflicts.test.ts
-    npx jest --runInBand src/app/api/organizations/[organizationId]/rental-availability/__tests__/route.test.ts
+    npx jest --runInBand src/app/api/organizations/[id]/rental-availability/__tests__/route.test.ts
     npx jest --runInBand src/app/api/billing/__tests__/rentalLockRoute.test.ts src/app/api/public/organizations/[slug]/rental-orders/__tests__/route.test.ts
     npx tsc --noEmit
 
@@ -114,7 +114,7 @@ After automated tests pass, start the local server with its normal configured da
 
 Expected successful focused output includes lines equivalent to:
 
-    PASS src/app/api/organizations/[organizationId]/rental-availability/__tests__/route.test.ts
+    PASS src/app/api/organizations/[id]/rental-availability/__tests__/route.test.ts
     BUILD SUCCESSFUL
 
 ## Validation and Acceptance
@@ -163,7 +163,7 @@ In `src/server/repositories/events.ts`, export a typed helper with a shape equiv
       excludeEventId?: string;
     }): Promise<FieldSchedulingConflict[]>;
 
-In `src/app/api/organizations/[organizationId]/rental-availability/route.ts`, return a payload equivalent to:
+In `src/app/api/organizations/[id]/rental-availability/route.ts`, return a payload equivalent to:
 
     {
       range: { start: string, end: string },
