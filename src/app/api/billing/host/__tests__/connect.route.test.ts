@@ -6,7 +6,6 @@ const requireSessionMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
 const createOrReuseManagedOrganizationStripeAccountMock = jest.fn();
 const findManagedOrganizationStripeAccountMock = jest.fn();
-const markManagedOrganizationStripeAccountMockVerifiedMock = jest.fn();
 const syncManagedOrganizationStripeAccountMock = jest.fn();
 const isTotpMfaEnabledForUserMock = jest.fn();
 
@@ -59,7 +58,6 @@ jest.mock('@/server/accessControl', () => ({
 jest.mock('@/server/organizationStripeVerification', () => ({
   createOrReuseManagedOrganizationStripeAccount: (...args: unknown[]) => createOrReuseManagedOrganizationStripeAccountMock(...args),
   findManagedOrganizationStripeAccount: (...args: unknown[]) => findManagedOrganizationStripeAccountMock(...args),
-  markManagedOrganizationStripeAccountMockVerified: (...args: unknown[]) => markManagedOrganizationStripeAccountMockVerifiedMock(...args),
   syncManagedOrganizationStripeAccount: (...args: unknown[]) => syncManagedOrganizationStripeAccountMock(...args),
 }));
 
@@ -137,7 +135,6 @@ describe('POST /api/billing/host/connect', () => {
     stripeAccountLinksCreateMock.mockResolvedValue({ url: 'https://connect.stripe.test/account-link', expires_at: 12345 });
     createOrReuseManagedOrganizationStripeAccountMock.mockResolvedValue(undefined);
     findManagedOrganizationStripeAccountMock.mockResolvedValue(null);
-    markManagedOrganizationStripeAccountMockVerifiedMock.mockResolvedValue(undefined);
     syncManagedOrganizationStripeAccountMock.mockResolvedValue({ verificationStatus: 'PENDING' });
   });
 
@@ -221,35 +218,32 @@ describe('POST /api/billing/host/connect', () => {
     expect(stripeInstance.oauth.authorizeUrl).not.toHaveBeenCalled();
   });
 
-  it('returns a mock connect link in mock mode and stores mock account state', async () => {
+  it('fails closed without writing mock account state when Stripe is not configured', async () => {
     delete process.env.STRIPE_SECRET_KEY;
 
     const res = await POST(jsonPost('http://localhost/api/billing/host/connect', buildStatefulBody({ user: { id: 'user_1', email: 'user@example.com' } })));
     const payload = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(payload.onboardingUrl).toBe('http://localhost/profile?stripe=return');
-    expect(prismaMock.userData.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'user_1' },
-        data: expect.objectContaining({ hasStripeAccount: true }),
-      }),
-    );
-    expect(prismaMock.stripeAccounts.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'user_user_1' },
-        create: expect.objectContaining({
-          id: 'user_user_1',
-          userId: 'user_1',
-          accountId: 'acct_mock_user_1',
-          email: 'user@example.com',
-        }),
-        update: expect.objectContaining({
-          accountId: 'acct_mock_user_1',
-          email: 'user@example.com',
-        }),
-      }),
-    );
+    expect(res.status).toBe(503);
+    expect(payload.error).toBe('Payment processing is temporarily unavailable. Please try again later.');
+    expect(prismaMock.organizations.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+    expect(prismaMock.stripeAccounts.upsert).not.toHaveBeenCalled();
+    expect(createOrReuseManagedOrganizationStripeAccountMock).not.toHaveBeenCalled();
+    expect(stripeAccountsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 without starting user onboarding when the Stripe Connect client is not configured', async () => {
+    delete process.env.STRIPE_CONNECT_CLIENT_ID;
+
+    const res = await POST(jsonPost('http://localhost/api/billing/host/connect', buildStatefulBody({ user: { id: 'user_1' } })));
+    const payload = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(payload.error).toBe('Payment processing is temporarily unavailable. Please try again later.');
+    expect(stripeInstance.oauth.authorizeUrl).not.toHaveBeenCalled();
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+    expect(prismaMock.stripeAccounts.upsert).not.toHaveBeenCalled();
   });
 
   it('returns OAuth authorize URL in live mode with a signed state', async () => {

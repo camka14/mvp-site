@@ -375,6 +375,37 @@ describe('POST /api/billing/bills', () => {
     expect(txMock.bills.create).not.toHaveBeenCalled();
   });
 
+  it('rejects creating a bill for another user', async () => {
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'USER',
+        ownerId: 'user_2',
+        totalAmountCents: 5000,
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating a bill for an organization the caller cannot manage', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({
+      id: 'org_2',
+      ownerId: 'owner_2',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'ORGANIZATION',
+        ownerId: 'org_2',
+        totalAmountCents: 5000,
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+  });
+
   it('always records the authenticated user as the bill creator', async () => {
     const response = await POST(
       jsonPost('http://localhost/api/billing/bills', {

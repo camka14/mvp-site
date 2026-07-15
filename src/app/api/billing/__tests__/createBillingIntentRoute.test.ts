@@ -4,6 +4,12 @@ import { NextRequest } from 'next/server';
 
 const requireSessionMock = jest.fn();
 const canManageBillPaymentMock = jest.fn();
+const stripePaymentIntentCreateMock = jest.fn();
+const StripeMock = jest.fn(() => ({
+  paymentIntents: {
+    create: (...args: unknown[]) => stripePaymentIntentCreateMock(...args),
+  },
+}));
 
 const prismaMock = {
   bills: {
@@ -32,7 +38,7 @@ jest.mock('@/server/billing/billPaymentActions', () => ({
 }));
 jest.mock('stripe', () => ({
   __esModule: true,
-  default: jest.fn(),
+  default: StripeMock,
 }));
 
 import { POST } from '@/app/api/billing/create_billing_intent/route';
@@ -49,7 +55,7 @@ describe('POST /api/billing/create_billing_intent', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    delete process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
     canManageBillPaymentMock.mockResolvedValue(false);
     prismaMock.bills.findUnique.mockResolvedValue({
@@ -75,6 +81,10 @@ describe('POST /api/billing/create_billing_intent', () => {
     prismaMock.teams.findUnique.mockResolvedValue(null);
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.billPayments.update.mockResolvedValue({});
+    stripePaymentIntentCreateMock.mockResolvedValue({
+      id: 'pi_123',
+      client_secret: 'pi_123_secret_456',
+    });
   });
 
   afterEach(() => {
@@ -94,6 +104,7 @@ describe('POST /api/billing/create_billing_intent', () => {
 
     expect(response.status).toBe(200);
     expect(payload.billId).toBe('bill_1');
+    expect(payload.paymentIntent).toBe('pi_123_secret_456');
     expect(prismaMock.billPayments.update).toHaveBeenCalledWith({
       where: { id: 'payment_1' },
       data: expect.objectContaining({
@@ -101,6 +112,23 @@ describe('POST /api/billing/create_billing_intent', () => {
       }),
     });
     expect(canManageBillPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before loading or claiming a bill payment when Stripe is not configured', async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+
+    const response = await POST(jsonPost({
+      billId: 'bill_1',
+      billPaymentId: 'payment_1',
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload.error).toBe('Payment processing is temporarily unavailable. Please try again later.');
+    expect(prismaMock.bills.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.billPayments.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
+    expect(stripePaymentIntentCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects a null-payer team bill payment when the user is not on the team', async () => {

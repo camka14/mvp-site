@@ -98,6 +98,28 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
     }
   });
 
+  it('fails closed before loading event state when Stripe is not configured', async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+
+    const response = await POST(
+      requestFor({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventAmountCents: 5000,
+      }),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload.error).toBe('Payment processing is temporarily unavailable. Please try again later.');
+    expect(prismaMock.events.findUnique).not.toHaveBeenCalled();
+    expect(getEventParticipantIdsForEventMock).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreateMock).not.toHaveBeenCalled();
+  });
+
   it('creates a team Checkout Session with event_payment metadata and a QR URL', async () => {
     const response = await POST(
       requestFor({

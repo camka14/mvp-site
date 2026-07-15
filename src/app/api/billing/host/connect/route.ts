@@ -8,9 +8,9 @@ import { isTotpMfaEnabledForUser } from '@/server/authTotpMfa';
 import {
   createOrReuseManagedOrganizationStripeAccount,
   findManagedOrganizationStripeAccount,
-  markManagedOrganizationStripeAccountMockVerified,
   syncManagedOrganizationStripeAccount,
 } from '@/server/organizationStripeVerification';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 import {
   appendStripeResultQuery,
   buildStripeAuthorizeUrl,
@@ -72,7 +72,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const secretKey = process.env.STRIPE_SECRET_KEY;
+    const secretKey = getConfiguredStripeSecretKey();
+    if (!secretKey) {
+      return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
+    }
+
     const connectClientId = process.env.STRIPE_CONNECT_CLIENT_ID;
     const origin = getRequestOrigin(req);
     const returnUrl = sanitizeSameOriginUrl(parsed.data.returnUrl, origin);
@@ -131,42 +135,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!secretKey) {
-      if (organizationId) {
-        await markManagedOrganizationStripeAccountMockVerified({
-          organizationId,
-          accountId: `acct_mock_${organizationId}`,
-          email: targetEmail ?? null,
-        });
-      } else {
-        await prisma.userData.update({
-          where: { id: session.userId },
-          data: { hasStripeAccount: true, updatedAt: new Date() },
-        });
-        await prisma.stripeAccounts.upsert({
-          where: { id: `user_${session.userId}` },
-          create: {
-            id: `user_${session.userId}`,
-            userId: session.userId,
-            accountId: `acct_mock_${session.userId}`,
-            email: targetEmail ?? null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          update: {
-            accountId: `acct_mock_${session.userId}`,
-            email: targetEmail ?? null,
-            updatedAt: new Date(),
-          },
-        });
-      }
-
-      return NextResponse.json({ onboardingUrl: returnUrl }, { status: 200 });
-    }
-
     if (!connectClientId) {
       if (!organizationId) {
-        return NextResponse.json({ error: 'STRIPE_CONNECT_CLIENT_ID is not set' }, { status: 500 });
+        return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
       }
     }
 

@@ -9,7 +9,6 @@ import {
   upsertUserBillingAddress,
   validateUsBillingAddress,
 } from '@/lib/billingAddress';
-import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
 import {
   buildOrganizerManualTaxQuote,
@@ -27,6 +26,7 @@ import {
   type TaxPolicyDecision,
 } from '@/lib/taxPolicy';
 import { loadBillingTaxPolicyContext } from '@/server/billingTaxContext';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +115,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid tax preview input.', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const secretKey = getConfiguredStripeSecretKey();
+  if (!secretKey) {
+    return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
+  }
+
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
   const payload = parsed.data;
   const inlineBillingAddress = resolveBillingAddressInput(payload.billingAddress);
   if (payload.billingAddress !== undefined && !inlineBillingAddress) {
@@ -193,52 +199,6 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-
-    if (!secretKey) {
-      if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
-        const manualTaxQuote = buildOrganizerManualTaxQuote({
-          subtotalCents: resolvedPurchase.amountCents,
-          organizerManualTaxRateBps,
-          purchaseType: resolvedPurchase.purchaseType,
-          taxCategory: resolvedPurchase.taxCategory,
-          eventType: resolvedPurchase.eventType,
-        });
-        return NextResponse.json({
-          publishableKey,
-          taxCategory: resolvedPurchase.taxCategory,
-          ...taxPolicyResponseFields(taxPolicy),
-          feeBreakdown: buildFeeBreakdown(manualTaxQuote),
-        }, { status: 200 });
-      }
-      const fallbackFees = calculateMvpAndStripeFeesWithTax({
-        eventAmountCents: resolvedPurchase.amountCents,
-        eventType: resolvedPurchase.eventType,
-        taxAmountCents: 0,
-        stripeTaxServiceFeeCents: 0,
-      });
-      return NextResponse.json({
-        publishableKey,
-        taxCalculationId: taxPolicyRequiresStripeTaxCalculation(taxPolicy) ? `tax_mock_${crypto.randomUUID()}` : undefined,
-        taxCategory: resolvedPurchase.taxCategory,
-        ...taxPolicyResponseFields(taxPolicy),
-        feeBreakdown: {
-          eventPrice: resolvedPurchase.amountCents,
-          stripeFee: fallbackFees.stripeFeeCents,
-          stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
-          stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
-          processingFee: fallbackFees.mvpFeeCents,
-          mvpFee: fallbackFees.mvpFeeCents,
-          taxAmount: 0,
-          totalCharge: fallbackFees.totalChargeCents,
-          hostReceives: resolvedPurchase.amountCents,
-          feePercentage: fallbackFees.mvpFeePercentage * 100,
-          purchaseType: resolvedPurchase.purchaseType,
-        },
-      }, { status: 200 });
-    }
-
     const stripe = new Stripe(secretKey);
     const eventId = taxContext.eventId ?? extractEntityId(payload.event);
     const timeSlotId = taxContext.timeSlotId ?? extractEntityId(payload.timeSlot);

@@ -3,7 +3,6 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { calculateMvpAndStripeFeesWithTax, getPaymentMethodFeeLabel } from '@/lib/billingFees';
 import {
   type BillingAddress,
   loadUserBillingProfile,
@@ -79,6 +78,7 @@ import {
   type ResolvedDiscountApplication,
 } from '@/server/discounts/discountCodeResolver';
 import { logBillingError } from '@/server/billing/errorLogging';
+import { getConfiguredStripeSecretKey, STRIPE_UNAVAILABLE_ERROR } from '@/server/stripeConfiguration';
 
 export const dynamic = 'force-dynamic';
 
@@ -918,6 +918,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const secretKey = getConfiguredStripeSecretKey();
+  if (!secretKey) {
+    return NextResponse.json({ error: STRIPE_UNAVAILABLE_ERROR }, { status: 503 });
+  }
+
   const payload = parsed.data;
   const payloadRow = payload as Record<string, unknown>;
   const userId = extractEntityId(payload.user);
@@ -1003,7 +1008,6 @@ export async function POST(req: NextRequest) {
   }
 
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const secretKey = process.env.STRIPE_SECRET_KEY;
   let resolvedPurchase: Awaited<ReturnType<typeof resolvePurchaseContext>>;
 
   try {
@@ -1224,55 +1228,6 @@ export async function POST(req: NextRequest) {
       error: 'Organizer Stripe Tax checkout requires connected-account tax setup and is not enabled for this checkout yet.',
       ...taxPolicyResponseFields(taxPolicy),
     }, { status: 400 });
-  }
-
-  if (!secretKey) {
-    if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
-      const manualTaxQuote = buildOrganizerManualTaxQuote({
-        subtotalCents: checkoutAmountCents,
-        organizerManualTaxRateBps,
-        purchaseType: resolvedPurchase.purchaseType,
-        taxCategory: resolvedPurchase.taxCategory,
-        eventType: resolvedPurchase.eventType,
-      });
-      return NextResponse.json({
-        paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-        publishableKey,
-        checkoutMode: 'PAYMENT_INTENT',
-        taxCategory: resolvedPurchase.taxCategory,
-        ...taxPolicyResponseFields(taxPolicy),
-        feeBreakdown: buildFeeBreakdown(manualTaxQuote),
-      }, { status: 200 });
-    }
-    const fallbackFees = calculateMvpAndStripeFeesWithTax({
-      eventAmountCents: checkoutAmountCents,
-      eventType: resolvedPurchase.eventType,
-      taxAmountCents: 0,
-      stripeTaxServiceFeeCents: 0,
-    });
-    return NextResponse.json({
-      paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-      publishableKey,
-      checkoutMode: 'PAYMENT_INTENT',
-      taxCalculationId: taxPolicyRequiresStripeTaxCalculation(taxPolicy) ? `tax_mock_${crypto.randomUUID()}` : undefined,
-      taxCategory: resolvedPurchase.taxCategory,
-      ...taxPolicyResponseFields(taxPolicy),
-      feeBreakdown: {
-        eventPrice: checkoutAmountCents,
-        stripeFee: fallbackFees.stripeFeeCents,
-        stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
-        stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
-        processingFee: fallbackFees.mvpFeeCents,
-        mvpFee: fallbackFees.mvpFeeCents,
-        taxAmount: 0,
-        totalCharge: fallbackFees.totalChargeCents,
-        hostReceives: fallbackFees.hostReceivesCents,
-        feePercentage: fallbackFees.mvpFeePercentage * 100,
-        paymentMethodType: fallbackFees.paymentMethodType,
-        paymentMethodLabel: getPaymentMethodFeeLabel(fallbackFees.paymentMethodType),
-        purchaseType: resolvedPurchase.purchaseType,
-      },
-    }, { status: 200 });
   }
 
   const inlineBillingAddress = resolveBillingAddressInput(payload.billingAddress);
