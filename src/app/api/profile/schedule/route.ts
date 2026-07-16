@@ -10,6 +10,7 @@ import {
   loadProfileScheduleScope,
   uniqueScheduleIds,
 } from '@/server/profile/scheduleScope';
+import { projectRelationalEventDivisionIds } from '@/server/events/eventDivisionProjection';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,10 +144,11 @@ export async function GET(req: NextRequest) {
   const lastEvent = events[events.length - 1];
   const nextCursor = hasMore && lastEvent ? encodeScheduleCursor(lastEvent, { from, to }) : null;
   const enrichedEvents = await withDerivedEventParticipantIds(events, prisma);
+  const projectedEvents = await projectRelationalEventDivisionIds(prisma, enrichedEvents);
 
   const eventIds = events.map((event) => event.id);
   const officialIdsByEventId = await getEventOfficialIdsByEventIds(eventIds, prisma);
-  const eventDtos = enrichedEvents.map((event) => ({
+  const eventDtos = projectedEvents.map((event) => ({
     ...event,
     officialIds: officialIdsByEventId.get(event.id) ?? [],
   }));

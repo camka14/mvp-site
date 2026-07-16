@@ -17,6 +17,7 @@ import { isSessionTokenCurrent } from '@/server/authSessions';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
 import { getEventTagsForEventIds, slugifyEventTagName } from '@/server/eventTags';
 import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
+import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,13 +79,7 @@ const isUsableUserLocation = (lat: unknown, lon: unknown): boolean => {
 
 const toEventResponse = (row: any) => {
   const response = { ...row };
-  if (!Array.isArray((response as any).divisions)) {
-    (response as any).divisions = Array.isArray((response as any).divisionDetails)
-      ? (response as any).divisionDetails
-          .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
-          .filter((id: string | null): id is string => Boolean(id))
-      : [];
-  }
+  (response as any).divisions = resolveRelationalEventDivisionIds((response as any).divisionDetails);
   return response;
 };
 
@@ -209,6 +204,8 @@ const getDivisionDetailsForEvents = async (
   const rawRows = await prisma.divisions.findMany({
     where: {
       eventId: { in: eventIds },
+      scope: 'EVENT',
+      status: 'ACTIVE',
       OR: [
         { kind: 'LEAGUE' },
         { kind: null },

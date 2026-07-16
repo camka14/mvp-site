@@ -65,6 +65,7 @@ import {
 import { getEventTagsForEventIds, syncEventTags, syncEventTypeTagsForEvent } from '@/server/eventTags';
 import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
+import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
 
 export const dynamic = 'force-dynamic';
 const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'DRAFT']);
@@ -197,13 +198,7 @@ const updateEventWithSchemaContract = async (
 
 const toEventResponse = (row: any) => {
   const response = { ...row };
-  if (!Array.isArray((response as any).divisions)) {
-    (response as any).divisions = Array.isArray((response as any).divisionDetails)
-      ? (response as any).divisionDetails
-          .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
-          .filter((id: string | null): id is string => Boolean(id))
-      : [];
-  }
+  (response as any).divisions = resolveRelationalEventDivisionIds((response as any).divisionDetails);
   if (!Array.isArray(response.waitListIds)) {
     (response as any).waitListIds = [];
   }
@@ -1388,6 +1383,8 @@ const getDivisionKeysForEventKind = async (
   const rows = await client.divisions.findMany({
     where: {
       eventId,
+      scope: 'EVENT',
+      status: 'ACTIVE',
       ...(kind === 'LEAGUE'
         ? { OR: [{ kind: 'LEAGUE' }, { kind: null }] }
         : { kind }),
@@ -1412,7 +1409,11 @@ const getDivisionKeysForEventKind = async (
 
 const getTournamentPoolDivisionKeysForEvent = async (eventId: string): Promise<string[]> => {
   const rows = await prisma.divisions.findMany({
-    where: { eventId },
+    where: {
+      eventId,
+      scope: 'EVENT',
+      status: 'ACTIVE',
+    },
     select: {
       id: true,
       kind: true,
@@ -1431,10 +1432,7 @@ const getVisibleDivisionKeysForEventResponse = async (
   eventId: string,
   event: { eventType?: unknown; includePlayoffs?: unknown },
 ): Promise<string[]> => {
-  const legacyDivisionKeys = normalizeDivisionKeys((event as any).divisions);
-  const baseDivisionKeys = legacyDivisionKeys.length
-    ? legacyDivisionKeys
-    : await getDivisionKeysForEventKind(eventId, 'LEAGUE');
+  const baseDivisionKeys = await getDivisionKeysForEventKind(eventId, 'LEAGUE');
   const isTournamentPoolPlay = String(event.eventType ?? '').toUpperCase() === 'TOURNAMENT'
     && Boolean(event.includePlayoffs);
   if (!isTournamentPoolPlay) {
@@ -2305,10 +2303,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.leagueScoringConfigId = leagueScoringConfigId;
       }
 
-      const legacyExistingDivisionKeys = normalizeDivisionKeys((existing as any).divisions);
-      const existingDivisionKeys = legacyExistingDivisionKeys.length
-        ? legacyExistingDivisionKeys
-        : await getDivisionKeysForEventKind(eventId, 'LEAGUE', tx);
+      const existingDivisionKeys = await getDivisionKeysForEventKind(eventId, 'LEAGUE', tx);
       const existingFieldIds = normalizeFieldIds(existing.fieldIds);
       const payloadFieldIds = incomingFields
         .map((field) => {

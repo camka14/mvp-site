@@ -8,7 +8,6 @@ type WeeklyEventLike = {
   id: string;
   eventType?: unknown;
   parentEvent?: unknown;
-  divisions?: unknown;
   timeSlotIds?: unknown;
 };
 
@@ -195,26 +194,27 @@ export const resolveWeeklyOccurrence = async (
   }
 
   const divisionIds = normalizeIdList((slot as any).divisions);
-  let fallbackDivisionIds = normalizeIdList(params.event.divisions);
-  if (!fallbackDivisionIds.length && typeof (client as any).divisions?.findMany === 'function') {
-    const divisionRows = await (client as any).divisions.findMany({
-      where: {
-        eventId: params.event.id,
-        OR: [
-          { kind: 'LEAGUE' },
-          { kind: null },
-        ],
-      },
-      orderBy: [
-        { sortOrder: 'asc' },
-        { createdAt: 'asc' },
-        { name: 'asc' },
-        { id: 'asc' },
+  const divisionRows = await client.divisions.findMany({
+    where: {
+      eventId: params.event.id,
+      scope: 'EVENT',
+      status: 'ACTIVE',
+      OR: [
+        { kind: 'LEAGUE' },
+        { kind: null },
       ],
-      select: { id: true },
-    });
-    fallbackDivisionIds = normalizeIdList(divisionRows.map((row: { id?: string | null }) => row.id));
-  }
+    },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ],
+    select: { id: true },
+  }) ?? [];
+  const fallbackDivisionIds = normalizeIdList(
+    divisionRows.map((row: { id?: string | null }) => row.id),
+  );
   return {
     ok: true,
     value: {

@@ -58,6 +58,7 @@ import {
   removeRegisteredTeamFromTournamentPools,
 } from '@/server/events/tournamentPools';
 import { isManualRegistrationPaymentMode } from '@/lib/manualRegistrationPayments';
+import { projectRelationalEventDivisionIds } from '@/server/events/eventDivisionProjection';
 
 export const dynamic = 'force-dynamic';
 const RESTRICTED_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
@@ -81,8 +82,8 @@ const payloadSchema = z.object({
 const PAID_ONLINE_CHECKOUT_REQUIRED_ERROR = 'Paid online registration must be completed through checkout.';
 const ACTIVE_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED', 'PAYMENT_FAILED'] as const;
 
-const toEventResponse = (row: any) => {
-  const response = { ...row };
+const toEventResponse = async (row: any) => {
+  const [response] = await projectRelationalEventDivisionIds(prisma, [{ ...row }]);
   return response;
 };
 
@@ -1028,7 +1029,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   }
   if (isWeeklyParentEvent(event) && (!slotId || !occurrenceDate)) {
     return NextResponse.json({
-      event: toEventResponse(event),
+      event: await toEventResponse(event),
       participants: {
         teamIds: [],
         userIds: [],
@@ -1085,7 +1086,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
         })
       : undefined;
     return NextResponse.json({
-      event: toEventResponse(event),
+      event: await toEventResponse(event),
       participants: snapshot.participants,
       registrations: manageModeRequested ? snapshot.registrations : viewerPaymentFailedRegistrations,
       teams: snapshot.teams.map((team) => team),
@@ -1411,7 +1412,7 @@ async function updateParticipants(
       });
 
       return NextResponse.json({
-        event: toEventResponse(event),
+        event: await toEventResponse(event),
         registration: requestRegistration,
         requiresParentApproval: true,
       }, { status: 200 });
@@ -1671,7 +1672,7 @@ async function updateParticipants(
       }
       const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
       return NextResponse.json({
-        event: toEventResponse(refreshedEvent ?? event),
+        event: await toEventResponse(refreshedEvent ?? event),
         bill: result.bill ? result.bill : undefined,
         warnings: warnings.length ? warnings : undefined,
       }, { status: 200 });
@@ -1901,7 +1902,7 @@ async function updateParticipants(
     });
 
     return NextResponse.json({
-      event: toEventResponse(updatedEvent),
+      event: await toEventResponse(updatedEvent),
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
@@ -2043,7 +2044,7 @@ async function updateParticipants(
     });
 
     return NextResponse.json({
-      event: toEventResponse(event),
+      event: await toEventResponse(event),
       registration: result.registration,
       bill: result.bill ? result.bill : undefined,
       warnings: warnings.length ? warnings : undefined,
@@ -2087,7 +2088,7 @@ async function updateParticipants(
   });
 
   return NextResponse.json({
-    event: toEventResponse(updatedEvent),
+    event: await toEventResponse(updatedEvent),
     warnings: warnings.length ? warnings : undefined,
   }, { status: 200 });
 }

@@ -31,7 +31,6 @@ type EventLike = {
   teamSignup?: unknown;
   singleDivision?: unknown;
   maxParticipants?: unknown;
-  divisions?: unknown;
   timeSlotIds?: unknown;
 };
 
@@ -745,23 +744,16 @@ export const buildEventParticipantSnapshot = async (params: {
     ],
   }) as RegistrationRow[];
 
-  const eventDivisionIds = normalizeIdList(params.event.divisions);
   const divisionRows = await client.divisions.findMany({
-    where: eventDivisionIds.length
-      ? {
-          eventId: params.event.id,
-          OR: [
-            { id: { in: eventDivisionIds } },
-            { key: { in: eventDivisionIds } },
-          ],
-        }
-      : {
-          eventId: params.event.id,
-          OR: [
-            { kind: 'LEAGUE' as any },
-            { kind: null },
-          ],
-        },
+    where: {
+      eventId: params.event.id,
+      scope: 'EVENT',
+      status: 'ACTIVE',
+      OR: [
+        { kind: 'LEAGUE' as any },
+        { kind: null },
+      ],
+    },
     select: participantDivisionSelect,
     orderBy: [
       { sortOrder: 'asc' } as any,
@@ -963,8 +955,7 @@ export const buildEventParticipantSnapshot = async (params: {
     const canonicalDivision = findCanonicalDivisionRow(explicitDivisionId);
     const divisionId = normalizeId(canonicalDivision?.id)
       ?? explicitDivisionId
-      ?? normalizeId(divisionRows[0]?.id)
-      ?? normalizeId(eventDivisionIds[0]);
+      ?? normalizeId(divisionRows[0]?.id);
     const matchingDivision = canonicalDivision ?? divisionRows.find((entry) => entry.id === divisionId);
     const divisionTypeId = normalizeId(matchingDivision?.divisionTypeId)
       ?? normalizeId(row?.divisionTypeId);

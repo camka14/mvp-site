@@ -145,14 +145,20 @@ describe('event save route', () => {
         id: 'event_1',
         name: 'Saved Event',
         hostId: 'host_1',
-        divisions: ['open'],
         fieldIds: ['field_1'],
         state: 'UNPUBLISHED',
         start: new Date('2026-01-01T00:00:00.000Z'),
         end: new Date('2026-02-01T00:00:00.000Z'),
       });
-    prismaMock.divisions.findMany.mockResolvedValueOnce([
-      { key: 'open', fieldIds: ['field_1'] },
+    prismaMock.divisions.findMany.mockResolvedValue([
+      {
+        id: 'open',
+        key: 'open',
+        name: 'Open',
+        kind: 'LEAGUE',
+        fieldIds: ['field_1'],
+        teamIds: [],
+      },
     ]);
 
     const res = await eventsPost(
@@ -241,6 +247,54 @@ describe('event save route', () => {
       }),
       baseUrl: 'http://localhost',
     });
+  });
+
+  it('returns division ids from relational rows without an event JSON field', async () => {
+    const divisionId = 'event_1__division__open';
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    upsertEventFromPayloadMock.mockResolvedValueOnce('event_1');
+    loadEventWithRelationsMock.mockResolvedValueOnce({ eventType: 'EVENT' });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        name: 'Relational Division Event',
+        hostId: 'host_1',
+        fieldIds: [],
+        state: 'UNPUBLISHED',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+      });
+    prismaMock.divisions.findMany.mockResolvedValue([
+      {
+        id: divisionId,
+        key: 'open',
+        name: 'Open',
+        kind: 'LEAGUE',
+        fieldIds: [],
+        teamIds: [],
+        maxParticipants: 8,
+      },
+    ]);
+
+    const res = await eventsPost(postRequest('http://localhost/api/events', {
+      id: 'event_1',
+      event: {
+        name: 'Relational Division Event',
+        eventType: 'EVENT',
+        divisions: [divisionId],
+        divisionDetails: [{ id: divisionId, key: 'open', name: 'Open', maxParticipants: 8 }],
+        start: '2026-01-01T00:00:00.000Z',
+        end: '2026-02-01T00:00:00.000Z',
+      },
+    }));
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.event.divisions).toEqual([divisionId]);
+    expect(json.event.divisionDetails).toEqual([
+      expect.objectContaining({ id: divisionId, key: 'open', name: 'Open' }),
+    ]);
   });
 
   it('uses the canonical origin for creation notifications when request host headers are hostile', async () => {

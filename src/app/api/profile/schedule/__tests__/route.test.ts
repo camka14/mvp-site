@@ -27,6 +27,9 @@ const prismaMock = {
   teamStaffAssignments: {
     findMany: jest.fn(),
   },
+  divisions: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -45,6 +48,7 @@ describe('GET /api/profile/schedule', () => {
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
     prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
   });
 
   it('returns batched participant schedule payload', async () => {
@@ -90,6 +94,9 @@ describe('GET /api/profile/schedule', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       { id: 'field_1', name: 'Field 1' },
     ]);
+    prismaMock.divisions.findMany.mockResolvedValue([
+      { eventId: 'event_1', id: 'event_1__division__open' },
+    ]);
     prismaMock.teams.findMany.mockImplementation(async (args: any) => {
       if (args?.where?.parentTeamId) {
         return [{ id: 'team_2' }];
@@ -112,6 +119,7 @@ describe('GET /api/profile/schedule', () => {
 
     expect(response.status).toBe(200);
     expect(json.events).toHaveLength(1);
+    expect(json.events[0].divisions).toEqual(['event_1__division__open']);
     expect(json.matches).toHaveLength(1);
     expect(json.matches[0]).toEqual(expect.objectContaining({
       start: '2026-03-01T10:00:00.000Z',

@@ -51,6 +51,8 @@ import {
   normalizeManualPaymentLinks,
   normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
+import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
+import { loadRelationalEventDivisionIdsByEventId } from '@/server/events/eventDivisionProjection';
 
 export const dynamic = 'force-dynamic';
 
@@ -428,6 +430,8 @@ const getDivisionDetailsForEvents = async (
   const rawRows = await prisma.divisions.findMany({
     where: {
       eventId: { in: eventIds },
+      scope: 'EVENT',
+      status: 'ACTIVE',
       OR: [
         { kind: 'LEAGUE' },
         { kind: null },
@@ -511,13 +515,7 @@ const getDivisionDetailsForEvents = async (
 
 const toEventResponse = (row: any) => {
   const response = { ...row };
-  if (!Array.isArray((response as any).divisions)) {
-    (response as any).divisions = Array.isArray((response as any).divisionDetails)
-      ? (response as any).divisionDetails
-          .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
-          .filter((id: string | null): id is string => Boolean(id))
-      : [];
-  }
+  (response as any).divisions = resolveRelationalEventDivisionIds((response as any).divisionDetails);
   if (!Array.isArray(response.waitListIds)) {
     (response as any).waitListIds = [];
   }
@@ -650,31 +648,9 @@ const buildEventResponsePayload = async (event: any) => {
         }))
         .filter((row) => row.positionIds.length > 0)
     : [];
-  const legacyDivisionKeys = normalizeDivisionKeys(event.divisions);
-  const divisionKeys = legacyDivisionKeys.length
-    ? legacyDivisionKeys
-    : (await prisma.divisions.findMany({
-        where: {
-          eventId: event.id,
-          OR: [
-            { kind: 'LEAGUE' },
-            { kind: null },
-          ],
-        },
-        orderBy: [
-          { sortOrder: 'asc' },
-          { createdAt: 'asc' },
-          { name: 'asc' },
-          { id: 'asc' },
-        ],
-        select: {
-          id: true,
-          name: true,
-          sortOrder: true,
-        },
-      }))
-        .sort(compareDivisionRowsByStoredOrder)
-        .map((row) => row.id);
+  const divisionKeys = (
+    await loadRelationalEventDivisionIdsByEventId(prisma, [event.id])
+  ).get(event.id) ?? [];
   const [divisionFieldIds, divisionDetails, tagsByEventId] = await Promise.all([
     getDivisionFieldMapForEvent(event.id, divisionKeys),
     getDivisionDetailsForEvent(event.id, divisionKeys, event.start, {
