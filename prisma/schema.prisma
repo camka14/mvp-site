@@ -1758,6 +1758,113 @@ model AffiliateScrapeRuns {
   @@index([status])
 }
 
+model AffiliateSourceIntakes {
+  id                         String   @id
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  name                       String
+  sourceKey                  String   @unique
+  region                     String?
+  baseUrl                    String?
+  status                     String   @default("DRAFT")
+  complianceStatus           String   @default("UNREVIEWED")
+  targetKindHints            String[] @default([])
+  notes                      String?
+  suggestedClassification    Json?
+  organizationId             String?
+  affiliateSourceId          String?
+  selectedLogoArtifactId     String?
+  lastRunId                  String?
+  createdByUserId            String?
+  complianceReviewedByUserId String?
+  complianceReviewedAt       DateTime?
+  complianceTermsUrl         String?
+  complianceNotes            String?
+
+  @@index([status])
+  @@index([complianceStatus])
+  @@index([region, status])
+  @@index([organizationId])
+  @@index([affiliateSourceId])
+}
+
+model AffiliateSourceIntakePages {
+  id              String   @id
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  intakeId        String
+  url             String
+  canonicalUrl    String
+  urlKey          String   @unique
+  role            String   @default("LISTING")
+  targetKindHints String[] @default([])
+  status          String   @default("ACTIVE")
+  discoverySource String   @default("MANUAL")
+  robotsStatus    String   @default("UNCHECKED")
+  robotsCheckedAt DateTime?
+  robotsNotes     String?
+  metadata        Json?
+
+  @@index([intakeId, status])
+  @@index([intakeId, role])
+  @@index([robotsStatus])
+}
+
+model AffiliateSourceIntakeRuns {
+  id                 String   @id
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  intakeId           String
+  requestedPageIds   String[] @default([])
+  requestedByUserId  String?
+  provider            String   @default("FIRECRAWL")
+  status              String   @default("QUEUED")
+  queuedAt            DateTime @default(now())
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  claimedAt           DateTime?
+  workerId            String?
+  attemptCount        Int      @default(0)
+  providerJobIds      String[] @default([])
+  discoveredUrlCount Int      @default(0)
+  capturedPageCount  Int      @default(0)
+  errorMessage        String?
+  summary             Json?
+
+  @@index([intakeId, createdAt])
+  @@index([status, queuedAt])
+  @@index([requestedByUserId])
+}
+
+model AffiliateSourceIntakeArtifacts {
+  id           String   @id
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  intakeId     String
+  pageId       String?
+  runId        String
+  kind         String
+  sourceUrl    String?
+  finalUrl     String?
+  provider     String?
+  httpStatus   Int?
+  contentHash  String
+  dedupeKey    String   @unique
+  fileId       String
+  mimeType     String?
+  sizeBytes    Int?
+  retainUntil  DateTime?
+  isPinned     Boolean  @default(false)
+  metadata     Json?
+
+  @@index([intakeId, createdAt])
+  @@index([runId, kind])
+  @@index([pageId, kind])
+  @@index([intakeId, kind, contentHash])
+  @@index([fileId])
+  @@index([retainUntil, isPinned])
+}
+
 model AffiliateImportCandidates {
   id                       String    @id
   createdAt                DateTime  @default(now())

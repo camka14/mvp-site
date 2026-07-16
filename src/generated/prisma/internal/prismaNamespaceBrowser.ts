@@ -106,6 +106,10 @@ export const ModelName = {
   AffiliateScrapeSources: 'AffiliateScrapeSources',
   AffiliateScrapeMappings: 'AffiliateScrapeMappings',
   AffiliateScrapeRuns: 'AffiliateScrapeRuns',
+  AffiliateSourceIntakes: 'AffiliateSourceIntakes',
+  AffiliateSourceIntakePages: 'AffiliateSourceIntakePages',
+  AffiliateSourceIntakeRuns: 'AffiliateSourceIntakeRuns',
+  AffiliateSourceIntakeArtifacts: 'AffiliateSourceIntakeArtifacts',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
@@ -1366,6 +1370,104 @@ export const AffiliateScrapeRunsScalarFieldEnum = {
 } as const
 
 export type AffiliateScrapeRunsScalarFieldEnum = (typeof AffiliateScrapeRunsScalarFieldEnum)[keyof typeof AffiliateScrapeRunsScalarFieldEnum]
+
+
+export const AffiliateSourceIntakesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  sourceKey: 'sourceKey',
+  region: 'region',
+  baseUrl: 'baseUrl',
+  status: 'status',
+  complianceStatus: 'complianceStatus',
+  targetKindHints: 'targetKindHints',
+  notes: 'notes',
+  suggestedClassification: 'suggestedClassification',
+  organizationId: 'organizationId',
+  affiliateSourceId: 'affiliateSourceId',
+  selectedLogoArtifactId: 'selectedLogoArtifactId',
+  lastRunId: 'lastRunId',
+  createdByUserId: 'createdByUserId',
+  complianceReviewedByUserId: 'complianceReviewedByUserId',
+  complianceReviewedAt: 'complianceReviewedAt',
+  complianceTermsUrl: 'complianceTermsUrl',
+  complianceNotes: 'complianceNotes'
+} as const
+
+export type AffiliateSourceIntakesScalarFieldEnum = (typeof AffiliateSourceIntakesScalarFieldEnum)[keyof typeof AffiliateSourceIntakesScalarFieldEnum]
+
+
+export const AffiliateSourceIntakePagesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  intakeId: 'intakeId',
+  url: 'url',
+  canonicalUrl: 'canonicalUrl',
+  urlKey: 'urlKey',
+  role: 'role',
+  targetKindHints: 'targetKindHints',
+  status: 'status',
+  discoverySource: 'discoverySource',
+  robotsStatus: 'robotsStatus',
+  robotsCheckedAt: 'robotsCheckedAt',
+  robotsNotes: 'robotsNotes',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceIntakePagesScalarFieldEnum = (typeof AffiliateSourceIntakePagesScalarFieldEnum)[keyof typeof AffiliateSourceIntakePagesScalarFieldEnum]
+
+
+export const AffiliateSourceIntakeRunsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  intakeId: 'intakeId',
+  requestedPageIds: 'requestedPageIds',
+  requestedByUserId: 'requestedByUserId',
+  provider: 'provider',
+  status: 'status',
+  queuedAt: 'queuedAt',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  claimedAt: 'claimedAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  providerJobIds: 'providerJobIds',
+  discoveredUrlCount: 'discoveredUrlCount',
+  capturedPageCount: 'capturedPageCount',
+  errorMessage: 'errorMessage',
+  summary: 'summary'
+} as const
+
+export type AffiliateSourceIntakeRunsScalarFieldEnum = (typeof AffiliateSourceIntakeRunsScalarFieldEnum)[keyof typeof AffiliateSourceIntakeRunsScalarFieldEnum]
+
+
+export const AffiliateSourceIntakeArtifactsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  intakeId: 'intakeId',
+  pageId: 'pageId',
+  runId: 'runId',
+  kind: 'kind',
+  sourceUrl: 'sourceUrl',
+  finalUrl: 'finalUrl',
+  provider: 'provider',
+  httpStatus: 'httpStatus',
+  contentHash: 'contentHash',
+  dedupeKey: 'dedupeKey',
+  fileId: 'fileId',
+  mimeType: 'mimeType',
+  sizeBytes: 'sizeBytes',
+  retainUntil: 'retainUntil',
+  isPinned: 'isPinned',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceIntakeArtifactsScalarFieldEnum = (typeof AffiliateSourceIntakeArtifactsScalarFieldEnum)[keyof typeof AffiliateSourceIntakeArtifactsScalarFieldEnum]
 
 
 export const AffiliateImportCandidatesScalarFieldEnum = {

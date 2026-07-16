@@ -315,6 +315,26 @@ export type AffiliateScrapeMappings = Prisma.AffiliateScrapeMappingsModel
  */
 export type AffiliateScrapeRuns = Prisma.AffiliateScrapeRunsModel
 /**
+ * Model AffiliateSourceIntakes
+ *
+ */
+export type AffiliateSourceIntakes = Prisma.AffiliateSourceIntakesModel
+/**
+ * Model AffiliateSourceIntakePages
+ *
+ */
+export type AffiliateSourceIntakePages = Prisma.AffiliateSourceIntakePagesModel
+/**
+ * Model AffiliateSourceIntakeRuns
+ *
+ */
+export type AffiliateSourceIntakeRuns = Prisma.AffiliateSourceIntakeRunsModel
+/**
+ * Model AffiliateSourceIntakeArtifacts
+ *
+ */
+export type AffiliateSourceIntakeArtifacts = Prisma.AffiliateSourceIntakeArtifactsModel
+/**
  * Model AffiliateImportCandidates
  *
  */

@@ -20,6 +20,7 @@ import {
 } from '@mantine/core';
 import { ExternalLink, Play, Trash2, UploadCloud } from 'lucide-react';
 import { normalizeApiEntity } from '@/lib/apiMappers';
+import AdminAffiliateSourceIntakePanel from './AdminAffiliateSourceIntakePanel';
 
 type AdminAffiliateSourceRow = {
   $id: string;
@@ -583,6 +584,8 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
 
   return (
     <Stack gap="lg">
+      <AdminAffiliateSourceIntakePanel active={active} refreshKey={refreshKey} />
+
       {error ? (
         <Alert color="red" title="Affiliate import error">
           {error}
