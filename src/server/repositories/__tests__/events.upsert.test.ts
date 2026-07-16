@@ -1582,23 +1582,46 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArg.create.fieldIds).toEqual(['field_1']);
   });
 
-  it('rejects new events when no fields are selected or created', async () => {
-    const client = createMockClient();
+  it.each(['EVENT', 'WEEKLY_EVENT'])(
+    'allows a fieldless %s event',
+    async (eventType) => {
+      const client = createMockClient();
 
-    const payload = {
-      ...baseEventPayload(),
-      eventType: 'EVENT',
-      fields: [],
-      fieldIds: [],
-      timeSlots: [],
-      end: '2026-01-05T11:00:00.000Z',
-    };
+      const payload = {
+        ...baseEventPayload(),
+        eventType,
+        fields: [],
+        fieldIds: [],
+        timeSlots: [],
+        end: '2026-01-05T11:00:00.000Z',
+      };
 
-    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
-      'Select or create at least one field for this event.',
-    );
-    expect(client.events.upsert).not.toHaveBeenCalled();
-  });
+      await expect(upsertEventFromPayload(payload, client as any)).resolves.toBe('event_1');
+      const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+      expect(eventUpsertArg.create.fieldIds).toEqual([]);
+    },
+  );
+
+  it.each(['LEAGUE', 'TOURNAMENT'])(
+    'rejects a fieldless %s event',
+    async (eventType) => {
+      const client = createMockClient();
+
+      const payload = {
+        ...baseEventPayload(),
+        eventType,
+        fields: [],
+        fieldIds: [],
+        timeSlots: [],
+        end: '2026-01-05T11:00:00.000Z',
+      };
+
+      await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+        'Select or create at least one field for this event.',
+      );
+      expect(client.events.upsert).not.toHaveBeenCalled();
+    },
+  );
 
   it('fails closed when Prisma rejects a requested event field', async () => {
     const client = createMockClient();

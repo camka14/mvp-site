@@ -184,6 +184,10 @@ const isSchedulableEventType = (value: unknown): boolean => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
   return normalized === 'LEAGUE' || normalized === 'TOURNAMENT' || normalized === 'TRYOUT';
 };
+const requiresScheduledFields = (value: unknown): boolean => {
+  const normalized = typeof value === 'string' ? value.toUpperCase() : '';
+  return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
+};
 const FIELD_CONFLICT_LOOKAHEAD_WEEKS = 52;
 const FIELD_MATCH_BLOCK_PREFIX = '__field_match_block__';
 const FIELD_EVENT_BLOCK_PREFIX = '__field_event_block__';
@@ -4884,7 +4888,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : payloadLocalFieldIds.length
         ? normalizeFieldIds(payloadLocalFieldIds)
         : existingFieldIds;
-  if (!isAffiliateExternalEvent && !isTemplateState && fieldIds.length === 0) {
+  if (
+    !isAffiliateExternalEvent
+    && !isTemplateState
+    && requiresScheduledFields(payloadEventType)
+    && fieldIds.length === 0
+  ) {
     throw new Error(EVENT_FIELDS_REQUIRED_MESSAGE);
   }
   const hasExplicitOfficialPositions = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');

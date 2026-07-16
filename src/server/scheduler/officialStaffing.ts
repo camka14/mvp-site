@@ -36,10 +36,38 @@ type OfficialCommitment = {
 };
 
 const LEGACY_PRIMARY_POSITION_ID = 'legacy_primary_official';
+const DEFAULT_MATCH_DURATION_MINUTES = 60;
 
-const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean => (
-  startA.getTime() < endB.getTime() && startB.getTime() < endA.getTime()
+const validDate = (value: unknown): value is Date => (
+  value instanceof Date && Number.isFinite(value.getTime())
 );
+
+const committedMatchWindow = (
+  match: Match,
+  event: Tournament | League,
+): { start: Date; end: Date } => {
+  const start = validDate((match as { start?: unknown }).start)
+    ? match.start
+    : validDate((event as { start?: unknown }).start)
+      ? event.start
+      : new Date(0);
+  const configuredDurationMinutes = Number(event.matchDurationMinutes);
+  const durationMinutes = Number.isFinite(configuredDurationMinutes) && configuredDurationMinutes > 0
+    ? configuredDurationMinutes
+    : DEFAULT_MATCH_DURATION_MINUTES;
+  const candidateEnd = (match as { end?: unknown }).end;
+  const end = validDate(candidateEnd) && candidateEnd.getTime() > start.getTime()
+    ? candidateEnd
+    : new Date(start.getTime() + durationMinutes * 60_000);
+  return { start, end };
+};
+
+const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean => {
+  if (![startA, endA, startB, endB].every(validDate)) {
+    return false;
+  }
+  return startA.getTime() < endB.getTime() && startB.getTime() < endA.getTime();
+};
 
 const compareNullableNumbers = (left: number | null, right: number | null): number => {
   if (left === right) return 0;
@@ -140,9 +168,11 @@ export class OfficialStaffingPlanner {
 
   seedCommittedMatches(matches: Match[]): void {
     const ordered = [...matches].sort((left, right) => {
-      const startDiff = left.start.getTime() - right.start.getTime();
+      const leftWindow = committedMatchWindow(left, this.event);
+      const rightWindow = committedMatchWindow(right, this.event);
+      const startDiff = leftWindow.start.getTime() - rightWindow.start.getTime();
       if (startDiff !== 0) return startDiff;
-      const endDiff = left.end.getTime() - right.end.getTime();
+      const endDiff = leftWindow.end.getTime() - rightWindow.end.getTime();
       if (endDiff !== 0) return endDiff;
       return left.id.localeCompare(right.id);
     });
@@ -479,6 +509,7 @@ export class OfficialStaffingPlanner {
   }
 
   private recordAssignments(match: Match, assignments: MatchOfficialAssignment[]): void {
+    const window = committedMatchWindow(match, this.event);
     for (const assignment of assignments) {
       const user = this.userById.get(assignment.userId);
       if (!user) {
@@ -490,8 +521,8 @@ export class OfficialStaffingPlanner {
       const commitments = this.commitmentsByUserId.get(user.id) ?? [];
       commitments.push({
         matchId: match.id,
-        start: match.start,
-        end: match.end,
+        start: window.start,
+        end: window.end,
       });
       this.commitmentsByUserId.set(user.id, commitments);
       this.assignmentCountByUserId.set(user.id, (this.assignmentCountByUserId.get(user.id) ?? 0) + 1);
@@ -500,7 +531,7 @@ export class OfficialStaffingPlanner {
         positionKey,
         (this.assignmentCountByUserPosition.get(positionKey) ?? 0) + 1,
       );
-      this.lastAssignmentEndByUserId.set(user.id, match.end.getTime());
+      this.lastAssignmentEndByUserId.set(user.id, window.end.getTime());
     }
   }
 }

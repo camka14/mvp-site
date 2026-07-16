@@ -338,6 +338,31 @@ describe('official staffing modes', () => {
     ]);
   });
 
+  it('uses the configured match duration when a committed match is missing its end time', () => {
+    const tournament = buildTournament('SCHEDULE');
+    const division = tournament.divisions[0];
+    const field = tournament.fields.field_1;
+    const teams = Object.values(tournament.teams);
+    const committed = buildPlannerMatch('committed_match', division, field, teams[0], teams[1], 9);
+    committed.officialAssignments = [{
+      positionId: 'referee',
+      slotIndex: 0,
+      holderType: 'OFFICIAL',
+      userId: 'official_1',
+      eventOfficialId: 'event_official_1',
+      checkedIn: false,
+      hasConflict: false,
+    }];
+    (committed as Match & { end: Date | null }).end = null;
+    const overlapping = buildPlannerMatch('overlapping_match', division, field, teams[2], teams[3], 9);
+    const planner = new OfficialStaffingPlanner(tournament);
+
+    expect(() => planner.seedCommittedMatches([committed])).not.toThrow();
+    planner.assignMatch(overlapping);
+
+    expect(overlapping.officialAssignments).toEqual([]);
+  });
+
   it('SCHEDULE keeps assignable single-position officials when another slot has no candidates', () => {
     const division = buildDivision();
     const field = buildField('field_1', 1, division);
