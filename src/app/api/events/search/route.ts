@@ -549,27 +549,7 @@ export async function POST(req: NextRequest) {
   const effectiveDateFrom = hasExplicitDateFrom
     ? (parsedDateFrom as Date)
     : startOfToday;
-  if (effectiveDateFrom) {
-    where.AND.push({
-      OR: [
-        {
-          eventType: 'WEEKLY_EVENT',
-          OR: [
-            { end: null },
-            { end: { gte: effectiveDateFrom } },
-          ],
-        },
-        {
-          eventType: { not: 'WEEKLY_EVENT' },
-          start: { gte: effectiveDateFrom },
-        },
-        {
-          eventType: null,
-          start: { gte: effectiveDateFrom },
-        },
-      ],
-    });
-  }
+  where.AND.push({ start: { gte: effectiveDateFrom } });
   if (hasExplicitDateTo) {
     where.AND.push({
       OR: [

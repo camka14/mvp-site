@@ -210,6 +210,25 @@ describe('POST /api/events/search', () => {
     ]));
   });
 
+  it('applies the start-date lower bound to weekly events', async () => {
+    const dateFrom = '2026-07-16T07:00:00.000Z';
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { dateFrom },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(200);
+    const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
+    expect(searchWhere.AND).toEqual(expect.arrayContaining([
+      { start: { gte: new Date(dateFrom) } },
+    ]));
+  });
+
   it('filters external-registration events by their behavioral type', async () => {
     const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
       method: 'POST',
