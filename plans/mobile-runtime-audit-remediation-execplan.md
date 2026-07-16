@@ -21,8 +21,8 @@ The visible proof is an Android emulator pass that creates a fieldless regular e
 - [x] (2026-07-16) Verified backend schedule-capacity validation and made mobile create/save errors appear only after the loading overlay clears.
 - [x] (2026-07-16) Made official staffing tolerate committed matches with missing or invalid end times while retaining a conservative conflict window.
 - [x] (2026-07-16) Kept successful segment confirmation visible until the repository flow publishes the confirmed canonical state.
-- [ ] Revalidate the canonical team Schedule on a cold app start and on return to the Schedule screen; change the refresh lifecycle only if stale state remains reproducible.
-- [ ] Run focused tests, type/build checks, emulator regression evidence, and scoped commits in both repositories.
+- [x] (2026-07-16) Revalidated the canonical team Schedule on a cold authenticated load and after leaving/returning; both paths fetched and displayed the team event with seven matches, so no lifecycle or legacy-fallback change was needed.
+- [x] (2026-07-16) Ran focused tests, TypeScript and Android compilation checks, installed the repaired Android build, captured emulator evidence, and created scoped commits in both repositories.
 
 ## Surprises & Discoveries
 
@@ -49,6 +49,12 @@ The visible proof is an Android emulator pass that creates a fieldless regular e
 
 - Observation: Android compilation succeeds, but the iOS simulator test target is currently blocked before tests run because `PaymentProcessor.ios.kt` does not implement the expected `emitPaymentResult` member.
   Evidence: `:composeApp:compileKotlinIosSimulatorArm64` fails in the pre-existing payment processor actual/expect contract; this plan does not modify that payment surface.
+
+- Observation: Returning to the Schedule destination issued two fresh `/api/profile/schedule` requests and then restored the canonical team event with seven matches.
+  Evidence: `artifacts/mobile-runtime-audit/schedule-return-logcat.txt`, `schedule-return.xml`, and `canonical-team-schedule.png` show the refresh traffic and rendered result.
+
+- Observation: The installed advanced create form removes `Team Size Limit` immediately when `Team Event` is unchecked and expands `Event Type` from half width to the full row.
+  Evidence: `artifacts/mobile-runtime-audit/team-signup-off.xml` records `Event Type` at `[32,980][688,1112]`, an unchecked Team Event control, and no team-size node.
 
 ## Decision Log
 
@@ -82,7 +88,28 @@ The visible proof is an Android emulator pass that creates a fieldless regular e
 
 ## Outcomes & Retrospective
 
-Work is in progress. This section will record which audit findings were fixed, which were disproven or reclassified, the final test/emulator evidence, and the scoped commit identifiers.
+Six reproducible defects were repaired:
+
+1. Regular and weekly events no longer require fields; leagues and tournaments still do.
+2. Advanced mobile creation removes team-size input when team registration is disabled.
+3. Entering League initializes sport-based standings values once while preserving an explicitly cleared value.
+4. Backend schedule-capacity errors remain authoritative and now become visible after the mobile loading overlay closes.
+5. Official staffing normalizes malformed committed match windows instead of crashing on a null end.
+6. Confirmed score state remains on screen until the repository publishes a canonical snapshot that contains the confirmation.
+
+The reported missing team Schedule entry was reclassified rather than patched. The current canonical API tests pass, a cold installed-app load displayed `Manual Check-in Smoke 115526` with seven matches, and leaving/returning made fresh Schedule requests before displaying it again. No legacy participant-array fallback was introduced.
+
+Backend commit `a8581c2f` contains the field and staffing fixes plus this ExecPlan. Mobile commit `69f44a6a` contains the create-state, registration UI, visible-error, and score-refresh fixes.
+
+Validation completed:
+
+- 77 focused Jest tests passed across event upsert, staffing, and canonical Schedule.
+- `npx tsc --noEmit` passed.
+- The new focused mobile component tests passed before final consolidation; Android main and unit-test Kotlin sources compiled after the final changes.
+- `:composeApp:installDebug` built and installed successfully on the Pixel 9 Pro API 35 emulator.
+- UI-tree-derived emulator checks verified the canonical Schedule load/return and the Team Event off state.
+- The iOS simulator test target remains blocked by the unrelated pre-existing `PaymentProcessor.ios.kt` missing `emitPaymentResult` actual member.
+- Seven older timeslot assertions remain inconsistent with the approved automatic event-range slot contract and were not used to rewrite production behavior.
 
 ## Context and Orientation
 
@@ -195,3 +222,5 @@ The score confirmation fix must preserve the existing repository operation and o
 Revision note (2026-07-16): Initial plan created from the completed backend/mobile runtime audit and the user’s decision that regular events must not require fields.
 
 Revision note (2026-07-16): Recorded the completed backend and mobile repairs, the automatic-timeslot test-contract drift, the authoritative backend capacity decision, and the unrelated iOS test-target compile blocker.
+
+Revision note (2026-07-16): Closed the plan with scoped commit IDs, canonical Schedule emulator evidence, final build/test results, and the six-fixed/one-reclassified disposition.
