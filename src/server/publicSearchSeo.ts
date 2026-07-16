@@ -752,12 +752,5 @@ export const listPublicSitemapEntries = async (): Promise<MetadataRoute.Sitemap>
       ];
     });
 
-  const sportEntries: MetadataRoute.Sitemap = (await listPublicEventSportSummaries()).map((sport) => ({
-    url: absoluteUrl(sport.directoryPath),
-    lastModified: sport.latestUpdatedAt,
-    changeFrequency: 'daily',
-    priority: 0.7,
-  }));
-
-  return [...organizationEntries, ...eventEntries, ...sportEntries];
+  return [...organizationEntries, ...eventEntries];
 };

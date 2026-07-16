@@ -6,6 +6,9 @@ describe('SiteFooter', () => {
     render(<SiteFooter />);
 
     expect(screen.getByText(/bracketiq by razumly/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^events$/i })).toHaveAttribute('href', '/find-events');
+    expect(screen.getByRole('link', { name: /^clubs$/i })).toHaveAttribute('href', '/find-clubs');
+    expect(screen.getByRole('link', { name: /^facilities$/i })).toHaveAttribute('href', '/find-facilities');
     expect(screen.getByRole('link', { name: /blog/i })).toHaveAttribute('href', '/blog');
     expect(screen.getByRole('link', { name: /privacy policy/i })).toHaveAttribute('href', '/privacy-policy');
     expect(screen.getByRole('link', { name: /terms.*eula/i })).toHaveAttribute('href', '/terms');

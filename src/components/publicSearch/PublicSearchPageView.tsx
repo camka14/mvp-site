@@ -9,6 +9,9 @@ import {
 } from '@/server/publicSearchPages';
 
 const navItems = [
+  { label: 'Events', href: '/find-events' },
+  { label: 'Clubs', href: '/find-clubs' },
+  { label: 'Facilities', href: '/find-facilities' },
   { label: 'Info', href: '/info' },
   { label: 'Guides', href: '/guides' },
   { label: 'Blog', href: '/blog' },
@@ -100,6 +103,11 @@ export default function PublicSearchPageView({ page }: { page: PublicSearchPage 
             <p className="mt-5 max-w-2xl text-base leading-8 text-slate-700">
               {page.description}
             </p>
+            {page.location && page.searchRadiusMiles ? (
+              <p className="mt-3 text-sm font-medium text-slate-600">
+                Showing public listings within {page.searchRadiusMiles} miles of {page.location.label}.
+              </p>
+            ) : null}
             <Link
               href={page.discoverHref}
               className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"

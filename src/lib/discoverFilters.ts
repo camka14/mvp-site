@@ -117,9 +117,13 @@ export const resolveDiscoverSportFilters = (
 export const buildDiscoverEventsHref = ({
   query,
   sports = [],
+  location,
+  distanceMiles,
 }: {
   query?: string | null;
   sports?: string[];
+  location?: { lat: number; lng: number; label?: string | null } | null;
+  distanceMiles?: number | null;
 } = {}): string => {
   const params = new URLSearchParams();
   const normalizedQuery = typeof query === 'string' ? query.trim() : '';
@@ -129,6 +133,25 @@ export const buildDiscoverEventsHref = ({
   uniqueNonEmptyValues(sports).forEach((sport) => {
     params.append(DISCOVER_SPORT_PARAM, sport);
   });
+  if (
+    location
+    && Number.isFinite(location.lat)
+    && location.lat >= -90
+    && location.lat <= 90
+    && Number.isFinite(location.lng)
+    && location.lng >= -180
+    && location.lng <= 180
+  ) {
+    params.set('lat', String(location.lat));
+    params.set('lng', String(location.lng));
+    const label = location.label?.trim();
+    if (label) {
+      params.set('location', label);
+    }
+    if (typeof distanceMiles === 'number' && distanceMiles > 0 && distanceMiles <= 500) {
+      params.set('distanceMiles', String(distanceMiles));
+    }
+  }
 
   const queryString = params.toString();
   return queryString ? `/discover?${queryString}` : '/discover';

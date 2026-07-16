@@ -17,6 +17,12 @@ describe('discoverFilters', () => {
   it('builds Discover event links with encoded sport filters', () => {
     expect(buildDiscoverEventsHref({ sports: ['Soccer', 'Beach Volleyball'], query: 'summer cup' }))
       .toBe('/discover?q=summer+cup&sport=Soccer&sport=Beach+Volleyball');
+
+    expect(buildDiscoverEventsHref({
+      sports: ['Grass Soccer', 'Indoor Soccer'],
+      location: { lat: 45.5231, lng: -122.6765, label: 'Portland, OR' },
+      distanceMiles: 25,
+    })).toBe('/discover?sport=Grass+Soccer&sport=Indoor+Soccer&lat=45.5231&lng=-122.6765&location=Portland%2C+OR&distanceMiles=25');
   });
 
   it('resolves URL sport values to canonical configured sport names', () => {

@@ -12,21 +12,29 @@ const PUBLIC_RESULT_LIMIT = 24;
 const PUBLIC_SITEMAP_PAGE_LIMIT = 50000;
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
 const FALLBACK_IMAGE_URL = '/BIQ_drawing.svg';
+export const PUBLIC_SEARCH_RADIUS_MILES = 25;
 
 export type PublicSearchKind = 'events' | 'clubs' | 'facilities';
 export type PublicSearchEventType = 'events' | 'leagues' | 'tournaments' | 'weekly-events';
+
+export type PublicSearchCoordinates = {
+  lng: number;
+  lat: number;
+};
 
 export type PublicSearchLocation = {
   slug: string;
   label: string;
   city?: string;
   state?: string;
+  coordinates?: PublicSearchCoordinates;
 };
 
 export type PublicSearchPageSummary = {
   path: string;
   title: string;
   description: string;
+  resultCount?: number;
   lastModified?: Date;
 };
 
@@ -59,6 +67,7 @@ export type PublicSearchPage = {
   sportSlug?: string;
   eventType?: PublicSearchEventType;
   location?: PublicSearchLocation;
+  searchRadiusMiles?: number;
   results: PublicSearchResult[];
   relatedPages: PublicSearchPageSummary[];
   lastModified?: Date;
@@ -107,6 +116,7 @@ type SearchableOrganization = {
   sports: string[];
   logoId: string | null;
   publicPageEnabled: boolean;
+  coordinates: PublicSearchCoordinates | null;
   updatedAt?: Date;
 };
 
@@ -115,8 +125,10 @@ type SearchableEvent = {
   name: string;
   description: string | null;
   start?: Date;
+  end?: Date;
   location: string | null;
   address: string | null;
+  coordinates: PublicSearchCoordinates | null;
   priceCents: number;
   eventType: string | null;
   sportId: string | null;
@@ -131,14 +143,17 @@ type SearchableFacility = {
   location: string | null;
   address: string | null;
   organizationId: string;
+  coordinates: PublicSearchCoordinates | null;
   updatedAt?: Date;
   sportIds: string[];
 };
 
-type SportEntry = {
+export type PublicSearchSportEntry = {
   id: string;
   name: string;
   slug: string;
+  sportIds: string[];
+  sportNames: string[];
 };
 
 const STATE_NAME_TO_CODE: Record<string, string> = {
@@ -216,49 +231,62 @@ const KIND_BASE_PATH: Record<PublicSearchKind, string> = {
 };
 
 export const PACIFIC_NORTHWEST_MAJOR_SEARCH_LOCATIONS: PublicSearchLocation[] = [
-  { slug: 'seattle-wa', label: 'Seattle, WA', city: 'Seattle', state: 'WA' },
-  { slug: 'spokane-wa', label: 'Spokane, WA', city: 'Spokane', state: 'WA' },
-  { slug: 'tacoma-wa', label: 'Tacoma, WA', city: 'Tacoma', state: 'WA' },
-  { slug: 'vancouver-wa', label: 'Vancouver, WA', city: 'Vancouver', state: 'WA' },
-  { slug: 'bellevue-wa', label: 'Bellevue, WA', city: 'Bellevue', state: 'WA' },
-  { slug: 'kent-wa', label: 'Kent, WA', city: 'Kent', state: 'WA' },
-  { slug: 'everett-wa', label: 'Everett, WA', city: 'Everett', state: 'WA' },
-  { slug: 'renton-wa', label: 'Renton, WA', city: 'Renton', state: 'WA' },
-  { slug: 'yakima-wa', label: 'Yakima, WA', city: 'Yakima', state: 'WA' },
-  { slug: 'federal-way-wa', label: 'Federal Way, WA', city: 'Federal Way', state: 'WA' },
-  { slug: 'spokane-valley-wa', label: 'Spokane Valley, WA', city: 'Spokane Valley', state: 'WA' },
-  { slug: 'kirkland-wa', label: 'Kirkland, WA', city: 'Kirkland', state: 'WA' },
-  { slug: 'bellingham-wa', label: 'Bellingham, WA', city: 'Bellingham', state: 'WA' },
-  { slug: 'kennewick-wa', label: 'Kennewick, WA', city: 'Kennewick', state: 'WA' },
-  { slug: 'auburn-wa', label: 'Auburn, WA', city: 'Auburn', state: 'WA' },
-  { slug: 'pasco-wa', label: 'Pasco, WA', city: 'Pasco', state: 'WA' },
-  { slug: 'marysville-wa', label: 'Marysville, WA', city: 'Marysville', state: 'WA' },
-  { slug: 'redmond-wa', label: 'Redmond, WA', city: 'Redmond', state: 'WA' },
-  { slug: 'sammamish-wa', label: 'Sammamish, WA', city: 'Sammamish', state: 'WA' },
-  { slug: 'lakewood-wa', label: 'Lakewood, WA', city: 'Lakewood', state: 'WA' },
-  { slug: 'portland-or', label: 'Portland, OR', city: 'Portland', state: 'OR' },
-  { slug: 'eugene-or', label: 'Eugene, OR', city: 'Eugene', state: 'OR' },
-  { slug: 'salem-or', label: 'Salem, OR', city: 'Salem', state: 'OR' },
-  { slug: 'gresham-or', label: 'Gresham, OR', city: 'Gresham', state: 'OR' },
-  { slug: 'hillsboro-or', label: 'Hillsboro, OR', city: 'Hillsboro', state: 'OR' },
-  { slug: 'bend-or', label: 'Bend, OR', city: 'Bend', state: 'OR' },
-  { slug: 'beaverton-or', label: 'Beaverton, OR', city: 'Beaverton', state: 'OR' },
-  { slug: 'medford-or', label: 'Medford, OR', city: 'Medford', state: 'OR' },
-  { slug: 'springfield-or', label: 'Springfield, OR', city: 'Springfield', state: 'OR' },
-  { slug: 'corvallis-or', label: 'Corvallis, OR', city: 'Corvallis', state: 'OR' },
-  { slug: 'albany-or', label: 'Albany, OR', city: 'Albany', state: 'OR' },
-  { slug: 'tigard-or', label: 'Tigard, OR', city: 'Tigard', state: 'OR' },
-  { slug: 'lake-oswego-or', label: 'Lake Oswego, OR', city: 'Lake Oswego', state: 'OR' },
-  { slug: 'keizer-or', label: 'Keizer, OR', city: 'Keizer', state: 'OR' },
-  { slug: 'grants-pass-or', label: 'Grants Pass, OR', city: 'Grants Pass', state: 'OR' },
-  { slug: 'oregon-city-or', label: 'Oregon City, OR', city: 'Oregon City', state: 'OR' },
-  { slug: 'mcminnville-or', label: 'McMinnville, OR', city: 'McMinnville', state: 'OR' },
-  { slug: 'redmond-or', label: 'Redmond, OR', city: 'Redmond', state: 'OR' },
+  { slug: 'seattle-wa', label: 'Seattle, WA', city: 'Seattle', state: 'WA', coordinates: { lng: -122.3321, lat: 47.6062 } },
+  { slug: 'spokane-wa', label: 'Spokane, WA', city: 'Spokane', state: 'WA', coordinates: { lng: -117.426, lat: 47.6588 } },
+  { slug: 'tacoma-wa', label: 'Tacoma, WA', city: 'Tacoma', state: 'WA', coordinates: { lng: -122.4443, lat: 47.2529 } },
+  { slug: 'vancouver-wa', label: 'Vancouver, WA', city: 'Vancouver', state: 'WA', coordinates: { lng: -122.6615, lat: 45.6387 } },
+  { slug: 'bellevue-wa', label: 'Bellevue, WA', city: 'Bellevue', state: 'WA', coordinates: { lng: -122.2015, lat: 47.6101 } },
+  { slug: 'kent-wa', label: 'Kent, WA', city: 'Kent', state: 'WA', coordinates: { lng: -122.2348, lat: 47.3809 } },
+  { slug: 'everett-wa', label: 'Everett, WA', city: 'Everett', state: 'WA', coordinates: { lng: -122.2021, lat: 47.979 } },
+  { slug: 'renton-wa', label: 'Renton, WA', city: 'Renton', state: 'WA', coordinates: { lng: -122.2171, lat: 47.4829 } },
+  { slug: 'yakima-wa', label: 'Yakima, WA', city: 'Yakima', state: 'WA', coordinates: { lng: -120.5059, lat: 46.6021 } },
+  { slug: 'federal-way-wa', label: 'Federal Way, WA', city: 'Federal Way', state: 'WA', coordinates: { lng: -122.3126, lat: 47.3223 } },
+  { slug: 'spokane-valley-wa', label: 'Spokane Valley, WA', city: 'Spokane Valley', state: 'WA', coordinates: { lng: -117.2394, lat: 47.6732 } },
+  { slug: 'kirkland-wa', label: 'Kirkland, WA', city: 'Kirkland', state: 'WA', coordinates: { lng: -122.2087, lat: 47.6769 } },
+  { slug: 'bellingham-wa', label: 'Bellingham, WA', city: 'Bellingham', state: 'WA', coordinates: { lng: -122.4787, lat: 48.7519 } },
+  { slug: 'kennewick-wa', label: 'Kennewick, WA', city: 'Kennewick', state: 'WA', coordinates: { lng: -119.1372, lat: 46.2112 } },
+  { slug: 'auburn-wa', label: 'Auburn, WA', city: 'Auburn', state: 'WA', coordinates: { lng: -122.2285, lat: 47.3073 } },
+  { slug: 'pasco-wa', label: 'Pasco, WA', city: 'Pasco', state: 'WA', coordinates: { lng: -119.1006, lat: 46.2396 } },
+  { slug: 'marysville-wa', label: 'Marysville, WA', city: 'Marysville', state: 'WA', coordinates: { lng: -122.1771, lat: 48.0518 } },
+  { slug: 'redmond-wa', label: 'Redmond, WA', city: 'Redmond', state: 'WA', coordinates: { lng: -122.1215, lat: 47.674 } },
+  { slug: 'sammamish-wa', label: 'Sammamish, WA', city: 'Sammamish', state: 'WA', coordinates: { lng: -122.0326, lat: 47.6163 } },
+  { slug: 'lakewood-wa', label: 'Lakewood, WA', city: 'Lakewood', state: 'WA', coordinates: { lng: -122.5185, lat: 47.1718 } },
+  { slug: 'portland-or', label: 'Portland, OR', city: 'Portland', state: 'OR', coordinates: { lng: -122.6765, lat: 45.5231 } },
+  { slug: 'eugene-or', label: 'Eugene, OR', city: 'Eugene', state: 'OR', coordinates: { lng: -123.0868, lat: 44.0521 } },
+  { slug: 'salem-or', label: 'Salem, OR', city: 'Salem', state: 'OR', coordinates: { lng: -123.0351, lat: 44.9429 } },
+  { slug: 'gresham-or', label: 'Gresham, OR', city: 'Gresham', state: 'OR', coordinates: { lng: -122.4315, lat: 45.5001 } },
+  { slug: 'hillsboro-or', label: 'Hillsboro, OR', city: 'Hillsboro', state: 'OR', coordinates: { lng: -122.9898, lat: 45.5229 } },
+  { slug: 'bend-or', label: 'Bend, OR', city: 'Bend', state: 'OR', coordinates: { lng: -121.3153, lat: 44.0582 } },
+  { slug: 'beaverton-or', label: 'Beaverton, OR', city: 'Beaverton', state: 'OR', coordinates: { lng: -122.8037, lat: 45.4871 } },
+  { slug: 'medford-or', label: 'Medford, OR', city: 'Medford', state: 'OR', coordinates: { lng: -122.8756, lat: 42.3265 } },
+  { slug: 'springfield-or', label: 'Springfield, OR', city: 'Springfield', state: 'OR', coordinates: { lng: -123.022, lat: 44.0462 } },
+  { slug: 'corvallis-or', label: 'Corvallis, OR', city: 'Corvallis', state: 'OR', coordinates: { lng: -123.262, lat: 44.5646 } },
+  { slug: 'albany-or', label: 'Albany, OR', city: 'Albany', state: 'OR', coordinates: { lng: -123.1059, lat: 44.6365 } },
+  { slug: 'tigard-or', label: 'Tigard, OR', city: 'Tigard', state: 'OR', coordinates: { lng: -122.7715, lat: 45.4312 } },
+  { slug: 'lake-oswego-or', label: 'Lake Oswego, OR', city: 'Lake Oswego', state: 'OR', coordinates: { lng: -122.6706, lat: 45.4207 } },
+  { slug: 'keizer-or', label: 'Keizer, OR', city: 'Keizer', state: 'OR', coordinates: { lng: -123.0262, lat: 44.9901 } },
+  { slug: 'grants-pass-or', label: 'Grants Pass, OR', city: 'Grants Pass', state: 'OR', coordinates: { lng: -123.3284, lat: 42.439 } },
+  { slug: 'oregon-city-or', label: 'Oregon City, OR', city: 'Oregon City', state: 'OR', coordinates: { lng: -122.6068, lat: 45.3573 } },
+  { slug: 'mcminnville-or', label: 'McMinnville, OR', city: 'McMinnville', state: 'OR', coordinates: { lng: -123.1987, lat: 45.2101 } },
+  { slug: 'redmond-or', label: 'Redmond, OR', city: 'Redmond', state: 'OR', coordinates: { lng: -121.1739, lat: 44.2726 } },
 ];
 
 const CURATED_LOCATION_BY_SLUG = new Map(
   PACIFIC_NORTHWEST_MAJOR_SEARCH_LOCATIONS.map((location) => [location.slug, location]),
 );
+
+const UMBRELLA_SPORTS: Array<{ name: string; slug: string; memberNames: string[] }> = [
+  {
+    name: 'Soccer',
+    slug: 'soccer',
+    memberNames: ['Soccer', 'Grass Soccer', 'Indoor Soccer', 'Beach Soccer'],
+  },
+  {
+    name: 'Volleyball',
+    slug: 'volleyball',
+    memberNames: ['Volleyball', 'Indoor Volleyball', 'Grass Volleyball', 'Beach Volleyball'],
+  },
+];
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -293,6 +321,50 @@ const normalizeStringArray = (value: unknown): string[] => (
     ))
     : []
 );
+
+const normalizeCoordinates = (value: unknown): PublicSearchCoordinates | null => {
+  let lng: unknown;
+  let lat: unknown;
+
+  if (Array.isArray(value)) {
+    [lng, lat] = value;
+  } else if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    lng = record.lng ?? record.long ?? record.longitude;
+    lat = record.lat ?? record.latitude;
+  }
+
+  const normalizedLng = typeof lng === 'number' ? lng : Number(lng);
+  const normalizedLat = typeof lat === 'number' ? lat : Number(lat);
+  if (
+    !Number.isFinite(normalizedLng)
+    || !Number.isFinite(normalizedLat)
+    || normalizedLng < -180
+    || normalizedLng > 180
+    || normalizedLat < -90
+    || normalizedLat > 90
+    || (normalizedLng === 0 && normalizedLat === 0)
+  ) {
+    return null;
+  }
+
+  return { lng: normalizedLng, lat: normalizedLat };
+};
+
+const distanceMilesBetween = (
+  left: PublicSearchCoordinates,
+  right: PublicSearchCoordinates,
+): number => {
+  const earthRadiusMiles = 3958.8;
+  const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+  const latitudeDelta = toRadians(right.lat - left.lat);
+  const longitudeDelta = toRadians(right.lng - left.lng);
+  const leftLatitude = toRadians(left.lat);
+  const rightLatitude = toRadians(right.lat);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(leftLatitude) * Math.cos(rightLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
 
 const trimForMeta = (value: string, maxLength = 155): string => {
   const normalized = normalizeString(value) ?? '';
@@ -368,6 +440,12 @@ export const regularEventPath = (eventId: string): string => (
   `/event/${encodeURIComponent(eventId)}`
 );
 
+const publicOrganizationPath = (organization: SearchableOrganization): string => (
+  organization.slug && organization.publicPageEnabled
+    ? `/o/${encodeURIComponent(organization.slug)}`
+    : regularOrganizationPath(organization.id)
+);
+
 const eventTypeSegment = (eventType?: PublicSearchEventType): string => (
   eventType && eventType !== 'events' ? eventType : ''
 );
@@ -406,8 +484,13 @@ const eventImageUrl = (event: SearchableEvent, organization: SearchableOrganizat
     : organizationLogoUrl(organization)
 );
 
-const facilityHref = (facility: SearchableFacility): string => (
-  `${regularOrganizationPath(facility.organizationId)}/facilities`
+const facilityHref = (
+  facility: SearchableFacility,
+  organization: SearchableOrganization,
+): string => (
+  organization.slug && organization.publicPageEnabled
+    ? publicOrganizationPath(organization)
+    : `${regularOrganizationPath(facility.organizationId)}/facilities`
 );
 
 const eventHref = (event: SearchableEvent, organization: SearchableOrganization): string => (
@@ -421,17 +504,51 @@ const latestDate = (values: Array<Date | undefined>): Date | undefined => (
     .sort((left, right) => right.getTime() - left.getTime())[0]
 );
 
-const loadSports = async (): Promise<SportEntry[]> => {
+export const createPublicSearchSportEntries = (
+  rows: Array<{ id?: unknown; name?: unknown }>,
+): PublicSearchSportEntry[] => {
+  const baseEntries = rows.flatMap((row): PublicSearchSportEntry[] => {
+    const id = normalizeString(row.id);
+    const name = normalizeString(row.name);
+    const slug = name ? sportNameToSlug(name) : '';
+    return id && name && slug
+      ? [{
+          id,
+          name,
+          slug,
+          sportIds: [id],
+          sportNames: [name],
+        }]
+      : [];
+  });
+
+  const umbrellaSlugs = new Set(UMBRELLA_SPORTS.map((sport) => sport.slug));
+  const entries = baseEntries.filter((entry) => !umbrellaSlugs.has(entry.slug));
+
+  UMBRELLA_SPORTS.forEach((umbrella) => {
+    const memberNames = new Set(umbrella.memberNames.map((name) => name.toLowerCase()));
+    const members = baseEntries.filter((entry) => memberNames.has(entry.name.toLowerCase()));
+    if (!members.length) {
+      return;
+    }
+    entries.push({
+      id: `umbrella:${umbrella.slug}`,
+      name: umbrella.name,
+      slug: umbrella.slug,
+      sportIds: members.flatMap((entry) => entry.sportIds),
+      sportNames: members.flatMap((entry) => entry.sportNames),
+    });
+  });
+
+  return entries.sort((left, right) => left.name.localeCompare(right.name) || left.slug.localeCompare(right.slug));
+};
+
+const loadSports = async (): Promise<PublicSearchSportEntry[]> => {
   const rows: Array<Record<string, unknown>> = await (prisma as any).sports.findMany({
     select: { id: true, name: true },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
-  return rows.flatMap((row): SportEntry[] => {
-    const id = normalizeString(row.id);
-    const name = normalizeString(row.name);
-    const slug = name ? sportNameToSlug(name) : '';
-    return id && name && slug ? [{ id, name, slug }] : [];
-  });
+  return createPublicSearchSportEntries(rows);
 };
 
 const loadSearchableOrganizations = async (): Promise<SearchableOrganization[]> => {
@@ -448,6 +565,7 @@ const loadSearchableOrganizations = async (): Promise<SearchableOrganization[]> 
       sports: true,
       logoId: true,
       publicPageEnabled: true,
+      coordinates: true,
       updatedAt: true,
     },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -471,6 +589,7 @@ const loadSearchableOrganizations = async (): Promise<SearchableOrganization[]> 
       sports: normalizeStringArray(row.sports),
       logoId: normalizeString(row.logoId),
       publicPageEnabled: row.publicPageEnabled === true,
+      coordinates: normalizeCoordinates(row.coordinates),
       updatedAt: toDate(row.updatedAt),
     }];
   });
@@ -492,8 +611,10 @@ const loadSearchableEvents = async (organizationIds: string[]): Promise<Searchab
       name: true,
       description: true,
       start: true,
+      end: true,
       location: true,
       address: true,
+      coordinates: true,
       price: true,
       eventType: true,
       sportId: true,
@@ -518,8 +639,10 @@ const loadSearchableEvents = async (organizationIds: string[]): Promise<Searchab
       name,
       description: normalizeString(row.description),
       start: toDate(row.start),
+      end: toDate(row.end),
       location: normalizeString(row.location),
       address: normalizeString(row.address),
+      coordinates: normalizeCoordinates(row.coordinates),
       priceCents: typeof row.price === 'number' ? row.price : 0,
       eventType: normalizeString(row.eventType),
       sportId: normalizeString(row.sportId),
@@ -546,6 +669,7 @@ const loadSearchableFacilities = async (organizationIds: string[]): Promise<Sear
         location: true,
         address: true,
         organizationId: true,
+        coordinates: true,
         updatedAt: true,
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -588,6 +712,7 @@ const loadSearchableFacilities = async (organizationIds: string[]): Promise<Sear
       name,
       location: normalizeString(row.location),
       address: normalizeString(row.address),
+      coordinates: normalizeCoordinates(row.coordinates),
       updatedAt: toDate(row.updatedAt),
       sportIds: Array.from(sportIdsByFacilityId.get(id) ?? []),
     }];
@@ -596,8 +721,8 @@ const loadSearchableFacilities = async (organizationIds: string[]): Promise<Sear
 
 const parseEventSportAndType = (
   segment: string | undefined,
-  sports: SportEntry[],
-): { sport?: SportEntry; eventType?: PublicSearchEventType } => {
+  sports: PublicSearchSportEntry[],
+): { sport?: PublicSearchSportEntry; eventType?: PublicSearchEventType } => {
   const normalized = normalizeString(segment)?.toLowerCase();
   if (!normalized) {
     return {};
@@ -626,6 +751,8 @@ const parseEventSportAndType = (
       id: normalized,
       name: sportSlugToLabel(normalized),
       slug: normalized,
+      sportIds: [],
+      sportNames: [],
     },
   };
 };
@@ -637,8 +764,8 @@ export const parsePublicSearchSegments = ({
 }: {
   kind: PublicSearchKind;
   segments: string[];
-  sports: SportEntry[];
-}): { sport?: SportEntry; eventType?: PublicSearchEventType; locationSlug?: string } => {
+  sports: PublicSearchSportEntry[];
+}): { sport?: PublicSearchSportEntry; eventType?: PublicSearchEventType; locationSlug?: string } => {
   const [first, second] = segments.map((segment) => normalizeString(segment)?.toLowerCase() ?? '');
   if (kind === 'events') {
     const parsed = parseEventSportAndType(first, sports);
@@ -652,6 +779,8 @@ export const parsePublicSearchSegments = ({
     id: first,
     name: sportSlugToLabel(first),
     slug: first,
+    sportIds: [],
+    sportNames: [],
   } : undefined;
   return {
     sport,
@@ -661,20 +790,36 @@ export const parsePublicSearchSegments = ({
 
 const resultMatchesLocation = (
   locationSlugInput: string | undefined,
+  coordinates: PublicSearchCoordinates | null,
   ...locationValues: Array<unknown>
 ): boolean => {
   if (!locationSlugInput) {
     return true;
   }
+  const curatedLocation = CURATED_LOCATION_BY_SLUG.get(locationSlugInput);
+  if (curatedLocation?.coordinates && coordinates) {
+    return distanceMilesBetween(curatedLocation.coordinates, coordinates) <= PUBLIC_SEARCH_RADIUS_MILES;
+  }
   return extractPublicSearchLocation(...locationValues)?.slug === locationSlugInput;
 };
 
-const organizationMatchesSport = (organization: SearchableOrganization, sportName: string | undefined): boolean => {
-  if (!sportName) {
+const organizationMatchesSport = (
+  organization: SearchableOrganization,
+  sport: PublicSearchSportEntry | undefined,
+): boolean => {
+  if (!sport) {
     return true;
   }
-  const normalizedSport = sportName.trim().toLowerCase();
-  return organization.sports.some((sport) => sport.trim().toLowerCase() === normalizedSport);
+  const umbrella = UMBRELLA_SPORTS.find((entry) => entry.slug === sport.slug);
+  const normalizedSportNames = new Set(
+    (umbrella?.memberNames ?? sport.sportNames).map((name) => name.trim().toLowerCase()),
+  );
+  return organization.sports.some((name) => normalizedSportNames.has(name.trim().toLowerCase()));
+};
+
+const isCurrentSearchEvent = (event: SearchableEvent): boolean => {
+  const currentThrough = event.end ?? event.start;
+  return !currentThrough || currentThrough.getTime() >= Date.now();
 };
 
 const formatEventTypePhrase = (eventType?: PublicSearchEventType): string => (
@@ -705,38 +850,45 @@ const pageCopy = ({
   const h1 = `${titleCase(subject)}${locationText}`;
   const title = `${h1} | BracketIQ`;
   const description = kind === 'events'
-    ? trimForMeta(`Find ${subject}${locationText} hosted through BracketIQ. Browse real public listings and open filtered Discover results for local events, leagues, and tournaments.`)
-    : trimForMeta(`Find ${subject}${locationText} on BracketIQ. Browse public organization profiles and local sports listings.`);
+    ? trimForMeta(`Find ${subject}${location ? ` within ${PUBLIC_SEARCH_RADIUS_MILES} miles of ${location.label}` : ''} hosted through BracketIQ. Browse real public listings and open filtered Discover results.`)
+    : trimForMeta(`Find ${subject}${location ? ` within ${PUBLIC_SEARCH_RADIUS_MILES} miles of ${location.label}` : ''} on BracketIQ. Browse public organization profiles and local sports listings.`);
   return { title, h1, description };
 };
 
 const buildEventResults = ({
   events,
   organizationsById,
-  sportsById,
+  sportNamesById,
   sport,
   eventType,
   locationSlug,
 }: {
   events: SearchableEvent[];
   organizationsById: Map<string, SearchableOrganization>;
-  sportsById: Map<string, SportEntry>;
-  sport?: SportEntry;
+  sportNamesById: Map<string, string>;
+  sport?: PublicSearchSportEntry;
   eventType?: PublicSearchEventType;
   locationSlug?: string;
 }): PublicSearchResult[] => {
   const dbEventType = eventType ? EVENT_TYPE_TO_DB[eventType] : undefined;
   return events
-    .filter((event) => !sport || event.sportId === sport.id)
+    .filter(isCurrentSearchEvent)
+    .filter((event) => !sport || Boolean(event.sportId && sport.sportIds.includes(event.sportId)))
     .filter((event) => !dbEventType || event.eventType === dbEventType)
     .filter((event) => {
       const organization = organizationsById.get(event.organizationId);
-      return organization && resultMatchesLocation(locationSlug, event.location, event.address, organization.location, organization.address);
+      return organization && resultMatchesLocation(
+        locationSlug,
+        event.coordinates ?? organization.coordinates,
+        event.location,
+        event.address,
+        organization.location,
+        organization.address,
+      );
     })
     .slice(0, PUBLIC_RESULT_LIMIT)
     .map((event) => {
       const organization = organizationsById.get(event.organizationId)!;
-      const eventSport = event.sportId ? sportsById.get(event.sportId) : undefined;
       return {
         id: event.id,
         kind: 'events' as const,
@@ -746,7 +898,7 @@ const buildEventResults = ({
         organizationId: organization.id,
         organizationName: organization.name,
         organizationSlug: organization.slug,
-        sportName: eventSport?.name ?? null,
+        sportName: event.sportId ? sportNamesById.get(event.sportId) ?? null : null,
         eventType: event.eventType,
         start: toIsoString(event.start),
         location: event.location ?? organization.location,
@@ -762,19 +914,24 @@ const buildClubResults = ({
   locationSlug,
 }: {
   organizations: SearchableOrganization[];
-  sport?: SportEntry;
+  sport?: PublicSearchSportEntry;
   locationSlug?: string;
 }): PublicSearchResult[] => (
   organizations
-    .filter((organization) => organizationMatchesSport(organization, sport?.name))
-    .filter((organization) => resultMatchesLocation(locationSlug, organization.location, organization.address))
+    .filter((organization) => organizationMatchesSport(organization, sport))
+    .filter((organization) => resultMatchesLocation(
+      locationSlug,
+      organization.coordinates,
+      organization.location,
+      organization.address,
+    ))
     .slice(0, PUBLIC_RESULT_LIMIT)
     .map((organization) => ({
       id: organization.id,
       kind: 'clubs' as const,
       title: organization.name,
       description: organization.description,
-      href: regularOrganizationPath(organization.id),
+      href: publicOrganizationPath(organization),
       organizationId: organization.id,
       organizationName: organization.name,
       organizationSlug: organization.slug,
@@ -788,32 +945,41 @@ const buildClubResults = ({
 const buildFacilityResults = ({
   facilities,
   organizationsById,
-  sportsById,
+  sportNamesById,
   sport,
   locationSlug,
 }: {
   facilities: SearchableFacility[];
   organizationsById: Map<string, SearchableOrganization>;
-  sportsById: Map<string, SportEntry>;
-  sport?: SportEntry;
+  sportNamesById: Map<string, string>;
+  sport?: PublicSearchSportEntry;
   locationSlug?: string;
 }): PublicSearchResult[] => (
   facilities
-    .filter((facility) => !sport || facility.sportIds.includes(sport.id))
+    .filter((facility) => !sport || facility.sportIds.some((sportId) => sport.sportIds.includes(sportId)))
     .filter((facility) => {
       const organization = organizationsById.get(facility.organizationId);
-      return organization && resultMatchesLocation(locationSlug, facility.location, facility.address, organization.location, organization.address);
+      return organization && resultMatchesLocation(
+        locationSlug,
+        facility.coordinates ?? organization.coordinates,
+        facility.location,
+        facility.address,
+        organization.location,
+        organization.address,
+      );
     })
     .slice(0, PUBLIC_RESULT_LIMIT)
     .map((facility) => {
       const organization = organizationsById.get(facility.organizationId)!;
-      const facilitySports = facility.sportIds.map((sportId) => sportsById.get(sportId)?.name).filter(Boolean);
+      const facilitySports = facility.sportIds
+        .map((sportId) => sportNamesById.get(sportId))
+        .filter((name): name is string => Boolean(name));
       return {
         id: facility.id,
         kind: 'facilities' as const,
         title: facility.name,
         description: facilitySports.length ? `${facilitySports.join(', ')} facility operated by ${organization.name}.` : `Facility operated by ${organization.name}.`,
-        href: facilityHref(facility),
+        href: facilityHref(facility, organization),
         organizationId: organization.id,
         organizationName: organization.name,
         organizationSlug: organization.slug,
@@ -824,32 +990,6 @@ const buildFacilityResults = ({
       };
     })
 );
-
-const relatedPagesFor = (page: PublicSearchPage): PublicSearchPageSummary[] => {
-  const related: PublicSearchPageSummary[] = [];
-  if (page.kind !== 'events' && page.sportSlug) {
-    const path = publicSearchPath({
-      kind: 'events',
-      sportSlug: page.sportSlug,
-      locationSlug: page.location?.slug,
-    });
-    related.push({
-      path,
-      title: `${page.sportName} events${page.location ? ` near ${page.location.label}` : ''}`,
-      description: `Browse ${page.sportName} events on BracketIQ.`,
-      lastModified: page.lastModified,
-    });
-  }
-  if (page.kind === 'events' && page.sportSlug) {
-    related.push({
-      path: publicSearchPath({ kind: 'clubs', sportSlug: page.sportSlug, locationSlug: page.location?.slug }),
-      title: `${page.sportName} clubs${page.location ? ` near ${page.location.label}` : ''}`,
-      description: `Browse ${page.sportName} clubs on BracketIQ.`,
-      lastModified: page.lastModified,
-    });
-  }
-  return related;
-};
 
 export const getPublicSearchPage = async ({
   kind,
@@ -871,26 +1011,33 @@ export const getPublicSearchPage = async ({
     id: sportSlug,
     name: sportSlugToLabel(sportSlug),
     slug: sportSlug,
+    sportIds: [],
+    sportNames: [],
   } : undefined;
   const organizationIds = organizations.map((organization) => organization.id);
   const organizationsById = new Map(organizations.map((organization) => [organization.id, organization]));
-  const sportsById = new Map(sports.map((entry) => [entry.id, entry]));
+  const sportNamesById = new Map(
+    sports.flatMap((entry) => entry.sportIds.map((sportId, index) => [
+      sportId,
+      entry.sportNames[index] ?? entry.name,
+    ] as const)),
+  );
 
   let results: PublicSearchResult[] = [];
+  let events: SearchableEvent[] = [];
+  let facilities: SearchableFacility[] = [];
   if (kind === 'events') {
-    const events = await loadSearchableEvents(organizationIds);
-    results = buildEventResults({ events, organizationsById, sportsById, sport, eventType, locationSlug });
+    events = await loadSearchableEvents(organizationIds);
+    results = buildEventResults({ events, organizationsById, sportNamesById, sport, eventType, locationSlug });
   } else if (kind === 'clubs') {
     results = buildClubResults({ organizations, sport, locationSlug });
   } else {
-    const facilities = await loadSearchableFacilities(organizationIds);
-    results = buildFacilityResults({ facilities, organizationsById, sportsById, sport, locationSlug });
+    facilities = await loadSearchableFacilities(organizationIds);
+    results = buildFacilityResults({ facilities, organizationsById, sportNamesById, sport, locationSlug });
   }
 
   const curatedLocation = locationSlug ? CURATED_LOCATION_BY_SLUG.get(locationSlug) : undefined;
-  const isCuratedSportLocationPage = Boolean(sportFromCatalog && curatedLocation && locationSlug);
-
-  if ((sportSlug || locationSlug || eventType) && results.length === 0 && !isCuratedSportLocationPage) {
+  if ((sportSlug || locationSlug || eventType) && results.length === 0) {
     return null;
   }
 
@@ -922,14 +1069,71 @@ export const getPublicSearchPage = async ({
     path: canonicalPath,
     canonicalPath,
     discoverHref: buildDiscoverEventsHref({
-      query: resolvedLocation?.label,
-      sports: sport?.name ? [sport.name] : [],
+      sports: sport?.sportNames ?? [],
+      location: resolvedLocation?.coordinates
+        ? {
+            ...resolvedLocation.coordinates,
+            label: resolvedLocation.label,
+          }
+        : undefined,
+      distanceMiles: resolvedLocation?.coordinates ? PUBLIC_SEARCH_RADIUS_MILES : undefined,
     }),
+    searchRadiusMiles: resolvedLocation?.coordinates ? PUBLIC_SEARCH_RADIUS_MILES : undefined,
     results,
     relatedPages: [],
     lastModified,
   };
-  page.relatedPages = relatedPagesFor(page);
+
+  if (!sport) {
+    page.relatedPages = sports.flatMap((entry): PublicSearchPageSummary[] => {
+      const relatedResults = kind === 'events'
+        ? buildEventResults({ events, organizationsById, sportNamesById, sport: entry })
+        : kind === 'clubs'
+          ? buildClubResults({ organizations, sport: entry })
+          : buildFacilityResults({ facilities, organizationsById, sportNamesById, sport: entry });
+      if (!relatedResults.length) {
+        return [];
+      }
+      const relatedCopy = pageCopy({ kind, sportName: entry.name });
+      return [{
+        path: publicSearchPath({ kind, sportSlug: entry.slug }),
+        title: relatedCopy.h1,
+        description: relatedCopy.description,
+        resultCount: relatedResults.length,
+        lastModified: latestDate(relatedResults.map((result) => result.lastModified)),
+      }];
+    });
+  } else if (locationSlug) {
+    page.relatedPages = [{
+      path: publicSearchPath({ kind, sportSlug: sport.slug, eventType }),
+      title: `${sport.name} ${kindLabel(kind).toLowerCase()}`,
+      description: `Browse all public ${sport.name} ${kindLabel(kind).toLowerCase()} on BracketIQ.`,
+      resultCount: results.length,
+      lastModified,
+    }];
+  } else if (kind === 'events' && !eventType) {
+    page.relatedPages = (['leagues', 'tournaments', 'weekly-events'] as PublicSearchEventType[])
+      .flatMap((relatedType): PublicSearchPageSummary[] => {
+        const relatedResults = buildEventResults({
+          events,
+          organizationsById,
+          sportNamesById,
+          sport,
+          eventType: relatedType,
+        });
+        if (!relatedResults.length) {
+          return [];
+        }
+        const relatedCopy = pageCopy({ kind, sportName: sport.name, eventType: relatedType });
+        return [{
+          path: publicSearchPath({ kind, sportSlug: sport.slug, eventType: relatedType }),
+          title: relatedCopy.h1,
+          description: relatedCopy.description,
+          resultCount: relatedResults.length,
+          lastModified: latestDate(relatedResults.map((result) => result.lastModified)),
+        }];
+      });
+  }
   return page;
 };
 
@@ -937,7 +1141,7 @@ const addSummary = (
   summaries: Map<string, PublicSearchPageSummary>,
   params: {
     kind: PublicSearchKind;
-    sport?: SportEntry;
+    sport?: PublicSearchSportEntry;
     eventType?: PublicSearchEventType;
     location?: PublicSearchLocation;
     results: PublicSearchResult[];
@@ -955,15 +1159,15 @@ const addSummary = (
     eventType: params.eventType,
     location: params.location,
   });
-  const existing = summaries.get(path);
-  if (existing && params.results.length === 0) {
+  if (!params.results.length) {
     return;
   }
   summaries.set(path, {
     path,
     title: copy.title,
     description: copy.description,
-    lastModified: latestDate(params.results.map((result) => result.lastModified)) ?? existing?.lastModified,
+    resultCount: params.results.length,
+    lastModified: latestDate(params.results.map((result) => result.lastModified)),
   });
 };
 
@@ -974,22 +1178,32 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
   ]);
   const organizationIds = organizations.map((organization) => organization.id);
   const organizationsById = new Map(organizations.map((organization) => [organization.id, organization]));
-  const sportsById = new Map(sports.map((sport) => [sport.id, sport]));
+  const sportNamesById = new Map(
+    sports.flatMap((entry) => entry.sportIds.map((sportId, index) => [
+      sportId,
+      entry.sportNames[index] ?? entry.name,
+    ] as const)),
+  );
   const [events, facilities] = await Promise.all([
     loadSearchableEvents(organizationIds),
     loadSearchableFacilities(organizationIds),
   ]);
 
   const summaries = new Map<string, PublicSearchPageSummary>();
-  const locationBySlug = new Map<string, PublicSearchLocation>();
+  const locationBySlug = new Map<string, PublicSearchLocation>(
+    PACIFIC_NORTHWEST_MAJOR_SEARCH_LOCATIONS.map((location) => [location.slug, location]),
+  );
   const rememberLocation = (location: PublicSearchLocation | null | undefined): string | undefined => {
     if (!location) {
       return undefined;
     }
-    locationBySlug.set(location.slug, location);
+    const existing = locationBySlug.get(location.slug);
+    locationBySlug.set(location.slug, existing?.coordinates
+      ? { ...location, coordinates: existing.coordinates }
+      : location);
     return location.slug;
   };
-  const locationKeys = new Set<string>();
+  const locationKeys = new Set<string>(PACIFIC_NORTHWEST_MAJOR_SEARCH_LOCATIONS.map((location) => location.slug));
   [
     ...events.flatMap((event) => {
       const organization = organizationsById.get(event.organizationId);
@@ -1003,7 +1217,7 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
   ].filter((slug): slug is string => Boolean(slug)).forEach((slug) => locationKeys.add(slug));
 
   for (const sport of sports) {
-    const sportEvents = buildEventResults({ events, organizationsById, sportsById, sport });
+    const sportEvents = buildEventResults({ events, organizationsById, sportNamesById, sport });
     if (sportEvents.length) {
       addSummary(summaries, { kind: 'events', sport, results: sportEvents });
     }
@@ -1013,13 +1227,13 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
       addSummary(summaries, { kind: 'clubs', sport, results: sportClubs });
     }
 
-    const sportFacilities = buildFacilityResults({ facilities, organizationsById, sportsById, sport });
+    const sportFacilities = buildFacilityResults({ facilities, organizationsById, sportNamesById, sport });
     if (sportFacilities.length) {
       addSummary(summaries, { kind: 'facilities', sport, results: sportFacilities });
     }
 
     for (const type of ['leagues', 'tournaments', 'weekly-events'] as PublicSearchEventType[]) {
-      const typedEvents = buildEventResults({ events, organizationsById, sportsById, sport, eventType: type });
+      const typedEvents = buildEventResults({ events, organizationsById, sportNamesById, sport, eventType: type });
       if (typedEvents.length) {
         addSummary(summaries, { kind: 'events', sport, eventType: type, results: typedEvents });
       }
@@ -1030,7 +1244,7 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
       if (!locationEntry) {
         continue;
       }
-      const sportLocationEvents = buildEventResults({ events, organizationsById, sportsById, sport, locationSlug: location });
+      const sportLocationEvents = buildEventResults({ events, organizationsById, sportNamesById, sport, locationSlug: location });
       if (sportLocationEvents.length) {
         addSummary(summaries, { kind: 'events', sport, location: locationEntry, results: sportLocationEvents });
       }
@@ -1038,27 +1252,16 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
       if (sportLocationClubs.length) {
         addSummary(summaries, { kind: 'clubs', sport, location: locationEntry, results: sportLocationClubs });
       }
-      const sportLocationFacilities = buildFacilityResults({ facilities, organizationsById, sportsById, sport, locationSlug: location });
+      const sportLocationFacilities = buildFacilityResults({ facilities, organizationsById, sportNamesById, sport, locationSlug: location });
       if (sportLocationFacilities.length) {
         addSummary(summaries, { kind: 'facilities', sport, location: locationEntry, results: sportLocationFacilities });
       }
 
       for (const type of ['leagues', 'tournaments', 'weekly-events'] as PublicSearchEventType[]) {
-        const typedLocationEvents = buildEventResults({ events, organizationsById, sportsById, sport, eventType: type, locationSlug: location });
+        const typedLocationEvents = buildEventResults({ events, organizationsById, sportNamesById, sport, eventType: type, locationSlug: location });
         if (typedLocationEvents.length) {
           addSummary(summaries, { kind: 'events', sport, eventType: type, location: locationEntry, results: typedLocationEvents });
         }
-      }
-    }
-  }
-
-  for (const sport of sports) {
-    for (const location of PACIFIC_NORTHWEST_MAJOR_SEARCH_LOCATIONS) {
-      addSummary(summaries, { kind: 'events', sport, location, results: [] });
-      addSummary(summaries, { kind: 'clubs', sport, location, results: [] });
-      addSummary(summaries, { kind: 'facilities', sport, location, results: [] });
-      for (const type of ['leagues', 'tournaments', 'weekly-events'] as PublicSearchEventType[]) {
-        addSummary(summaries, { kind: 'events', sport, eventType: type, location, results: [] });
       }
     }
   }
@@ -1070,12 +1273,14 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
 
 export const listRegularOrganizationProfileSitemapEntries = async (): Promise<MetadataRoute.Sitemap> => {
   const organizations = await loadSearchableOrganizations();
-  return organizations.map((organization) => ({
-    url: absoluteUrl(regularOrganizationPath(organization.id)),
-    lastModified: organization.updatedAt,
-    changeFrequency: 'weekly',
-    priority: 0.65,
-  }));
+  return organizations
+    .filter((organization) => !(organization.slug && organization.publicPageEnabled))
+    .map((organization) => ({
+      url: absoluteUrl(regularOrganizationPath(organization.id)),
+      lastModified: organization.updatedAt,
+      changeFrequency: 'weekly',
+      priority: 0.65,
+    }));
 };
 
 export const listRegularPublicEventSitemapEntries = async (): Promise<MetadataRoute.Sitemap> => {
@@ -1179,6 +1384,8 @@ export const getRegularOrganizationSeoData = async (organizationId: string): Pro
       location: true,
       website: true,
       logoId: true,
+      publicSlug: true,
+      publicPageEnabled: true,
       updatedAt: true,
       status: true,
     },
@@ -1191,11 +1398,15 @@ export const getRegularOrganizationSeoData = async (organizationId: string): Pro
     normalizeString(row.description)
       ?? `View ${name}'s sports events, teams, facilities, and registration options on BracketIQ.`,
   );
+  const publicSlug = normalizeString(row.publicSlug);
+  const publicPageEnabled = row.publicPageEnabled === true;
   return {
     id,
     name,
     description,
-    canonicalPath: regularOrganizationPath(id),
+    canonicalPath: publicSlug && publicPageEnabled
+      ? `/o/${encodeURIComponent(publicSlug)}`
+      : regularOrganizationPath(id),
     logoUrl: row.logoId
       ? `/api/files/${encodeURIComponent(String(row.logoId))}/preview?w=240&h=240`
       : `/api/avatars/initials?name=${encodeURIComponent(name)}&size=240&format=png`,

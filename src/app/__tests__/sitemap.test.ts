@@ -34,6 +34,8 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/blog');
     expect(urls).toContain('https://bracket-iq.com/guides');
     expect(urls).toContain('https://bracket-iq.com/find-events');
+    expect(urls).toContain('https://bracket-iq.com/find-clubs');
+    expect(urls).toContain('https://bracket-iq.com/find-facilities');
     expect(urls).toContain('https://bracket-iq.com/mobile-app');
     expect(urls).toContain('https://bracket-iq.com/terms');
     expect(urls).toContain('https://bracket-iq.com/guides/event-organizers-one-place');
@@ -66,6 +68,7 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/guides/paid-pickup-event-payments');
     expect(urls).toContain('https://bracket-iq.com/o/river-city/events/event_1');
     expect(urls).not.toContain('https://bracket-iq.com/blog/manage-tournament-in-bracketiq');
+    expect(new Set(urls).size).toBe(urls.length);
     expect(mockListPublicSitemapEntries).toHaveBeenCalledTimes(1);
   });
 });

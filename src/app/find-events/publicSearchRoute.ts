@@ -2,25 +2,21 @@ import type { Metadata } from 'next';
 import { cache } from 'react';
 import { absoluteUrl } from '@/server/publicSearchSeo';
 import {
+  createPublicSearchSportEntries,
   getPublicSearchPage,
   parsePublicSearchSegments,
   type PublicSearchKind,
   type PublicSearchPage,
 } from '@/server/publicSearchPages';
 import { prisma } from '@/lib/prisma';
-import { sportNameToSlug, sportSlugToLabel } from '@/lib/discoverFilters';
+import { sportSlugToLabel } from '@/lib/discoverFilters';
 
 const loadSportsForParsing = cache(async () => {
   const rows: Array<{ id: string; name: string }> = await (prisma as any).sports.findMany({
     select: { id: true, name: true },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
-  return rows.flatMap((row) => {
-    const id = typeof row.id === 'string' ? row.id.trim() : '';
-    const name = typeof row.name === 'string' ? row.name.trim() : '';
-    const slug = name ? sportNameToSlug(name) : '';
-    return id && name && slug ? [{ id, name, slug }] : [];
-  });
+  return createPublicSearchSportEntries(rows);
 });
 
 export const getSearchPageForSegments = cache(async (

@@ -10,6 +10,12 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+export const dedupeSitemapEntries = (
+  entries: MetadataRoute.Sitemap,
+): MetadataRoute.Sitemap => Array.from(
+  new Map(entries.map((entry) => [entry.url, entry])).values(),
+);
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     {
@@ -33,6 +39,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     {
       url: `${SITE_URL}/find-events`,
       lastModified: new Date('2026-06-15'),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/find-clubs`,
+      lastModified: new Date('2026-07-16'),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/find-facilities`,
+      lastModified: new Date('2026-07-16'),
       changeFrequency: 'daily',
       priority: 0.8,
     },
@@ -76,12 +94,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     listRegularPublicEventSitemapEntries(),
   ]);
 
-  return [
+  return dedupeSitemapEntries([
     ...staticEntries,
     ...contentEntries,
     ...publicEntries,
     ...publicSearchEntries,
     ...regularOrganizationEntries,
     ...regularEventEntries,
-  ];
+  ]);
 }

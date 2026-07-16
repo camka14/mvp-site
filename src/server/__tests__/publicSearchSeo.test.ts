@@ -50,14 +50,6 @@ describe('publicSearchSeo', () => {
         start: new Date('2026-06-10T12:00:00.000Z'),
       },
     ]);
-    prismaMock.sports.findMany.mockResolvedValue([
-      {
-        id: 'sport_soccer',
-        name: 'Soccer',
-        updatedAt: new Date('2026-06-01T12:00:00.000Z'),
-      },
-    ]);
-
     const entries = await listPublicSitemapEntries();
 
     expect(prismaMock.organizations.findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -85,12 +77,8 @@ describe('publicSearchSeo', () => {
         changeFrequency: 'daily',
         priority: 0.75,
       }),
-      expect.objectContaining({
-        url: 'https://bracket-iq.com/find-events/soccer',
-        changeFrequency: 'daily',
-        priority: 0.7,
-      }),
     ]);
+    expect(prismaMock.sports.findMany).not.toHaveBeenCalled();
   });
 
   it('loads public sport event directories with filtered Discover links', async () => {

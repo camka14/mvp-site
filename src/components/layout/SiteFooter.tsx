@@ -12,6 +12,15 @@ export default function SiteFooter() {
         </div>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 md:pr-20">
+          <Link href="/find-events" className="transition hover:text-slate-900">
+            Events
+          </Link>
+          <Link href="/find-clubs" className="transition hover:text-slate-900">
+            Clubs
+          </Link>
+          <Link href="/find-facilities" className="transition hover:text-slate-900">
+            Facilities
+          </Link>
           <Link href="/guides" className="transition hover:text-slate-900">
             Guides
           </Link>
