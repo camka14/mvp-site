@@ -507,7 +507,48 @@ describe('EventForm dirty state', () => {
 
     expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
     expect(screen.getByText('Basic Information')).toBeInTheDocument();
+    expect(screen.getByTestId('image-uploader')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter event name')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Event Details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Divisions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Schedule' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Collapse' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Format: Complete' })).toBeInTheDocument();
+  });
+
+  it('renders only the division component on the Simple Setup Divisions page', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Participation Plan' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Divisions' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Division configuration' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Basic Information' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Event Details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Staff' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Schedule' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the external registration URL on the Simple Setup Basics page', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    fireEvent.click(screen.getByLabelText('External registration'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('https://example.com/event')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Event Details' })).not.toBeInTheDocument();
   });
 
   it('preserves the event draft when switching from Simple to Advanced Setup', async () => {

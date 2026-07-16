@@ -82,7 +82,7 @@ type TemplateModel = {
     options: ComponentProps<typeof EventDetailsPanel>['templateOptions'];
 };
 
-type EventFormSectionsProps = {
+export type EventFormSectionsProps = {
     catalog: FormCatalogModel;
     configurationActions: ReturnType<typeof useEventFormConfigurationActions>;
     control: ComponentProps<typeof BasicInformationSection>['control'];

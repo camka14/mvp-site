@@ -75,7 +75,10 @@ import { useEventFormSectionsController } from './eventForm/hooks/useEventFormSe
 import { useRegistrationQuestionDrafts } from './eventForm/hooks/useRegistrationQuestionDrafts';
 import { useStaffOfficialController } from './eventForm/hooks/useStaffOfficialController';
 import { useTemplateDocuments } from './eventForm/hooks/useTemplateDocuments';
-import { EventFormSections } from './eventForm/sections/EventFormSections';
+import {
+    EventFormSections,
+    type EventFormSectionsProps,
+} from './eventForm/sections/EventFormSections';
 import {
     SetupModeControl,
     SimpleSetupPageFrame,
@@ -88,6 +91,7 @@ import {
     resolveValidationPage,
 } from './eventForm/simpleSetup/resolveEventSetup';
 import { SimpleSetupPlanningPage } from './eventForm/simpleSetup/SimpleSetupPlanningPage';
+import { SimpleSetupFormPage } from './eventForm/simpleSetup/SimpleSetupFormPage';
 import type {
     EventSetupChoices,
     EventSetupMode,
@@ -919,62 +923,63 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return null;
     }
 
+    const formSectionsModel: EventFormSectionsProps = {
+        catalog: {
+            eventTagOptions,
+            sportOptions,
+            sportsById,
+            sportsError,
+            sportsLoading,
+        },
+        configurationActions,
+        control,
+        defaultCoordinates: defaultLocation?.coordinates,
+        divisionController,
+        divisionOptions,
+        divisionTypeOptions,
+        errors,
+        eventData,
+        fieldWriters,
+        formId,
+        handleSaveDivisionDetail,
+        hasUnsetTeamCapacityLimits,
+        hideSectionNavigation: false,
+        isAffiliateEvent,
+        isImmutableField,
+        leagueError,
+        onTryoutDivisionSelection: handleTryoutDivisionSelection,
+        onTryoutPriceChange: handleTryoutPriceChange,
+        organizationId,
+        paymentController,
+        presentation: {
+            allowImageEdit,
+            eventTypeOptions,
+            lockedEventTypeTagSlugs,
+            mobileEditUnsupportedWarning,
+            selectedImageUrl,
+            selectedSportForOfficials,
+            supportsNoFixedEndDateTime,
+        },
+        registrationQuestions: {
+            drafts: registrationQuestionDrafts,
+            error: registrationQuestionsError,
+            loading: registrationQuestionsLoading,
+        },
+        resourceController,
+        sectionsController,
+        setValue,
+        slotController,
+        slotDivisionKeys,
+        staffController,
+        templates: {
+            error: templatesError,
+            loading: templatesLoading,
+            organizationId: templateOrganizationId,
+            options: templateOptions,
+        },
+    };
     const formSections = (
-        <EventFormSections
-            catalog={{
-                eventTagOptions,
-                sportOptions,
-                sportsById,
-                sportsError,
-                sportsLoading,
-            }}
-            configurationActions={configurationActions}
-            control={control}
-            defaultCoordinates={defaultLocation?.coordinates}
-            divisionController={divisionController}
-            divisionOptions={divisionOptions}
-            divisionTypeOptions={divisionTypeOptions}
-            errors={errors}
-            eventData={eventData}
-            fieldWriters={fieldWriters}
-            formId={formId}
-            handleSaveDivisionDetail={handleSaveDivisionDetail}
-            hasUnsetTeamCapacityLimits={hasUnsetTeamCapacityLimits}
-            hideSectionNavigation={setupMode === 'SIMPLE'}
-            isAffiliateEvent={isAffiliateEvent}
-            isImmutableField={isImmutableField}
-            leagueError={leagueError}
-            onTryoutDivisionSelection={handleTryoutDivisionSelection}
-            onTryoutPriceChange={handleTryoutPriceChange}
-            organizationId={organizationId}
-            paymentController={paymentController}
-            presentation={{
-                allowImageEdit,
-                eventTypeOptions,
-                lockedEventTypeTagSlugs,
-                mobileEditUnsupportedWarning,
-                selectedImageUrl,
-                selectedSportForOfficials,
-                supportsNoFixedEndDateTime,
-            }}
-            registrationQuestions={{
-                drafts: registrationQuestionDrafts,
-                error: registrationQuestionsError,
-                loading: registrationQuestionsLoading,
-            }}
-            resourceController={resourceController}
-            sectionsController={sectionsController}
-            setValue={setValue}
-            slotController={slotController}
-            slotDivisionKeys={slotDivisionKeys}
-            staffController={staffController}
-            templates={{
-                error: templatesError,
-                loading: templatesLoading,
-                organizationId: templateOrganizationId,
-                options: templateOptions,
-            }}
-        />
+        <EventFormSections {...formSectionsModel} />
     );
     const simplePageContent = SIMPLE_PLANNING_PAGE_IDS.has(currentSimplePageId) ? (
         <SimpleSetupPlanningPage
@@ -1012,12 +1017,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }}
             isImmutableField={isImmutableField}
         />
-    ) : formSections;
+    ) : (
+        <SimpleSetupFormPage
+            pageId={currentSimplePageId}
+            choices={simpleSetupChoices}
+            model={formSectionsModel}
+        />
+    );
 
     return (
         <div className="space-y-3">
             <div className="sticky top-0 z-30 space-y-3 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <div>
                         <p className="font-semibold text-gray-950">Event setup</p>
                         <p className="text-xs text-gray-600">Both modes edit the same event draft.</p>
