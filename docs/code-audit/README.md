@@ -4,6 +4,24 @@ Status: **complete — identification and reporting only**
 
 This is the durable tracker for the code-only audit of `mvp-site` and the Android/shared portions of `mvp-app`. It records coverage, runtime evidence, confirmed defects, code smells, legacy compatibility, data-model risks, and follow-up candidates. Production code is not changed as part of this audit. Apple iOS/watchOS platform-only code is excluded at the user's direction.
 
+## Mobile event data-propagation runtime audit — active
+
+Started 2026-07-16. This addendum tracks the current cross-repository migration and installed-app proof. It does not reopen the completed file-inventory pass; it adds runtime acceptance for event creation, canonical registration propagation, schedule membership, scoring, confirmation, and check-in behavior.
+
+Active compatibility rule: historical Room migrations may read old installed schemas once, but current API, domain, repository, and UI logic must not use legacy participant arrays, single-official fields, or legacy score arrays as alternate sources of truth.
+
+| ID | Scenario / contract | Static state | Emulator state | Result / evidence |
+| --- | --- | --- | --- | --- |
+| `MOB-RUNTIME-001` | Create multiple event types in Android and verify image, divisions, fields, slots, resources, officials, and rules survive API → DB → cold Room reload → edit. | In progress | Pending | Existing ten-event API/repository matrix passes historically; installed UI creation and current-HEAD propagation proof are pending. |
+| `MOB-RUNTIME-002` | Remove current reliance on event `teamIds`/`userIds`; use `EventRegistrations`, participant snapshots, and Room relations. | Issue confirmed | Pending | Backend `Events` has no participant-array columns. Android still maps compatibility arrays into `Event`, rebuilds Room relations from them, and reads them in schedule/check-in/join paths. |
+| `MOB-RUNTIME-003` | Clear app data, sign in as a second user, discover and join created events, then see them and their matches in Schedule. | In progress | Pending | `/api/profile/schedule` selects through canonical registration scope, but returned events are still decorated with derived arrays consumed by Android. |
+| `MOB-RUNTIME-004` | Score a match and verify canonical segment state propagates live and survives cold reload. | In progress | Pending | Canonical match segments exist; active presentation/local-apply code still contains legacy score-array synchronization/fallback. |
+| `MOB-RUNTIME-005` | Confirm a set and verify the narrow operation succeeds without sending cached policy snapshots or resetting prior sets. | In progress | Pending | Backend compatibility fixes exist from the live incident. Current mobile operation path and installed behavior still require proof. |
+| `MOB-RUNTIME-006` | Trigger event team check-in by moving the event window backward; verify the registered/managed team is recognized after cold cache. | Issue confirmed | Pending | Root prompt eligibility currently intersects managed teams with `Event.teamIds` instead of canonical registrations/relations. |
+| `MOB-RUNTIME-007` | Trigger match official check-in by moving match time backward; verify assignment, check-in state, and reopen behavior. | In progress | Pending | Canonical official assignments exist, but active helpers and UI still fall back to `officialId`/`officialCheckedIn`. |
+| `MOB-RUNTIME-008` | Verify invitations, participant management, current-user registration cache, logout, and account switch do not leak or drop state. | In progress | Pending | Account-scoped registration caching exists; full clear-cache/two-user runtime sequence remains pending. |
+| `MOB-RUNTIME-009` | Remove current legacy event/match parameters after all consumers migrate; retain only explicit historical DB migration code. | In progress | Pending | Cross-repository call-site inventory is underway. Schema migration and contract tests will be recorded here. |
+
 ## Live remediation ledger
 
 The per-finding `Fix status` lines below capture the state at the time of the
