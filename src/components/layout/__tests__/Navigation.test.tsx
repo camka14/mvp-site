@@ -60,7 +60,9 @@ describe('Navigation', () => {
       authUser: { $id: 'user_1', email: 'user@example.com', name: 'Taylor' },
       setUser: jest.fn(),
       setAuthUser: jest.fn(),
+      loading: false,
       isGuest: false,
+      isAuthenticated: true,
     });
   });
 
@@ -100,7 +102,9 @@ describe('Navigation', () => {
       authUser: null,
       setUser: jest.fn(),
       setAuthUser: jest.fn(),
+      loading: false,
       isGuest: true,
+      isAuthenticated: false,
     });
 
     render(<Navigation />);
@@ -113,6 +117,26 @@ describe('Navigation', () => {
     expect(screen.getByRole('link', { name: /my organizations/i })).toHaveAttribute('href', '/organizations');
     expect(screen.getByRole('link', { name: /my schedule/i })).toHaveAttribute('href', '/my-schedule');
     expect(screen.getByRole('link', { name: /login \/ signup/i })).toHaveAttribute('href', '/login');
+    expect(screen.queryByRole('button', { name: /open ai assistant/i })).not.toBeInTheDocument();
+  });
+
+  it('shows guest navigation for a signed-out visitor without an explicit guest session', () => {
+    useAppMock.mockReturnValue({
+      user: null,
+      authUser: null,
+      setUser: jest.fn(),
+      setAuthUser: jest.fn(),
+      loading: false,
+      isGuest: false,
+      isAuthenticated: false,
+    });
+
+    render(<Navigation />);
+
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /login \/ signup/i })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: /my organizations/i })).toHaveAttribute('href', '/organizations');
+    expect(screen.getByRole('link', { name: /my schedule/i })).toHaveAttribute('href', '/my-schedule');
     expect(screen.queryByRole('button', { name: /open ai assistant/i })).not.toBeInTheDocument();
   });
 });
