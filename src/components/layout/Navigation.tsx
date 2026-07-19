@@ -21,12 +21,21 @@ const baseNav: NavItem[] = [
 const mobileAppNavItem = { label: 'Get The Mobile App', href: '/mobile-app' } satisfies NavItem;
 
 export default function Navigation() {
-  const { user, authUser, setUser, setAuthUser, isGuest } = useApp();
+  const {
+    user,
+    authUser,
+    loading: authLoading,
+    setUser,
+    setAuthUser,
+    isGuest,
+    isAuthenticated,
+  } = useApp();
   const { openAssistant } = useAgentContext();
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRazumlyAdmin, setIsRazumlyAdmin] = useState(false);
+  const isPublicViewer = !authLoading && (isGuest || !isAuthenticated);
 
   const handleLogout = async () => {
     try {
@@ -45,7 +54,7 @@ export default function Navigation() {
     let cancelled = false;
 
     const checkAdmin = async () => {
-      if (isGuest) {
+      if (authLoading || isPublicViewer) {
         if (!cancelled) setIsRazumlyAdmin(false);
         return;
       }
@@ -74,11 +83,11 @@ export default function Navigation() {
     return () => {
       cancelled = true;
     };
-  }, [isGuest, authUser?.$id]);
+  }, [authLoading, authUser?.$id, isPublicViewer]);
 
-  if (!authUser && !isGuest) return null;
+  if (authLoading) return null;
 
-  const items = isRazumlyAdmin && !isGuest
+  const items = isRazumlyAdmin && !isPublicViewer
     ? [...baseNav, { label: 'Admin', href: '/admin' }]
     : baseNav;
   const homeHref = getHomePathForUser(user);
@@ -123,7 +132,7 @@ export default function Navigation() {
 
           {/* User Menu */}
           <div className="flex items-center space-x-4">
-            {isGuest ? (
+            {isPublicViewer ? (
               <>
                 <Link
                   href={mobileAppNavItem.href}
@@ -211,7 +220,7 @@ export default function Navigation() {
         {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="lg:hidden border-t border-gray-200 py-2">
-            {!isGuest && (
+            {!isPublicViewer && (
               <Link
                 href="/profile"
                 className={`mx-4 mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 ${
