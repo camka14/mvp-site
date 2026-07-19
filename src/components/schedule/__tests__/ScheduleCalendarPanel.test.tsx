@@ -70,4 +70,22 @@ describe('ScheduleCalendarPanel', () => {
       new Date(2027, 0, 31, 23, 59, 59, 999),
     );
   });
+
+  it('renders an empty calendar without loading schedule data in static empty mode', () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    renderWithMantine(
+      <ScheduleCalendarPanel
+        endpoint="/api/profile/schedule?limit=200"
+        title="My Schedule"
+        staticEmpty
+      />,
+    );
+
+    expect(screen.getByText('My Schedule')).toBeInTheDocument();
+    expect(screen.getByText('No schedule entries found.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

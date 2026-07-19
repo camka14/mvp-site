@@ -93,4 +93,26 @@ describe('Navigation', () => {
 
     expect(screen.getByRole('button', { name: /open ai assistant/i })).toBeInTheDocument();
   });
+
+  it('shows guest navigation without requiring an authenticated user', () => {
+    useAppMock.mockReturnValue({
+      user: null,
+      authUser: null,
+      setUser: jest.fn(),
+      setAuthUser: jest.fn(),
+      isGuest: true,
+    });
+
+    render(<Navigation />);
+
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /bracketiq/i })).toHaveAttribute('href', '/discover');
+    expect(screen.getByRole('link', { name: /info/i })).toHaveAttribute('href', '/info');
+    expect(screen.getByRole('link', { name: /guides/i })).toHaveAttribute('href', '/guides');
+    expect(screen.getAllByRole('link', { name: /discover/i })[0]).toHaveAttribute('href', '/discover');
+    expect(screen.getByRole('link', { name: /my organizations/i })).toHaveAttribute('href', '/organizations');
+    expect(screen.getByRole('link', { name: /my schedule/i })).toHaveAttribute('href', '/my-schedule');
+    expect(screen.getByRole('link', { name: /login \/ signup/i })).toHaveAttribute('href', '/login');
+    expect(screen.queryByRole('button', { name: /open ai assistant/i })).not.toBeInTheDocument();
+  });
 });

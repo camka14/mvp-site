@@ -6,11 +6,12 @@ import Loading from '@/components/ui/Loading';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
-import { Container, Title, Text, Group, Button, Paper, Stack } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Modal, Paper, Stack } from '@mantine/core';
 import { useApp } from '@/app/providers';
 import type { Invite, Organization, OrganizationFeature, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { userService } from '@/lib/userService';
+import { buildGuestCreateDestination, buildGuestSignupDestination } from '@/lib/guestOnboarding';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function OrganizationsPage() {
@@ -26,6 +27,7 @@ function OrganizationsPageContent() {
     user,
     authUser,
     loading: authLoading,
+    isGuest,
     isAuthenticated,
     requiresEmailVerification,
   } = useApp();
@@ -33,6 +35,7 @@ function OrganizationsPageContent() {
   const [pendingOrgInvites, setPendingOrgInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showGuestCreatePrompt, setShowGuestCreatePrompt] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const createPreset = searchParams.get('preset') === 'club' ? 'club' : 'organization';
@@ -47,19 +50,29 @@ function OrganizationsPageContent() {
 
   useEffect(() => {
     if (!authLoading) {
+      if (isGuest) {
+        return;
+      }
       if (!isAuthenticated || !user) {
         router.push('/login');
         return;
       }
       loadOrgs(user.$id);
     }
-  }, [authLoading, isAuthenticated, user, router]);
+  }, [authLoading, isAuthenticated, isGuest, user, router]);
 
   useEffect(() => {
-    if (requestedCreate && !authLoading && isAuthenticated && user && !createOrganizationBlocked) {
+    if (!requestedCreate || authLoading) {
+      return;
+    }
+    if (isGuest) {
+      setShowGuestCreatePrompt(true);
+      return;
+    }
+    if (isAuthenticated && user && !createOrganizationBlocked) {
       setShowCreate(true);
     }
-  }, [authLoading, createOrganizationBlocked, isAuthenticated, requestedCreate, user]);
+  }, [authLoading, createOrganizationBlocked, isAuthenticated, isGuest, requestedCreate, user]);
 
   const loadOrgs = async (ownerId: string) => {
     setLoading(true);
@@ -89,8 +102,10 @@ function OrganizationsPageContent() {
   };
 
   if (authLoading) return <Loading fullScreen text="Loading organizations..." />;
-  if (!isAuthenticated || !user) return null;
+  if (!isGuest && (!isAuthenticated || !user)) return null;
 
+  const organizationsLoading = !isGuest && loading;
+  const visibleOrganizations = isGuest ? [] : orgs;
   const pendingInviteByOrganizationId = new Map(
     pendingOrgInvites
       .filter((invite) => typeof invite.organizationId === 'string')
@@ -101,6 +116,10 @@ function OrganizationsPageContent() {
     : undefined;
 
   const handleCreateOrganizationClick = () => {
+    if (isGuest) {
+      setShowGuestCreatePrompt(true);
+      return;
+    }
     if (createOrganizationBlocked) return;
     setShowCreate(true);
   };
@@ -109,6 +128,17 @@ function OrganizationsPageContent() {
     if (requestedCreate) {
       router.replace('/organizations');
     }
+  };
+  const handleCloseGuestCreatePrompt = () => {
+    setShowGuestCreatePrompt(false);
+    if (requestedCreate) {
+      router.replace('/organizations');
+    }
+  };
+  const handleCreateGuestAccount = () => {
+    const target = createPreset === 'club' ? 'club' : 'organization';
+    const next = buildGuestCreateDestination(target, '');
+    router.push(buildGuestSignupDestination({ target, next }));
   };
 
   return (
@@ -129,15 +159,15 @@ function OrganizationsPageContent() {
           </Button>
         </Group>
 
-        {loading ? (
+        {organizationsLoading ? (
           <ResponsiveCardGrid>
             {Array.from({ length: 6 }).map((_, i) => (
               <Paper key={`org-skel-${i}`} withBorder radius="md" p="md" h={120} className="skeleton" />
             ))}
           </ResponsiveCardGrid>
-        ) : orgs.length > 0 ? (
+        ) : visibleOrganizations.length > 0 ? (
           <ResponsiveCardGrid>
-            {orgs.map((org) => {
+            {visibleOrganizations.map((org) => {
               const invite = pendingInviteByOrganizationId.get(org.$id);
               if (!invite) {
                 return (
@@ -159,7 +189,9 @@ function OrganizationsPageContent() {
                         onClick={async (event) => {
                           event.stopPropagation();
                           await userService.acceptInvite(invite.$id);
-                          await loadOrgs(user.$id);
+                          if (user) {
+                            await loadOrgs(user.$id);
+                          }
                         }}
                       >
                         Accept Invite
@@ -170,7 +202,9 @@ function OrganizationsPageContent() {
                         onClick={async (event) => {
                           event.stopPropagation();
                           await userService.declineInvite(invite.$id);
-                          await loadOrgs(user.$id);
+                          if (user) {
+                            await loadOrgs(user.$id);
+                          }
                         }}
                       >
                         Decline
@@ -189,7 +223,11 @@ function OrganizationsPageContent() {
               </svg>
             </div>
             <Title order={3} mb={6}>No organizations yet</Title>
-            <Text c="dimmed" mb="md" ta="center" className="w-full max-w-sm">Create your first organization to host events and manage fields in one place.</Text>
+            <Text c="dimmed" mb="md" ta="center" className="w-full max-w-sm">
+              {isGuest
+                ? 'Create an account to create and manage organizations.'
+                : 'Create your first organization to host events and manage fields in one place.'}
+            </Text>
             <Button
               onClick={handleCreateOrganizationClick}
               disabled={createOrganizationBlocked}
@@ -200,14 +238,36 @@ function OrganizationsPageContent() {
           </div>
         )}
 
-        <CreateOrganizationModal
-          isOpen={showCreate && !createOrganizationBlocked}
-          onClose={handleCloseCreate}
-          currentUser={user as UserData}
-          onCreated={(org) => setOrgs((prev) => [org, ...prev])}
-          initialFeatures={initialFeatures}
-          initialTagSlugs={createPreset === 'club' ? ['club'] : []}
-        />
+        {user ? (
+          <CreateOrganizationModal
+            isOpen={showCreate && !createOrganizationBlocked}
+            onClose={handleCloseCreate}
+            currentUser={user as UserData}
+            onCreated={(org) => setOrgs((prev) => [org, ...prev])}
+            initialFeatures={initialFeatures}
+            initialTagSlugs={createPreset === 'club' ? ['club'] : []}
+          />
+        ) : null}
+        <Modal
+          opened={showGuestCreatePrompt}
+          onClose={handleCloseGuestCreatePrompt}
+          title="Create an account first"
+          centered
+        >
+          <Stack>
+            <Text>
+              Create an account to create and manage an organization, invite staff, and publish events.
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={handleCloseGuestCreatePrompt}>
+                Not now
+              </Button>
+              <Button onClick={handleCreateGuestAccount}>
+                Create account
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       </Container>
     </>
   );

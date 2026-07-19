@@ -76,20 +76,16 @@ export default function Navigation() {
     };
   }, [isGuest, authUser?.$id]);
 
-  if (!authUser) return null;
+  if (!authUser && !isGuest) return null;
 
-  const items = isGuest
-    ? baseNav.filter(i => i.href === '/discover')
-    : (
-      isRazumlyAdmin
-        ? [...baseNav, { label: 'Admin', href: '/admin' }]
-        : baseNav
-    );
+  const items = isRazumlyAdmin && !isGuest
+    ? [...baseNav, { label: 'Admin', href: '/admin' }]
+    : baseNav;
   const homeHref = getHomePathForUser(user);
   const isProfileActive = pathname === '/profile' || pathname.startsWith('/profile/');
   const isMobileAppActive = pathname === mobileAppNavItem.href || pathname.startsWith(`${mobileAppNavItem.href}/`);
-  const fallbackName = authUser.email.split('@')[0];
-  const userDisplayName = user ? getUserFullName(user) : authUser.name || fallbackName;
+  const fallbackName = authUser?.email.split('@')[0] ?? '';
+  const userDisplayName = user ? getUserFullName(user) : authUser?.name || fallbackName;
   const userInitial = userDisplayName.slice(0, 1).toUpperCase();
 
   return (
