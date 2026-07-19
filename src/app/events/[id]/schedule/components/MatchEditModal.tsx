@@ -1,7 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
-import { ActionIcon, Alert, Badge, Button, Checkbox, Group, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Switch, Text, TextInput } from '@mantine/core';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  NumberInput,
+  Paper,
+  Select,
+  SimpleGrid,
+  Stack,
+  Switch,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { Trash2, X } from 'lucide-react';
 
@@ -10,15 +26,25 @@ import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
-import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, MatchSegment, ResolvedMatchRules, Team, UserData } from '@/types';
+import type {
+  Division,
+  Event,
+  EventOfficial,
+  EventOfficialPosition,
+  Field,
+  Match,
+  MatchOfficialAssignment,
+  MatchSegment,
+  ResolvedMatchRules,
+  Team,
+  UserData,
+} from '@/types';
 
-import ScoreUpdateModal, { type ScorePayload } from './ScoreUpdateModal';
-
-type ScoreUpdateModalComponentProps = ComponentProps<typeof ScoreUpdateModal>;
 type MatchStatusRules = Pick<ResolvedMatchRules, 'scoringModel' | 'segmentCount' | 'segmentLabel'>;
 
 const EMPTY_MATCHES: Match[] = [];
 const EMPTY_FIELDS: Field[] = [];
+const EMPTY_DIVISIONS: Division[] = [];
 const EMPTY_TEAMS: Team[] = [];
 const EMPTY_USERS: UserData[] = [];
 const EMPTY_OFFICIAL_POSITIONS: EventOfficialPosition[] = [];
@@ -29,6 +55,7 @@ const RESULT_TYPE_OPTIONS = [
   { value: 'NO_CONTEST', label: 'No contest / cancelled' },
   { value: 'SUSPENDED', label: 'Suspended' },
 ];
+const SEGMENT_LABEL_OPTIONS = ['Set', 'Game', 'Half', 'Quarter', 'Period', 'Inning', 'Round'];
 
 interface MatchEditModalProps {
   opened: boolean;
@@ -36,8 +63,8 @@ interface MatchEditModalProps {
   tournament?: Event | null;
   allMatches?: Match[];
   fields?: Field[];
+  divisions?: Division[];
   teams?: Team[];
-  participantTeams?: Team[];
   officials?: UserData[];
   officialPositions?: EventOfficialPosition[];
   eventOfficials?: EventOfficial[];
@@ -47,10 +74,6 @@ interface MatchEditModalProps {
   creationContext?: 'schedule' | 'bracket';
   eventType?: string | null;
   enforceScheduleFields?: boolean;
-  onScoreChange?: ScoreUpdateModalComponentProps['onScoreChange'];
-  onSetComplete?: ScoreUpdateModalComponentProps['onSetComplete'];
-  onScoreSubmit?: ScoreUpdateModalComponentProps['onSubmit'];
-  onMatchComplete?: ScoreUpdateModalComponentProps['onMatchComplete'];
   team1Placeholder?: string;
   team2Placeholder?: string;
   onClose: () => void;
@@ -84,22 +107,18 @@ const nonNegativeScore = (value: unknown): number => {
 
 const pointsList = (value: unknown): number[] | null => {
   if (!Array.isArray(value) || value.length === 0) return null;
-  const normalized = value
-    .map((entry) => positiveIntOrNull(entry))
-    .filter((entry): entry is number => entry !== null);
+  const normalized = value.map((entry) => positiveIntOrNull(entry)).filter((entry): entry is number => entry !== null);
   return normalized.length ? normalized : null;
 };
 
-const targetsToInput = (targets: number[] | null | undefined): string => (
-  Array.isArray(targets) && targets.length > 0 ? targets.join(', ') : ''
-);
+const targetsToInput = (targets: number[] | null | undefined): string =>
+  Array.isArray(targets) && targets.length > 0 ? targets.join(', ') : '';
 
-const parseTargetsInput = (value: string): number[] => (
+const parseTargetsInput = (value: string): number[] =>
   value
     .split(',')
     .map((entry) => positiveIntOrNull(entry.trim()))
-    .filter((entry): entry is number => entry !== null)
-);
+    .filter((entry): entry is number => entry !== null);
 
 const resizeTargets = (targets: number[], segmentCount: number, fallbackTarget = 21): number[] => {
   const count = Math.max(1, segmentCount);
@@ -111,91 +130,109 @@ const resizeTargets = (targets: number[], segmentCount: number, fallbackTarget =
   return next;
 };
 
-const normalizeScoringModel = (value: unknown, fallback: ResolvedMatchRules['scoringModel'] = 'SETS'): ResolvedMatchRules['scoringModel'] => {
-  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  return ['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY'].includes(normalized)
-    ? normalized as ResolvedMatchRules['scoringModel']
-    : fallback;
+const normalizeSegmentLabel = (value: unknown, fallback = 'Segment'): string => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return fallback;
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
 };
 
-const resolveEditablePolicySource = (
-  match: Match,
-  event: Event | null | undefined,
-): Partial<ResolvedMatchRules> => ({
+const pluralizeSegmentLabel = (label: string, count: number): string => {
+  if (count === 1) return label;
+  const normalized = label.trim();
+  const lower = normalized.toLowerCase();
+  if (lower === 'half') return normalized === 'Half' ? 'Halves' : 'halves';
+  if (/(s|x|z|ch|sh)$/i.test(normalized)) return `${normalized}es`;
+  if (/[^aeiou]y$/i.test(normalized)) return `${normalized.slice(0, -1)}ies`;
+  return `${normalized}s`;
+};
+
+const formatPreviewDateTime = (value: Date | null): string => {
+  if (!value) return 'Time not set';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(value);
+};
+
+const normalizeScoringModel = (
+  value: unknown,
+  fallback: ResolvedMatchRules['scoringModel'] = 'SETS',
+): ResolvedMatchRules['scoringModel'] => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return ['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY'].includes(normalized) ? (normalized as ResolvedMatchRules['scoringModel']) : fallback;
+};
+
+const resolveEditablePolicySource = (match: Match, event: Event | null | undefined): Partial<ResolvedMatchRules> => ({
   ...((event?.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>),
   ...((match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>),
   ...((match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>),
 });
 
-const statusExistingSegmentCount = (match: Match): number => Math.max(
-  Array.isArray(match.segments) ? match.segments.length : 0,
-  Array.isArray(match.team1Points) ? match.team1Points.length : 0,
-  Array.isArray(match.team2Points) ? match.team2Points.length : 0,
-  Array.isArray(match.setResults) ? match.setResults.length : 0,
-  0,
-);
+const statusExistingSegmentCount = (match: Match): number =>
+  Math.max(
+    Array.isArray(match.segments) ? match.segments.length : 0,
+    Array.isArray(match.team1Points) ? match.team1Points.length : 0,
+    Array.isArray(match.team2Points) ? match.team2Points.length : 0,
+    Array.isArray(match.setResults) ? match.setResults.length : 0,
+    0,
+  );
 
-const actualSetCount = (match: Match, statusSegments?: MatchSegment[] | null): number => Math.max(
-  Array.isArray(statusSegments) ? statusSegments.length : 0,
-  statusExistingSegmentCount(match),
-  1,
-);
+const actualSetCount = (match: Match, statusSegments?: MatchSegment[] | null): number =>
+  Math.max(Array.isArray(statusSegments) ? statusSegments.length : 0, statusExistingSegmentCount(match), 1);
 
 const resolveStatusRules = (match: Match, event: Event | null | undefined): MatchStatusRules => {
   const usesSets = typeof event?.usesSets === 'boolean' ? event.usesSets : Boolean(event?.leagueConfig?.usesSets);
   const eventRules = (event?.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
   const matchResolvedRules = (match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
   const matchSnapshotRules = (match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>;
-  const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
+  const source = {
+    ...eventRules,
+    ...matchResolvedRules,
+    ...matchSnapshotRules,
+  };
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
-  const configuredSegmentCount = scoringModel === 'SETS'
-    ? match.losersBracket
-      ? positiveIntOrNull((event as any)?.loserSetCount)
-        ?? positiveIntOrNull((event as any)?.loserBracketPointsToVictory?.length)
-        ?? positiveIntOrNull((event as any)?.setsPerMatch)
-        ?? 1
-      : positiveIntOrNull((event as any)?.setsPerMatch)
-        ?? positiveIntOrNull(event?.leagueConfig?.setsPerMatch)
-        ?? positiveIntOrNull((event as any)?.winnerSetCount)
-        ?? 1
-    : 1;
-  const segmentCount = scoringModel === 'POINTS_ONLY'
-    ? 1
-    : scoringModel === 'SETS'
-      ? match.matchRulesSnapshot && sourceSegmentCount
-        ? sourceSegmentCount
-        : Math.max(configuredSegmentCount, 1)
-      : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
-  const segmentLabel = source.segmentLabel
-    || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Match' : 'Half');
+  const configuredSegmentCount =
+    scoringModel === 'SETS'
+      ? match.losersBracket
+        ? (positiveIntOrNull((event as any)?.loserSetCount) ??
+          positiveIntOrNull((event as any)?.loserBracketPointsToVictory?.length) ??
+          positiveIntOrNull((event as any)?.setsPerMatch) ??
+          1)
+        : (positiveIntOrNull((event as any)?.setsPerMatch) ??
+          positiveIntOrNull(event?.leagueConfig?.setsPerMatch) ??
+          positiveIntOrNull((event as any)?.winnerSetCount) ??
+          1)
+      : 1;
+  const segmentCount =
+    scoringModel === 'POINTS_ONLY'
+      ? 1
+      : scoringModel === 'SETS'
+        ? match.matchRulesSnapshot && sourceSegmentCount
+          ? sourceSegmentCount
+          : Math.max(configuredSegmentCount, 1)
+        : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
+  const segmentLabel =
+    source.segmentLabel ||
+    (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Match' : 'Half');
   return { scoringModel, segmentCount, segmentLabel };
 };
 
-const statusLabelForSegment = (rules: MatchStatusRules, sequence: number): string => (
-  rules.scoringModel === 'POINTS_ONLY' ? 'Match' : `${rules.segmentLabel} ${sequence}`
-);
+const statusLabelForSegment = (rules: MatchStatusRules, sequence: number): string =>
+  rules.scoringModel === 'POINTS_ONLY' ? 'Match' : `${rules.segmentLabel} ${sequence}`;
 
 const segmentScoreForTeam = (
   segment: MatchSegment | undefined,
   index: number,
   eventTeamId: string | null,
   fallbackScores: number[] | undefined,
-): number => (
-  eventTeamId
-    ? nonNegativeScore(segment?.scores?.[eventTeamId] ?? fallbackScores?.[index])
-    : nonNegativeScore(fallbackScores?.[index])
-);
+): number =>
+  eventTeamId ? nonNegativeScore(segment?.scores?.[eventTeamId] ?? fallbackScores?.[index]) : nonNegativeScore(fallbackScores?.[index]);
 
-const buildStatusSegments = (
-  match: Match,
-  rules: MatchStatusRules,
-  team1Id: string | null,
-  team2Id: string | null,
-): MatchSegment[] => {
-  const sortedSegments = Array.isArray(match.segments)
-    ? [...match.segments].sort((left, right) => left.sequence - right.sequence)
-    : [];
+const buildStatusSegments = (match: Match, rules: MatchStatusRules, team1Id: string | null, team2Id: string | null): MatchSegment[] => {
+  const sortedSegments = Array.isArray(match.segments) ? [...match.segments].sort((left, right) => left.sequence - right.sequence) : [];
   const segmentBySequence = new Map(sortedSegments.map((segment) => [segment.sequence, segment]));
   const matchId = normalizeOptionalId(match.$id) ?? normalizeOptionalId((match as any).id) ?? 'match';
 
@@ -208,8 +245,7 @@ const buildStatusSegments = (
     if (team1Id) scores[team1Id] = team1Score;
     if (team2Id) scores[team2Id] = team2Score;
     const legacyResult = nonNegativeScore(match.setResults?.[index]);
-    const winnerEventTeamId = existing?.winnerEventTeamId
-      ?? (legacyResult === 1 ? team1Id : legacyResult === 2 ? team2Id : null);
+    const winnerEventTeamId = existing?.winnerEventTeamId ?? (legacyResult === 1 ? team1Id : legacyResult === 2 ? team2Id : null);
 
     return {
       id: existing?.id ?? existing?.$id ?? `${matchId}_segment_${sequence}`,
@@ -229,13 +265,9 @@ const buildStatusSegments = (
   });
 };
 
-const statusLegacyFromSegments = (
-  segments: MatchSegment[],
-  team1Id: string | null,
-  team2Id: string | null,
-) => {
-  const team1Points = segments.map((segment) => team1Id ? nonNegativeScore(segment.scores?.[team1Id]) : 0);
-  const team2Points = segments.map((segment) => team2Id ? nonNegativeScore(segment.scores?.[team2Id]) : 0);
+const statusLegacyFromSegments = (segments: MatchSegment[], team1Id: string | null, team2Id: string | null) => {
+  const team1Points = segments.map((segment) => (team1Id ? nonNegativeScore(segment.scores?.[team1Id]) : 0));
+  const team2Points = segments.map((segment) => (team2Id ? nonNegativeScore(segment.scores?.[team2Id]) : 0));
   return {
     team1Points,
     team2Points,
@@ -258,9 +290,8 @@ const segmentWinnerEventTeamId = (segment: MatchSegment, team1Id: string | null,
   return null;
 };
 
-const hasAnySegmentScore = (segment: MatchSegment): boolean => (
-  Object.values(segment.scores ?? {}).some((value) => nonNegativeScore(value) > 0)
-);
+const hasAnySegmentScore = (segment: MatchSegment): boolean =>
+  Object.values(segment.scores ?? {}).some((value) => nonNegativeScore(value) > 0);
 
 const resetSegmentConfirmation = (segment: MatchSegment): MatchSegment => ({
   ...segment,
@@ -313,18 +344,15 @@ const resolveCompletedMatchWinner = (
 };
 
 const resolveStatusPointTargets = (match: Match, event: Event | null | undefined): number[] | null => {
-  const matchTargets = pointsList((match.matchRulesSnapshot as any)?.setPointTargets)
-    ?? pointsList((match.resolvedMatchRules as any)?.setPointTargets);
+  const matchTargets =
+    pointsList((match.matchRulesSnapshot as any)?.setPointTargets) ?? pointsList((match.resolvedMatchRules as any)?.setPointTargets);
   if (matchTargets) return matchTargets;
 
-  const matchDivisionId = typeof match.division === 'string'
-    ? normalizeOptionalId(match.division)
-    : normalizeOptionalId((match.division as any)?.id) ?? normalizeOptionalId((match.division as any)?.$id);
-  const divisionSources = [
-    event?.divisionDetails,
-    event?.playoffDivisionDetails,
-    event?.divisions,
-  ];
+  const matchDivisionId =
+    typeof match.division === 'string'
+      ? normalizeOptionalId(match.division)
+      : (normalizeOptionalId((match.division as any)?.id) ?? normalizeOptionalId((match.division as any)?.$id));
+  const divisionSources = [event?.divisionDetails, event?.playoffDivisionDetails, event?.divisions];
   for (const source of divisionSources) {
     if (!Array.isArray(source)) continue;
     const division = source.find((entry) => {
@@ -336,15 +364,14 @@ const resolveStatusPointTargets = (match: Match, event: Event | null | undefined
     if (divisionTargets) return divisionTargets;
   }
 
-  return pointsList((event as any)?.pointsToVictory)
-    ?? pointsList(event?.leagueConfig?.pointsToVictory)
-    ?? pointsList((event as any)?.winnerBracketPointsToVictory);
+  return (
+    pointsList((event as any)?.pointsToVictory) ??
+    pointsList(event?.leagueConfig?.pointsToVictory) ??
+    pointsList((event as any)?.winnerBracketPointsToVictory)
+  );
 };
 
-export const actualMatchTimePayload = (
-  actualStart: Date | null,
-  actualEnd: Date | null,
-): Pick<Match, 'actualStart' | 'actualEnd'> => ({
+export const actualMatchTimePayload = (actualStart: Date | null, actualEnd: Date | null): Pick<Match, 'actualStart' | 'actualEnd'> => ({
   actualStart: actualStart ? actualStart.toISOString() : null,
   actualEnd: actualEnd ? actualEnd.toISOString() : null,
 });
@@ -354,11 +381,12 @@ const getEntityId = (value: unknown): string | null => {
     return null;
   }
   const row = value as { $id?: unknown; id?: unknown };
-  const idCandidate = typeof row.$id === 'string' && row.$id.trim().length > 0
-    ? row.$id
-    : typeof row.id === 'string' && row.id.trim().length > 0
-      ? row.id
-      : null;
+  const idCandidate =
+    typeof row.$id === 'string' && row.$id.trim().length > 0
+      ? row.$id
+      : typeof row.id === 'string' && row.id.trim().length > 0
+        ? row.id
+        : null;
   return idCandidate ? idCandidate.trim() : null;
 };
 
@@ -374,9 +402,7 @@ const resolveMatchTeamId = (match: Match | null | undefined, slot: 'team1' | 'te
   if (!match) {
     return null;
   }
-  const idFromField = slot === 'team1'
-    ? normalizeOptionalId(match.team1Id)
-    : normalizeOptionalId(match.team2Id);
+  const idFromField = slot === 'team1' ? normalizeOptionalId(match.team1Id) : normalizeOptionalId(match.team2Id);
   if (idFromField) {
     return idFromField;
   }
@@ -422,9 +448,7 @@ const getUserId = (user?: Match['official']): string | null => {
 
 const encodeAssignmentValue = (holderType: MatchOfficialAssignment['holderType'], id: string) => `${holderType}:${id}`;
 
-const decodeAssignmentValue = (
-  value: string | null,
-): { holderType: MatchOfficialAssignment['holderType']; id: string } | null => {
+const decodeAssignmentValue = (value: string | null): { holderType: MatchOfficialAssignment['holderType']; id: string } | null => {
   if (!value) {
     return null;
   }
@@ -440,45 +464,36 @@ const normalizeAssignments = (value: unknown): MatchOfficialAssignment[] => {
   if (!Array.isArray(value)) {
     return [];
   }
-  const normalized: Array<MatchOfficialAssignment | null> = value
-    .map((entry): MatchOfficialAssignment | null => {
-      if (!entry || typeof entry !== 'object') {
-        return null;
-      }
-      const row = entry as Record<string, unknown>;
-      const positionId = normalizeOptionalId(row.positionId)
-        ?? normalizeOptionalId(typeof row.position === 'string' ? row.position : getEntityId(row.position))
-        ?? '';
-      const userId = normalizeOptionalId(row.userId)
-        ?? normalizeOptionalId(row.officialId)
-        ?? '';
-      const slotIndexRaw = row.slotIndex ?? row.slot ?? 0;
-      const slotIndex = Number(slotIndexRaw);
-      const holderTypeToken = typeof row.holderType === 'string' ? row.holderType.trim().toUpperCase() : '';
-      const isLegacyOfficialAssignment = Boolean(
-        normalizeOptionalId(row.officialId)
-        || normalizeOptionalId(row.eventOfficialId),
-      );
-      const holderType = holderTypeToken === 'PLAYER'
-        ? 'PLAYER'
-        : holderTypeToken === 'OFFICIAL' || isLegacyOfficialAssignment
-          ? 'OFFICIAL'
-          : null;
-      if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
-        return null;
-      }
-      return {
-        positionId,
-        slotIndex,
-        holderType,
-        userId,
-        eventOfficialId: typeof row.eventOfficialId === 'string' && row.eventOfficialId.trim().length > 0
-          ? row.eventOfficialId.trim()
-          : undefined,
-        checkedIn: typeof row.checkedIn === 'boolean' ? row.checkedIn : undefined,
-        hasConflict: typeof row.hasConflict === 'boolean' ? row.hasConflict : undefined,
-      };
-    });
+  const normalized: Array<MatchOfficialAssignment | null> = value.map((entry): MatchOfficialAssignment | null => {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+    const row = entry as Record<string, unknown>;
+    const positionId =
+      normalizeOptionalId(row.positionId) ??
+      normalizeOptionalId(typeof row.position === 'string' ? row.position : getEntityId(row.position)) ??
+      '';
+    const userId = normalizeOptionalId(row.userId) ?? normalizeOptionalId(row.officialId) ?? '';
+    const slotIndexRaw = row.slotIndex ?? row.slot ?? 0;
+    const slotIndex = Number(slotIndexRaw);
+    const holderTypeToken = typeof row.holderType === 'string' ? row.holderType.trim().toUpperCase() : '';
+    const isLegacyOfficialAssignment = Boolean(normalizeOptionalId(row.officialId) || normalizeOptionalId(row.eventOfficialId));
+    const holderType =
+      holderTypeToken === 'PLAYER' ? 'PLAYER' : holderTypeToken === 'OFFICIAL' || isLegacyOfficialAssignment ? 'OFFICIAL' : null;
+    if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
+      return null;
+    }
+    return {
+      positionId,
+      slotIndex,
+      holderType,
+      userId,
+      eventOfficialId:
+        typeof row.eventOfficialId === 'string' && row.eventOfficialId.trim().length > 0 ? row.eventOfficialId.trim() : undefined,
+      checkedIn: typeof row.checkedIn === 'boolean' ? row.checkedIn : undefined,
+      hasConflict: typeof row.hasConflict === 'boolean' ? row.hasConflict : undefined,
+    };
+  });
   return normalized.filter((entry): entry is MatchOfficialAssignment => entry !== null);
 };
 
@@ -510,8 +525,8 @@ export default function MatchEditModal({
   tournament = null,
   allMatches = EMPTY_MATCHES,
   fields = EMPTY_FIELDS,
+  divisions = EMPTY_DIVISIONS,
   teams = EMPTY_TEAMS,
-  participantTeams = EMPTY_TEAMS,
   officials = EMPTY_USERS,
   officialPositions = EMPTY_OFFICIAL_POSITIONS,
   eventOfficials = EMPTY_EVENT_OFFICIALS,
@@ -521,10 +536,6 @@ export default function MatchEditModal({
   creationContext = 'bracket',
   eventType = null,
   enforceScheduleFields = false,
-  onScoreChange,
-  onSetComplete,
-  onScoreSubmit,
-  onMatchComplete,
   team1Placeholder,
   team2Placeholder,
   onClose,
@@ -536,17 +547,22 @@ export default function MatchEditModal({
   const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
   const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
   const [fieldId, setFieldId] = useState<string | null>(null);
+  const [divisionId, setDivisionId] = useState<string | null>(null);
   const [team1Id, setTeam1Id] = useState<string | null>(null);
   const [team2Id, setTeam2Id] = useState<string | null>(null);
   const [teamOfficialId, setTeamOfficialId] = useState<string | null>(null);
+  const [teamOfficialCheckedIn, setTeamOfficialCheckedIn] = useState(false);
   const [userOfficialId, setUserOfficialId] = useState<string | null>(null);
   const [officialAssignments, setOfficialAssignments] = useState<MatchOfficialAssignment[]>([]);
   const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
   const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [losersBracket, setLosersBracket] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [policySegmentLabel, setPolicySegmentLabel] = useState('Segment');
+  const [policySegmentCount, setPolicySegmentCount] = useState<number | null>(null);
   const [policyPointTargets, setPolicyPointTargets] = useState('');
-  const [policyMatchMinutes, setPolicyMatchMinutes] = useState<number | null>(null);
+  const [policySegmentMinutes, setPolicySegmentMinutes] = useState<number | null>(null);
+  const [policySegmentMinutesTouched, setPolicySegmentMinutesTouched] = useState(false);
   const [policyTouched, setPolicyTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchStartedValue, setMatchStartedValue] = useState(false);
@@ -558,35 +574,6 @@ export default function MatchEditModal({
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
   const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
-  const syncEmbeddedScoreState = useCallback((payload: ScorePayload) => {
-    const nextSegments = Array.isArray(payload.segments)
-      ? payload.segments.map((segment) => ({
-          ...segment,
-          scores: { ...(segment.scores ?? {}) },
-        }))
-      : [];
-    setStatusSegmentsValue(nextSegments);
-    setMatchStartedValue(nextSegments.some((segment) => (
-      segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'
-    )));
-  }, []);
-
-  const handleEmbeddedScoreChange = useCallback(async (payload: ScorePayload) => {
-    if (!onScoreChange) {
-      return;
-    }
-    await onScoreChange(payload);
-    syncEmbeddedScoreState(payload);
-  }, [onScoreChange, syncEmbeddedScoreState]);
-
-  const handleEmbeddedSetComplete = useCallback(async (payload: ScorePayload) => {
-    if (!onSetComplete) {
-      return;
-    }
-    await onSetComplete(payload);
-    syncEmbeddedScoreState(payload);
-  }, [onSetComplete, syncEmbeddedScoreState]);
-
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!match || !opened) {
@@ -595,17 +582,22 @@ export default function MatchEditModal({
       setActualStartValue(null);
       setActualEndValue(null);
       setFieldId(null);
+      setDivisionId(null);
       setTeam1Id(null);
       setTeam2Id(null);
       setTeamOfficialId(null);
+      setTeamOfficialCheckedIn(false);
       setUserOfficialId(null);
       setOfficialAssignments([]);
       setWinnerNextMatchId(null);
       setLoserNextMatchId(null);
       setLosersBracket(false);
       setLocked(false);
+      setPolicySegmentLabel('Segment');
+      setPolicySegmentCount(null);
       setPolicyPointTargets('');
-      setPolicyMatchMinutes(null);
+      setPolicySegmentMinutes(null);
+      setPolicySegmentMinutesTouched(false);
       setPolicyTouched(false);
       setError(null);
       setMatchStartedValue(false);
@@ -622,6 +614,7 @@ export default function MatchEditModal({
     setActualStartValue(coerceInstantDate(match.actualStart));
     setActualEndValue(coerceInstantDate(match.actualEnd));
     setFieldId(getEntityId(match.field));
+    setDivisionId(typeof match.division === 'string' ? normalizeOptionalId(match.division) : getEntityId(match.division));
     const initialTeam1Id = resolveMatchTeamId(match, 'team1');
     const initialTeam2Id = resolveMatchTeamId(match, 'team2');
     setTeam1Id(initialTeam1Id);
@@ -632,6 +625,7 @@ export default function MatchEditModal({
       // Legacy fallback when official held team data
       getTeamId((match as any).official);
     setTeamOfficialId(initialTeamOfficialId);
+    setTeamOfficialCheckedIn(Boolean(match.officialCheckedIn));
     setUserOfficialId(normalizeOptionalId(match.officialId) ?? getUserId(match.official));
     const normalizedAssignments = normalizeAssignments(match.officialIds);
     if (normalizedAssignments.length > 0) {
@@ -639,18 +633,18 @@ export default function MatchEditModal({
     } else if (officialPositions.length > 0) {
       const legacyOfficialId = normalizeOptionalId(match.officialId) ?? getUserId(match.official);
       const firstPosition = officialPositions[0];
-      const fallbackEventOfficial = legacyOfficialId
-        ? eventOfficials.find((official) => official.userId === legacyOfficialId)
-        : undefined;
+      const fallbackEventOfficial = legacyOfficialId ? eventOfficials.find((official) => official.userId === legacyOfficialId) : undefined;
       setOfficialAssignments(
         legacyOfficialId && firstPosition
-          ? [{
-              positionId: firstPosition.id,
-              slotIndex: 0,
-              holderType: 'OFFICIAL',
-              userId: legacyOfficialId,
-              eventOfficialId: fallbackEventOfficial?.id,
-            }]
+          ? [
+              {
+                positionId: firstPosition.id,
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: legacyOfficialId,
+                eventOfficialId: fallbackEventOfficial?.id,
+              },
+            ]
           : [],
       );
     } else {
@@ -672,7 +666,7 @@ export default function MatchEditModal({
     if (initialResultType === 'FORFEIT') {
       setResultTypeValue('FORFEIT');
       setWinnerEventTeamIdValue(initialWinnerId);
-      setForfeitingEventTeamIdValue(initialWinnerId ? initialTeamIds.find((teamId) => teamId !== initialWinnerId) ?? null : null);
+      setForfeitingEventTeamIdValue(initialWinnerId ? (initialTeamIds.find((teamId) => teamId !== initialWinnerId) ?? null) : null);
     } else if (initialResultType === 'NO_CONTEST' || initialStatus === 'CANCELLED') {
       setResultTypeValue('NO_CONTEST');
       setWinnerEventTeamIdValue(null);
@@ -687,22 +681,26 @@ export default function MatchEditModal({
       setForfeitingEventTeamIdValue(null);
     }
     setStatusReasonValue(typeof match.statusReason === 'string' ? match.statusReason : '');
-    setMatchStartedValue(Boolean(
-      ['IN_PROGRESS', 'COMPLETE'].includes(String(match.status ?? '').toUpperCase())
-      || initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
-    ));
+    setMatchStartedValue(
+      Boolean(
+        ['IN_PROGRESS', 'COMPLETE'].includes(String(match.status ?? '').toUpperCase()) ||
+          initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
+      ),
+    );
     const policySource = resolveEditablePolicySource(match, tournament);
     const initialSetCount = Math.max(1, initialStatusRules.segmentCount);
-    const initialTargets = pointsList((policySource as any).setPointTargets)
-      ?? resolveStatusPointTargets(match, tournament)
-      ?? [];
+    const initialTargets = pointsList((policySource as any).setPointTargets) ?? resolveStatusPointTargets(match, tournament) ?? [];
     const initialSegmentMinutes = positiveIntOrNull(policySource.timekeeping?.segmentDurationMinutes);
-    const initialMatchMinutes = positiveIntOrNull((tournament as any)?.matchDurationMinutes)
-      ?? (initialSegmentMinutes
-        ? initialSegmentMinutes * Math.max(1, initialSetCount)
-        : null);
+    const initialMatchMinutes =
+      positiveIntOrNull((tournament as any)?.matchDurationMinutes) ??
+      (initialSegmentMinutes ? initialSegmentMinutes * Math.max(1, initialSetCount) : null);
+    setPolicySegmentLabel(normalizeSegmentLabel(initialStatusRules.segmentLabel));
+    setPolicySegmentCount(initialStatusRules.scoringModel === 'POINTS_ONLY' ? 1 : initialSetCount);
     setPolicyPointTargets(targetsToInput(initialTargets));
-    setPolicyMatchMinutes(initialMatchMinutes);
+    setPolicySegmentMinutes(
+      initialSegmentMinutes ?? (initialMatchMinutes ? Math.max(1, Math.round(initialMatchMinutes / Math.max(1, initialSetCount))) : null),
+    );
+    setPolicySegmentMinutesTouched(false);
     setPolicyTouched(false);
   }, [editableMatchId, eventOfficials, officialPositions, opened, tournament]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -714,25 +712,17 @@ export default function MatchEditModal({
       if (!id) {
         return;
       }
-      const label = typeof candidate.matchId === 'number'
-        ? `Match #${candidate.matchId}`
-        : id;
+      const label = typeof candidate.matchId === 'number' ? `Match #${candidate.matchId}` : id;
       map.set(id, label);
     });
     const currentId = normalizeOptionalId(match?.$id);
     if (currentId && !map.has(currentId)) {
-      map.set(
-        currentId,
-        typeof match?.matchId === 'number' ? `Match #${match.matchId}` : currentId,
-      );
+      map.set(currentId, typeof match?.matchId === 'number' ? `Match #${match.matchId}` : currentId);
     }
     return map;
   }, [allMatches, match]);
 
-  const currentMatchId = useMemo(
-    () => normalizeOptionalId(match?.$id),
-    [match?.$id],
-  );
+  const currentMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
   const bracketNodes = useMemo<BracketNode[]>(() => {
     const ids = new Set<string>();
@@ -790,11 +780,19 @@ export default function MatchEditModal({
   }, [bracketNodes, currentMatchId]);
 
   const winnerNextOptions = useMemo(
-    () => winnerCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    () =>
+      winnerCandidateIds.map((id) => ({
+        value: id,
+        label: allMatchOptions.get(id) ?? id,
+      })),
     [allMatchOptions, winnerCandidateIds],
   );
   const loserNextOptions = useMemo(
-    () => loserCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    () =>
+      loserCandidateIds.map((id) => ({
+        value: id,
+        label: allMatchOptions.get(id) ?? id,
+      })),
     [allMatchOptions, loserCandidateIds],
   );
 
@@ -813,10 +811,7 @@ export default function MatchEditModal({
     () => normalizeOptionalId(match?.teamOfficialId) ?? getTeamId(match?.teamOfficial) ?? getTeamId((match as any)?.official),
     [match],
   );
-  const matchUserOfficialId = useMemo(
-    () => normalizeOptionalId(match?.officialId) ?? getUserId(match?.official),
-    [match],
-  );
+  const matchUserOfficialId = useMemo(() => normalizeOptionalId(match?.officialId) ?? getUserId(match?.official), [match]);
 
   const teamOptions = useMemo(() => {
     // Deduplicate by team id to avoid double entries when upstream data repeats teams.
@@ -883,27 +878,58 @@ export default function MatchEditModal({
   );
 
   const fieldOptions = useMemo(
-    () => fields.reduce<Array<{ value: string; label: string }>>((acc, field) => {
-      const fieldId = getEntityId(field);
-      if (!fieldId) {
+    () =>
+      fields.reduce<Array<{ value: string; label: string }>>((acc, field) => {
+        const fieldId = getEntityId(field);
+        if (!fieldId) {
+          return acc;
+        }
+        acc.push({
+          value: fieldId,
+          label: getFieldDisplayName(field),
+        });
         return acc;
-      }
-      acc.push({
-        value: fieldId,
-        label: getFieldDisplayName(field),
-      });
-      return acc;
-    }, []),
+      }, []),
     [fields],
   );
 
+  const divisionOptions = useMemo(() => {
+    const options = divisions.reduce<Array<{ value: string; label: string }>>((acc, division) => {
+      const id = getEntityId(division);
+      if (!id) return acc;
+      acc.push({ value: id, label: division.name || id });
+      return acc;
+    }, []);
+    if (divisionId && !options.some((option) => option.value === divisionId)) {
+      const currentDivision = match?.division;
+      const currentLabel =
+        currentDivision && typeof currentDivision === 'object' && 'name' in currentDivision
+          ? String(currentDivision.name || divisionId)
+          : divisionId;
+      options.push({ value: divisionId, label: currentLabel });
+    }
+    return options.sort((left, right) => left.label.localeCompare(right.label));
+  }, [divisionId, divisions, match?.division]);
+
   const selectedTeam1 = useMemo(() => findTeamById(team1Id, teams, match?.team1), [team1Id, teams, match]);
   const selectedTeam2 = useMemo(() => findTeamById(team2Id, teams, match?.team2), [team2Id, teams, match]);
+  const selectedDivision = useMemo(() => divisions.find((division) => getEntityId(division) === divisionId), [divisionId, divisions]);
   const resultTeamOptions = useMemo(
-    () => [
-      team1Id ? { value: team1Id, label: resolveTeamName(selectedTeam1 ?? match?.team1, teams) } : null,
-      team2Id ? { value: team2Id, label: resolveTeamName(selectedTeam2 ?? match?.team2, teams) } : null,
-    ].filter((option): option is { value: string; label: string } => Boolean(option)),
+    () =>
+      [
+        team1Id
+          ? {
+              value: team1Id,
+              label: resolveTeamName(selectedTeam1 ?? match?.team1, teams),
+            }
+          : null,
+        team2Id
+          ? {
+              value: team2Id,
+              label: resolveTeamName(selectedTeam2 ?? match?.team2, teams),
+            }
+          : null,
+      ].filter((option): option is { value: string; label: string } => Boolean(option)),
     [match?.team1, match?.team2, selectedTeam1, selectedTeam2, team1Id, team2Id, teams],
   );
   const resultTypeIsForfeit = resultTypeValue === 'FORFEIT';
@@ -911,7 +937,7 @@ export default function MatchEditModal({
   const resultTypeIsSuspended = resultTypeValue === 'SUSPENDED';
   const resultTypeIsExceptional = resultTypeIsForfeit || resultTypeIsNoContest || resultTypeIsSuspended;
   const derivedForfeitWinnerId = resultTypeIsForfeit
-    ? resultTeamOptions.find((option) => option.value !== forfeitingEventTeamIdValue)?.value ?? null
+    ? (resultTeamOptions.find((option) => option.value !== forfeitingEventTeamIdValue)?.value ?? null)
     : null;
   const selectedTeamOfficial = useMemo(
     () => findTeamById(teamOfficialId, teams, match?.teamOfficial ?? (match as any)?.official),
@@ -927,32 +953,32 @@ export default function MatchEditModal({
     }
     return undefined;
   }, [officials, userOfficialId, match]);
-  const normalizedEventOfficials = useMemo<EventOfficial[]>(() => (
-    (Array.isArray(eventOfficials) ? eventOfficials : [])
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') {
-          return null;
-        }
-        const row = entry as EventOfficial & { $id?: string };
-        const id = normalizeOptionalId(row.id) ?? normalizeOptionalId(row.$id);
-        const userId = normalizeOptionalId(row.userId);
-        if (!id || !userId) {
-          return null;
-        }
-        return {
-          ...row,
-          id,
-          userId,
-          positionIds: Array.isArray(row.positionIds)
-            ? row.positionIds.map((positionId) => String(positionId).trim()).filter(Boolean)
-            : [],
-          fieldIds: Array.isArray(row.fieldIds)
-            ? row.fieldIds.map((idToken) => String(idToken).trim()).filter(Boolean)
-            : [],
-        } satisfies EventOfficial;
-      })
-      .filter((entry): entry is EventOfficial => Boolean(entry))
-  ), [eventOfficials]);
+  const normalizedEventOfficials = useMemo<EventOfficial[]>(
+    () =>
+      (Array.isArray(eventOfficials) ? eventOfficials : [])
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') {
+            return null;
+          }
+          const row = entry as EventOfficial & { $id?: string };
+          const id = normalizeOptionalId(row.id) ?? normalizeOptionalId(row.$id);
+          const userId = normalizeOptionalId(row.userId);
+          if (!id || !userId) {
+            return null;
+          }
+          return {
+            ...row,
+            id,
+            userId,
+            positionIds: Array.isArray(row.positionIds)
+              ? row.positionIds.map((positionId) => String(positionId).trim()).filter(Boolean)
+              : [],
+            fieldIds: Array.isArray(row.fieldIds) ? row.fieldIds.map((idToken) => String(idToken).trim()).filter(Boolean) : [],
+          } satisfies EventOfficial;
+        })
+        .filter((entry): entry is EventOfficial => Boolean(entry)),
+    [eventOfficials],
+  );
   const eventOfficialById = useMemo(
     () => new Map(normalizedEventOfficials.map((official) => [official.id, official] as const)),
     [normalizedEventOfficials],
@@ -996,12 +1022,13 @@ export default function MatchEditModal({
     return map;
   }, [selectedTeam1, selectedTeam2, teams]);
   const assignmentSlots = useMemo(
-    () => officialPositions.flatMap((position) =>
-      Array.from({ length: Math.max(1, Math.trunc(position.count || 1)) }, (_, slotIndex) => ({
-        position,
-        slotIndex,
-      })),
-    ),
+    () =>
+      officialPositions.flatMap((position) =>
+        Array.from({ length: Math.max(1, Math.trunc(position.count || 1)) }, (_, slotIndex) => ({
+          position,
+          slotIndex,
+        })),
+      ),
     [officialPositions],
   );
   const assignmentBySlotKey = useMemo(() => {
@@ -1012,70 +1039,67 @@ export default function MatchEditModal({
     return map;
   }, [officialAssignments]);
 
-  const getAssignmentOptions = useCallback((position: EventOfficialPosition, assignment?: MatchOfficialAssignment) => {
-    const optionsByValue = new Map<string, string>();
-    const addOption = (value: string, label: string) => {
-      if (!optionsByValue.has(value)) {
-        optionsByValue.set(value, label);
-      }
-    };
-    normalizedEventOfficials.forEach((eventOfficial) => {
-      if (eventOfficial.isActive === false) {
-        return;
-      }
-      if (!eventOfficial.positionIds.includes(position.id)) {
-        return;
-      }
-      if (fieldId && eventOfficial.fieldIds.length > 0 && !eventOfficial.fieldIds.includes(fieldId)) {
-        return;
-      }
-      const user = officialUserById.get(eventOfficial.userId);
-      addOption(
-        encodeAssignmentValue('OFFICIAL', eventOfficial.id),
-        `Official: ${formatUserLabel(user ?? { userName: eventOfficial.userId })}`,
-      );
-    });
-    playerCandidates.forEach(({ user, teamName }, playerId) => {
-      addOption(
-        encodeAssignmentValue('PLAYER', playerId),
-        `Player: ${formatUserLabel(user)} (${teamName})`,
-      );
-    });
-    if (assignment?.holderType === 'OFFICIAL') {
-      const assignmentUserId = normalizeOptionalId(assignment.userId);
-      const assignedEventOfficial = (
-        normalizeOptionalId(assignment.eventOfficialId)
-          ? eventOfficialById.get(normalizeOptionalId(assignment.eventOfficialId) as string)
-          : undefined
-      ) ?? (assignmentUserId ? eventOfficialByUserId.get(assignmentUserId) : undefined);
-      if (assignedEventOfficial) {
-        const user = officialUserById.get(assignedEventOfficial.userId);
+  const getAssignmentOptions = useCallback(
+    (position: EventOfficialPosition, assignment?: MatchOfficialAssignment) => {
+      const optionsByValue = new Map<string, string>();
+      const addOption = (value: string, label: string) => {
+        if (!optionsByValue.has(value)) {
+          optionsByValue.set(value, label);
+        }
+      };
+      normalizedEventOfficials.forEach((eventOfficial) => {
+        if (eventOfficial.isActive === false) {
+          return;
+        }
+        if (!eventOfficial.positionIds.includes(position.id)) {
+          return;
+        }
+        if (fieldId && eventOfficial.fieldIds.length > 0 && !eventOfficial.fieldIds.includes(fieldId)) {
+          return;
+        }
+        const user = officialUserById.get(eventOfficial.userId);
         addOption(
-          encodeAssignmentValue('OFFICIAL', assignedEventOfficial.id),
-          `Official: ${formatUserLabel(user ?? { userName: assignedEventOfficial.userId })}`,
+          encodeAssignmentValue('OFFICIAL', eventOfficial.id),
+          `Official: ${formatUserLabel(user ?? { userName: eventOfficial.userId })}`,
         );
-      } else if (assignmentUserId) {
-        const fallbackUser = officialUserById.get(assignmentUserId);
-        addOption(
-          encodeAssignmentValue('OFFICIAL', assignmentUserId),
-          `Official: ${formatUserLabel(fallbackUser ?? { userName: assignmentUserId })}`,
-        );
+      });
+      playerCandidates.forEach(({ user, teamName }, playerId) => {
+        addOption(encodeAssignmentValue('PLAYER', playerId), `Player: ${formatUserLabel(user)} (${teamName})`);
+      });
+      if (assignment?.holderType === 'OFFICIAL') {
+        const assignmentUserId = normalizeOptionalId(assignment.userId);
+        const assignedEventOfficial =
+          (normalizeOptionalId(assignment.eventOfficialId)
+            ? eventOfficialById.get(normalizeOptionalId(assignment.eventOfficialId) as string)
+            : undefined) ?? (assignmentUserId ? eventOfficialByUserId.get(assignmentUserId) : undefined);
+        if (assignedEventOfficial) {
+          const user = officialUserById.get(assignedEventOfficial.userId);
+          addOption(
+            encodeAssignmentValue('OFFICIAL', assignedEventOfficial.id),
+            `Official: ${formatUserLabel(user ?? { userName: assignedEventOfficial.userId })}`,
+          );
+        } else if (assignmentUserId) {
+          const fallbackUser = officialUserById.get(assignmentUserId);
+          addOption(
+            encodeAssignmentValue('OFFICIAL', assignmentUserId),
+            `Official: ${formatUserLabel(fallbackUser ?? { userName: assignmentUserId })}`,
+          );
+        }
       }
-    }
-    if (assignment?.holderType === 'PLAYER') {
-      const assignmentUserId = normalizeOptionalId(assignment.userId);
-      if (assignmentUserId && !optionsByValue.has(encodeAssignmentValue('PLAYER', assignmentUserId))) {
-        const player = playerCandidates.get(assignmentUserId);
-        const label = player
-          ? `Player: ${formatUserLabel(player.user)} (${player.teamName})`
-          : `Player: ${assignmentUserId}`;
-        addOption(encodeAssignmentValue('PLAYER', assignmentUserId), label);
+      if (assignment?.holderType === 'PLAYER') {
+        const assignmentUserId = normalizeOptionalId(assignment.userId);
+        if (assignmentUserId && !optionsByValue.has(encodeAssignmentValue('PLAYER', assignmentUserId))) {
+          const player = playerCandidates.get(assignmentUserId);
+          const label = player ? `Player: ${formatUserLabel(player.user)} (${player.teamName})` : `Player: ${assignmentUserId}`;
+          addOption(encodeAssignmentValue('PLAYER', assignmentUserId), label);
+        }
       }
-    }
-    return Array.from(optionsByValue.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [eventOfficialById, eventOfficialByUserId, fieldId, normalizedEventOfficials, officialUserById, playerCandidates]);
+      return Array.from(optionsByValue.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((left, right) => left.label.localeCompare(right.label));
+    },
+    [eventOfficialById, eventOfficialByUserId, fieldId, normalizedEventOfficials, officialUserById, playerCandidates],
+  );
 
   const handleClose = () => {
     setError(null);
@@ -1103,11 +1127,7 @@ export default function MatchEditModal({
     setActualEndValue(parseLocalDateTime(value));
   };
 
-  const handleOfficialAssignmentChange = (
-    positionId: string,
-    slotIndex: number,
-    value: string | null,
-  ) => {
+  const handleOfficialAssignmentChange = (positionId: string, slotIndex: number, value: string | null) => {
     const decoded = decodeAssignmentValue(value);
     setOfficialAssignments((prev) => {
       const next = normalizeAssignments(prev).filter(
@@ -1128,6 +1148,7 @@ export default function MatchEditModal({
             slotIndex,
             holderType: 'OFFICIAL',
             userId: fallbackUserId,
+            checkedIn: false,
           });
           return next;
         }
@@ -1137,6 +1158,7 @@ export default function MatchEditModal({
           holderType: 'OFFICIAL',
           userId: eventOfficial.userId,
           eventOfficialId: eventOfficial.id,
+          checkedIn: false,
         });
         return next;
       }
@@ -1145,9 +1167,18 @@ export default function MatchEditModal({
         slotIndex,
         holderType: 'PLAYER',
         userId: decoded.id,
+        checkedIn: false,
       });
       return next;
     });
+  };
+
+  const handleOfficialAssignmentCheckedInChange = (positionId: string, slotIndex: number, checkedIn: boolean) => {
+    setOfficialAssignments((current) =>
+      normalizeAssignments(current).map((assignment) =>
+        assignment.positionId === positionId && assignment.slotIndex === slotIndex ? { ...assignment, checkedIn } : assignment,
+      ),
+    );
   };
 
   const findFieldById = (id: string | null): Field | undefined => {
@@ -1161,21 +1192,28 @@ export default function MatchEditModal({
   };
   const selectedField = findFieldById(fieldId);
 
-  const operationsMatch = useMemo<Match | null>(() => {
-    if (!match || isCreateMode) {
+  const draftMatch = useMemo<Match | null>(() => {
+    if (!match) {
       return null;
     }
 
     const next: Match = {
       ...match,
+      start: startValue ? startValue.toISOString() : null,
+      end: endValue ? endValue.toISOString() : null,
       fieldId: fieldId ?? null,
       team1Id: team1Id ?? null,
       team2Id: team2Id ?? null,
       teamOfficialId: teamOfficialId ?? null,
+      officialCheckedIn: teamOfficialCheckedIn,
       officialId: userOfficialId ?? null,
       officialIds: normalizeAssignments(officialAssignments),
+      locked,
+      losersBracket,
       ...actualMatchTimePayload(actualStartValue, actualEndValue),
     };
+
+    next.division = selectedDivision ?? divisionId ?? null;
 
     if (selectedField) {
       next.field = { ...selectedField };
@@ -1207,32 +1245,44 @@ export default function MatchEditModal({
   }, [
     actualEndValue,
     actualStartValue,
+    divisionId,
     fieldId,
-    isCreateMode,
+    locked,
+    losersBracket,
     match,
     officialAssignments,
+    selectedDivision,
     selectedField,
     selectedTeam1,
     selectedTeam2,
     selectedTeamOfficial,
     selectedUserOfficial,
+    startValue,
+    endValue,
     team1Id,
     team2Id,
     teamOfficialId,
+    teamOfficialCheckedIn,
     userOfficialId,
   ]);
 
-  const statusRules = useMemo(
-    () => (operationsMatch ? resolveStatusRules(operationsMatch, tournament) : null),
-    [operationsMatch, tournament],
-  );
-  const statusTeam1Id = useMemo(() => resolveMatchTeamId(operationsMatch, 'team1'), [operationsMatch]);
-  const statusTeam2Id = useMemo(() => resolveMatchTeamId(operationsMatch, 'team2'), [operationsMatch]);
+  const baseStatusRules = useMemo(() => (draftMatch ? resolveStatusRules(draftMatch, tournament) : null), [draftMatch, tournament]);
+  const statusRules = useMemo<MatchStatusRules | null>(() => {
+    if (!baseStatusRules) return null;
+    return {
+      ...baseStatusRules,
+      segmentCount: baseStatusRules.scoringModel === 'POINTS_ONLY' ? 1 : Math.max(1, policySegmentCount ?? baseStatusRules.segmentCount),
+      segmentLabel: normalizeSegmentLabel(policySegmentLabel, baseStatusRules.segmentLabel),
+    };
+  }, [baseStatusRules, policySegmentCount, policySegmentLabel]);
+  const statusTeam1Id = useMemo(() => resolveMatchTeamId(draftMatch, 'team1'), [draftMatch]);
+  const statusTeam2Id = useMemo(() => resolveMatchTeamId(draftMatch, 'team2'), [draftMatch]);
   const statusSegments = statusSegmentsValue;
-  const statusPointTargets = useMemo(
-    () => (operationsMatch ? resolveStatusPointTargets(operationsMatch, tournament) : null),
-    [operationsMatch, tournament],
-  );
+  const statusPointTargets = useMemo(() => {
+    const localTargets = parseTargetsInput(policyPointTargets);
+    if (localTargets.length > 0) return localTargets;
+    return draftMatch ? resolveStatusPointTargets(draftMatch, tournament) : null;
+  }, [draftMatch, policyPointTargets, tournament]);
   const matchStartedChecked = matchStartedValue;
 
   const handleMatchStartedChange = useCallback((checked: boolean) => {
@@ -1243,58 +1293,107 @@ export default function MatchEditModal({
     setError(null);
   }, []);
 
-  const segmentHasValidFinalScore = useCallback((segment: MatchSegment, index: number): boolean => {
-    if (!statusRules || statusRules.scoringModel !== 'SETS') {
-      return true;
-    }
-    const target = resolveSetVictoryTarget(statusPointTargets, index);
-    if (!target) {
-      return true;
-    }
-    const team1Score = statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0;
-    const team2Score = statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0;
-    return getSetScoreState(team1Score, team2Score, target).isValidFinalScore;
-  }, [statusPointTargets, statusRules, statusTeam1Id, statusTeam2Id]);
+  const handleSegmentCountChange = useCallback(
+    (value: string | number) => {
+      const nextCount = positiveIntOrNull(value);
+      setPolicySegmentCount(nextCount);
+      setPolicyTouched(true);
+      if (!nextCount || !draftMatch || !statusRules) return;
 
-  const handleSegmentConfirmedChange = useCallback((sequence: number, checked: boolean) => {
-    if (!statusRules) {
-      return;
-    }
-    const targetSegment = statusSegments.find((segment) => segment.sequence === sequence);
-    if (!targetSegment) {
-      return;
-    }
-    if (checked && !segmentHasValidFinalScore(targetSegment, sequence - 1)) {
-      setError('A set can only be confirmed at the victory target, or above it when the winner leads by 2.');
-      return;
-    }
-    setStatusSegmentsValue((current) => current.map((segment) => {
-      if (!checked && segment.sequence >= sequence) {
-        return resetSegmentConfirmation(segment);
-      }
-      if (segment.sequence !== sequence) {
-        return segment;
-      }
-      const winnerEventTeamId = checked
-        ? segmentWinnerEventTeamId(segment, statusTeam1Id, statusTeam2Id)
-        : null;
-      return {
-        ...segment,
-        status: checked ? 'COMPLETE' : resetSegmentConfirmation(segment).status,
-        winnerEventTeamId,
-        endedAt: checked ? segment.endedAt ?? null : null,
-        resultType: checked ? segment.resultType ?? null : null,
-        statusReason: checked ? segment.statusReason ?? null : null,
-      } satisfies MatchSegment;
-    }));
+      setStatusSegmentsValue((current) => {
+        const legacy = statusLegacyFromSegments(current, statusTeam1Id, statusTeam2Id);
+        return buildStatusSegments(
+          {
+            ...draftMatch,
+            segments: current,
+            team1Points: legacy.team1Points,
+            team2Points: legacy.team2Points,
+            setResults: legacy.setResults,
+          },
+          {
+            ...statusRules,
+            segmentCount: nextCount,
+          },
+          statusTeam1Id,
+          statusTeam2Id,
+        );
+      });
+      setError(null);
+    },
+    [draftMatch, statusRules, statusTeam1Id, statusTeam2Id],
+  );
+
+  const handleSegmentScoreChange = useCallback((sequence: number, eventTeamId: string | null, value: string | number) => {
+    if (!eventTeamId) return;
+    const score = nonNegativeScore(value);
+    setStatusSegmentsValue((current) =>
+      current.map((segment) => {
+        if (segment.sequence < sequence) return segment;
+        if (segment.sequence > sequence) return resetSegmentConfirmation(segment);
+        return resetSegmentConfirmation({
+          ...segment,
+          scores: {
+            ...(segment.scores ?? {}),
+            [eventTeamId]: score,
+          },
+        });
+      }),
+    );
     setError(null);
-  }, [
-    segmentHasValidFinalScore,
-    statusRules,
-    statusSegments,
-    statusTeam1Id,
-    statusTeam2Id,
-  ]);
+  }, []);
+
+  const segmentHasValidFinalScore = useCallback(
+    (segment: MatchSegment, index: number): boolean => {
+      if (!statusRules || statusRules.scoringModel !== 'SETS') {
+        return true;
+      }
+      const target = resolveSetVictoryTarget(statusPointTargets, index);
+      if (!target) {
+        return true;
+      }
+      const team1Score = statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0;
+      const team2Score = statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0;
+      return getSetScoreState(team1Score, team2Score, target).isValidFinalScore;
+    },
+    [statusPointTargets, statusRules, statusTeam1Id, statusTeam2Id],
+  );
+
+  const handleSegmentConfirmedChange = useCallback(
+    (sequence: number, checked: boolean) => {
+      if (!statusRules) {
+        return;
+      }
+      const targetSegment = statusSegments.find((segment) => segment.sequence === sequence);
+      if (!targetSegment) {
+        return;
+      }
+      if (checked && !segmentHasValidFinalScore(targetSegment, sequence - 1)) {
+        setError('A set can only be confirmed at the victory target, or above it when the winner leads by 2.');
+        return;
+      }
+      setStatusSegmentsValue((current) =>
+        current.map((segment) => {
+          if (!checked && segment.sequence >= sequence) {
+            return resetSegmentConfirmation(segment);
+          }
+          if (segment.sequence !== sequence) {
+            return segment;
+          }
+          const winnerEventTeamId = checked ? segmentWinnerEventTeamId(segment, statusTeam1Id, statusTeam2Id) : null;
+          return {
+            ...segment,
+            status: checked ? 'COMPLETE' : resetSegmentConfirmation(segment).status,
+            winnerEventTeamId,
+            endedAt: checked ? (segment.endedAt ?? null) : null,
+            resultType: checked ? (segment.resultType ?? null) : null,
+            statusReason: checked ? (segment.statusReason ?? null) : null,
+          } satisfies MatchSegment;
+        }),
+      );
+      setError(null);
+    },
+    [segmentHasValidFinalScore, statusRules, statusSegments, statusTeam1Id, statusTeam2Id],
+  );
 
   const handleSave = () => {
     if (!match) {
@@ -1350,10 +1449,10 @@ export default function MatchEditModal({
     if (isCreateMode && String(eventType ?? '').toUpperCase() === 'TOURNAMENT' && currentMatchId) {
       const normalizedNode = graphValidation.normalizedById[currentMatchId];
       const hasAnyLink = Boolean(
-        normalizeOptionalId(selectedWinnerNextMatchId)
-        || normalizeOptionalId(selectedLoserNextMatchId)
-        || normalizedNode?.previousLeftId
-        || normalizedNode?.previousRightId,
+        normalizeOptionalId(selectedWinnerNextMatchId) ||
+          normalizeOptionalId(selectedLoserNextMatchId) ||
+          normalizedNode?.previousLeftId ||
+          normalizedNode?.previousRightId,
       );
       if (!hasAnyLink) {
         setError('Tournament match creation requires at least one bracket link.');
@@ -1365,47 +1464,53 @@ export default function MatchEditModal({
     const policySource = resolveEditablePolicySource(match, tournament);
     const policyScoringModel = normalizeScoringModel(
       policySource.scoringModel ?? statusRules?.scoringModel,
-      (tournament?.usesSets || tournament?.leagueConfig?.usesSets) ? 'SETS' : 'POINTS_ONLY',
+      tournament?.usesSets || tournament?.leagueConfig?.usesSets ? 'SETS' : 'POINTS_ONLY',
     );
-    const parsedPolicySegmentCount = policyScoringModel === 'SETS'
-      ? Math.max(1, statusRules?.segmentCount ?? actualSetCount(match, statusSegments))
-      : policyScoringModel === 'POINTS_ONLY'
-        ? 1
-        : Math.max(1, statusRules?.segmentCount ?? positiveIntOrNull(policySource.segmentCount) ?? 1);
+    const parsedPolicySegmentCount =
+      policyScoringModel === 'SETS'
+        ? Math.max(1, policySegmentCount ?? statusRules?.segmentCount ?? actualSetCount(match, statusSegments))
+        : policyScoringModel === 'POINTS_ONLY'
+          ? 1
+          : Math.max(1, policySegmentCount ?? statusRules?.segmentCount ?? positiveIntOrNull(policySource.segmentCount) ?? 1);
     const parsedPolicyTargets = parseTargetsInput(policyPointTargets);
-    const fallbackTarget = parsedPolicyTargets[0]
-      ?? resolveStatusPointTargets(match, tournament)?.[0]
-      ?? 21;
+    const fallbackTarget = parsedPolicyTargets[0] ?? resolveStatusPointTargets(match, tournament)?.[0] ?? 21;
     const policySnapshot = shouldSaveMatchPolicy
       ? ({
           ...policySource,
           scoringModel: policyScoringModel,
           segmentCount: parsedPolicySegmentCount,
-          segmentLabel: policySource.segmentLabel
-            ?? (policyScoringModel === 'SETS' ? 'Set' : policyScoringModel === 'INNINGS' ? 'Inning' : policyScoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
-          setPointTargets: policyScoringModel === 'SETS'
-            ? resizeTargets(parsedPolicyTargets, parsedPolicySegmentCount, fallbackTarget)
-            : [],
+          segmentLabel: normalizeSegmentLabel(
+            policySegmentLabel,
+            policyScoringModel === 'SETS'
+              ? 'Set'
+              : policyScoringModel === 'INNINGS'
+                ? 'Inning'
+                : policyScoringModel === 'POINTS_ONLY'
+                  ? 'Total'
+                  : 'Period',
+          ),
+          setPointTargets:
+            policyScoringModel === 'SETS' ? resizeTargets(parsedPolicyTargets, parsedPolicySegmentCount, fallbackTarget) : [],
           supportsDraw: policySource.supportsDraw === true,
           supportsOvertime: policySource.supportsOvertime === true,
           supportsShootout: policySource.supportsShootout === true,
           canUseOvertime: policySource.canUseOvertime === true || policySource.supportsOvertime === true,
           canUseShootout: policySource.canUseShootout === true || policySource.supportsShootout === true,
           officialRoles: Array.isArray(policySource.officialRoles) ? policySource.officialRoles : [],
-          supportedIncidentTypes: Array.isArray(policySource.supportedIncidentTypes) && policySource.supportedIncidentTypes.length
-            ? policySource.supportedIncidentTypes
-            : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+          supportedIncidentTypes:
+            Array.isArray(policySource.supportedIncidentTypes) && policySource.supportedIncidentTypes.length
+              ? policySource.supportedIncidentTypes
+              : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
           incidentTypeDefinitions: Array.isArray(policySource.incidentTypeDefinitions) ? policySource.incidentTypeDefinitions : [],
           autoCreatePointIncidentType: policySource.autoCreatePointIncidentType ?? 'POINT',
           pointIncidentRequiresParticipant: policySource.pointIncidentRequiresParticipant === true,
           timekeeping: {
             timerMode: policySource.timekeeping?.timerMode ?? (policyScoringModel === 'PERIODS' ? 'COUNT_UP' : 'NONE'),
-            segmentDurationMinutes: policyScoringModel === 'SETS'
-              ? null
-              : (policyMatchMinutes && parsedPolicySegmentCount > 0 ? Math.max(1, Math.round(policyMatchMinutes / parsedPolicySegmentCount)) : null)
-                ?? policySource.timekeeping?.segmentDurationMinutes
-                ?? null,
-            segmentDurationMinutesBySequence: policySource.timekeeping?.segmentDurationMinutesBySequence ?? [],
+            segmentDurationMinutes:
+              policyScoringModel === 'SETS' ? null : (policySegmentMinutes ?? policySource.timekeeping?.segmentDurationMinutes ?? null),
+            segmentDurationMinutesBySequence: policySegmentMinutesTouched
+              ? []
+              : (policySource.timekeeping?.segmentDurationMinutesBySequence ?? []),
             canUseAddedTime: policySource.timekeeping?.canUseAddedTime === true,
             addedTimeEnabled: policySource.timekeeping?.addedTimeEnabled === true,
             stopAtRegulationEnd: policySource.timekeeping?.stopAtRegulationEnd ?? true,
@@ -1428,19 +1533,41 @@ export default function MatchEditModal({
       updated.resolvedMatchRules = policySnapshot;
     }
     if (statusRules) {
+      const resizedStatusSegments =
+        statusSegments.length === statusRules.segmentCount
+          ? statusSegments
+          : buildStatusSegments(
+              {
+                ...match,
+                segments: statusSegments,
+                ...statusLegacyFromSegments(statusSegments, statusTeam1Id, statusTeam2Id),
+              },
+              statusRules,
+              statusTeam1Id,
+              statusTeam2Id,
+            );
       const statusSegmentsForSave = (
-        matchStartedValue && !resultTypeIsExceptional ? statusSegments : statusSegments.map(resetSegmentConfirmation)
-      ).map((segment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }));
-      const legacyStatus = matchStartedValue && !resultTypeIsExceptional
-        ? statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id)
-        : {
-            team1Points: Array.isArray(match.team1Points) ? [...match.team1Points] : [],
-            team2Points: Array.isArray(match.team2Points) ? [...match.team2Points] : [],
-            setResults: Array.isArray(match.setResults) ? [...match.setResults] : [],
-          };
-      const isMatchComplete = matchStartedValue
-        && !resultTypeIsExceptional
-        && statusMatchComplete(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id);
+        matchStartedValue && !resultTypeIsExceptional ? resizedStatusSegments : resizedStatusSegments.map(resetSegmentConfirmation)
+      ).map((segment) => ({
+        ...segment,
+        scores: {
+          ...(statusTeam1Id
+            ? {
+                [statusTeam1Id]: nonNegativeScore(segment.scores?.[statusTeam1Id]),
+              }
+            : {}),
+          ...(statusTeam2Id
+            ? {
+                [statusTeam2Id]: nonNegativeScore(segment.scores?.[statusTeam2Id]),
+              }
+            : {}),
+        },
+      }));
+      const legacyStatus = statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id);
+      const isMatchComplete =
+        matchStartedValue &&
+        !resultTypeIsExceptional &&
+        statusMatchComplete(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id);
       updated.segments = statusSegmentsForSave;
       updated.team1Points = legacyStatus.team1Points;
       updated.team2Points = legacyStatus.team2Points;
@@ -1469,13 +1596,11 @@ export default function MatchEditModal({
         updated.winnerEventTeamId = null;
         updated.statusReason = reason ?? 'Suspended';
       } else {
-        updated.status = matchStartedValue
-          ? isMatchComplete ? 'COMPLETE' : 'IN_PROGRESS'
-          : 'SCHEDULED';
+        updated.status = matchStartedValue ? (isMatchComplete ? 'COMPLETE' : 'IN_PROGRESS') : 'SCHEDULED';
         updated.winnerEventTeamId = isMatchComplete
           ? (winnerEventTeamIdValue ?? resolveCompletedMatchWinner(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id))
           : null;
-        updated.resultStatus = isMatchComplete ? updated.resultStatus ?? null : null;
+        updated.resultStatus = isMatchComplete ? (updated.resultStatus ?? null) : null;
         updated.resultType = isMatchComplete ? null : null;
         updated.statusReason = isMatchComplete ? reason : null;
       }
@@ -1503,6 +1628,8 @@ export default function MatchEditModal({
       delete (updated as any).field;
     }
 
+    updated.division = selectedDivision ?? divisionId ?? null;
+
     const nextTeam1 = selectedTeam1;
     updated.team1Id = team1Id ?? null;
     if (nextTeam1) {
@@ -1520,6 +1647,7 @@ export default function MatchEditModal({
     }
 
     updated.teamOfficialId = teamOfficialId ?? null;
+    updated.officialCheckedIn = teamOfficialId ? teamOfficialCheckedIn : Boolean(match.officialCheckedIn);
     const nextTeamOfficial = selectedTeamOfficial;
     if (nextTeamOfficial) {
       updated.teamOfficial = { ...nextTeamOfficial };
@@ -1537,9 +1665,10 @@ export default function MatchEditModal({
     if (officialPositions.length > 0) {
       updated.officialIds = sanitizedAssignments;
       updated.officialId = primaryOfficialAssignment?.userId ?? null;
-      const primaryOfficialUser = primaryOfficialAssignment
-        ? officialUserById.get(primaryOfficialAssignment.userId)
-        : undefined;
+      if (!teamOfficialId) {
+        updated.officialCheckedIn = Boolean(primaryOfficialAssignment?.checkedIn);
+      }
+      const primaryOfficialUser = primaryOfficialAssignment ? officialUserById.get(primaryOfficialAssignment.userId) : undefined;
       if (primaryOfficialUser) {
         updated.official = { ...primaryOfficialUser };
       } else {
@@ -1556,9 +1685,7 @@ export default function MatchEditModal({
       return;
     }
     const confirmed = window.confirm(
-      isCreateMode
-        ? 'Remove this unsaved match from the draft?'
-        : 'Delete this match from the event? This cannot be undone.',
+      isCreateMode ? 'Remove this unsaved match from the draft?' : 'Delete this match from the event? This cannot be undone.',
     );
     if (!confirmed) {
       return;
@@ -1573,22 +1700,79 @@ export default function MatchEditModal({
   const editablePolicySource = match ? resolveEditablePolicySource(match, tournament) : {};
   const editablePolicyScoringModel = normalizeScoringModel(
     editablePolicySource.scoringModel ?? statusRules?.scoringModel,
-    (tournament?.usesSets || tournament?.leagueConfig?.usesSets) ? 'SETS' : 'POINTS_ONLY',
+    tournament?.usesSets || tournament?.leagueConfig?.usesSets ? 'SETS' : 'POINTS_ONLY',
   );
   const isSetBasedPolicy = editablePolicyScoringModel === 'SETS';
-  const isTimedPolicy = !isSetBasedPolicy
-    && typeof editablePolicySource.timekeeping?.timerMode === 'string'
-    && editablePolicySource.timekeeping.timerMode.trim().toUpperCase() !== 'NONE';
-  const showMatchPolicyControls = isSetBasedPolicy || isTimedPolicy;
+  const isTimedPolicy =
+    !isSetBasedPolicy &&
+    typeof editablePolicySource.timekeeping?.timerMode === 'string' &&
+    editablePolicySource.timekeeping.timerMode.trim().toUpperCase() !== 'NONE';
+  const showMatchPolicyControls = Boolean(statusRules);
+  const segmentLabel = normalizeSegmentLabel(statusRules?.segmentLabel, 'Segment');
+  const segmentCount = statusRules?.segmentCount ?? 1;
+  const segmentPluralLabel = pluralizeSegmentLabel(segmentLabel, segmentCount);
+  const segmentLabelOptions = Array.from(new Set([...SEGMENT_LABEL_OPTIONS, segmentLabel])).map((label) => ({ value: label, label }));
+  const previewTeam1Label = selectedTeam1
+    ? resolveTeamName(selectedTeam1, teams)
+    : (team1Placeholder ?? resolveTeamName(match?.team1, teams) ?? 'Team 1');
+  const previewTeam2Label = selectedTeam2
+    ? resolveTeamName(selectedTeam2, teams)
+    : (team2Placeholder ?? resolveTeamName(match?.team2, teams) ?? 'Team 2');
+  const previewLegacyScores = statusLegacyFromSegments(statusSegments, statusTeam1Id, statusTeam2Id);
+  const previewTeam1Total =
+    statusRules?.scoringModel === 'SETS'
+      ? previewLegacyScores.setResults.filter((winner) => winner === 1).length
+      : previewLegacyScores.team1Points.reduce((total, score) => total + score, 0);
+  const previewTeam2Total =
+    statusRules?.scoringModel === 'SETS'
+      ? previewLegacyScores.setResults.filter((winner) => winner === 2).length
+      : previewLegacyScores.team2Points.reduce((total, score) => total + score, 0);
+  const draftMatchComplete = Boolean(
+    statusRules && matchStartedChecked && statusMatchComplete(statusSegments, statusRules, statusTeam1Id, statusTeam2Id),
+  );
+  const draftStatusLabel = resultTypeIsForfeit
+    ? 'Forfeit'
+    : resultTypeIsNoContest
+      ? 'Cancelled'
+      : resultTypeIsSuspended
+        ? 'Suspended'
+        : !matchStartedChecked
+          ? 'Scheduled'
+          : draftMatchComplete
+            ? 'Complete'
+            : 'In progress';
+  const draftStatusColor =
+    draftStatusLabel === 'Complete'
+      ? 'green'
+      : draftStatusLabel === 'In progress'
+        ? 'blue'
+        : draftStatusLabel === 'Suspended'
+          ? 'yellow'
+          : draftStatusLabel === 'Cancelled' || draftStatusLabel === 'Forfeit'
+            ? 'red'
+            : 'gray';
+  const previewFieldLabel = selectedField ? getFieldDisplayName(selectedField) : 'Field not set';
+  const previewSegmentSummary = statusSegments
+    .map((segment) => {
+      const team1Score = statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0;
+      const team2Score = statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0;
+      return `${team1Score}–${team2Score}`;
+    })
+    .join('   ');
   const renderMatchStatusPanel = () => {
-    if (!operationsMatch || !statusRules) {
+    if (!draftMatch || !statusRules) {
       return null;
     }
     const matchStartedDisabled = !canManageOperations;
 
     return (
-      <SectionPanel title="Match Status">
+      <SectionPanel title="Match State">
         <Stack gap="xs">
+          <FieldRow label="Status">
+            <Badge color={draftStatusColor} variant="light">
+              {draftStatusLabel}
+            </Badge>
+          </FieldRow>
           <FieldRow label="Result type">
             <Select
               aria-label="Result type"
@@ -1641,7 +1825,13 @@ export default function MatchEditModal({
                 value={statusReasonValue}
                 disabled={!canManageOperations}
                 onChange={(event) => setStatusReasonValue(event.currentTarget.value)}
-                placeholder={resultTypeIsForfeit ? 'Optional forfeit note' : resultTypeIsNoContest ? 'Weather, unsafe conditions, etc.' : 'Suspension reason'}
+                placeholder={
+                  resultTypeIsForfeit
+                    ? 'Optional forfeit note'
+                    : resultTypeIsNoContest
+                      ? 'Weather, unsafe conditions, etc.'
+                      : 'Suspension reason'
+                }
                 size="sm"
               />
             </FieldRow>
@@ -1654,30 +1844,6 @@ export default function MatchEditModal({
               void handleMatchStartedChange(event.currentTarget.checked);
             }}
           />
-          <Stack gap={6} pl="lg">
-            {statusSegments.map((segment, index) => {
-              const checked = segment.status === 'COMPLETE';
-              const previousComplete = statusSegments
-                .slice(0, index)
-                .every((entry) => entry.status === 'COMPLETE');
-              const validFinalScore = segmentHasValidFinalScore(segment, index);
-              const disabled =
-                !canManageOperations
-                || resultTypeIsExceptional
-                || (!checked && (!matchStartedChecked || !previousComplete || !validFinalScore));
-              return (
-                <Checkbox
-                  key={segment.id ?? segment.sequence}
-                  label={`${statusLabelForSegment(statusRules, segment.sequence)} confirmed`}
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={(event) => {
-                    void handleSegmentConfirmedChange(segment.sequence, event.currentTarget.checked);
-                  }}
-                />
-              );
-            })}
-          </Stack>
         </Stack>
       </SectionPanel>
     );
@@ -1689,7 +1855,7 @@ export default function MatchEditModal({
       onClose={handleClose}
       aria-label={modalTitle}
       centered
-      size={operationsMatch && tournament ? 1120 : 940}
+      size={1120}
       padding={0}
       radius="md"
       withCloseButton={false}
@@ -1714,19 +1880,18 @@ export default function MatchEditModal({
                 {modalTitle}
               </Text>
               <Group gap="xs" wrap="wrap">
-                <Text size="sm" c="dimmed">Bracket lane:</Text>
-                <Text size="sm" fw={600}>{bracketLaneLabel}</Text>
+                <Text size="sm" c="dimmed">
+                  Bracket lane:
+                </Text>
+                <Text size="sm" fw={600}>
+                  {bracketLaneLabel}
+                </Text>
                 <Badge color={isCreateMode ? 'gray' : 'green'} variant="light" radius="sm">
                   {isCreateMode ? 'Draft match' : 'Saved match'}
                 </Badge>
               </Group>
             </Stack>
-            <ActionIcon
-              aria-label="Close match editor"
-              variant="subtle"
-              color="gray"
-              onClick={handleClose}
-            >
+            <ActionIcon aria-label="Close match editor" variant="subtle" color="gray" onClick={handleClose}>
               <X size={18} />
             </ActionIcon>
           </Group>
@@ -1740,241 +1905,271 @@ export default function MatchEditModal({
               </Alert>
             )}
 
-            <Group
-              justify="space-between"
-              align="center"
-              gap="md"
-              className="rounded-md border border-gray-200 bg-white px-4 py-2"
-            >
-              <Switch
-                label="Place match in losers bracket"
-                checked={losersBracket}
-                onChange={(event) => setLosersBracket(event.currentTarget.checked)}
-              />
+            <Text fw={800} size="lg">
+              Admin edit
+            </Text>
 
-              <Checkbox
-                label="Lock match (prevent auto-rescheduling)"
-                checked={locked}
-                onChange={(event) => setLocked(event.currentTarget.checked)}
-              />
-            </Group>
-
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm" verticalSpacing="sm">
-              <Stack gap="sm">
-                <SectionPanel title="Match Setup">
-                  <Stack gap="sm">
-                    <FieldRow label="Team 1">
+            <div className="grid items-start gap-3 lg:grid-cols-2">
+              <SectionPanel title="Match setup and schedule">
+                <Stack gap="sm">
+                  <FieldRow label="Team 1">
+                    <Select
+                      aria-label="Team 1"
+                      data={team1Options}
+                      value={team1Id}
+                      onChange={setTeam1Id}
+                      placeholder="Select team"
+                      clearable
+                      size="sm"
+                    />
+                  </FieldRow>
+                  <FieldRow label="Team 2">
+                    <Select
+                      aria-label="Team 2"
+                      data={team2Options}
+                      value={team2Id}
+                      onChange={setTeam2Id}
+                      placeholder="Select team"
+                      clearable
+                      size="sm"
+                    />
+                  </FieldRow>
+                  {divisionOptions.length > 0 && (
+                    <FieldRow label="Division">
                       <Select
-                        aria-label="Team 1"
-                        data={team1Options}
-                        value={team1Id}
-                        onChange={setTeam1Id}
-                        placeholder="Select team"
+                        aria-label="Division"
+                        data={divisionOptions}
+                        value={divisionId}
+                        onChange={setDivisionId}
+                        placeholder="Select division"
                         clearable
                         size="sm"
-                      />
-                    </FieldRow>
-                    <FieldRow label="Team 2">
-                      <Select
-                        aria-label="Team 2"
-                        data={team2Options}
-                        value={team2Id}
-                        onChange={setTeam2Id}
-                        placeholder="Select team"
-                        clearable
-                        size="sm"
-                      />
-                    </FieldRow>
-                    <FieldRow label="Team Official">
-                      <Select
-                        aria-label="Team Official"
-                        description={doTeamsOfficiate ? undefined : 'Optional when teams are not providing officials.'}
-                        data={teamOptions}
-                        value={teamOfficialId}
-                        onChange={setTeamOfficialId}
-                        placeholder="Select official team"
-                        clearable
-                        size="sm"
-                      />
-                    </FieldRow>
-                  </Stack>
-                </SectionPanel>
-
-                {showMatchPolicyControls && (
-                  <SectionPanel title="Match Rules">
-                    <Stack gap="sm">
-                      {isSetBasedPolicy && (
-                        <FieldRow label="Score limits">
-                          <TextInput
-                            aria-label="Score limits"
-                            value={policyPointTargets}
-                            onChange={(event) => {
-                              setPolicyPointTargets(event.currentTarget.value);
-                              setPolicyTouched(true);
-                            }}
-                            placeholder="25, 25, 15"
-                            size="sm"
-                          />
-                        </FieldRow>
-                      )}
-                      {isTimedPolicy && (
-                        <FieldRow label="Match minutes">
-                          <NumberInput
-                            aria-label="Match minutes"
-                            value={policyMatchMinutes ?? ''}
-                            min={1}
-                            step={1}
-                            allowDecimal={false}
-                            onChange={(value) => {
-                              setPolicyMatchMinutes(typeof value === 'number' ? value : positiveIntOrNull(value));
-                              setPolicyTouched(true);
-                            }}
-                            size="sm"
-                          />
-                        </FieldRow>
-                      )}
-                    </Stack>
-                  </SectionPanel>
-                )}
-
-                <SectionPanel title="Schedule">
-                  <Stack gap="sm">
-                    {fieldOptions.length > 0 && (
-                      <FieldRow label="Field" required={requiresScheduleFields}>
-                        <Select
-                          aria-label="Field"
-                          data={fieldOptions}
-                          value={fieldId}
-                          onChange={setFieldId}
-                          placeholder="Select field"
-                          clearable
-                          size="sm"
-                        />
-                      </FieldRow>
-                    )}
-                    <FieldRow label="Start time" required={requiresScheduleFields}>
-                      <DateTimePicker
-                        aria-label={requiresScheduleFields ? 'Start time' : 'Start time (optional)'}
-                        value={startValue}
-                        onChange={handleStartDateChange}
-                        withSeconds
-                        valueFormat="MM/DD/YYYY hh:mm:ss A"
-                        timePickerProps={MATCH_TIME_PICKER_PROPS}
-                        required={requiresScheduleFields}
-                        size="sm"
-                      />
-                    </FieldRow>
-                    <FieldRow label="End time" required={requiresScheduleFields}>
-                      <DateTimePicker
-                        aria-label={requiresScheduleFields ? 'End time' : 'End time (optional)'}
-                        value={endValue}
-                        onChange={handleEndDateChange}
-                        withSeconds
-                        valueFormat="MM/DD/YYYY hh:mm:ss A"
-                        timePickerProps={MATCH_TIME_PICKER_PROPS}
-                        required={requiresScheduleFields}
-                        minDate={startValue ?? undefined}
-                        size="sm"
-                      />
-                    </FieldRow>
-
-                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                      <Stack gap="sm">
-                        <Text fw={700} size="sm">Actual Times</Text>
-                        <FieldRow label="Actual start time">
-                          <DateTimePicker
-                            aria-label="Actual start time"
-                            value={actualStartValue}
-                            onChange={handleActualStartDateChange}
-                            withSeconds
-                            valueFormat="MM/DD/YYYY hh:mm:ss A"
-                            timePickerProps={MATCH_TIME_PICKER_PROPS}
-                            clearable
-                            size="sm"
-                          />
-                        </FieldRow>
-                        <FieldRow label="Actual end time">
-                          <DateTimePicker
-                            aria-label="Actual end time"
-                            value={actualEndValue}
-                            onChange={handleActualEndDateChange}
-                            withSeconds
-                            valueFormat="MM/DD/YYYY hh:mm:ss A"
-                            timePickerProps={MATCH_TIME_PICKER_PROPS}
-                            minDate={actualStartValue ?? undefined}
-                            clearable
-                            size="sm"
-                          />
-                        </FieldRow>
-                      </Stack>
-                    </div>
-                  </Stack>
-                </SectionPanel>
-              </Stack>
-
-              <Stack gap="sm">
-                <SectionPanel title="Official Assignments">
-                  {officialPositions.length > 0 ? (
-                    <Stack gap="sm">
-                      {assignmentSlots.map(({ position, slotIndex }) => {
-                        const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
-                        const currentValue = assignment && (
-                          assignment.holderType === 'PLAYER'
-                          || assignment.holderType === 'OFFICIAL'
-                        )
-                          ? encodeAssignmentValue(
-                              assignment.holderType,
-                              assignment.holderType === 'OFFICIAL'
-                                ? (
-                                  (
-                                    normalizeOptionalId(assignment.eventOfficialId)
-                                    && eventOfficialById.has(normalizeOptionalId(assignment.eventOfficialId) as string)
-                                  )
-                                    ? (normalizeOptionalId(assignment.eventOfficialId) as string)
-                                    : (eventOfficialByUserId.get(assignment.userId)?.id ?? assignment.userId)
-                                )
-                                : assignment.userId,
-                            )
-                          : null;
-                        const options = getAssignmentOptions(position, assignment);
-                        const label = position.count > 1 ? `${position.name} ${slotIndex + 1}` : position.name;
-                        return (
-                          <FieldRow key={`${position.id}:${slotIndex}`} label={label}>
-                            <Select
-                              aria-label={label}
-                              data={options}
-                              value={currentValue}
-                              onChange={(value) => handleOfficialAssignmentChange(position.id, slotIndex, value)}
-                              placeholder="Unassigned"
-                              clearable
-                              searchable
-                              size="sm"
-                              nothingFoundMessage={options.length ? 'No matches' : 'No eligible officials or players'}
-                            />
-                          </FieldRow>
-                        );
-                      })}
-                      <Text size="xs" c="dimmed">Official assignments must be unique.</Text>
-                    </Stack>
-                  ) : (
-                    <FieldRow label="Official">
-                      <Select
-                        aria-label="Official"
-                        data={officialOptions}
-                        value={userOfficialId}
-                        onChange={setUserOfficialId}
-                        placeholder="Select official"
-                        clearable
-                        searchable
-                        size="sm"
-                        nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
                       />
                     </FieldRow>
                   )}
+                  {fieldOptions.length > 0 && (
+                    <FieldRow label="Field" required={requiresScheduleFields}>
+                      <Select
+                        aria-label="Field"
+                        data={fieldOptions}
+                        value={fieldId}
+                        onChange={setFieldId}
+                        placeholder="Select field"
+                        clearable
+                        size="sm"
+                      />
+                    </FieldRow>
+                  )}
+                  <FieldRow label="Scheduled start" required={requiresScheduleFields}>
+                    <DateTimePicker
+                      aria-label={requiresScheduleFields ? 'Scheduled start' : 'Scheduled start (optional)'}
+                      value={startValue}
+                      onChange={handleStartDateChange}
+                      withSeconds
+                      valueFormat="MM/DD/YYYY hh:mm:ss A"
+                      timePickerProps={MATCH_TIME_PICKER_PROPS}
+                      required={requiresScheduleFields}
+                      size="sm"
+                    />
+                  </FieldRow>
+                  <FieldRow label="Scheduled end" required={requiresScheduleFields}>
+                    <DateTimePicker
+                      aria-label={requiresScheduleFields ? 'Scheduled end' : 'Scheduled end (optional)'}
+                      value={endValue}
+                      onChange={handleEndDateChange}
+                      withSeconds
+                      valueFormat="MM/DD/YYYY hh:mm:ss A"
+                      timePickerProps={MATCH_TIME_PICKER_PROPS}
+                      required={requiresScheduleFields}
+                      minDate={startValue ?? undefined}
+                      size="sm"
+                    />
+                  </FieldRow>
+                  <FieldRow label="Actual start">
+                    <DateTimePicker
+                      aria-label="Actual start"
+                      value={actualStartValue}
+                      onChange={handleActualStartDateChange}
+                      withSeconds
+                      valueFormat="MM/DD/YYYY hh:mm:ss A"
+                      timePickerProps={MATCH_TIME_PICKER_PROPS}
+                      clearable
+                      size="sm"
+                    />
+                  </FieldRow>
+                  <FieldRow label="Actual end">
+                    <DateTimePicker
+                      aria-label="Actual end"
+                      value={actualEndValue}
+                      onChange={handleActualEndDateChange}
+                      withSeconds
+                      valueFormat="MM/DD/YYYY hh:mm:ss A"
+                      timePickerProps={MATCH_TIME_PICKER_PROPS}
+                      minDate={actualStartValue ?? undefined}
+                      clearable
+                      size="sm"
+                    />
+                  </FieldRow>
+                </Stack>
+              </SectionPanel>
+
+              <Stack gap="sm">
+                <SectionPanel title="Official Assignments">
+                  <Stack gap="sm">
+                    {(doTeamsOfficiate || Boolean(teamOfficialId || matchTeamOfficialId)) && (
+                      <FieldRow label="Officiating team">
+                        <Group gap="sm" align="center" wrap="nowrap">
+                          <Select
+                            aria-label="Officiating team"
+                            data={teamOptions}
+                            value={teamOfficialId}
+                            onChange={(value) => {
+                              setTeamOfficialId(value);
+                              setTeamOfficialCheckedIn(false);
+                            }}
+                            placeholder="Select team"
+                            clearable
+                            searchable
+                            size="sm"
+                            style={{ flex: 1 }}
+                          />
+                          <Checkbox
+                            aria-label="Officiating team checked in"
+                            label="Checked in"
+                            checked={teamOfficialCheckedIn}
+                            disabled={!teamOfficialId}
+                            onChange={(event) => setTeamOfficialCheckedIn(event.currentTarget.checked)}
+                          />
+                        </Group>
+                      </FieldRow>
+                    )}
+                    {officialPositions.length > 0 ? (
+                      <>
+                        {assignmentSlots.map(({ position, slotIndex }) => {
+                          const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
+                          const currentValue =
+                            assignment && (assignment.holderType === 'PLAYER' || assignment.holderType === 'OFFICIAL')
+                              ? encodeAssignmentValue(
+                                  assignment.holderType,
+                                  assignment.holderType === 'OFFICIAL'
+                                    ? normalizeOptionalId(assignment.eventOfficialId) &&
+                                      eventOfficialById.has(normalizeOptionalId(assignment.eventOfficialId) as string)
+                                      ? (normalizeOptionalId(assignment.eventOfficialId) as string)
+                                      : (eventOfficialByUserId.get(assignment.userId)?.id ?? assignment.userId)
+                                    : assignment.userId,
+                                )
+                              : null;
+                          const options = getAssignmentOptions(position, assignment);
+                          const label = position.count > 1 ? `${position.name} ${slotIndex + 1}` : position.name;
+                          return (
+                            <FieldRow key={`${position.id}:${slotIndex}`} label={label}>
+                              <Group gap="sm" align="center" wrap="nowrap">
+                                <Select
+                                  aria-label={label}
+                                  data={options}
+                                  value={currentValue}
+                                  onChange={(value) => handleOfficialAssignmentChange(position.id, slotIndex, value)}
+                                  placeholder="Unassigned"
+                                  clearable
+                                  searchable
+                                  size="sm"
+                                  nothingFoundMessage={options.length ? 'No matches' : 'No eligible officials or players'}
+                                  style={{ flex: 1 }}
+                                />
+                                <Checkbox
+                                  aria-label={`${label} checked in`}
+                                  label="Checked in"
+                                  checked={Boolean(assignment?.checkedIn)}
+                                  disabled={!assignment}
+                                  onChange={(event) =>
+                                    handleOfficialAssignmentCheckedInChange(position.id, slotIndex, event.currentTarget.checked)
+                                  }
+                                />
+                              </Group>
+                            </FieldRow>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <FieldRow label="Official">
+                        <Select
+                          aria-label="Official"
+                          data={officialOptions}
+                          value={userOfficialId}
+                          onChange={setUserOfficialId}
+                          placeholder="Select official"
+                          clearable
+                          searchable
+                          size="sm"
+                          nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
+                        />
+                      </FieldRow>
+                    )}
+                  </Stack>
                 </SectionPanel>
 
-                <SectionPanel title="Bracket Links">
+                <SectionPanel title="Rules and bracket">
                   <Stack gap="sm">
+                    {showMatchPolicyControls && (
+                      <>
+                        <FieldRow label="Segment label">
+                          <Select
+                            aria-label="Segment label"
+                            data={segmentLabelOptions}
+                            value={segmentLabel}
+                            onChange={(value) => {
+                              setPolicySegmentLabel(normalizeSegmentLabel(value, segmentLabel));
+                              setPolicyTouched(true);
+                            }}
+                            searchable
+                            size="sm"
+                          />
+                        </FieldRow>
+                        <FieldRow label={`${segmentLabel} count`}>
+                          <NumberInput
+                            aria-label={`${segmentLabel} count`}
+                            value={policySegmentCount ?? ''}
+                            min={1}
+                            step={1}
+                            allowDecimal={false}
+                            disabled={editablePolicyScoringModel === 'POINTS_ONLY'}
+                            onChange={handleSegmentCountChange}
+                            size="sm"
+                          />
+                        </FieldRow>
+                        {isTimedPolicy && (
+                          <FieldRow label="Segment length (min)">
+                            <NumberInput
+                              aria-label="Segment length (min)"
+                              value={policySegmentMinutes ?? ''}
+                              min={1}
+                              step={1}
+                              allowDecimal={false}
+                              onChange={(value) => {
+                                setPolicySegmentMinutes(positiveIntOrNull(value));
+                                setPolicySegmentMinutesTouched(true);
+                                setPolicyTouched(true);
+                              }}
+                              size="sm"
+                            />
+                          </FieldRow>
+                        )}
+                        {isSetBasedPolicy && (
+                          <FieldRow label="Score limits">
+                            <TextInput
+                              aria-label="Score limits"
+                              value={policyPointTargets}
+                              onChange={(event) => {
+                                setPolicyPointTargets(event.currentTarget.value);
+                                setPolicyTouched(true);
+                              }}
+                              placeholder="25, 25, 15"
+                              size="sm"
+                            />
+                          </FieldRow>
+                        )}
+                      </>
+                    )}
                     <FieldRow label="Winner advances to">
                       <Select
                         aria-label="Winner advances to"
@@ -1985,7 +2180,6 @@ export default function MatchEditModal({
                         clearable
                         searchable
                         size="sm"
-                        nothingFoundMessage={winnerNextOptions.length ? 'No matches' : 'No valid matches'}
                       />
                     </FieldRow>
                     <FieldRow label="Loser advances to">
@@ -1998,41 +2192,144 @@ export default function MatchEditModal({
                         clearable
                         searchable
                         size="sm"
-                        nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
                       />
                     </FieldRow>
-                    <Text size="xs" c="dimmed">Links must form a valid bracket graph.</Text>
+                    <Switch
+                      label="Place match in losers bracket"
+                      checked={losersBracket}
+                      onChange={(event) => setLosersBracket(event.currentTarget.checked)}
+                    />
+                    <Checkbox
+                      label="Lock match (prevent auto-rescheduling)"
+                      checked={locked}
+                      onChange={(event) => setLocked(event.currentTarget.checked)}
+                    />
                   </Stack>
                 </SectionPanel>
-
-                {renderMatchStatusPanel()}
               </Stack>
-            </SimpleGrid>
+            </div>
 
-            <SectionPanel title="Match Operations">
-              {operationsMatch && tournament ? (
-                <ScoreUpdateModal
-                  match={operationsMatch}
-                  tournament={tournament}
-                  participantTeams={participantTeams}
-                  canManage={canManageOperations}
-                  onScoreChange={onScoreChange ? handleEmbeddedScoreChange : undefined}
-                  onSetComplete={onSetComplete ? handleEmbeddedSetComplete : undefined}
-                  onSubmit={onScoreSubmit}
-                  onMatchComplete={onMatchComplete}
-                  onClose={() => undefined}
-                  isOpen={opened}
-                  team1Placeholder={team1Placeholder}
-                  team2Placeholder={team2Placeholder}
-                  embedded
-                  defaultShowDetails
-                  hideStatusControls
-                />
-              ) : (
-                <Text size="sm" c="dimmed">
-                  Save the match before managing scores, segment winners, official check-in, and the match log.
-                </Text>
-              )}
+            {renderMatchStatusPanel()}
+
+            {statusRules && (
+              <SectionPanel
+                title={
+                  isSetBasedPolicy
+                    ? `Scores & ${segmentLabel.toLowerCase()} confirmation`
+                    : `Scores & ${segmentPluralLabel.toLowerCase()} state`
+                }
+              >
+                <div className="overflow-x-auto">
+                  <div className="min-w-[680px]">
+                    <div className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] gap-3 border-b border-gray-200 px-2 pb-2">
+                      <Text size="xs" fw={700} c="dimmed">
+                        {segmentLabel}
+                      </Text>
+                      <Text size="xs" fw={700} c="dimmed">
+                        {previewTeam1Label}
+                      </Text>
+                      <Text size="xs" fw={700} c="dimmed">
+                        {previewTeam2Label}
+                      </Text>
+                      <Text size="xs" fw={700} c="dimmed">
+                        {isSetBasedPolicy ? 'Confirmed' : 'Complete'}
+                      </Text>
+                    </div>
+                    {statusSegments.map((segment, index) => {
+                      const checked = segment.status === 'COMPLETE';
+                      const previousComplete = statusSegments.slice(0, index).every((entry) => entry.status === 'COMPLETE');
+                      const segmentName = statusLabelForSegment(statusRules, segment.sequence);
+                      const confirmationLabel = isSetBasedPolicy ? `${segmentName} confirmed` : `${segmentName} complete`;
+                      const confirmationDisabled =
+                        !canManageOperations || resultTypeIsExceptional || (!checked && (!matchStartedChecked || !previousComplete));
+                      return (
+                        <div
+                          key={segment.id ?? segment.sequence}
+                          className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] items-center gap-3 border-b border-gray-100 px-2 py-2 last:border-b-0"
+                        >
+                          <Text size="sm" fw={600}>
+                            {segmentName}
+                          </Text>
+                          <NumberInput
+                            aria-label={`${segmentName} ${previewTeam1Label} score`}
+                            value={statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0}
+                            min={0}
+                            step={1}
+                            allowDecimal={false}
+                            disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam1Id}
+                            onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam1Id, value)}
+                            size="xs"
+                          />
+                          <NumberInput
+                            aria-label={`${segmentName} ${previewTeam2Label} score`}
+                            value={statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0}
+                            min={0}
+                            step={1}
+                            allowDecimal={false}
+                            disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam2Id}
+                            onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam2Id, value)}
+                            size="xs"
+                          />
+                          <Checkbox
+                            label={isSetBasedPolicy ? 'Confirmed' : 'Complete'}
+                            aria-label={confirmationLabel}
+                            checked={checked}
+                            disabled={confirmationDisabled}
+                            onChange={(event) => handleSegmentConfirmedChange(segment.sequence, event.currentTarget.checked)}
+                          />
+                        </div>
+                      );
+                    })}
+                    <div className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] items-center gap-3 bg-gray-50 px-2 py-2">
+                      <Text size="sm" fw={800}>
+                        Total
+                      </Text>
+                      <Text size="sm" fw={800}>
+                        {previewTeam1Total}
+                      </Text>
+                      <Text size="sm" fw={800}>
+                        {previewTeam2Total}
+                      </Text>
+                      <span />
+                    </div>
+                  </div>
+                </div>
+              </SectionPanel>
+            )}
+
+            <SectionPanel title="Match details preview">
+              <Paper bg="gray.0" radius="md" p="md" withBorder>
+                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md" verticalSpacing="sm">
+                  <Stack gap={2} justify="center">
+                    <Text fw={800}>{previewTeam1Label}</Text>
+                    <Text size="xs" c="dimmed">
+                      Team 1
+                    </Text>
+                  </Stack>
+                  <Stack gap={4} align="center" justify="center">
+                    <Badge color={draftStatusColor} variant="light">
+                      {draftStatusLabel.toUpperCase()}
+                    </Badge>
+                    <Text fw={900} size="1.75rem" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {previewTeam1Total} — {previewTeam2Total}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      {previewFieldLabel} • {formatPreviewDateTime(startValue)}
+                    </Text>
+                    {previewSegmentSummary && (
+                      <Text size="xs" c="dimmed">
+                        {previewSegmentSummary}
+                      </Text>
+                    )}
+                  </Stack>
+                  <Stack gap={2} justify="center" className="items-start sm:items-end">
+                    <Text fw={800}>{previewTeam2Label}</Text>
+                    <Text size="xs" c="dimmed">
+                      Team 2
+                    </Text>
+                  </Stack>
+                </SimpleGrid>
+              </Paper>
             </SectionPanel>
           </Stack>
         </div>
@@ -2040,18 +2337,15 @@ export default function MatchEditModal({
         <Group justify="space-between" className="border-t border-gray-200 px-5 py-3 sm:px-6">
           <Group>
             {onDelete && (
-              <Button
-                variant="light"
-                color="red"
-                leftSection={<Trash2 size={16} />}
-                onClick={handleDelete}
-              >
+              <Button variant="light" color="red" leftSection={<Trash2 size={16} />} onClick={handleDelete}>
                 {isCreateMode ? 'Discard match' : 'Delete match'}
               </Button>
             )}
           </Group>
           <Group>
-            <Button variant="default" onClick={handleClose}>Cancel</Button>
+            <Button variant="default" onClick={handleClose}>
+              Cancel
+            </Button>
             <Button onClick={handleSave} disabled={saveDisabled}>
               {isCreateMode ? 'Create match' : 'Save changes'}
             </Button>
@@ -2067,7 +2361,9 @@ function SectionPanel({ title, titleAction = null, children }: { title: string; 
     <Paper withBorder radius="md" p="sm" shadow="none" role="region" aria-label={title}>
       <Stack gap="sm">
         <Group justify="space-between" align="center" gap="sm">
-          <Text fw={800} size="sm">{title}</Text>
+          <Text fw={800} size="sm">
+            {title}
+          </Text>
           {titleAction}
         </Group>
         {children}
@@ -2081,7 +2377,12 @@ function FieldRow({ label, required = false, children }: { label: string; requir
     <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-start">
       <Text size="sm" fw={500} pt={6}>
         {label}
-        {required && <Text span inherit c="red"> *</Text>}
+        {required && (
+          <Text span inherit c="red">
+            {' '}
+            *
+          </Text>
+        )}
       </Text>
       <div className="min-w-0">{children}</div>
     </div>

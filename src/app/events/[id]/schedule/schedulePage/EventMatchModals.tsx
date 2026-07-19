@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 
-import type { Event, Match, Team, UserData } from '@/types';
+import type { Division, Event, Match, Team, UserData } from '@/types';
 
 import MatchEditModal from '../components/MatchEditModal';
 import ScoreUpdateModal from '../components/ScoreUpdateModal';
@@ -86,8 +86,12 @@ export default function EventMatchModals({
         tournament={activeEvent}
         allMatches={activeMatches}
         fields={Array.isArray(activeEvent?.fields) ? activeEvent.fields : []}
+        divisions={
+          Array.isArray(activeEvent?.divisions)
+            ? activeEvent.divisions.filter((division): division is Division => Boolean(division) && typeof division === 'object')
+            : []
+        }
         teams={matchEditorTeams}
-        participantTeams={participantTeams}
         officials={matchEditorOfficials}
         officialPositions={Array.isArray(activeEvent?.officialPositions) ? activeEvent.officialPositions : []}
         eventOfficials={Array.isArray(activeEvent?.eventOfficials) ? activeEvent.eventOfficials : []}
@@ -97,9 +101,6 @@ export default function EventMatchModals({
         creationContext={matchEditorContext}
         eventType={activeEvent?.eventType}
         enforceScheduleFields={matchEditorContext === 'schedule'}
-        onScoreChange={onScoreChange}
-        onSetComplete={onSetComplete}
-        onScoreSubmit={onScoreSubmit}
         team1Placeholder={editingMatchId ? scheduleBracketPlaceholderAssignments[`${editingMatchId}:team1`] : undefined}
         team2Placeholder={editingMatchId ? scheduleBracketPlaceholderAssignments[`${editingMatchId}:team2`] : undefined}
         onClose={onMatchEditClose}
