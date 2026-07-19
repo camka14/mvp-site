@@ -66,6 +66,7 @@ type ScheduleCalendarPanelProps = {
   emptyText?: string;
   emptyAgendaText?: string;
   showHeader?: boolean;
+  staticEmpty?: boolean;
   titleOrder?: 2 | 3 | 4 | 5;
   minHeight?: number;
   className?: string;
@@ -211,12 +212,13 @@ export default function ScheduleCalendarPanel({
   emptyText = 'No schedule entries found.',
   emptyAgendaText = 'No upcoming schedule entries found.',
   showHeader = true,
+  staticEmpty = false,
   titleOrder = 2,
   minHeight = 700,
   className,
 }: ScheduleCalendarPanelProps) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!staticEmpty);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -232,6 +234,12 @@ export default function ScheduleCalendarPanel({
     mode: 'initial' | 'refresh' = 'initial',
     dateWindow: ScheduleDateWindow | null = null,
   ) => {
+    if (staticEmpty) {
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+      return;
+    }
     const requestGeneration = ++requestGenerationRef.current;
     if (mode === 'initial') setLoading(true);
     if (mode === 'refresh') setRefreshing(true);
@@ -275,11 +283,14 @@ export default function ScheduleCalendarPanel({
         setRefreshing(false);
       }
     }
-  }, [endpoint, errorText]);
+  }, [endpoint, errorText, staticEmpty]);
 
   useEffect(() => {
+    if (staticEmpty) {
+      return;
+    }
     void loadSchedule('initial');
-  }, [loadSchedule]);
+  }, [loadSchedule, staticEmpty]);
 
   const scheduleEntries = useMemo<ScheduleCalendarEvent[]>(() => {
     const eventsById = new Map(events.map((event) => [event.$id, event]));
@@ -382,20 +393,22 @@ export default function ScheduleCalendarPanel({
         <Badge color="blue" variant="light">
           {scheduleEntries.length} entries
         </Badge>
-        <Button
-          variant="light"
-          loading={refreshing}
-          onClick={() => {
-            void loadSchedule('refresh', visibleWindow);
-          }}
-        >
-          Refresh
-        </Button>
+        {!staticEmpty ? (
+          <Button
+            variant="light"
+            loading={refreshing}
+            onClick={() => {
+              void loadSchedule('refresh', visibleWindow);
+            }}
+          >
+            Refresh
+          </Button>
+        ) : null}
       </Group>
     </Group>
   ) : null;
 
-  if (loading) {
+  if (loading && !staticEmpty) {
     return (
       <Stack gap="lg">
         {Header}
@@ -447,7 +460,9 @@ export default function ScheduleCalendarPanel({
               && visibleWindow.to.getTime() === nextWindow.to.getTime()
             ) return;
             setVisibleWindow(nextWindow);
-            void loadSchedule('refresh', nextWindow);
+            if (!staticEmpty) {
+              void loadSchedule('refresh', nextWindow);
+            }
           }}
           startAccessor="start"
           endAccessor="end"

@@ -58,6 +58,7 @@ const verifiedUserContext = () => ({
     emailVerifiedAt: '2026-01-01T00:00:00.000Z',
   },
   loading: false,
+  isGuest: false,
   isAuthenticated: true,
   requiresEmailVerification: false,
 });
@@ -124,5 +125,31 @@ describe('OrganizationsPage', () => {
       initialFeatures: ['CLUB_TEAMS', 'EVENT_MANAGEMENT'],
       initialTagSlugs: ['club'],
     }));
+  });
+
+  it('lets guests view the page and prompts account creation before creating an organization', async () => {
+    useAppMock.mockReturnValue({
+      user: null,
+      authUser: null,
+      loading: false,
+      isGuest: true,
+      isAuthenticated: false,
+      requiresEmailVerification: false,
+    });
+
+    renderPage();
+
+    expect(pushMock).not.toHaveBeenCalledWith('/login');
+    fireEvent.click(screen.getByRole('button', { name: /\+ create organization/i }));
+
+    expect(await screen.findByRole('dialog', { name: /create an account first/i })).toBeInTheDocument();
+    expect(screen.getByText(/create an account to create and manage an organization/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^create account$/i }));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      '/login?mode=signup&onboardingIntent=ORGANIZATION&next=%2Forganizations%3Fcreate%3D1',
+    );
+    expect(screen.queryByTestId('create-organization-modal')).not.toBeInTheDocument();
   });
 });

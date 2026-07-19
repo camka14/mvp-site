@@ -18,20 +18,20 @@ export default function MySchedulePage() {
 }
 
 function MySchedulePageContent() {
-  const { user, isAuthenticated, loading: authLoading } = useApp();
+  const { user, isAuthenticated, isGuest, loading: authLoading } = useApp();
   const router = useRouter();
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAuthenticated || !user) {
+    if (!isGuest && (!isAuthenticated || !user)) {
       router.push('/login');
     }
-  }, [authLoading, isAuthenticated, router, user]);
+  }, [authLoading, isAuthenticated, isGuest, router, user]);
 
   if (authLoading) {
     return <Loading fullScreen text="Loading your schedule..." />;
   }
-  if (!isAuthenticated || !user) {
+  if (!isGuest && (!isAuthenticated || !user)) {
     return null;
   }
 
@@ -45,6 +45,7 @@ function MySchedulePageContent() {
           description="Events and matches you or your teams are part of."
           loadingText="Loading your schedule..."
           errorText="Failed to load your schedule. Please try again."
+          staticEmpty={isGuest}
         />
       </Container>
     </>
