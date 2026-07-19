@@ -1,6 +1,7 @@
 import { eventService } from '@/lib/eventService';
 import { apiRequest } from '@/lib/apiClient';
 import { sportsService } from '@/lib/sportsService';
+import { findDollarPrefixedFields } from '@/server/requestParsing';
 
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
@@ -530,6 +531,7 @@ describe('eventService', () => {
 
     const field = {
       $id: 'field_1',
+      $permissions: ['read("any")'],
       name: 'Court 1',
       location: 'Denver',
       lat: 39.7392,
@@ -658,6 +660,8 @@ describe('eventService', () => {
       timeSlots: [
         {
           $id: 'slot_1',
+          $createdAt: '2025-01-01T00:00:00.000Z',
+          $permissions: ['read("any")'],
           dayOfWeek: 2,
           daysOfWeek: [2, 4],
           divisions: ['evt_1__division__open'],
@@ -703,6 +707,7 @@ describe('eventService', () => {
 
     const [, options] = apiRequestMock.mock.calls[0];
     expect(() => JSON.stringify(options?.body)).not.toThrow();
+    expect(findDollarPrefixedFields(options?.body)).toEqual([]);
     expect(options?.method).toBe('PATCH');
     expect(options?.body).toEqual(
       expect.objectContaining({

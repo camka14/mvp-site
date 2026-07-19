@@ -9,8 +9,8 @@ import { requireSession } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-export const INCLUSIVE_PRICE_QUOTE_VERSION = 1 as const;
-export const MAX_INCLUSIVE_PRICE_CENTS = 100_000_000;
+const INCLUSIVE_PRICE_QUOTE_VERSION = 1 as const;
+const MAX_INCLUSIVE_PRICE_CENTS = 100_000_000;
 
 const quoteSchema = z.object({
   direction: z.enum(['HOST_AMOUNT', 'TOTAL_PRICE']),

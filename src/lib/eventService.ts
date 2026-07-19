@@ -219,6 +219,20 @@ const toStableRequestValue = (value: unknown): unknown => {
   return value;
 };
 
+const stripDollarPrefixedPayloadFields = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stripDollarPrefixedPayloadFields);
+  }
+  if (!value || typeof value !== 'object' || Object.prototype.toString.call(value) !== '[object Object]') {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !key.startsWith('$'))
+      .map(([key, entry]) => [key, stripDollarPrefixedPayloadFields(entry)]),
+  );
+};
+
 const buildPaginatedEventsRequestKey = (
   filters: EventFilters,
   limit: number,
@@ -670,7 +684,9 @@ class EventService {
         ...(hasFieldsOverride ? { fields: options.fields } : {}),
         ...(hasTimeSlotsOverride ? { timeSlots: options.timeSlots } : {}),
       } as Event;
-      const payload = toEventPayload(payloadSource) as Record<string, unknown>;
+      const payload = stripDollarPrefixedPayloadFields(
+        toEventPayload(payloadSource),
+      ) as Record<string, unknown>;
       [
         "matches",
         "teams",

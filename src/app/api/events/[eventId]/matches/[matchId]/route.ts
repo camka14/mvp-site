@@ -49,6 +49,7 @@ import {
   assertSetSegmentOperationsAllowed,
 } from '@/server/matches/setScoringRules';
 import { claimMatchOperationReceipts } from '@/server/matches/clientOperationReplay';
+import { assertMatchParticipantsReady } from '@/server/matches/participantReadiness';
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -183,6 +184,25 @@ const hasScoreWrite = (update: z.infer<typeof updateSchema>): boolean => {
     const delta = Number(operation.linkedPointDelta ?? 0);
     return Number.isFinite(delta) && delta !== 0;
   }) === true;
+};
+
+const isOfficiatingMutation = (update: z.infer<typeof updateSchema>): boolean => {
+  const hasLifecycleWrite = Boolean(
+    update.lifecycle
+    && Object.values(update.lifecycle).some((value) => value !== undefined),
+  );
+  const hasMatchAction = Boolean(
+    update.matchAction
+    && update.matchAction.action !== 'CANCEL',
+  );
+  return update.officialCheckIn?.checkedIn === true
+    || update.officialCheckedIn === true
+    || hasScoreWrite(update)
+    || Boolean(update.segmentOperations?.length)
+    || Boolean(update.incidentOperations?.length)
+    || hasLifecycleWrite
+    || update.finalize === true
+    || hasMatchAction;
 };
 
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
@@ -1377,6 +1397,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (isLegacyMobileSetConfirmation) {
         const { matchRulesSnapshot: _staleSnapshot, ...withoutSnapshot } = matchUpdate;
         matchUpdate = withoutSnapshot;
+      }
+
+      if (isOfficiatingMutation(matchUpdate)) {
+        assertMatchParticipantsReady(targetMatch);
       }
 
       const operationClaim = await claimMatchOperationReceipts({

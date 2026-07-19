@@ -13,6 +13,7 @@ import {
   assertWindowOpen,
 } from '@/server/matches/matchWindows';
 import { claimMatchOperationReceipts } from '@/server/matches/clientOperationReplay';
+import { assertMatchParticipantsReady } from '@/server/matches/participantReadiness';
 import type { MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -200,6 +201,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       if (!isHostOrAdmin && !isEventOfficial && !isTeamOfficialMember && !isAssignedOfficialUser && !isAssignedTeamOfficialById) {
         throw new Response('Forbidden', { status: 403 });
       }
+      assertMatchParticipantsReady(match);
       const operationClaim = await claimMatchOperationReceipts({
         client: tx,
         eventId,

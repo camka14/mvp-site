@@ -508,7 +508,11 @@ export const SimpleSetupPlanningPage = ({
                             <Badge variant="light">{capabilities.isExternal ? 'External registration' : 'BracketIQ registration'}</Badge>
                             <Badge variant="light">{eventData.teamSignup ? 'Teams' : 'Individuals'}</Badge>
                             <Badge variant="light">{eventData.singleDivision ? 'Shared configuration' : 'Split divisions'}</Badge>
-                            <Badge variant="light">{choices.scheduleStyle.replace(/_/g, ' ').toLowerCase()}</Badge>
+                            <Badge variant="light">
+                                {eventData.noFixedEndDateTime
+                                    ? 'End date set during match generation'
+                                    : choices.scheduleStyle.replace(/_/g, ' ').toLowerCase()}
+                            </Badge>
                         </div>
                         <Text size="sm" c="dimmed">
                             {eventData.location?.trim() || 'Location not specified'}

@@ -6,7 +6,7 @@ import { listFieldSchedulingConflicts } from '@/server/repositories/events';
 
 export const dynamic = 'force-dynamic';
 
-export const MAX_RENTAL_AVAILABILITY_RANGE_DAYS = 31;
+const MAX_RENTAL_AVAILABILITY_RANGE_DAYS = 31;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

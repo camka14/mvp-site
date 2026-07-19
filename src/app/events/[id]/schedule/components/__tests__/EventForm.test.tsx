@@ -1588,7 +1588,7 @@ describe('EventForm dirty state', () => {
     const endDateButton = screen.getByRole('button', { name: 'End Date & Time' });
     expect(endDateButton).toBeDisabled();
     expect(endDateButton).toHaveAttribute('data-value', '2026-05-03T01:20');
-    expect(screen.getByRole('checkbox', { name: 'No fixed end datetime scheduling' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Set the end date during match generation' })).toBeChecked();
     expect(screen.queryByText('Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.')).not.toBeInTheDocument();
 
     await waitFor(() => {
@@ -3720,7 +3720,7 @@ describe('EventForm dirty state', () => {
       { isCreateMode: true },
     );
 
-    const noFixedEndDateTimeCheckbox = await screen.findByRole('checkbox', { name: 'No fixed end datetime scheduling' });
+    const noFixedEndDateTimeCheckbox = await screen.findByRole('checkbox', { name: 'Set the end date during match generation' });
     expect(noFixedEndDateTimeCheckbox).not.toBeDisabled();
     expect(noFixedEndDateTimeCheckbox).not.toBeChecked();
 

@@ -1,8 +1,12 @@
 /** @jest-environment node */
 
 import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
-import { finalizeMatch, finalizeMatchWithoutRescheduling } from '@/server/scheduler/updateMatch';
-import { Division, PlayingField, Team, Tournament, UserData } from '@/server/scheduler/types';
+import {
+  finalizeMatch,
+  finalizeMatchWithoutRescheduling,
+  finalizeMatchWithTeamOfficialCapacityFallback,
+} from '@/server/scheduler/updateMatch';
+import { Division, PlayingField, Team, TimeSlot, Tournament, UserData } from '@/server/scheduler/types';
 
 const context = {
   log: () => {},
@@ -63,6 +67,7 @@ const buildTournament = (overrides: Partial<ConstructorParameters<typeof Tournam
     teams: overrides.teams ?? buildTeams(4, division),
     divisions: overrides.divisions ?? [division],
     fields: overrides.fields ?? { [field.id]: field },
+    timeSlots: overrides.timeSlots ?? [],
     officials: overrides.officials ?? [],
     doTeamsOfficiate: overrides.doTeamsOfficiate ?? true,
     doubleElimination: overrides.doubleElimination ?? false,
@@ -186,6 +191,63 @@ describe('tournament scheduling (officials)', () => {
     expect(final.team1 === winner || final.team2 === winner).toBe(true);
     expect(final.start.getTime()).toBe(finalStart);
     expect(semi.status).toBe('COMPLETE');
+  });
+
+  it('preserves a confirmed result when auto-rescheduling has no eligible field', () => {
+    const division = buildDivision();
+    const teams = buildTeams(4, division);
+    const timeSlot = new TimeSlot({
+      id: 'slot_field_mapping_fallback',
+      dayOfWeek: 5,
+      startDate: new Date(2026, 0, 3),
+      repeating: true,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 23 * 60,
+      divisions: [division],
+    });
+    const tournament = buildTournament({
+      id: 'tournament_field_mapping_fallback',
+      teams,
+      divisions: [division],
+      timeSlots: [timeSlot],
+      officials: [],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+    });
+
+    scheduleEvent({ event: tournament }, context);
+    const matches = Object.values(tournament.matches);
+    const final = matches.find(
+      (match) => !match.winnerNextMatch && match.previousLeftMatch && match.previousRightMatch,
+    );
+    const semi = matches.find((match) => match.winnerNextMatch === final);
+    expect(final).toBeTruthy();
+    expect(semi?.team1).toBeTruthy();
+    expect(semi?.team2).toBeTruthy();
+    if (!final || !semi?.team1 || !semi.team2) return;
+
+    const finalStart = final.start.getTime();
+    const winner = semi.team1;
+    semi.setResults = [1, 1];
+    semi.team1Points = [21, 21];
+    semi.team2Points = [12, 8];
+
+    const incompatibleDivision = new Division('OTHER', 'Other');
+    timeSlot.divisions = [incompatibleDivision];
+    const fallbackContext = { log: jest.fn(), error: jest.fn() };
+
+    expect(() => finalizeMatchWithTeamOfficialCapacityFallback(
+      tournament,
+      semi,
+      fallbackContext,
+      new Date(semi.end),
+    )).not.toThrow();
+
+    expect(semi.status).toBe('COMPLETE');
+    expect(semi.winnerEventTeamId).toBe(winner.id);
+    expect(final.team1 === winner || final.team2 === winner).toBe(true);
+    expect(final.start.getTime()).toBe(finalStart);
+    expect(fallbackContext.error).toHaveBeenCalledWith(expect.stringContaining('preserving the existing schedule'));
   });
 
   it('keeps bracket participant slots intact when a feeder is finalized again', () => {

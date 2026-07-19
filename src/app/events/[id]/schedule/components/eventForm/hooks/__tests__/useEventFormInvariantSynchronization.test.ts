@@ -24,18 +24,12 @@ const buildEventData = (overrides: Partial<EventFormValues> = {}): EventFormValu
 
 type HarnessParams = {
     eventData: EventFormValues;
-    hasExternalRentalField?: boolean;
-    isEditMode?: boolean;
     isRentalCreateFlow?: boolean;
-    supportsNoFixedEndDateTime?: boolean;
 };
 
 const useInvariantSynchronizationHarness = ({
     eventData: initialEventData,
-    hasExternalRentalField = false,
-    isEditMode = false,
     isRentalCreateFlow = false,
-    supportsNoFixedEndDateTime = false,
 }: HarnessParams) => {
     const [eventData, setEventDataState] = useState(initialEventData);
     const setEventData = useCallback((
@@ -54,30 +48,26 @@ const useInvariantSynchronizationHarness = ({
 
     useEventFormInvariantSynchronization({
         eventData,
-        hasExternalRentalField,
-        isEditMode,
         isRentalCreateFlow,
         joinAsParticipant: eventData.joinAsParticipant,
         setEventData,
         setJoinAsParticipant,
         setValue,
-        supportsNoFixedEndDateTime,
     });
 
     return eventData;
 };
 
 describe('useEventFormInvariantSynchronization', () => {
-    it('normalizes rental weekly events and enables a supported open-ended schedule', async () => {
+    it('normalizes rental weekly events without overriding the chosen end-date mode', async () => {
         const { result } = renderHook(() => useInvariantSynchronizationHarness({
             eventData: buildEventData({ eventType: 'WEEKLY_EVENT' }),
             isRentalCreateFlow: true,
-            supportsNoFixedEndDateTime: true,
         }));
 
         await waitFor(() => {
             expect(result.current.eventType).toBe('EVENT');
-            expect(result.current.noFixedEndDateTime).toBe(true);
+            expect(result.current.noFixedEndDateTime).toBe(false);
         });
     });
 

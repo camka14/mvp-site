@@ -29,6 +29,10 @@ const buildMatch = (overrides: Partial<Match> = {}): Match => ({
   team1Points: [0, 0, 0],
   team2Points: [0, 0, 0],
   setResults: [0, 0, 0],
+  team1Id: 'team_a',
+  team2Id: 'team_b',
+  team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+  team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
   losersBracket: false,
   previousLeftId: 'previous_match',
   ...overrides,
@@ -264,6 +268,8 @@ describe('ScoreUpdateModal', () => {
           previousLeftId: undefined,
           previousRightId: 'match_60',
           previousRightMatch: previousMatch,
+          team1Id: null,
+          team2Id: null,
           team1: undefined,
           team2: undefined,
         })}
@@ -278,6 +284,39 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getByText('1st place (Open) vs Loser of match #60')).toBeInTheDocument();
     expect(screen.getAllByText('1st place (Open)').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Loser of match #60').length).toBeGreaterThan(0);
+  });
+
+  it('keeps unresolved matches read-only until both teams are assigned', () => {
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          actualStart: null,
+          team1Id: null,
+          team2Id: null,
+          team1: undefined,
+          team2: undefined,
+          officialIds: [{
+            positionId: 'referee',
+            slotIndex: 0,
+            userId: 'official_1',
+            checkedIn: false,
+          }],
+        })}
+        tournament={buildEvent({
+          officialPositions: [{ id: 'referee', name: 'Referee', count: 1, order: 0 }],
+        })}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByText('Teams required')).toBeInTheDocument();
+    expect(screen.getByText(/Both teams must be assigned before officials can check in or operate this match/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start Match' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Confirm/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish Match' })).not.toBeInTheDocument();
   });
 
   it('writes a single-set winner when finishing a timed match score', async () => {

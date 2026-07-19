@@ -558,6 +558,70 @@ describe('League schedule page', () => {
     expect(await screen.findByRole('button', { name: 'Start Match' })).toBeInTheDocument();
   });
 
+  it('does not offer official check-in when a match participant is unresolved', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'official_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+    const baseEvent = buildApiEvent({
+      hostId: 'host_1',
+      officialIds: ['official_1'],
+      officials: [{ id: 'official_1', $id: 'official_1', firstName: 'Riley', lastName: 'Referee' }],
+    });
+    const unresolvedMatch = {
+      ...(baseEvent.matches?.[0] ?? {}),
+      id: 'match_1',
+      $id: 'match_1',
+      team1Id: 'team_a',
+      team1: baseEvent.teams?.[0],
+      team2Id: 'placeholder_team_2',
+      team2: undefined,
+      officialId: 'official_1',
+      official: { id: 'official_1', $id: 'official_1', firstName: 'Riley', lastName: 'Referee' },
+      officialCheckedIn: false,
+    };
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({ accepted: true, acceptedAt: '2026-04-14T12:00:00.000Z' });
+      }
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [unresolvedMatch] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+    (eventService.getEventById as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
+
+    expect(await screen.findByText('Teams required')).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(apiRequestMock).not.toHaveBeenCalledWith(
+      '/api/events/event_1/matches/match_1',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+    confirmSpy.mockRestore();
+  });
+
   it('shows the terms modal on event creation until consent is accepted', async () => {
     const setUserMock = jest.fn();
     useAppMock.mockReturnValue({
@@ -2956,6 +3020,7 @@ describe('League schedule page', () => {
         id: 'event_create_league',
         $id: 'event_create_league',
         eventType: 'LEAGUE',
+        teamCheckInMode: 'EVENT',
       }),
       preview: false,
     });
@@ -2998,6 +3063,9 @@ describe('League schedule page', () => {
         pendingInvites: [expect.objectContaining({ email: 'casey@example.com' })],
       }),
     );
+    expect(apiRequestMock.mock.calls.some(([path]) => (
+      path === '/api/events/event_create_league/team-check-ins'
+    ))).toBe(false);
   });
 
   it('normalizes tournament create payload with weekly timeslots before schedule preview', async () => {

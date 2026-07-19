@@ -15,9 +15,9 @@ import { projectRelationalEventDivisionIds } from '@/server/events/eventDivision
 export const dynamic = 'force-dynamic';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const PROFILE_SCHEDULE_PAST_DAYS = 90;
-export const PROFILE_SCHEDULE_FUTURE_DAYS = 366;
-export const PROFILE_SCHEDULE_MAX_WINDOW_DAYS = 457;
+const PROFILE_SCHEDULE_PAST_DAYS = 90;
+const PROFILE_SCHEDULE_FUTURE_DAYS = 366;
+const PROFILE_SCHEDULE_MAX_WINDOW_DAYS = 457;
 const PROFILE_SCHEDULE_DEFAULT_LIMIT = 200;
 const PROFILE_SCHEDULE_MAX_LIMIT = 200;
 const PROFILE_SCHEDULE_MAX_MATCHES_PER_PAGE = 5_000;

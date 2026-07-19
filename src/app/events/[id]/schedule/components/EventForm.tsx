@@ -619,14 +619,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const supportsNoFixedEndDateTime = !isAffiliateEvent && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEventFormInvariantSynchronization({
         eventData,
-        hasExternalRentalField,
-        isEditMode,
         isRentalCreateFlow,
         joinAsParticipant,
         setEventData,
         setJoinAsParticipant,
         setValue,
-        supportsNoFixedEndDateTime,
     });
 
     const leagueError = buildLeagueScheduleError(errors.leagueSlots);

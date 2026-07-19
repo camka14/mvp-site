@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -36,6 +37,7 @@ import {
   X,
 } from 'lucide-react';
 import { canIncreaseSetScore, getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
+import { hasResolvedMatchParticipants } from '@/lib/matchParticipants';
 import {
   Division,
   Event,
@@ -1013,7 +1015,7 @@ export default function ScoreUpdateModal({
   match,
   tournament,
   participantTeams = [],
-  canManage,
+  canManage: canManageRequested,
   onSubmit,
   onScoreChange,
   onSetComplete,
@@ -1088,6 +1090,8 @@ export default function ScoreUpdateModal({
   }, [match.team1, match.team2, match.teamOfficial, participantTeams, tournament.teams]);
   const team1 = team1Id ? eventTeamsById.get(team1Id) ?? match.team1 : match.team1;
   const team2 = team2Id ? eventTeamsById.get(team2Id) ?? match.team2 : match.team2;
+  const participantsReady = hasResolvedMatchParticipants({ team1, team2 });
+  const canManage = canManageRequested && participantsReady;
   const team1Label = bracketTeamLabel(match, team1, match.previousLeftMatch, team1Placeholder, 'team1');
   const team2Label = bracketTeamLabel(match, team2, match.previousRightMatch, team2Placeholder, 'team2');
   const teamOfficialId = match.teamOfficialId ?? entityId(match.teamOfficial);
@@ -3351,6 +3355,12 @@ export default function ScoreUpdateModal({
           )}
         </Group>
       </Group>
+
+      {!participantsReady ? (
+        <Alert color="yellow" variant="light" title="Teams required">
+          Both teams must be assigned before officials can check in or operate this match.
+        </Alert>
+      ) : null}
 
       <Paper withBorder p="md" radius="md" shadow="xs">
         <Group justify="space-between" align="center" gap="md" wrap="wrap">

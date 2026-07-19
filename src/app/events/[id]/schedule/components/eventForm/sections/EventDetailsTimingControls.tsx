@@ -118,7 +118,8 @@ export const EventDetailsTimingControls = ({
                             <div className="space-y-1">
                                 <Checkbox
                                     size="xs"
-                                    label="No fixed end datetime scheduling"
+                                    label="Set the end date during match generation"
+                                    description="Use an open scheduling window now. The generated match schedule will determine the event end date."
                                     checked={noFixedEndDateTime}
                                     disabled={isImmutableField('noFixedEndDateTime')}
                                     onChange={(event) => {

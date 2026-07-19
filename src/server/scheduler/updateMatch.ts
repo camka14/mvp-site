@@ -79,6 +79,11 @@ export const isTeamOfficialSchedulingCapacityError = (error: unknown): boolean =
   return message.includes('Not enough teams are available to cover match and team-official slots.');
 };
 
+export const isFieldSchedulingCapacityError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Unable to schedule event because no fields are available');
+};
+
 const ensureMatchesArray = (participant?: { matches?: Match[] } | null) => {
   if (!participant) return [] as Match[];
   if (!participant.matches) participant.matches = [];
@@ -728,8 +733,8 @@ export const finalizeMatch = (
 
 /**
  * Records a valid result and advances its bracket dependencies while retaining
- * the existing schedule. Used only when an automatic rebuild cannot find a
- * team official for a future, not-yet-playable match.
+ * the existing schedule. Used when an automatic rebuild cannot staff a future
+ * match or cannot find a field eligible for its division.
  */
 export const finalizeMatchWithoutRescheduling = (
   event: Tournament | League,
@@ -781,12 +786,15 @@ export const finalizeMatchWithTeamOfficialCapacityFallback = (
   try {
     return finalizeMatch(event, updatedMatch, context, currentTime);
   } catch (error) {
-    if (!isTeamOfficialSchedulingCapacityError(error)) {
+    if (
+      !isTeamOfficialSchedulingCapacityError(error)
+      && !isFieldSchedulingCapacityError(error)
+    ) {
       throw error;
     }
     restoreFinalizationSnapshot(snapshot);
     context.error(
-      'Automatic rescheduling could not staff every future team-official slot; preserving the existing schedule while advancing the confirmed result.',
+      'Automatic rescheduling could not place every future match; preserving the existing schedule while advancing the confirmed result.',
     );
     return finalizeMatchWithoutRescheduling(event, updatedMatch, currentTime);
   }

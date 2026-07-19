@@ -18,50 +18,27 @@ type EventDataSetter = (
 
 type UseEventFormInvariantSynchronizationParams = {
     eventData: EventFormValues;
-    hasExternalRentalField: boolean;
-    isEditMode: boolean;
     isRentalCreateFlow: boolean;
     joinAsParticipant: boolean;
     setEventData: EventDataSetter;
     setJoinAsParticipant: (value: boolean) => void;
     setValue: EventFormSetValue;
-    supportsNoFixedEndDateTime: boolean;
 };
 
 /** Keeps dependent form fields valid while React Hook Form remains the only draft owner. */
 export const useEventFormInvariantSynchronization = ({
     eventData,
-    hasExternalRentalField,
-    isEditMode,
     isRentalCreateFlow,
     joinAsParticipant,
     setEventData,
     setJoinAsParticipant,
     setValue,
-    supportsNoFixedEndDateTime,
 }: UseEventFormInvariantSynchronizationParams): void => {
     useEffect(() => {
         if (isRentalCreateFlow && eventData.eventType === 'WEEKLY_EVENT') {
             setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
         }
     }, [eventData.eventType, isRentalCreateFlow, setValue]);
-
-    useEffect(() => {
-        if (
-            !isEditMode
-            && !hasExternalRentalField
-            && supportsNoFixedEndDateTime
-            && !eventData.noFixedEndDateTime
-        ) {
-            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-        }
-    }, [
-        eventData.noFixedEndDateTime,
-        hasExternalRentalField,
-        isEditMode,
-        setValue,
-        supportsNoFixedEndDateTime,
-    ]);
 
     useEffect(() => {
         const requiresTeamSignup = eventData.eventType === 'LEAGUE'

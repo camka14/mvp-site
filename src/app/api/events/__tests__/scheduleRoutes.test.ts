@@ -1425,6 +1425,8 @@ describe('schedule routes', () => {
       assistantHostIds: [],
       organizationId: null,
     });
+    const team1 = { id: 'team_1', name: 'Aces' };
+    const team2 = { id: 'team_2', name: 'Diggers' };
     loadEventWithRelationsMock.mockResolvedValue({
       id: 'event_1',
       eventType: 'TOURNAMENT',
@@ -1434,11 +1436,13 @@ describe('schedule routes', () => {
           id: 'match_1',
           official: { id: 'official_1' },
           officialCheckedIn: true,
+          team1,
+          team2,
           actualStart: null,
           actualEnd: null,
         },
       },
-      teams: {},
+      teams: { team_1: team1, team_2: team2 },
       officials: [{ id: 'official_1' }],
       officialPositions: [],
       eventOfficials: [],
@@ -1472,6 +1476,8 @@ describe('schedule routes', () => {
       assistantHostIds: [],
       organizationId: null,
     });
+    const team1 = { id: 'team_1', name: 'Aces' };
+    const team2 = { id: 'team_2', name: 'Diggers' };
     loadEventWithRelationsMock.mockResolvedValue({
       id: 'event_1',
       eventType: 'TOURNAMENT',
@@ -1481,9 +1487,11 @@ describe('schedule routes', () => {
           id: 'match_1',
           actualStart: null,
           actualEnd: null,
+          team1,
+          team2,
         },
       },
-      teams: {},
+      teams: { team_1: team1, team_2: team2 },
       officials: [],
       officialPositions: [],
       eventOfficials: [],
@@ -1514,6 +1522,8 @@ describe('schedule routes', () => {
       assistantHostIds: [],
       organizationId: null,
     });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
     loadEventWithRelationsMock.mockResolvedValue({
       id: 'event_1',
       eventType: 'TOURNAMENT',
@@ -1523,12 +1533,14 @@ describe('schedule routes', () => {
           id: 'match_1',
           official: { id: 'official_1' },
           officialCheckedIn: true,
+          team1,
+          team2,
           actualStart: null,
           actualEnd: null,
           status: 'SCHEDULED',
         },
       },
-      teams: {},
+      teams: { team_1: team1, team_2: team2 },
       officials: [{ id: 'official_1' }],
       officialPositions: [],
       eventOfficials: [],
@@ -1552,6 +1564,63 @@ describe('schedule routes', () => {
     const savedMatch = saveMatchesMock.mock.calls[0][1][0];
     expect(savedMatch.status).toBe('IN_PROGRESS');
     expect(savedMatch.actualStart).toEqual(new Date('2026-04-19T10:00:00.000Z'));
+  });
+
+  it.each([
+    ['official check-in', { officialCheckIn: { userId: 'official_1', checkedIn: true } }],
+    ['match start', { lifecycle: { status: 'IN_PROGRESS', actualStart: '2026-04-19T10:00:00.000Z' } }],
+    ['segment confirmation', {
+      segmentOperations: [{
+        id: 'match_1_segment_1',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: { team_1: 21, team_2: 10 },
+        winnerEventTeamId: 'team_1',
+      }],
+    }],
+    ['match finalization', { finalize: true, time: '2026-04-19T11:00:00.000Z' }],
+  ])('rejects %s until both match teams resolve', async (_label, update) => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          official: { id: 'official_1' },
+          officialCheckedIn: false,
+          actualStart: '2026-04-19T10:00:00.000Z',
+          team1: { id: 'team_1', name: 'Aces' },
+          team2: null,
+          segments: [],
+          incidents: [],
+        },
+      },
+      teams: { team_1: { id: 'team_1', name: 'Aces' } },
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', update),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.text()).resolves.toBe('Both teams must be assigned before officiating can begin.');
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('finalizes a match in the same PATCH that confirms the deciding segment', async () => {
@@ -1976,6 +2045,8 @@ describe('schedule routes', () => {
       assistantHostIds: [],
       organizationId: null,
     });
+    const team1 = { id: 'team_1', name: 'Aces' };
+    const team2 = { id: 'team_2', name: 'Diggers' };
     loadEventWithRelationsMock.mockResolvedValue({
       id: 'event_1',
       eventType: 'TOURNAMENT',
@@ -1985,9 +2056,11 @@ describe('schedule routes', () => {
           id: 'match_1',
           locked: false,
           officialCheckedIn: false,
+          team1,
+          team2,
         },
       },
-      teams: {},
+      teams: { team_1: team1, team_2: team2 },
       officials: [],
       divisions: [],
       fields: {},
@@ -2197,6 +2270,57 @@ describe('schedule routes', () => {
         participantUserId: 'player_1',
       }),
     ]);
+  });
+
+  it('rejects dedicated score writes until both match teams resolve', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1: { id: 'team_1', name: 'Aces' },
+          team2: null,
+          actualStart: '2026-04-19T10:00:00.000Z',
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_1: 0 },
+          }],
+        },
+      },
+      teams: { team_1: { id: 'team_1', name: 'Aces' } },
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchScorePost(
+      jsonRequest('http://localhost/api/events/event_1/matches/match_1/score', {
+        segmentId: 'match_1_segment_1',
+        sequence: 1,
+        eventTeamId: 'team_1',
+        points: 1,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.text()).resolves.toBe('Both teams must be assigned before officiating can begin.');
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('sets a non-player-recorded match score through the dedicated score endpoint', async () => {
@@ -3664,6 +3788,8 @@ describe('schedule routes', () => {
       assistantHostIds: [],
       organizationId: null,
     });
+    const team1 = { id: 'team_1', name: 'Aces' };
+    const team2 = { id: 'team_2', name: 'Diggers' };
     loadEventWithRelationsMock.mockResolvedValue({
       id: 'event_1',
       name: 'Fixed Window Tournament',
@@ -3675,11 +3801,13 @@ describe('schedule routes', () => {
       matches: {
         match_1: {
           id: 'match_1',
+          team1,
+          team2,
           teamOfficial: null,
           official: null,
         },
       },
-      teams: {},
+      teams: { team_1: team1, team_2: team2 },
       officials: [],
       divisions: [],
       fields: {},

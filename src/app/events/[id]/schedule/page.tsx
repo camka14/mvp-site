@@ -43,6 +43,7 @@ import { normalizeApiEvent, normalizeApiField, normalizeApiMatch } from '@/lib/a
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
+import { hasResolvedMatchParticipants } from '@/lib/matchParticipants';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import {
   collectViewerDivisionHighlightKeys,
@@ -1984,7 +1985,7 @@ function EventScheduleContent() {
 
   useEffect(() => {
     const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-    if (!targetEventId || !canManageEvent || activeEvent?.teamCheckInMode !== 'EVENT') {
+    if (isCreateMode || !targetEventId || !canManageEvent || activeEvent?.teamCheckInMode !== 'EVENT') {
       setEventTeamCheckInsById({});
       return;
     }
@@ -2013,7 +2014,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, activeEvent?.teamCheckInMode, canManageEvent, eventId]);
+  }, [activeEvent?.$id, activeEvent?.teamCheckInMode, canManageEvent, eventId, isCreateMode]);
 
   useEffect(() => {
     if (!canUseTeamCompliance) {
@@ -5327,8 +5328,9 @@ function EventScheduleContent() {
       }
 
       let modalMatch = activeMatches.find((candidate) => candidate.$id === match.$id) ?? match;
+      const participantsReady = hasResolvedMatchParticipants(modalMatch);
 
-      if (user?.$id) {
+      if (participantsReady && user?.$id) {
         const assignedTeamOfficial = resolveTeam(modalMatch.teamOfficial ?? modalMatch.teamOfficialId);
         const assignedTeamOfficialId = normalizeIdToken(modalMatch.teamOfficialId ?? modalMatch.teamOfficial?.$id);
         const currentUserEventTeam = findUserEventTeam();
@@ -5386,7 +5388,8 @@ function EventScheduleContent() {
       }
 
       if (
-        activeEvent?.teamSignup === true
+        participantsReady
+        && activeEvent?.teamSignup === true
         && activeEvent?.teamCheckInMode === 'MATCH'
         && isTeamCheckInOpen(modalMatch.start)
       ) {
