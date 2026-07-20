@@ -765,6 +765,50 @@ describe('upsertEventFromPayload', () => {
     });
   });
 
+  it('preserves saved tournament pool standings overrides during ordinary event upserts', async () => {
+    const client = createMockClient();
+    const bracketDivisionId = divisionId('open');
+    const poolDivisionId = divisionId('open_pool_a');
+    client.divisions.findMany.mockResolvedValue([
+      {
+        id: poolDivisionId,
+        key: 'open_pool_a',
+        name: 'Pool A',
+        kind: 'LEAGUE',
+        maxParticipants: 4,
+        playoffTeamCount: 2,
+        playoffPlacementDivisionIds: [bracketDivisionId, bracketDivisionId],
+        teamIds: ['team_1', 'team_2'],
+        standingsOverrides: { team_1: 7 },
+      },
+    ]);
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      singleDivision: false,
+      divisions: [bracketDivisionId],
+      playoffDivisionDetails: [
+        {
+          id: bracketDivisionId,
+          key: 'open',
+          kind: 'PLAYOFF',
+          name: 'Open',
+          maxParticipants: 4,
+          playoffTeamCount: 2,
+          poolCount: 1,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const poolUpsert = client.divisions.upsert.mock.calls
+      .map(([args]) => args)
+      .find((args) => args.where.id === poolDivisionId);
+    expect(poolUpsert?.update.standingsOverrides).toEqual({ team_1: 7 });
+  });
+
   it('removes split playoff divisions and clears explicit mappings when league split playoffs are disabled', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');

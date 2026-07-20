@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 .env 
+deploy/vm/*.env
+!deploy/vm/*.env.example
+deploy/vm/maintenance/enabled
 
 # dependencies
 /node_modules

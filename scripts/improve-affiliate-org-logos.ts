@@ -602,12 +602,12 @@ const definitions: LogoDefinition[] = [
   },
   {
     orgId: 'affiliate_org_cascade_athletic_clubs_gresham',
-    sourceUrl: 'https://cascadeac.com/wp-content/uploads/2024/04/CascadeAC_New_Logo_White_WEB-1024x319.png',
-    sourceLabel: 'Cascade Athletic Clubs official white logo',
+    sourceUrl: 'https://cascadeac.com/wp-content/uploads/2024/04/logo-blue.png',
+    sourceLabel: 'Cascade Athletic Clubs official blue header logo selected by stored intake branding evidence',
     originalName: 'cascade-athletic-clubs-gresham-logo-square.png',
-    background: '#172033',
+    background: '#ffffff',
     backgroundStyle: 'flat',
-    targetBox: { width: 920, height: 700 },
+    targetBox: { width: 760, height: 360 },
     fallbackInitials: 'CAC',
   },
   {

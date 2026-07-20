@@ -31,6 +31,7 @@ jest.mock('@/lib/teamService', () => ({
     getInviteFreeAgentContext: jest.fn(),
     inviteUserToTeamRole: jest.fn(),
     inviteEmailToTeamRole: jest.fn(),
+    createTeamMemberInvite: jest.fn(),
     getTeamById: jest.fn(),
     updateTeamDetails: jest.fn(),
     getRegistrationQuestions: jest.fn(),
@@ -112,6 +113,7 @@ const teamServiceMock = jest.requireMock('@/lib/teamService').teamService as {
   getInviteFreeAgentContext: jest.Mock;
   inviteUserToTeamRole: jest.Mock;
   inviteEmailToTeamRole: jest.Mock;
+  createTeamMemberInvite: jest.Mock;
   getTeamById: jest.Mock;
   updateTeamDetails: jest.Mock;
   getRegistrationQuestions: jest.Mock;
@@ -138,6 +140,7 @@ describe('TeamDetailModal', () => {
     teamServiceMock.getInviteFreeAgentContext.mockReset();
     teamServiceMock.inviteUserToTeamRole.mockReset();
     teamServiceMock.inviteEmailToTeamRole.mockReset();
+    teamServiceMock.createTeamMemberInvite.mockReset();
     teamServiceMock.getTeamById.mockReset();
     teamServiceMock.updateTeamDetails.mockReset();
     teamServiceMock.getRegistrationQuestions.mockReset();
@@ -161,6 +164,7 @@ describe('TeamDetailModal', () => {
     });
     teamServiceMock.inviteUserToTeamRole.mockResolvedValue(true);
     teamServiceMock.inviteEmailToTeamRole.mockResolvedValue(true);
+    teamServiceMock.createTeamMemberInvite.mockResolvedValue({ ok: true, shareUrl: null });
     teamServiceMock.getTeamById.mockResolvedValue(undefined);
     teamServiceMock.updateTeamDetails.mockResolvedValue(undefined);
     teamServiceMock.getRegistrationQuestions.mockResolvedValue([]);
@@ -762,7 +766,7 @@ describe('TeamDetailModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /invite roster members/i }));
     expect(await screen.findByRole('tab', { name: /free agents/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /invite user/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /invite by email/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /new person/i })).toBeInTheDocument();
     expect(await screen.findByText('Free Agent')).toBeInTheDocument();
 
     expect(screen.queryByRole('button', { name: /select/i })).not.toBeInTheDocument();
@@ -776,6 +780,65 @@ describe('TeamDetailModal', () => {
       );
     });
     expect(screen.getByRole('dialog', { name: /invite to test team/i })).toBeInTheDocument();
+  });
+
+  it('saves an accountless coach with optional contact details and copies the registration link', async () => {
+    const manager = buildUser({
+      $id: 'manager_1',
+      firstName: 'Morgan',
+      lastName: 'Manager',
+      fullName: 'Morgan Manager',
+    });
+    (useApp as jest.Mock).mockReturnValue({ user: manager });
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    teamServiceMock.createTeamMemberInvite.mockResolvedValue({
+      ok: true,
+      invite: { $id: 'invite_coach_1' },
+      shareUrl: 'http://localhost:3000/i/invite_coach_1?s=signed',
+    });
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      playerIds: ['manager_1'],
+      pending: [],
+      teamSize: 6,
+      name: 'Test team',
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /invite roster members/i }));
+    fireEvent.click(await screen.findByRole('radio', { name: /assistant coach/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /new person/i }));
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Taylor' } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Stone' } });
+    fireEvent.change(screen.getByLabelText(/phone \(optional\)/i), { target: { value: '5035550142' } });
+    fireEvent.click(screen.getByRole('button', { name: /save assistant coach invite/i }));
+
+    await waitFor(() => {
+      expect(teamServiceMock.createTeamMemberInvite).toHaveBeenCalledWith('team_1', {
+        role: 'team_assistant_coach',
+        firstName: 'Taylor',
+        lastName: 'Stone',
+        email: undefined,
+        phone: '(503) 555-0142',
+        shareOnly: true,
+      });
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /copy invite link/i }));
+    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/i/invite_coach_1?s=signed');
   });
 
   it('blocks player invites when team registration slots are full', async () => {
@@ -823,8 +886,14 @@ describe('TeamDetailModal', () => {
 
     expect(await screen.findByText(/already has 2 of 2 player slots filled/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: /invite by email/i }));
-    fireEvent.change(screen.getByPlaceholderText('name@example.com'), {
+    fireEvent.click(screen.getByRole('tab', { name: /new person/i }));
+    fireEvent.change(screen.getByLabelText(/first name/i), {
+      target: { value: 'New' },
+    });
+    fireEvent.change(screen.getByLabelText(/last name/i), {
+      target: { value: 'Player' },
+    });
+    fireEvent.change(screen.getByLabelText('Email (optional)'), {
       target: { value: 'new.player@example.com' },
     });
 

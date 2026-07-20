@@ -1,0 +1,8 @@
+[event-before]
+id	name	start	end	teamCheckInMode	teamCheckInOpenMinutesBefore
+manual_checkin_1782927115526	Manual Check-in Smoke 115526	2026-07-01 18:09:25.507	2026-07-01 20:09:25.507	MATCH	60
+(1 row)
+[match-before]
+id	start	end	status
+manual_checkin_1782927115526_android_match_24	2026-07-01 18:36:21.228	2026-07-01 19:36:21.228	SCHEDULED
+(1 row)

@@ -35,6 +35,7 @@ export const shouldUseServerStandingsRows = ({
 
 type TeamBelongsToSelectedStandingsDivisionOptions = {
   selectedDivisionId: string | null | undefined;
+  fallbackDivisionId?: string | null | undefined;
   selectedDivisionTeamIds?: Iterable<string>;
   teamId: string | null | undefined;
   teamDivisionId: string | null | undefined;
@@ -42,6 +43,7 @@ type TeamBelongsToSelectedStandingsDivisionOptions = {
 
 export const teamBelongsToSelectedStandingsDivision = ({
   selectedDivisionId,
+  fallbackDivisionId,
   selectedDivisionTeamIds,
   teamId,
   teamDivisionId,
@@ -52,13 +54,26 @@ export const teamBelongsToSelectedStandingsDivision = ({
   }
 
   const normalizedTeamId = typeof teamId === 'string' ? teamId.trim() : '';
+  let hasExplicitDivisionTeamIds = false;
   if (normalizedTeamId && selectedDivisionTeamIds) {
     for (const divisionTeamId of selectedDivisionTeamIds) {
-      if (typeof divisionTeamId === 'string' && divisionTeamId.trim() === normalizedTeamId) {
+      const normalizedDivisionTeamId = typeof divisionTeamId === 'string' ? divisionTeamId.trim() : '';
+      if (!normalizedDivisionTeamId) {
+        continue;
+      }
+      hasExplicitDivisionTeamIds = true;
+      if (normalizedDivisionTeamId === normalizedTeamId) {
         return true;
       }
     }
   }
 
-  return normalizeDivisionKey(teamDivisionId) === selectedDivisionKey;
+  if (hasExplicitDivisionTeamIds) {
+    return false;
+  }
+
+  const teamDivisionKey = normalizeDivisionKey(teamDivisionId);
+  return teamDivisionKey === selectedDivisionKey || (
+    Boolean(teamDivisionKey) && teamDivisionKey === normalizeDivisionKey(fallbackDivisionId)
+  );
 };

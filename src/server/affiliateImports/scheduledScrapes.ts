@@ -234,7 +234,8 @@ const acquireSchedulerLock = async (): Promise<SchedulerLockLease | null> => {
 
 const latestRunForSource = async (sourceId: string): Promise<AffiliateRunScheduleRow | null> => (
   (prisma as any).affiliateScrapeRuns.findFirst({
-    where: { sourceId },
+    // A failed attempt must remain due so the next scheduler invocation retries it.
+    where: { sourceId, status: 'SUCCEEDED' },
     orderBy: { startedAt: 'desc' },
     select: {
       id: true,

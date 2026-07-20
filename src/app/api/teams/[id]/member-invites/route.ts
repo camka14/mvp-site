@@ -18,6 +18,10 @@ import {
 import {
   rollbackTeamInviteEventSyncs,
 } from '@/server/teams/teamInviteEventSync';
+import {
+  buildTeamInviteShareUrl,
+  TEAM_INVITE_LINK_TTL_MS,
+} from '@/server/teamInviteLinks';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +33,17 @@ const memberInviteSchema = z.object({
   role: z.enum(['player', 'team_manager', 'team_head_coach', 'team_assistant_coach']).default('player'),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  phone: z.string().optional(),
+  shareOnly: z.boolean().optional(),
 }).passthrough();
 
 const emailSchema = z.string().email();
+
+const normalizeOptionalContact = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized || null;
+};
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   Array.from(new Set(values.filter((value): value is string => Boolean(value))))
@@ -109,7 +121,7 @@ const resolveInviteUser = async (
   client: any,
   input: z.infer<typeof memberInviteSchema>,
   now: Date,
-): Promise<{ userId: string; email: string; shouldSendEmail: boolean; isUserIdInvite: boolean }> => {
+): Promise<{ userId: string | null; email: string | null; shouldSendEmail: boolean; isUserIdInvite: boolean }> => {
   const inviteUserId = normalizeId(input.userId);
   let email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
 
@@ -144,6 +156,28 @@ const resolveInviteUser = async (
       email,
       shouldSendEmail: isInvitePlaceholderAuthUser(authUser),
       isUserIdInvite: true,
+    };
+  }
+
+  const firstName = normalizeOptionalName(input.firstName);
+  const lastName = normalizeOptionalName(input.lastName);
+  const phone = normalizeOptionalContact(input.phone);
+  const isClaimablePersonInvite = Boolean(input.shareOnly || firstName || lastName || phone);
+  if (isClaimablePersonInvite) {
+    if (!firstName || !lastName) {
+      throw new Error('First and last name are required');
+    }
+    if (email && !emailSchema.safeParse(email).success) {
+      throw new Error('Invalid email');
+    }
+    if (!email && !phone && !input.shareOnly) {
+      throw new Error('Add an email, phone, or choose a share-only invite');
+    }
+    return {
+      userId: null,
+      email: email || null,
+      shouldSendEmail: Boolean(email),
+      isUserIdInvite: false,
     };
   }
 
@@ -183,7 +217,11 @@ const getPlayerCapacityUserIds = (team: Record<string, any>): Set<string> => {
   return ids;
 };
 
-const assertPlayerInviteCapacity = (team: Record<string, any>, userId: string) => {
+const assertPlayerInviteCapacity = (
+  team: Record<string, any>,
+  userId: string | null,
+  anonymousPendingInviteCount = 0,
+) => {
   const teamSize = typeof team.teamSize === 'number' && Number.isFinite(team.teamSize)
     ? Math.max(0, Math.trunc(team.teamSize))
     : 0;
@@ -192,7 +230,8 @@ const assertPlayerInviteCapacity = (team: Record<string, any>, userId: string) =
   }
 
   const capacityUserIds = getPlayerCapacityUserIds(team);
-  if (!capacityUserIds.has(userId) && capacityUserIds.size >= teamSize) {
+  const alreadyCounted = userId ? capacityUserIds.has(userId) : false;
+  if (!alreadyCounted && capacityUserIds.size + anonymousPendingInviteCount >= teamSize) {
     throw new Error('Team is full. Player invite was not sent.');
   }
 };
@@ -263,32 +302,61 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const resolvedUser = await resolveInviteUser(tx, parsed.data, now);
       const userId = resolvedUser.userId;
+      const normalizedPhone = normalizeOptionalContact(parsed.data.phone);
       const activePlayerIdsForInvite = parsed.data.role === 'player'
         ? normalizeIdList((canonicalTeam as any).playerIds)
         : [];
+      const staffType = roleToStaffType(parsed.data.role);
+      const existingInvite = userId
+        ? await tx.invites.findFirst({
+          where: {
+            type: 'TEAM',
+            teamId: canonicalTeamId,
+            userId,
+          },
+        })
+        : resolvedUser.email
+          ? await tx.invites.findFirst({
+            where: {
+              type: 'TEAM',
+              teamId: canonicalTeamId,
+              userId: null,
+              email: resolvedUser.email,
+            },
+          })
+          : null;
       if (parsed.data.role === 'player') {
-        if (activePlayerIdsForInvite.includes(userId)) {
+        if (userId && activePlayerIdsForInvite.includes(userId)) {
           throw new Error('User is already on this team');
         }
-        assertPlayerInviteCapacity(canonicalTeam as Record<string, any>, userId);
+        const anonymousPendingInviteCount = typeof tx.invites.count === 'function'
+          ? await tx.invites.count({
+            where: {
+              type: 'TEAM',
+              teamId: canonicalTeamId,
+              status: 'PENDING',
+              userId: null,
+              ...(existingInvite ? { id: { not: existingInvite.id } } : {}),
+            },
+          })
+          : 0;
+        assertPlayerInviteCapacity(canonicalTeam as Record<string, any>, userId, anonymousPendingInviteCount);
       }
-      const existingInvite = await tx.invites.findFirst({
-        where: {
-          type: 'TEAM',
-          teamId: canonicalTeamId,
-          userId,
-        },
-      });
       const wasCreated = !existingInvite;
+      const linkExpiresAt = new Date(now.getTime() + TEAM_INVITE_LINK_TTL_MS);
       const invite = existingInvite
         ? await tx.invites.update({
           where: { id: existingInvite.id },
           data: {
             email: resolvedUser.email,
+            phone: normalizedPhone,
             status: 'PENDING',
             createdBy: session.userId,
             firstName: normalizeOptionalName(parsed.data.firstName) ?? existingInvite.firstName,
             lastName: normalizeOptionalName(parsed.data.lastName) ?? existingInvite.lastName,
+            staffTypes: staffType ? [staffType] : normalizeIdList(existingInvite.staffTypes),
+            linkExpiresAt,
+            claimedBy: null,
             updatedAt: now,
           },
         })
@@ -297,12 +365,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             id: crypto.randomUUID(),
             type: 'TEAM',
             email: resolvedUser.email,
+            phone: normalizedPhone,
             status: 'PENDING',
             teamId: canonicalTeamId,
             userId,
             createdBy: session.userId,
             firstName: normalizeOptionalName(parsed.data.firstName),
             lastName: normalizeOptionalName(parsed.data.lastName),
+            staffTypes: staffType ? [staffType] : [],
+            linkVersion: 1,
+            linkExpiresAt,
             createdAt: now,
             updatedAt: now,
           },
@@ -313,7 +385,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       await rollbackTeamInviteEventSyncs(tx, invite, 'CANCELLED', now);
 
-      if (parsed.data.role === 'player') {
+      if (parsed.data.role === 'player' && userId) {
         await syncCanonicalTeamRoster({
           teamId: canonicalTeamId,
           captainId: (canonicalTeam as any).captainId,
@@ -324,9 +396,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           assistantCoachIds: normalizeIdList((canonicalTeam as any).coachIds),
           actingUserId: session.userId,
           now,
+          preserveInvitedStaffAssignments: true,
         }, tx);
 
-      } else {
+      } else if (userId) {
         await updateStaffInviteAssignment(tx, parsed.data.role, canonicalTeamId, userId, session.userId, now);
       }
 
@@ -336,8 +409,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       };
     });
 
+    const baseUrl = getRequestOrigin(req);
     if (inviteForEmail) {
-      const baseUrl = getRequestOrigin(req);
       await sendInviteEmails([inviteForEmail], baseUrl);
     }
 
@@ -345,6 +418,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ok: true,
       invite: mapInviteRecord(result.invite),
       team: result.team,
+      shareUrl: buildTeamInviteShareUrl(result.invite, baseUrl),
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create member invite';

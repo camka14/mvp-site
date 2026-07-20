@@ -1,5 +1,7 @@
 # Move BracketIQ from DigitalOcean App Platform and Managed Postgres to one Droplet
 
+> Superseded on 2026-07-20 by `docs/ovh-vps-migration-execplan.md` after the target provider changed to OVHcloud. This document is retained as the original infrastructure audit and cost baseline; do not execute its Droplet-specific provisioning steps.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Maintain this document in accordance with `PLANS.md` at the repository root. This plan is scoped to the production `mvp-site` application and its `mvp-db` PostgreSQL database. The other DigitalOcean applications, databases, and the existing `scraping-agent` Droplet are deliberately out of scope.

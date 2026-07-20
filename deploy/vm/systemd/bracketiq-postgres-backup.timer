@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the BracketIQ PostgreSQL backup hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=10m
+Unit=bracketiq-postgres-backup.service
+
+[Install]
+WantedBy=timers.target

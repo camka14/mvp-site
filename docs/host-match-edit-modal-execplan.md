@@ -20,6 +20,9 @@ The editor must use the match's resolved sports rules instead of assuming volley
 - [x] (2026-07-19) Replaced embedded official scoring regression tests with host-draft behavior tests.
 - [x] (2026-07-19) Ran focused Jest suites, the lock/reschedule integration regression, ESLint, and TypeScript validation.
 - [x] (2026-07-19) Exercised the rendered modal at 1200x762 desktop and 390x844 mobile sizes, including same-draft segment unlocking.
+- [x] (2026-07-20) Replaced the comma-separated set targets with one numeric score-limit input per configured set.
+- [x] (2026-07-20) Moved Match State into the left admin column and the compact score editor into the right admin column.
+- [x] (2026-07-20) Added count-driven score-limit/save regression coverage and repeated focused Jest, TypeScript, desktop, and mobile validation.
 
 ## Surprises & Discoveries
 
@@ -40,6 +43,9 @@ The editor must use the match's resolved sports rules instead of assuming volley
 
 - Observation: A temporary local visual-QA route left one generated `.next/dev/types` stub after the route was removed.
   Evidence: The first final typecheck referenced only the deleted preview route. Deleting that generated cache stub made `npx tsc --noEmit` pass.
+
+- Observation: The in-app Browser connection rejected the localhost preview with `ERR_BLOCKED_BY_CLIENT`, while the same route returned 200 and rendered correctly through the repository's Playwright runtime.
+  Evidence: The Browser navigation failed twice before and after the local server restart; the Playwright pass then recorded correct desktop/mobile layout geometry, zero console issues, and zero page errors.
 
 ## Decision Log
 
@@ -71,6 +77,14 @@ The editor must use the match's resolved sports rules instead of assuming volley
   Rationale: The existing schedule integration and accessibility contract query it as a checkbox, and its persisted lock/reschedule behavior must remain unchanged.
   Date/Author: 2026-07-19 / Codex
 
+- Decision: Model set score limits as a count-sized local array and require every visible limit to contain a positive integer before saving.
+  Rationale: A separate numeric control per set eliminates parsing ambiguity, keeps the input count synchronized with the segment count, and produces an exact `setPointTargets` snapshot.
+  Date/Author: 2026-07-20 / Codex
+
+- Decision: Stack setup and Match State in the left desktop column, and assignments, rules, and score cards in the right desktop column; collapse both stacks to one column on mobile.
+  Rationale: Match state and scores remain part of the admin edit grid while compact score cards preserve adjacent team-score and confirmation controls without horizontal scrolling.
+  Date/Author: 2026-07-20 / Codex
+
 ## Outcomes & Retrospective
 
 The host editor is now one atomic draft form. Hosts can edit teams, division, field, scheduled and actual times, officiating team, individual assignments, check-ins, bracket links, per-match segment rules, result state, scores, and completion. The embedded official-operation modal has been removed, while the standalone official scoring modal is unchanged.
@@ -92,6 +106,8 @@ Final automated evidence:
     PASS with one pre-existing exhaustive-deps warning at the modal initialization effect and zero errors
 
 Rendered evidence used a temporary local-only fixture that was removed immediately afterward. At 1200x762, confirming Set 1 enabled Set 2 without saving; editing Set 2 updated the preview; saving returned three segments. A timed quarter match changed from four to five quarters, changed its numeric duration from 10 to 12 minutes, rendered Quarter 5 immediately, and saved five segments. The final 390x844 pass kept admin sections readable and actions sticky. Browser console errors and warnings were empty, and no framework error overlay was present.
+
+The 2026-07-20 follow-up rendered three score-limit steppers for a three-set match, then changed Set count to four and immediately rendered a fourth limit plus a fourth score card. Saving returned `segmentCount: 4` and `setPointTargets: [21, 21, 15, 11]`. At 1440x1200, layout geometry confirmed Match State shares the left setup column while scoring shares the right assignments column. At 390x844, both stacks collapsed to the same single-column alignment with no clipping. The focused modal suite passed 15 tests, `npx tsc --noEmit` passed, and Playwright recorded no console issues, page errors, or framework overlay.
 
 ## Context and Orientation
 
@@ -181,4 +197,4 @@ Continue using Mantine `Modal`, `Paper`, `Select`, `NumberInput`, `Checkbox`, `S
 
 The staged `Match` returned by `onSave` must contain synchronized `segments`, `team1Points`, `team2Points`, and `setResults`, plus a `matchRulesSnapshot` that reflects match-specific rule fields. `resolvedMatchRules` should mirror that snapshot locally so the staged preview and subsequent reopening use the override before server hydration.
 
-Plan revision note: Created on 2026-07-19 after auditing the current modal, save pipeline, focused tests, and dirty worktree. Updated after implementation to record the final two-column information architecture, same-draft confirmation fix, direct score semantics, sport-aware per-match controls, automated results, and desktop/mobile browser evidence.
+Plan revision note: Created on 2026-07-19 after auditing the current modal, save pipeline, focused tests, and dirty worktree. Updated after implementation to record the final two-column information architecture, same-draft confirmation fix, direct score semantics, sport-aware per-match controls, automated results, and desktop/mobile browser evidence. Updated again on 2026-07-20 for count-sized numeric set targets, compact in-column scoring, and the follow-up QA evidence.

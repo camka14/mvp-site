@@ -938,6 +938,7 @@ type SyncCanonicalTeamRosterInput = {
   actingUserId?: string | null;
   now?: Date;
   cleanupRemovedPendingInvites?: boolean;
+  preserveInvitedStaffAssignments?: boolean;
 };
 
 type ExistingPendingTeamInviteRecord = {
@@ -1125,7 +1126,7 @@ export const syncCanonicalTeamRoster = async (
   const pendingPlayerIds = normalizeIdList(input.pendingPlayerIds).filter((userId) => !activePlayerIds.includes(userId));
   const managerId = normalizeId(input.managerId);
   const headCoachId = normalizeId(input.headCoachId);
-  const assistantCoachIds = normalizeIdList(input.assistantCoachIds).filter((userId) => userId !== headCoachId && userId !== managerId);
+  const assistantCoachIds = normalizeIdList(input.assistantCoachIds).filter((userId) => userId !== headCoachId);
   const desiredPlayerUserIds = uniqueStrings([...activePlayerIds, ...pendingPlayerIds]);
   const desiredStaffKeys = new Map<string, { userId: string; role: 'MANAGER' | 'HEAD_COACH' | 'ASSISTANT_COACH' }>();
   if (managerId) {
@@ -1262,7 +1263,10 @@ export const syncCanonicalTeamRoster = async (
     },
   })));
 
-  const removedStaffAssignments = existingStaffAssignments.filter((row) => !desiredStaffKeys.has(`${String(row.role).toUpperCase()}:${row.userId}`));
+  const removedStaffAssignments = existingStaffAssignments.filter((row) => (
+    !desiredStaffKeys.has(`${String(row.role).toUpperCase()}:${row.userId}`)
+    && !(input.preserveInvitedStaffAssignments && String(row.status ?? '').toUpperCase() === 'INVITED')
+  ));
   if (removedStaffAssignments.length) {
     await Promise.all(removedStaffAssignments.map((row) => teamStaffAssignmentsDelegate.updateMany({
       where: {

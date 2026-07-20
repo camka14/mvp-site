@@ -6,7 +6,7 @@ This document must be maintained in accordance with `PLANS.md` in the repository
 
 ## Purpose / Big Picture
 
-After this work, Google and unauthenticated visitors will reach a smaller, higher-quality set of BracketIQ search pages. Public organization and event pages will have one preferred canonical URL, generic soccer and volleyball searches will aggregate their indoor, grass, and beach variants, and local pages will include matching inventory within 25 miles of the named city instead of requiring an exact city string. Empty sport, type, and city combinations will return HTTP 404 and will not appear in the sitemap.
+After this work, Google and unauthenticated visitors will reach a smaller, higher-quality set of BracketIQ search pages. Only organizations that explicitly enable their public page will be indexable, public organization and event pages will have one preferred canonical URL, generic soccer and volleyball searches will aggregate their indoor, grass, and beach variants, and local pages will include matching inventory within 25 miles of the named city instead of requiring an exact city string. Empty sport, type, and city combinations will return HTTP 404 and will not appear in the sitemap.
 
 The behavior is visible by opening a backed local page such as `/find-events/soccer-leagues/portland-or`, confirming that it contains matching events within 25 miles of Portland, and comparing it with an empty combination, which should return 404. The sitemap should contain the backed page, omit the empty page, contain each URL only once, and include the `/find-clubs` and `/find-facilities` directory roots.
 
@@ -21,6 +21,8 @@ The behavior is visible by opening a backed local page such as `/find-events/soc
 - [x] (2026-07-16 18:03Z) Added all three public search roots to crawlable navigation and the sitemap, removed legacy search URL ownership, and deduplicated the final sitemap.
 - [x] (2026-07-16 18:06Z) Added regression coverage and completed focused Jest, TypeScript, production build, real-database inventory, rendered-HTML, and desktop/mobile browser verification.
 - [x] (2026-07-16 18:03Z) Recorded final evidence and the remaining post-deploy Google Search Console action.
+- [x] (2026-07-19) Corrected organization indexing so disabled public pages emit `noindex`, omit structured data, and never appear in the sitemap.
+- [x] (2026-07-19) Re-ran the corrected server and sitemap suites (16 tests) plus `npx tsc --noEmit`; all passed. Two production-build attempts passed Prisma validation/generation but remained silent in Next.js's optimized-build phase and were stopped without a compiler error.
 
 ## Surprises & Discoveries
 
@@ -36,14 +38,14 @@ The behavior is visible by opening a backed local page such as `/find-events/soc
 - Observation: Before this change, two independent sitemap generators emitted some of the same sport directory URLs.
   Evidence: Eight `/find-events/[sport]` URLs occurred twice in the live sitemap. The implementation removed legacy search URL ownership and retained URL-level deduplication as a final safeguard.
 
-- Observation: Most listed organizations already have an enabled public slug page.
-  Evidence: The local database audit found 222 listed organizations with enabled `/o/[slug]` pages and only 3 listed organizations that need `/organizations/[id]` as the public fallback.
+- Observation: Most listed organizations already have an enabled public slug page, while the three remaining listed organizations had not enabled public publishing.
+  Evidence: The local database audit found 222 listed organizations with enabled `/o/[slug]` pages. The 3 previously emitted `/organizations/[id]` fallback URLs belong to disabled public pages and are now excluded from indexing.
 
 - Observation: The legacy public sitemap helper still emitted sport-directory URLs after the new inventory-gated generator was corrected.
   Evidence: `src/server/publicSearchSeo.ts` independently called `listPublicEventSportSummaries()`. Removing those sport entries made `src/server/publicSearchPages.ts` the sole sitemap owner for `/find-*` combinations and eliminated stale or duplicate search URLs.
 
 - Observation: The cleaned live-database sitemap is materially smaller without losing the backed local pages used for validation.
-  Evidence: The post-change generator produced 545 populated search combinations and 1,034 total unique sitemap URLs, compared with 3,503 search URLs and 4,114 total entries before the change. There were zero summaries without results and zero duplicate final URLs.
+  Evidence: The 2026-07-16 post-change generator produced 545 populated search combinations and 1,034 total unique sitemap URLs before the organization enablement correction, compared with 3,503 search URLs and 4,114 total entries before the work. There were zero summaries without results and zero duplicate final URLs. The 2026-07-19 correction deterministically removes the 3 disabled organization fallback URLs; a fresh database-backed recount was unavailable because the configured database refused the connection.
 
 - Observation: No sport-specific facility sitemap pages are currently emitted, as intended.
   Evidence: The post-change search summary counts were 304 event pages and 241 club pages. Facility roots remain linked and indexable, but facility sport pages wait for real field `sportIds`.
@@ -66,9 +68,9 @@ The behavior is visible by opening a backed local page such as `/find-events/soc
   Rationale: These are the generic search terms people use, while the specific catalog pages remain valuable and should continue to exist.
   Date/Author: 2026-07-16 / Codex
 
-- Decision: `/o/[slug]` is the preferred public organization URL whenever the public page is enabled.
-  Rationale: Human-readable slug pages are already the product’s richest public organization surface. `/organizations/[id]` remains the fallback for listed organizations without an enabled public page.
-  Date/Author: 2026-07-16 / Codex
+- Decision: Only organizations with `publicPageEnabled=true` are indexable; `/o/[slug]` is preferred whenever an enabled page has a slug.
+  Rationale: Enabling the public page is the organization’s explicit publishing choice. `/organizations/[id]` may remain reachable for product behavior, but it must be omitted from the sitemap and emit `noindex` when public publishing is disabled.
+  Date/Author: 2026-07-19 / Codex
 
 - Decision: Keep Prisma-backed pages and the sitemap dynamically rendered.
   Rationale: Inventory changes frequently and the existing lazy Prisma client plus `dynamic = 'force-dynamic'` avoids build-time database initialization failures.
@@ -80,11 +82,13 @@ The behavior is visible by opening a backed local page such as `/find-events/soc
 
 ## Outcomes & Retrospective
 
-The implementation is complete in the working tree. Public local-search pages now use a deterministic 25-mile radius, umbrella Soccer and Volleyball routes aggregate their real variants, filtered pages without results return 404, and search cards and canonical metadata prefer `/o/[slug]`. The public footer and search header expose Events, Clubs, and Facilities as normal crawlable links.
+The implementation is complete in the working tree. Public local-search pages now use a deterministic 25-mile radius, umbrella Soccer and Volleyball routes aggregate their real variants, filtered pages without results return 404, and search cards and canonical metadata prefer `/o/[slug]`. Organizations that have not enabled their public page are omitted from the sitemap and emit `noindex` on `/organizations/[id]`. The public footer and search header expose Events, Clubs, and Facilities as normal crawlable links.
 
-The real database produced 545 populated public-search pages: 304 event pages and 241 club pages. It produced no sport-specific facility pages because the current field rows have no `sportIds`, which is the desired inventory-gated result. The complete sitemap contains 1,034 unique URLs with no duplicates, down from 4,114 pre-change entries.
+The 2026-07-16 real-database validation produced 545 populated public-search pages: 304 event pages and 241 club pages. It produced no sport-specific facility pages because the current field rows have no `sportIds`, which is the desired inventory-gated result. Before the organization enablement correction, the complete sitemap contained 1,034 unique URLs with no duplicates, down from 4,114 pre-change entries. The correction excludes the 3 disabled organization fallback URLs from that inventory snapshot; the exact current total remains inventory-dependent.
 
-Verification passed with 26 focused Jest tests, `npx tsc --noEmit`, and `npm run build`. A production server smoke test returned HTTP 200 for `/find-events`, `/find-events/soccer-leagues/portland-or`, `/find-events/volleyball/portland-or`, and `/find-clubs/soccer/portland-or`; it returned HTTP 404 for `/find-events/pickleball-tournaments/eugene-or`. The backed soccer page rendered one apex canonical tag, one viewport tag, `index, follow`, no duplicate heading text, and no `X-Powered-By` response header. Playwright snapshots at 1440 by 1000 and 390 by 844 showed the 25-mile copy, backed result cards, crawlable navigation, and responsive mobile menu with no backed-page console warnings or errors. The empty route showed the standard 404 page; its only console error was the expected failed document request. The local sitemap endpoint returned 1,034 URLs with zero duplicates. With `X-Forwarded-Proto: https`, a `www.bracket-iq.com` request returned HTTP 308 to the apex URL.
+Verification passed with 26 focused Jest tests, `npx tsc --noEmit`, and `npm run build`. A production server smoke test returned HTTP 200 for `/find-events`, `/find-events/soccer-leagues/portland-or`, `/find-events/volleyball/portland-or`, and `/find-clubs/soccer/portland-or`; it returned HTTP 404 for `/find-events/pickleball-tournaments/eugene-or`. The backed soccer page rendered one apex canonical tag, one viewport tag, `index, follow`, no duplicate heading text, and no `X-Powered-By` response header. Playwright snapshots at 1440 by 1000 and 390 by 844 showed the 25-mile copy, backed result cards, crawlable navigation, and responsive mobile menu with no backed-page console warnings or errors. The empty route showed the standard 404 page; its only console error was the expected failed document request. Before the enablement correction, the local sitemap endpoint returned 1,034 URLs with zero duplicates. With `X-Forwarded-Proto: https`, a `www.bracket-iq.com` request returned HTTP 308 to the apex URL.
+
+The 2026-07-19 enablement correction separately passed the 16 focused server and sitemap tests and `npx tsc --noEmit`. Two `npm run build` attempts completed Prisma validation and client generation, then remained silent in Next.js's `Creating an optimized production build` phase for several minutes; both were stopped without a reported compiler error. A fresh database-backed sitemap and rendered-page smoke check was also unavailable because the configured database refused the connection.
 
 Deployment and Google Search Console submission remain operational follow-up steps. No database write or migration was required.
 
@@ -92,7 +96,7 @@ Deployment and Google Search Console submission remain operational follow-up ste
 
 This repository is a Next.js App Router application. The public SEO routes live in `src/app/find-events`, `src/app/find-clubs`, `src/app/find-facilities`, `src/app/o/[slug]`, `src/app/organizations/[id]`, and `src/app/event/[id]`. The shared public-search inventory and URL logic lives in `src/server/publicSearchPages.ts`. Older public organization and event SEO helpers live in `src/server/publicSearchSeo.ts`. The XML sitemap is assembled in `src/app/sitemap.ts`, and crawler rules are returned by `src/app/robots.ts`.
 
-A canonical URL is the preferred URL for content that can otherwise be reached through more than one path. For organizations, `/o/[slug]` is preferred when enabled; `/organizations/[id]` is the fallback. For events, `/o/[slug]/events/[eventId]` is preferred when an enabled public organization page exists; `/event/[id]` is the fallback.
+A canonical URL is the preferred URL for content that can otherwise be reached through more than one path. For organizations, `/o/[slug]` is preferred when enabled. The `/organizations/[id]` route remains reachable, but it is not indexable unless that organization explicitly enabled public publishing. For events, `/o/[slug]/events/[eventId]` is preferred when an enabled public organization page exists; `/event/[id]` is the fallback.
 
 A public-search facet is one filtered dimension in a URL: the result kind (`events`, `clubs`, or `facilities`), sport, event type, or location. A page such as `/find-events/soccer-leagues/portland-or` combines all four. The location portion represents a 25-mile circle around Portland’s checked-in center coordinate.
 
@@ -106,7 +110,7 @@ Next, add a pure sport-entry builder in `src/server/publicSearchPages.ts`. It wi
 
 Then remove the unconditional empty-page generation in `listPublicSearchPageSummaries()`. The summary generator will test actual and curated locations and add only combinations with results. `getPublicSearchPage()` will return `null` for any filtered page with no results, causing the App Router page to call `notFound()` and return HTTP 404. Broad roots remain available as directory pages.
 
-After inventory behavior is correct, update organization URL selection. Club and facility result cards will use `/o/[slug]` when enabled. `getRegularOrganizationSeoData()` will point its canonical metadata at the public slug when present. `listRegularOrganizationProfileSitemapEntries()` will emit only listed organizations without enabled public slug pages.
+After inventory behavior is correct, update organization URL selection. Club and facility result cards will use `/o/[slug]` when enabled. `getRegularOrganizationSeoData()` will point its canonical metadata at the public slug when present and mark disabled pages non-indexable. `listRegularOrganizationProfileSitemapEntries()` will emit only enabled public pages that lack a slug; enabled slug pages are owned by the public sitemap helper, and disabled pages are omitted entirely.
 
 Update `src/app/sitemap.ts` to include `/find-clubs` and `/find-facilities` and deduplicate all returned URLs. Update the public search root and shared public navigation so normal anchor links expose the event, club, and facility directories. Convert `/find-events` to the shared root search view so its umbrella sport pages and backed sport links are rendered from the same inventory rules.
 
@@ -170,7 +174,7 @@ The change is accepted when a Portland umbrella page includes a matching Beavert
 
 An empty filtered page must cause `getPublicSearchPage()` to return `null`, the route to return HTTP 404, and `listPublicSearchSitemapEntries()` to omit its URL. Broad roots remain indexable directory pages.
 
-Club and facility result cards must link to `/o/[slug]` for enabled public organizations and fall back to `/organizations/[id]` otherwise. The regular organization sitemap must include only fallback organization URLs. Regular organization metadata must name the slug path as canonical when one exists.
+Club and facility result cards must link to `/o/[slug]` for enabled public organizations and may fall back to `/organizations/[id]` otherwise. Disabled organization pages must not occur in the sitemap and their metadata must emit `noindex`. Enabled organization metadata must name the slug path as canonical when one exists.
 
 The final sitemap must contain `/find-events`, `/find-clubs`, and `/find-facilities`; must contain backed local pages; must omit empty combinations; and must have no duplicate URL values. Shared public navigation must expose crawlable links to all three roots.
 
@@ -206,9 +210,9 @@ Post-change live-database evidence:
     club search summaries: 241
     facility sport summaries: 0
     zero-result summaries: 0
-    final sitemap URLs: 1034
+    final sitemap URLs before the organization enablement correction: 1034
     duplicate final URLs: 0
-    regular organization fallback URLs: 3
+    disabled regular organization fallback URLs now excluded: 3
     Portland soccer league results: 6
     Portland volleyball results: 24 (display limit)
     empty Eugene pickleball tournament page: null / HTTP 404
@@ -237,3 +241,5 @@ Revision note: Created on 2026-07-16 to replace the earlier empty curated-page s
 Revision note: Updated on 2026-07-16 after implementation to record single-owner search sitemap generation, completed verification, live-database URL counts, rendered HTTP behavior, and the remaining post-deploy Search Console step.
 
 Revision note: Updated on 2026-07-16 after final Playwright verification to record responsive desktop/mobile behavior and the expected empty-route browser result.
+
+Revision note: Updated on 2026-07-19 after the product owner clarified that public-page enablement is the indexing consent gate; disabled organization pages are now omitted from the sitemap and marked `noindex`.

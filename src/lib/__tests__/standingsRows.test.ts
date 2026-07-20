@@ -52,6 +52,26 @@ describe('standingsRows', () => {
       })).toBe(true);
     });
 
+    it('falls back to the parent tournament division when an unassigned pool has no team ids', () => {
+      expect(teamBelongsToSelectedStandingsDivision({
+        selectedDivisionId: 'pool_open_a',
+        fallbackDivisionId: 'bracket_open',
+        selectedDivisionTeamIds: [],
+        teamId: 'team_9',
+        teamDivisionId: 'bracket_open',
+      })).toBe(true);
+    });
+
+    it('keeps explicit pool membership authoritative over the parent tournament division fallback', () => {
+      expect(teamBelongsToSelectedStandingsDivision({
+        selectedDivisionId: 'pool_open_a',
+        fallbackDivisionId: 'bracket_open',
+        selectedDivisionTeamIds: ['team_1'],
+        teamId: 'team_9',
+        teamDivisionId: 'bracket_open',
+      })).toBe(false);
+    });
+
     it('rejects teams that belong to a different division', () => {
       expect(teamBelongsToSelectedStandingsDivision({
         selectedDivisionId: 'division_open',

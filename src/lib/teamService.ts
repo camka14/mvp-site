@@ -33,6 +33,20 @@ export type TeamInviteFreeAgentContext = {
     freeAgentEventsByUserId: Record<string, string[]>;
     freeAgentEventTeamIdsByUserId: Record<string, string[]>;
 };
+export type CreateTeamMemberInviteInput = {
+    role?: TeamInviteRoleType;
+    userId?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    shareOnly?: boolean;
+};
+export type CreateTeamMemberInviteResult = {
+    ok: boolean;
+    invite?: Invite;
+    shareUrl?: string | null;
+};
 export type TeamRegistrationConsent = {
     documentId?: string | null;
     status?: string | null;
@@ -196,6 +210,8 @@ class TeamService {
               registrationPriceCents?: number;
               affiliateUrl?: string | null;
               requiredTemplateIds?: string[];
+              creatorIsCaptain?: boolean;
+              creatorCoachRole?: 'NONE' | 'HEAD_COACH' | 'ASSISTANT_COACH';
           },
       ): Promise<Team> {
         try {
@@ -220,6 +236,8 @@ class TeamService {
                 teamSize: maxPlayers,
                 profileImageId: profileImageId || '',
                 addSelfAsPlayer,
+                creatorIsCaptain: options?.creatorIsCaptain ?? addSelfAsPlayer,
+                creatorCoachRole: options?.creatorCoachRole ?? 'NONE',
                   organizationId: options?.organizationId,
                   joinPolicy: options?.joinPolicy ?? (options?.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
                   openRegistration: (options?.joinPolicy ?? (options?.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED')) === 'OPEN_REGISTRATION',
@@ -309,6 +327,19 @@ class TeamService {
             console.error('Failed to invite email to team:', error);
             return false;
         }
+    }
+
+    async createTeamMemberInvite(
+        teamId: string,
+        input: CreateTeamMemberInviteInput,
+    ): Promise<CreateTeamMemberInviteResult> {
+        return apiRequest<CreateTeamMemberInviteResult>(
+            `/api/teams/${encodeURIComponent(teamId)}/member-invites`,
+            {
+                method: 'POST',
+                body: input,
+            },
+        );
     }
 
     private mapRowToPlayerRegistrations(value: unknown): TeamPlayerRegistration[] {

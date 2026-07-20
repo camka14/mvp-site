@@ -232,6 +232,11 @@ export const acceptTeamInviteWithGuardianRules = async ({
     const previousMemberIds = getTeamChatBaseMemberIds(txTeam);
     const txPending = normalizeIdList((txTeam as any).pending);
     const txIsPlayerInvite = txPending.includes(auth.targetUserId);
+    const invitedStaffAssignments = (Array.isArray((txTeam as any).staffAssignments) ? (txTeam as any).staffAssignments : [])
+      .filter((assignment: any) => (
+        normalizeId(assignment.userId) === auth.targetUserId
+        && String(assignment.status ?? '').toUpperCase() === 'INVITED'
+      ));
 
     if (txIsPlayerInvite) {
       await syncCanonicalTeamRoster({
@@ -245,6 +250,7 @@ export const acceptTeamInviteWithGuardianRules = async ({
         actingUserId: session.userId,
         now,
         cleanupRemovedPendingInvites: false,
+        preserveInvitedStaffAssignments: true,
       }, tx);
 
       if (auth.actingParentId) {
@@ -260,6 +266,30 @@ export const acceptTeamInviteWithGuardianRules = async ({
           },
         });
       }
+    }
+
+    for (const assignment of invitedStaffAssignments) {
+      const role = String(assignment.role ?? '').toUpperCase();
+      if ((role === 'MANAGER' || role === 'HEAD_COACH') && tx.teamStaffAssignments?.updateMany) {
+        await tx.teamStaffAssignments.updateMany({
+          where: {
+            teamId: auth.teamId,
+            role: role as any,
+            status: 'ACTIVE',
+            userId: { not: auth.targetUserId },
+          },
+          data: { status: 'REMOVED', updatedAt: now },
+        });
+      }
+      await tx.teamStaffAssignments?.updateMany?.({
+        where: {
+          teamId: auth.teamId,
+          userId: auth.targetUserId,
+          role: role as any,
+          status: 'INVITED',
+        },
+        data: { status: 'ACTIVE', updatedAt: now },
+      });
     }
 
     await syncTeamChatInTx(tx, auth.teamId, {
@@ -306,6 +336,14 @@ export const declineTeamInviteWithGuardianRules = async ({
   await prisma.$transaction(async (tx) => {
     await rollbackTeamInviteEventSyncs(tx, invite, 'DECLINED', now);
     await removeCanonicalPendingInvitee(tx, invite, session.userId, now);
+    await tx.teamStaffAssignments?.updateMany?.({
+      where: {
+        teamId: auth.teamId,
+        userId: auth.targetUserId,
+        status: 'INVITED',
+      },
+      data: { status: 'REMOVED', updatedAt: now },
+    });
 
     await tx.invites.update({
       where: { id: invite.id },

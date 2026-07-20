@@ -4081,7 +4081,7 @@ export const syncEventDivisions = async (
           poolCount: undefined,
           poolTeamCount: undefined,
           playoffPlacementDivisionIds: pool.playoffPlacementDivisionIds,
-          standingsOverrides: null,
+          standingsOverrides: undefined,
           standingsConfirmedAt: null,
           standingsConfirmedBy: null,
           playoffConfig: null,
