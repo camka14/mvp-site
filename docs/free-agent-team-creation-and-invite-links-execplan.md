@@ -45,7 +45,10 @@ The images establish layout and interaction hierarchy, not pixel-perfect impleme
 - [x] (2026-07-20 06:30Z) Validated the Android team editor on a Pixel 9 Pro API 35 emulator: account search returned Taylor Stone, the phone-only Head Coach editor created Cameron Wells as a pending `HEAD_COACH` invite, the private-link result rendered, and Share opened the native Android chooser. The persisted invite did not create a player registration.
 - [x] (2026-07-20 06:30Z) Corrected the Android invite tabs after screenshot review by limiting their labels to two centered lines at a compact tab-label size; rebuilt, reinstalled, and re-captured the phone layout.
 - [x] (2026-07-20 16:49Z) Added shared web and mobile phone-input formatting for player and staff invitations, removed placeholders from the established web new-person editor, and covered incremental typing, pasted US country codes, and deletion through formatting separators.
-- [ ] Add mobile contact permission, on-device contact search, selected-contact account matching, and native share/message behavior. This is the active implementation milestone after the all-dirty checkpoint commits.
+- [x] (2026-07-20 18:33Z) Created the requested all-dirty checkpoints before contact access: web commit `049b0bc3` and mobile commit `3601b0e2`.
+- [x] (2026-07-20 18:33Z) Added Android and iOS contact permission services, a just-in-time privacy primer, denial and Settings fallbacks, on-device normalization/search, bounded results, multi-method selection, and shared entry points from both Team Management and the builder Invite step.
+- [x] (2026-07-20 18:33Z) Added the authenticated, rate-limited selected-contact match endpoint and mobile repository contract. Only the selected normalized email/phone is sent; hidden, blocked, and nonexistent accounts share the same non-match result.
+- [x] (2026-07-20 18:33Z) Completed real Chrome and Pixel 9 Pro API 35 acceptance for placeholder-free phone fields, rapid ten-digit typing, repeated Backspace to empty, contact denial, granted search, contact selection, non-match prefill, and both create/edit entry points. Saved the reviewed screenshots under the Codex visualization output folder.
 
 ## Surprises & Discoveries
 
@@ -70,8 +73,8 @@ The images establish layout and interaction hierarchy, not pixel-perfect impleme
 - Observation: A bounded inner roster plus a scrollable outer screen is necessary on mobile because the optional-contact editor can be taller than one viewport before the roster begins.
   Evidence: The Compose regression test must scroll “Save invite” into view before clicking it, and the Android emulator capture confirms the sticky 48 dp bottom actions remain available while the content scrolls.
 
-- Observation: The native contact-import and post-create share-sheet work is still separate from the create-team walkthrough delivered in this milestone.
-  Evidence: Mobile currently presents a privacy primer and then opens the manual optional-contact editor; the repository can submit optional contact fields but does not yet return the claim URL to Compose or query the device address book.
+- Observation: Native contact import can remain one shared dialog even though Team Management and the create-team walkthrough hold invite state differently.
+  Evidence: `AddFromContactsDialog` returns one `SelectedDeviceContact`; the established editor either switches to an existing account or pre-fills its new-person form, while the builder performs the same match and updates its roster draft without persisting the address book.
 
 - Observation: The first Staff-step implementation could invite only existing accounts, and the unclaimed-link claim route treated every person invite as a player.
   Evidence: `TeamBuilderModal.tsx` and `CreateTeamBuilderScreen.kt` modeled staff invitations with a required `UserData`, `member-invites/route.ts` rejected staff requests without `userId`, and `team-invites/[id]/claim/route.ts` always reserved a player slot before acceptance. The corrected contract stores the intended team staff role in `Invites.staffTypes` and creates the invited staff assignment when the link is claimed.
@@ -90,6 +93,12 @@ The images establish layout and interaction hierarchy, not pixel-perfect impleme
 
 - Observation: Formatting punctuation as soon as a group becomes complete can make Backspace appear broken because deleting only `)` or `-` immediately recreates that separator.
   Evidence: The shared formatters add `(`, `)`, spaces, and `-` only when the next digit exists. Regression tests repeatedly remove the final displayed character and reach an empty value without a sticky separator.
+
+- Observation: Mutating the Compose text value to include phone punctuation can still lose a digit when Android delivers a fast burst of key events, even when cursor offsets are remapped.
+  Evidence: Emulator entry of `5035550142` reproduced a missing/reordered final digit. Storing only ten raw digits and applying punctuation with `PhoneInputVisualTransformation` produced `(503) 555-0142` under the same burst and allowed ten Backspaces to reach an empty value.
+
+- Observation: The iOS simulator Kotlin compile currently stops in an unrelated payment actual/expect mismatch before completing the app module.
+  Evidence: `:composeApp:compileKotlinIosSimulatorArm64` compiles the shared UI and reaches the app module, then fails because `PaymentProcessor.ios.kt` lacks the pre-existing expected `emitPaymentResult` member; it reports no contact-service or phone-formatting errors.
 
 ## Decision Log
 
@@ -173,7 +182,9 @@ The web backend now supports optional email/phone invitations without placeholde
 
 Manual browser acceptance proved two complete paths against the local database: a new player registered from the private link and became an active team player, and a new assistant coach registered from the staff link and became active staff without using roster capacity. Android then created a phone-only Head Coach invitation, displayed its role-specific share result, opened the native chooser, and persisted `staffTypes = [HEAD_COACH]` with no additional player registration. Focused Jest, TypeScript, Kotlin compilation, Compose tests, and screenshot checks cover the touched surfaces.
 
-This does not complete every milestone in the original broader plan. Mobile still needs the real OS contact permission/search implementation, selected-contact account matching, and dedicated claim deep-link destination. The current Contacts primer deliberately falls back to manual entry instead of claiming that device contacts have been read. Analytics plus full keyboard, screen-reader, TalkBack, and VoiceOver acceptance also remain open above.
+Mobile now has real OS contact permission and on-device address-book search on Android and iOS. The picker explains the boundary before requesting access, keeps manual entry available after denial, displays a bounded searchable list, lets the inviter choose among multiple methods, and sends only the selected values to the privacy-preserving account-match route. A visible account becomes an account invite; a non-match pre-fills the new-person form with the phone visually formatted while raw digits remain stable for typing and deletion.
+
+The remaining broader-plan work is the dedicated mobile claim deep-link destination, analytics, full keyboard and screen-reader acceptance, TalkBack/VoiceOver acceptance, and hands-on iOS simulator/device permission QA after the unrelated `PaymentProcessor.ios.kt` expect/actual compile mismatch is repaired.
 
 ## Context and Orientation
 

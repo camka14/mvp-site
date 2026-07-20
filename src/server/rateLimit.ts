@@ -76,6 +76,12 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 5 * 60,
     message: 'Too many sign-in attempts. Please wait before trying again.',
   },
+  contactMatch: {
+    name: 'users:contact-match',
+    limit: 30,
+    windowSeconds: 60,
+    message: 'Too many contact lookups. Please wait before trying again.',
+  },
   realtimeToken: {
     name: 'realtime:token',
     limit: 120,
