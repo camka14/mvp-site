@@ -122,9 +122,11 @@ const main = async () => {
     createdOrUpdated: 0,
     queued: 0,
     skippedPreviouslyCaptured: 0,
+    failedSites: [] as Array<{ host: string; sourceKeys: string[]; error: string }>,
   };
 
   for (const [host, siteSources] of groups) {
+    try {
     const blocked = siteSources.some((source) => isExplicitlyBlocked(source.metadata));
     const allowed = !blocked && siteSources.every((source) => isExplicitlyAllowed(source.metadata));
     if (blocked) summary.blockedSites += 1;
@@ -229,6 +231,13 @@ const main = async () => {
       admin.id,
     );
     summary.queued += 1;
+    } catch (error) {
+      summary.failedSites.push({
+        host,
+        sourceKeys: siteSources.map((source) => source.sourceKey).sort(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   console.log(JSON.stringify({

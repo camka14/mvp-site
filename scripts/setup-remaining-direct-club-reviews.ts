@@ -7,6 +7,7 @@ import type {
   AffiliateScrapeMapping,
   ScrapePageClient,
 } from "../src/server/affiliateImports/types";
+import { createZeroCandidateReviewMapping } from "../src/server/affiliateImports/zeroCandidateClubReview";
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: ".env.local", override: false, quiet: true });
@@ -376,17 +377,10 @@ const setupReview = async (review: ReviewDefinition, ownerId: string) => {
 
   const id = sourceId(review);
   const activeMappingId = mappingId(review);
-  const mapping: AffiliateScrapeMapping = {
-    kind: "EVENT",
-    listUrl: review.sourcePages[0] ?? review.website,
-    itemSelector: "[data-no-current-listings]",
-    fields: {
-      title: { selector: "[data-no-current-listings]", mode: "text" },
-      officialActionUrl: { selector: "[data-no-current-listings]", mode: "literal", value: review.website },
-    },
-    dedupe: { fields: ["officialActionUrl", "title"] },
-    manualCandidates: [],
-  };
+  const mapping: AffiliateScrapeMapping = createZeroCandidateReviewMapping(
+    review.sourcePages[0] ?? review.website,
+    review.website,
+  );
   const sourcePayload = {
     name: `${review.organizationName} Final Current Programs Review`,
     sourceKey: review.key,

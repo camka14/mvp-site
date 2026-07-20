@@ -4,6 +4,7 @@
  */
 import dotenv from 'dotenv';
 import type { AffiliateScrapeMapping, ScrapePageClient } from '../src/server/affiliateImports/types';
+import { createZeroCandidateReviewMapping } from '../src/server/affiliateImports/zeroCandidateClubReview';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -153,17 +154,9 @@ const sourceId = (review: ReviewConfig) => `affiliate_source_${review.key.replac
 const sourceKey = (review: ReviewConfig) => `${review.key}-reviewed-programs`;
 const mappingId = (review: ReviewConfig) => `affiliate_mapping_${review.key.replace(/-/g, '_')}_reviewed_programs_v1`;
 
-const mappingFor = (review: ReviewConfig): AffiliateScrapeMapping => ({
-  kind: 'EVENT',
-  listUrl: review.sourcePages[0] ?? review.website,
-  itemSelector: '[data-no-current-listings]',
-  fields: {
-    title: { selector: '[data-no-current-listings]', mode: 'text' },
-    officialActionUrl: { selector: '[data-no-current-listings]', mode: 'literal', value: review.website },
-  },
-  dedupe: { fields: ['officialActionUrl', 'title'] },
-  manualCandidates: [],
-});
+const mappingFor = (review: ReviewConfig): AffiliateScrapeMapping => (
+  createZeroCandidateReviewMapping(review.sourcePages[0] ?? review.website, review.website)
+);
 
 const setupReview = async (review: ReviewConfig, ownerId: string) => {
   const organization = await (prisma as any).organizations.findUnique({
