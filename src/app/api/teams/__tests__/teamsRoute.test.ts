@@ -305,6 +305,39 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('keeps the creator as a player without making them captain and supports a creator coaching role', async () => {
+    createMock.mockResolvedValue({
+      id: 'team_creator_roles',
+      name: 'Creator Roles',
+      playerIds: ['user_1'],
+      captainId: '',
+      managerId: 'user_1',
+      headCoachId: null,
+      coachIds: ['user_1'],
+      pending: [],
+      teamSize: 6,
+    });
+
+    const response = await POST(postJson({
+      id: 'team_creator_roles',
+      name: 'Creator Roles',
+      addSelfAsPlayer: true,
+      creatorIsCaptain: false,
+      creatorCoachRole: 'ASSISTANT_COACH',
+      teamSize: 6,
+    }));
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        playerIds: ['user_1'],
+        captainId: '',
+        managerId: 'user_1',
+        coachIds: ['user_1'],
+      }),
+    }));
+  });
+
   it('fails closed when legacy team storage rejects a requested field', async () => {
     createMock.mockRejectedValueOnce(
       new Error('Unknown argument `joinPolicy` for type VolleyBallTeamsCreateInput.'),

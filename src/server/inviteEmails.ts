@@ -3,6 +3,7 @@ import { buildInviteEmail } from '@/server/emailTemplates';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { sendPushToUsers } from '@/server/pushNotifications';
 import { isUserNotificationChannelEnabled } from '@/server/notificationPreferences';
+import { buildTeamInviteShareUrl } from '@/server/teamInviteLinks';
 
 interface InviteRecord {
   id: string;
@@ -16,6 +17,8 @@ interface InviteRecord {
   lastName?: string | null;
   status?: string | null;
   sentAt?: Date | string | null;
+  linkVersion?: number | null;
+  linkExpiresAt?: Date | string | null;
 }
 
 interface InviteDeliveryResult {
@@ -86,6 +89,9 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         organizationName: invite.organizationId ? organizationNames.get(invite.organizationId) : undefined,
         teamId: invite.teamId,
         teamName: invite.teamId ? teamNames.get(invite.teamId) : undefined,
+        actionUrl: invite.type?.trim().toUpperCase() === 'TEAM' && invite.linkExpiresAt
+          ? buildTeamInviteShareUrl(invite as InviteRecord & { id: string; linkExpiresAt: Date | string }, baseUrl)
+          : undefined,
       });
 
       const inviteUserId = invite.userId?.trim();

@@ -102,6 +102,31 @@ describe('scheduled affiliate scrapes', () => {
     )).toBe(true);
   });
 
+  it('uses only successful runs when deciding whether a source is due', async () => {
+    prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([
+      {
+        id: 'source_retry',
+        name: 'Retry Source',
+        sourceKey: 'retry-source',
+        listUrl: 'https://retry.example.test/events',
+        targetKind: 'EVENT',
+        scrapeIntervalMinutes: 1440,
+        metadata: {},
+      },
+    ]);
+    prismaMock.affiliateScrapeRuns.findFirst.mockResolvedValue(null);
+
+    const result = await runDueAffiliateScrapes({
+      now: new Date('2026-07-04T12:00:00.000Z'),
+      dryRun: true,
+    });
+
+    expect(prismaMock.affiliateScrapeRuns.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { sourceId: 'source_retry', status: 'SUCCEEDED' },
+    }));
+    expect(result.dueSourceCount).toBe(1);
+  });
+
   it('runs only due sources, continues after one source fails, and emails a summary', async () => {
     const now = new Date('2026-07-04T12:00:00.000Z');
     prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([

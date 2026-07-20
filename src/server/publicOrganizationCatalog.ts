@@ -1713,7 +1713,7 @@ export const getPublicOrganizationEventForRegistration = async (
       organization: {
         $id: organization.id,
         name: organization.name,
-        logoId: null,
+        logoUrl: organization.logoUrl,
       },
       divisionDetails: divisionDetails.map((row: Record<string, any>) => ({ ...row, $id: row.id })),
       playoffDivisionDetails: playoffDivisionDetails.map((row: Record<string, any>) => ({ ...row, $id: row.id })),

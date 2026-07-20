@@ -562,6 +562,7 @@ export const InvitesScalarFieldEnum = {
   sentAt: 'sentAt',
   type: 'type',
   email: 'email',
+  phone: 'phone',
   status: 'status',
   staffTypes: 'staffTypes',
   eventId: 'eventId',
@@ -570,7 +571,10 @@ export const InvitesScalarFieldEnum = {
   userId: 'userId',
   createdBy: 'createdBy',
   firstName: 'firstName',
-  lastName: 'lastName'
+  lastName: 'lastName',
+  linkVersion: 'linkVersion',
+  linkExpiresAt: 'linkExpiresAt',
+  claimedBy: 'claimedBy'
 } as const
 
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]

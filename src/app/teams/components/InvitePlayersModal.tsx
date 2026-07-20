@@ -30,6 +30,7 @@ import {
   type TeamInviteRoleType,
 } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
+import { formatPhoneInput } from '@/lib/phoneInput';
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -42,7 +43,28 @@ const EMPTY_INVITE_CONTEXT: TeamInviteFreeAgentContext = {
   freeAgentEventTeamIdsByUserId: {},
 };
 
-type InviteMode = 'free_agents' | 'user' | 'email';
+type InviteMode = 'free_agents' | 'user' | 'person';
+
+type NewPersonInvite = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+};
+
+type CreatedShareInvite = {
+  name: string;
+  role: TeamInviteRoleType;
+  shareUrl: string;
+  emailSent: boolean;
+};
+
+const EMPTY_PERSON_INVITE: NewPersonInvite = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+};
 
 type PendingRoleInvite = {
   invite: Invite;
@@ -112,15 +134,19 @@ export default function InvitePlayersModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserData[]>([]);
   const [searching, setSearching] = useState(false);
-  const [emailInviteInput, setEmailInviteInput] = useState('');
+  const [personInvite, setPersonInvite] = useState<NewPersonInvite>(EMPTY_PERSON_INVITE);
+  const [createdShareInvite, setCreatedShareInvite] = useState<CreatedShareInvite | null>(null);
   const [invitingUserKeys, setInvitingUserKeys] = useState<Set<string>>(new Set());
-  const [invitingByEmail, setInvitingByEmail] = useState(false);
+  const [invitingPerson, setInvitingPerson] = useState(false);
   const [localInvitedPlayerIds, setLocalInvitedPlayerIds] = useState<Set<string>>(new Set());
   const [localEmailPlayerInviteCount, setLocalEmailPlayerInviteCount] = useState(0);
   const [localInvitedRoleKeys, setLocalInvitedRoleKeys] = useState<Set<string>>(new Set());
 
-  const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
-  const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
+  const normalizedInviteEmail = personInvite.email.trim().toLowerCase();
+  const inviteEmailValid = normalizedInviteEmail.length === 0 || EMAIL_REGEX.test(normalizedInviteEmail);
+  const personInviteValid = personInvite.firstName.trim().length > 0
+    && personInvite.lastName.trim().length > 0
+    && inviteEmailValid;
   const selectedRoleLabel = getRoleLabel(selectedInviteRole);
   const normalizedSelectedFreeAgentId = selectedFreeAgentId?.trim() || null;
   const assistantCoachIds = useMemo(() => (
@@ -315,9 +341,10 @@ export default function InvitePlayersModal({
     if (!isOpen) {
       setSearchQuery('');
       setSearchResults([]);
-      setEmailInviteInput('');
+      setPersonInvite(EMPTY_PERSON_INVITE);
+      setCreatedShareInvite(null);
       setInvitingUserKeys(new Set());
-      setInvitingByEmail(false);
+      setInvitingPerson(false);
     }
   }, [isOpen]);
 
@@ -378,12 +405,12 @@ export default function InvitePlayersModal({
     }
   };
 
-  const handleInviteByEmail = async () => {
-    if (!inviteEmailValid) {
-      notifications.show({ color: 'red', message: 'Enter a valid email address.' });
+  const handleInvitePerson = async () => {
+    if (!personInviteValid) {
+      notifications.show({ color: 'red', message: 'Enter the person\'s first and last name and a valid optional email.' });
       return;
     }
-    if (invitingByEmail) {
+    if (invitingPerson) {
       return;
     }
     if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
@@ -391,13 +418,17 @@ export default function InvitePlayersModal({
       return;
     }
 
-    setInvitingByEmail(true);
+    setInvitingPerson(true);
     try {
-      const success = await teamService.inviteEmailToTeamRole(team, normalizedInviteEmail, selectedInviteRole);
-      if (!success) {
-        notifications.show({ color: 'red', message: 'Failed to send invite.' });
-        return;
-      }
+      const result = await teamService.createTeamMemberInvite(team.$id, {
+        role: selectedInviteRole,
+        firstName: personInvite.firstName.trim(),
+        lastName: personInvite.lastName.trim(),
+        email: normalizedInviteEmail || undefined,
+        phone: personInvite.phone.trim() || undefined,
+        shareOnly: !normalizedInviteEmail,
+      });
+      const fullName = `${personInvite.firstName.trim()} ${personInvite.lastName.trim()}`;
 
       if (selectedInviteRole === 'player') {
         setLocalEmailPlayerInviteCount((count) => count + 1);
@@ -410,13 +441,37 @@ export default function InvitePlayersModal({
         await onRoleInvitesChanged?.();
       }
 
-      notifications.show({ color: 'green', message: `${selectedRoleLabel} invite sent to ${normalizedInviteEmail}.` });
-      setEmailInviteInput('');
+      if (result.shareUrl) {
+        setCreatedShareInvite({
+          name: fullName,
+          role: selectedInviteRole,
+          shareUrl: result.shareUrl,
+          emailSent: Boolean(normalizedInviteEmail),
+        });
+      }
+      notifications.show({
+        color: 'green',
+        message: normalizedInviteEmail
+          ? `${selectedRoleLabel} invite emailed to ${normalizedInviteEmail}.`
+          : `${selectedRoleLabel} invite saved. Copy the link to share it.`,
+      });
+      setPersonInvite(EMPTY_PERSON_INVITE);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send invite.';
       notifications.show({ color: 'red', message });
     } finally {
-      setInvitingByEmail(false);
+      setInvitingPerson(false);
+    }
+  };
+
+  const copyCreatedInviteLink = async () => {
+    if (!createdShareInvite) return;
+    try {
+      await navigator.clipboard.writeText(createdShareInvite.shareUrl);
+      notifications.show({ color: 'green', message: 'Invite link copied.' });
+    } catch (error) {
+      console.error('Failed to copy team invite link:', error);
+      notifications.show({ color: 'red', message: 'Could not copy the invite link.' });
     }
   };
 
@@ -483,7 +538,8 @@ export default function InvitePlayersModal({
             }
             setSearchQuery('');
             setSearchResults([]);
-            setEmailInviteInput('');
+            setPersonInvite(EMPTY_PERSON_INVITE);
+            setCreatedShareInvite(null);
           }}
           data={[
             { label: 'Player', value: 'player' },
@@ -501,14 +557,15 @@ export default function InvitePlayersModal({
             setInviteMode(nextMode);
             setSearchQuery('');
             setSearchResults([]);
-            setEmailInviteInput('');
+            setPersonInvite(EMPTY_PERSON_INVITE);
+            setCreatedShareInvite(null);
           }}
           keepMounted={false}
         >
           <Tabs.List grow mb="sm">
             <Tabs.Tab value="free_agents" disabled={selectedInviteRole !== 'player'}>Free Agents</Tabs.Tab>
             <Tabs.Tab value="user">Invite User</Tabs.Tab>
-            <Tabs.Tab value="email">Invite by Email</Tabs.Tab>
+            <Tabs.Tab value="person">New Person</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="free_agents">
@@ -529,18 +586,54 @@ export default function InvitePlayersModal({
             />
           </Tabs.Panel>
 
-          <Tabs.Panel value="email">
-            <TextInput
-              placeholder="name@example.com"
-              value={emailInviteInput}
-              onChange={(event) => setEmailInviteInput(event.currentTarget.value)}
-              error={
-                emailInviteInput.trim().length > 0 && !inviteEmailValid
-                  ? 'Enter a valid email address'
-                  : undefined
-              }
-              mb="sm"
-            />
+          <Tabs.Panel value="person">
+            <Stack gap="xs">
+              <Group grow align="flex-start">
+                <TextInput
+                  label="First name"
+                  required
+                  value={personInvite.firstName}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setPersonInvite((current) => ({ ...current, firstName: value }));
+                  }}
+                />
+                <TextInput
+                  label="Last name"
+                  required
+                  value={personInvite.lastName}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setPersonInvite((current) => ({ ...current, lastName: value }));
+                  }}
+                />
+              </Group>
+              <TextInput
+                label="Email (optional)"
+                value={personInvite.email}
+                onChange={(event) => {
+                  const { value } = event.currentTarget;
+                  setPersonInvite((current) => ({ ...current, email: value }));
+                }}
+                error={
+                  personInvite.email.trim().length > 0 && !inviteEmailValid
+                    ? 'Enter a valid email address'
+                    : undefined
+                }
+              />
+              <TextInput
+                label="Phone (optional)"
+                inputMode="tel"
+                value={personInvite.phone}
+                onChange={(event) => {
+                  const { value } = event.currentTarget;
+                  setPersonInvite((current) => ({ ...current, phone: formatPhoneInput(value) }));
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Adding an email sends the invite when you save. Without an email, save the person and copy their private invite link.
+              </Text>
+            </Stack>
           </Tabs.Panel>
         </Tabs>
 
@@ -592,18 +685,35 @@ export default function InvitePlayersModal({
           </ScrollArea.Autosize>
         ) : null}
 
-        {inviteMode === 'email' ? (
+        {inviteMode === 'person' ? (
           <div className="mt-1">
             <Group justify="flex-end" mt="sm">
               <Button
-                onClick={() => { void handleInviteByEmail(); }}
-                loading={invitingByEmail}
-                disabled={!inviteEmailValid || (selectedInviteRole === 'player' && !canInviteAnotherPlayer)}
+                onClick={() => { void handleInvitePerson(); }}
+                loading={invitingPerson}
+                disabled={!personInviteValid || (selectedInviteRole === 'player' && !canInviteAnotherPlayer)}
               >
-                Send {selectedRoleLabel} Invite
+                {normalizedInviteEmail ? `Send ${selectedRoleLabel} Invite` : `Save ${selectedRoleLabel} Invite`}
               </Button>
             </Group>
           </div>
+        ) : null}
+
+        {createdShareInvite ? (
+          <Alert color="blue" variant="light" title={`${getRoleLabel(createdShareInvite.role)} invite ready`}>
+            <Stack gap="xs">
+              <Text size="sm">
+                {createdShareInvite.emailSent
+                  ? `${createdShareInvite.name} was emailed an invite. You can also copy the private registration link.`
+                  : `Copy and share ${createdShareInvite.name}'s private registration link.`}
+              </Text>
+              <Group justify="flex-end">
+                <Button size="xs" variant="light" onClick={() => { void copyCreatedInviteLink(); }}>
+                  Copy Invite Link
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
         ) : null}
       </Stack>
     </Modal>

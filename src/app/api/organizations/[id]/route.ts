@@ -129,7 +129,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (!session) {
-    if (org.status !== DEFAULT_ORGANIZATION_STATUS || org.publicPageEnabled !== true) {
+    if (org.status !== DEFAULT_ORGANIZATION_STATUS) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     return NextResponse.json(toPublicOrganizationSummary(org), { status: 200 });

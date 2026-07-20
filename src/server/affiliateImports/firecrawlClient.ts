@@ -2,7 +2,14 @@ import Firecrawl, { type Document, type MapData, type ScrapeOptions } from '@men
 
 const DEFAULT_MAP_LIMIT = 50;
 const MAX_MAP_LIMIT = 50;
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 90_000;
+
+const firecrawlTimeoutMs = (): number => {
+  const configured = Number.parseInt(process.env.FIRECRAWL_TIMEOUT_MS ?? '', 10);
+  return Number.isInteger(configured) && configured >= 30_000 && configured <= 180_000
+    ? configured
+    : DEFAULT_TIMEOUT_MS;
+};
 
 export type FirecrawlMappedLink = {
   url: string;
@@ -66,12 +73,13 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
     }
     this.client = new Firecrawl({
       apiKey,
-      timeoutMs: DEFAULT_TIMEOUT_MS,
+      timeoutMs: firecrawlTimeoutMs(),
       maxRetries: 1,
     });
   }
 
   async mapSourceUrls(url: string, options: { limit?: number; search?: string } = {}): Promise<FirecrawlMapResult> {
+    const timeout = firecrawlTimeoutMs();
     const request = {
       url,
       options: {
@@ -79,7 +87,7 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
         search: stringValue(options.search) ?? undefined,
         includeSubdomains: false,
         ignoreQueryParameters: false,
-        timeout: DEFAULT_TIMEOUT_MS,
+        timeout,
         integration: 'cli',
       },
     };
@@ -101,6 +109,7 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
   }
 
   async scrapeSourcePage(url: string): Promise<FirecrawlCaptureResult> {
+    const timeout = firecrawlTimeoutMs();
     const options: ScrapeOptions = {
       formats: [
         'markdown',
@@ -111,7 +120,7 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
         { type: 'screenshot', fullPage: true, quality: 80 },
       ],
       onlyMainContent: false,
-      timeout: DEFAULT_TIMEOUT_MS,
+      timeout,
       removeBase64Images: true,
       blockAds: true,
       integration: 'cli',

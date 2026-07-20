@@ -209,22 +209,6 @@ const reviews: ReviewDefinition[] = [
     robotsAllowed: true,
   },
   {
-    key: "rose-city-hockey-final-review",
-    organizationId: "affiliate_org_oregon_state_hockey_youth_directory_rose_city_hockey_club",
-    organizationName: "Rose City Hockey Club",
-    website: "https://www.rosecityhockeyclub.com/",
-    location: "Portland, OR",
-    organizationTags: ["Club", "Training Provider"],
-    sourcePages: [
-      "https://www.rosecityhockeyclub.com/",
-      "https://www.rosecityhockeyclub.com/2022-summer-camp.html",
-      "https://www.rosecityhockeyclub.com/2020-summer-camp---cancelled.html",
-      "https://www.rosecityhockeyclub.com/2019-dev-summer-camp---complete.html",
-    ],
-    reviewReason: "The public camp pages are historical 2019-2022 listings and the site publishes no current future-dated program or rental.",
-    robotsAllowed: true,
-  },
-  {
     key: "sherwood-youth-soccer-final-review",
     organizationId: "affiliate_org_oregon_youth_soccer_find_a_club_sherwood_youth_soccer_club",
     organizationName: "Sherwood Youth Soccer Club",

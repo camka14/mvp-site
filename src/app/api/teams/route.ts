@@ -59,6 +59,8 @@ const createSchema = z.object({
   captainId: z.string().optional(),
   managerId: z.string().optional(),
   addSelfAsPlayer: z.boolean().optional(),
+  creatorIsCaptain: z.boolean().optional(),
+  creatorCoachRole: z.enum(['NONE', 'HEAD_COACH', 'ASSISTANT_COACH']).optional(),
   headCoachId: z.string().nullable().optional(),
   assistantCoachIds: z.array(z.string()).optional(),
   coachIds: z.array(z.string()).optional(),
@@ -226,15 +228,30 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
   const normalizedTeamName = data.name.trim();
-  const addSelfAsPlayer = data.addSelfAsPlayer !== false;
-  const captainId = addSelfAsPlayer ? session.userId : '';
+  const requestedPlayerIds = uniqueStrings(data.playerIds);
+  const requestedCaptainId = normalizeText(data.captainId);
+  const hasExplicitMembership = data.playerIds !== undefined || data.captainId !== undefined;
+  const addSelfAsPlayer = data.addSelfAsPlayer
+    ?? (hasExplicitMembership
+      ? requestedPlayerIds.includes(session.userId) || requestedCaptainId === session.userId
+      : true);
+  const creatorIsCaptain = addSelfAsPlayer && (data.creatorIsCaptain
+    ?? (data.captainId !== undefined ? requestedCaptainId === session.userId : true));
+  const captainId = creatorIsCaptain ? session.userId : '';
   const managerId = session.userId;
   const playerIds = uniqueStrings([
     ...(addSelfAsPlayer ? [session.userId] : []),
-    ...uniqueStrings(data.playerIds),
+    ...requestedPlayerIds,
   ]);
-  const assistantCoachIds = uniqueStrings(data.assistantCoachIds ?? data.coachIds);
-  const headCoachId = normalizeText(data.headCoachId);
+  const requestedAssistantCoachIds = uniqueStrings(data.assistantCoachIds ?? data.coachIds);
+  const creatorCoachRole = data.creatorCoachRole ?? 'NONE';
+  const assistantCoachIds = uniqueStrings([
+    ...requestedAssistantCoachIds,
+    ...(creatorCoachRole === 'ASSISTANT_COACH' ? [session.userId] : []),
+  ]);
+  const headCoachId = creatorCoachRole === 'HEAD_COACH'
+    ? session.userId
+    : normalizeText(data.headCoachId);
   const pending = uniqueStrings(data.pending).filter((userId) => !playerIds.includes(userId));
   const normalizedDivision = normalizeText(data.division) ?? 'Open';
   const sportInput = normalizeText(data.sport) ?? null;

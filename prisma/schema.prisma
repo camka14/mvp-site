@@ -851,7 +851,8 @@ model Invites {
   updatedAt      DateTime?
   sentAt         DateTime?
   type           String
-  email          String
+  email          String?
+  phone          String?
   status         String?
   staffTypes     String[]  @default([])
   eventId        String?
@@ -861,10 +862,14 @@ model Invites {
   createdBy      String?
   firstName      String?
   lastName       String?
+  linkVersion    Int       @default(1)
+  linkExpiresAt  DateTime?
+  claimedBy      String?
 
   @@index([userId, status, createdAt, id])
   @@index([teamId, status, createdAt, id])
   @@index([status, updatedAt])
+  @@index([linkExpiresAt, status])
 }
 
 model TeamInviteEventSyncs {

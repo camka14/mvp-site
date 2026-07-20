@@ -66,6 +66,7 @@ jest.mock('@/server/repositories/events', () => ({
 import {
   getPublicBracketWidgetPage,
   getPublicOrganizationBySlug,
+  getPublicOrganizationEventForRegistration,
   listPublicOrganizationRentals,
   listPublicOrganizationProducts,
   listPublicOrganizationEvents,
@@ -970,6 +971,43 @@ describe('publicOrganizationCatalog', () => {
         registrationPriceCents: 2500,
       }),
     });
+  });
+
+  it('includes the organization logo URL in public event registration data', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'RECS Pickleball',
+      logoId: 'recs_logo',
+      publicSlug: 'recs-pickleball',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+      publicCompletionRedirectUrl: null,
+    });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      name: 'Team Round Robin',
+      organizationId: 'org_1',
+      state: 'PUBLISHED',
+      imageId: null,
+      sportId: null,
+      fieldIds: [],
+      timeSlotIds: [],
+      createdAt: new Date('2026-07-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      start: new Date('2026-07-19T11:00:00.000Z'),
+      end: null,
+    });
+    prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.timeSlots.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+
+    const result = await getPublicOrganizationEventForRegistration('recs-pickleball', 'event_1');
+
+    expect(result?.event.organization).toEqual(expect.objectContaining({
+      $id: 'org_1',
+      name: 'RECS Pickleball',
+      logoUrl: '/api/files/recs_logo/preview?w=240&h=240',
+    }));
   });
 
   it('links request-to-join public teams to the registration page', async () => {

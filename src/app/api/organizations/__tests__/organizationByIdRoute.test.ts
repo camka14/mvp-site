@@ -122,14 +122,15 @@ describe('/api/organizations/[id]', () => {
     expect(prismaMock.sensitiveUserData.findMany).not.toHaveBeenCalled();
   });
 
-  it('returns the same curated summary to an anonymous request only when the public organization page is enabled', async () => {
+  it('returns the curated summary for a listed organization when its custom public page is disabled', async () => {
     requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
       name: 'Public Org',
       status: 'LISTED',
-      publicPageEnabled: true,
+      publicSlug: 'public-org',
+      publicPageEnabled: false,
       hasStripeAccount: true,
       verificationReviewNotes: 'Internal review note',
       taxResponsibilityAcceptedByUserId: 'owner_1',
@@ -143,7 +144,12 @@ describe('/api/organizations/[id]', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toEqual(expect.objectContaining({ id: 'org_1', name: 'Public Org' }));
+    expect(payload).toEqual(expect.objectContaining({
+      id: 'org_1',
+      name: 'Public Org',
+      publicSlug: null,
+      publicPageEnabled: false,
+    }));
     expect(payload).not.toHaveProperty('$id');
     expect(payload).not.toHaveProperty('ownerId');
     expect(payload).not.toHaveProperty('hasStripeAccount');

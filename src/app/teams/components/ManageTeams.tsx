@@ -10,7 +10,7 @@ import Navigation from '@/components/layout/Navigation';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import Loading from '@/components/ui/Loading';
-import CreateTeamModal from '@/components/ui/CreateTeamModal';
+import TeamBuilderModal from '@/components/ui/TeamBuilderModal';
 import { Container, Title, Text, Group, Button, SegmentedControl, SimpleGrid, Paper, Badge } from '@mantine/core';
 import { buildTeamManagementPath } from '../teamRoutes';
 
@@ -59,6 +59,7 @@ function TeamsPageContent() {
   const [activeTab, setActiveTab] = useState<'my-teams' | 'invitations'>('my-teams');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const handledTeamDeepLinkRef = useRef<string | null>(null);
+  const handledEventBuilderRef = useRef<string | null>(null);
 
   const searchParams = useSearchParams();
   const [selectedFreeAgentId, setSelectedFreeAgentId] = useState<string | null>(null);
@@ -169,6 +170,17 @@ function TeamsPageContent() {
     const query = nextParams.toString();
     router.replace(`${buildTeamManagementPath(teamIdParam)}${query ? `?${query}` : ''}`);
   }, [router, searchParams]);
+
+  useEffect(() => {
+    const eventId = searchParams?.get('event')?.trim() ?? '';
+    const freeAgentId = searchParams?.get('freeAgent')?.trim() ?? '';
+    const teamId = searchParams?.get('teamId')?.trim() ?? '';
+    if (!eventId || freeAgentId || teamId || handledEventBuilderRef.current === eventId) {
+      return;
+    }
+    handledEventBuilderRef.current = eventId;
+    setShowCreateModal(true);
+  }, [searchParams]);
 
   // Preserve optional selected free-agent focus from navigation while free agents are loaded server-side per team.
   useEffect(() => {
@@ -378,11 +390,13 @@ function TeamsPageContent() {
         </div>
       )}
 
-      {/* Create Team Modal */}
-      <CreateTeamModal
+      {/* Shared four-step team builder */}
+      <TeamBuilderModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         currentUser={user as UserData}
+        eventId={searchParams?.get('event')?.trim() || null}
+        initialFreeAgentId={selectedFreeAgentId}
         onTeamCreated={(team) => {
           setTeams((previous) => {
             const nextTeams = upsertTeamList(previous, team);

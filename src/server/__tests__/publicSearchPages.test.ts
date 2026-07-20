@@ -60,7 +60,7 @@ const mockBaseInventory = () => {
     },
     {
       id: 'org_2',
-      publicSlug: null,
+      publicSlug: 'northside-pickleball',
       name: 'Northside Pickleball',
       description: 'Public pickleball courts and ladders.',
       location: 'Seattle, WA',
@@ -352,7 +352,7 @@ describe('publicSearchPages', () => {
     expect(prismaMock.organizations.findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('omits public-slug organization duplicates and canonicalizes regular profiles', async () => {
+  it('indexes listed organizations on either their enabled custom page or regular profile', async () => {
     mockBaseInventory();
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
@@ -367,18 +367,38 @@ describe('publicSearchPages', () => {
       status: 'LISTED',
     });
 
-    const [entries, seo] = await Promise.all([
+    const [entries, enabledSeo] = await Promise.all([
       listRegularOrganizationProfileSitemapEntries(),
       getRegularOrganizationSeoData('org_1'),
     ]);
 
     expect(entries).toEqual([
-      expect.objectContaining({ url: 'https://bracket-iq.com/organizations/org_2' }),
+      expect.objectContaining({
+        url: 'https://bracket-iq.com/organizations/org_2',
+      }),
     ]);
-    expect(seo).toEqual(expect.objectContaining({
+    expect(enabledSeo).toEqual(expect.objectContaining({
       canonicalPath: '/o/river-city',
       indexable: true,
       logoUrl: '/api/files/logo_1/preview?w=240&h=240',
+    }));
+
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_2',
+      name: 'Northside Pickleball',
+      description: 'Public pickleball courts and ladders.',
+      location: 'Seattle, WA',
+      website: null,
+      logoId: null,
+      publicSlug: 'northside-pickleball',
+      publicPageEnabled: false,
+      updatedAt: new Date('2026-07-02T12:00:00.000Z'),
+      status: 'LISTED',
+    });
+
+    await expect(getRegularOrganizationSeoData('org_2')).resolves.toEqual(expect.objectContaining({
+      canonicalPath: '/organizations/org_2',
+      indexable: true,
     }));
   });
 

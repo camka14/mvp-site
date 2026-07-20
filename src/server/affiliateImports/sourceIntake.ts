@@ -25,6 +25,14 @@ const MAX_CAPTURE_PAGES = 10;
 const MAX_DISCOVERED_URLS = 50;
 const MAX_LOGO_CANDIDATES_PER_PAGE = 5;
 const ROBOTS_MAX_BYTES = 512 * 1024;
+const DEFAULT_ROBOTS_TIMEOUT_MS = 30_000;
+
+const robotsTimeoutMs = (): number => {
+  const configured = Number.parseInt(process.env.AFFILIATE_INTAKE_ROBOTS_TIMEOUT_MS ?? '', 10);
+  return Number.isInteger(configured) && configured >= 15_000 && configured <= 60_000
+    ? configured
+    : DEFAULT_ROBOTS_TIMEOUT_MS;
+};
 
 const VALID_PAGE_ROLES = new Set([
   'HOME',
@@ -539,7 +547,7 @@ const processCapturePage = async (
   const robotsUrl = robotsUrlFor(page.url);
   let robots: BoundedPublicResource;
   try {
-    robots = await fetchResource(robotsUrl, { maxBytes: ROBOTS_MAX_BYTES, timeoutMs: 15_000 });
+    robots = await fetchResource(robotsUrl, { maxBytes: ROBOTS_MAX_BYTES, timeoutMs: robotsTimeoutMs() });
   } catch (error) {
     await intakePrisma().pages.update({
       where: { id: page.id },

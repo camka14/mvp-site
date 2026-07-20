@@ -10,6 +10,7 @@ export interface InviteEmailInput {
   organizationName?: string | null;
   teamId?: string | null;
   teamName?: string | null;
+  actionUrl?: string | null;
 }
 
 export interface InviteEmailContent {
@@ -22,6 +23,9 @@ export interface InviteEmailContent {
 const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, '');
 
 const buildInviteActionUrl = (input: InviteEmailInput): string => {
+  if (input.actionUrl?.trim()) {
+    return input.actionUrl.trim();
+  }
   const baseUrl = normalizeBaseUrl(input.baseUrl || 'http://localhost:3000');
   if (input.eventId) {
     return `${baseUrl}/events/${input.eventId}`;
@@ -83,7 +87,7 @@ export const buildInviteEmail = (input: InviteEmailInput): InviteEmailContent =>
     '',
     `View the invite: ${actionUrl}`,
     '',
-    'If you do not have an account yet, sign up with this email address to accept the invite.',
+    'If you do not have an account yet, the link will guide you through registration.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -97,7 +101,7 @@ export const buildInviteEmail = (input: InviteEmailInput): InviteEmailContent =>
     `<p>${introLine}</p>`,
     detailsHtml,
     `<p><a href="${actionUrl}">View the invite</a></p>`,
-    `<p>If you do not have an account yet, sign up with this email address to accept the invite.</p>`,
+    `<p>If you do not have an account yet, the link will guide you through registration.</p>`,
   ].join('');
 
   return { subject, text, html, actionUrl };

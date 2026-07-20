@@ -1,9 +1,20 @@
 import type { ScrapedPage, ScrapePageClient } from './types';
 
 const SCRAPINGDOG_ENDPOINT = 'https://api.scrapingdog.com/scrape';
+const DEFAULT_SCRAPINGDOG_TIMEOUT_MS = 5 * 60 * 1000;
+
+const scrapingDogTimeoutMs = (): number => {
+  const configured = Number.parseInt(process.env.SCRAPINGDOG_TIMEOUT_MS ?? '', 10);
+  return Number.isInteger(configured) && configured >= 10_000 && configured <= 15 * 60 * 1000
+    ? configured
+    : DEFAULT_SCRAPINGDOG_TIMEOUT_MS;
+};
 
 export class ScrapingDogClient implements ScrapePageClient {
-  constructor(private readonly apiKey = process.env.SCRAPINGDOG_API_KEY ?? '') {}
+  constructor(
+    private readonly apiKey = process.env.SCRAPINGDOG_API_KEY ?? '',
+    private readonly fetchImpl: typeof fetch | null = null,
+  ) {}
 
   async fetchPage(params: { url: string; renderJavascript?: boolean; waitMs?: number }): Promise<ScrapedPage> {
     if (!this.apiKey.trim()) {
@@ -20,12 +31,30 @@ export class ScrapingDogClient implements ScrapePageClient {
       requestUrl.searchParams.set('wait', String(Math.trunc(params.waitMs)));
     }
 
-    const response = await fetch(requestUrl, {
-      method: 'GET',
-      headers: {
-        Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
-      },
-    });
+    const timeoutMs = scrapingDogTimeoutMs();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      const request = this.fetchImpl ?? globalThis.fetch;
+      if (typeof request !== 'function') {
+        throw new Error('Global fetch is not available.');
+      }
+      response = await request(requestUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`ScrapingDog request timed out after ${timeoutMs}ms.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
     const body = await response.text();
     if (!response.ok) {
       throw new Error(`ScrapingDog request failed with HTTP ${response.status}.`);

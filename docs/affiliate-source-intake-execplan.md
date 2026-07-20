@@ -20,6 +20,7 @@ The observable first milestone is an administrator importing several related URL
 - [x] (2026-07-15) Implemented ordered queued processing, protected admin APIs, CSV/TSV bulk import, cleanup, and read-only agent export commands.
 - [x] (2026-07-15) Added the admin source-intake list, create/import/policy flows, page review, queued inspection, polling, and stored-artifact review UI.
 - [x] (2026-07-15) Completed unit, API, component, Firecrawl smoke, export, Prisma, and authenticated desktop/mobile browser validation without live writes or candidate creation.
+- [x] (2026-07-19) Made live intake exports the primary evidence handoff for scraper implementation. The exporter now supports live DB/Spaces reads, URL lookup, intake discovery, and portable source-provenance files.
 
 ## Surprises & Discoveries
 
@@ -131,9 +132,9 @@ Add Razumly-admin-only routes under `src/app/api/admin/affiliate-intakes`:
 - `POST /api/admin/affiliate-intakes/[id]/inspect` validates compliance and selected page IDs, creates a `QUEUED` run, and returns HTTP 202.
 - `GET /api/admin/affiliate-intakes/[id]/artifacts/[artifactId]` verifies ownership and streams one artifact to a Razumly admin.
 
-Add `scripts/export-affiliate-source-intake.ts` and `npm run affiliate:intake:export -- --source-key <key> [--run-id <id>]`. It defaults to the latest successful or partial run. It writes `manifest.json` plus safely named artifact files beneath `output/affiliate-intakes/<source-key>/<run-id>/`. The manifest includes intake identity, pages, policy state, capture options, provider metadata, artifact hashes, source URLs, and local relative paths. It never writes DB rows, invokes Firecrawl, or includes credentials.
+Add `scripts/export-affiliate-source-intake.ts`. The production evidence path is `npm run affiliate:intake:export -- --live --url <public-url>`, with `--source-key <key>` and optional `--run-id <id>` available for exact selection. `--list --search <text>` discovers intake keys without downloading artifacts. The exporter defaults to the latest successful, partial, or blocked run and writes `manifest.json`, `source-evidence.json`, `SOURCE-EVIDENCE.md`, and safely named artifact files beneath `output/affiliate-intakes/<source-key>/<run-id>/`. The manifest includes intake identity, pages, policy state, capture options, provider metadata, artifact hashes, source URLs, and local relative paths. It never writes DB rows, invokes Firecrawl, or includes credentials.
 
-The eventual parsing agent uses that export and the existing affiliate source-builder skill. It creates or updates checked-in parser code, mapping tests, source setup script, package command, and source documentation. Promotion into `AffiliateScrapeSources` remains a human-controlled later action.
+The eventual parsing agent uses that export and the existing affiliate source-builder skill. It creates or updates checked-in parser code, mapping tests, source setup script, package command, and source documentation. The checked-in setup script and source-registry note must cite `source-evidence.json`: intake source key, run ID, capture timestamp, provider, inspected page URLs, and relevant artifact kinds. Store the same compact object in the source row's existing JSON `metadata.sourceEvidence`; this is provenance metadata, not a new schema. Promotion into `AffiliateScrapeSources` remains a human-controlled later action.
 
 ### Milestone 4: Add the admin intake experience
 
@@ -174,7 +175,7 @@ Work from `/Users/elesesy/StudioProjects/mvp-site` and preserve unrelated local 
 4. Run one explicit local smoke capture after policy approval, process it with `--once`, export it, and verify that no candidates exist for the intake.
 
        npm run affiliate:intakes:process -- --once
-       npm run affiliate:intake:export -- --source-key sf-rec-adult-sports
+       npm run affiliate:intake:export -- --live --url https://sfrecpark.org/1186/Adult-Sports-Leagues
 
 5. Run broad validation before handoff.
 
@@ -189,7 +190,7 @@ Work from `/Users/elesesy/StudioProjects/mvp-site` and preserve unrelated local 
 
 Acceptance is complete when an admin can import one site with several related pages, record an allowed policy decision, queue a bounded inspection, and reopen the stored evidence after refresh without another provider call. An explicitly disallowed page produces a blocked page result and zero Firecrawl calls for that page. Unsafe URLs and redirects are rejected before direct network access. Non-admin artifact requests and cross-intake artifact IDs return forbidden or not found.
 
-Several admin clicks must remain queued in order and complete independently. Re-running unchanged pages creates a new run manifest and run-specific artifact rows while reusing identical stored file bytes. The agent export must reproduce the selected stored run without network calls and contain raw provider envelopes, derived page artifacts, screenshot files, and downloaded logo candidates. Existing `/api/admin/affiliate-sources/[id]/scrape` behavior and candidate tests must continue to pass.
+Several admin clicks must remain queued in order and complete independently. Re-running unchanged pages creates a new run manifest and run-specific artifact rows while reusing identical stored file bytes. The agent export must reproduce the selected stored run without public-site or Firecrawl requests and contain raw provider envelopes, derived page artifacts, screenshot files, downloaded logo candidates, and portable provenance. Reading the live DB and Spaces is allowed because those systems hold the captured evidence. Existing `/api/admin/affiliate-sources/[id]/scrape` behavior and candidate tests must continue to pass.
 
 No intake operation may create an `AffiliateScrapeSources`, `AffiliateScrapeMappings`, `AffiliateScrapeRuns`, `AffiliateImportCandidates`, `Organizations`, `Events`, `Teams`, or `Facilities` row.
 

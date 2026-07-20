@@ -337,15 +337,42 @@ describe('/api/organizations', () => {
     expect(findManyMock).not.toHaveBeenCalled();
   });
 
-  it('rejects anonymous organization ID lookups before querying organizations', async () => {
+  it('allows anonymous ID lookups for listed organizations with custom public pages disabled', async () => {
     requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+    findManyMock.mockResolvedValue([{
+      id: 'org_recs',
+      name: 'RECS Pickleball',
+      status: 'LISTED',
+      publicSlug: 'recs-pickleball',
+      publicPageEnabled: false,
+      ownerId: 'owner_1',
+      hasStripeAccount: true,
+    }]);
 
     const response = await organizationsGet(new NextRequest(
-      'http://localhost/api/organizations?ids=org_hidden&limit=25',
+      'http://localhost/api/organizations?ids=org_recs&limit=25',
     ));
+    const payload = await response.json();
 
-    expect(response.status).toBe(401);
-    expect(findManyMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { id: { in: ['org_recs'] } },
+          { status: 'LISTED' },
+        ],
+      },
+    }));
+    expect(payload.organizations).toEqual([
+      expect.objectContaining({
+        id: 'org_recs',
+        name: 'RECS Pickleball',
+        publicSlug: null,
+        publicPageEnabled: false,
+      }),
+    ]);
+    expect(payload.organizations[0]).not.toHaveProperty('ownerId');
+    expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
   });
 
   it('allows an authenticated ID lookup while returning only the public organization projection', async () => {
@@ -417,6 +444,8 @@ describe('/api/organizations', () => {
       id: 'org_public',
       name: 'Public Organization',
       status: 'LISTED',
+      publicSlug: 'public-organization',
+      publicPageEnabled: false,
       ownerId: 'owner_1',
       hasStripeAccount: true,
       verificationReviewNotes: 'Internal review note',
@@ -429,7 +458,13 @@ describe('/api/organizations', () => {
 
     expect(response.status).toBe(200);
     expect(payload.organizations).toEqual([
-      expect.objectContaining({ id: 'org_public', name: 'Public Organization', status: 'LISTED' }),
+      expect.objectContaining({
+        id: 'org_public',
+        name: 'Public Organization',
+        status: 'LISTED',
+        publicSlug: null,
+        publicPageEnabled: false,
+      }),
     ]);
     expect(payload.organizations[0]).not.toHaveProperty('ownerId');
     expect(payload.organizations[0]).not.toHaveProperty('hasStripeAccount');
