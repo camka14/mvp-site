@@ -1,0 +1,17 @@
+[Unit]
+Description=Verify the BracketIQ production VM and latest backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/bracketiq/deploy/vm
+Environment=COMPOSE_ENV_FILE=/opt/bracketiq/deploy/vm/deployment.env
+Environment=RESTIC_ENV_FILE=/etc/bracketiq/restic.env
+ExecStart=/opt/bracketiq/deploy/vm/bin/verify-host.sh
+
+[Install]
+WantedBy=multi-user.target

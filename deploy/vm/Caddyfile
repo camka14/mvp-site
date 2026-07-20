@@ -1,0 +1,33 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$WWW_DOMAIN} {
+	redir https://{$PRIMARY_DOMAIN}{uri} permanent
+}
+
+{$PRIMARY_DOMAIN} {
+	root * /srv/maintenance
+
+	@maintenance {
+		not path /api/health/live /api/health/ready
+		file /enabled
+	}
+
+	handle @maintenance {
+		header Cache-Control "no-store"
+		header Retry-After "900"
+		respond "BracketIQ is temporarily unavailable for scheduled maintenance.\n" 503
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy app:8080
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

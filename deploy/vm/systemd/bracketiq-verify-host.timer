@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the BracketIQ production VM verification daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30m
+Unit=bracketiq-verify-host.service
+
+[Install]
+WantedBy=timers.target

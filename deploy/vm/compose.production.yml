@@ -1,0 +1,161 @@
+name: bracketiq-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  caddy:
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in deployment.env}
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-bracket-iq.com}
+      WWW_DOMAIN: ${WWW_DOMAIN:-www.bracket-iq.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./maintenance:/srv/maintenance:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - edge
+    pids_limit: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE in deployment.env}
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-./app.env}
+    environment:
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=2560
+      PORT: "8080"
+      REDIS_DISABLED: "false"
+    expose:
+      - "8080"
+    volumes:
+      - next_cache:/app/.next/cache
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/api/health/ready"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 4
+    stop_grace_period: 30s
+    init: true
+    pids_limit: 512
+    mem_limit: 3g
+    logging: *default-logging
+    networks:
+      - edge
+      - backend
+
+  migrate:
+    image: ${APP_IMAGE:?Set APP_IMAGE in deployment.env}
+    profiles: ["tools"]
+    env_file:
+      - ${MIGRATION_ENV_FILE:-./migration.env}
+    environment:
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=2560
+    command: ["npm", "run", "migrate:deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: *default-logging
+
+  postgres:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    restart: unless-stopped
+    env_file:
+      - ${POSTGRES_ENV_FILE:-./postgres.env}
+    environment:
+      POSTGRES_INITDB_ARGS: --data-checksums
+    command:
+      - postgres
+      - -c
+      - max_connections=60
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - wal_compression=on
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 60s
+    shm_size: 512m
+    pids_limit: 256
+    mem_limit: 3g
+    logging: *default-logging
+    networks:
+      - backend
+
+  redis:
+    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    restart: unless-stopped
+    env_file:
+      - ${REDIS_ENV_FILE:-./redis.env}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+    pids_limit: 128
+    mem_limit: 768m
+    logging: *default-logging
+    networks:
+      - backend
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  next_cache:
+  postgres_data:
+  redis_data:
