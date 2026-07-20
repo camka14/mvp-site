@@ -11,6 +11,7 @@ import { buildLlmsTxt } from '@/lib/llms';
 import {
   htmlToMarkdown,
   renderOrganizationCatalogMarkdown,
+  resolveMarkdownPageFetchUrl,
 } from '@/server/llmsPage';
 
 describe('LLM-readable site contract', () => {
@@ -65,6 +66,18 @@ describe('LLM-readable site contract', () => {
     expect(markdown).toContain('External registration');
     expect(markdown).not.toContain('affiliate.example');
     expect(markdown).not.toContain('Sign in');
+  });
+
+  it('can render static Markdown through a private application origin', () => {
+    const sourceUrl = new URL('https://preview.bracket-iq.com/terms?ref=llms');
+
+    expect(resolveMarkdownPageFetchUrl(sourceUrl, {})).toEqual(sourceUrl);
+    expect(resolveMarkdownPageFetchUrl(sourceUrl, {
+      LLMS_INTERNAL_ORIGIN: 'http://127.0.0.1:8080',
+    }).toString()).toBe('http://127.0.0.1:8080/terms?ref=llms');
+    expect(resolveMarkdownPageFetchUrl(sourceUrl, {
+      LLMS_INTERNAL_ORIGIN: 'file:///tmp',
+    })).toEqual(sourceUrl);
   });
 
   it('omits affiliate and organization websites from organization Markdown', () => {

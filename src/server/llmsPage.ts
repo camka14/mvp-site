@@ -462,6 +462,24 @@ const absoluteMarkdownLinks = (markdown: string): string => (
   markdown.replace(/(!?\[[^\]]*\]\()\/(?!\/)([^)]+)(\))/g, `$1${SITE_URL}/$2$3`)
 );
 
+export const resolveMarkdownPageFetchUrl = (
+  sourceUrl: URL,
+  env: NodeJS.ProcessEnv = process.env,
+): URL => {
+  const internalOrigin = env.LLMS_INTERNAL_ORIGIN?.trim();
+  if (!internalOrigin) return new URL(sourceUrl);
+
+  try {
+    const origin = new URL(internalOrigin);
+    if (origin.protocol !== 'http:' && origin.protocol !== 'https:') {
+      return new URL(sourceUrl);
+    }
+    return new URL(`${sourceUrl.pathname}${sourceUrl.search}`, origin);
+  } catch {
+    return new URL(sourceUrl);
+  }
+};
+
 const renderContentPost = async (pathname: string): Promise<string | null> => {
   const [, kind, slug] = pathname.split('/');
   if ((kind !== 'blog' && kind !== 'guides') || !slug) return null;
@@ -535,7 +553,7 @@ ${affiliateSharingRule(source)}`);
 };
 
 const fetchStaticPageMarkdown = async (sourceUrl: URL): Promise<string | null> => {
-  const response = await fetch(sourceUrl, {
+  const response = await fetch(resolveMarkdownPageFetchUrl(sourceUrl), {
     cache: 'no-store',
     headers: {
       accept: 'text/html',
