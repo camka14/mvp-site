@@ -111,19 +111,14 @@ const pointsList = (value: unknown): number[] | null => {
   return normalized.length ? normalized : null;
 };
 
-const targetsToInput = (targets: number[] | null | undefined): string =>
-  Array.isArray(targets) && targets.length > 0 ? targets.join(', ') : '';
-
-const parseTargetsInput = (value: string): number[] =>
-  value
-    .split(',')
-    .map((entry) => positiveIntOrNull(entry.trim()))
-    .filter((entry): entry is number => entry !== null);
-
-const resizeTargets = (targets: number[], segmentCount: number, fallbackTarget = 21): number[] => {
+const resizeTargetInputs = (
+  targets: Array<number | null>,
+  segmentCount: number,
+  fallbackTarget = 21,
+): Array<number | null> => {
   const count = Math.max(1, segmentCount);
   const next = targets.slice(0, count);
-  const fill = next[next.length - 1] ?? fallbackTarget;
+  const fill = next.slice().reverse().find((target) => target !== null) ?? fallbackTarget;
   while (next.length < count) {
     next.push(fill);
   }
@@ -560,7 +555,7 @@ export default function MatchEditModal({
   const [locked, setLocked] = useState(false);
   const [policySegmentLabel, setPolicySegmentLabel] = useState('Segment');
   const [policySegmentCount, setPolicySegmentCount] = useState<number | null>(null);
-  const [policyPointTargets, setPolicyPointTargets] = useState('');
+  const [policyPointTargets, setPolicyPointTargets] = useState<Array<number | null>>([]);
   const [policySegmentMinutes, setPolicySegmentMinutes] = useState<number | null>(null);
   const [policySegmentMinutesTouched, setPolicySegmentMinutesTouched] = useState(false);
   const [policyTouched, setPolicyTouched] = useState(false);
@@ -595,7 +590,7 @@ export default function MatchEditModal({
       setLocked(false);
       setPolicySegmentLabel('Segment');
       setPolicySegmentCount(null);
-      setPolicyPointTargets('');
+      setPolicyPointTargets([]);
       setPolicySegmentMinutes(null);
       setPolicySegmentMinutesTouched(false);
       setPolicyTouched(false);
@@ -696,7 +691,7 @@ export default function MatchEditModal({
       (initialSegmentMinutes ? initialSegmentMinutes * Math.max(1, initialSetCount) : null);
     setPolicySegmentLabel(normalizeSegmentLabel(initialStatusRules.segmentLabel));
     setPolicySegmentCount(initialStatusRules.scoringModel === 'POINTS_ONLY' ? 1 : initialSetCount);
-    setPolicyPointTargets(targetsToInput(initialTargets));
+    setPolicyPointTargets(resizeTargetInputs(initialTargets, initialSetCount, initialTargets[0] ?? 21));
     setPolicySegmentMinutes(
       initialSegmentMinutes ?? (initialMatchMinutes ? Math.max(1, Math.round(initialMatchMinutes / Math.max(1, initialSetCount))) : null),
     );
@@ -1279,8 +1274,8 @@ export default function MatchEditModal({
   const statusTeam2Id = useMemo(() => resolveMatchTeamId(draftMatch, 'team2'), [draftMatch]);
   const statusSegments = statusSegmentsValue;
   const statusPointTargets = useMemo(() => {
-    const localTargets = parseTargetsInput(policyPointTargets);
-    if (localTargets.length > 0) return localTargets;
+    const localTargets = policyPointTargets.map((target) => positiveIntOrNull(target));
+    if (localTargets.length > 0 && localTargets.every((target): target is number => target !== null)) return localTargets;
     return draftMatch ? resolveStatusPointTargets(draftMatch, tournament) : null;
   }, [draftMatch, policyPointTargets, tournament]);
   const matchStartedChecked = matchStartedValue;
@@ -1299,6 +1294,8 @@ export default function MatchEditModal({
       setPolicySegmentCount(nextCount);
       setPolicyTouched(true);
       if (!nextCount || !draftMatch || !statusRules) return;
+
+      setPolicyPointTargets((current) => resizeTargetInputs(current, nextCount));
 
       setStatusSegmentsValue((current) => {
         const legacy = statusLegacyFromSegments(current, statusTeam1Id, statusTeam2Id);
@@ -1472,8 +1469,12 @@ export default function MatchEditModal({
         : policyScoringModel === 'POINTS_ONLY'
           ? 1
           : Math.max(1, policySegmentCount ?? statusRules?.segmentCount ?? positiveIntOrNull(policySource.segmentCount) ?? 1);
-    const parsedPolicyTargets = parseTargetsInput(policyPointTargets);
-    const fallbackTarget = parsedPolicyTargets[0] ?? resolveStatusPointTargets(match, tournament)?.[0] ?? 21;
+    const parsedPolicyTargets = policyPointTargets.map((target) => positiveIntOrNull(target));
+    if (policyScoringModel === 'SETS' && parsedPolicyTargets.some((target) => target === null)) {
+      setError(`Enter a score limit for every ${normalizeSegmentLabel(policySegmentLabel, 'set').toLowerCase()}.`);
+      return;
+    }
+    const validPolicyTargets = parsedPolicyTargets.filter((target): target is number => target !== null);
     const policySnapshot = shouldSaveMatchPolicy
       ? ({
           ...policySource,
@@ -1489,8 +1490,7 @@ export default function MatchEditModal({
                   ? 'Total'
                   : 'Period',
           ),
-          setPointTargets:
-            policyScoringModel === 'SETS' ? resizeTargets(parsedPolicyTargets, parsedPolicySegmentCount, fallbackTarget) : [],
+          setPointTargets: policyScoringModel === 'SETS' ? validPolicyTargets.slice(0, parsedPolicySegmentCount) : [],
           supportsDraw: policySource.supportsDraw === true,
           supportsOvertime: policySource.supportsOvertime === true,
           supportsShootout: policySource.supportsShootout === true,
@@ -1849,6 +1849,100 @@ export default function MatchEditModal({
     );
   };
 
+  const renderScoresPanel = () => {
+    if (!statusRules) {
+      return null;
+    }
+
+    return (
+      <SectionPanel
+        title={
+          isSetBasedPolicy
+            ? `Scores & ${segmentLabel.toLowerCase()} confirmation`
+            : `Scores & ${segmentPluralLabel.toLowerCase()} state`
+        }
+      >
+        <Stack gap="xs">
+          {statusSegments.map((segment, index) => {
+            const checked = segment.status === 'COMPLETE';
+            const previousComplete = statusSegments.slice(0, index).every((entry) => entry.status === 'COMPLETE');
+            const segmentName = statusLabelForSegment(statusRules, segment.sequence);
+            const confirmationLabel = isSetBasedPolicy ? `${segmentName} confirmed` : `${segmentName} complete`;
+            const confirmationDisabled =
+              !canManageOperations || resultTypeIsExceptional || (!checked && (!matchStartedChecked || !previousComplete));
+
+            return (
+              <Paper key={segment.id ?? segment.sequence} withBorder radius="sm" p="xs">
+                <Stack gap="xs">
+                  <Text size="sm" fw={700}>
+                    {segmentName}
+                  </Text>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <SimpleGrid cols={2} spacing="xs">
+                      <NumberInput
+                        aria-label={`${segmentName} ${previewTeam1Label} score`}
+                        label={previewTeam1Label}
+                        value={statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0}
+                        min={0}
+                        step={1}
+                        allowDecimal={false}
+                        disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam1Id}
+                        onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam1Id, value)}
+                        size="xs"
+                      />
+                      <NumberInput
+                        aria-label={`${segmentName} ${previewTeam2Label} score`}
+                        label={previewTeam2Label}
+                        value={statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0}
+                        min={0}
+                        step={1}
+                        allowDecimal={false}
+                        disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam2Id}
+                        onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam2Id, value)}
+                        size="xs"
+                      />
+                    </SimpleGrid>
+                    <Checkbox
+                      label={isSetBasedPolicy ? 'Confirmed' : 'Complete'}
+                      aria-label={confirmationLabel}
+                      checked={checked}
+                      disabled={confirmationDisabled}
+                      onChange={(event) => handleSegmentConfirmedChange(segment.sequence, event.currentTarget.checked)}
+                      className="sm:pb-2"
+                    />
+                  </div>
+                </Stack>
+              </Paper>
+            );
+          })}
+          <Paper bg="gray.0" radius="sm" p="xs">
+            <Text size="sm" fw={800} mb={4}>
+              Total
+            </Text>
+            <SimpleGrid cols={2} spacing="xs">
+              <Stack gap={0}>
+                <Text size="xs" c="dimmed" truncate>
+                  {previewTeam1Label}
+                </Text>
+                <Text size="sm" fw={800}>
+                  {previewTeam1Total}
+                </Text>
+              </Stack>
+              <Stack gap={0}>
+                <Text size="xs" c="dimmed" truncate>
+                  {previewTeam2Label}
+                </Text>
+                <Text size="sm" fw={800}>
+                  {previewTeam2Total}
+                </Text>
+              </Stack>
+            </SimpleGrid>
+          </Paper>
+        </Stack>
+      </SectionPanel>
+    );
+  };
+
   return (
     <Modal
       opened={opened}
@@ -1910,8 +2004,9 @@ export default function MatchEditModal({
             </Text>
 
             <div className="grid items-start gap-3 lg:grid-cols-2">
-              <SectionPanel title="Match setup and schedule">
-                <Stack gap="sm">
+              <Stack gap="sm">
+                <SectionPanel title="Match setup and schedule">
+                  <Stack gap="sm">
                   <FieldRow label="Team 1">
                     <Select
                       aria-label="Team 1"
@@ -2010,8 +2105,10 @@ export default function MatchEditModal({
                       size="sm"
                     />
                   </FieldRow>
-                </Stack>
-              </SectionPanel>
+                  </Stack>
+                </SectionPanel>
+                {renderMatchStatusPanel()}
+              </Stack>
 
               <Stack gap="sm">
                 <SectionPanel title="Official Assignments">
@@ -2156,16 +2253,28 @@ export default function MatchEditModal({
                         )}
                         {isSetBasedPolicy && (
                           <FieldRow label="Score limits">
-                            <TextInput
-                              aria-label="Score limits"
-                              value={policyPointTargets}
-                              onChange={(event) => {
-                                setPolicyPointTargets(event.currentTarget.value);
-                                setPolicyTouched(true);
-                              }}
-                              placeholder="25, 25, 15"
-                              size="sm"
-                            />
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {policyPointTargets.map((target, index) => (
+                                <NumberInput
+                                  key={index}
+                                  aria-label={`${segmentLabel} ${index + 1} score limit`}
+                                  label={`${segmentLabel} ${index + 1}`}
+                                  value={target ?? ''}
+                                  min={1}
+                                  step={1}
+                                  allowDecimal={false}
+                                  onChange={(value) => {
+                                    setPolicyPointTargets((current) =>
+                                      current.map((currentTarget, targetIndex) =>
+                                        targetIndex === index ? positiveIntOrNull(value) : currentTarget,
+                                      ),
+                                    );
+                                    setPolicyTouched(true);
+                                  }}
+                                  size="sm"
+                                />
+                              ))}
+                            </div>
                           </FieldRow>
                         )}
                       </>
@@ -2206,96 +2315,9 @@ export default function MatchEditModal({
                     />
                   </Stack>
                 </SectionPanel>
+                {renderScoresPanel()}
               </Stack>
             </div>
-
-            {renderMatchStatusPanel()}
-
-            {statusRules && (
-              <SectionPanel
-                title={
-                  isSetBasedPolicy
-                    ? `Scores & ${segmentLabel.toLowerCase()} confirmation`
-                    : `Scores & ${segmentPluralLabel.toLowerCase()} state`
-                }
-              >
-                <div className="overflow-x-auto">
-                  <div className="min-w-[680px]">
-                    <div className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] gap-3 border-b border-gray-200 px-2 pb-2">
-                      <Text size="xs" fw={700} c="dimmed">
-                        {segmentLabel}
-                      </Text>
-                      <Text size="xs" fw={700} c="dimmed">
-                        {previewTeam1Label}
-                      </Text>
-                      <Text size="xs" fw={700} c="dimmed">
-                        {previewTeam2Label}
-                      </Text>
-                      <Text size="xs" fw={700} c="dimmed">
-                        {isSetBasedPolicy ? 'Confirmed' : 'Complete'}
-                      </Text>
-                    </div>
-                    {statusSegments.map((segment, index) => {
-                      const checked = segment.status === 'COMPLETE';
-                      const previousComplete = statusSegments.slice(0, index).every((entry) => entry.status === 'COMPLETE');
-                      const segmentName = statusLabelForSegment(statusRules, segment.sequence);
-                      const confirmationLabel = isSetBasedPolicy ? `${segmentName} confirmed` : `${segmentName} complete`;
-                      const confirmationDisabled =
-                        !canManageOperations || resultTypeIsExceptional || (!checked && (!matchStartedChecked || !previousComplete));
-                      return (
-                        <div
-                          key={segment.id ?? segment.sequence}
-                          className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] items-center gap-3 border-b border-gray-100 px-2 py-2 last:border-b-0"
-                        >
-                          <Text size="sm" fw={600}>
-                            {segmentName}
-                          </Text>
-                          <NumberInput
-                            aria-label={`${segmentName} ${previewTeam1Label} score`}
-                            value={statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0}
-                            min={0}
-                            step={1}
-                            allowDecimal={false}
-                            disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam1Id}
-                            onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam1Id, value)}
-                            size="xs"
-                          />
-                          <NumberInput
-                            aria-label={`${segmentName} ${previewTeam2Label} score`}
-                            value={statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0}
-                            min={0}
-                            step={1}
-                            allowDecimal={false}
-                            disabled={!canManageOperations || resultTypeIsExceptional || !statusTeam2Id}
-                            onChange={(value) => handleSegmentScoreChange(segment.sequence, statusTeam2Id, value)}
-                            size="xs"
-                          />
-                          <Checkbox
-                            label={isSetBasedPolicy ? 'Confirmed' : 'Complete'}
-                            aria-label={confirmationLabel}
-                            checked={checked}
-                            disabled={confirmationDisabled}
-                            onChange={(event) => handleSegmentConfirmedChange(segment.sequence, event.currentTarget.checked)}
-                          />
-                        </div>
-                      );
-                    })}
-                    <div className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,0.9fr)] items-center gap-3 bg-gray-50 px-2 py-2">
-                      <Text size="sm" fw={800}>
-                        Total
-                      </Text>
-                      <Text size="sm" fw={800}>
-                        {previewTeam1Total}
-                      </Text>
-                      <Text size="sm" fw={800}>
-                        {previewTeam2Total}
-                      </Text>
-                      <span />
-                    </div>
-                  </div>
-                </div>
-              </SectionPanel>
-            )}
 
             <SectionPanel title="Match details preview">
               <Paper bg="gray.0" radius="md" p="md" withBorder>

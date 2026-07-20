@@ -176,6 +176,51 @@ describe('MatchEditModal', () => {
     );
   });
 
+  it('renders and saves one numeric score-limit input per configured set', async () => {
+    const onSave = jest.fn();
+    const setRules = {
+      scoringModel: 'SETS',
+      segmentCount: 3,
+      segmentLabel: 'Set',
+      setPointTargets: [21, 21, 15],
+    } as ResolvedMatchRules;
+
+    renderModal({
+      targetMatch: {
+        ...match,
+        matchRulesSnapshot: setRules,
+        resolvedMatchRules: setRules,
+      } as Match,
+      targetEvent: {
+        ...event,
+        usesSets: true,
+        resolvedMatchRules: setRules,
+      } as Event,
+      onSave,
+    });
+
+    const rulesPanel = screen.getByRole('region', { name: 'Rules and bracket' });
+    expect(within(rulesPanel).getAllByLabelText(/Set \d+ score limit/)).toHaveLength(3);
+    expect(screen.getByLabelText('Set 1 score limit')).toHaveValue('21');
+    expect(screen.getByLabelText('Set 2 score limit')).toHaveValue('21');
+    expect(screen.getByLabelText('Set 3 score limit')).toHaveValue('15');
+
+    fireEvent.change(screen.getByLabelText('Set count'), { target: { value: '4' } });
+
+    await waitFor(() => {
+      expect(within(rulesPanel).getAllByLabelText(/Set \d+ score limit/)).toHaveLength(4);
+    });
+    fireEvent.change(screen.getByLabelText('Set 4 score limit'), { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSave.mock.calls[0][0].matchRulesSnapshot).toEqual(
+      expect.objectContaining({
+        segmentCount: 4,
+        setPointTargets: [21, 21, 15, 11],
+      }),
+    );
+  });
+
   it('keeps a loser-bracket match to its configured single set when stale rows remain', () => {
     const onSave = jest.fn();
     const loserMatch = {
