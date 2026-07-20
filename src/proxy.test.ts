@@ -50,6 +50,57 @@ describe('proxy', () => {
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+    expect(response.headers.get('Link')).toContain('</guides.md>; rel="alternate"; type="text/markdown"');
+  });
+
+  it('rewrites public .md companions to the internal Markdown renderer', () => {
+    const response = proxy(requestFor(
+      'https://bracket-iq.com/discover.md?tab=events&sport=Soccer',
+      'bracket-iq.com',
+    ));
+    const rewrite = new URL(response.headers.get('x-middleware-rewrite') ?? 'https://invalid.test');
+
+    expect(rewrite.pathname).toBe('/llms/page');
+    expect(rewrite.searchParams.get('path')).toBe('/discover?tab=events&sport=Soccer');
+  });
+
+  it('advertises the Markdown companion with the current filter query', () => {
+    const response = proxy(requestFor(
+      'https://bracket-iq.com/discover?tab=events&sport=Soccer',
+      'bracket-iq.com',
+    ));
+
+    expect(response.headers.get('Link')).toContain(
+      '</discover.md?tab=events&sport=Soccer>; rel="alternate"; type="text/markdown"',
+    );
+  });
+
+  it('supports index.html.md and Accept content negotiation for public pages', () => {
+    const directoryResponse = proxy(requestFor(
+      'https://bracket-iq.com/guides/index.html.md',
+      'bracket-iq.com',
+    ));
+    const negotiatedResponse = proxy(requestFor('https://bracket-iq.com/terms', 'bracket-iq.com', {
+      headers: { accept: 'text/markdown, text/html;q=0.8' },
+    }));
+
+    expect(new URL(directoryResponse.headers.get('x-middleware-rewrite')!).searchParams.get('path'))
+      .toBe('/guides');
+    expect(new URL(negotiatedResponse.headers.get('x-middleware-rewrite')!).searchParams.get('path'))
+      .toBe('/terms');
+  });
+
+  it('does not expose private pages through Markdown routing', () => {
+    const privateCompanion = proxy(requestFor('https://bracket-iq.com/profile.md', 'bracket-iq.com'));
+    const internalSourceFetch = proxy(requestFor('https://bracket-iq.com/terms', 'bracket-iq.com', {
+      headers: {
+        accept: 'text/markdown',
+        'x-bracketiq-markdown-source': '1',
+      },
+    }));
+
+    expect(privateCompanion.headers.get('x-middleware-rewrite')).toBeNull();
+    expect(internalSourceFetch.headers.get('x-middleware-rewrite')).toBeNull();
   });
 
   it('allows widget embed routes to be framed', () => {
