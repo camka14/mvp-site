@@ -292,6 +292,53 @@ describe('event template privacy routes', () => {
     expect(json.tags).toEqual([]);
   });
 
+  it('includes organization identity and logo in the event response', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      name: 'Team Round Robin',
+      state: 'PUBLISHED',
+      hostId: null,
+      imageId: null,
+      organizationId: 'org_recs',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_recs',
+      name: 'RECS Pickleball',
+      logoId: 'recs_logo',
+      website: 'https://recspickleball.com',
+      publicSlug: 'recs-pickleball',
+      publicPageEnabled: false,
+    });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.organizations.findUnique).toHaveBeenCalledWith({
+      where: { id: 'org_recs' },
+      select: {
+        id: true,
+        name: true,
+        logoId: true,
+        website: true,
+        publicSlug: true,
+        publicPageEnabled: true,
+      },
+    });
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      organization: {
+        id: 'org_recs',
+        name: 'RECS Pickleball',
+        logoId: 'recs_logo',
+        website: 'https://recspickleball.com',
+        publicSlug: null,
+        publicPageEnabled: false,
+      },
+    }));
+  });
+
   it('includes set config on playoff division details in GET /api/events/:eventId', async () => {
     const playoffDivisionId = 'event_1__division__m_skill_open_age_18plus';
     prismaMock.events.findUnique.mockResolvedValueOnce({

@@ -1768,7 +1768,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     getVisibleDivisionKeysForEventResponse(eventId, event),
     getDivisionKeysForEventKind(eventId, 'PLAYOFF'),
   ]);
-  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds, tags] = await Promise.all([
+  const [
+    divisionFieldIds,
+    divisionDetails,
+    playoffDivisionDetails,
+    staffInvites,
+    participantIds,
+    tags,
+    organization,
+  ] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
       price: event.price,
@@ -1796,11 +1804,31 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     }),
     getEventParticipantIdsForEvent(eventId),
     getEventTagsForResponse(eventId),
+    event.organizationId
+      ? prisma.organizations.findUnique({
+          where: { id: event.organizationId },
+          select: {
+            id: true,
+            name: true,
+            logoId: true,
+            website: true,
+            publicSlug: true,
+            publicPageEnabled: true,
+          },
+        })
+      : Promise.resolve(null),
   ]);
   const officialResponse = await buildEventOfficialResponse(event);
   return NextResponse.json(
     toEventResponse({
       ...event,
+      organization: organization
+        ? {
+            ...organization,
+            publicSlug: organization.publicPageEnabled ? organization.publicSlug : null,
+            publicPageEnabled: organization.publicPageEnabled === true,
+          }
+        : undefined,
       includePlayoffsOrPools: Boolean(event.includePlayoffs),
       ...participantIds,
       ...officialResponse,

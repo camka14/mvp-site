@@ -203,15 +203,20 @@ export async function GET(req: NextRequest) {
   const divisionPriceMin = divisionPriceMinRaw === null ? null : Number(divisionPriceMinRaw);
   const divisionPriceMax = divisionPriceMaxRaw === null ? null : Number(divisionPriceMaxRaw);
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
-  const hasPrivateSelector = Boolean(ids?.length || ownerId || userId);
+  const hasPrivateSelector = Boolean(ownerId || userId);
+  const shouldResolveSession = Boolean(ids?.length || hasPrivateSelector);
   let session: Awaited<ReturnType<typeof requireSession>> | null = null;
 
-  if (hasPrivateSelector) {
+  if (shouldResolveSession) {
     try {
       session = await requireSession(req);
     } catch (error) {
-      if (error instanceof Response) return error;
-      throw error;
+      if (error instanceof Response && hasPrivateSelector) return error;
+      if (error instanceof Response) {
+        session = null;
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -257,7 +262,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const applyListedOnlyFilter = shouldApplyListedOnlyFilter({ ids, ownerId, userId });
+  const applyListedOnlyFilter = shouldApplyListedOnlyFilter({ ids, ownerId, userId })
+    || Boolean(ids?.length && !session);
   const affiliateRentalOrganizationIds = includeAffiliateRentals && applyListedOnlyFilter
     ? Array.from(
       new Set(
