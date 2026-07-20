@@ -158,20 +158,20 @@ export const getLeagueDivisionTeamIds = (league: StandingsAdvancementEvent, divi
   }
 
   const division = getLeagueDivisionById(league, divisionId);
+  const configuredTeamIds = Array.isArray(division?.teamIds)
+    ? division.teamIds
+        .map((entry) => String(entry ?? '').trim())
+        .filter((teamId) => teamId.length > 0 && Boolean(league.teams[teamId]))
+    : [];
+  if (configuredTeamIds.length > 0) {
+    configuredTeamIds.forEach((teamId) => teamIds.add(teamId));
+    return teamIds;
+  }
+
   const hasConfiguredMembership = league.divisions.some(
     (entry) => Array.isArray(entry.teamIds) && entry.teamIds.length > 0,
   );
-  if (!league.singleDivision && division && hasConfiguredMembership) {
-    const configuredTeamIds = Array.isArray(division.teamIds)
-      ? division.teamIds
-      : [];
-    for (const rawTeamId of configuredTeamIds) {
-      const teamId = typeof rawTeamId === 'string' ? rawTeamId.trim() : '';
-      if (!teamId || !league.teams[teamId]) {
-        continue;
-      }
-      teamIds.add(teamId);
-    }
+  if (!league.singleDivision && division && hasConfiguredMembership && !isTournamentPoolPlayStandingsEvent(league)) {
     return teamIds;
   }
 
@@ -187,6 +187,48 @@ export const getLeagueDivisionTeamIds = (league: StandingsAdvancementEvent, divi
     if (normalizeToken(team.division?.id) === normalizedDivisionId) {
       teamIds.add(team.id);
     }
+  }
+
+  if (teamIds.size > 0 || !division || !isTournamentPoolPlayStandingsEvent(league)) {
+    return teamIds;
+  }
+
+  const playoffDivisionIds = new Set(
+    getPlayoffDivisions(league)
+      .map((entry) => normalizeToken(entry.id))
+      .filter((entry): entry is string => Boolean(entry)),
+  );
+  const parentDivisionIds = new Set(
+    (division.playoffPlacementDivisionIds ?? [])
+      .map((entry) => normalizeToken(entry))
+      .filter((entry): entry is string => Boolean(entry && playoffDivisionIds.has(entry))),
+  );
+  if (!parentDivisionIds.size) {
+    return teamIds;
+  }
+
+  const siblingHasExplicitMembership = league.divisions.some((entry) => {
+    if (normalizeToken(entry.id) === normalizedDivisionId || !entry.teamIds?.length) {
+      return false;
+    }
+    return (entry.playoffPlacementDivisionIds ?? []).some((parentId) => {
+      const normalizedParentId = normalizeToken(parentId);
+      return Boolean(normalizedParentId && parentDivisionIds.has(normalizedParentId));
+    });
+  });
+  if (siblingHasExplicitMembership) {
+    return teamIds;
+  }
+
+  for (const team of Object.values(league.teams)) {
+    const teamDivisionId = normalizeToken(team.division?.id);
+    if (teamDivisionId && parentDivisionIds.has(teamDivisionId)) {
+      teamIds.add(team.id);
+    }
+  }
+
+  if (teamIds.size === 0 && league.singleDivision) {
+    Object.keys(league.teams).forEach((teamId) => teamIds.add(teamId));
   }
 
   return teamIds;

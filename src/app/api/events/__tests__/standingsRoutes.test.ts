@@ -410,6 +410,33 @@ describe('standings routes', () => {
     expect(json.division.standings.map((row: any) => row.teamId)).not.toContain('team_3');
   });
 
+  it('GET keeps parent tournament division teams visible when a pool has no matches or explicit membership', async () => {
+    const tournament = buildTournamentPoolFixture();
+    const pool = tournament.divisions[0];
+    const parentDivision = tournament.playoffDivisions[0];
+    pool.teamIds = [];
+    tournament.matches = {};
+    tournament.teams.team_1.division = parentDivision;
+    tournament.teams.team_2.division = parentDivision;
+    tournament.teams.team_3.division = {
+      id: 'bracket_2',
+      name: 'Elite Bracket',
+    };
+    loadEventWithRelationsMock.mockResolvedValueOnce(tournament);
+
+    const res = await standingsGet(
+      new NextRequest('http://localhost/api/events/event_1/standings?divisionId=pool_1', { method: 'GET' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.division.standings).toEqual([
+      expect.objectContaining({ teamId: 'team_1', matchesPlayed: 0, finalPoints: 0 }),
+      expect.objectContaining({ teamId: 'team_2', matchesPlayed: 0, finalPoints: 0 }),
+    ]);
+  });
+
   it('PATCH saves absolute points overrides and returns deltas', async () => {
     const res = await standingsPatch(
       makePatchRequest({

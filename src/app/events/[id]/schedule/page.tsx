@@ -3516,6 +3516,9 @@ function EventScheduleContent() {
     }
 
     const selectedDivisionKey = toDivisionKey(selectedStandingsDataDivision);
+    const fallbackStandingsDivisionId = tournamentPoolPlayEnabled
+      ? selectedStandingsDivision
+      : null;
     const selectedDivisionTeamIds = new Set<string>();
     const divisionSources = Array.isArray(activeEvent.divisionDetails)
       ? activeEvent.divisionDetails
@@ -3538,6 +3541,7 @@ function EventScheduleContent() {
         const teamDivisionId = getDivisionId(team.division);
         if (!teamBelongsToSelectedStandingsDivision({
           selectedDivisionId: selectedStandingsDataDivision,
+          fallbackDivisionId: fallbackStandingsDivisionId,
           selectedDivisionTeamIds,
           teamId: team.$id,
           teamDivisionId,
@@ -3678,7 +3682,9 @@ function EventScheduleContent() {
     leagueScoring,
     playoffMatchIds,
     selectedStandingsDataDivision,
+    selectedStandingsDivision,
     standingsDivisionData,
+    tournamentPoolPlayEnabled,
   ]);
 
   const getDraftStandingsPoints = useCallback(

@@ -48,6 +48,109 @@ const getPlayoffMatches = (league: League | Tournament, playoffDivisionId: strin
 );
 
 describe('standings playoff reassignment', () => {
+  it('keeps explicitly assigned league teams in standings when the division has no matches', () => {
+    const division = new Division(
+      'division_open',
+      'Open',
+      [],
+      null,
+      4,
+      2,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      null,
+      ['division_open_team_1', 'division_open_team_2'],
+    );
+    const teams = buildTeamsForDivision('division_open', 2, division);
+    const league = new League({
+      id: 'league_without_matches',
+      name: 'League Without Matches',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      registeredTeamIds: Object.keys(teams),
+      teams,
+      divisions: [division],
+      playoffDivisions: [],
+      officials: [],
+      fields: {},
+      matches: {},
+      timeSlots: [],
+      includePlayoffs: false,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(computeLeagueDivisionStandings(league, division.id)).toEqual([
+      expect.objectContaining({
+        teamId: 'division_open_team_1',
+        matchesPlayed: 0,
+        basePoints: 0,
+        finalPoints: 0,
+      }),
+      expect.objectContaining({
+        teamId: 'division_open_team_2',
+        matchesPlayed: 0,
+        basePoints: 0,
+        finalPoints: 0,
+      }),
+    ]);
+  });
+
+  it('falls back from an empty tournament pool to teams in its parent tournament division', () => {
+    const parentDivision = new Division('bracket_open', 'Open', [], null, 8, null, 'PLAYOFF');
+    const otherParentDivision = new Division('bracket_elite', 'Elite', [], null, 8, null, 'PLAYOFF');
+    const pool = new Division(
+      'pool_open_a',
+      'Pool A',
+      [],
+      null,
+      4,
+      2,
+      'LEAGUE',
+      ['bracket_open', 'bracket_open'],
+    );
+    const openTeams = buildTeamsForDivision('open', 2, parentDivision);
+    const eliteTeams = buildTeamsForDivision('elite', 1, otherParentDivision);
+    const tournament = new Tournament({
+      id: 'tournament_without_pool_matches',
+      name: 'Tournament Without Pool Matches',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-01-06T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 16,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      singleDivision: false,
+      registeredTeamIds: [...Object.keys(openTeams), ...Object.keys(eliteTeams)],
+      teams: { ...openTeams, ...eliteTeams },
+      divisions: [pool],
+      playoffDivisions: [parentDivision, otherParentDivision],
+      splitLeaguePlayoffDivisions: true,
+      officials: [],
+      fields: {},
+      matches: {},
+      timeSlots: [],
+      includePlayoffs: true,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(computeLeagueDivisionStandings(tournament, pool.id).map((row) => ({
+      teamId: row.teamId,
+      matchesPlayed: row.matchesPlayed,
+      finalPoints: row.finalPoints,
+    }))).toEqual([
+      { teamId: 'open_team_1', matchesPlayed: 0, finalPoints: 0 },
+      { teamId: 'open_team_2', matchesPlayed: 0, finalPoints: 0 },
+    ]);
+  });
+
   it('auto-fills single-division playoff mappings in bracket order', () => {
     const open = new Division(
       'open',
