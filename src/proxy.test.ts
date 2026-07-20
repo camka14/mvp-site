@@ -62,6 +62,8 @@ describe('proxy', () => {
 
     expect(rewrite.pathname).toBe('/llms/page');
     expect(rewrite.searchParams.get('path')).toBe('/discover?tab=events&sport=Soccer');
+    expect(response.headers.get('x-middleware-request-x-bracketiq-markdown-path'))
+      .toBe('/discover?tab=events&sport=Soccer');
   });
 
   it('advertises the Markdown companion with the current filter query', () => {

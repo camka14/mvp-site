@@ -1,4 +1,7 @@
-import { isPublicMarkdownPath } from '@/lib/llmsRouting';
+import {
+  isPublicMarkdownPath,
+  MARKDOWN_SOURCE_PATH_HEADER,
+} from '@/lib/llmsRouting';
 import { renderPublicPageMarkdown } from '@/server/llmsPage';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +18,10 @@ const notFoundResponse = () => new Response('Public Markdown page not found.\n',
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const sourcePath = requestUrl.searchParams.get('path');
+  // Next preserves the browser-visible request URL after a proxy rewrite, so
+  // the rewritten `path` query is not reliable inside this route handler.
+  const sourcePath = request.headers.get(MARKDOWN_SOURCE_PATH_HEADER)
+    ?? requestUrl.searchParams.get('path');
   if (!sourcePath || !sourcePath.startsWith('/') || sourcePath.startsWith('//')) {
     return notFoundResponse();
   }

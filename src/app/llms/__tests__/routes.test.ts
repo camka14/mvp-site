@@ -36,6 +36,24 @@ describe('LLM route handlers', () => {
     await expect(response.text()).resolves.toBe('# Terms\n\nPolicy text.\n');
   });
 
+  it('uses the source path forwarded by a public companion rewrite', async () => {
+    renderPublicPageMarkdownMock.mockResolvedValue('# Discover BracketIQ');
+
+    const response = await getMarkdownPage(new Request(
+      'https://bracket-iq.com/discover.md?tab=events&sport=Soccer',
+      {
+        headers: {
+          'x-bracketiq-markdown-path': '/discover?tab=events&sport=Soccer',
+        },
+      },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(renderPublicPageMarkdownMock).toHaveBeenCalledWith(
+      new URL('https://bracket-iq.com/discover?tab=events&sport=Soccer'),
+    );
+  });
+
   it('rejects private and cross-origin source paths', async () => {
     const privateResponse = await getMarkdownPage(new Request(
       'https://bracket-iq.com/llms/page?path=%2Fadmin',

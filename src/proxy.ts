@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   acceptsMarkdown,
   isPublicMarkdownPath,
+  MARKDOWN_SOURCE_PATH_HEADER,
   markdownCompanionSourcePath,
 } from '@/lib/llmsRouting';
 
@@ -146,7 +147,11 @@ const markdownRewriteForRequest = (request: NextRequest): NextResponse | null =>
   rewriteUrl.pathname = '/llms/page';
   rewriteUrl.search = '';
   rewriteUrl.searchParams.set('path', sourcePathWithQuery);
-  return NextResponse.rewrite(rewriteUrl);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(MARKDOWN_SOURCE_PATH_HEADER, sourcePathWithQuery);
+  return NextResponse.rewrite(rewriteUrl, {
+    request: { headers: requestHeaders },
+  });
 };
 
 const nextResponseForRequest = (request: NextRequest): NextResponse => {

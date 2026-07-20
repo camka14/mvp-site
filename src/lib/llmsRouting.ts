@@ -1,3 +1,5 @@
+export const MARKDOWN_SOURCE_PATH_HEADER = 'x-bracketiq-markdown-path';
+
 const PUBLIC_STATIC_MARKDOWN_PATHS = new Set([
   '/',
   '/blog',
