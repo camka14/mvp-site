@@ -26,7 +26,7 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
 - [x] (2026-07-20) Provisioned the OVHcloud VPS with the dedicated operator key and verified both the Ubuntu operator and non-root `bracketiq` deployment logins.
 - [x] (2026-07-20) Bootstrapped and rebooted the host, then passed consolidated verification of effective SSH policy, UFW, Fail2ban, unattended upgrades, Docker, PostgreSQL 17 client, Restic, swap, directory ownership, and public listeners.
 - [x] (2026-07-20) Synced the secret-free `deploy/vm` bundle to `/opt/bracketiq/deploy/vm` and rendered its Compose configuration successfully as the `bracketiq` user without starting services.
-- [ ] Triage the existing production npm advisories before exposing the preview hostname; do not apply an automatic breaking `npm audit fix --force` in the dirty checkout.
+- [x] (2026-07-20) Triaged the production npm advisories and applied compatible security updates without `npm audit fix --force`; the production audit now has zero high or critical findings.
 - [ ] Create protected environment files, configure monitoring, initialize the Restic repository, and pass a restore drill before production cutover.
 - [ ] Deploy the exact production image to a preview hostname while continuing to use managed PostgreSQL.
 - [ ] Complete the preview acceptance suite, including login, Discover, event/org pages, Spaces files, payment callbacks, `/api/app-version`, and both WebSocket paths.
@@ -58,6 +58,9 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
 
 - Observation: the production dependency tree has pre-existing security advisories unrelated to the VM files.
   Evidence: `npm run security:audit` reports 19 production findings, including a critical `websocket-driver` advisory through `firebase-admin`, high Nodemailer findings, and high markdown/form-data findings. The automated force fix proposes breaking Prisma, Next, and Firebase changes, so it requires a separate scoped dependency patch and regression tests before the preview is public.
+
+- Observation: the high and critical production advisories can be removed without a forced dependency rewrite.
+  Evidence: compatible lockfile updates plus Nodemailer 9.0.1 or newer reduce the production audit from 19 findings (one critical and three high) to 13 moderate findings. Focused email, template, and Firebase push tests and TypeScript pass. The remaining findings are in Firebase Admin's unused Firestore/Storage dependency paths, Next's bundled PostCSS, and Prisma tooling; npm proposes unrelated major downgrades for several of them.
 
 - Observation: the provisioned image is Ubuntu 26.04 LTS rather than the originally planned Ubuntu 24.04 LTS.
   Evidence: Docker's official Ubuntu repository and PostgreSQL's PGDG repository both publish `resolute` packages. The host now runs kernel `7.0.0-28-generic`, Docker Engine `29.6.2`, Compose `5.3.1`, PostgreSQL client `17.10`, and Restic `0.18.1`.
@@ -104,6 +107,10 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
 
 - Decision: Keep SSH rate-limited and serialize deployment connections.
   Rationale: key-only authentication, disabled root login, UFW rate limiting, and Fail2ban provide layered protection. Parallel SSH sessions are unnecessary for this single-host deployment and can trip the intentional burst limit.
+  Date/Author: 2026-07-20 / Codex
+
+- Decision: Block the preview on high or critical npm advisories, but document rather than force-fix the remaining moderate transitive findings.
+  Rationale: the severe findings have compatible patched releases. The remaining automated recommendations would downgrade Next or Firebase Admin across major versions even though the affected Firestore and Storage APIs are not used by this application, creating more deployment risk than the scoped patch.
   Date/Author: 2026-07-20 / Codex
 
 ## Outcomes & Retrospective
