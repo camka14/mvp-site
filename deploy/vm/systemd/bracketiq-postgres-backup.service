@@ -1,0 +1,21 @@
+[Unit]
+Description=Back up BracketIQ PostgreSQL to the encrypted Restic repository
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/opt/bracketiq/deploy/vm
+Environment=COMPOSE_ENV_FILE=/opt/bracketiq/deploy/vm/deployment.env
+Environment=RESTIC_ENV_FILE=/etc/bracketiq/restic.env
+ExecStart=/opt/bracketiq/deploy/vm/bin/backup-postgres.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+[Install]
+WantedBy=multi-user.target
