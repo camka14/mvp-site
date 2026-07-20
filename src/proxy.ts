@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  acceptsMarkdown,
+  isPublicMarkdownPath,
+  markdownCompanionSourcePath,
+} from '@/lib/llmsRouting';
 
 const CANONICAL_HOST = 'bracket-iq.com';
 const WWW_HOST = `www.${CANONICAL_HOST}`;
@@ -120,7 +125,35 @@ const isBroadcastPreviewPath = (pathname: string): boolean => (
   pathname === '/broadcast-preview' || pathname.startsWith('/broadcast-preview/')
 );
 
+const markdownRewriteForRequest = (request: NextRequest): NextResponse | null => {
+  if (!SAFE_METHODS.has(request.method.toUpperCase()) || request.method.toUpperCase() === 'OPTIONS') {
+    return null;
+  }
+  if (request.headers.get('x-bracketiq-markdown-source') === '1') {
+    return null;
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const companionSourcePath = markdownCompanionSourcePath(pathname);
+  const negotiatedSourcePath = acceptsMarkdown(request.headers.get('accept')) ? pathname : null;
+  const sourcePath = companionSourcePath ?? negotiatedSourcePath;
+  if (!sourcePath || !isPublicMarkdownPath(sourcePath)) {
+    return null;
+  }
+
+  const rewriteUrl = request.nextUrl.clone();
+  const sourcePathWithQuery = `${sourcePath}${request.nextUrl.search}`;
+  rewriteUrl.pathname = '/llms/page';
+  rewriteUrl.search = '';
+  rewriteUrl.searchParams.set('path', sourcePathWithQuery);
+  return NextResponse.rewrite(rewriteUrl);
+};
+
 const nextResponseForRequest = (request: NextRequest): NextResponse => {
+  const markdownResponse = markdownRewriteForRequest(request);
+  if (markdownResponse) {
+    return markdownResponse;
+  }
   if (!isOverlaySurfacePath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
@@ -182,6 +215,21 @@ const applySecurityHeaders = (response: NextResponse, request: NextRequest): Nex
     response.headers.set('Expires', '0');
     response.headers.set('Referrer-Policy', 'no-referrer');
     response.headers.set('X-Robots-Tag', 'noindex');
+  }
+  if (
+    request.method.toUpperCase() === 'GET'
+    && request.headers.get('x-bracketiq-markdown-source') !== '1'
+    && !acceptsMarkdown(request.headers.get('accept'))
+    && !markdownCompanionSourcePath(request.nextUrl.pathname)
+    && isPublicMarkdownPath(request.nextUrl.pathname)
+  ) {
+    const markdownPath = request.nextUrl.pathname === '/'
+      ? '/index.html.md'
+      : `${request.nextUrl.pathname.replace(/\/+$/, '')}.md`;
+    response.headers.append(
+      'Link',
+      `<${markdownPath}${request.nextUrl.search}>; rel="alternate"; type="text/markdown"`,
+    );
   }
   return response;
 };

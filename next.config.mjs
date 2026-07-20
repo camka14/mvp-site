@@ -40,6 +40,9 @@ const nextConfig = {
   // dev toolbar so it can never become part of the broadcast frame.
   devIndicators: false,
   transpilePackages: ['date-fns'],
+  outputFileTracingIncludes: {
+    '/llms/page': ['./src/content/blog/*.mdx'],
+  },
   experimental: {
     optimizePackageImports: ['date-fns'],
   },

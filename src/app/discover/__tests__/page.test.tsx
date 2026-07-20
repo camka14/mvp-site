@@ -4,13 +4,18 @@ import DiscoverPage from '../page';
 
 const pushMock = jest.fn();
 const listOrganizationsMock = jest.fn();
-const mockSportsResult = { sports: [], loading: false, error: null };
+const mockSportsResult: { sports: Array<{ $id: string; name: string }>; loading: boolean; error: null } = {
+  sports: [],
+  loading: false,
+  error: null,
+};
+let navigationSearchParams = 'tab=organizations';
 let intersectionCallbacks: IntersectionObserverCallback[] = [];
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/discover',
   useRouter: () => ({ push: pushMock, replace: jest.fn() }),
-  useSearchParams: () => new URLSearchParams('tab=organizations'),
+  useSearchParams: () => new URLSearchParams(navigationSearchParams),
 }));
 
 jest.mock('@/app/providers', () => ({
@@ -108,6 +113,9 @@ describe('Discover organization loading', () => {
     pushMock.mockReset();
     listOrganizationsMock.mockReset();
     intersectionCallbacks = [];
+    navigationSearchParams = 'tab=organizations';
+    mockSportsResult.sports = [];
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
     listOrganizationsMock.mockResolvedValue({
       organizations: [{
         $id: 'org_1',
@@ -153,6 +161,41 @@ describe('Discover organization loading', () => {
       screen.getByTestId('division-discovery-filters'),
     );
     expect(listOrganizationsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores organization filters from the URL and keeps them shareable', async () => {
+    navigationSearchParams = [
+      'tab=organizations',
+      'q=rose',
+      'sport=Soccer',
+      'tags=club',
+      'genders=C',
+      'skillDivisionTypeIds=competitive',
+      'ageDivisionTypeIds=u18',
+      'priceMin=10',
+      'priceMax=75.5',
+    ].join('&');
+    mockSportsResult.sports = [{ $id: 'soccer', name: 'Soccer' }];
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    renderWithMantine(<DiscoverPage />);
+
+    await waitFor(() => {
+      expect(listOrganizationsMock).toHaveBeenCalledWith(100, 0, expect.objectContaining({
+        tagSlugs: ['club'],
+        sports: ['Soccer'],
+        divisionGenders: ['C'],
+        skillDivisionTypeIds: ['competitive'],
+        ageDivisionTypeIds: ['u18'],
+        divisionPriceMin: 1000,
+        divisionPriceMax: 7550,
+      }));
+      expect(window.location.search).toContain('tab=organizations');
+      expect(window.location.search).toContain('sport=Soccer');
+      expect(window.location.search).toContain('tags=club');
+      expect(window.location.search).toContain('skillDivisionTypeIds=competitive');
+      expect(window.location.search).toContain('priceMax=75.5');
+    });
   });
 
   it('loads the next organization page when the organization sentinel intersects', async () => {
