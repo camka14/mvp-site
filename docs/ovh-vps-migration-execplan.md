@@ -27,12 +27,13 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
 - [x] (2026-07-20) Bootstrapped and rebooted the host, then passed consolidated verification of effective SSH policy, UFW, Fail2ban, unattended upgrades, Docker, PostgreSQL 17 client, Restic, swap, directory ownership, and public listeners.
 - [x] (2026-07-20) Synced the secret-free `deploy/vm` bundle to `/opt/bracketiq/deploy/vm` and rendered its Compose configuration successfully as the `bracketiq` user without starting services.
 - [x] (2026-07-20) Triaged the production npm advisories and applied compatible security updates without `npm audit fix --force`; the production audit now has zero high or critical findings.
-- [ ] Create protected environment files, configure monitoring, initialize the Restic repository, and pass a restore drill before production cutover.
-- [ ] Deploy the exact production image to a preview hostname while continuing to use managed PostgreSQL.
+- [x] (2026-07-20 16:31 PDT) Initialized a client-side encrypted Restic repository in the existing DigitalOcean Spaces bucket, saved a recovery copy at `~/.ssh/bracketiq-restic.env`, installed hourly backup and daily verification timers, and passed isolated restore drills.
+- [x] (2026-07-20 15:40 PDT) Deployed image `dce877e5047c4d783d73c08c7d6929cca28d0bcb` to the protected `preview.bracket-iq.com` hostname while continuing to use managed PostgreSQL.
+- [ ] Replace preview-only integration credentials before public cutover (remaining: live Stripe secret key, live Stripe webhook secret, live Stripe Connect client identifier, and Apple sign-in private key; the live Stripe publishable key is recoverable from the App Platform spec).
 - [ ] Complete the preview acceptance suite, including login, Discover, event/org pages, Spaces files, payment callbacks, `/api/app-version`, and both WebSocket paths.
 - [ ] Move apex and `www` traffic to the VPS and observe for at least 48 hours while managed PostgreSQL remains authoritative.
-- [ ] Rehearse the managed-to-local database dump, restore, grants, app smoke test, encrypted backup, and second restore drill.
-- [ ] Obtain explicit approval for the write-frozen database cutover, validate exact table counts and Prisma migrations, then switch the app to local PostgreSQL.
+- [x] (2026-07-20 16:28 PDT) Rehearsed PostgreSQL 17 dump and restore from managed PostgreSQL into the unused local database, compared exact counts for all 95 public tables, verified 162 applied Prisma migrations, uploaded an encrypted backup, and restored it into a second isolated database with matching counts.
+- [ ] Complete the write-frozen database cutover (completed: explicit approval, final managed snapshot, exact 95-table comparison, local URL switch, migration validation, healthy local-backed app, fresh encrypted local backup, and second restore drill; remaining: repeat the final copy after live credentials are installed, then change DNS and admit public writes). The 2026-07-20 attempt was cleanly rolled back before DNS because the final secret-mode check found test Stripe keys and a missing Apple private key.
 - [ ] Observe for seven days and pass a second restore drill.
 - [ ] Obtain explicit approval before deleting only the old `mvp-site` App Platform service and its managed database.
 
@@ -70,6 +71,15 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
 
 - Observation: the initial `sshd -t` failed because `/run/sshd` did not exist yet, and burst verification triggered UFW's SSH rate limiter.
   Evidence: the bootstrap now creates `/run/sshd` before validation. Administrative checks are serialized so the stricter UFW `LIMIT` rule can remain in place alongside key-only authentication and Fail2ban.
+
+- Observation: the live database is still very small but has grown beyond the initial audit.
+  Evidence: the frozen 2026-07-20 source measured 40,621,747 bytes. Its PostgreSQL 17 custom-format dump was 2,278,258 bytes, covered 95 public tables and 162 applied Prisma migrations, took 27 seconds to produce, two seconds to upload encrypted, and four seconds to restore and validate locally.
+
+- Observation: the backup status writer and verifier disagreed about timestamp syntax.
+  Evidence: `backup-postgres.sh` wrote `20260720T232819Z`, which GNU `date -d` rejected. The writer now records RFC 3339 while `verify-host.sh` remains backward compatible with existing compact timestamps; the systemd verification service subsequently passed.
+
+- Observation: App Platform does not reveal production secret values through its application spec.
+  Evidence: production Stripe and Apple values are returned as encrypted `EV[...]` references that can be resubmitted to App Platform but cannot populate the VPS. The VPS final check found Stripe test keys, QuickBooks sandbox mode, and no Apple private key, so the cutover was stopped before DNS and App Platform was returned to HTTP 200 with no data divergence.
 
 ## Decision Log
 
@@ -113,9 +123,17 @@ Build immutable application images in GitHub Actions and publish full-commit-SHA
   Rationale: the severe findings have compatible patched releases. The remaining automated recommendations would downgrade Next or Firebase Admin across major versions even though the affected Firestore and Storage APIs are not used by this application, creating more deployment risk than the scoped patch.
   Date/Author: 2026-07-20 / Codex
 
+- Decision: Keep the `bracketiq` deployment account non-root and use the `ubuntu` operator account for system administration.
+  Rationale: unrestricted passwordless sudo for the long-running deployment identity would unnecessarily expand compromise impact. Backups and systemd services already run through the separate administrative account and root-owned secret files.
+  Date/Author: 2026-07-20 / Codex
+
+- Decision: Abort the first write-frozen cutover before DNS when the live-secret gate failed.
+  Rationale: serving test Stripe keys or a missing Apple sign-in key would break production contracts. Because DNS had not changed and no public writes reached local PostgreSQL, disabling App Platform maintenance restored the still-authoritative managed path without reverse data migration.
+  Date/Author: 2026-07-20 / Codex
+
 ## Outcomes & Retrospective
 
-Repository and host milestone outcome as of 2026-07-20: the Node 22 production image builds successfully, is approximately 490 MB, runs as UID 1001 rather than root, includes Prisma CLI and raw blog MDX, and renders the guide markdown route inside the container. Liveness returns 200 without dependencies; readiness returns a non-disclosing 503 when PostgreSQL is absent. The production Compose stack renders cleanly, pinned Caddy configuration validates, PostgreSQL 17 and Redis become healthy, and the runtime database role authenticates with no superuser, database-creator, role-creator, or schema-create privilege. The paid VPS is now bootstrapped with a non-root deployment account, effective key-only SSH, root login disabled, UFW, Fail2ban, unattended upgrades, bounded Docker logs, 2 GiB swap, and root-restricted operational directories. Only SSH listens publicly before the stack starts. The secret-free deployment bundle is present and validates on the host. No production DNS record, DigitalOcean service, live secret, or database row was changed.
+Repository and host milestone outcome as of 2026-07-20: the Node 22 production image builds successfully, is approximately 490 MB, runs as UID 1001 rather than root, includes Prisma CLI and raw blog MDX, and renders the guide markdown route inside the container. Liveness returns 200 without dependencies; readiness returns a non-disclosing 503 when PostgreSQL is absent. The production Compose stack renders cleanly, pinned Caddy configuration validates, PostgreSQL 17 and Redis become healthy, and the runtime database role authenticates with no superuser, database-creator, role-creator, or schema-create privilege. The paid VPS is bootstrapped with key-only SSH, root login disabled, UFW, Fail2ban, unattended upgrades, bounded Docker logs, 2 GiB swap, and root-restricted operational directories. The protected preview is healthy. Encrypted off-server backups, hourly and daily systemd timers, exact managed-to-local table comparison, and two independent restore drills now pass. A final frozen copy also passed and the VPS app became healthy against local PostgreSQL, but the cutover was deliberately stopped before DNS because production-only Stripe and Apple credentials were not available on the VPS. App Platform and managed PostgreSQL remain authoritative and production returned to HTTP 200 without data divergence; the local database is a validated but non-authoritative snapshot that must be refreshed at the next cutover.
 
 Update after provisioning with actual VPS commitment and tax, selected backup/snapshot price, host hardening evidence, and preview hostname. Update after database cutover with dump duration, restore duration, maintenance duration, exact table-count result, and first successful production write. Update after the first full billing month with observed savings rather than a starting-price estimate.
 
@@ -170,3 +188,5 @@ The transition is complete only when the public web and mobile contracts pass, b
 Application rollback uses the prior immutable image unless a migration broke backward compatibility, in which case roll forward. Host recovery uses a new Ubuntu VPS, the repository deployment files, protected secrets, Spaces user objects, and the latest tested Restic dump. The target recovery point is at most one hour of database writes and the target recovery time is two hours after a replacement host is available.
 
 Revision note (2026-07-20): created this OVH-first plan from the prior DigitalOcean infrastructure audit, added Redis to match the selected all-in-one VM architecture, recorded the first repository implementation milestone, and updated it with the verified OVH host bootstrap and artifact sync.
+
+Revision note (2026-07-20 16:50 PDT): recorded the protected preview, encrypted Restic setup, backup timestamp compatibility fix, exact rehearsal and final-copy evidence, successful restore drills, and the clean rollback caused by missing production-only Stripe and Apple credentials.

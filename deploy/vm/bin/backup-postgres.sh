@@ -31,6 +31,7 @@ set +a
 
 compose=(docker compose --env-file "$deployment_env" -f "$compose_file")
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 snapshot_path="/bracketiq/postgres/${timestamp}.dump"
 
 mkdir -p "$(dirname -- "$status_file")"
@@ -48,5 +49,5 @@ restic forget \
   --prune
 
 restic snapshots --tag bracketiq-postgres --latest 1 >/dev/null
-printf 'completed_at=%s\npath=%s\n' "$timestamp" "$snapshot_path" > "$status_file"
+printf 'completed_at=%s\npath=%s\n' "$completed_at" "$snapshot_path" > "$status_file"
 echo "PostgreSQL backup completed at $timestamp"

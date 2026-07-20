@@ -28,6 +28,9 @@ fi
 
 if [[ -f "$status_file" ]]; then
   completed_at="$(awk -F= '$1 == "completed_at" { print $2; exit }' "$status_file")"
+  if [[ "$completed_at" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$ ]]; then
+    completed_at="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}T${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]}Z"
+  fi
   completed_epoch="$(date -u -d "$completed_at" +%s)"
   now_epoch="$(date -u +%s)"
   backup_age="$((now_epoch - completed_epoch))"
