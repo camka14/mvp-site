@@ -43,6 +43,7 @@
     "affiliate:setup:fc-piamonte": "tsx scripts/setup-fc-piamonte-affiliate-source.ts",
     "affiliate:setup:la-amistad": "tsx scripts/setup-la-amistad-soccer-club-affiliate-source.ts",
     "affiliate:setup:portland-community-fc": "tsx scripts/setup-portland-community-fc-affiliate-source.ts",
+    "affiliate:setup:portland-reign-basketball": "tsx scripts/setup-portland-reign-basketball-affiliate-source.ts",
     "affiliate:setup:portland-volleyball-club": "tsx scripts/setup-portland-volleyball-club-affiliate-source.ts",
     "affiliate:setup:athena-ajax-volleyball": "tsx scripts/setup-athena-ajax-volleyball-affiliate-source.ts",
     "affiliate:setup:oregon-juniors-volleyball": "tsx scripts/setup-oregon-juniors-volleyball-academy-affiliate-source.ts",
