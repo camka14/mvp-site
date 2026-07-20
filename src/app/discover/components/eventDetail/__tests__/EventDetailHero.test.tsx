@@ -56,4 +56,21 @@ describe('EventDetailHero', () => {
 
         expect(image.getAttribute('src')).toContain('/event-fallback.png');
     });
+
+    it('does not retry when the failed image is already the fallback', () => {
+        const srcSetter = jest.spyOn(HTMLImageElement.prototype, 'src', 'set');
+        renderWithMantine(
+            <EventDetailHero
+                {...baseProps}
+                imageUrl="/event-fallback.png"
+            />,
+        );
+        const image = screen.getByRole('img', { name: 'Summer Sand League' });
+        const assignmentsBeforeError = srcSetter.mock.calls.length;
+
+        fireEvent.error(image);
+
+        expect(srcSetter).toHaveBeenCalledTimes(assignmentsBeforeError);
+        srcSetter.mockRestore();
+    });
 });

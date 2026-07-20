@@ -3103,13 +3103,18 @@ function EventScheduleContent() {
       hydratedEvent.pointsToVictory = normalizedLeagueConfig.pointsToVictory;
     }
 
+    const embeddedOrganization = hydratedEvent.organization
+      && typeof hydratedEvent.organization === 'object'
+      ? hydratedEvent.organization as Organization
+      : null;
     const organizationId = normalizeIdToken(
       hydratedEvent.organizationId
       || (typeof hydratedEvent.organization === 'string'
         ? hydratedEvent.organization
-        : (hydratedEvent.organization as Organization | undefined)?.$id),
+        : embeddedOrganization?.$id),
     );
-    if (organizationId) {
+    const embeddedOrganizationId = normalizeIdToken(embeddedOrganization?.$id);
+    if (organizationId && embeddedOrganizationId !== organizationId) {
       try {
         const resolvedOrganization = await (
           organizationService.getOrganizationByIdForEventForm

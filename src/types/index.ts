@@ -2106,6 +2106,10 @@ export function getEventImageFallbackUrl(params: {
 
   const organizationInput = params.organization ?? params.event?.organization;
   if (organizationInput && typeof organizationInput === 'object') {
+    const displayUrl = organizationInput.logoUrl?.trim() || organizationInput.imageUrl?.trim();
+    if (displayUrl) {
+      return displayUrl;
+    }
     if (organizationInput.logoId) {
       return buildPreviewUrl(organizationInput.logoId, resolvedWidth, resolvedHeight);
     }

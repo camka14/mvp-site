@@ -26,6 +26,24 @@ describe('event image fallbacks', () => {
     expect(url).toBe('/api/files/logo_1/preview?w=640&h=320&fit=cover');
   });
 
+  it('uses a resolved organization logo URL when no logo id is available', () => {
+    const url = getEventImageFallbackUrl({
+      event: {
+        organization: {
+          $id: 'org_1',
+          name: 'My Org',
+          logoId: undefined,
+          logoUrl: '/api/files/logo_1/preview?w=240&h=240',
+        },
+        hostId: null,
+      } as any,
+      width: 1200,
+      height: 675,
+    });
+
+    expect(url).toBe('/api/files/logo_1/preview?w=240&h=240');
+  });
+
   it('falls back to host avatar placeholder when organization is unavailable', () => {
     const url = getEventImageFallbackUrl({
       event: {

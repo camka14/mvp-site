@@ -745,6 +745,60 @@ describe('League schedule page', () => {
     ).toBe(false);
   });
 
+  it('keeps the organization embedded in the event detail payload without refetching it', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+    const organization = {
+      $id: 'org_1',
+      name: 'RECS Pickleball',
+      logoId: 'recs_logo',
+    };
+    const bootstrappedEvent = buildApiEvent({
+      organizationId: 'org_1',
+      organization,
+    });
+    (eventService.getEventDetailBootstrap as jest.Mock).mockResolvedValue({
+      event: bootstrappedEvent,
+      participantSnapshot: {
+        event: bootstrappedEvent,
+        participants: {
+          teamIds: [],
+          userIds: [],
+          waitListIds: [],
+          freeAgentIds: [],
+          divisions: [],
+        },
+        teams: [],
+        users: [],
+        participantCount: 0,
+        participantCapacity: 0,
+        occurrence: null,
+        divisionWarnings: [],
+      },
+      matches: bootstrappedEvent.matches ?? [],
+      fields: bootstrappedEvent.fields ?? [],
+      timeSlots: bootstrappedEvent.timeSlots ?? [],
+      leagueScoringConfig: bootstrappedEvent.leagueScoringConfig ?? null,
+      staffInvites: [],
+      teamCompliance: null,
+      userCompliance: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+    expect(organizationService.getOrganizationById).not.toHaveBeenCalled();
+    expect(capturedEventFormProps?.event?.organization).toEqual(organization);
+  });
+
   it('hides event management actions from signed-in users who cannot manage the event', async () => {
     useAppMock.mockReturnValue({
       user: { $id: 'viewer_1' },

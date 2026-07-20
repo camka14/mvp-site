@@ -39,6 +39,13 @@ export function EventDetailHero({
                 sizes="(max-width: 768px) 100vw, 1200px"
                 className="object-cover"
                 onError={(event) => {
+                    const resolvedFallbackUrl = new URL(
+                        imageFallbackUrl,
+                        event.currentTarget.ownerDocument.baseURI,
+                    ).href;
+                    if (event.currentTarget.src === resolvedFallbackUrl) {
+                        return;
+                    }
                     event.currentTarget.src = imageFallbackUrl;
                 }}
             />
