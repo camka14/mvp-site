@@ -11,6 +11,7 @@
  * Usage:
  *   npm run affiliate:orgs:sync-live
  *   npm run affiliate:orgs:sync-live -- --apply
+ *   npm run affiliate:orgs:sync-live -- --with-logo-only --apply
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -23,6 +24,7 @@ dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const apply = process.argv.includes('--apply');
 const consolidateDuplicates = process.argv.includes('--consolidate-duplicates');
+const withLogoOnly = process.argv.includes('--with-logo-only');
 const scopedOrganizationIds = process.argv.includes('--scope=completed-zero-candidate-sources')
   ? [...ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS]
   : process.argv
@@ -159,7 +161,7 @@ const localClient = new Client({
 
 const liveClient = new Client({
   connectionString: withoutSslMode(requireUrl('DATABASE_URL_LIVE')),
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL_LIVE_SSL === 'false' ? false : { rejectUnauthorized: false },
 });
 
 const quoteIdentifier = (value: string): string => `"${value.replace(/"/g, '""')}"`;
@@ -211,7 +213,11 @@ const loadLocalState = async () => {
   const organizationResult = await localClient.query<OrganizationRow>(
     `SELECT ${ORGANIZATION_COLUMNS.map(quoteIdentifier).join(', ')}
      FROM "Organizations"
-     WHERE ${scopedOrganizationIds.length ? 'id = ANY($1::text[])' : "id LIKE 'affiliate_org_%'"}
+     WHERE ${scopedOrganizationIds.length
+       ? 'id = ANY($1::text[])'
+       : withLogoOnly
+         ? `id LIKE 'affiliate_org_%' AND COALESCE("logoId", '') <> ''`
+         : "id LIKE 'affiliate_org_%'"}
      ORDER BY name ASC, id ASC`,
     scopedOrganizationIds.length ? [scopedOrganizationIds] : [],
   );
