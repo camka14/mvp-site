@@ -340,7 +340,9 @@ class OrganizationService {
       events: [],
       teams: [],
       fields: [],
-      facilities: [],
+      facilities: Array.isArray(row.facilities)
+        ? row.facilities.map((value: unknown) => facilityService.mapRowToFacility(value))
+        : [],
       officials: [],
       hosts: [],
       products: [],
@@ -655,7 +657,11 @@ class OrganizationService {
       const organizations = rows.map((row) => this.mapRowToOrganization(row));
       const shouldHydrateRelations = options.hydrateRelations !== false;
       const pageOrganizations = shouldHydrateRelations
-        ? await Promise.all(organizations.map((org) => this.withRelations(org)))
+        ? await Promise.all(organizations.map((org) => (
+          options.includeAffiliateRentals
+            ? this.withRentalRelations(org)
+            : this.withRelations(org)
+        )))
         : organizations;
       return {
         organizations: pageOrganizations,
@@ -732,7 +738,7 @@ class OrganizationService {
     return organization;
   }
 
-    private async withRelations(organization: Organization): Promise<Organization> {
+  private async withRelations(organization: Organization): Promise<Organization> {
       const fieldsPromise = fieldService.listFields({ organizationId: organization.$id });
       const facilitiesPromise = facilityService.listFacilitiesByOrganization(organization.$id);
       const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
@@ -800,8 +806,27 @@ class OrganizationService {
       organization.teams = teams;
       organization.divisions = divisions;
 
-      return organization;
+    return organization;
+  }
+
+  private async withRentalRelations(organization: Organization): Promise<Organization> {
+    const [fieldsResult, facilitiesResult] = await Promise.allSettled([
+      fieldService.listFields({ organizationId: organization.$id }),
+      facilityService.listFacilitiesByOrganization(organization.$id),
+    ]);
+
+    if (fieldsResult.status === 'fulfilled') {
+      organization.fields = fieldsResult.value;
     }
+
+    if (facilitiesResult.status === 'fulfilled') {
+      organization.facilities = facilitiesResult.value.length > 0
+        ? facilitiesResult.value
+        : organization.facilities ?? [];
+    }
+
+    return organization;
+  }
 
   private async fetchEventsByOrganization(organizationId: string): Promise<Event[]> {
     const params = new URLSearchParams();
