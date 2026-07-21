@@ -89,6 +89,28 @@ describe('affiliate outbound route', () => {
     expect(postResponse.headers.get('Referrer-Policy')).toBe('no-referrer');
   });
 
+  it.each(['same-origin', 'none'])(
+    'redirects a user-initiated %s browser navigation without rendering the interstitial',
+    async (fetchSite) => {
+      const pathname = buildAffiliateOutboundPath('event', 'event_1');
+      const response = await GET(new NextRequest(`https://bracket-iq.com${pathname}`, {
+        headers: {
+          'sec-fetch-dest': 'document',
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-site': fetchSite,
+          'sec-fetch-user': '?1',
+          'user-agent': BROWSER_USER_AGENT,
+          'x-forwarded-for': '203.0.113.11',
+        },
+      }), routeContext(pathname));
+
+      expect(response.status).toBe(303);
+      expect(response.headers.get('location')).toBe('https://partner.example.com/register?campaign=summer');
+      expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+      expect(await response.text()).not.toContain("Opening the organizer's website");
+    },
+  );
+
   it('returns 404 for a forged signed path without querying a destination', async () => {
     const pathname = `${buildAffiliateOutboundPath('event', 'event_1').slice(0, -1)}x`;
     const response = await GET(new NextRequest(`https://bracket-iq.com${pathname}`, {

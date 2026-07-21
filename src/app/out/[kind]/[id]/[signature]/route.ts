@@ -83,6 +83,20 @@ const sameOriginPost = (request: NextRequest): boolean => {
   }
 };
 
+const isUserInitiatedBrowserNavigation = (request: NextRequest): boolean => {
+  const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
+  return request.headers.get('sec-fetch-mode')?.trim().toLowerCase() === 'navigate'
+    && request.headers.get('sec-fetch-dest')?.trim().toLowerCase() === 'document'
+    && request.headers.get('sec-fetch-user')?.trim() === '?1'
+    && (fetchSite === 'same-origin' || fetchSite === 'none');
+};
+
+const redirectResponse = (destination: string): NextResponse => {
+  const response = NextResponse.redirect(destination, 303);
+  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => response.headers.set(key, value));
+  return response;
+};
+
 const rateLimitResponse = (response: NextResponse): NextResponse => {
   const headers = new Headers(response.headers);
   Object.entries(SECURITY_HEADERS).forEach(([key, value]) => headers.set(key, value));
@@ -107,6 +121,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
     targetKey(target),
   );
   if (targetLimit) return rateLimitResponse(targetLimit);
+
+  if (isUserInitiatedBrowserNavigation(request)) {
+    const redirectClientLimit = await applyRateLimit(request, RATE_LIMIT_POLICIES.affiliateOutboundRedirect);
+    if (redirectClientLimit) return rateLimitResponse(redirectClientLimit);
+    const redirectTargetLimit = await applyRateLimit(
+      request,
+      RATE_LIMIT_POLICIES.affiliateOutboundTargetRedirect,
+      targetKey(target),
+    );
+    if (redirectTargetLimit) return rateLimitResponse(redirectTargetLimit);
+
+    const destination = await resolveAffiliateDestination(target.kind, target.id);
+    if (!destination) return errorPage(404, 'Link unavailable', 'This affiliate listing is no longer active.');
+    return redirectResponse(destination);
+  }
 
   const destinationExists = await resolveAffiliateDestination(target.kind, target.id);
   if (!destinationExists) {
@@ -194,8 +223,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const destination = await resolveAffiliateDestination(target.kind, target.id);
   if (!destination) return errorPage(404, 'Link unavailable', 'This affiliate listing is no longer active.');
 
-  const response = NextResponse.redirect(destination, 303);
-  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => response.headers.set(key, value));
+  const response = redirectResponse(destination);
   response.cookies.set({
     name: AFFILIATE_OUTBOUND_COOKIE_NAME,
     value: '',

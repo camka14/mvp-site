@@ -6,7 +6,7 @@ This plan follows `PLANS.md` at the repository root.
 
 ## Purpose / Big Picture
 
-Public BracketIQ pages and APIs currently return third-party affiliate registration or booking URLs. A scraper can collect those destinations without using the BracketIQ detail page, even though BracketIQ's LLM instructions say that affiliate destinations must not be shared directly. After this work, public event, team, and affiliate-facility records expose only a signed `https://bracket-iq.com/out/...` URL. Opening that URL first loads a small BracketIQ interstitial. Only a browser that completes a same-origin, short-lived POST may receive the external redirect. Known crawlers and automation clients are denied, and Redis-backed limits cap requests by client and target.
+Public BracketIQ pages and APIs currently return third-party affiliate registration or booking URLs. A scraper can collect those destinations without using the BracketIQ detail page, even though BracketIQ's LLM instructions say that affiliate destinations must not be shared directly. After this work, public event, team, and affiliate-facility records expose only a signed `https://bracket-iq.com/out/...` URL. A user-initiated browser navigation receives the external redirect only after the signed target, active database row, user agent, browser navigation metadata, and Redis-backed limits pass. Requests without normal browser-navigation metadata receive the destination-free, same-origin proof interstitial instead. Known crawlers and automation clients are denied, and Redis-backed limits cap requests by client and target.
 
 The observable result is that Discover and public organization CTAs still open the organizer's destination for a normal browser, while raw affiliate URLs no longer appear in public JSON or public page markup. Directly inventing an outbound URL, replaying a stale challenge, using a known crawler user agent, or rapidly walking many outbound URLs fails without disclosing the destination.
 
@@ -20,6 +20,8 @@ The observable result is that Discover and public organization CTAs still open t
 - [x] (2026-07-21 10:05 PDT) Added regression coverage; 16 focused suites and 144 tests pass, `npx tsc --noEmit` passes, and the production build succeeds.
 - [x] (2026-07-21 10:52 PDT) Completed a live production smoke test: all 499 affiliate events in a 500-event sample were protected, the interstitial contained no external URL, GPTBot received 403, and a valid browser flow received a 303 without following or printing the destination.
 - [x] (2026-07-21 10:54 PDT) Committed and pushed the scoped implementation and live-smoke fixes, deployed immutable image `3965b80bcf83458eb5bacb67a29a347b134f62dd`, and verified the VPS app, PostgreSQL, and Redis containers are healthy.
+- [x] (2026-07-21 12:10 PDT) Reproduced the production browser failure where immediate Continue submissions returned `Confirmation expired`; added a regression test and a direct redirect path for trusted user-initiated navigations while retaining the proof interstitial as the non-browser fallback.
+- [ ] Deploy and smoke-test the trusted-navigation redirect without following or printing the external destination.
 
 ## Surprises & Discoveries
 
@@ -47,6 +49,9 @@ The observable result is that Discover and public organization CTAs still open t
 - Observation: The production runtime still identified its public origin as `https://preview.bracket-iq.com`, so the protected POST correctly rejected the apex site's `Origin` even after using the proxy-aware origin helper.
   Evidence: The five public URL values in `/opt/bracketiq/deploy/vm/app.env` were still set to the preview host. After making a timestamped backup, changing only those values to `https://bracket-iq.com`, and restarting the app through the deployment script, the live browser handoff returned 303 as designed.
 
+- Observation: The cookie-bound interstitial worked in a synthetic GET-to-POST exchange but failed immediately in the user's controlled Chrome flow; the same browser also stayed on the interstitial because the static auto-submit script intentionally exits when `navigator.webdriver` is true.
+  Evidence: A temporary live cookie-jar smoke returned 303, while a fresh event-detail click followed by an immediate Continue click in Chrome returned `Confirmation expired`. `public/affiliate-outbound.js` returns before submitting when the browser reports automation control.
+
 ## Decision Log
 
 - Decision: Generate signed URLs from target kind and database ID using HMAC with `AFFILIATE_REDIRECT_SECRET`, falling back to the existing required `AUTH_SECRET` with domain separation.
@@ -63,6 +68,10 @@ The observable result is that Discover and public organization CTAs still open t
 
 - Decision: Do not require Cloudflare Turnstile in this iteration.
   Rationale: Turnstile can run without Cloudflare proxy hosting and is a useful escalation layer, but it requires user-managed site and secret keys plus server-side Siteverify. The current first-party controls can ship without a new external dependency; suspicious-traffic challenges can be added later if observed abuse warrants the extra friction.
+  Date/Author: 2026-07-21 / Codex
+
+- Decision: Redirect a user-initiated top-level browser navigation directly after both view and redirect rate limits pass; retain the destination-free proof interstitial only when Fetch Metadata does not show an activated document navigation.
+  Rationale: The interstitial's cookie/proof handshake created a broken second-click experience without stopping capable browser automation, which can submit the same form. `Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1`, combined with the signed target, active-row lookup, crawler screening, and layered rate limits, preserve the useful controls while removing routine friction. A stronger challenge such as Turnstile should be displayed next to the originating CTA only when observed risk warrants it.
   Date/Author: 2026-07-21 / Codex
 
 ## Outcomes & Retrospective
@@ -87,7 +96,7 @@ An “outbound target” means the server-side tuple of a kind (`event`, `team`,
 
 Create `src/server/affiliateOutbound.ts` as the single server-only boundary. It will validate target kinds and IDs, sign and verify stable outbound paths, project raw rows into safe public rows, classify clearly automated user agents, issue and validate browser proofs, and resolve a verified target to a currently active external destination. It must normalize all destinations through the existing external-HTTP URL validator.
 
-Add `src/app/out/[kind]/[id]/[signature]/route.ts`. GET validates the signed path, blocks known automation, applies both client-wide and client-plus-target limits, and returns a minimal same-origin HTML interstitial without the destination. The response sets an HttpOnly, SameSite=Lax, short-lived cookie and security headers. A small static script auto-submits the POST after the page loads; the visible Continue button remains the non-JavaScript fallback. POST validates method context, cookie, proof age and signature, crawler status, and stricter rate limits before resolving the URL and returning a 303. Errors never include the destination.
+Add `src/app/out/[kind]/[id]/[signature]/route.ts`. GET validates the signed path, blocks known automation, and applies both client-wide and client-plus-target limits. A user-initiated document navigation also receives the stricter redirect limits and then a direct 303. Requests without trusted navigation metadata receive a minimal same-origin HTML interstitial without the destination. The response sets an HttpOnly, SameSite=Lax, short-lived cookie and security headers. A small static script auto-submits the POST after the page loads; the visible Continue button remains the non-JavaScript fallback. POST validates method context, cookie, proof age and signature, crawler status, and stricter rate limits before resolving the URL and returning a 303. Errors never include the destination.
 
 Update public serializers so only authorized event/team/facility managers receive raw affiliate fields. Anonymous or non-manager responses receive the signed absolute BracketIQ URL and no event `sourceUrl`. Shared organization-catalog rows always use the protected URL because the catalog is public. Adjust client-side helpers to recognize BracketIQ outbound URLs as affiliate actions and stop using an affiliate destination as an organization “Hosted by” link.
 
@@ -108,7 +117,7 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`.
 
 Unit tests must prove that signatures cannot be forged, altered target IDs fail, browser proofs expire and are cookie-bound, crawler identification covers declared LLM/search clients, and public projections never retain raw affiliate or event source URLs.
 
-Route tests must prove that GET HTML contains the BracketIQ action but not the external URL; missing/invalid signatures return 404; known crawler user agents return 403; missing, cross-site, expired, or mismatched POST proof returns 403; valid POST returns 303 with the correct external `Location`; inactive/missing targets return 404; and repeated requests return 429 under enabled test limits.
+Route tests must prove that a user-initiated document navigation returns 303 without rendering the interstitial; a fallback GET contains the BracketIQ action but not the external URL; missing/invalid signatures return 404; known crawler user agents return 403; missing, cross-site, expired, or mismatched POST proof returns 403; valid POST returns 303 with the correct external `Location`; inactive/missing targets return 404; and repeated requests return 429 under enabled test limits.
 
 Public API/catalog tests must assert signed `https://bracket-iq.com/out/...` values instead of partner domains for anonymous output and raw values only for a verified manager where editing requires them. LLM tests must assert that `/out/` links are not emitted as user-shareable links.
 
