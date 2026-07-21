@@ -972,7 +972,7 @@ export async function GET(req: NextRequest) {
       tags: tagsByEventId.get(row.id) ?? [],
     });
     const canExposeAffiliateDestination = isAdminSession
-      || row.hostId === sessionUserId
+      || (Boolean(sessionUserId) && row.hostId === sessionUserId)
       || (sessionUserId ? Array.isArray(row.assistantHostIds) && row.assistantHostIds.includes(sessionUserId) : false)
       || (Boolean(organizationId) && canViewOrganizationDrafts);
     return canExposeAffiliateDestination ? response : protectAffiliateRow(response, 'event');

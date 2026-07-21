@@ -172,6 +172,7 @@ describe('GET /api/events pagination', () => {
   it('replaces affiliate destinations and source provenance for anonymous lists', async () => {
     prismaMock.events.findMany.mockResolvedValue([event('event_1', {
       id: 'event_affiliate',
+      hostId: null,
       affiliateUrl: 'https://partner.example.com/register',
       sourceUrl: 'https://partner.example.com/source',
     })]);
