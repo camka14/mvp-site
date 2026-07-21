@@ -18,8 +18,8 @@ The observable result is that Discover and public organization CTAs still open t
 - [x] (2026-07-21 09:25 PDT) Implemented signing, public-response projection, target resolution, crawler screening, browser proof, and layered rate limits.
 - [x] (2026-07-21 09:40 PDT) Replaced public event, team, affiliate-facility, and public rental-selection destinations with protected BracketIQ URLs while preserving raw URLs for authorized management responses.
 - [x] (2026-07-21 10:05 PDT) Added regression coverage; 16 focused suites and 144 tests pass, `npx tsc --noEmit` passes, and the production build succeeds.
-- [ ] Render a live production smoke test proving that the interstitial contains no destination and a valid browser flow receives only the final HTTP redirect.
-- [ ] Commit the scoped implementation, push `main`, verify the VPS deployment, and record the outcome.
+- [x] (2026-07-21 10:52 PDT) Completed a live production smoke test: all 499 affiliate events in a 500-event sample were protected, the interstitial contained no external URL, GPTBot received 403, and a valid browser flow received a 303 without following or printing the destination.
+- [x] (2026-07-21 10:54 PDT) Committed and pushed the scoped implementation and live-smoke fixes, deployed immutable image `3965b80bcf83458eb5bacb67a29a347b134f62dd`, and verified the VPS app, PostgreSQL, and Redis containers are healthy.
 
 ## Surprises & Discoveries
 
@@ -38,8 +38,14 @@ The observable result is that Discover and public organization CTAs still open t
 - Observation: The local production build requires outbound network access because the existing root layout uses three Google-hosted `next/font` families.
   Evidence: A sandboxed build failed on `fonts.googleapis.com`; the same `npm run build` completed successfully when run with network access.
 
-- Observation: The repository-wide Jest run exposed one stale hosted-by-link expectation from this feature and six unrelated pre-existing failing suites in event sanitization, template privacy, billing/refunds, and facility reservation UI behavior.
+- Observation: The local repository-wide Jest run exposed one stale hosted-by-link expectation from this feature and six unrelated pre-existing failing suites in event sanitization, template privacy, billing/refunds, and facility reservation UI behavior.
   Evidence: After correcting the hosted-by expectation, all 16 protection-focused suites pass with 144 tests. The unrelated failures are outside the files and behavior changed by this plan.
+
+- Observation: The first production smoke found that anonymous affiliate events with no host still received raw URLs because both `row.hostId` and the anonymous `sessionUserId` were `null`.
+  Evidence: The live `/api/events` response retained raw `affiliateUrl` and `sourceUrl` values for hostless affiliate imports. Requiring a non-empty session user before comparing host IDs and adding a null-host regression test removed the leak across all 499 sampled affiliate events.
+
+- Observation: The production runtime still identified its public origin as `https://preview.bracket-iq.com`, so the protected POST correctly rejected the apex site's `Origin` even after using the proxy-aware origin helper.
+  Evidence: The five public URL values in `/opt/bracketiq/deploy/vm/app.env` were still set to the preview host. After making a timestamped backup, changing only those values to `https://bracket-iq.com`, and restarting the app through the deployment script, the live browser handoff returned 303 as designed.
 
 ## Decision Log
 
@@ -61,9 +67,11 @@ The observable result is that Discover and public organization CTAs still open t
 
 ## Outcomes & Retrospective
 
-The implementation is locally complete. Public API and catalog responses now contain signed BracketIQ `/out/{kind}/{id}/{signature}` URLs instead of raw affiliate destinations; event ingestion provenance is removed from public projections; and authorized management responses retain raw destinations for editing. The outbound endpoint serves a destination-free interstitial, requires a cookie-bound short-lived same-origin POST, applies Redis-backed client and target rate limits, blocks declared crawlers and common automation user agents, and returns the external URL only as the final 303 response. Public Markdown and `robots.txt` treat `/out/` as non-content, non-shareable space. Web and mobile clients continue to consume the existing `affiliateUrl` field, so no mobile schema change or database migration is required.
+The implementation is complete and running in production. Public API and catalog responses now contain signed BracketIQ `/out/{kind}/{id}/{signature}` URLs instead of raw affiliate destinations; event ingestion provenance is removed from public projections; and authorized management responses retain raw destinations for editing. The outbound endpoint serves a destination-free interstitial, requires a cookie-bound short-lived same-origin POST, applies Redis-backed client and target rate limits, blocks declared crawlers and common automation user agents, and returns the external URL only as the final 303 response. Public Markdown and `robots.txt` treat `/out/` as non-content, non-shareable space. Web and mobile clients continue to consume the existing `affiliateUrl` field, so no mobile schema change or database migration is required.
 
-Validation completed locally: 16 focused suites with 144 tests pass, `npx tsc --noEmit` passes, and `npm run build` completes successfully. A repository-wide run reached 581 passing suites before one protection-related stale expectation was corrected; six unrelated suites remain failing in the existing checkout. Commit, push, deployment, and live smoke verification remain to be recorded.
+Validation completed locally: 16 focused suites with 144 tests pass, both production-smoke regression subsets pass, `npx tsc --noEmit` passes, and `npm run build` completes successfully. GitHub CI confirmed every protection-related suite passes. Its repository-wide coverage step remains red for eight unrelated baseline suites (580 suites and 3,496 tests passed; 8 suites and 26 tests failed), so CI skipped its redundant type-check step; local type checking and production builds passed repeatedly.
+
+Production runs immutable image `3965b80bcf83458eb5bacb67a29a347b134f62dd`. The live event sweep found 499 protected affiliate events and zero unprotected destinations in 500 results; all source URLs were omitted. The interstitial returned 200 without an absolute external URL, a declared GPTBot request returned 403, a cookie-bound same-origin browser POST returned 303, one sampled affiliate team used a protected BracketIQ URL, `robots.txt` disallowed `/out/`, and `llms.txt` explicitly forbade opening, crawling, citing, or sharing outbound paths. No live affiliate destination was printed or followed during verification.
 
 ## Context and Orientation
 
@@ -146,3 +154,5 @@ The implementation depends only on Node `crypto`, the existing Prisma client, `s
 Revision note (2026-07-21): Created the dedicated ExecPlan after auditing the current public leak paths, VPS proxy topology, Redis rate limiter, LLM safety layer, and mobile URL-opening behavior.
 
 Revision note (2026-07-21 10:08 PDT): Updated the plan after implementation and local validation, including the public rental-selection projection discovered during final leak-path review and the unrelated full-suite baseline failures.
+
+Revision note (2026-07-21 10:54 PDT): Recorded the null-host authorization bug and preview-origin configuration found by live smoke testing, their regression fixes, the immutable production deployment, and final redacted production verification.
