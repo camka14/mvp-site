@@ -65,7 +65,9 @@ export function buildEventDetailPublicModel({
     now,
 }: BuildEventDetailPublicModelArgs) {
     const { date, time } = getEventDateTime(event);
-    const affiliateActionUrl = normalizeExternalHttpUrl(event.affiliateUrl) ?? '';
+    const affiliateActionUrl = normalizeExternalHttpUrl(event.affiliateActionUrl)
+        ?? normalizeExternalHttpUrl(event.affiliateUrl)
+        ?? '';
     const isAffiliateEvent = affiliateActionUrl.length > 0;
     const normalizedDateDisplayMode = typeof event.dateDisplayMode === 'string'
         ? event.dateDisplayMode.trim().toUpperCase()

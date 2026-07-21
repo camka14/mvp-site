@@ -184,6 +184,7 @@ describe('GET /api/events pagination', () => {
 
     expect(payload.events[0]).toEqual(expect.objectContaining({
       affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_affiliate\//),
+      affiliateActionUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_affiliate\//),
       sourceUrl: null,
     }));
     expect(JSON.stringify(payload)).not.toContain('partner.example.com');
@@ -209,6 +210,7 @@ describe('GET /api/events pagination', () => {
 
     expect(payload.events[0]).toEqual(expect.objectContaining({
       affiliateUrl: 'https://partner.example.com/register',
+      affiliateActionUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_affiliate\//),
       sourceUrl: 'https://partner.example.com/source',
     }));
   });

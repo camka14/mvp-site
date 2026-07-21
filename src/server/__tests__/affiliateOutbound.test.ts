@@ -18,6 +18,7 @@ import {
   resolveAffiliateDestination,
   verifyAffiliateBrowserProof,
   verifyAffiliateOutboundSignature,
+  withAffiliateOutboundAction,
 } from '@/server/affiliateOutbound';
 
 describe('affiliate outbound protection', () => {
@@ -55,8 +56,21 @@ describe('affiliate outbound protection', () => {
       name: 'Summer League',
       sourceUrl: null,
       affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_1\//),
+      affiliateActionUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_1\//),
     }));
     expect(JSON.stringify(row)).not.toContain('partner.example.com');
+  });
+
+  it('adds a protected action without replacing the editable affiliate destination', () => {
+    const row = withAffiliateOutboundAction({
+      id: 'event_1',
+      affiliateUrl: 'https://partner.example.com/register',
+    }, 'event');
+
+    expect(row).toEqual(expect.objectContaining({
+      affiliateUrl: 'https://partner.example.com/register',
+      affiliateActionUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_1\//),
+    }));
   });
 
   it('removes malformed affiliate destinations instead of exposing them publicly', () => {

@@ -28,7 +28,7 @@ import { parseDateInputInTimeZone, resolveTimeZone } from '@/server/timeZones';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext, type LeagueDivisionConfig } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
-import { protectAffiliateRow } from '@/server/affiliateOutbound';
+import { protectAffiliateRow, withAffiliateOutboundAction } from '@/server/affiliateOutbound';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventDivisionId,
@@ -1843,7 +1843,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     staffInvites: staffInvites.map((invite) => invite),
   });
   return NextResponse.json(
-    canExposeAffiliateDestination ? response : protectAffiliateRow(response, 'event'),
+    canExposeAffiliateDestination
+      ? withAffiliateOutboundAction(response, 'event')
+      : protectAffiliateRow(response, 'event'),
     { status: 200 },
   );
 }

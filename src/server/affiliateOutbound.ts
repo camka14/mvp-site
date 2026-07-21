@@ -105,17 +105,30 @@ export const buildAffiliateOutboundUrl = (
   id: string,
 ): string => `${SITE_URL}${buildAffiliateOutboundPath(kind, id)}`;
 
-export const protectAffiliateRow = <T extends Record<string, any>>(
+export const withAffiliateOutboundAction = <T extends Record<string, any>>(
   row: T,
   kind: AffiliateOutboundKind,
 ): T => {
   const id = normalizeAffiliateOutboundTargetId(row.id ?? row.$id);
   const affiliateUrl = normalizeExternalHttpUrl(row.affiliateUrl);
-  const protectedRow = { ...row } as T;
 
-  (protectedRow as Record<string, any>).affiliateUrl = affiliateUrl && id
-    ? buildAffiliateOutboundUrl(kind, id)
-    : null;
+  return {
+    ...row,
+    affiliateActionUrl: affiliateUrl && id
+      ? buildAffiliateOutboundUrl(kind, id)
+      : null,
+  };
+};
+
+export const protectAffiliateRow = <T extends Record<string, any>>(
+  row: T,
+  kind: AffiliateOutboundKind,
+): T => {
+  const protectedRow = withAffiliateOutboundAction(row, kind);
+
+  (protectedRow as Record<string, any>).affiliateUrl = (
+    protectedRow as Record<string, any>
+  ).affiliateActionUrl;
   if (kind === 'event' && Object.prototype.hasOwnProperty.call(protectedRow, 'sourceUrl')) {
     (protectedRow as Record<string, any>).sourceUrl = null;
   }

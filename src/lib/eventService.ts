@@ -1367,6 +1367,9 @@ class EventService {
       affiliateUrl: typeof row.affiliateUrl === 'string' && row.affiliateUrl.trim().length > 0
         ? row.affiliateUrl
         : null,
+      affiliateActionUrl: typeof row.affiliateActionUrl === 'string' && row.affiliateActionUrl.trim().length > 0
+        ? row.affiliateActionUrl
+        : null,
       sourceUrl: typeof row.sourceUrl === 'string' && row.sourceUrl.trim().length > 0
         ? row.sourceUrl
         : null,

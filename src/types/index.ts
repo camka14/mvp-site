@@ -855,6 +855,7 @@ export interface Event {
   name: string;
   description: string;
   affiliateUrl?: string | null;
+  affiliateActionUrl?: string | null;
   sourceUrl?: string | null;
   organizerName?: string | null;
   scheduleText?: string | null;

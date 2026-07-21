@@ -52,7 +52,7 @@ import {
   normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
 import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
-import { protectAffiliateRow } from '@/server/affiliateOutbound';
+import { protectAffiliateRow, withAffiliateOutboundAction } from '@/server/affiliateOutbound';
 import { loadRelationalEventDivisionIdsByEventId } from '@/server/events/eventDivisionProjection';
 
 export const dynamic = 'force-dynamic';
@@ -975,7 +975,9 @@ export async function GET(req: NextRequest) {
       || (Boolean(sessionUserId) && row.hostId === sessionUserId)
       || (sessionUserId ? Array.isArray(row.assistantHostIds) && row.assistantHostIds.includes(sessionUserId) : false)
       || (Boolean(organizationId) && canViewOrganizationDrafts);
-    return canExposeAffiliateDestination ? response : protectAffiliateRow(response, 'event');
+    return canExposeAffiliateDestination
+      ? withAffiliateOutboundAction(response, 'event')
+      : protectAffiliateRow(response, 'event');
   });
 
   return NextResponse.json({

@@ -54,6 +54,20 @@ describe('buildEventDetailPublicModel', () => {
         expect(model.showPoweredByBracketIqNote).toBe(false);
     });
 
+    it('uses the protected action URL for the public CTA while retaining the editable destination', () => {
+        const event = buildEvent({
+            affiliateUrl: 'https://events.example.com/register',
+            affiliateActionUrl: 'https://bracket-iq.com/out/event/event-one/signed-token',
+        });
+
+        const model = buildModel({ event });
+
+        expect(model.isAffiliateEvent).toBe(true);
+        expect(model.affiliateActionUrl).toBe(
+            'https://bracket-iq.com/out/event/event-one/signed-token',
+        );
+    });
+
     it('builds map, capacity, registration, and secure-payment labels', () => {
         const event = buildEvent({
             address: '100 Main Street, Portland, OR',
