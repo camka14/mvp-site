@@ -110,6 +110,11 @@ export const ModelName = {
   AffiliateSourceIntakePages: 'AffiliateSourceIntakePages',
   AffiliateSourceIntakeRuns: 'AffiliateSourceIntakeRuns',
   AffiliateSourceIntakeArtifacts: 'AffiliateSourceIntakeArtifacts',
+  AffiliateSourceDiscoveryCampaigns: 'AffiliateSourceDiscoveryCampaigns',
+  AffiliateSourceDiscoveryRuns: 'AffiliateSourceDiscoveryRuns',
+  AffiliateSourceDiscoveryResults: 'AffiliateSourceDiscoveryResults',
+  AffiliateSourceDomainPolicies: 'AffiliateSourceDomainPolicies',
+  AffiliateSourceMappingJobs: 'AffiliateSourceMappingJobs',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
@@ -1472,6 +1477,127 @@ export const AffiliateSourceIntakeArtifactsScalarFieldEnum = {
 } as const
 
 export type AffiliateSourceIntakeArtifactsScalarFieldEnum = (typeof AffiliateSourceIntakeArtifactsScalarFieldEnum)[keyof typeof AffiliateSourceIntakeArtifactsScalarFieldEnum]
+
+
+export const AffiliateSourceDiscoveryCampaignsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  region: 'region',
+  location: 'location',
+  sportIds: 'sportIds',
+  sourceTypeHints: 'sourceTypeHints',
+  status: 'status',
+  autoCreateIntakes: 'autoCreateIntakes',
+  searchIntervalMinutes: 'searchIntervalMinutes',
+  lastRunAt: 'lastRunAt',
+  nextRunAt: 'nextRunAt',
+  maxQueriesPerRun: 'maxQueriesPerRun',
+  maxResultsPerQuery: 'maxResultsPerQuery',
+  queryCursor: 'queryCursor',
+  createdByUserId: 'createdByUserId',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceDiscoveryCampaignsScalarFieldEnum = (typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum]
+
+
+export const AffiliateSourceDiscoveryRunsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  campaignId: 'campaignId',
+  requestedByUserId: 'requestedByUserId',
+  status: 'status',
+  queuedAt: 'queuedAt',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  claimedAt: 'claimedAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  generatedQueryCount: 'generatedQueryCount',
+  returnedResultCount: 'returnedResultCount',
+  newResultCount: 'newResultCount',
+  duplicateCount: 'duplicateCount',
+  rejectedCount: 'rejectedCount',
+  createdIntakeCount: 'createdIntakeCount',
+  providerJobIds: 'providerJobIds',
+  errorMessage: 'errorMessage',
+  summary: 'summary'
+} as const
+
+export type AffiliateSourceDiscoveryRunsScalarFieldEnum = (typeof AffiliateSourceDiscoveryRunsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryRunsScalarFieldEnum]
+
+
+export const AffiliateSourceDiscoveryResultsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  campaignId: 'campaignId',
+  latestRunId: 'latestRunId',
+  originalUrl: 'originalUrl',
+  canonicalUrl: 'canonicalUrl',
+  urlKey: 'urlKey',
+  policyKey: 'policyKey',
+  title: 'title',
+  description: 'description',
+  latestQuery: 'latestQuery',
+  latestRank: 'latestRank',
+  firstSeenAt: 'firstSeenAt',
+  lastSeenAt: 'lastSeenAt',
+  seenCount: 'seenCount',
+  score: 'score',
+  sourceTypeHints: 'sourceTypeHints',
+  sportHints: 'sportHints',
+  status: 'status',
+  reasonCodes: 'reasonCodes',
+  reasonDetails: 'reasonDetails',
+  matchingIntakeId: 'matchingIntakeId',
+  matchingSourceId: 'matchingSourceId',
+  matchingOrganizationId: 'matchingOrganizationId',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceDiscoveryResultsScalarFieldEnum = (typeof AffiliateSourceDiscoveryResultsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryResultsScalarFieldEnum]
+
+
+export const AffiliateSourceDomainPoliciesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  policyKey: 'policyKey',
+  status: 'status',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewedAt: 'reviewedAt',
+  expiresAt: 'expiresAt',
+  termsUrl: 'termsUrl',
+  robotsSummary: 'robotsSummary',
+  restrictionNotes: 'restrictionNotes',
+  evidence: 'evidence'
+} as const
+
+export type AffiliateSourceDomainPoliciesScalarFieldEnum = (typeof AffiliateSourceDomainPoliciesScalarFieldEnum)[keyof typeof AffiliateSourceDomainPoliciesScalarFieldEnum]
+
+
+export const AffiliateSourceMappingJobsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  intakeId: 'intakeId',
+  status: 'status',
+  claimedAt: 'claimedAt',
+  leaseExpiresAt: 'leaseExpiresAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  branch: 'branch',
+  commit: 'commit',
+  resultSummary: 'resultSummary',
+  errorMessage: 'errorMessage',
+  finishedAt: 'finishedAt'
+} as const
+
+export type AffiliateSourceMappingJobsScalarFieldEnum = (typeof AffiliateSourceMappingJobsScalarFieldEnum)[keyof typeof AffiliateSourceMappingJobsScalarFieldEnum]
 
 
 export const AffiliateImportCandidatesScalarFieldEnum = {

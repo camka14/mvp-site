@@ -20,6 +20,7 @@ import {
   fetchBoundedPublicResource,
   type BoundedPublicResource,
 } from './sourceIntakeUrlSafety';
+import { affiliateDiscoveryPolicyKeyForUrl } from './sourceDiscoveryRules';
 
 const MAX_CAPTURE_PAGES = 10;
 const MAX_DISCOVERED_URLS = 50;
@@ -54,13 +55,17 @@ const VALID_INTAKE_STATUSES = new Set([
   'APPROVED',
   'PROMOTED',
   'FAILED',
+  'READY_FOR_MAPPING',
+  'MAPPING_IN_PROGRESS',
 ]);
 
 type JsonRecord = Record<string, unknown>;
-type IntakePageInput = {
+export type AffiliateSourceIntakePageInput = {
   url: string;
   role?: string | null;
   targetKindHints?: string[] | null;
+  discoverySource?: string | null;
+  metadata?: JsonRecord | null;
 };
 
 export type AffiliateSourceIntakeCreateInput = {
@@ -70,7 +75,7 @@ export type AffiliateSourceIntakeCreateInput = {
   baseUrl?: string | null;
   targetKindHints?: string[] | null;
   notes?: string | null;
-  pages: IntakePageInput[];
+  pages: AffiliateSourceIntakePageInput[];
 };
 
 export type AffiliateSourceIntakeImportRow = AffiliateSourceIntakeCreateInput;
@@ -117,6 +122,9 @@ const intakePrisma = () => ({
   pages: (prisma as any).affiliateSourceIntakePages,
   runs: (prisma as any).affiliateSourceIntakeRuns,
   artifacts: (prisma as any).affiliateSourceIntakeArtifacts,
+  policies: (prisma as any).affiliateSourceDomainPolicies,
+  discoveryResults: (prisma as any).affiliateSourceDiscoveryResults,
+  mappingJobs: (prisma as any).affiliateSourceMappingJobs,
 });
 
 const stringValue = (value: unknown): string | null => (
@@ -163,7 +171,7 @@ const jsonBuffer = (value: unknown): Buffer => Buffer.from(`${JSON.stringify(val
 
 const upsertIntakePage = async (
   intakeId: string,
-  input: IntakePageInput,
+  input: AffiliateSourceIntakePageInput,
   discoverySource = 'MANUAL',
 ) => {
   const { pages } = intakePrisma();
@@ -182,8 +190,9 @@ const upsertIntakePage = async (
     urlKey,
     role: normalizedRole(input.role),
     targetKindHints: normalizedTargetKinds(input.targetKindHints),
-    discoverySource,
+    discoverySource: stringValue(input.discoverySource) ?? discoverySource,
     status: 'ACTIVE',
+    metadata: input.metadata ? recordValue(input.metadata) : existing?.metadata ?? undefined,
   };
   if (existing) {
     return pages.update({ where: { id: existing.id }, data });
@@ -276,7 +285,7 @@ export const bulkUpsertAffiliateSourceIntakes = async (
   return result;
 };
 
-export const addAffiliateSourceIntakePage = async (intakeId: string, input: IntakePageInput) => {
+export const addAffiliateSourceIntakePage = async (intakeId: string, input: AffiliateSourceIntakePageInput) => {
   const intake = await intakePrisma().intakes.findUnique({ where: { id: intakeId } });
   if (!intake) throw new Error('Affiliate source intake not found.');
   return upsertIntakePage(intakeId, input);
@@ -287,7 +296,7 @@ export const reviewAffiliateSourceIntakePolicy = async (
   review: AffiliateSourcePolicyReview,
   userId: string,
 ) => {
-  const { intakes } = intakePrisma();
+  const { intakes, pages, runs, policies, discoveryResults } = intakePrisma();
   const complianceStatus = stringValue(review.complianceStatus)?.toUpperCase() ?? '';
   if (!VALID_COMPLIANCE_STATUSES.has(complianceStatus)) {
     throw new Error('Unsupported affiliate source compliance status.');
@@ -299,17 +308,104 @@ export const reviewAffiliateSourceIntakePolicy = async (
     : complianceStatus === 'BLOCKED'
       ? 'BLOCKED'
       : 'REVIEW_REQUIRED';
-  return intakes.update({
+  const reviewedAt = new Date();
+  const updated = await intakes.update({
     where: { id: intakeId },
     data: {
       complianceStatus,
       status,
       complianceReviewedByUserId: userId,
-      complianceReviewedAt: new Date(),
+      complianceReviewedAt: reviewedAt,
       complianceTermsUrl: stringValue(review.termsUrl),
       complianceNotes: stringValue(review.notes),
     },
   });
+  const policyUrl = stringValue(intake.baseUrl)
+    ?? (await pages.findFirst({ where: { intakeId }, orderBy: { createdAt: 'asc' }, select: { canonicalUrl: true } }))?.canonicalUrl
+    ?? null;
+  if (policyUrl) {
+    const policyKey = affiliateDiscoveryPolicyKeyForUrl(policyUrl);
+    const existingPolicy = await policies.findUnique({ where: { policyKey } });
+    const existingEvidence = recordValue(existingPolicy?.evidence);
+    const reviewHistory = Array.isArray(existingEvidence.reviewHistory)
+      ? existingEvidence.reviewHistory
+      : [];
+    const evidence = {
+      ...existingEvidence,
+      reviewHistory: [
+        ...reviewHistory,
+        {
+          reviewedAt: reviewedAt.toISOString(),
+          reviewedByUserId: userId,
+          previousStatus: existingPolicy?.status ?? null,
+          status: complianceStatus === 'UNREVIEWED' ? 'NEEDS_REVIEW' : complianceStatus,
+          termsUrl: stringValue(review.termsUrl),
+          restrictionNotes: stringValue(review.notes),
+        },
+      ].slice(-20),
+    };
+    await policies.upsert({
+      where: { policyKey },
+      create: {
+        id: createId(),
+        policyKey,
+        status: complianceStatus === 'UNREVIEWED' ? 'NEEDS_REVIEW' : complianceStatus,
+        reviewedByUserId: userId,
+        reviewedAt,
+        expiresAt: complianceStatus === 'ALLOWED'
+          ? new Date(reviewedAt.getTime() + 180 * 86_400_000)
+          : null,
+        termsUrl: stringValue(review.termsUrl),
+        restrictionNotes: stringValue(review.notes),
+        evidence,
+        robotsSummary: existingPolicy?.robotsSummary ?? undefined,
+      },
+      update: {
+        status: complianceStatus === 'UNREVIEWED' ? 'NEEDS_REVIEW' : complianceStatus,
+        reviewedByUserId: userId,
+        reviewedAt,
+        expiresAt: complianceStatus === 'ALLOWED'
+          ? new Date(reviewedAt.getTime() + 180 * 86_400_000)
+          : null,
+        termsUrl: stringValue(review.termsUrl),
+        restrictionNotes: stringValue(review.notes),
+        evidence,
+      },
+    });
+    await discoveryResults.updateMany({
+      where: { policyKey, matchingIntakeId: intakeId },
+      data: {
+        status: complianceStatus === 'BLOCKED'
+          ? 'BLOCKED'
+          : complianceStatus === 'ALLOWED' ? 'INTAKE_CREATED' : 'REVIEW_REQUIRED',
+      },
+    });
+  }
+  if (complianceStatus === 'ALLOWED') {
+    const activeRun = await runs.findFirst({ where: { intakeId, status: { in: ['QUEUED', 'RUNNING'] } } });
+    if (!activeRun) {
+      const selectedPages = await pages.findMany({
+        where: { intakeId, status: 'ACTIVE' },
+        orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+        take: MAX_CAPTURE_PAGES,
+        select: { id: true },
+      });
+      if (selectedPages.length) {
+        await runs.create({
+          data: {
+            id: createId(),
+            intakeId,
+            requestedPageIds: selectedPages.map((page: any) => page.id),
+            requestedByUserId: userId,
+            provider: 'FIRECRAWL',
+            status: 'QUEUED',
+            queuedAt: reviewedAt,
+          },
+        });
+      }
+    }
+  }
+  return updated;
 };
 
 export const updateAffiliateSourceIntake = async (
@@ -358,7 +454,7 @@ export const listAffiliateSourceIntakes = async () => {
 };
 
 export const getAffiliateSourceIntakeContext = async (intakeId: string, runId?: string | null) => {
-  const { intakes, pages, runs, artifacts } = intakePrisma();
+  const { intakes, pages, runs, artifacts, policies, discoveryResults } = intakePrisma();
   const intake = await intakes.findUnique({ where: { id: intakeId } });
   if (!intake) throw new Error('Affiliate source intake not found.');
   const [pageRows, runRows] = await Promise.all([
@@ -369,7 +465,24 @@ export const getAffiliateSourceIntakeContext = async (intakeId: string, runId?: 
   const artifactRows = selectedRunId
     ? await artifacts.findMany({ where: { intakeId, runId: selectedRunId }, orderBy: [{ kind: 'asc' }, { createdAt: 'asc' }] })
     : [];
-  return { intake, pages: pageRows, runs: runRows, selectedRunId, artifacts: artifactRows };
+  const policyUrl = stringValue(intake.baseUrl) ?? pageRows[0]?.canonicalUrl ?? null;
+  const policyKey = policyUrl ? affiliateDiscoveryPolicyKeyForUrl(policyUrl) : null;
+  const [domainPolicy, relatedDiscoveryResults] = policyKey
+    ? await Promise.all([
+      policies.findUnique({ where: { policyKey } }),
+      discoveryResults.findMany({ where: { policyKey }, orderBy: { score: 'desc' }, take: 25 }),
+    ])
+    : [null, []];
+  return {
+    intake,
+    pages: pageRows,
+    runs: runRows,
+    selectedRunId,
+    artifacts: artifactRows,
+    policyKey,
+    domainPolicy,
+    relatedDiscoveryResults,
+  };
 };
 
 export const queueAffiliateSourceIntakeRun = async (
@@ -388,6 +501,11 @@ export const queueAffiliateSourceIntakeRun = async (
   if (pageIds.length > MAX_CAPTURE_PAGES) throw new Error(`At most ${MAX_CAPTURE_PAGES} source pages may be inspected per run.`);
   const selectedPages = await pages.findMany({ where: { id: { in: pageIds }, intakeId, status: 'ACTIVE' } });
   if (selectedPages.length !== pageIds.length) throw new Error('One or more selected pages do not belong to this intake.');
+  const activeRun = await runs.findFirst({
+    where: { intakeId, status: { in: ['QUEUED', 'RUNNING'] } },
+    orderBy: { queuedAt: 'asc' },
+  });
+  if (activeRun) return activeRun;
   return runs.create({
     data: {
       id: createId(),
@@ -477,7 +595,8 @@ export const classifyAffiliateSourceEvidence = (
   };
   const auth = score(/sign in|log in|required account|members only/, 'Page appears to require authentication.');
   const directory = score(/find a club|club directory|member clubs|directory/, 'Page contains directory language.');
-  const rental = score(/rent(al)?|reserve a (field|court|gym)|book a (field|court|gym)|facility reservation/, 'Page contains rental or reservation language.');
+  const strongRental = score(/reserve a (field|court|gym)|book a (field|court|gym)|facility reservation/, 'Page contains a specific rental or reservation action.');
+  const rental = strongRental ? 0 : score(/rent(al)?/, 'Page contains rental language.');
   const events = score(/event|league|tournament|tryout|open gym|camp|clinic|schedule/, 'Page contains event or program language.');
   const club = score(/academy|soccer club|volleyball club|basketball club|our teams|competitive program/, 'Page contains club or academy language.');
   const marketplace = score(/marketplace|search providers|browse venues|multiple organizers/, 'Page appears to aggregate third-party inventory.');
@@ -486,8 +605,8 @@ export const classifyAffiliateSourceEvidence = (
     ['AUTH_REQUIRED', auth * 4],
     ['DIRECTORY', directory * 3],
     ['MARKETPLACE', marketplace * 3],
-    ['RENTAL', rental * 2],
-    ['EVENT_CATALOG', events * 2],
+    ['RENTAL', strongRental * 4 + rental],
+    ['EVENT_CATALOG', events * 3],
     ['CLUB', club * 2],
     ['NO_CURRENT_INVENTORY', noInventory * 2],
   ];
@@ -712,7 +831,7 @@ export const processNextAffiliateSourceIntakeRun = async (
   const workerId = dependencies.workerId ?? options.workerId ?? `affiliate-intake-${process.pid}`;
   const run = await claimQueuedRun(stringValue(options.runId) ?? undefined, workerId, now);
   if (!run) return null;
-  const { intakes, pages, runs } = intakePrisma();
+  const { intakes, pages, runs, artifacts, mappingJobs } = intakePrisma();
   const intake = await intakes.findUnique({ where: { id: run.intakeId } });
   if (!intake) {
     await runs.update({ where: { id: run.id }, data: { status: 'FAILED', finishedAt: now, errorMessage: 'Affiliate source intake not found.' } });
@@ -822,14 +941,35 @@ export const processNextAffiliateSourceIntakeRun = async (
         summary,
       },
     });
+    const hasMappingEvidence = ['SUCCEEDED', 'PARTIAL'].includes(status)
+      && await artifacts.count({
+        where: { intakeId: intake.id, runId: run.id, kind: { in: ['PAGE_HTML', 'PAGE_MARKDOWN'] } },
+      }) > 0;
+    const nextIntakeStatus = status === 'BLOCKED'
+      ? 'BLOCKED'
+      : status === 'FAILED'
+        ? 'FAILED'
+        : hasMappingEvidence && !intake.affiliateSourceId
+          ? 'READY_FOR_MAPPING'
+          : 'REVIEW_REQUIRED';
     await intakes.update({
       where: { id: intake.id },
       data: {
         lastRunId: run.id,
-        status: status === 'BLOCKED' ? 'BLOCKED' : status === 'FAILED' ? 'FAILED' : 'REVIEW_REQUIRED',
+        status: nextIntakeStatus,
         suggestedClassification: summary.classification,
       },
     });
+    if (nextIntakeStatus === 'READY_FOR_MAPPING') {
+      const activeJob = await mappingJobs.findFirst({
+        where: { intakeId: intake.id, status: { in: ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] } },
+      });
+      if (!activeJob) {
+        await mappingJobs.create({
+          data: { id: createId(), intakeId: intake.id, status: 'QUEUED' },
+        });
+      }
+    }
     return { run: updatedRun, summary };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown intake processing error';

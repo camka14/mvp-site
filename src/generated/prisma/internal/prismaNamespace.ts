@@ -443,6 +443,11 @@ export const ModelName = {
   AffiliateSourceIntakePages: 'AffiliateSourceIntakePages',
   AffiliateSourceIntakeRuns: 'AffiliateSourceIntakeRuns',
   AffiliateSourceIntakeArtifacts: 'AffiliateSourceIntakeArtifacts',
+  AffiliateSourceDiscoveryCampaigns: 'AffiliateSourceDiscoveryCampaigns',
+  AffiliateSourceDiscoveryRuns: 'AffiliateSourceDiscoveryRuns',
+  AffiliateSourceDiscoveryResults: 'AffiliateSourceDiscoveryResults',
+  AffiliateSourceDomainPolicies: 'AffiliateSourceDomainPolicies',
+  AffiliateSourceMappingJobs: 'AffiliateSourceMappingJobs',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
@@ -493,7 +498,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -4863,6 +4868,376 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    AffiliateSourceDiscoveryCampaigns: {
+      payload: Prisma.$AffiliateSourceDiscoveryCampaignsPayload<ExtArgs>
+      fields: Prisma.AffiliateSourceDiscoveryCampaignsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        update: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryCampaignsPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateSourceDiscoveryCampaigns>
+        }
+        groupBy: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryCampaignsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateSourceDiscoveryCampaignsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryCampaignsCountAggregateOutputType> | number
+        }
+      }
+    }
+    AffiliateSourceDiscoveryRuns: {
+      payload: Prisma.$AffiliateSourceDiscoveryRunsPayload<ExtArgs>
+      fields: Prisma.AffiliateSourceDiscoveryRunsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateSourceDiscoveryRunsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryRunsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateSourceDiscoveryRunsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryRunsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateSourceDiscoveryRunsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateSourceDiscoveryRunsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateSourceDiscoveryRunsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryRunsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateSourceDiscoveryRunsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        update: {
+          args: Prisma.AffiliateSourceDiscoveryRunsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateSourceDiscoveryRunsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateSourceDiscoveryRunsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryRunsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateSourceDiscoveryRunsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryRunsPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateSourceDiscoveryRunsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateSourceDiscoveryRuns>
+        }
+        groupBy: {
+          args: Prisma.AffiliateSourceDiscoveryRunsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryRunsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateSourceDiscoveryRunsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryRunsCountAggregateOutputType> | number
+        }
+      }
+    }
+    AffiliateSourceDiscoveryResults: {
+      payload: Prisma.$AffiliateSourceDiscoveryResultsPayload<ExtArgs>
+      fields: Prisma.AffiliateSourceDiscoveryResultsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateSourceDiscoveryResultsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryResultsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateSourceDiscoveryResultsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateSourceDiscoveryResultsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateSourceDiscoveryResultsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateSourceDiscoveryResultsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateSourceDiscoveryResultsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryResultsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateSourceDiscoveryResultsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        update: {
+          args: Prisma.AffiliateSourceDiscoveryResultsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateSourceDiscoveryResultsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateSourceDiscoveryResultsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateSourceDiscoveryResultsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateSourceDiscoveryResultsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDiscoveryResultsPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateSourceDiscoveryResultsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateSourceDiscoveryResults>
+        }
+        groupBy: {
+          args: Prisma.AffiliateSourceDiscoveryResultsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryResultsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateSourceDiscoveryResultsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryResultsCountAggregateOutputType> | number
+        }
+      }
+    }
+    AffiliateSourceDomainPolicies: {
+      payload: Prisma.$AffiliateSourceDomainPoliciesPayload<ExtArgs>
+      fields: Prisma.AffiliateSourceDomainPoliciesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateSourceDomainPoliciesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateSourceDomainPoliciesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateSourceDomainPoliciesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateSourceDomainPoliciesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateSourceDomainPoliciesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateSourceDomainPoliciesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateSourceDomainPoliciesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateSourceDomainPoliciesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateSourceDomainPoliciesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        update: {
+          args: Prisma.AffiliateSourceDomainPoliciesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateSourceDomainPoliciesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateSourceDomainPoliciesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateSourceDomainPoliciesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateSourceDomainPoliciesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceDomainPoliciesPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateSourceDomainPoliciesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateSourceDomainPolicies>
+        }
+        groupBy: {
+          args: Prisma.AffiliateSourceDomainPoliciesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDomainPoliciesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateSourceDomainPoliciesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDomainPoliciesCountAggregateOutputType> | number
+        }
+      }
+    }
+    AffiliateSourceMappingJobs: {
+      payload: Prisma.$AffiliateSourceMappingJobsPayload<ExtArgs>
+      fields: Prisma.AffiliateSourceMappingJobsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateSourceMappingJobsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateSourceMappingJobsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateSourceMappingJobsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateSourceMappingJobsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateSourceMappingJobsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateSourceMappingJobsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateSourceMappingJobsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateSourceMappingJobsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateSourceMappingJobsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        update: {
+          args: Prisma.AffiliateSourceMappingJobsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateSourceMappingJobsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateSourceMappingJobsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateSourceMappingJobsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateSourceMappingJobsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateSourceMappingJobsPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateSourceMappingJobsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateSourceMappingJobs>
+        }
+        groupBy: {
+          args: Prisma.AffiliateSourceMappingJobsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceMappingJobsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateSourceMappingJobsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceMappingJobsCountAggregateOutputType> | number
+        }
+      }
+    }
     AffiliateImportCandidates: {
       payload: Prisma.$AffiliateImportCandidatesPayload<ExtArgs>
       fields: Prisma.AffiliateImportCandidatesFieldRefs
@@ -8803,6 +9178,127 @@ export const AffiliateSourceIntakeArtifactsScalarFieldEnum = {
 export type AffiliateSourceIntakeArtifactsScalarFieldEnum = (typeof AffiliateSourceIntakeArtifactsScalarFieldEnum)[keyof typeof AffiliateSourceIntakeArtifactsScalarFieldEnum]
 
 
+export const AffiliateSourceDiscoveryCampaignsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  region: 'region',
+  location: 'location',
+  sportIds: 'sportIds',
+  sourceTypeHints: 'sourceTypeHints',
+  status: 'status',
+  autoCreateIntakes: 'autoCreateIntakes',
+  searchIntervalMinutes: 'searchIntervalMinutes',
+  lastRunAt: 'lastRunAt',
+  nextRunAt: 'nextRunAt',
+  maxQueriesPerRun: 'maxQueriesPerRun',
+  maxResultsPerQuery: 'maxResultsPerQuery',
+  queryCursor: 'queryCursor',
+  createdByUserId: 'createdByUserId',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceDiscoveryCampaignsScalarFieldEnum = (typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum]
+
+
+export const AffiliateSourceDiscoveryRunsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  campaignId: 'campaignId',
+  requestedByUserId: 'requestedByUserId',
+  status: 'status',
+  queuedAt: 'queuedAt',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  claimedAt: 'claimedAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  generatedQueryCount: 'generatedQueryCount',
+  returnedResultCount: 'returnedResultCount',
+  newResultCount: 'newResultCount',
+  duplicateCount: 'duplicateCount',
+  rejectedCount: 'rejectedCount',
+  createdIntakeCount: 'createdIntakeCount',
+  providerJobIds: 'providerJobIds',
+  errorMessage: 'errorMessage',
+  summary: 'summary'
+} as const
+
+export type AffiliateSourceDiscoveryRunsScalarFieldEnum = (typeof AffiliateSourceDiscoveryRunsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryRunsScalarFieldEnum]
+
+
+export const AffiliateSourceDiscoveryResultsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  campaignId: 'campaignId',
+  latestRunId: 'latestRunId',
+  originalUrl: 'originalUrl',
+  canonicalUrl: 'canonicalUrl',
+  urlKey: 'urlKey',
+  policyKey: 'policyKey',
+  title: 'title',
+  description: 'description',
+  latestQuery: 'latestQuery',
+  latestRank: 'latestRank',
+  firstSeenAt: 'firstSeenAt',
+  lastSeenAt: 'lastSeenAt',
+  seenCount: 'seenCount',
+  score: 'score',
+  sourceTypeHints: 'sourceTypeHints',
+  sportHints: 'sportHints',
+  status: 'status',
+  reasonCodes: 'reasonCodes',
+  reasonDetails: 'reasonDetails',
+  matchingIntakeId: 'matchingIntakeId',
+  matchingSourceId: 'matchingSourceId',
+  matchingOrganizationId: 'matchingOrganizationId',
+  metadata: 'metadata'
+} as const
+
+export type AffiliateSourceDiscoveryResultsScalarFieldEnum = (typeof AffiliateSourceDiscoveryResultsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryResultsScalarFieldEnum]
+
+
+export const AffiliateSourceDomainPoliciesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  policyKey: 'policyKey',
+  status: 'status',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewedAt: 'reviewedAt',
+  expiresAt: 'expiresAt',
+  termsUrl: 'termsUrl',
+  robotsSummary: 'robotsSummary',
+  restrictionNotes: 'restrictionNotes',
+  evidence: 'evidence'
+} as const
+
+export type AffiliateSourceDomainPoliciesScalarFieldEnum = (typeof AffiliateSourceDomainPoliciesScalarFieldEnum)[keyof typeof AffiliateSourceDomainPoliciesScalarFieldEnum]
+
+
+export const AffiliateSourceMappingJobsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  intakeId: 'intakeId',
+  status: 'status',
+  claimedAt: 'claimedAt',
+  leaseExpiresAt: 'leaseExpiresAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  branch: 'branch',
+  commit: 'commit',
+  resultSummary: 'resultSummary',
+  errorMessage: 'errorMessage',
+  finishedAt: 'finishedAt'
+} as const
+
+export type AffiliateSourceMappingJobsScalarFieldEnum = (typeof AffiliateSourceMappingJobsScalarFieldEnum)[keyof typeof AffiliateSourceMappingJobsScalarFieldEnum]
+
+
 export const AffiliateImportCandidatesScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -10925,6 +11421,11 @@ export type GlobalOmitConfig = {
   affiliateSourceIntakePages?: Prisma.AffiliateSourceIntakePagesOmit
   affiliateSourceIntakeRuns?: Prisma.AffiliateSourceIntakeRunsOmit
   affiliateSourceIntakeArtifacts?: Prisma.AffiliateSourceIntakeArtifactsOmit
+  affiliateSourceDiscoveryCampaigns?: Prisma.AffiliateSourceDiscoveryCampaignsOmit
+  affiliateSourceDiscoveryRuns?: Prisma.AffiliateSourceDiscoveryRunsOmit
+  affiliateSourceDiscoveryResults?: Prisma.AffiliateSourceDiscoveryResultsOmit
+  affiliateSourceDomainPolicies?: Prisma.AffiliateSourceDomainPoliciesOmit
+  affiliateSourceMappingJobs?: Prisma.AffiliateSourceMappingJobsOmit
   affiliateImportCandidates?: Prisma.AffiliateImportCandidatesOmit
   eventTags?: Prisma.EventTagsOmit
   eventTagAssignments?: Prisma.EventTagAssignmentsOmit

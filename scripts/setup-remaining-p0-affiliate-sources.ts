@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import sharp from 'sharp';
 import type { AffiliateListingKind, AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 
 dotenv.config({ quiet: true });
@@ -29,6 +30,7 @@ type SourceOrganizationDefinition = {
   logoFileId: string;
   logoSourceUrl: string;
   logoOriginalName: string;
+  logoSourceCrop?: 'left-square';
   name: string;
   location: string;
   address?: string | null;
@@ -100,6 +102,7 @@ const orgDefinitions: SourceOrganizationDefinition[] = [
     logoFileId: 'affiliate_file_recs_pickleball_logo',
     logoSourceUrl: 'https://wearerecs.com/wp-content/uploads/2025/10/cropped-recsAsset-20-scaled-1.png',
     logoOriginalName: 'recs-pickleball-logo.png',
+    logoSourceCrop: 'left-square',
     name: 'RECS Pickleball',
     location: 'Clackamas, OR',
     address: '17015 SE 82nd Dr, Clackamas, OR 97015',
@@ -739,7 +742,17 @@ const downloadLogo = async (org: SourceOrganizationDefinition) => {
   const arrayBuffer = await response.arrayBuffer();
   const data = Buffer.from(arrayBuffer);
   const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
-  return { data, contentType };
+  if (org.logoSourceCrop !== 'left-square') {
+    return { data, contentType };
+  }
+
+  const cropped = await sharp(data, { animated: false })
+    .rotate()
+    .resize({ width: 1024, height: 1024, fit: 'cover', position: 'left' })
+    .flatten({ background: '#ffffff' })
+    .png()
+    .toBuffer();
+  return { data: cropped, contentType: 'image/png' };
 };
 
 const upsertLogo = async (org: SourceOrganizationDefinition, ownerId: string) => {

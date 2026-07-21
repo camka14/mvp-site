@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const requireRazumlyAdminMock = jest.fn();
 const listAffiliateSourcesMock = jest.fn();
 const createAffiliateSourceMock = jest.fn();
+const approveAffiliateSourceAutomationMock = jest.fn();
 
 jest.mock('@/server/razumlyAdmin', () => ({
   requireRazumlyAdmin: (...args: any[]) => requireRazumlyAdminMock(...args),
@@ -13,12 +14,14 @@ jest.mock('@/server/razumlyAdmin', () => ({
 jest.mock('@/server/affiliateImports/service', () => ({
   listAffiliateSources: (...args: any[]) => listAffiliateSourcesMock(...args),
   createAffiliateSource: (...args: any[]) => createAffiliateSourceMock(...args),
+  approveAffiliateSourceAutomation: (...args: any[]) => approveAffiliateSourceAutomationMock(...args),
 }));
 
 import {
   GET as affiliateSourcesGet,
   POST as affiliateSourcesPost,
 } from '@/app/api/admin/affiliate-sources/route';
+import { POST as approveAutomation } from '@/app/api/admin/affiliate-sources/[id]/approve-automation/route';
 
 describe('/api/admin/affiliate-sources', () => {
   beforeEach(() => {
@@ -83,5 +86,16 @@ describe('/api/admin/affiliate-sources', () => {
       expect.objectContaining({ sourceKey: 'underdog-portland' }),
       'admin_1',
     );
+  });
+
+  it('approves a reviewed baseline and enables automatic imports', async () => {
+    requireRazumlyAdminMock.mockResolvedValue({ userId: 'admin_1', adminEmail: 'admin@bracket-iq.com' });
+    approveAffiliateSourceAutomationMock.mockResolvedValue({ id: 'source_1', autoScrapeEnabled: true });
+    const res = await approveAutomation(
+      new NextRequest('http://localhost/api/admin/affiliate-sources/source_1/approve-automation', { method: 'POST' }),
+      { params: Promise.resolve({ id: 'source_1' }) },
+    );
+    expect(res.status).toBe(200);
+    expect(approveAffiliateSourceAutomationMock).toHaveBeenCalledWith('source_1', 'admin_1');
   });
 });

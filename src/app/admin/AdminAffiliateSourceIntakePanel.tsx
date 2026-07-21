@@ -23,6 +23,7 @@ import {
   Title,
 } from '@mantine/core';
 import { ExternalLink, Eye, FileUp, Plus, Search, ShieldCheck } from 'lucide-react';
+import AdminAffiliateSourceDiscoveryPanel from './AdminAffiliateSourceDiscoveryPanel';
 
 type IntakeRun = {
   id: string;
@@ -76,6 +77,26 @@ type IntakeContext = {
   runs: IntakeRun[];
   selectedRunId?: string | null;
   artifacts: IntakeArtifact[];
+  policyKey?: string | null;
+  domainPolicy?: {
+    status: string;
+    reviewedAt?: string | null;
+    expiresAt?: string | null;
+    robotsSummary?: string | null;
+    restrictionNotes?: string | null;
+    evidence?: {
+      likelyTermsUrls?: string[];
+      robotsUrl?: string;
+      robotsError?: string;
+      reviewHistory?: Array<{
+        reviewedAt?: string;
+        status?: string;
+        previousStatus?: string | null;
+        restrictionNotes?: string | null;
+      }>;
+    } | null;
+  } | null;
+  relatedDiscoveryResults?: Array<{ id: string; title?: string | null; canonicalUrl: string; score: number; status: string }>;
 };
 
 type Props = { active: boolean; refreshKey: number };
@@ -309,6 +330,13 @@ export default function AdminAffiliateSourceIntakePanel({ active, refreshKey }: 
 
   return (
     <>
+      <AdminAffiliateSourceDiscoveryPanel
+        active={active}
+        refreshKey={refreshKey}
+        onIntakesChanged={() => {
+          void loadIntakes(false);
+        }}
+      />
       <Paper withBorder radius="md" p="md">
         <Group justify="space-between" mb="sm" align="flex-start">
           <div>
@@ -373,10 +401,23 @@ export default function AdminAffiliateSourceIntakePanel({ active, refreshKey }: 
 
       <Modal opened={policyOpened} onClose={() => setPolicyOpened(false)} title="Source policy review" size="lg">
         <Stack>
+          {context?.policyKey ? <Paper withBorder p="sm">
+            <Text size="xs" c="dimmed">Reusable policy scope</Text>
+            <Text fw={600}>{context.policyKey}</Text>
+            {context.domainPolicy?.robotsSummary ? <Text size="sm" mt={4}>{context.domainPolicy.robotsSummary}</Text> : null}
+            {context.domainPolicy?.expiresAt ? <Text size="xs" c="dimmed">Expires {new Date(context.domainPolicy.expiresAt).toLocaleDateString()}</Text> : null}
+            {context.relatedDiscoveryResults?.length ? <Text size="xs" c="dimmed" mt={4}>{context.relatedDiscoveryResults.length} discovery result(s) inherit this exact policy decision.</Text> : null}
+            {context.domainPolicy?.evidence?.reviewHistory?.length ? <Stack gap={3} mt="sm">
+              <Text size="xs" fw={600}>Prior decisions</Text>
+              {context.domainPolicy.evidence.reviewHistory.slice(-5).reverse().map((entry, index) => <Text key={`${entry.reviewedAt ?? 'review'}-${index}`} size="xs" c="dimmed">
+                {entry.reviewedAt ? new Date(entry.reviewedAt).toLocaleString() : 'Unknown date'}: {entry.previousStatus ? `${entry.previousStatus} to ` : ''}{entry.status ?? 'Unknown'}{entry.restrictionNotes ? ` - ${entry.restrictionNotes}` : ''}
+              </Text>)}
+            </Stack> : null}
+          </Paper> : null}
           <Select label="Decision" data={[{ value: 'ALLOWED', label: 'Allowed to inspect' }, { value: 'BLOCKED', label: 'Do not inspect' }, { value: 'NEEDS_REVIEW', label: 'Needs more review' }]} value={policyStatus} onChange={(value) => setPolicyStatus(value ?? 'NEEDS_REVIEW')} allowDeselect={false} />
           <TextInput label="Terms or policy URL" value={policyTermsUrl} onChange={(event) => setPolicyTermsUrl(event.currentTarget.value)} />
           <Textarea label="Review notes" description="Record robots, terms, visible anti-bot text, permission, and scope constraints." minRows={6} value={policyNotes} onChange={(event) => setPolicyNotes(event.currentTarget.value)} />
-          <Group justify="flex-end"><Button variant="default" onClick={() => setPolicyOpened(false)}>Cancel</Button><Button loading={saving} onClick={() => void savePolicy()}>Save Review</Button></Group>
+          <Group justify="flex-end"><Button variant="default" onClick={() => setPolicyOpened(false)}>Cancel</Button><Button loading={saving} onClick={() => void savePolicy()}>Save Review and Queue Allowed Intake</Button></Group>
         </Stack>
       </Modal>
 

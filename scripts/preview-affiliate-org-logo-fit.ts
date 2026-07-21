@@ -5,7 +5,8 @@
  * writes source and opaque candidate assets under output/affiliate-logo-fit,
  * and generates an HTML contact sheet that compares the current raw logo
  * against a generated replacement in the major BracketIQ card/detail surfaces.
- * Mobile card previews use the same cover crop as the rendered event cards.
+ * Organization-logo fallbacks use contain; real event photos use cover after
+ * the image endpoint preserves their source ratio.
  */
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
@@ -572,7 +573,7 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
     }
     .raw-light {
       --platform-bg: ${PLATFORM_LIGHT_BG};
@@ -696,7 +697,7 @@ const buildHtml = (rows: LogoReportRow[]) => `<!doctype html>
 <body>
   <header>
     <h1>Affiliate Logo Fit Preview</h1>
-    <p>${rows.length} affiliate org logos. Mobile card previews model the event-card cover crop; generated logos keep the mark inside the safe center so wide logos are not chopped. Light/dark rows show transparent-logo background differences. Opaque candidates are generated replacement images for storage.</p>
+    <p>${rows.length} affiliate org logos. Card and detail previews model organization-logo fallbacks with contain so the mark stays intact; real event photos use cover after the image endpoint preserves their source ratio. Light/dark rows show transparent-logo background differences. Opaque candidates are generated replacement images for storage.</p>
   </header>
   <main>
     ${rows.map((row) => {

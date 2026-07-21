@@ -325,6 +325,42 @@ describe('file routes', () => {
       expect(metadata.height).toBe(8);
     });
 
+    it('preserves aspect ratio for inside previews', async () => {
+      const inputBuffer = await sharp({
+        create: {
+          width: 20,
+          height: 10,
+          channels: 3,
+          background: '#ff0000',
+        },
+      })
+        .png()
+        .toBuffer();
+
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'file_inside',
+        path: 'path/file.png',
+        bucket: null,
+        mimeType: 'image/png',
+        originalName: 'file.png',
+      });
+      getStorageProviderMock.mockReturnValue({
+        getObjectStream: jest.fn().mockResolvedValue({
+          stream: Readable.from([inputBuffer]),
+          contentType: 'image/png',
+        }),
+      });
+
+      const request = new NextRequest('http://localhost/api/files/file_inside/preview?w=8&h=8&fit=inside');
+      const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'file_inside' }) });
+      const outputBuffer = Buffer.from(await res.arrayBuffer());
+      const metadata = await sharp(outputBuffer).metadata();
+
+      expect(res.status).toBe(200);
+      expect(metadata.width).toBe(8);
+      expect(metadata.height).toBe(4);
+    });
+
     it('does not generate a protected proof preview after access is denied', async () => {
       prismaMock.file.findUnique.mockResolvedValue({
         id: 'payment_proof_preview',

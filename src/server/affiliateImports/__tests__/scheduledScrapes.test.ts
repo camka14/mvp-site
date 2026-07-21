@@ -8,6 +8,9 @@ const prismaMock = {
   affiliateScrapeRuns: {
     findFirst: jest.fn(),
   },
+  affiliateScrapeMappings: {
+    findUnique: jest.fn(),
+  },
   affiliateImportCandidates: {
     count: jest.fn(),
   },
@@ -63,6 +66,11 @@ describe('scheduled affiliate scrapes', () => {
     prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([]);
     prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
     prismaMock.affiliateScrapeRuns.findFirst.mockResolvedValue(null);
+    prismaMock.affiliateScrapeMappings.findUnique.mockImplementation(async ({ where }) => ({
+      id: where.id,
+      sourceId: String(where.id).replace(/^mapping_/, ''),
+      validatedAt: new Date('2026-07-01T12:00:00.000Z'),
+    }));
     prismaMock.affiliateImportCandidates.count.mockResolvedValue(0);
     runAffiliateSourceScrapeMock.mockResolvedValue({
       run: {
@@ -125,6 +133,25 @@ describe('scheduled affiliate scrapes', () => {
       where: { sourceId: 'source_retry', status: 'SUCCEEDED' },
     }));
     expect(result.dueSourceCount).toBe(1);
+  });
+
+  it('does not schedule a source whose active mapping is unvalidated', async () => {
+    prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([{
+      id: 'source_unvalidated', name: 'Unvalidated Source', sourceKey: 'unvalidated-source',
+      activeMappingId: 'mapping_unvalidated', listUrl: 'https://example.test/events',
+      targetKind: 'EVENT', scrapeIntervalMinutes: 1440, metadata: {},
+    }]);
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_unvalidated', sourceId: 'source_unvalidated', validatedAt: null,
+    });
+
+    const result = await runDueAffiliateScrapes({
+      now: new Date('2026-07-04T12:00:00.000Z'),
+      dryRun: true,
+    });
+
+    expect(result.dueSourceCount).toBe(0);
+    expect(runAffiliateSourceScrapeMock).not.toHaveBeenCalled();
   });
 
   it('runs only due sources, continues after one source fails, and emails a summary', async () => {

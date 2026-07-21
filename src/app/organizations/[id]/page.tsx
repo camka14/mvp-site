@@ -3544,7 +3544,7 @@ function OrganizationDetailContent() {
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
 
   const logoUrl = org?.logoId
-    ? `/api/files/${org.logoId}/preview?w=64&h=64&fit=cover`
+    ? `/api/files/${org.logoId}/preview?w=64&h=64&fit=contain`
     : org?.name
       ? `/api/avatars/initials?name=${encodeURIComponent(org.name)}&size=64`
       : '';

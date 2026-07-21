@@ -445,7 +445,9 @@ const getEventMapImageUrl = (event: Event): string => (
       event,
       width: 360,
       height: 180,
+      fit: 'inside',
     }),
+    fit: 'inside',
   })
 );
 
@@ -458,6 +460,7 @@ const getEventMarkerImageUrl = (event: Event): string | undefined => {
     imageId,
     width: MARKER_IMAGE_REQUEST_SIZE_PX,
     height: MARKER_IMAGE_REQUEST_SIZE_PX,
+    fit: 'inside',
   });
 };
 

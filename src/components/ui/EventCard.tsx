@@ -148,13 +148,16 @@ export default function EventCard({
     width: 640,
     height: 320,
     hostLabel: selectedHostLabel,
+    fit: 'inside',
   });
   const imageUrl = getEventImageUrl({
     imageId: event.imageId,
     width: 640,
     height: 320,
     placeholderUrl: imagePlaceholderUrl,
+    fit: 'inside',
   });
+  const hasEventImage = Boolean(event.imageId?.trim());
 
   const fieldLabels = useMemo(() => {
     const names = new Set<string>();
@@ -249,7 +252,7 @@ export default function EventCard({
       className={`card discover-event-card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-all duration-200 group h-full flex flex-col border border-slate-200/80`}
       onClick={onClick}
     >
-      <div className="mvp-image-background relative h-44 overflow-hidden border-b border-slate-200">
+      <div className={`mvp-image-background relative h-44 overflow-hidden border-b border-slate-200 ${hasEventImage ? '' : 'bg-white'}`}>
         {actions && (
           <div className="absolute right-3 top-3 z-10">
             {actions}
@@ -261,9 +264,11 @@ export default function EventCard({
           fill
           unoptimized
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          className={`${hasEventImage ? 'object-cover' : 'object-contain'} transition-transform duration-300`}
         />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/35 via-slate-900/10 to-transparent" />
+        {hasEventImage ? (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/35 via-slate-900/10 to-transparent" />
+        ) : null}
       </div>
       <div className="card-content flex-1 flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">

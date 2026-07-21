@@ -335,6 +335,31 @@ export type AffiliateSourceIntakeRuns = Prisma.AffiliateSourceIntakeRunsModel
  */
 export type AffiliateSourceIntakeArtifacts = Prisma.AffiliateSourceIntakeArtifactsModel
 /**
+ * Model AffiliateSourceDiscoveryCampaigns
+ *
+ */
+export type AffiliateSourceDiscoveryCampaigns = Prisma.AffiliateSourceDiscoveryCampaignsModel
+/**
+ * Model AffiliateSourceDiscoveryRuns
+ *
+ */
+export type AffiliateSourceDiscoveryRuns = Prisma.AffiliateSourceDiscoveryRunsModel
+/**
+ * Model AffiliateSourceDiscoveryResults
+ *
+ */
+export type AffiliateSourceDiscoveryResults = Prisma.AffiliateSourceDiscoveryResultsModel
+/**
+ * Model AffiliateSourceDomainPolicies
+ *
+ */
+export type AffiliateSourceDomainPolicies = Prisma.AffiliateSourceDomainPoliciesModel
+/**
+ * Model AffiliateSourceMappingJobs
+ *
+ */
+export type AffiliateSourceMappingJobs = Prisma.AffiliateSourceMappingJobsModel
+/**
  * Model AffiliateImportCandidates
  *
  */

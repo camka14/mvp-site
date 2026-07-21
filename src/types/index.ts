@@ -2018,11 +2018,18 @@ export function getUserHandle(
   return includeAt ? `@${resolved}` : resolved;
 }
 
-const buildPreviewUrl = (fileId: string, width?: number, height?: number): string => {
+type PreviewFit = 'cover' | 'inside' | 'contain';
+
+const buildPreviewUrl = (
+  fileId: string,
+  width?: number,
+  height?: number,
+  fit: PreviewFit = 'cover',
+): string => {
   const params = new URLSearchParams();
   if (width) params.set('w', String(width));
   if (height) params.set('h', String(height));
-  if (width && height) params.set('fit', 'cover');
+  if (width && height) params.set('fit', fit);
   const query = params.toString();
   return `/api/files/${fileId}/preview${query ? `?${query}` : ''}`;
 };
@@ -2095,6 +2102,7 @@ export function getEventImageFallbackUrl(params: {
   height?: number;
   hostLabel?: string | null;
   organization?: Organization | string | null;
+  fit?: PreviewFit;
 }): string {
   const resolvedWidth = params.width ?? params.size;
   const resolvedHeight = params.height ?? params.size;
@@ -2112,7 +2120,7 @@ export function getEventImageFallbackUrl(params: {
       return displayUrl;
     }
     if (organizationInput.logoId) {
-      return buildPreviewUrl(organizationInput.logoId, resolvedWidth, resolvedHeight);
+      return buildPreviewUrl(organizationInput.logoId, resolvedWidth, resolvedHeight, params.fit);
     }
     const orgLabel = organizationInput.name?.trim();
     if (orgLabel) {
@@ -2130,6 +2138,7 @@ export function getEventImageUrl(params: {
   width?: number;
   height?: number;
   placeholderUrl?: string;
+  fit?: PreviewFit;
 }): string {
   const resolvedWidth = params.width ?? params.size;
   const resolvedHeight = params.height ?? params.size;
@@ -2145,7 +2154,7 @@ export function getEventImageUrl(params: {
   if (!params.imageId) {
     return fallback;
   }
-  return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight);
+  return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight, params.fit);
 }
 
 export function getEventDateTime(event: Event): { date: string; time: string } {

@@ -1870,6 +1870,132 @@ model AffiliateSourceIntakeArtifacts {
   @@index([retainUntil, isPinned])
 }
 
+model AffiliateSourceDiscoveryCampaigns {
+  id                    String   @id
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  name                  String   @unique
+  region                String
+  location              String?
+  sportIds              String[] @default([])
+  sourceTypeHints       String[] @default([])
+  status                String   @default("PAUSED")
+  autoCreateIntakes     Boolean  @default(true)
+  searchIntervalMinutes Int      @default(10080)
+  lastRunAt             DateTime?
+  nextRunAt             DateTime?
+  maxQueriesPerRun      Int      @default(10)
+  maxResultsPerQuery    Int      @default(10)
+  queryCursor           Int      @default(0)
+  createdByUserId       String?
+  metadata              Json?
+
+  @@index([status, nextRunAt])
+  @@index([createdByUserId])
+}
+
+model AffiliateSourceDiscoveryRuns {
+  id                 String   @id
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  campaignId         String
+  requestedByUserId  String?
+  status             String   @default("QUEUED")
+  queuedAt           DateTime @default(now())
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  claimedAt          DateTime?
+  workerId           String?
+  attemptCount       Int      @default(0)
+  generatedQueryCount Int     @default(0)
+  returnedResultCount Int     @default(0)
+  newResultCount     Int      @default(0)
+  duplicateCount     Int      @default(0)
+  rejectedCount      Int      @default(0)
+  createdIntakeCount Int      @default(0)
+  providerJobIds     String[] @default([])
+  errorMessage       String?
+  summary            Json?
+
+  @@index([campaignId, createdAt])
+  @@index([status, queuedAt])
+  @@index([requestedByUserId])
+}
+
+model AffiliateSourceDiscoveryResults {
+  id                     String   @id
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  campaignId             String
+  latestRunId            String
+  originalUrl            String
+  canonicalUrl           String
+  urlKey                 String
+  policyKey              String
+  title                   String?
+  description             String?
+  latestQuery             String
+  latestRank              Int
+  firstSeenAt             DateTime @default(now())
+  lastSeenAt              DateTime @default(now())
+  seenCount               Int      @default(1)
+  score                   Int      @default(0)
+  sourceTypeHints         String[] @default([])
+  sportHints              String[] @default([])
+  status                  String   @default("NEW")
+  reasonCodes             String[] @default([])
+  reasonDetails           Json?
+  matchingIntakeId        String?
+  matchingSourceId        String?
+  matchingOrganizationId  String?
+  metadata                Json?
+
+  @@unique([campaignId, urlKey])
+  @@index([campaignId, status, score])
+  @@index([policyKey, status])
+  @@index([matchingIntakeId])
+  @@index([matchingSourceId])
+  @@index([matchingOrganizationId])
+}
+
+model AffiliateSourceDomainPolicies {
+  id               String   @id
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  policyKey        String   @unique
+  status           String   @default("NEEDS_REVIEW")
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  expiresAt        DateTime?
+  termsUrl         String?
+  robotsSummary    String?
+  restrictionNotes String?
+  evidence         Json?
+
+  @@index([status, expiresAt])
+}
+
+model AffiliateSourceMappingJobs {
+  id            String   @id
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  intakeId      String
+  status        String   @default("QUEUED")
+  claimedAt     DateTime?
+  leaseExpiresAt DateTime?
+  workerId      String?
+  attemptCount  Int      @default(0)
+  branch        String?
+  commit        String?
+  resultSummary Json?
+  errorMessage  String?
+  finishedAt    DateTime?
+
+  @@index([status, createdAt])
+  @@index([intakeId, createdAt])
+  @@index([leaseExpiresAt])
+}
+
 model AffiliateImportCandidates {
   id                       String    @id
   createdAt                DateTime  @default(now())

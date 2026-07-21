@@ -174,7 +174,7 @@ export default function EventDetailSheet({
         onSelectedDivisionTypeKeyChange: setSelectedDivisionTypeKey,
     });
     const eventImageFallbackUrl = React.useMemo(
-        () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675 }),
+        () => getEventImageFallbackUrl({ event: currentEvent, width: 1200, height: 675, fit: 'inside' }),
         [currentEvent],
     );
     const eventImageUrl = React.useMemo(
@@ -183,6 +183,7 @@ export default function EventDetailSheet({
             width: 1200,
             height: 675,
             placeholderUrl: eventImageFallbackUrl,
+            fit: 'inside',
         }),
         [currentEvent.imageId, eventImageFallbackUrl],
     );

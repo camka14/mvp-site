@@ -20,6 +20,14 @@ import { inferAffiliateParticipantAvailability, parseAffiliateMaxParticipants } 
 import { scrapingDogClient } from './scrapingDogClient';
 import { inferAffiliateEventTagNames } from './tags';
 import {
+  AFFILIATE_AUTOMATION_BASELINE_METADATA_KEY,
+  AFFILIATE_AUTOMATION_REVIEW_METADATA_KEY,
+  affiliateAutomationDriftReasons,
+  buildAffiliateAutomationBaseline,
+  calculateAffiliateAutomationRunMetrics,
+  parseAffiliateAutomationBaseline,
+} from './automationBaseline';
+import {
   type AffiliateDateDisplayMode,
   type AffiliateCandidateInput,
   type AffiliateListingKind,
@@ -51,12 +59,15 @@ type AffiliateScrapeSourceRow = {
   listUrl: string;
   organizationId?: string | null;
   baseUrl?: string | null;
+  metadata?: unknown;
 };
 
 type AffiliateScrapeMappingRow = {
   id: string;
   sourceId: string;
   mapping: unknown;
+  version?: number;
+  validatedAt?: Date | string | null;
 };
 
 export type AffiliateScrapeImportMode = 'REVIEW' | 'AUTOMATIC';
@@ -83,6 +94,12 @@ const nullableString = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+const recordValue = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
 
 const sleep = (milliseconds: number): Promise<void> =>
   milliseconds > 0 ? new Promise((resolve) => setTimeout(resolve, milliseconds)) : Promise.resolve();
@@ -271,11 +288,24 @@ const candidatePersistenceData = (params: {
 };
 
 export const listAffiliateSources = async () => {
-  const { sources } = affiliatePrisma();
-  return sources.findMany({
+  const { sources, mappings } = affiliatePrisma();
+  const rows = await sources.findMany({
     where: { status: 'ACTIVE' },
     orderBy: { name: 'asc' },
   });
+  return Promise.all(rows.map(async (source: any) => {
+    const mapping = source.activeMappingId
+      ? await mappings.findUnique({
+          where: { id: source.activeMappingId },
+          select: { id: true, version: true, validatedAt: true },
+        })
+      : null;
+    return {
+      ...source,
+      activeMappingVersion: mapping?.version ?? null,
+      activeMappingValidatedAt: mapping?.validatedAt ?? null,
+    };
+  }));
 };
 
 export const createAffiliateSource = async (input: AffiliateSourceCreateInput, adminUserId?: string) => {
@@ -321,6 +351,80 @@ export const createAffiliateSource = async (input: AffiliateSourceCreateInput, a
   return sources.update({
     where: { id: sourceId },
     data: { activeMappingId: mapping.id },
+  });
+};
+
+export const approveAffiliateSourceAutomation = async (
+  sourceId: string,
+  adminUserId: string,
+) => {
+  const { sources, mappings, runs, candidates } = affiliatePrisma();
+  const source = await sources.findUnique({ where: { id: sourceId } });
+  if (!source) throw new Error('Affiliate scrape source not found.');
+  if (!source.activeMappingId) throw new Error('No active scrape mapping is configured for this source.');
+
+  const mapping = await mappings.findUnique({ where: { id: source.activeMappingId } });
+  if (!mapping || mapping.sourceId !== source.id) {
+    throw new Error('The active scrape mapping does not belong to this source.');
+  }
+  const latestRun = await runs.findFirst({
+    where: {
+      sourceId,
+      mappingId: mapping.id,
+      status: 'SUCCEEDED',
+    },
+    orderBy: { startedAt: 'desc' },
+  });
+  if (!latestRun) {
+    throw new Error('Run and review a successful first-pass scrape before enabling automatic imports.');
+  }
+  const baselineCandidates = await candidates.findMany({
+    where: { runId: latestRun.id },
+    select: {
+      listingKind: true,
+      title: true,
+      officialActionUrl: true,
+      sourceUrl: true,
+      startsAt: true,
+      dateDisplayMode: true,
+      city: true,
+      venueName: true,
+      address: true,
+      priceText: true,
+    },
+  });
+  const runLogs = recordValue(latestRun.logs);
+  const approvedAt = new Date();
+  const baseline = buildAffiliateAutomationBaseline({
+    mappingId: mapping.id,
+    mappingVersion: Number.isInteger(mapping.version) ? mapping.version : 1,
+    approvedAt,
+    candidates: baselineCandidates,
+    rejectedCount: typeof runLogs.rejectedCount === 'number' ? runLogs.rejectedCount : 0,
+  });
+  if (baseline.candidateCount === 0) {
+    throw new Error('The first-pass scrape must contain at least one reviewable candidate before automatic imports can be enabled.');
+  }
+
+  await mappings.update({
+    where: { id: mapping.id },
+    data: {
+      validatedAt: approvedAt,
+      notes: [nullableString(mapping.notes), `Automation approved by ${adminUserId} on ${approvedAt.toISOString()}`]
+        .filter(Boolean)
+        .join('\n'),
+    },
+  });
+  return sources.update({
+    where: { id: sourceId },
+    data: {
+      autoScrapeEnabled: true,
+      metadata: {
+        ...recordValue(source.metadata),
+        [AFFILIATE_AUTOMATION_BASELINE_METADATA_KEY]: baseline,
+        [AFFILIATE_AUTOMATION_REVIEW_METADATA_KEY]: null,
+      },
+    },
   });
 };
 
@@ -1762,7 +1866,10 @@ export const runAffiliateSourceScrape = async (
 
   const { row: mappingRow, mapping } = await resolveActiveMapping(source);
   const importMode = params.importMode ?? 'REVIEW';
-  const automaticallyPublishCandidates = importMode === 'AUTOMATIC';
+  let automaticallyPublishCandidates = importMode === 'AUTOMATIC';
+  if (automaticallyPublishCandidates && !mappingRow.validatedAt) {
+    throw new Error('Automatic imports require an explicitly validated active mapping.');
+  }
   if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM' || mapping.kind === 'CLUB') {
     await assertSourceOrganization(source);
   }
@@ -1802,6 +1909,39 @@ export const runAffiliateSourceScrape = async (
       });
       return summary;
     }, {});
+    const automationMetrics = calculateAffiliateAutomationRunMetrics(
+      importableCandidates,
+      rejectedCandidates.length,
+    );
+    const automationDriftReasons = automaticallyPublishCandidates
+      ? affiliateAutomationDriftReasons(
+          parseAffiliateAutomationBaseline(
+            recordValue(source.metadata)[AFFILIATE_AUTOMATION_BASELINE_METADATA_KEY],
+          ),
+          automationMetrics,
+        )
+      : [];
+    const automationHeld = automationDriftReasons.length > 0;
+    if (automationHeld) {
+      automaticallyPublishCandidates = false;
+      const heldAt = new Date();
+      await sources.update({
+        where: { id: sourceId },
+        data: {
+          autoScrapeEnabled: false,
+          metadata: {
+            ...recordValue(source.metadata),
+            [AFFILIATE_AUTOMATION_REVIEW_METADATA_KEY]: {
+              heldAt: heldAt.toISOString(),
+              runId: run.id,
+              mappingId: mappingRow.id,
+              reasons: automationDriftReasons,
+              metrics: automationMetrics,
+            },
+          },
+        },
+      });
+    }
     const savedCandidates = [];
     let createdCandidateCount = 0;
     let updatedCandidateCount = 0;
@@ -1911,6 +2051,9 @@ export const runAffiliateSourceScrape = async (
           updatedCandidateCount,
           rejectedCount: rejectedCandidates.length,
           automaticallyPublishedCandidateCount,
+          automationHeld,
+          automationDriftReasons,
+          automationMetrics,
           rejectionSummary,
           rejectedCandidates: rejectedCandidates.slice(0, 25),
         },

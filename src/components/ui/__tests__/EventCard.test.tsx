@@ -148,4 +148,19 @@ describe('EventCard affiliate schedule display', () => {
       '/organizations/org_1',
     );
   });
+
+  it('contains organization-logo fallbacks while preserving cover cropping for event photos', () => {
+    const { rerender } = renderWithMantine(<EventCard event={createEvent()} />);
+    const fallbackImage = screen.getByRole('img', { name: 'Team Play Thursdays' });
+
+    expect(fallbackImage).toHaveClass('object-contain');
+    expect(fallbackImage.parentElement).toHaveClass('bg-white');
+
+    rerender(<EventCard event={createEvent({ imageId: 'event_file_1' })} />);
+    const eventImage = screen.getByRole('img', { name: 'Team Play Thursdays' });
+
+    expect(eventImage).toHaveClass('object-cover');
+    expect(eventImage).not.toHaveClass('object-contain');
+    expect(eventImage.parentElement).not.toHaveClass('bg-white');
+  });
 });

@@ -112,3 +112,28 @@ The restore script refuses a non-empty target. It also refuses the live database
 4. Observe for seven days, verify hourly backup age daily, and complete another restore drill. Only then is deletion of the old managed services eligible for approval.
 
 The full gates and rollback boundaries are maintained in `docs/ovh-vps-migration-execplan.md`.
+
+## Affiliate source discovery and intake automation
+
+The application image includes the provider-neutral automation command. Before enabling its timer, configure `FIRECRAWL_API_KEY`, email credentials, database access, and storage credentials in `app.env`; deploy the discovery migration; create paused campaign templates with `npm run affiliate:discovery:setup -- --live`; and review campaign limits in Admin > Affiliate Imports > Source Intake.
+
+Install the tracked units and start one manual run before enabling the timer:
+
+    sudo install -m 0644 systemd/bracketiq-affiliate-intake-automation.service /etc/systemd/system/
+    sudo install -m 0644 systemd/bracketiq-affiliate-intake-automation.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl start bracketiq-affiliate-intake-automation.service
+    sudo journalctl -u bracketiq-affiliate-intake-automation.service -n 200 --no-pager
+    sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer
+
+The timer invokes the lock-protected job every 15 minutes. Campaign cadence controls whether Firecrawl search actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
+
+    systemctl status bracketiq-affiliate-intake-automation.timer
+    systemctl list-timers bracketiq-affiliate-intake-automation.timer
+    journalctl -u bracketiq-affiliate-intake-automation.service --since today
+
+Pause automation without changing web traffic or deleting stored evidence:
+
+    sudo systemctl disable --now bracketiq-affiliate-intake-automation.timer
+
+Rollback consists of leaving the timer disabled and pausing active discovery campaigns in Admin. Existing organizations, approved scrape sources, intakes, artifacts, and candidates remain intact. Re-enable with `sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer` after the issue is corrected.

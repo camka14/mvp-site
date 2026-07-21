@@ -19,6 +19,7 @@ type AffiliateSourceScheduleRow = {
   id: string;
   name: string;
   sourceKey: string;
+  activeMappingId?: string | null;
   listUrl: string;
   targetKind?: string | null;
   scrapeIntervalMinutes?: number | null;
@@ -271,6 +272,7 @@ const loadScheduledSources = async (
       id: true,
       name: true,
       sourceKey: true,
+      activeMappingId: true,
       listUrl: true,
       targetKind: true,
       scrapeIntervalMinutes: true,
@@ -280,6 +282,14 @@ const loadScheduledSources = async (
   const dueSources: AffiliateSourceScheduleRow[] = [];
   const lightweightSources: AffiliateSourceScheduleRow[] = [];
   for (const source of sources) {
+    const activeMappingId = source.activeMappingId ?? `mapping_${source.id}`;
+    const activeMapping = await (prisma as any).affiliateScrapeMappings.findUnique({
+      where: { id: activeMappingId },
+      select: { id: true, sourceId: true, validatedAt: true },
+    });
+    if (!activeMapping?.validatedAt || activeMapping.sourceId !== source.id) {
+      continue;
+    }
     const latestRun = await latestRunForSource(source.id);
     if (isAffiliateSourceDue(source, latestRun, now)) {
       if (!limit || dueSources.length < limit) {

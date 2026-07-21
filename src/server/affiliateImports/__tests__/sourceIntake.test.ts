@@ -115,4 +115,13 @@ describe('affiliate source intake service', () => {
       confidence: expect.any(Number),
     }));
   });
+
+  it('classifies league and tournament catalogs ahead of incidental rental copy', () => {
+    expect(classifyAffiliateSourceEvidence(
+      'Youth football league and tournament registration. Equipment rentals may be available.',
+      ['https://example.com/leagues'],
+    )).toEqual(expect.objectContaining({
+      type: 'EVENT_CATALOG',
+    }));
+  });
 });

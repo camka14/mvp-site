@@ -64,6 +64,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     const width = widthResult.value;
     const height = heightResult.value;
+    const requestedFit = req.nextUrl.searchParams.get('fit');
+    const fit = requestedFit === 'inside' || requestedFit === 'contain'
+      ? requestedFit
+      : 'cover';
     if (width && height && width * height > MAX_PREVIEW_PIXELS) {
       return NextResponse.json(
         { error: `Preview output cannot exceed ${MAX_PREVIEW_PIXELS} pixels.` },
@@ -120,7 +124,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       };
 
     if (width && height) {
-      resizeOptions.fit = 'cover';
+      resizeOptions.fit = fit;
       resizeOptions.position = 'center';
     }
 

@@ -19,7 +19,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { ExternalLink, Play, Trash2, UploadCloud } from 'lucide-react';
+import { ExternalLink, Play, ShieldCheck, Trash2, UploadCloud } from 'lucide-react';
 import { normalizeApiEntity } from '@/lib/apiMappers';
 import AdminAffiliateSourceIntakePanel from './AdminAffiliateSourceIntakePanel';
 
@@ -32,6 +32,8 @@ type AdminAffiliateSourceRow = {
   status: string;
   organizationId?: string | null;
   activeMappingId?: string | null;
+  activeMappingVersion?: number | null;
+  activeMappingValidatedAt?: string | null;
   lastScrapeRunId?: string | null;
   lastScrapedAt?: string | null;
   autoScrapeEnabled?: boolean | null;
@@ -250,6 +252,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scrapingSourceIds, setScrapingSourceIds] = useState<string[]>([]);
+  const [approvingSourceId, setApprovingSourceId] = useState<string | null>(null);
   const [publishingCandidateId, setPublishingCandidateId] = useState<string | null>(null);
   const [deletingCandidateId, setDeletingCandidateId] = useState<string | null>(null);
   const [classifyingCandidateId, setClassifyingCandidateId] = useState<string | null>(null);
@@ -380,6 +383,35 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
     setScrapingSourceIds(Array.from(scrapePendingIdsRef.current));
     void runQueuedScrapes();
   }, [runQueuedScrapes]);
+
+  const approveSourceAutomation = useCallback(async (source: AdminAffiliateSourceRow) => {
+    const confirmed = window.confirm(
+      `Approve the latest reviewed scrape for "${source.name}" and enable automatic imports?`,
+    );
+    if (!confirmed) return;
+    setApprovingSourceId(source.$id);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/admin/affiliate-sources/${encodeURIComponent(source.$id)}/approve-automation`,
+        { method: 'POST', credentials: 'include' },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to approve automatic imports.');
+      }
+      setActionMessage({
+        color: 'teal',
+        title: 'Automatic imports enabled',
+        body: `${source.name} now has a validated baseline. Future drift will be held for review.`,
+      });
+      await loadData();
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : 'Failed to approve automatic imports.');
+    } finally {
+      setApprovingSourceId(null);
+    }
+  }, [loadData]);
 
   const publishCandidate = useCallback(async (candidateId: string) => {
     setPublishingCandidateId(candidateId);
@@ -667,7 +699,20 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                     ) : null}
                   </Group>
                 </Table.Td>
-                <Table.Td>{source.activeMappingId ? 'Active' : 'Missing'}</Table.Td>
+                <Table.Td>
+                  {source.activeMappingId ? (
+                    <Stack gap={2}>
+                      <Text size="sm">v{source.activeMappingVersion ?? '?'}</Text>
+                      <Badge
+                        size="xs"
+                        color={source.activeMappingValidatedAt ? 'teal' : 'yellow'}
+                        variant="light"
+                      >
+                        {source.activeMappingValidatedAt ? 'Validated' : 'Review required'}
+                      </Badge>
+                    </Stack>
+                  ) : 'Missing'}
+                </Table.Td>
                 <Table.Td>{formatScrapeInterval(source.autoScrapeEnabled, source.scrapeIntervalMinutes)}</Table.Td>
                 <Table.Td>{formatDateTime(source.lastScrapedAt)}</Table.Td>
                 <Table.Td>
@@ -683,6 +728,17 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                       }}
                     >
                       Scrape
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="teal"
+                      leftSection={<ShieldCheck size={14} />}
+                      disabled={!source.activeMappingId || sourceNeedsOrganization(source)}
+                      loading={approvingSourceId === source.$id}
+                      onClick={() => void approveSourceAutomation(source)}
+                    >
+                      Approve automation
                     </Button>
                     <Button
                       size="xs"

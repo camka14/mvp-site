@@ -1,8 +1,16 @@
-import Firecrawl, { type Document, type MapData, type ScrapeOptions } from '@mendable/firecrawl-js';
+import Firecrawl, {
+  type Document,
+  type MapData,
+  type ScrapeOptions,
+  type SearchData,
+} from '@mendable/firecrawl-js';
 
 const DEFAULT_MAP_LIMIT = 50;
 const MAX_MAP_LIMIT = 50;
 const DEFAULT_TIMEOUT_MS = 90_000;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 20;
+const MAX_SEARCH_TIMEOUT_MS = 60_000;
 
 const firecrawlTimeoutMs = (): number => {
   const configured = Number.parseInt(process.env.FIRECRAWL_TIMEOUT_MS ?? '', 10);
@@ -41,7 +49,27 @@ export type FirecrawlCaptureResult = {
   providerJobId: string | null;
 };
 
+export type FirecrawlSourceSearchOptions = {
+  limit?: number;
+  location?: string;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+};
+
+export type FirecrawlSourceSearchResult = {
+  request: Record<string, unknown>;
+  response: Record<string, unknown>;
+  rows: Array<{
+    url: string;
+    title: string | null;
+    description: string | null;
+    category: string | null;
+  }>;
+  providerJobId: string | null;
+};
+
 export interface AffiliateFirecrawlClient {
+  searchSources(query: string, options?: FirecrawlSourceSearchOptions): Promise<FirecrawlSourceSearchResult>;
   mapSourceUrls(url: string, options?: { limit?: number; search?: string }): Promise<FirecrawlMapResult>;
   scrapeSourcePage(url: string): Promise<FirecrawlCaptureResult>;
 }
@@ -64,6 +92,19 @@ const mapLimit = (value: number | undefined): number => {
   return Math.max(1, Math.min(MAX_MAP_LIMIT, value));
 };
 
+const searchLimit = (value: number | undefined): number => {
+  if (!Number.isInteger(value) || !value) return DEFAULT_SEARCH_LIMIT;
+  return Math.max(1, Math.min(MAX_SEARCH_LIMIT, value));
+};
+
+const searchTimeoutMs = (): number => Math.min(firecrawlTimeoutMs(), MAX_SEARCH_TIMEOUT_MS);
+
+const domainList = (value: string[] | undefined): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const normalized = Array.from(new Set(value.map((entry) => entry.trim().toLowerCase()).filter(Boolean)));
+  return normalized.length ? normalized.slice(0, 100) : undefined;
+};
+
 export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
   private readonly client: Firecrawl;
 
@@ -76,6 +117,44 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
       timeoutMs: firecrawlTimeoutMs(),
       maxRetries: 1,
     });
+  }
+
+  async searchSources(
+    query: string,
+    options: FirecrawlSourceSearchOptions = {},
+  ): Promise<FirecrawlSourceSearchResult> {
+    const normalizedQuery = stringValue(query);
+    if (!normalizedQuery) throw new Error('Affiliate source discovery query is required.');
+    const timeout = searchTimeoutMs();
+    const request = {
+      query: normalizedQuery,
+      options: {
+        sources: ['web'] as Array<'web'>,
+        limit: searchLimit(options.limit),
+        location: stringValue(options.location) ?? undefined,
+        includeDomains: domainList(options.includeDomains),
+        excludeDomains: domainList(options.excludeDomains),
+        ignoreInvalidURLs: true,
+        timeout,
+      },
+    };
+    const response: SearchData = await this.client.search(normalizedQuery, request.options);
+    const rows = (response.web ?? []).map((entry) => {
+      const row = serializableRecord(entry);
+      return {
+        url: stringValue(row.url) ?? '',
+        title: stringValue(row.title),
+        description: stringValue(row.description) ?? stringValue(row.markdown),
+        category: stringValue(row.category),
+      };
+    }).filter((entry) => entry.url);
+    const responseRecord = serializableRecord(response);
+    return {
+      request: serializableRecord(request),
+      response: responseRecord,
+      rows,
+      providerJobId: stringValue(responseRecord.id),
+    };
   }
 
   async mapSourceUrls(url: string, options: { limit?: number; search?: string } = {}): Promise<FirecrawlMapResult> {

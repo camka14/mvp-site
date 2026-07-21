@@ -1,0 +1,17 @@
+[Unit]
+Description=Run BracketIQ affiliate source discovery and intake automation
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/bracketiq/deploy/vm
+Environment=COMPOSE_ENV_FILE=/opt/bracketiq/deploy/vm/deployment.env
+ExecStart=/usr/bin/docker compose --env-file /opt/bracketiq/deploy/vm/deployment.env -f /opt/bracketiq/deploy/vm/compose.production.yml exec -T app npm run affiliate:intake:automation -- --live --summary
+TimeoutStartSec=14m
+
+[Install]
+WantedBy=multi-user.target

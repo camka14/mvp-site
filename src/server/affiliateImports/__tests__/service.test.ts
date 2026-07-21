@@ -11,9 +11,11 @@ const prismaMock = {
   affiliateScrapeMappings: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
+    update: jest.fn(),
   },
   affiliateScrapeRuns: {
     create: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
   affiliateScrapeSources: {
@@ -71,6 +73,7 @@ jest.mock('@/server/geocoding', () => ({
 }));
 
 import {
+  approveAffiliateSourceAutomation,
   deleteAffiliateCandidate,
   listAffiliateCandidates,
   publishAffiliateCandidate,
@@ -150,6 +153,37 @@ describe('affiliate import service', () => {
       orderBy: { updatedAt: 'desc' },
       take: 100,
     });
+  });
+
+  it('validates a reviewed mapping and stores an automatic import baseline', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1', activeMappingId: 'mapping_1', metadata: {},
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_1', sourceId: 'source_1', version: 3, notes: null,
+    });
+    prismaMock.affiliateScrapeRuns.findFirst.mockResolvedValue({
+      id: 'run_reviewed', logs: { rejectedCount: 1 },
+    });
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([{
+      listingKind: 'EVENT', title: 'Reviewed event', officialActionUrl: 'https://example.test/register',
+      sourceUrl: 'https://example.test/events', startsAt: new Date('2026-08-01T12:00:00.000Z'),
+      dateDisplayMode: 'SCHEDULED', city: 'Portland', venueName: 'Test Gym', address: null, priceText: '$25',
+    }]);
+    prismaMock.affiliateScrapeMappings.update.mockResolvedValue({});
+    prismaMock.affiliateScrapeSources.update.mockImplementation(async ({ data }) => ({ id: 'source_1', ...data }));
+
+    const source = await approveAffiliateSourceAutomation('source_1', 'admin_1');
+
+    expect(prismaMock.affiliateScrapeMappings.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'mapping_1' }, data: expect.objectContaining({ validatedAt: expect.any(Date) }),
+    }));
+    expect(source).toEqual(expect.objectContaining({
+      autoScrapeEnabled: true,
+      metadata: expect.objectContaining({
+        automationBaseline: expect.objectContaining({ mappingId: 'mapping_1', mappingVersion: 3, candidateCount: 1 }),
+      }),
+    }));
   });
 
   it('lists published affiliate candidates only when explicitly requested', async () => {
@@ -1297,11 +1331,27 @@ describe('affiliate import service', () => {
       activeMappingId: 'mapping_automatic',
       listUrl: 'https://example.com/events',
       organizationId: 'org_automatic',
+      metadata: {
+        automationBaseline: {
+          schemaVersion: 1,
+          mappingId: 'mapping_automatic',
+          mappingVersion: 1,
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          candidateCount: 1,
+          rejectedCount: 0,
+          listingKinds: ['EVENT'],
+          criticalMissingCount: 0,
+          criticalMissingRate: 0,
+          normalizedFieldsHash: 'baseline-hash',
+        },
+      },
     });
     prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_automatic' });
     prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
       id: 'mapping_automatic',
       sourceId: 'source_automatic',
+      version: 1,
+      validatedAt: new Date('2026-07-01T00:00:00.000Z'),
       mapping: {
         kind: 'EVENT',
         listUrl: 'https://example.com/events',
@@ -1310,6 +1360,7 @@ describe('affiliate import service', () => {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          city: { selector: 'body', mode: 'literal', value: 'Portland' },
         },
       },
     });
@@ -1350,6 +1401,64 @@ describe('affiliate import service', () => {
         logs: expect.objectContaining({ automaticallyPublishedCandidateCount: 1 }),
       }),
     });
+  });
+
+  it('holds an automatic run for review when a nonzero baseline drops to zero', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_drift',
+      name: 'Drift Source',
+      activeMappingId: 'mapping_drift',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_drift',
+      metadata: {
+        automationBaseline: {
+          schemaVersion: 1,
+          mappingId: 'mapping_drift', mappingVersion: 1, approvedAt: '2026-07-01T00:00:00.000Z',
+          candidateCount: 10, rejectedCount: 0, listingKinds: ['EVENT'],
+          criticalMissingCount: 0, criticalMissingRate: 0, normalizedFieldsHash: 'baseline-hash',
+        },
+      },
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_drift' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_drift', sourceId: 'source_drift', version: 1,
+      validatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      mapping: {
+        kind: 'EVENT', listUrl: 'https://example.com/events', itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_drift' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_drift', ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    await runAffiliateSourceScrape('source_drift', {
+      importMode: 'AUTOMATIC',
+      client: { fetchPage: async () => ({
+        url: 'https://example.com/events', finalUrl: 'https://example.com/events', statusCode: 200,
+        fetchedAt: '2026-07-21T00:00:00.000Z', body: '<main>No listings today</main>',
+      }) },
+    });
+
+    expect(prismaMock.affiliateImportCandidates.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateScrapeSources.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'source_drift' },
+      data: expect.objectContaining({ autoScrapeEnabled: false }),
+    }));
+    expect(prismaMock.affiliateScrapeRuns.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        logs: expect.objectContaining({
+          automationHeld: true,
+          automationDriftReasons: expect.arrayContaining([expect.stringContaining('nonzero baseline to zero')]),
+          automaticallyPublishedCandidateCount: 0,
+        }),
+      }),
+    }));
   });
 
   it('rejects evergreen tryout candidates instead of creating stale affiliate events', async () => {

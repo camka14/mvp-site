@@ -26,6 +26,24 @@ describe('event image fallbacks', () => {
     expect(url).toBe('/api/files/logo_1/preview?w=640&h=320&fit=cover');
   });
 
+  it('preserves the source aspect ratio before a card applies its cover crop', () => {
+    const url = getEventImageFallbackUrl({
+      event: {
+        organization: {
+          $id: 'org_1',
+          name: 'My Org',
+          logoId: 'logo_1',
+        },
+        hostId: 'host_1',
+      } as any,
+      width: 640,
+      height: 320,
+      fit: 'inside',
+    });
+
+    expect(url).toBe('/api/files/logo_1/preview?w=640&h=320&fit=inside');
+  });
+
   it('uses a resolved organization logo URL when no logo id is available', () => {
     const url = getEventImageFallbackUrl({
       event: {

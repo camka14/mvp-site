@@ -38,7 +38,7 @@ type LogoDefinition = {
   fallbackInitials?: string;
   targetBox?: LogoTargetBox;
   backgroundStyle?: 'flat' | 'glow';
-  sourceCrop?: 'center-square';
+  sourceCrop?: 'center-square' | 'left-square';
   textLogo?: {
     lines: string[];
     color: string;
@@ -413,6 +413,8 @@ const definitions: LogoDefinition[] = [
     sourceLabel: 'RECS Pickleball official site logo',
     originalName: 'recs-pickleball-logo-square.png',
     background: '#ffffff',
+    sourceCrop: 'left-square',
+    targetBox: { width: 860, height: 860 },
     fallbackInitials: 'RECS',
   },
   {
@@ -875,6 +877,11 @@ const normalizeLogo = async (definition: LogoDefinition): Promise<Buffer> => {
       .resize({ width: 1024, height: 1024, fit: 'cover', position: 'center' })
       .png()
       .toBuffer()
+    : definition.sourceCrop === 'left-square'
+      ? await sharp(base)
+        .resize({ width: 1024, height: 1024, fit: 'cover', position: 'left' })
+        .png()
+        .toBuffer()
     : base;
   const trimmed = await sharp(sourceForTrim, { animated: false })
     .trim({ threshold: 12 })
