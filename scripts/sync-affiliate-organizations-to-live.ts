@@ -16,12 +16,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { Client } from 'pg';
+import { ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS } from '../src/server/affiliateImports/zeroCandidateClubReview';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const apply = process.argv.includes('--apply');
 const consolidateDuplicates = process.argv.includes('--consolidate-duplicates');
+const scopedOrganizationIds = process.argv.includes('--scope=completed-zero-candidate-sources')
+  ? [...ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS]
+  : process.argv
+    .filter((argument) => argument.startsWith('--organization-id='))
+    .map((argument) => argument.slice('--organization-id='.length).trim())
+    .filter(Boolean);
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const OUTPUT_DIR = path.join(process.cwd(), 'output', 'affiliate-org-live-sync');
 const LOCAL_STORAGE_ROOT = path.resolve(process.cwd(), process.env.STORAGE_ROOT?.trim() || 'uploads');
@@ -204,8 +211,9 @@ const loadLocalState = async () => {
   const organizationResult = await localClient.query<OrganizationRow>(
     `SELECT ${ORGANIZATION_COLUMNS.map(quoteIdentifier).join(', ')}
      FROM "Organizations"
-     WHERE id LIKE 'affiliate_org_%'
+     WHERE ${scopedOrganizationIds.length ? 'id = ANY($1::text[])' : "id LIKE 'affiliate_org_%'"}
      ORDER BY name ASC, id ASC`,
+    scopedOrganizationIds.length ? [scopedOrganizationIds] : [],
   );
   const organizations = organizationResult.rows;
   const logoIds = organizations.map((organization) => organization.logoId);

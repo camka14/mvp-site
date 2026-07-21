@@ -1,6 +1,7 @@
 import { parseAffiliateScrapeMapping } from '../types';
 import {
   createZeroCandidateReviewMapping,
+  ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS,
   ZERO_CANDIDATE_REVIEW_ITEM_SELECTOR,
   ZERO_CANDIDATE_REVIEW_SOURCE_KEYS,
 } from '../zeroCandidateClubReview';
@@ -9,6 +10,8 @@ describe('zero-candidate club review contract', () => {
   it('covers every processed successful zero-candidate source exactly once', () => {
     expect(ZERO_CANDIDATE_REVIEW_SOURCE_KEYS).toHaveLength(25);
     expect(new Set(ZERO_CANDIDATE_REVIEW_SOURCE_KEYS).size).toBe(25);
+    expect(ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS).toHaveLength(25);
+    expect(new Set(ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS).size).toBe(25);
   });
 
   it('produces a parseable idempotent no-listings mapping', () => {

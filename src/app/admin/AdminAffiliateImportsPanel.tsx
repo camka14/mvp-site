@@ -15,6 +15,7 @@ import {
   Select,
   Stack,
   Table,
+  Tabs,
   Text,
   Title,
 } from '@mantine/core';
@@ -244,6 +245,7 @@ const scrapeResultMessage = (result: LastScrapeResult): string => {
 export default function AdminAffiliateImportsPanel({ active, refreshKey }: AdminAffiliateImportsPanelProps) {
   const [sources, setSources] = useState<AdminAffiliateSourceRow[]>([]);
   const [candidates, setCandidates] = useState<AdminAffiliateCandidateRow[]>([]);
+  const [affiliateTab, setAffiliateTab] = useState<'intake' | 'sources' | 'candidates'>('sources');
   const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'PUBLISHED'>('DISCOVERED');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -584,8 +586,6 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
 
   return (
     <Stack gap="lg">
-      <AdminAffiliateSourceIntakePanel active={active} refreshKey={refreshKey} />
-
       {error ? (
         <Alert color="red" title="Affiliate import error">
           {error}
@@ -607,11 +607,32 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
         </Alert>
       ) : null}
 
-      <Paper withBorder radius="md" p="md">
+      <Tabs
+        value={affiliateTab}
+        onChange={(value) => {
+          if (value === 'intake' || value === 'sources' || value === 'candidates') {
+            setAffiliateTab(value);
+          }
+        }}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="intake">Source Intake</Tabs.Tab>
+          <Tabs.Tab value="sources">Sources ({sources.length})</Tabs.Tab>
+          <Tabs.Tab value="candidates">Candidates ({candidates.length})</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="intake" pt="md">
+          <AdminAffiliateSourceIntakePanel active={active && affiliateTab === 'intake'} refreshKey={refreshKey} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="sources" pt="md">
+        <Paper withBorder radius="md" p="md">
         <Group justify="space-between" mb="sm">
           <div>
             <Title order={3}>Sources</Title>
-            <Text size="sm" c="dimmed">Saved mappings are configured in the database after manual ScrapingDog inspection.</Text>
+            <Text size="sm" c="dimmed">
+              The first manual scrape is review-only. Sources with an active mapping and automatic scraping enabled are published by the scheduler after validation.
+            </Text>
           </div>
           {loading ? <Loader size="sm" /> : null}
         </Group>
@@ -684,9 +705,11 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
             ) : null}
           </Table.Tbody>
         </Table>
-      </Paper>
+        </Paper>
+        </Tabs.Panel>
 
-      <Paper withBorder radius="md" p="md">
+        <Tabs.Panel value="candidates" pt="md">
+        <Paper withBorder radius="md" p="md">
         <Group justify="space-between" mb="sm">
           <Title order={3}>Discovered Events, Teams, Rentals And Clubs</Title>
           <Group gap="xs">
@@ -883,7 +906,9 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
             </Table.Tbody>
           </Table>
         </ScrollArea>
-      </Paper>
+        </Paper>
+        </Tabs.Panel>
+      </Tabs>
 
       <Modal
         opened={Boolean(selectedCandidate)}

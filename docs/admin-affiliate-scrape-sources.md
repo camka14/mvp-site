@@ -310,7 +310,9 @@ zero candidates. They are now repeatably configured locally. The reviewed club
 setup scripts preserve the source-specific policy result, inspected URLs, and
 full `reviewReason`/withheld-row data in each source's `metadata`; the table is
 the compact registry linkage and verification result. `autoScrapeEnabled` is
-intentionally `false` for every row. No live database writes were made.
+intentionally `false` for every row. The scoped organization, logo, source,
+mapping, scrape-run, and candidate state was promoted to the live database on
+2026-07-20; unrelated local affiliate organizations were excluded.
 
 For the 23 no-current-listings rows, a zero result is intentional: reviewed
 past, undated, stale, inaccessible, or non-actionable rows were withheld rather

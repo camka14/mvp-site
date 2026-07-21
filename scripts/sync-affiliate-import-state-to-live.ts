@@ -9,12 +9,19 @@
  */
 import dotenv from "dotenv";
 import { Client, type QueryResultRow } from "pg";
+import { ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS } from "../src/server/affiliateImports/zeroCandidateClubReview";
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: ".env.local", override: false, quiet: true });
 
 const apply = process.argv.includes("--apply");
 const OWNER_PREFIX = "affiliate_org_";
+const scopedOrganizationIds = process.argv.includes("--scope=completed-zero-candidate-sources")
+  ? [...ZERO_CANDIDATE_REVIEW_ORGANIZATION_IDS]
+  : process.argv
+    .filter((argument) => argument.startsWith("--organization-id="))
+    .map((argument) => argument.slice("--organization-id=".length).trim())
+    .filter(Boolean);
 
 type CandidateRow = QueryResultRow & {
   id: string;
@@ -96,8 +103,8 @@ const main = async () => {
   await Promise.all([localClient.connect(), liveClient.connect()]);
 
   const organizationRows = await localClient.query<{ id: string }>(
-    `SELECT id FROM "Organizations" WHERE id LIKE $1 ORDER BY id`,
-    [`${OWNER_PREFIX}%`],
+    `SELECT id FROM "Organizations" WHERE ${scopedOrganizationIds.length ? 'id = ANY($1::text[])' : 'id LIKE $1'} ORDER BY id`,
+    scopedOrganizationIds.length ? [scopedOrganizationIds] : [`${OWNER_PREFIX}%`],
   );
   const organizationIds = organizationRows.rows.map((row) => row.id);
   const sourceRows = await localClient.query<SourceRow>(

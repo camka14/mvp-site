@@ -193,9 +193,11 @@ describe('scheduled affiliate scrapes', () => {
     expect(runAffiliateSourceScrapeMock).toHaveBeenCalledTimes(2);
     expect(runAffiliateSourceScrapeMock).toHaveBeenNthCalledWith(1, 'source_daily', {
       requestedByUserId: null,
+      importMode: 'AUTOMATIC',
     });
     expect(runAffiliateSourceScrapeMock).toHaveBeenNthCalledWith(2, 'source_failure', {
       requestedByUserId: null,
+      importMode: 'AUTOMATIC',
     });
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
       to: 'samuel.r@razumly.com',

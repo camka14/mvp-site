@@ -59,6 +59,8 @@ type AffiliateScrapeMappingRow = {
   mapping: unknown;
 };
 
+export type AffiliateScrapeImportMode = 'REVIEW' | 'AUTOMATIC';
+
 const affiliatePrisma = () => {
   const client = prisma as any;
   return {
@@ -1746,7 +1748,11 @@ const enrichCandidatesWithDetailPages = async (
 
 export const runAffiliateSourceScrape = async (
   sourceId: string,
-  params: { requestedByUserId?: string | null; client?: ScrapePageClient } = {},
+  params: {
+    requestedByUserId?: string | null;
+    client?: ScrapePageClient;
+    importMode?: AffiliateScrapeImportMode;
+  } = {},
 ) => {
   const { sources, runs, candidates } = affiliatePrisma();
   const source = await sources.findUnique({ where: { id: sourceId } });
@@ -1755,6 +1761,8 @@ export const runAffiliateSourceScrape = async (
   }
 
   const { row: mappingRow, mapping } = await resolveActiveMapping(source);
+  const importMode = params.importMode ?? 'REVIEW';
+  const automaticallyPublishCandidates = importMode === 'AUTOMATIC';
   if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM' || mapping.kind === 'CLUB') {
     await assertSourceOrganization(source);
   }
@@ -1797,6 +1805,7 @@ export const runAffiliateSourceScrape = async (
     const savedCandidates = [];
     let createdCandidateCount = 0;
     let updatedCandidateCount = 0;
+    let automaticallyPublishedCandidateCount = 0;
 
     for (const candidate of importableCandidates) {
       const dedupeKey = buildAffiliateCandidateDedupeKey(sourceId, candidate, mapping);
@@ -1815,6 +1824,9 @@ export const runAffiliateSourceScrape = async (
         dedupeKey,
         candidate,
       });
+      const nextCandidateStatus = automaticallyPublishCandidates
+        ? 'PUBLISHED'
+        : existing?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
 
       const saved = existing
         ? await candidates.update({
@@ -1825,13 +1837,14 @@ export const runAffiliateSourceScrape = async (
               publishedTeamId: existing.publishedTeamId ?? null,
               publishedFacilityId: existing.publishedFacilityId ?? null,
               publishedOrganizationId: existing.publishedOrganizationId ?? null,
-              status: existing.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED',
+              status: nextCandidateStatus,
             },
           })
         : await candidates.create({
             data: {
               id: createId(),
               ...data,
+              status: nextCandidateStatus,
             },
           });
       if (candidate.listingKind === 'EVENT') {
@@ -1879,6 +1892,9 @@ export const runAffiliateSourceScrape = async (
       } else {
         createdCandidateCount += 1;
       }
+      if (automaticallyPublishCandidates) {
+        automaticallyPublishedCandidateCount += 1;
+      }
     }
 
     const finishedRun = await runs.update({
@@ -1894,6 +1910,7 @@ export const runAffiliateSourceScrape = async (
           createdCandidateCount,
           updatedCandidateCount,
           rejectedCount: rejectedCandidates.length,
+          automaticallyPublishedCandidateCount,
           rejectionSummary,
           rejectedCandidates: rejectedCandidates.slice(0, 25),
         },

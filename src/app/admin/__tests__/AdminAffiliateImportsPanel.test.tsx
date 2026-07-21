@@ -80,6 +80,9 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       if (url.startsWith('/api/admin/affiliate-discoveries')) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
+      if (url === '/api/admin/affiliate-intakes') {
+        return Promise.resolve(jsonResponse({ intakes: [] }));
+      }
       if (method === 'POST' && url === '/api/admin/affiliate-sources/source_1/scrape') {
         return firstScrape.promise;
       }
@@ -151,6 +154,40 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       screen.getAllByRole('button', { name: /scrape/i }).forEach((button) => {
         expect(button).not.toBeDisabled();
       });
+    });
+  });
+
+  it('separates source intake, sources, and candidates into sub-tabs', async () => {
+    const fetchMock = jest.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/admin/affiliate-sources') {
+        return Promise.resolve(jsonResponse({ sources: sourceRows }));
+      }
+      if (url.startsWith('/api/admin/affiliate-discoveries')) {
+        return Promise.resolve(jsonResponse({ candidates: [] }));
+      }
+      if (url === '/api/admin/affiliate-intakes') {
+        return Promise.resolve(jsonResponse({ intakes: [] }));
+      }
+      return Promise.resolve(jsonResponse({ error: `Unexpected fetch ${url}` }, false));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Source Intake' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Sources (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Candidates (0)' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Candidates (0)' }));
+    expect(screen.getByText('Discovered Events, Teams, Rentals And Clubs')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Source Intake' }));
+    expect(screen.getByText('Capture source evidence first. Mapping and publication remain separate reviewed steps.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/affiliate-intakes', { credentials: 'include' });
     });
   });
 });

@@ -36,6 +36,7 @@ type ScrapeRunLogSummary = {
   createdCandidateCount?: number;
   updatedCandidateCount?: number;
   rejectedCount?: number;
+  automaticallyPublishedCandidateCount?: number;
   rejectionSummary?: Record<string, number>;
 };
 
@@ -48,6 +49,7 @@ type ScheduledScrapeSuccess = {
   createdCandidateCount: number;
   updatedCandidateCount: number;
   rejectedCount: number;
+  automaticallyPublishedCandidateCount: number;
   touchedApprovalCandidateCount: number;
   pendingApprovalCandidateCount: number;
 };
@@ -504,6 +506,7 @@ const summarizeRunResult = async (
     createdCandidateCount: readNumber(logs.createdCandidateCount),
     updatedCandidateCount: readNumber(logs.updatedCandidateCount),
     rejectedCount: readNumber(logs.rejectedCount),
+    automaticallyPublishedCandidateCount: readNumber(logs.automaticallyPublishedCandidateCount),
     touchedApprovalCandidateCount,
     pendingApprovalCandidateCount,
   };
@@ -515,6 +518,7 @@ const resultLine = (result: ScheduledScrapeResultRow): string => {
       `- ${result.sourceName}: succeeded`,
       `${result.createdCandidateCount} created`,
       `${result.updatedCandidateCount} updated`,
+      `${result.automaticallyPublishedCandidateCount} automatically published`,
       `${result.rejectedCount} rejected`,
       `${result.pendingApprovalCandidateCount} pending approval`,
     ].join(', ');
@@ -545,6 +549,9 @@ const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
   const updated = result.results.reduce((total, row) => (
     row.status === 'SUCCEEDED' ? total + row.updatedCandidateCount : total
   ), 0);
+  const automaticallyPublished = result.results.reduce((total, row) => (
+    row.status === 'SUCCEEDED' ? total + row.automaticallyPublishedCandidateCount : total
+  ), 0);
   const rejected = result.results.reduce((total, row) => (
     row.status === 'SUCCEEDED' ? total + row.rejectedCount : total
   ), 0);
@@ -567,6 +574,7 @@ const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
     `Full scrapes skipped: ${skipped}`,
     `New candidates: ${created}`,
     `Updated candidates: ${updated}`,
+    `Automatically published: ${automaticallyPublished}`,
     `Rejected rows: ${rejected}`,
     `Pending approval: ${pendingApproval}`,
     `Lightweight checks: ${result.lightweightSourceCount}`,
@@ -647,6 +655,7 @@ export const runDueAffiliateScrapes = async (
       try {
         const scrapeResult = await runAffiliateSourceScrape(source.id, {
           requestedByUserId: null,
+          importMode: 'AUTOMATIC',
         });
         results.push(await summarizeRunResult(source, scrapeResult));
       } catch (error) {
