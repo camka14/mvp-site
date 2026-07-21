@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,8 +99,19 @@ export async function GET(req: NextRequest) {
       { id: 'asc' },
     ],
   });
+  const session = await getOptionalSession(req);
+  const organization = organizationId
+    ? await prisma.organizations.findUnique({ where: { id: organizationId }, select: { id: true, ownerId: true } })
+    : null;
+  const canExposeAffiliateDestination = session
+    ? await hasOrgPermission(session, organization, ORG_PERMISSIONS.FIELDS_MANAGE)
+    : false;
 
-  return NextResponse.json({ facilities: facilities }, { status: 200 });
+  return NextResponse.json({
+    facilities: canExposeAffiliateDestination
+      ? facilities
+      : facilities.map((facility: Record<string, any>) => protectAffiliateRow(facility, 'facility')),
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

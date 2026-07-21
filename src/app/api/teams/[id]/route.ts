@@ -42,6 +42,7 @@ import {
   deleteOrArchiveEventTeam,
   toDeleteOrArchiveResponse,
 } from '@/server/deletion/archivePolicy';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -470,8 +471,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!team) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
+  const session = await getOptionalSession(req);
   if (isAdminOnlyCanonicalTeam(team as Record<string, unknown>)) {
-    const session = await getOptionalSession(req);
     const canReadHiddenTeam = session
       ? await hasGlobalTeamAdminAccess(session) || await hasOrganizationTeamManagementAccess(id, session)
       : false;
@@ -479,7 +480,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
   }
-  return NextResponse.json(withTeamRoleAliases(team as any), { status: 200 });
+  const canExposeAffiliateDestination = session
+    ? await hasGlobalTeamAdminAccess(session) || await hasOrganizationTeamManagementAccess(id, session) || await canManageCanonicalTeam({
+      teamId: id,
+      userId: session.userId,
+      isAdmin: session.isAdmin,
+    }, prisma)
+    : false;
+  const responseTeam = withTeamRoleAliases(team as any);
+  return NextResponse.json(
+    canExposeAffiliateDestination ? responseTeam : protectAffiliateRow(responseTeam, 'team'),
+    { status: 200 },
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

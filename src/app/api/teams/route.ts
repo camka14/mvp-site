@@ -25,6 +25,7 @@ import {
 } from '@/server/teams/teamMembership';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 import { inferTeamJoinPolicyFromOpenRegistration } from '@/server/teams/teamJoinPolicy';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -207,8 +208,10 @@ export async function GET(req: NextRequest) {
     offset: normalizedOffset,
   }, prisma);
   const pageRows = teams.slice(0, normalizedLimit);
+  const responseTeams = withTeamRoleAliasesList(pageRows as Record<string, any>[])
+    .map((team) => (includeAdminOnly ? team : protectAffiliateRow(team, 'team')));
   return NextResponse.json({
-    teams: withTeamRoleAliasesList(pageRows as Record<string, any>[]),
+    teams: responseTeams,
     pagination: {
       limit: normalizedLimit,
       offset: normalizedOffset,

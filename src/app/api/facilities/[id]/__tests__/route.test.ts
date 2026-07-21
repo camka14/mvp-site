@@ -13,10 +13,14 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const hasOrgPermissionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
+  requireSession: requireSessionMock,
+}));
 jest.mock('@/server/accessControl', () => ({
   hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
@@ -33,6 +37,7 @@ describe('PATCH /api/facilities/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    getOptionalSessionMock.mockResolvedValue(null);
     hasOrgPermissionMock.mockResolvedValue(true);
     prismaMock.facilities.findUnique.mockResolvedValue({
       id: 'facility_1',

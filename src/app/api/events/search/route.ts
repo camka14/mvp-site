@@ -18,6 +18,7 @@ import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
 import { getEventTagsForEventIds, slugifyEventTagName } from '@/server/eventTags';
 import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
 import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -709,14 +710,14 @@ export async function POST(req: NextRequest) {
   const normalized = eventsWithParticipants.map((event) => {
     const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
     const organizationId = typeof event.organizationId === 'string' ? event.organizationId : '';
-    return toEventResponse({
+    return protectAffiliateRow(toEventResponse({
       ...event,
       organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(event.id) ?? [],
       divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
       divisionDetails,
       tags: tagsByEventId.get(event.id) ?? [],
-    });
+    }), 'event');
   });
   return NextResponse.json({
     events: normalized,

@@ -180,9 +180,10 @@ describe('POST /api/events/search', () => {
         id: 'event_troutdale_basketball',
         name: "Men's Basketball League",
         eventType: 'LEAGUE',
-        affiliateUrl: 'https://www.troutdaleindoorsports.com/baksetball',
+        affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_troutdale_basketball\//),
         sourceType: 'AFFILIATE_IMPORT',
         sourceId: 'candidate_troutdale',
+        sourceUrl: null,
       }),
     ]);
   });

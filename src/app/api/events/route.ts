@@ -52,6 +52,7 @@ import {
   normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
 import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 import { loadRelationalEventDivisionIdsByEventId } from '@/server/events/eventDivisionProjection';
 
 export const dynamic = 'force-dynamic';
@@ -962,7 +963,7 @@ export async function GET(req: NextRequest) {
   const normalized = eventsWithParticipantIds.map((row) => {
     const divisionDetails = divisionDetailsByEventId.get(row.id) ?? [];
     const organizationId = typeof row.organizationId === 'string' ? row.organizationId : '';
-    return toEventResponse({
+    const response = toEventResponse({
       ...row,
       organization: organizationId ? organizationsById.get(organizationId) ?? null : null,
       officialIds: officialIdsByEventId.get(row.id) ?? [],
@@ -970,6 +971,11 @@ export async function GET(req: NextRequest) {
       divisionDetails,
       tags: tagsByEventId.get(row.id) ?? [],
     });
+    const canExposeAffiliateDestination = isAdminSession
+      || row.hostId === sessionUserId
+      || (sessionUserId ? Array.isArray(row.assistantHostIds) && row.assistantHostIds.includes(sessionUserId) : false)
+      || (Boolean(organizationId) && canViewOrganizationDrafts);
+    return canExposeAffiliateDestination ? response : protectAffiliateRow(response, 'event');
   });
 
   return NextResponse.json({

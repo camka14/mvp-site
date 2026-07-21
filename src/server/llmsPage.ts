@@ -28,6 +28,7 @@ import {
 import { getPublicEventSeoData } from '@/server/publicSearchSeo';
 
 const FIRST_PARTY_HOSTS = new Set(['bracket-iq.com', 'www.bracket-iq.com']);
+const isProtectedOutboundPath = (pathname: string): boolean => pathname === '/out' || pathname.startsWith('/out/');
 const REMOVED_HTML_SELECTORS = [
   'script',
   'style',
@@ -78,7 +79,7 @@ const firstPartyUrl = (pathOrUrl: string | null | undefined): string | null => {
   if (!pathOrUrl) return null;
   try {
     const parsed = new URL(pathOrUrl, SITE_URL);
-    return FIRST_PARTY_HOSTS.has(parsed.hostname.toLowerCase())
+    return FIRST_PARTY_HOSTS.has(parsed.hostname.toLowerCase()) && !isProtectedOutboundPath(parsed.pathname)
       ? `${SITE_URL}${parsed.pathname}${parsed.search}${parsed.hash}`
       : null;
   } catch {
@@ -125,7 +126,10 @@ const resolveHtmlLink = (
   try {
     const parsed = new URL(href, sourceUrl);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    if (parsed.origin === sourceUrl.origin || FIRST_PARTY_HOSTS.has(parsed.hostname.toLowerCase())) {
+    if (
+      !isProtectedOutboundPath(parsed.pathname)
+      && (parsed.origin === sourceUrl.origin || FIRST_PARTY_HOSTS.has(parsed.hostname.toLowerCase()))
+    ) {
       return `${SITE_URL}${parsed.pathname}${parsed.search}${parsed.hash}`;
     }
     return allowExternalLinks ? parsed.toString() : null;
@@ -294,7 +298,7 @@ export const renderOrganizationCatalogMarkdown = (catalog: PublicOrganizationCat
   }
   if (teams.length) {
     sections.push('## Teams', ...teams.map((team) => {
-      const internalRegistrationUrl = firstPartyUrl(team.registrationUrl);
+      const internalRegistrationUrl = team.affiliateUrl ? null : firstPartyUrl(team.registrationUrl);
       const label = internalRegistrationUrl ? markdownLink(team.name, internalRegistrationUrl) : team.name;
       return `- ${label}: ${team.sport ?? 'Sport TBD'}; ${team.division ?? 'Open'}; ${team.currentSize}${team.teamSize > 0 ? `/${team.teamSize}` : ''} members.${team.affiliateUrl ? ' External registration exists, but its destination is intentionally omitted.' : ''}`;
     }));

@@ -218,11 +218,6 @@ export default function EventCard({
       return null;
     }
 
-    const organizationWebsite = normalizeExternalHttpUrl(organization.website) ?? '';
-    if (isAffiliateEvent) {
-      return organizationWebsite || affiliateUrl || null;
-    }
-
     const publicSlug = typeof organization.publicSlug === 'string' ? organization.publicSlug.trim() : '';
     if (publicSlug) {
       return `/o/${encodeURIComponent(publicSlug)}`;
@@ -230,7 +225,7 @@ export default function EventCard({
 
     const organizationId = typeof organization.$id === 'string' ? organization.$id.trim() : '';
     return organizationId ? `/organizations/${encodeURIComponent(organizationId)}` : null;
-  }, [affiliateUrl, event.organization, isAffiliateEvent]);
+  }, [event.organization]);
   const hostedByText = `Hosted by ${isAffiliateEvent && event.organizerName ? event.organizerName : hostLabel}`;
 
   const participantCapacity = useMemo(

@@ -111,6 +111,23 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('replaces affiliate destinations in public team lists', async () => {
+    findManyMock.mockResolvedValue([{
+      id: 'team_affiliate',
+      name: 'Partner Academy',
+      playerIds: [],
+      pending: [],
+      teamSize: 12,
+      affiliateUrl: 'https://partner.example.com/register',
+    }]);
+
+    const response = await GET(new NextRequest('http://localhost/api/teams?limit=25'));
+    const payload = await response.json();
+
+    expect(payload.teams[0].affiliateUrl).toMatch(/^https:\/\/bracket-iq\.com\/out\/team\/team_affiliate\//);
+    expect(JSON.stringify(payload)).not.toContain('partner.example.com');
+  });
+
   it('includes admin-only organization teams for users who can manage that organization', async () => {
     const session = { userId: 'owner_1', isAdmin: false };
     const organization = {

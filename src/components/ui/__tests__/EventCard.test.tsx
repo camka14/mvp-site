@@ -107,7 +107,7 @@ describe('EventCard affiliate schedule display', () => {
     expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
 
-  it('links affiliate organization hosts to the source website', () => {
+  it('keeps affiliate organization host links on BracketIQ', () => {
     renderWithMantine(
       <EventCard
         event={createEvent({
@@ -123,7 +123,7 @@ describe('EventCard affiliate schedule display', () => {
 
     expect(screen.getByRole('link', { name: 'Hosted by Rose City Volleyball' })).toHaveAttribute(
       'href',
-      'https://rosecityvolleyball.com/',
+      '/organizations/org_1',
     );
   });
 

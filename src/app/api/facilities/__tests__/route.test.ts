@@ -13,10 +13,14 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const hasOrgPermissionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
+  requireSession: requireSessionMock,
+}));
 jest.mock('@/server/accessControl', () => ({
   hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
@@ -34,6 +38,7 @@ describe('/api/facilities', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    getOptionalSessionMock.mockResolvedValue(null);
     hasOrgPermissionMock.mockResolvedValue(true);
   });
 
@@ -70,6 +75,23 @@ describe('/api/facilities', () => {
       name: 'River City Sports Complex',
     }));
     expect(json.facilities[0]).not.toHaveProperty('$id');
+  });
+
+  it('replaces affiliate destinations in anonymous facility lists', async () => {
+    prismaMock.facilities.findMany.mockResolvedValueOnce([{
+      id: 'facility_affiliate',
+      organizationId: 'org_1',
+      name: 'Partner Courts',
+      location: 'Gresham, OR',
+      affiliateUrl: 'https://partner.example.com/book',
+    }]);
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
+
+    const response = await GET(new NextRequest('http://localhost/api/facilities?organizationId=org_1'));
+    const json = await response.json();
+
+    expect(json.facilities[0].affiliateUrl).toMatch(/^https:\/\/bracket-iq\.com\/out\/facility\/facility_affiliate\//);
+    expect(JSON.stringify(json)).not.toContain('partner.example.com');
   });
 
   it('creates a facility with field management permission', async () => {

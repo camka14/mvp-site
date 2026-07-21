@@ -279,11 +279,12 @@ describe('/api/organizations', () => {
             id: 'facility_affiliate',
             name: 'Affiliate Rental Court',
             coordinates: [-122.4314, 45.5001],
-            affiliateUrl: 'https://example.com/book',
+            affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/facility\/facility_affiliate\//),
           }),
         ],
       }),
     ]);
+    expect(JSON.stringify(json)).not.toContain('example.com/book');
   });
 
   it('keeps unlisted organizations available for the authenticated owner management list', async () => {

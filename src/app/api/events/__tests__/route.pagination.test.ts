@@ -22,6 +22,7 @@ const prismaMock = {
 };
 const getTokenFromRequestMock = jest.fn();
 const verifySessionTokenMock = jest.fn();
+const isSessionTokenCurrentMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => ({
@@ -33,7 +34,9 @@ jest.mock('@/server/accessControl', () => ({
   canManageEvent: jest.fn(),
   hasOrgPermission: jest.fn(),
 }));
-jest.mock('@/server/authSessions', () => ({ isSessionTokenCurrent: jest.fn() }));
+jest.mock('@/server/authSessions', () => ({
+  isSessionTokenCurrent: (...args: unknown[]) => isSessionTokenCurrentMock(...args),
+}));
 jest.mock('@/app/api/events/participantCounts', () => ({
   withEventAttendeeCounts: async (events: unknown[]) => events,
 }));
@@ -104,6 +107,7 @@ describe('GET /api/events pagination', () => {
     jest.clearAllMocks();
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
+    isSessionTokenCurrentMock.mockReturnValue(false);
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.organizations.findMany.mockResolvedValue([]);
   });
@@ -162,6 +166,49 @@ describe('GET /api/events pagination', () => {
         nextOffset: 1,
         hasMore: false,
       },
+    }));
+  });
+
+  it('replaces affiliate destinations and source provenance for anonymous lists', async () => {
+    prismaMock.events.findMany.mockResolvedValue([event('event_1', {
+      id: 'event_affiliate',
+      affiliateUrl: 'https://partner.example.com/register',
+      sourceUrl: 'https://partner.example.com/source',
+    })]);
+
+    const response = await GET(new NextRequest(
+      'http://localhost/api/events?organizationId=organization_1',
+    ));
+    const payload = await response.json();
+
+    expect(payload.events[0]).toEqual(expect.objectContaining({
+      affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/event\/event_affiliate\//),
+      sourceUrl: null,
+    }));
+    expect(JSON.stringify(payload)).not.toContain('partner.example.com');
+  });
+
+  it('preserves the raw destination for the event host management list', async () => {
+    getTokenFromRequestMock.mockReturnValue('session-token');
+    verifySessionTokenMock.mockReturnValue({ userId: 'host_1', isAdmin: false });
+    isSessionTokenCurrentMock.mockReturnValue(true);
+    prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null, sessionVersion: 1 });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'organization_1', ownerId: 'owner_1' });
+    prismaMock.events.findMany.mockResolvedValue([event('event_1', {
+      id: 'event_affiliate',
+      hostId: 'host_1',
+      affiliateUrl: 'https://partner.example.com/register',
+      sourceUrl: 'https://partner.example.com/source',
+    })]);
+
+    const response = await GET(new NextRequest(
+      'http://localhost/api/events?organizationId=organization_1',
+    ));
+    const payload = await response.json();
+
+    expect(payload.events[0]).toEqual(expect.objectContaining({
+      affiliateUrl: 'https://partner.example.com/register',
+      sourceUrl: 'https://partner.example.com/source',
     }));
   });
 });

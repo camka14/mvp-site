@@ -67,6 +67,7 @@ import {
   getPublicBracketWidgetPage,
   getPublicOrganizationBySlug,
   getPublicOrganizationEventForRegistration,
+  getPublicOrganizationRentalSelectionData,
   listPublicOrganizationRentals,
   listPublicOrganizationProducts,
   listPublicOrganizationEvents,
@@ -668,7 +669,7 @@ describe('publicOrganizationCatalog', () => {
     ]);
   });
 
-  it('uses affiliate URLs for public team registration cards', async () => {
+  it('uses protected BracketIQ URLs for affiliate team registration cards', async () => {
     prismaMock.canonicalTeams.findMany.mockResolvedValue([
       {
         id: 'team_affiliate',
@@ -692,10 +693,11 @@ describe('publicOrganizationCatalog', () => {
     expect(teams).toEqual([
       expect.objectContaining({
         id: 'team_affiliate',
-        affiliateUrl: 'https://partner.example.com/teams/register',
-        registrationUrl: 'https://partner.example.com/teams/register',
+        affiliateUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/team\/team_affiliate\//),
+        registrationUrl: expect.stringMatching(/^https:\/\/bracket-iq\.com\/out\/team\/team_affiliate\//),
       }),
     ]);
+    expect(JSON.stringify(teams)).not.toContain('partner.example.com');
   });
 
   it('does not publish an unsafe historic affiliate URL as a public registration link', async () => {
@@ -874,6 +876,43 @@ describe('publicOrganizationCatalog', () => {
         detailsUrl: '/o/scsoccer/rentals',
       }),
     ]);
+  });
+
+  it('protects affiliate facility destinations in public rental selection data', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'SCSoccer',
+      publicSlug: 'scsoccer',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+    });
+    prismaMock.fields.findMany.mockResolvedValue([{
+      id: 'field_1',
+      name: 'Main Field',
+      organizationId: 'org_1',
+      facilityId: 'facility_1',
+      rentalSlotIds: ['slot_1'],
+    }]);
+    prismaMock.facilities.findMany.mockResolvedValue([{
+      id: 'facility_1',
+      name: 'Partner Park',
+      location: 'Partner Park',
+      affiliateUrl: 'https://partner.example.com/rent',
+    }]);
+    prismaMock.timeSlots.findMany.mockResolvedValue([{
+      id: 'slot_1',
+      startDate: new Date('2026-05-01T17:00:00.000Z'),
+      endDate: new Date('2026-05-01T19:00:00.000Z'),
+      price: 5000,
+    }]);
+
+    const selection = await getPublicOrganizationRentalSelectionData('scsoccer');
+    const serialized = JSON.stringify(selection);
+
+    expect(selection?.rentalOrganization.fields[0]?.facility?.affiliateUrl).toMatch(
+      /^https:\/\/bracket-iq\.com\/out\/facility\/facility_1\//,
+    );
+    expect(serialized).not.toContain('partner.example.com');
   });
 
   it('links public product cards directly to checkout pages', async () => {

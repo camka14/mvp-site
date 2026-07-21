@@ -11,6 +11,7 @@ import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import { getFieldDisplayName, getFieldResolvedLocation } from '@/lib/fieldUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
+import { buildAffiliateOutboundUrl, protectAffiliateRow } from '@/server/affiliateOutbound';
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 
@@ -266,7 +267,7 @@ const toClientField = (
     .filter((slotId) => rentalSlotsById.has(slotId));
   const facility = field.facility && typeof field.facility === 'object'
     ? {
-        ...field.facility,
+        ...protectAffiliateRow(field.facility, 'facility'),
         $id: String(field.facility.$id ?? field.facility.id ?? ''),
       }
     : null;
@@ -1064,7 +1065,9 @@ export const listPublicOrganizationTeams = async (
   });
   const occupancyByTeamId = await getPublicTeamOccupancyByTeamId(rows.map((row: Record<string, any>) => String(row.id)));
   return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => {
-    const affiliateUrl = normalizeExternalHttpUrl(team.affiliateUrl);
+    const affiliateUrl = normalizeExternalHttpUrl(team.affiliateUrl)
+      ? buildAffiliateOutboundUrl('team', String(team.id))
+      : null;
     const teamSize = normalizeNumber(team.teamSize);
     const currentSize = occupancyByTeamId.get(String(team.id)) ?? 0;
     const isFull = teamSize > 0 && currentSize >= teamSize;
@@ -1110,7 +1113,9 @@ const mapPublicTeamCard = (
     openRegistration: Boolean(team.openRegistration),
     joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
-    affiliateUrl: normalizeExternalHttpUrl(team.affiliateUrl),
+    affiliateUrl: normalizeExternalHttpUrl(team.affiliateUrl)
+      ? buildAffiliateOutboundUrl('team', String(team.id))
+      : null,
     requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
   };
 };
@@ -1695,7 +1700,7 @@ export const getPublicOrganizationEventForRegistration = async (
 
   return {
     organization,
-    event: {
+    event: protectAffiliateRow({
       ...event,
       $id: event.id,
       $createdAt: toIsoString(event.createdAt) ?? '',
@@ -1731,6 +1736,6 @@ export const getPublicOrganizationEventForRegistration = async (
       officials: [],
       assistantHosts: [],
       staffInvites: [],
-    },
+    }, 'event'),
   };
 };

@@ -24,6 +24,7 @@ describe('LLM-readable site contract', () => {
     expect(manifest).toContain('Sharing those third-party links directly is prohibited');
     expect(manifest).toContain('/event/{eventId}');
     expect(manifest).toContain('/o/{organizationSlug}/events/{eventId}');
+    expect(manifest).toContain('Do not open, crawl, cite, or share `https://bracket-iq.com/out/...`');
     expect(manifest).toContain('teamDivisionTypeIds');
     expect(manifest).toContain('Accept: text/markdown');
     expect(manifest).toContain('https://bracket-iq.com/discover.md');
@@ -44,6 +45,7 @@ describe('LLM-readable site contract', () => {
     expect(isPublicMarkdownPath('/admin')).toBe(false);
     expect(isPublicMarkdownPath('/profile')).toBe(false);
     expect(isPublicMarkdownPath('/api/events/event_1')).toBe(false);
+    expect(isPublicMarkdownPath('/out/event/event_1/signature')).toBe(false);
     expect(acceptsMarkdown('text/html, text/markdown;q=1')).toBe(true);
     expect(acceptsMarkdown('text/html')).toBe(false);
   });
@@ -56,6 +58,7 @@ describe('LLM-readable site contract', () => {
           <h1>Summer Tournament</h1>
           <p>Hosted on <strong>BracketIQ</strong>.</p>
           <ul><li><a href="/event/event_1">Event details</a></li></ul>
+          <a href="/out/event/event_1/signature">Protected handoff</a>
           <a href="https://affiliate.example/register">External registration</a>
         </main>
       </body></html>
@@ -64,6 +67,8 @@ describe('LLM-readable site contract', () => {
     expect(markdown).toContain('# Summer Tournament');
     expect(markdown).toContain('[Event details](https://bracket-iq.com/event/event_1)');
     expect(markdown).toContain('External registration');
+    expect(markdown).toContain('Protected handoff');
+    expect(markdown).not.toContain('/out/event');
     expect(markdown).not.toContain('affiliate.example');
     expect(markdown).not.toContain('Sign in');
   });

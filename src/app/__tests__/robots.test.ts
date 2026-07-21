@@ -13,7 +13,7 @@ describe('robots', () => {
       expect.arrayContaining(['/api/files/', '/api/avatars/']),
     );
     expect(rules?.disallow).toEqual(
-      expect.arrayContaining(['/api/', '/admin', '/discover', '/login']),
+      expect.arrayContaining(['/api/', '/admin', '/discover', '/login', '/out/']),
     );
   });
 });

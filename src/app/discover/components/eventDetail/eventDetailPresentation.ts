@@ -1,6 +1,5 @@
 import type { Event, TimeSlot } from '@/types';
 import { deriveDivisionTypeDisplayName } from '@/lib/divisionTypes';
-import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import type { EventDivisionOption } from './divisionRegistration';
 
 export const uniqueNonEmptyStrings = (values: Array<string | null | undefined>): string[] => {
@@ -55,13 +54,6 @@ export const getOrganizationHostedByHref = (params: {
     const organization = params.organization && typeof params.organization === 'object'
         ? params.organization
         : null;
-    const affiliateUrl = normalizeExternalHttpUrl(params.affiliateUrl) ?? '';
-
-    if (params.isAffiliateEvent) {
-        const website = normalizeExternalHttpUrl(organization?.website) ?? '';
-        return website || affiliateUrl || null;
-    }
-
     const publicSlug = typeof organization?.publicSlug === 'string' ? organization.publicSlug.trim() : '';
     if (publicSlug) {
         return `/o/${encodeURIComponent(publicSlug)}`;

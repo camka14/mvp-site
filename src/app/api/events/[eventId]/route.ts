@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { isPrismaSchemaContractError, requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
@@ -28,6 +28,7 @@ import { parseDateInputInTimeZone, resolveTimeZone } from '@/server/timeZones';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext, type LeagueDivisionConfig } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventDivisionId,
@@ -1819,25 +1820,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       : Promise.resolve(null),
   ]);
   const officialResponse = await buildEventOfficialResponse(event);
+  const optionalSession = await getOptionalSession(_req);
+  const canExposeAffiliateDestination = optionalSession
+    ? await canManageEvent(optionalSession, event)
+    : false;
+  const response = toEventResponse({
+    ...event,
+    organization: organization
+      ? {
+          ...organization,
+          publicSlug: organization.publicPageEnabled ? organization.publicSlug : null,
+          publicPageEnabled: organization.publicPageEnabled === true,
+        }
+      : undefined,
+    includePlayoffsOrPools: Boolean(event.includePlayoffs),
+    ...participantIds,
+    ...officialResponse,
+    divisionFieldIds,
+    divisionDetails,
+    playoffDivisionDetails,
+    tags,
+    staffInvites: staffInvites.map((invite) => invite),
+  });
   return NextResponse.json(
-    toEventResponse({
-      ...event,
-      organization: organization
-        ? {
-            ...organization,
-            publicSlug: organization.publicPageEnabled ? organization.publicSlug : null,
-            publicPageEnabled: organization.publicPageEnabled === true,
-          }
-        : undefined,
-      includePlayoffsOrPools: Boolean(event.includePlayoffs),
-      ...participantIds,
-      ...officialResponse,
-      divisionFieldIds,
-      divisionDetails,
-      playoffDivisionDetails,
-      tags,
-      staffInvites: staffInvites.map((invite) => invite),
-    }),
+    canExposeAffiliateDestination ? response : protectAffiliateRow(response, 'event'),
     { status: 200 },
   );
 }

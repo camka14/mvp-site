@@ -100,6 +100,30 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 60,
     message: 'Too many message notifications. Please wait before sending another message.',
   },
+  affiliateOutboundView: {
+    name: 'affiliate-outbound:view',
+    limit: 30,
+    windowSeconds: 60,
+    message: 'Too many outbound links opened. Please wait before trying again.',
+  },
+  affiliateOutboundTargetView: {
+    name: 'affiliate-outbound:target-view',
+    limit: 8,
+    windowSeconds: 5 * 60,
+    message: 'This outbound link was opened too many times. Please wait before trying again.',
+  },
+  affiliateOutboundRedirect: {
+    name: 'affiliate-outbound:redirect',
+    limit: 12,
+    windowSeconds: 60,
+    message: 'Too many outbound redirects. Please wait before trying again.',
+  },
+  affiliateOutboundTargetRedirect: {
+    name: 'affiliate-outbound:target-redirect',
+    limit: 4,
+    windowSeconds: 5 * 60,
+    message: 'This outbound redirect was requested too many times. Please wait before trying again.',
+  },
 } satisfies Record<string, RateLimitPolicy>;
 
 const normalizeLimit = (limit: number): number => (

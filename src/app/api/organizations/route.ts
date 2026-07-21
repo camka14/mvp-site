@@ -25,6 +25,7 @@ import {
 import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
 import { buildDivisionDiscoveryWhere, summarizeOrganizationDivisions } from '@/server/divisionDiscovery';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -423,7 +424,8 @@ export async function GET(req: NextRequest) {
         tags: tagsByOrganizationId.get(organization.id) ?? [],
         divisions: publicDivisionsByOrganizationId.get(organization.id) ?? [],
         divisionSummary: summarizeOrganizationDivisions(publicDivisionsByOrganizationId.get(organization.id) ?? []),
-        facilities: affiliateFacilitiesByOrganizationId.get(organization.id) ?? [],
+        facilities: (affiliateFacilitiesByOrganizationId.get(organization.id) ?? [])
+          .map((facility) => protectAffiliateRow(facility, 'facility')),
       }))
     : visiblePageRows.map((organization) => ({
         ...withOrganizationDisplayFields(organization, baseUrl),

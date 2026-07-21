@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: ['/', '/llms.txt', '/blog', '/blog/', '/discover.md', '/find-events', '/find-clubs', '/find-facilities', '/organizations/*.md$', '/api/files/', '/api/avatars/'],
-        disallow: ['/api/', '/llms/page', '/admin', '/discover', '/login', '/my-schedule', '/organizations$', '/organizations?', '/profile', '/teams', '/verify'],
+        disallow: ['/api/', '/llms/page', '/admin', '/discover', '/login', '/my-schedule', '/organizations$', '/organizations?', '/out/', '/profile', '/teams', '/verify'],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

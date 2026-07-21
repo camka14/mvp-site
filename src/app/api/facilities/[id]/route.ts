@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { hasOrgPermission } from '@/server/accessControl';
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { findPresentKeys, findUnknownKeys } from '@/server/http/strictPatch';
+import { protectAffiliateRow } from '@/server/affiliateOutbound';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +106,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  return NextResponse.json(facility, { status: 200 });
+  const session = await getOptionalSession(_req);
+  const organization = await prisma.organizations.findUnique({
+    where: { id: facility.organizationId },
+    select: { id: true, ownerId: true },
+  });
+  const canExposeAffiliateDestination = session
+    ? await hasOrgPermission(session, organization, ORG_PERMISSIONS.FIELDS_MANAGE)
+    : false;
+  return NextResponse.json(
+    canExposeAffiliateDestination ? facility : protectAffiliateRow(facility, 'facility'),
+    { status: 200 },
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

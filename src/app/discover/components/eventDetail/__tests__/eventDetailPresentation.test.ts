@@ -62,12 +62,12 @@ describe('event detail presentation helpers', () => {
             organization,
             isAffiliateEvent: true,
             affiliateUrl: 'https://affiliate.test/join',
-        })).toBe('https://rivercity.test/events');
+        })).toBe('/o/river%20city');
         expect(getOrganizationHostedByHref({
             organization: { ...organization, website: 'javascript:alert(1)' },
             isAffiliateEvent: true,
             affiliateUrl: 'https://affiliate.test/join',
-        })).toBe('https://affiliate.test/join');
+        })).toBe('/o/river%20city');
     });
 
     it('formats sport, policy, staffing, and missing-value summaries', () => {
