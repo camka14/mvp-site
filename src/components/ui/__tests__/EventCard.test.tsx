@@ -127,7 +127,7 @@ describe('EventCard affiliate schedule display', () => {
     );
   });
 
-  it('links BracketIQ organization hosts to their public organization page', () => {
+  it('links BracketIQ organization hosts to their organization profile', () => {
     renderWithMantine(
       <EventCard
         event={createEvent({
@@ -145,7 +145,7 @@ describe('EventCard affiliate schedule display', () => {
 
     expect(screen.getByRole('link', { name: 'Hosted by River City Sports Club' })).toHaveAttribute(
       'href',
-      '/o/river-city-sports',
+      '/organizations/org_1',
     );
   });
 });

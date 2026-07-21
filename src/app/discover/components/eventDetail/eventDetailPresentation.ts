@@ -54,11 +54,6 @@ export const getOrganizationHostedByHref = (params: {
     const organization = params.organization && typeof params.organization === 'object'
         ? params.organization
         : null;
-    const publicSlug = typeof organization?.publicSlug === 'string' ? organization.publicSlug.trim() : '';
-    if (publicSlug) {
-        return `/o/${encodeURIComponent(publicSlug)}`;
-    }
-
     const organizationId = getOrganizationId(organization, params.organizationId);
     return organizationId ? `/organizations/${encodeURIComponent(organizationId)}` : null;
 };

@@ -36,6 +36,7 @@ describe('PublicEventOverview', () => {
         renderWithMantine(<PublicEventOverview {...baseProps} />);
 
         expect(screen.getByRole('link', { name: /River City Sports Club/ })).toHaveAttribute('href', '/organizations/river-city');
+        expect(screen.getByText('Open organization profile')).toBeInTheDocument();
         expect(screen.getByText('Registration is open')).toBeInTheDocument();
         expect(screen.getByText('A welcoming local league.')).toBeInTheDocument();
         expect(screen.getByText('Starts')).toBeInTheDocument();
@@ -43,18 +44,18 @@ describe('PublicEventOverview', () => {
         expect(screen.getByText('123 Main St')).toBeInTheDocument();
     });
 
-    it('labels an affiliate organization action as an external website', () => {
+    it('keeps affiliate organization actions on the internal organization profile', () => {
         renderWithMantine(
             <PublicEventOverview
                 {...baseProps}
-                hostedByHref="https://example.test/event"
+                hostedByHref="/organizations/river-city"
                 isAffiliateEvent
             />,
         );
 
-        const link = screen.getByRole('link', { name: /Open website/ });
-        expect(link).toHaveAttribute('target', '_blank');
-        expect(link).toHaveAttribute('rel', 'noreferrer');
+        const link = screen.getByRole('link', { name: /Open organization profile/ });
+        expect(link).toHaveAttribute('href', '/organizations/river-city');
+        expect(link).not.toHaveAttribute('target');
     });
 
     it('renders the evergreen schedule without an end row', () => {

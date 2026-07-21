@@ -36,7 +36,6 @@ export function PublicEventOverview({
     hostedByHref,
     hostedByLabel,
     hostedByHandle,
-    isAffiliateEvent,
     registrationStatusClassName,
     registrationStatusLabel,
     isEvergreenProgram,
@@ -87,7 +86,7 @@ export function PublicEventOverview({
                                         <Text size="sm" c="dimmed">Hosted by</Text>
                                         <Text fw={800} className="truncate text-slate-950">{hostedByLabel}</Text>
                                         <Text size="sm" c="dimmed" className="truncate group-hover:text-slate-700">
-                                            {isAffiliateEvent ? 'Open website' : 'Open organization page'}
+                                            Open organization profile
                                         </Text>
                                     </div>
                                 </a>

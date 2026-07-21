@@ -218,11 +218,6 @@ export default function EventCard({
       return null;
     }
 
-    const publicSlug = typeof organization.publicSlug === 'string' ? organization.publicSlug.trim() : '';
-    if (publicSlug) {
-      return `/o/${encodeURIComponent(publicSlug)}`;
-    }
-
     const organizationId = typeof organization.$id === 'string' ? organization.$id.trim() : '';
     return organizationId ? `/organizations/${encodeURIComponent(organizationId)}` : null;
   }, [event.organization]);
