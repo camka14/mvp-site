@@ -23,6 +23,7 @@ const campaign = {
 const prismaMock = {
   affiliateSourceDiscoveryCampaigns: {
     findUnique: jest.fn(async () => campaign),
+    findMany: jest.fn(async () => []),
     update: jest.fn(async ({ data }) => ({ ...campaign, ...data })),
   },
   affiliateSourceDiscoveryRuns: {
@@ -39,6 +40,11 @@ const prismaMock = {
     update: jest.fn(async ({ where, data }) => {
       const run = queuedRuns.find((entry) => entry.id === where.id);
       Object.assign(run, data);
+      return run;
+    }),
+    create: jest.fn(async ({ data }) => {
+      const run = { ...data };
+      queuedRuns.push(run);
       return run;
     }),
   },
@@ -125,6 +131,7 @@ jest.mock('@/server/affiliateImports/sourceIntake', () => ({
 import {
   applyAffiliateSourceDomainPolicy,
   processNextAffiliateSourceDiscoveryRun,
+  queueDueAffiliateSourceDiscoveryRuns,
 } from '@/server/affiliateImports/sourceDiscovery';
 
 describe('affiliate source discovery orchestration', () => {
@@ -133,6 +140,10 @@ describe('affiliate source discovery orchestration', () => {
     idCounter = 0;
     currentResult = null;
     currentPolicy = null;
+    campaign.maxQueriesPerRun = 1;
+    campaign.queryCursor = 0;
+    campaign.sourceTypeHints = ['CLUB'];
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([]);
     queuedRuns.splice(0, queuedRuns.length,
       { id: 'run_1', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
       { id: 'run_2', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
@@ -212,6 +223,38 @@ describe('affiliate source discovery orchestration', () => {
     expect(result?.run.status).toBe('FAILED');
     expect(prismaMock.affiliateSourceDiscoveryCampaigns.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ queryCursor: 0 }),
+    }));
+  });
+
+  it('queues only the highest-priority due location', async () => {
+    queuedRuns.splice(0, queuedRuns.length);
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([
+      { ...campaign, id: 'campaign_2', name: 'Los Angeles', metadata: { priorityRank: 2 } },
+      { ...campaign, id: 'campaign_1', name: 'New York', metadata: { priorityRank: 1 } },
+    ]);
+
+    await expect(queueDueAffiliateSourceDiscoveryRuns(new Date('2026-07-21T12:00:00Z'))).resolves.toBe(1);
+    expect(queuedRuns).toHaveLength(1);
+    expect(queuedRuns[0].campaignId).toBe('campaign_1');
+  });
+
+  it('makes an incomplete location query cycle immediately due again', async () => {
+    campaign.maxQueriesPerRun = 2;
+    campaign.sourceTypeHints = ['CLUB', 'TRYOUT'];
+    const now = new Date('2026-07-21T12:00:00Z');
+    const firecrawlClient = {
+      searchSources: jest.fn(async () => ({ request: {}, response: {}, rows: [], providerJobId: null })),
+      mapSourceUrls: jest.fn(),
+      scrapeSourcePage: jest.fn(),
+    };
+
+    await processNextAffiliateSourceDiscoveryRun(
+      { runId: 'run_1' },
+      { firecrawlClient, now: () => now },
+    );
+
+    expect(prismaMock.affiliateSourceDiscoveryCampaigns.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ queryCursor: 1, nextRunAt: now }),
     }));
   });
 });

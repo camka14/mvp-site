@@ -24,8 +24,37 @@ const TYPE_TERMS: Record<string, string[]> = {
   DIRECTORY: ['club directory', 'sports directory'],
 };
 
+const QUERY_PROFILES = [
+  {
+    templateKey: 'clubs-programs',
+    sourceTypes: ['CLUB'],
+    queryTerms: 'clubs academies competitive programs',
+  },
+  {
+    templateKey: 'tryouts-evaluations',
+    sourceTypes: ['TRYOUT'],
+    queryTerms: 'tryouts evaluations',
+  },
+  {
+    templateKey: 'leagues-tournaments-events',
+    sourceTypes: ['EVENT', 'LEAGUE', 'TOURNAMENT'],
+    queryTerms: 'leagues tournaments events registration',
+  },
+  {
+    templateKey: 'camps-clinics-open-play',
+    sourceTypes: ['CAMP', 'CLINIC', 'OPEN_PLAY'],
+    queryTerms: 'camps clinics open play pickup',
+  },
+  {
+    templateKey: 'facilities-rentals',
+    sourceTypes: ['RENTAL'],
+    queryTerms: 'field court facility rentals reservations',
+  },
+] as const;
+
 const US_DISCOVERY_SPORT_TERMS: Record<string, string> = {
   Football: 'American football',
+  'Grass Soccer': 'outdoor soccer',
   'Indoor Soccer': 'indoor soccer',
 };
 
@@ -100,30 +129,40 @@ export const generateAffiliateSourceDiscoveryQueries = (
   const combinations: AffiliateSourceDiscoveryQuery[] = [];
   const queryRegion = campaign.location?.trim() || campaign.region.trim();
   const types = Array.from(new Set(campaign.sourceTypeHints.map((value) => value.toUpperCase())));
-  sports.forEach((sport) => {
-    types.forEach((sourceType) => {
-      const terms = TYPE_TERMS[sourceType] ?? [sourceType.toLowerCase().replace(/_/g, ' ')];
-      terms.forEach((term, termIndex) => combinations.push({
-        query: `${queryRegion} ${discoverySportTerm(sport.name)} ${term} official`,
+  const typeSet = new Set(types);
+  QUERY_PROFILES.forEach((profile) => {
+    const sourceType = profile.sourceTypes.find((type) => typeSet.has(type));
+    if (!sourceType) return;
+    sports.forEach((sport) => combinations.push({
+        query: `${queryRegion} ${discoverySportTerm(sport.name)} ${profile.queryTerms} official`,
         sportId: sport.id,
         sportName: sport.name,
         sourceType,
-        templateKey: `${sourceType}:${termIndex}`,
-      }));
-    });
+        templateKey: `PROFILE:${profile.templateKey}`,
+    }));
   });
-  combinations.push({
+  const broadDirectoryQuery: AffiliateSourceDiscoveryQuery = {
     query: `${queryRegion} sports clubs leagues tournaments rentals directory`,
     sportId: null,
     sportName: null,
     sourceType: 'DIRECTORY',
     templateKey: 'broad-directory',
-  });
-  if (!combinations.length) return { queries: [], nextCursor: 0 };
+  };
+  if (!combinations.length) return { queries: [broadDirectoryQuery], nextCursor: 0 };
   const start = Math.max(0, cursor) % combinations.length;
-  const limit = Math.min(campaign.maxQueriesPerRun, combinations.length);
-  const queries = Array.from({ length: limit }, (_, index) => combinations[(start + index) % combinations.length]);
-  return { queries, nextCursor: (start + limit) % combinations.length };
+  const totalLimit = Math.min(campaign.maxQueriesPerRun, combinations.length + 1);
+  const sportQueryLimit = totalLimit > 1
+    ? Math.min(totalLimit - 1, combinations.length - start)
+    : 0;
+  const queries = Array.from(
+    { length: sportQueryLimit },
+    (_, index) => combinations[start + index],
+  );
+  queries.push(broadDirectoryQuery);
+  const nextCursor = start + sportQueryLimit >= combinations.length
+    ? 0
+    : start + sportQueryLimit;
+  return { queries, nextCursor };
 };
 
 const invalidUrlReason = (value: string): { code: string; reason: string } | null => {

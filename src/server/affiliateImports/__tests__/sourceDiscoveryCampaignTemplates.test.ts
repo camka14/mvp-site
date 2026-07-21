@@ -1,6 +1,7 @@
 import {
   CENSUS_CITY_CAMPAIGN_SOURCE,
   US_CITY_DISCOVERY_CAMPAIGN_TEMPLATES,
+  US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION,
 } from '@/server/affiliateImports/sourceDiscoveryCampaignTemplates';
 
 describe('U.S. city discovery campaign templates', () => {
@@ -27,5 +28,9 @@ describe('U.S. city discovery campaign templates', () => {
       ]));
     expect(US_CITY_DISCOVERY_CAMPAIGN_TEMPLATES.find((entry) => entry.name === 'Dallas-Fort Worth Metro Sports Sources')?.coveredCities)
       .toHaveLength(2);
+  });
+
+  it('tracks the location-first all-sports query strategy version', () => {
+    expect(US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION).toBe(4);
   });
 });

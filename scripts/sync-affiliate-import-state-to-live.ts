@@ -69,7 +69,7 @@ const localClient = new Client({
 
 const liveClient = new Client({
   connectionString: withoutSslMode(requireUrl("DATABASE_URL_LIVE")),
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL_LIVE_SSL === "false" ? false : { rejectUnauthorized: false },
 });
 
 const upsertById = async (
@@ -217,7 +217,11 @@ const main = async () => {
   }
 
   process.env.DATABASE_URL = requireUrl("DATABASE_URL_LIVE");
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = "false";
+  if (process.env.DATABASE_URL_LIVE_SSL === "false") {
+    delete process.env.PG_SSL_REJECT_UNAUTHORIZED;
+  } else {
+    process.env.PG_SSL_REJECT_UNAUTHORIZED = "false";
+  }
   process.env.PG_POOL_MAX = "1";
   process.env.PG_CONNECTION_TIMEOUT_MS = "15000";
   const [{ prisma }, { reclassifyAffiliateCandidate }] = await Promise.all([

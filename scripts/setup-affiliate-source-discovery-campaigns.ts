@@ -2,20 +2,19 @@ import dotenv from 'dotenv';
 import { createId } from '../src/lib/id';
 import {
   CENSUS_CITY_CAMPAIGN_SOURCE,
+  US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION,
   US_CITY_DISCOVERY_CAMPAIGN_TEMPLATES,
 } from '../src/server/affiliateImports/sourceDiscoveryCampaignTemplates';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
-const preferredSports = ['Indoor Soccer', 'Indoor Volleyball', 'Basketball', 'Baseball', 'Softball', 'Hockey', 'Lacrosse', 'Football', 'Ultimate Frisbee'];
-
 const main = async () => {
   const { prisma } = await import('../src/lib/prisma');
   const db = prisma as any;
   try {
     const sports = await db.sports.findMany({
-      where: { name: { in: preferredSports } },
+      where: { name: { not: 'Other' } },
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
     });
@@ -36,7 +35,14 @@ const main = async () => {
         anchorPopulation: template.anchorPopulation,
         coveredCities: template.coveredCities,
         censusSource: CENSUS_CITY_CAMPAIGN_SOURCE,
+        queryStrategyVersion: US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION,
       };
+      const existingQueryStrategyVersion = Number(
+        existing?.metadata && typeof existing.metadata === 'object'
+          ? (existing.metadata as Record<string, unknown>).queryStrategyVersion
+          : 0,
+      );
+      const shouldResetQueryCursor = existingQueryStrategyVersion !== US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION;
       campaigns.push(await db.affiliateSourceDiscoveryCampaigns.upsert({
         where: { name: template.name },
         create: {
@@ -58,6 +64,7 @@ const main = async () => {
           location: template.location,
           sportIds: sports.map((sport: any) => sport.id),
           sourceTypeHints: ['CLUB', 'TRYOUT', 'EVENT', 'LEAGUE', 'TOURNAMENT', 'CAMP', 'CLINIC', 'OPEN_PLAY', 'RENTAL', 'DIRECTORY'],
+          queryCursor: shouldResetQueryCursor ? 0 : undefined,
           metadata,
         },
       }));

@@ -10,6 +10,22 @@ npm run affiliate:discovery:setup
 
 One campaign may cover multiple top-50 cities when they belong to the same obvious sports market. This reduces duplicate provider queries and overlapping intakes. The campaign keeps every covered city and Census rank in metadata so coverage remains auditable.
 
+## Location-First Search Order
+
+National discovery completes one metropolitan area before advancing to the next priority-ranked location. Each campaign includes every canonical sport except the generic `Other` fallback. Within a location, queries rotate across all selected sports before advancing to the next source-type template. `Grass Soccer` searches use the public-facing phrase `outdoor soccer`.
+
+Every bounded run reserves one query for the broad regional sports directory search. The remaining slots advance a persisted cursor through the location's complete sport/type matrix. Successful partial cycles become immediately due again; a completed cycle returns its cursor to zero and resumes on the normal campaign cadence, allowing the next city to start. Campaign setup records the query-strategy version and resets the cursor once when the strategy changes; rerunning the same setup version does not reset progress or results.
+
+The matrix uses five consolidated searches per sport:
+
+1. Clubs, academies, and competitive programs.
+2. Tryouts and evaluations.
+3. Leagues, tournaments, events, and registration.
+4. Camps, clinics, open play, and pickup.
+5. Fields, courts, facilities, rentals, and reservations.
+
+With 14 concrete sports, one city requires 70 sport-profile searches. Nine profile searches plus one broad directory search fit in each default run, so a complete city uses eight bounded runs and 78 Firecrawl Search requests instead of the previous 358-request phrase matrix.
+
 | Priority | Campaign | Search region | Top-50 cities covered |
 | ---: | --- | --- | --- |
 | 1 | New York Metro Sports Sources | New York metropolitan area | New York (1) |

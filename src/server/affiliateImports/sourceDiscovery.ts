@@ -590,9 +590,13 @@ export const processNextAffiliateSourceDiscoveryRun = async (
   if (!campaign) {
     return db().runs.update({ where: { id: run.id }, data: { status: 'FAILED', finishedAt: now, errorMessage: 'Campaign not found.' } });
   }
-  const sports = await db().sports.findMany({
+  const unorderedSports = await db().sports.findMany({
     where: { id: { in: campaign.sportIds } },
     select: { id: true, name: true },
+  });
+  const sports = campaign.sportIds.flatMap((sportId: string) => {
+    const sport = unorderedSports.find((row: { id: string }) => row.id === sportId);
+    return sport ? [sport] : [];
   });
   const maxQueries = Number.isInteger(options.maxQueries)
     ? Math.max(1, Math.min(50, Number(options.maxQueries)))
@@ -692,7 +696,9 @@ export const processNextAffiliateSourceDiscoveryRun = async (
     data: {
       lastRunAt: finishedAt,
       nextRunAt: campaign.status === 'ACTIVE'
-        ? nextRunAt(finishedAt, campaign.searchIntervalMinutes)
+        ? status !== 'FAILED' && generated.nextCursor !== 0
+          ? finishedAt
+          : nextRunAt(finishedAt, campaign.searchIntervalMinutes)
         : null,
       queryCursor: status === 'FAILED' ? campaign.queryCursor ?? 0 : generated.nextCursor,
     },
@@ -794,17 +800,22 @@ export const getAffiliateSourceDiscoveryRunContext = async (runId: string) => {
 export const queueDueAffiliateSourceDiscoveryRuns = async (now = new Date()): Promise<number> => {
   const campaigns = await db().campaigns.findMany({
     where: { status: 'ACTIVE', OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }] },
-    orderBy: [{ nextRunAt: 'asc' }, { name: 'asc' }],
   });
-  let queued = 0;
-  for (const campaign of campaigns) {
-    const prior = await db().runs.findFirst({ where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } } });
-    if (!prior) {
-      await queueAffiliateSourceDiscoveryRun(campaign.id, null);
-      queued += 1;
-    }
-  }
-  return queued;
+  campaigns.sort((left: any, right: any) => {
+    const leftRank = Number(left.metadata?.priorityRank ?? Number.MAX_SAFE_INTEGER);
+    const rightRank = Number(right.metadata?.priorityRank ?? Number.MAX_SAFE_INTEGER);
+    const leftNextRunAt = left.nextRunAt ? new Date(left.nextRunAt).getTime() : 0;
+    const rightNextRunAt = right.nextRunAt ? new Date(right.nextRunAt).getTime() : 0;
+    return leftRank - rightRank || leftNextRunAt - rightNextRunAt || left.name.localeCompare(right.name);
+  });
+  const campaign = campaigns[0];
+  if (!campaign) return 0;
+  const prior = await db().runs.findFirst({
+    where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } },
+  });
+  if (prior) return 0;
+  await queueAffiliateSourceDiscoveryRun(campaign.id, null);
+  return 1;
 };
 
 type AutomationLock = { release: () => Promise<void> };
@@ -903,7 +914,11 @@ export const dryRunAffiliateSourceDiscoveryCampaign = async (
 ) => {
   const campaign = await db().campaigns.findUnique({ where: { id: campaignId } });
   if (!campaign) throw new Error('Affiliate source discovery campaign not found.');
-  const sports = await db().sports.findMany({ where: { id: { in: campaign.sportIds } }, select: { id: true, name: true } });
+  const unorderedSports = await db().sports.findMany({ where: { id: { in: campaign.sportIds } }, select: { id: true, name: true } });
+  const sports = campaign.sportIds.flatMap((sportId: string) => {
+    const sport = unorderedSports.find((row: { id: string }) => row.id === sportId);
+    return sport ? [sport] : [];
+  });
   const maxQueries = Number.isInteger(options.maxQueries)
     ? Math.max(1, Math.min(50, Number(options.maxQueries)))
     : campaign.maxQueriesPerRun;
