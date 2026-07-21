@@ -25,6 +25,7 @@ describe('affiliate outbound route', () => {
   const originalEnv = {
     AFFILIATE_REDIRECT_SECRET: process.env.AFFILIATE_REDIRECT_SECRET,
     ENABLE_RATE_LIMITS_IN_TEST: process.env.ENABLE_RATE_LIMITS_IN_TEST,
+    PUBLIC_WEB_BASE_URL: process.env.PUBLIC_WEB_BASE_URL,
     REDIS_DISABLED: process.env.REDIS_DISABLED,
   };
 
@@ -32,6 +33,7 @@ describe('affiliate outbound route', () => {
     jest.clearAllMocks();
     clearRateLimitMemoryForTests();
     process.env.AFFILIATE_REDIRECT_SECRET = 'affiliate-outbound-route-test-secret';
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com';
     process.env.REDIS_DISABLED = 'true';
     delete process.env.ENABLE_RATE_LIMITS_IN_TEST;
     prismaMock.events.findFirst.mockResolvedValue({ affiliateUrl: 'https://partner.example.com/register?campaign=summer' });
@@ -67,7 +69,7 @@ describe('affiliate outbound route', () => {
     expect(proof).toBeTruthy();
     expect(cookie).toMatch(/^biq_outbound_session=/);
 
-    const postResponse = await POST(new NextRequest(url, {
+    const postResponse = await POST(new NextRequest(`http://app:8080${pathname}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
@@ -75,7 +77,9 @@ describe('affiliate outbound route', () => {
         origin: 'https://bracket-iq.com',
         'sec-fetch-site': 'same-origin',
         'user-agent': BROWSER_USER_AGENT,
+        'x-forwarded-host': 'bracket-iq.com',
         'x-forwarded-for': '203.0.113.10',
+        'x-forwarded-proto': 'https',
       },
       body: new URLSearchParams({ proof: proof! }),
     }), routeContext(pathname));

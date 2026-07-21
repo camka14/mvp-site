@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import {
   AFFILIATE_OUTBOUND_COOKIE_NAME,
   createAffiliateBrowserProof,
@@ -62,11 +63,12 @@ const targetKey = (target: AffiliateOutboundTarget): string => `${target.kind}:$
 const sameOriginPost = (request: NextRequest): boolean => {
   const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
   if (fetchSite && fetchSite !== 'same-origin') return false;
+  const requestOrigin = getRequestOrigin(request);
 
   const origin = request.headers.get('origin');
   if (origin) {
     try {
-      return new URL(origin).origin === request.nextUrl.origin;
+      return new URL(origin).origin === requestOrigin;
     } catch {
       return false;
     }
@@ -75,7 +77,7 @@ const sameOriginPost = (request: NextRequest): boolean => {
   const referer = request.headers.get('referer');
   if (!referer) return false;
   try {
-    return new URL(referer).origin === request.nextUrl.origin;
+    return new URL(referer).origin === requestOrigin;
   } catch {
     return false;
   }
