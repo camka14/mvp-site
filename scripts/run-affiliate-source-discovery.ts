@@ -33,6 +33,9 @@ const readBoundedOption = (name: string, max: number): number | undefined => {
   return parsed;
 };
 
+const provider = readOption('--provider');
+if (provider) process.env.AFFILIATE_DISCOVERY_PROVIDER = provider;
+
 const main = async () => {
   const { prisma } = await import('../src/lib/prisma');
   const {

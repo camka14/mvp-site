@@ -18,6 +18,25 @@ const readInteger = (name: string, fallback: number): number => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const readOption = (name: string): string | undefined => {
+  const equals = process.argv.find((value) => value.startsWith(`${name}=`));
+  if (equals) return equals.slice(name.length + 1).trim() || undefined;
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
+};
+
+const applyProviderOption = (option: string, envName: string): void => {
+  const value = readOption(option);
+  if (value) process.env[envName] = value;
+};
+
+applyProviderOption('--discovery-provider', 'AFFILIATE_DISCOVERY_PROVIDER');
+applyProviderOption('--intake-provider', 'AFFILIATE_INTAKE_PROVIDER');
+applyProviderOption('--fallback-provider', 'AFFILIATE_PROVIDER_FALLBACK');
+applyProviderOption('--screenshot-mode', 'AFFILIATE_INTAKE_SCREENSHOT_MODE');
+applyProviderOption('--scrapingdog-timeout', 'SCRAPINGDOG_TIMEOUT_MS');
+applyProviderOption('--dynamic-wait', 'SCRAPINGDOG_DYNAMIC_WAIT_MS');
+
 const main = async () => {
   const { prisma } = await import('../src/lib/prisma');
   const { runAffiliateIntakeAutomation } = await import('../src/server/affiliateImports/sourceDiscovery');

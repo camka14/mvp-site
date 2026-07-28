@@ -115,7 +115,18 @@ The full gates and rollback boundaries are maintained in `docs/ovh-vps-migration
 
 ## Affiliate source discovery and intake automation
 
-The application image includes the provider-neutral automation command. Before enabling its timer, configure `FIRECRAWL_API_KEY`, email credentials, database access, and storage credentials in `app.env`; deploy the discovery migration; create paused campaign templates with `npm run affiliate:discovery:setup -- --live`; and review campaign limits in Admin > Affiliate Imports > Source Intake.
+The application image includes the provider-neutral automation command. Before enabling its timer, configure `SCRAPINGDOG_API_KEY`, email credentials, database access, and storage credentials in `app.env`; deploy the discovery and intake migrations; create paused campaign templates with `npm run affiliate:discovery:setup -- --live`; and review campaign limits in Admin > Affiliate Imports > Source Intake. New discovery and intake runs default to ScrapingDog. `FIRECRAWL_API_KEY` is optional unless `AFFILIATE_DISCOVERY_PROVIDER=FIRECRAWL`, `AFFILIATE_INTAKE_PROVIDER=FIRECRAWL`, or `AFFILIATE_PROVIDER_FALLBACK=FIRECRAWL` is configured.
+
+ScrapingDog provider controls:
+
+- `AFFILIATE_DISCOVERY_PROVIDER=SCRAPINGDOG|FIRECRAWL`
+- `AFFILIATE_INTAKE_PROVIDER=SCRAPINGDOG|FIRECRAWL`
+- `AFFILIATE_PROVIDER_FALLBACK=NONE|FIRECRAWL`
+- `AFFILIATE_INTAKE_SCREENSHOT_MODE=first|all|none` (defaults to `first` to avoid a separate screenshot request for every selected page)
+- `SCRAPINGDOG_TIMEOUT_MS=300000`
+- `SCRAPINGDOG_DYNAMIC_WAIT_MS=2500`
+
+The intake worker first requests static HTML and retries once with JavaScript rendering only when the local quality gate rejects the static response. It converts raw HTML to Markdown and discovers sitemap/link pages locally. Operational summaries estimate ScrapingDog usage at 1 credit for static capture, 5 for JavaScript capture, 5 for Google Search, and 5 for a screenshot; the provider dashboard remains the billing authority.
 
 Install the tracked units and start one manual run before enabling the timer:
 
@@ -126,7 +137,7 @@ Install the tracked units and start one manual run before enabling the timer:
     sudo journalctl -u bracketiq-affiliate-intake-automation.service -n 200 --no-pager
     sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer
 
-The timer invokes the lock-protected job every 15 minutes. Campaign cadence controls whether Firecrawl search actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
+The timer invokes the lock-protected job every 15 minutes. Campaign cadence controls whether the selected discovery provider actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
 
     systemctl status bracketiq-affiliate-intake-automation.timer
     systemctl list-timers bracketiq-affiliate-intake-automation.timer

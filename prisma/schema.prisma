@@ -1822,7 +1822,7 @@ model AffiliateSourceIntakeRuns {
   intakeId           String
   requestedPageIds   String[] @default([])
   requestedByUserId  String?
-  provider            String   @default("FIRECRAWL")
+  provider            String   @default("SCRAPINGDOG")
   status              String   @default("QUEUED")
   queuedAt            DateTime @default(now())
   startedAt           DateTime?

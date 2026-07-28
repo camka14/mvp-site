@@ -25,7 +25,18 @@ const applyTimeoutOption = (option: string, envName: string): void => {
 };
 
 applyTimeoutOption('--firecrawl-timeout', 'FIRECRAWL_TIMEOUT_MS');
+applyTimeoutOption('--scrapingdog-timeout', 'SCRAPINGDOG_TIMEOUT_MS');
+applyTimeoutOption('--dynamic-wait', 'SCRAPINGDOG_DYNAMIC_WAIT_MS');
 applyTimeoutOption('--robots-timeout', 'AFFILIATE_INTAKE_ROBOTS_TIMEOUT_MS');
+
+const applyProviderOption = (option: string, envName: string): void => {
+  const value = readOption(option);
+  if (value) process.env[envName] = value;
+};
+
+applyProviderOption('--provider', 'AFFILIATE_INTAKE_PROVIDER');
+applyProviderOption('--fallback-provider', 'AFFILIATE_PROVIDER_FALLBACK');
+applyProviderOption('--screenshot-mode', 'AFFILIATE_INTAKE_SCREENSHOT_MODE');
 
 const parseLimit = (): number => {
   const raw = readOption('--limit');

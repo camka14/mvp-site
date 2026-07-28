@@ -2,9 +2,24 @@ import { createHash } from 'crypto';
 import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
 import {
+  deriveAffiliateHtmlArtifacts,
+  evaluateAffiliateHtmlQuality,
+  type AffiliateHtmlArtifacts,
+} from './affiliateHtmlArtifacts';
+import type {
+  AffiliateProviderName,
+  AffiliateSourceCaptureClient,
+  AffiliateSourcePageCapture,
+} from './affiliateProviderContracts';
+import {
+  createAffiliateFallbackCaptureClient,
+  createAffiliateSourceCaptureClient,
+  resolveAffiliateIntakeProvider,
+  resolveAffiliateIntakeScreenshotMode,
+  type AffiliateIntakeScreenshotMode,
+} from './affiliateProviderFactory';
+import {
   type AffiliateFirecrawlClient,
-  createFirecrawlAffiliateClient,
-  type FirecrawlCaptureResult,
 } from './firecrawlClient';
 import {
   INTAKE_RUN_ARTIFACT_LIMIT_BYTES,
@@ -21,6 +36,10 @@ import {
   type BoundedPublicResource,
 } from './sourceIntakeUrlSafety';
 import { affiliateDiscoveryPolicyKeyForUrl } from './sourceDiscoveryRules';
+import {
+  discoverAffiliateSourcePages,
+  type AffiliateDiscoveredPage,
+} from './sourcePageDiscovery';
 
 const MAX_CAPTURE_PAGES = 10;
 const MAX_DISCOVERED_URLS = 50;
@@ -95,6 +114,11 @@ export type AffiliateSourcePolicyReview = {
 };
 
 export type AffiliateSourceIntakeProcessingDependencies = {
+  captureClient?: AffiliateSourceCaptureClient;
+  fallbackCaptureClient?: AffiliateSourceCaptureClient | null;
+  screenshotMode?: AffiliateIntakeScreenshotMode;
+  discoverPages?: typeof discoverAffiliateSourcePages;
+  /** Compatibility hook for existing tests and explicitly queued Firecrawl work. */
   firecrawlClient?: AffiliateFirecrawlClient;
   fetchResource?: typeof fetchBoundedPublicResource;
   workerId?: string;
@@ -105,9 +129,17 @@ type IntakeRunSummary = {
   warnings: string[];
   blockedPages: Array<{ pageId: string; url: string; rule: string | null }>;
   failedPages: Array<{ pageId: string; url: string; error: string }>;
-  capturedPages: Array<{ pageId: string; url: string; finalUrl: string }>;
+  capturedPages: Array<{
+    pageId: string;
+    url: string;
+    finalUrl: string;
+    provider: AffiliateProviderName;
+    renderMode: AffiliateSourcePageCapture['renderMode'];
+    estimatedCredits: number | null;
+  }>;
   discoveredUrls: number;
   storedBytes: number;
+  estimatedCredits: number;
   classification: AffiliateSourceClassification;
 };
 
@@ -397,7 +429,7 @@ export const reviewAffiliateSourceIntakePolicy = async (
             intakeId,
             requestedPageIds: selectedPages.map((page: any) => page.id),
             requestedByUserId: userId,
-            provider: 'FIRECRAWL',
+            provider: resolveAffiliateIntakeProvider(),
             status: 'QUEUED',
             queuedAt: reviewedAt,
           },
@@ -512,7 +544,7 @@ export const queueAffiliateSourceIntakeRun = async (
       intakeId,
       requestedPageIds: pageIds,
       requestedByUserId: userId,
-      provider: 'FIRECRAWL',
+      provider: resolveAffiliateIntakeProvider(),
       status: 'QUEUED',
       queuedAt: new Date(),
     },
@@ -532,7 +564,7 @@ const inferDiscoveredPageRole = (url: string): string => {
 const persistDiscoveredPages = async (
   intakeId: string,
   sourceUrl: string,
-  links: Array<{ url: string; title?: string | null; description?: string | null }>,
+  links: AffiliateDiscoveredPage[],
 ): Promise<{ stored: number; warnings: string[] }> => {
   const sourceOrigin = new URL(sourceUrl).origin;
   let stored = 0;
@@ -543,7 +575,7 @@ const persistDiscoveredPages = async (
       await upsertIntakePage(intakeId, {
         url: link.url,
         role: inferDiscoveredPageRole(link.url),
-      }, 'FIRECRAWL_MAP');
+      }, link.discoveryMethod);
       stored += 1;
     } catch (error) {
       warnings.push(error instanceof Error ? error.message : `Failed to store discovered URL: ${link.url}`);
@@ -552,20 +584,27 @@ const persistDiscoveredPages = async (
   return { stored, warnings };
 };
 
-const candidateLogoUrls = (capture: FirecrawlCaptureResult): Array<{ url: string; reason: string }> => {
-  const branding = recordValue(capture.normalized.branding);
+const candidateLogoUrls = (
+  capture: AffiliateSourcePageCapture,
+  artifacts: AffiliateHtmlArtifacts,
+): Array<{ url: string; reason: string }> => {
+  const branding = recordValue(capture.providerArtifacts?.branding);
   const brandingImages = recordValue(branding.images);
-  const metadata = capture.normalized.metadata;
+  const metadata = recordValue(capture.providerArtifacts?.metadata);
   const candidates = [
-    { url: stringValue(branding.logo), reason: 'Firecrawl branding logo' },
-    { url: stringValue(brandingImages.logo), reason: 'Firecrawl branding image logo' },
-    { url: stringValue(brandingImages.ogImage), reason: 'Firecrawl branding Open Graph image' },
+    ...artifacts.branding.candidates,
+    { url: stringValue(branding.logo), reason: `${capture.provider} branding logo` },
+    { url: stringValue(brandingImages.logo), reason: `${capture.provider} branding image logo` },
+    { url: stringValue(brandingImages.ogImage), reason: `${capture.provider} branding Open Graph image` },
     { url: stringValue(metadata.ogImage), reason: 'Page Open Graph image' },
-    { url: stringValue(brandingImages.favicon), reason: 'Firecrawl branding favicon' },
+    { url: stringValue(brandingImages.favicon), reason: `${capture.provider} branding favicon` },
     { url: stringValue(metadata.favicon), reason: 'Page favicon' },
-    ...capture.normalized.images
+    ...artifacts.images
       .filter((url) => /logo|brand|crest|mark/i.test(url))
       .map((url) => ({ url, reason: 'Page image URL contains a logo or brand label' })),
+    ...(capture.providerArtifacts?.images ?? [])
+      .filter((url) => /logo|brand|crest|mark/i.test(url))
+      .map((url) => ({ url, reason: `${capture.provider} image URL contains a logo or brand label` })),
   ].filter((candidate): candidate is { url: string; reason: string } => Boolean(candidate.url));
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
@@ -655,14 +694,98 @@ const persistCaptureArtifact = async (
   return artifact;
 };
 
+type IntakeCaptureClient = AffiliateSourceCaptureClient | AffiliateFirecrawlClient;
+
+const isProviderName = (value: unknown): value is AffiliateProviderName => (
+  value === 'SCRAPINGDOG' || value === 'FIRECRAWL'
+);
+
+const providerForClient = (client: IntakeCaptureClient): AffiliateProviderName => {
+  const provider = 'provider' in client ? client.provider : null;
+  return isProviderName(provider) ? provider : 'FIRECRAWL';
+};
+
+const captureWithClient = async (
+  client: IntakeCaptureClient,
+  url: string,
+): Promise<AffiliateSourcePageCapture> => {
+  if ('captureSourcePage' in client) return client.captureSourcePage(url);
+  const startedAt = Date.now();
+  const legacy = await client.scrapeSourcePage(url);
+  return {
+    provider: 'FIRECRAWL',
+    request: legacy.request,
+    response: legacy.response,
+    requestedUrl: url,
+    finalUrl: legacy.normalized.finalUrl,
+    providerStatusCode: 200,
+    targetStatusCode: legacy.normalized.statusCode,
+    rawHtml: legacy.normalized.rawHtml ?? '',
+    renderMode: 'JAVASCRIPT',
+    elapsedMs: Date.now() - startedAt,
+    estimatedCredits: null,
+    warnings: [],
+    providerJobId: legacy.providerJobId,
+    providerArtifacts: {
+      markdown: legacy.normalized.markdown,
+      links: legacy.normalized.links,
+      images: legacy.normalized.images,
+      branding: legacy.normalized.branding,
+      screenshotUrl: legacy.normalized.screenshotUrl,
+      metadata: legacy.normalized.metadata,
+    },
+  };
+};
+
+const captureWithFallback = async (
+  primaryClient: IntakeCaptureClient,
+  fallbackClient: AffiliateSourceCaptureClient | null,
+  url: string,
+  state: IntakeRunSummary,
+): Promise<{ capture: AffiliateSourcePageCapture; client: IntakeCaptureClient }> => {
+  try {
+    const capture = await captureWithClient(primaryClient, url);
+    const quality = evaluateAffiliateHtmlQuality(capture.rawHtml, capture.finalUrl || url);
+    if (!quality.accepted && fallbackClient) {
+      state.warnings.push(
+        `${providerForClient(primaryClient)} capture quality was rejected for ${url}; `
+        + `${fallbackClient.provider} fallback was attempted: ${quality.reasons.join('; ')}`,
+      );
+      return {
+        capture: await fallbackClient.captureSourcePage(url),
+        client: fallbackClient,
+      };
+    }
+    return { capture, client: primaryClient };
+  } catch (primaryError) {
+    if (!fallbackClient) throw primaryError;
+    state.warnings.push(
+      `${providerForClient(primaryClient)} capture failed for ${url}; `
+      + `${fallbackClient.provider} fallback was attempted: `
+      + `${primaryError instanceof Error ? primaryError.message : 'unknown error'}`,
+    );
+    return {
+      capture: await fallbackClient.captureSourcePage(url),
+      client: fallbackClient,
+    };
+  }
+};
+
 const processCapturePage = async (
   intake: any,
   run: any,
   page: any,
-  client: AffiliateFirecrawlClient,
+  primaryClient: IntakeCaptureClient,
+  fallbackClient: AffiliateSourceCaptureClient | null,
   fetchResource: typeof fetchBoundedPublicResource,
   state: IntakeRunSummary,
-): Promise<{ capture: FirecrawlCaptureResult | null; providerJobId: string | null }> => {
+  captureScreenshot: boolean,
+): Promise<{
+  capture: AffiliateSourcePageCapture | null;
+  artifacts: AffiliateHtmlArtifacts | null;
+  robotsText: string;
+  providerJobId: string | null;
+}> => {
   const robotsUrl = robotsUrlFor(page.url);
   let robots: BoundedPublicResource;
   try {
@@ -681,7 +804,7 @@ const processCapturePage = async (
       url: page.url,
       error: `Robots check failed: ${error instanceof Error ? error.message : 'unknown error'}`,
     });
-    return { capture: null, providerJobId: null };
+    return { capture: null, artifacts: null, robotsText: '', providerJobId: null };
   }
 
   await persistCaptureArtifact({
@@ -710,86 +833,136 @@ const processCapturePage = async (
   });
   if (decision.status === 'DISALLOWED') {
     state.blockedPages.push({ pageId: page.id, url: page.url, rule: decision.matchedRule });
-    return { capture: null, providerJobId: null };
+    return { capture: null, artifacts: null, robotsText, providerJobId: null };
   }
 
   try {
-    const capture = await client.scrapeSourcePage(page.url);
+    const captured = await captureWithFallback(primaryClient, fallbackClient, page.url, state);
+    const { capture } = captured;
+    const artifacts = deriveAffiliateHtmlArtifacts(capture.rawHtml, capture.finalUrl || page.url);
+    const provider = capture.provider;
+    const artifactMetadata = {
+      extractorVersion: artifacts.extractorVersion,
+      renderMode: capture.renderMode,
+      elapsedMs: capture.elapsedMs,
+      estimatedCredits: capture.estimatedCredits,
+      attempts: capture.attempts ?? [],
+      quality: artifacts.quality,
+    };
     const baseArtifact = {
       intakeId: intake.id,
       pageId: page.id,
       runId: run.id,
       sourceUrl: page.url,
-      finalUrl: capture.normalized.finalUrl,
-      provider: 'FIRECRAWL',
-      httpStatus: capture.normalized.statusCode,
+      finalUrl: capture.finalUrl,
+      provider,
+      httpStatus: capture.targetStatusCode ?? capture.providerStatusCode,
     };
     await persistCaptureArtifact({
       ...baseArtifact,
       kind: 'PROVIDER_SCRAPE_REQUEST_JSON',
       data: jsonBuffer(capture.request),
       mimeType: 'application/json',
+      metadata: artifactMetadata,
     }, state);
     await persistCaptureArtifact({
       ...baseArtifact,
       kind: 'PROVIDER_SCRAPE_RESPONSE_JSON',
       data: jsonBuffer(capture.response),
       mimeType: 'application/json',
+      metadata: artifactMetadata,
     }, state);
-    if (capture.normalized.markdown) {
+    const markdown = artifacts.markdown || capture.providerArtifacts?.markdown || '';
+    if (markdown) {
       await persistCaptureArtifact({
         ...baseArtifact,
         kind: 'PAGE_MARKDOWN',
-        data: Buffer.from(capture.normalized.markdown, 'utf8'),
+        data: Buffer.from(markdown, 'utf8'),
         mimeType: 'text/markdown; charset=utf-8',
+        metadata: artifactMetadata,
       }, state);
     }
-    if (capture.normalized.rawHtml) {
+    if (capture.rawHtml) {
       await persistCaptureArtifact({
         ...baseArtifact,
         kind: 'PAGE_HTML',
-        data: Buffer.from(capture.normalized.rawHtml, 'utf8'),
+        data: Buffer.from(capture.rawHtml, 'utf8'),
         mimeType: 'text/html; charset=utf-8',
+        metadata: artifactMetadata,
       }, state);
     }
+    const links = Array.from(new Set([
+      ...artifacts.links,
+      ...(capture.providerArtifacts?.links ?? []),
+    ]));
+    const images = Array.from(new Set([
+      ...artifacts.images,
+      ...(capture.providerArtifacts?.images ?? []),
+    ]));
     await persistCaptureArtifact({
       ...baseArtifact,
       kind: 'PAGE_LINKS',
-      data: jsonBuffer(capture.normalized.links),
+      data: jsonBuffer(links),
       mimeType: 'application/json',
+      metadata: artifactMetadata,
     }, state);
     await persistCaptureArtifact({
       ...baseArtifact,
       kind: 'PAGE_IMAGES',
-      data: jsonBuffer(capture.normalized.images),
+      data: jsonBuffer(images),
       mimeType: 'application/json',
+      metadata: artifactMetadata,
     }, state);
-    if (capture.normalized.branding) {
-      await persistCaptureArtifact({
-        ...baseArtifact,
-        kind: 'PAGE_BRANDING',
-        data: jsonBuffer(capture.normalized.branding),
-        mimeType: 'application/json',
-      }, state);
-    }
-    if (capture.normalized.screenshotUrl) {
+    await persistCaptureArtifact({
+      ...baseArtifact,
+      kind: 'PAGE_BRANDING',
+      data: jsonBuffer({
+        ...artifacts.branding,
+        providerBranding: capture.providerArtifacts?.branding ?? null,
+      }),
+      mimeType: 'application/json',
+      metadata: artifactMetadata,
+    }, state);
+    if (captureScreenshot && capture.providerArtifacts?.screenshotUrl) {
       try {
-        const screenshot = await fetchResource(capture.normalized.screenshotUrl, { maxBytes: 3 * 1024 * 1024 });
+        const screenshot = await fetchResource(capture.providerArtifacts.screenshotUrl, { maxBytes: 3 * 1024 * 1024 });
         await persistCaptureArtifact({
           ...baseArtifact,
           kind: 'PAGE_SCREENSHOT',
           data: screenshot.body,
-          sourceUrl: capture.normalized.screenshotUrl,
+          sourceUrl: capture.providerArtifacts.screenshotUrl,
           finalUrl: screenshot.finalUrl,
-          provider: 'FIRECRAWL',
           httpStatus: screenshot.statusCode,
           mimeType: screenshot.contentType ?? 'image/png',
+          metadata: artifactMetadata,
         }, state);
       } catch (error) {
         state.warnings.push(`Screenshot download failed for ${page.url}: ${error instanceof Error ? error.message : 'unknown error'}`);
       }
+    } else if (captureScreenshot && 'captureScreenshot' in captured.client) {
+      try {
+        const screenshot = await captured.client.captureScreenshot(page.url);
+        await persistCaptureArtifact({
+          ...baseArtifact,
+          kind: 'PAGE_SCREENSHOT',
+          data: screenshot.data,
+          provider: screenshot.provider,
+          httpStatus: screenshot.providerStatusCode,
+          mimeType: screenshot.mimeType,
+          metadata: {
+            ...artifactMetadata,
+            request: screenshot.request,
+            response: screenshot.response,
+            elapsedMs: screenshot.elapsedMs,
+            estimatedCredits: screenshot.estimatedCredits,
+          },
+        }, state);
+        state.estimatedCredits += screenshot.estimatedCredits ?? 0;
+      } catch (error) {
+        state.warnings.push(`Screenshot capture failed for ${page.url}: ${error instanceof Error ? error.message : 'unknown error'}`);
+      }
     }
-    for (const candidate of candidateLogoUrls(capture)) {
+    for (const candidate of candidateLogoUrls(capture, artifacts)) {
       try {
         const logo = await fetchResource(candidate.url, { maxBytes: 3 * 1024 * 1024 });
         if (!logo.contentType?.toLowerCase().startsWith('image/')) {
@@ -802,24 +975,56 @@ const processCapturePage = async (
           data: logo.body,
           sourceUrl: candidate.url,
           finalUrl: logo.finalUrl,
-          provider: 'FIRECRAWL',
+          provider,
           httpStatus: logo.statusCode,
           mimeType: logo.contentType,
-          metadata: { reason: candidate.reason },
+          metadata: { ...artifactMetadata, reason: candidate.reason },
         }, state);
       } catch (error) {
         state.warnings.push(`Logo candidate download failed for ${candidate.url}: ${error instanceof Error ? error.message : 'unknown error'}`);
       }
     }
-    state.capturedPages.push({ pageId: page.id, url: page.url, finalUrl: capture.normalized.finalUrl });
-    return { capture, providerJobId: capture.providerJobId };
+    state.warnings.push(...capture.warnings);
+    state.estimatedCredits += capture.estimatedCredits ?? 0;
+    state.capturedPages.push({
+      pageId: page.id,
+      url: page.url,
+      finalUrl: capture.finalUrl,
+      provider,
+      renderMode: capture.renderMode,
+      estimatedCredits: capture.estimatedCredits,
+    });
+    return {
+      capture: {
+        ...capture,
+        providerArtifacts: {
+          markdown,
+          links,
+          images,
+          branding: {
+            ...artifacts.branding,
+            providerBranding: capture.providerArtifacts?.branding ?? null,
+          },
+          screenshotUrl: capture.providerArtifacts?.screenshotUrl ?? null,
+          metadata: {
+            ...recordValue(capture.providerArtifacts?.metadata),
+            ...artifacts.metadata,
+            extractorVersion: artifacts.extractorVersion,
+            quality: artifacts.quality,
+          },
+        },
+      },
+      artifacts,
+      robotsText,
+      providerJobId: capture.providerJobId ?? null,
+    };
   } catch (error) {
     state.failedPages.push({
       pageId: page.id,
       url: page.url,
-      error: error instanceof Error ? error.message : 'Unknown Firecrawl error',
+      error: error instanceof Error ? error.message : 'Unknown affiliate capture error',
     });
-    return { capture: null, providerJobId: null };
+    return { capture: null, artifacts: null, robotsText, providerJobId: null };
   }
 };
 
@@ -851,7 +1056,17 @@ export const processNextAffiliateSourceIntakeRun = async (
     return { runId: run.id, status: 'FAILED', errorMessage: 'No active intake pages were selected.' };
   }
 
-  const client = dependencies.firecrawlClient ?? createFirecrawlAffiliateClient();
+  const queuedProvider = isProviderName(run.provider)
+    ? run.provider
+    : resolveAffiliateIntakeProvider();
+  const primaryClient: IntakeCaptureClient = dependencies.captureClient
+    ?? dependencies.firecrawlClient
+    ?? createAffiliateSourceCaptureClient(queuedProvider);
+  const fallbackClient = dependencies.fallbackCaptureClient !== undefined
+    ? dependencies.fallbackCaptureClient
+    : createAffiliateFallbackCaptureClient(providerForClient(primaryClient));
+  const screenshotMode = dependencies.screenshotMode ?? resolveAffiliateIntakeScreenshotMode();
+  const discoverPages = dependencies.discoverPages ?? discoverAffiliateSourcePages;
   const fetchResource = dependencies.fetchResource ?? fetchBoundedPublicResource;
   const summary: IntakeRunSummary = {
     warnings: [],
@@ -860,19 +1075,35 @@ export const processNextAffiliateSourceIntakeRun = async (
     capturedPages: [],
     discoveredUrls: 0,
     storedBytes: 0,
+    estimatedCredits: 0,
     classification: { type: 'UNKNOWN', confidence: 0, reasons: [] },
   };
   const providerJobIds: string[] = [];
-  const captures: FirecrawlCaptureResult[] = [];
+  const captures: AffiliateSourcePageCapture[] = [];
 
   try {
     const discoveryPage = selectedPages[0];
-    const firstPage = await processCapturePage(intake, run, discoveryPage, client, fetchResource, summary);
+    const firstPage = await processCapturePage(
+      intake,
+      run,
+      discoveryPage,
+      primaryClient,
+      fallbackClient,
+      fetchResource,
+      summary,
+      screenshotMode === 'all' || screenshotMode === 'first',
+    );
     if (firstPage.capture) {
       captures.push(firstPage.capture);
       if (firstPage.providerJobId) providerJobIds.push(firstPage.providerJobId);
       try {
-        const mapped = await client.mapSourceUrls(discoveryPage.url, { limit: MAX_DISCOVERED_URLS });
+        const mapped = await discoverPages({
+          sourceUrl: discoveryPage.url,
+          robotsText: firstPage.robotsText,
+          capturedLinks: firstPage.artifacts?.links ?? [],
+          fetchResource,
+          limit: MAX_DISCOVERED_URLS,
+        });
         if (mapped.providerJobId) providerJobIds.push(mapped.providerJobId);
         await persistCaptureArtifact({
           intakeId: intake.id,
@@ -881,7 +1112,7 @@ export const processNextAffiliateSourceIntakeRun = async (
           kind: 'PROVIDER_MAP_REQUEST_JSON',
           data: jsonBuffer(mapped.request),
           sourceUrl: discoveryPage.url,
-          provider: 'FIRECRAWL',
+          provider: 'LOCAL',
           mimeType: 'application/json',
         }, summary);
         await persistCaptureArtifact({
@@ -891,7 +1122,7 @@ export const processNextAffiliateSourceIntakeRun = async (
           kind: 'PROVIDER_MAP_RESPONSE_JSON',
           data: jsonBuffer(mapped.response),
           sourceUrl: discoveryPage.url,
-          provider: 'FIRECRAWL',
+          provider: 'LOCAL',
           mimeType: 'application/json',
         }, summary);
         await persistCaptureArtifact({
@@ -901,7 +1132,7 @@ export const processNextAffiliateSourceIntakeRun = async (
           kind: 'DISCOVERED_URLS',
           data: jsonBuffer(mapped.links),
           sourceUrl: discoveryPage.url,
-          provider: 'FIRECRAWL',
+          provider: 'LOCAL',
           mimeType: 'application/json',
         }, summary);
         const discovered = await persistDiscoveredPages(intake.id, discoveryPage.url, mapped.links);
@@ -913,13 +1144,22 @@ export const processNextAffiliateSourceIntakeRun = async (
     }
 
     for (const page of selectedPages.slice(1, MAX_CAPTURE_PAGES)) {
-      const processed = await processCapturePage(intake, run, page, client, fetchResource, summary);
+      const processed = await processCapturePage(
+        intake,
+        run,
+        page,
+        primaryClient,
+        fallbackClient,
+        fetchResource,
+        summary,
+        screenshotMode === 'all',
+      );
       if (processed.capture) captures.push(processed.capture);
       if (processed.providerJobId) providerJobIds.push(processed.providerJobId);
     }
 
-    const evidence = captures.map((capture) => capture.normalized.markdown ?? '').join('\n');
-    const urls = captures.flatMap((capture) => capture.normalized.links);
+    const evidence = captures.map((capture) => capture.providerArtifacts?.markdown ?? '').join('\n');
+    const urls = captures.flatMap((capture) => capture.providerArtifacts?.links ?? []);
     summary.classification = classifyAffiliateSourceEvidence(evidence, urls);
     const status = summary.capturedPages.length === 0 && summary.blockedPages.length > 0 && summary.failedPages.length === 0
       ? 'BLOCKED'

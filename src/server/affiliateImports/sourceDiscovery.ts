@@ -3,10 +3,14 @@ import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
 import { resolvePrismaPgPoolConfig } from '@/lib/prismaConfig';
 import { isEmailEnabled, sendEmail } from '@/server/email';
+import type {
+  AffiliateSourceCaptureClient,
+  AffiliateSourceSearchClient,
+} from './affiliateProviderContracts';
 import {
-  createFirecrawlAffiliateClient,
-  type AffiliateFirecrawlClient,
-} from './firecrawlClient';
+  createAffiliateSourceSearchClient,
+} from './affiliateProviderFactory';
+import type { AffiliateFirecrawlClient } from './firecrawlClient';
 import {
   addAffiliateSourceIntakePage,
   createAffiliateSourceIntake,
@@ -40,6 +44,10 @@ const POLICY_EXPIRY_DAYS = 180;
 
 type JsonRecord = Record<string, unknown>;
 type DiscoveryDependencies = {
+  searchClient?: AffiliateSourceSearchClient;
+  captureClient?: AffiliateSourceCaptureClient;
+  fallbackCaptureClient?: AffiliateSourceCaptureClient | null;
+  /** Compatibility hook for existing tests and explicitly configured Firecrawl work. */
   firecrawlClient?: AffiliateFirecrawlClient;
   now?: () => Date;
   fetchResource?: typeof fetchBoundedPublicResource;
@@ -335,6 +343,8 @@ const promoteDiscoveryResult = async (
   }
   const campaign = await db().campaigns.findUnique({ where: { id: result.campaignId } });
   if (!campaign) throw new Error('Affiliate source discovery campaign not found.');
+  const resultMetadata = recordValue(result.metadata);
+  const discoveryProvider = stringValue(resultMetadata.provider)?.toUpperCase();
 
   let intake = requestedIntakeId
     ? await db().intakes.findUnique({ where: { id: requestedIntakeId } })
@@ -348,7 +358,11 @@ const promoteDiscoveryResult = async (
     url: result.canonicalUrl,
     role: inferredPageRole(result.canonicalUrl),
     targetKindHints: result.sourceTypeHints,
-    discoverySource: 'FIRECRAWL_SEARCH',
+    discoverySource: discoveryProvider === 'SCRAPINGDOG'
+      ? 'SCRAPINGDOG_SEARCH'
+      : discoveryProvider === 'FIRECRAWL'
+        ? 'FIRECRAWL_SEARCH'
+        : 'PROVIDER_SEARCH',
     metadata: {
       campaignId: result.campaignId,
       discoveryRunId: result.latestRunId,
@@ -558,7 +572,11 @@ const persistDiscoveryResult = async (input: {
     matchingIntakeId: duplicate?.matchingIntakeId ?? siteIntake?.id ?? existing?.matchingIntakeId ?? null,
     matchingSourceId: duplicate?.matchingSourceId ?? existing?.matchingSourceId ?? null,
     matchingOrganizationId: duplicate?.matchingOrganizationId ?? existing?.matchingOrganizationId ?? null,
-    metadata: { category: row.category ?? null },
+    metadata: {
+      category: row.category ?? null,
+      provider: stringValue(row.provider)?.toUpperCase() ?? null,
+      estimatedCredits: typeof row.estimatedCredits === 'number' ? row.estimatedCredits : null,
+    },
   };
   const saved = existing
     ? await db().results.update({
@@ -609,9 +627,12 @@ export const processNextAffiliateSourceDiscoveryRun = async (
     sports,
     campaign.queryCursor ?? 0,
   );
-  const client = dependencies.firecrawlClient ?? createFirecrawlAffiliateClient();
+  const client: AffiliateSourceSearchClient | AffiliateFirecrawlClient = dependencies.searchClient
+    ?? dependencies.firecrawlClient
+    ?? createAffiliateSourceSearchClient();
   const providerJobIds: string[] = [];
   const requestSummaries: JsonRecord[] = [];
+  let estimatedCredits = 0;
   let returnedResultCount = 0;
   let newResultCount = 0;
   let duplicateCount = 0;
@@ -627,7 +648,13 @@ export const processNextAffiliateSourceDiscoveryRun = async (
       });
       returnedResultCount += search.rows.length;
       if (search.providerJobId) providerJobIds.push(search.providerJobId);
-      requestSummaries.push({ request: search.request, response: search.response });
+      estimatedCredits += search.estimatedCredits ?? 0;
+      requestSummaries.push({
+        provider: search.provider ?? ('provider' in client ? client.provider : 'FIRECRAWL'),
+        estimatedCredits: search.estimatedCredits ?? null,
+        request: search.request,
+        response: search.response,
+      });
       for (const [index, row] of search.rows.entries()) {
         const evaluation = evaluateAffiliateSourceDiscoveryResult({
           ...row,
@@ -641,7 +668,11 @@ export const processNextAffiliateSourceDiscoveryRun = async (
           run,
           query,
           rank: index + 1,
-          row,
+          row: {
+            ...row,
+            provider: search.provider ?? ('provider' in client ? client.provider : 'FIRECRAWL'),
+            estimatedCredits: search.estimatedCredits ?? null,
+          },
           evaluation,
           now,
         });
@@ -672,6 +703,7 @@ export const processNextAffiliateSourceDiscoveryRun = async (
   const summary = {
     queries: generated.queries,
     executionLimits: { maxQueries, maxResultsPerQuery },
+    estimatedCredits,
     provider: requestSummaries.slice(0, 50),
     errors,
   };
@@ -864,6 +896,10 @@ export const runAffiliateIntakeAutomation = async (options: {
     for (let index = 0; index < Math.min(options.intakeLimit ?? MAX_AUTOMATION_INTAKE_RUNS, 50); index += 1) {
       const result = await processNextAffiliateSourceIntakeRun({}, {
         workerId: dependencies.workerId ?? `affiliate-intake-automation-${process.pid}`,
+        ...(dependencies.captureClient ? { captureClient: dependencies.captureClient } : {}),
+        ...(dependencies.fallbackCaptureClient !== undefined
+          ? { fallbackCaptureClient: dependencies.fallbackCaptureClient }
+          : {}),
         ...(dependencies.firecrawlClient ? { firecrawlClient: dependencies.firecrawlClient } : {}),
         ...(dependencies.fetchResource ? { fetchResource: dependencies.fetchResource } : {}),
         ...(dependencies.now ? { now: dependencies.now } : {}),

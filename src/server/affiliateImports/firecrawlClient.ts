@@ -4,6 +4,14 @@ import Firecrawl, {
   type ScrapeOptions,
   type SearchData,
 } from '@mendable/firecrawl-js';
+import type {
+  AffiliateSourceCaptureClient,
+  AffiliateSourcePageCapture,
+  AffiliateSourceScreenshot,
+  AffiliateSourceSearchClient,
+  AffiliateSourceSearchOptions,
+  AffiliateSourceSearchResult,
+} from './affiliateProviderContracts';
 
 const DEFAULT_MAP_LIMIT = 50;
 const MAX_MAP_LIMIT = 50;
@@ -49,24 +57,9 @@ export type FirecrawlCaptureResult = {
   providerJobId: string | null;
 };
 
-export type FirecrawlSourceSearchOptions = {
-  limit?: number;
-  location?: string;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-};
+export type FirecrawlSourceSearchOptions = AffiliateSourceSearchOptions;
 
-export type FirecrawlSourceSearchResult = {
-  request: Record<string, unknown>;
-  response: Record<string, unknown>;
-  rows: Array<{
-    url: string;
-    title: string | null;
-    description: string | null;
-    category: string | null;
-  }>;
-  providerJobId: string | null;
-};
+export type FirecrawlSourceSearchResult = AffiliateSourceSearchResult;
 
 export interface AffiliateFirecrawlClient {
   searchSources(query: string, options?: FirecrawlSourceSearchOptions): Promise<FirecrawlSourceSearchResult>;
@@ -105,7 +98,12 @@ const domainList = (value: string[] | undefined): string[] | undefined => {
   return normalized.length ? normalized.slice(0, 100) : undefined;
 };
 
-export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
+export class FirecrawlAffiliateClient implements
+  AffiliateFirecrawlClient,
+  AffiliateSourceSearchClient,
+  AffiliateSourceCaptureClient {
+  readonly provider = 'FIRECRAWL' as const;
+
   private readonly client: Firecrawl;
 
   constructor(apiKey = process.env.FIRECRAWL_API_KEY?.trim()) {
@@ -150,10 +148,12 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
     }).filter((entry) => entry.url);
     const responseRecord = serializableRecord(response);
     return {
+      provider: this.provider,
       request: serializableRecord(request),
       response: responseRecord,
       rows,
       providerJobId: stringValue(responseRecord.id),
+      estimatedCredits: null,
     };
   }
 
@@ -226,6 +226,66 @@ export class FirecrawlAffiliateClient implements AffiliateFirecrawlClient {
         metadata,
       },
       providerJobId: stringValue(metadata.scrapeId),
+    };
+  }
+
+  async captureSourcePage(url: string): Promise<AffiliateSourcePageCapture> {
+    const startedAt = Date.now();
+    const capture = await this.scrapeSourcePage(url);
+    return {
+      provider: this.provider,
+      request: capture.request,
+      response: capture.response,
+      requestedUrl: url,
+      finalUrl: capture.normalized.finalUrl,
+      providerStatusCode: 200,
+      targetStatusCode: capture.normalized.statusCode,
+      rawHtml: capture.normalized.rawHtml ?? '',
+      renderMode: 'JAVASCRIPT',
+      elapsedMs: Date.now() - startedAt,
+      estimatedCredits: null,
+      warnings: [],
+      providerJobId: capture.providerJobId,
+      providerArtifacts: {
+        markdown: capture.normalized.markdown,
+        links: capture.normalized.links,
+        images: capture.normalized.images,
+        branding: capture.normalized.branding,
+        screenshotUrl: capture.normalized.screenshotUrl,
+        metadata: capture.normalized.metadata,
+      },
+    };
+  }
+
+  async captureScreenshot(url: string): Promise<AffiliateSourceScreenshot> {
+    const startedAt = Date.now();
+    const options: ScrapeOptions = {
+      formats: [{ type: 'screenshot', fullPage: true, quality: 80 }],
+      onlyMainContent: false,
+      timeout: firecrawlTimeoutMs(),
+      integration: 'cli',
+    };
+    const response: Document = await this.client.scrape(url, options);
+    const screenshotUrl = stringValue(response.screenshot);
+    if (!screenshotUrl) throw new Error('Firecrawl did not return a screenshot URL.');
+    const screenshot = await fetch(screenshotUrl);
+    if (!screenshot.ok) {
+      throw new Error(`Firecrawl screenshot download failed with HTTP ${screenshot.status}.`);
+    }
+    const data = Buffer.from(await screenshot.arrayBuffer());
+    return {
+      provider: this.provider,
+      request: serializableRecord({ url, options }),
+      response: serializableRecord({
+        metadata: response.metadata,
+        screenshotUrl,
+        downloadStatus: screenshot.status,
+      }),
+      data,
+      mimeType: screenshot.headers.get('content-type') ?? 'image/png',
+      providerStatusCode: screenshot.status,
+      elapsedMs: Date.now() - startedAt,
+      estimatedCredits: null,
     };
   }
 }
