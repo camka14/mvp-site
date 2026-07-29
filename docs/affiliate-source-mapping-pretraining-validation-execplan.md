@@ -21,9 +21,10 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 20:54Z) Recorded this pre-training validation plan with exact data-size targets, evaluation gates, safety boundaries, and handoff conditions.
 - [x] (2026-07-29 21:02Z) Defined and tested the immutable gold-example, gold-release, execution-result, and training-readiness contracts in `agentGoldDataset.ts`; the focused suite passes 5 tests and TypeScript passes.
 - [x] (2026-07-29 21:12Z) Implemented and tested the deterministic, read-only 35-example test-cohort planner. The actual local proposal covers 35 distinct domains, one TEAM, five CLUB, five RENTAL, 24 EVENT, 12 selector, 22 manual, four detail/JavaScript, five refusal/insufficiency, two custom-extractor review, five evergreen, and 15 scheduled cases with zero deficits, public requests, or database writes.
-- [ ] Review and explicitly lock the proposed test domains and platform families before any live intake capture; the planner intentionally did not self-approve or lock its output.
+- [x] (2026-07-29 22:06Z) Explicitly locked the exact saved proposal `affiliate-mapping-test-d9de7ef53d2c82d1` without recomputing membership. The lock records proposal hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, its original repository commit, the 35 test-domain assignments, platform families, lock timestamp, and the approving user's stable internal id.
 - [x] (2026-07-29 21:15Z) Implemented the immutable private gold-release writer. It validates approved JSONL before creating a directory, rejects unsafe release ids and tampered hashes, writes split JSONL plus per-example fixture manifests and `release.sha256`, and refuses to overwrite an existing release.
 - [x] (2026-07-29 21:17Z) Re-ran all affiliate-agent suites plus Prisma and TypeScript validation after the data-contract, planner, and release-writer changes: 17 suites and 69 tests passed; `prisma validate`, `tsc --noEmit`, and `git diff --check` exited successfully.
+- [x] (2026-07-29 22:19Z) Started live capture on the verified OVH runtime with the first locked example, `03-international-badminton-programs`. Two bounded runs captured all 13 required pages with zero robots blocks, zero failed pages, and 133 exported artifacts whose local bytes match their recorded hashes. Run `b991b5ad-3474-42b1-ba00-2ef04e27e50c` captured 10 pages and is `PARTIAL` only because nine Squarespace favicon candidates were not images; run `4ad49939-9432-4871-b932-2f589d41f82a` captured the remaining three pages and is `SUCCEEDED`.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -59,6 +60,12 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: structural parsing of a stored release is not enough to prove that its manifest still describes its examples.
   Evidence: `assertAffiliateMappingGoldReleaseIntegrity` now recomputes example ids, source-envelope hashes, row hashes, fixture-manifest paths, fixture-manifest hashes, and total count. The regression test tampers with a row hash and verifies that the release fails before use.
+
+- Observation: the local baseline used to choose the cohort no longer describes the live OVH intake population.
+  Evidence: the lock still correctly freezes the approved 35 source/domain assignments, but the pre-write OVH audit found all 35 live source rows and 30 already-linked intakes after newer production automation. Capture preparation therefore reconciles by source key and canonical page identity rather than trusting the proposal's older `PROPOSE_INTAKE` counts.
+
+- Observation: a successful page capture can still produce a `PARTIAL` run for harmless artifact warnings.
+  Evidence: the first live gold run captured all 10 requested pages with no blocked or failed page. Its only nine warnings were skipped Squarespace default favicon URLs whose responses were not image content. The exported artifact bytes all match their manifest hashes, so this warning is retained for human review rather than treated as missing evidence.
 
 ## Decision Log
 
@@ -102,13 +109,17 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: multiple source rows can share one organization website. Allowing any row from the held-back TEAM domain into test would prevent that domain from supplying the non-test TEAM example later and would create split leakage.
   Date/Author: 2026-07-29 / Codex
 
+- Decision: live cohort capture may reuse newer OVH intakes, but it must not silently approve an unreviewed domain.
+  Rationale: the user authorized public capture requests and provider credits, not an override of site terms or robots policy. The cohort capture command adds exact locked pages and queues only an intake already marked `ALLOWED`; explicit blocked sources are recorded without capture, and unreviewed intakes stop at `COMPLIANCE_REVIEW_REQUIRED`.
+  Date/Author: 2026-07-29 / Codex
+
 ## Outcomes & Retrospective
 
-Milestones 1, the tooling/proposal portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, propose a quota-complete held-out cohort, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, records exact capture-page requirements, and performs no public request or database write.
+Milestones 1, the proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve an explicitly approved held-out cohort without recomputing it, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, and records exact capture-page requirements.
 
 The redacted local proposal is persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record.
 
-The current dataset state remains a read-only prioritization backlog: all 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples to pass into the release writer. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts, planner, persisted proposal, or release writer.
+The test cohort is now locked, and live evidence collection has started. The first example has 13 of 13 required pages stored in two runs and exported to ignored private evidence directories with 133 verified artifacts. The remaining 34 examples still need complete policy-checked capture and human gold-output review. All 35 rows remain explicitly `UNAPPROVED`, and there are still zero approved real gold examples to pass into the release writer. No paid model training has started.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -599,3 +610,5 @@ Revised 2026-07-29 after persisting the redacted proposal. The revision records 
 Revised 2026-07-29 after implementing the immutable gold-release writer. The revision records the additional integrity checks, private split/fixture output format, overwrite protection, and the fact that no real release can be built until the cohort is reviewed, locked, captured, and human-approved.
 
 Revised 2026-07-29 after broader validation to preserve the exact passing affiliate-agent, Prisma, TypeScript, and diff-check evidence at the stopping point before any live intake operation.
+
+Revised 2026-07-29 after explicit cohort approval and the first OVH capture. The revision records the immutable lock identity, the changed live intake population, the compliance-preserving capture command, both first-example run ids, complete 13-page coverage, and verified private exports without treating captured evidence as human-approved gold output.
