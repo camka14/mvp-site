@@ -29,7 +29,7 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 - [x] (2026-07-29 19:33Z) Built and tested the read-only historical dataset inventory, deterministic domain splits, conservative evidence labeling, training-example eligibility checks, and dry-run evidence-matching/backfill tooling. The local dry run found no automatically trainable gold examples, so reconstruction and human approval remain required.
 - [ ] Build the deterministic mapping generator, isolated job worktree runner, and evaluation harness without connecting a model. (2026-07-29 19:45Z: constrained byte-stable generation, syntax validation, fixture model client, frozen evaluation scorecard, hash-verified evidence toolbox, detached-worktree runner, named focused tests, diff-scope validation, and an opt-in local review-scrape command are complete; the disposable-database scrape fixture remains.)
 - [ ] Provision and harden the OVH VPS-4, deploy the CPU model server privately, and record its exact CPU flags, RAM, swap, image, model revision, measured throughput, and monthly price. (2026-07-29 20:16Z: added the digest-pinned, offline `llama.cpp` Compose stack, separate trusted controller, disabled-by-default systemd timer, deployment inventory, and host/model verification scripts; ordering the VM, copying weights, and measuring the real host remain external steps.)
-- [ ] Run the fixed base-model bakeoff and select the worker model using the acceptance scorecard.
+- [ ] Run the fixed base-model bakeoff and select the worker model using the acceptance scorecard. (2026-07-29 20:47Z: real private llama.cpp evaluation, runtime-observation validation, immutable candidate reports, hard capacity gates, deterministic tie-breaking, and the durable not-yet-run result template are implemented; the actual OVH host, model artifacts, private held-out suite, measurements, and selection remain.)
 - [ ] Connect the selected base model to the isolated mapping runner and complete a no-training pilot. (2026-07-29 19:54Z: authenticated OpenAI-compatible `llama.cpp` client, complete export-hash verification, bounded Markdown/HTML/policy/repository context, dry-run source mode, atomic queue claim/finish mode, and package commands are implemented and tested with mocked inference; a real selected model and no-training pilot await OVH provisioning.)
 - [ ] Add the Codex Sol reviewer and capture structured corrections without allowing automatic approval or publication. (2026-07-29 19:49Z: structured review, redaction, hash binding, recommendation-only enforcement, stdin/stdout reviewer wrapper, and human teaching signals are implemented and tested; installing a working pinned Codex CLI/wrapper and running a real Sol review remain.)
 - [ ] Build the reviewed training dataset, run the first parameter-efficient adapter experiment, and promote an adapter only if it beats the frozen base model. (2026-07-29 20:34Z: added the immutable SFT-release builder, shared inference/training prompt, pinned offline GPU image recipe, gpt-oss MXFP4 LoRA and Qwen NF4 QLoRA configurations, exact-module inspection, one-example overfit, cost/runtime guard, adapter-change proof, experiment manifest, and safe merge. No current historical row passes the gold-example gate, and no image build or training job has run.)
@@ -400,7 +400,7 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`. Begin in a clean isolated wo
 
        npx jest --runInBand src/server/affiliateImports/__tests__/agentGenerator.test.ts
        npx jest --runInBand src/server/affiliateImports/__tests__/agentEvaluation.test.ts
-       npm run affiliate:agent:evaluate -- --worker=fixture --suite=smoke
+       npm run affiliate:mapping:evaluate -- --worker=fixture --suite=smoke
 
    The allowed fixture passes and the blocked, invented-date, fake-logo, and internal-link fixtures fail or refuse exactly as expected.
 
@@ -414,9 +414,9 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`. Begin in a clean isolated wo
 
 6. Run the frozen model bakeoff.
 
-       npm run affiliate:agent:evaluate -- --suite=held-out-v1 --model=gpt-oss-20b-mxfp4
-       npm run affiliate:agent:evaluate -- --suite=held-out-v1 --model=qwen3-coder-30b-a3b-instruct-q4
-       npm run affiliate:agent:evaluate -- --suite=held-out-v1 --model=<pinned-sub-10b-fallback>
+       npm run affiliate:mapping:evaluate -- --worker=llama --suite=<held-out-v1.json> --model-endpoint=http://model:8080 --model-manifest=<gpt-oss-manifest.json> --model-id=gpt-oss-20b-mxfp4 --output=<gpt-oss-evaluation.json>
+       npm run affiliate:mapping:evaluate -- --worker=llama --suite=<held-out-v1.json> --model-endpoint=http://model:8080 --model-manifest=<qwen-manifest.json> --model-id=qwen3-coder-30b-a3b-instruct-q4 --output=<qwen-evaluation.json>
+       npm run affiliate:mapping:evaluate -- --worker=llama --suite=<held-out-v1.json> --model-endpoint=http://model:8080 --model-manifest=<fallback-manifest.json> --model-id=<pinned-sub-10b-fallback> --output=<fallback-evaluation.json>
 
    Save the reports and record the selection in `docs/affiliate-source-mapping-model-bakeoff.md`.
 
@@ -436,9 +436,9 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`. Begin in a clean isolated wo
 
 9. Build a reviewed dataset release and run one adapter experiment.
 
-       npm run affiliate:agent:dataset -- --release=<dataset-id>
+       npm run affiliate:mapping:sft-release -- --input=<approved-teaching-envelopes.jsonl> --release=<dataset-id>
        ovhai job run --name affiliate-mapping-smoke --gpu 1 --flavor l40s-1-gpu --volume <dataset-and-output-volume> -- <pinned-training-image> --config training/affiliate-source-mapping/<selected-model>.yaml --max-runtime=2h
-       npm run affiliate:agent:evaluate -- --suite=held-out-v1 --model=<selected-model> --adapter=<adapter-id>
+       npm run affiliate:mapping:evaluate -- --worker=llama --suite=held-out-v1 --model-id=<selected-model>-<adapter-id>
 
    Treat the OVH AI Training command as a target interface whose exact supported flags must be verified against the installed OVH CLI before use. The controller records the provider job ID, observed per-minute price, runtime, projected full-run cost, and termination result.
 
@@ -705,3 +705,5 @@ Implementation update 2026-07-29: added `deploy/ai` as a provider-specific but a
 Implementation update 2026-07-29: added `agentTrainingRelease.ts` and `affiliate:mapping:sft-release` as the human-approval boundary between inventory and GPU training. A teaching envelope must bind the approved draft to the exact intake, source key, evidence run, artifact hashes, human approval, and deterministic domain split. Only `FAITHFUL` and safe `BLOCKED` examples are rendered into system/user/assistant rows using the same versioned system prompt as inference. The builder refuses legacy-partial or stale mappings, missing approval, hash mismatch, unsafe blocked output, duplicate ids, a domain appearing in multiple splits, database URLs, private keys, credentials, signed URLs, and direct email addresses. It writes a new immutable release directory with per-split JSONL and hashes and performs no database write or public request. Focused contract, model-client, and release tests pass; the repository TypeScript check remains blocked only by unrelated organization-claiming changes in the shared checkout.
 
 Implementation update 2026-07-29: added the digest-build-required GPU training image, exact first-release Python pins, architecture-specific smoke/full examples, model inspection, LoRA training, runtime/cost guard, adapter tensor-change proof, experiment manifest, and safe adapter merge. The gpt-oss path follows the published MXFP4-dequantize recipe and starts from its documented expert-projection subset; the Qwen NF4 QLoRA example deliberately refuses to run until inspection of the exact checkpoint replaces and reviews its MoE target parameters. Both paths are offline at runtime, consume only an immutable approved SFT release and local base checkpoint, require license and revision checks, never push to a model hub, and cap sequence length at 8,192. Shell syntax, Python compilation, and 17 focused training/contract tests pass. No training image was built, no model weights were downloaded, and no metered OVH job was launched.
+
+Implementation update 2026-07-29: connected the frozen evaluator to a bearer-authenticated private llama.cpp endpoint and added the model bakeoff contract. The evaluator requires an offline-verified open-weight manifest and an explicit immutable output for real runs; expected drafts remain inside the evaluator and are never sent to the model. A separate evaluator container receives neither the controller's database/storage environment nor egress. Candidate reports bind model, runtime, exact OVH order and host facts, evaluation, and optional Sol material-correction rate. Selection rejects failed license/offline/accuracy gates, resident memory over 22 GiB, swap over 512 MiB, available memory below 1 GiB, representative jobs over 90 minutes, or non-frozen context/output limits before comparing score. `docs/affiliate-source-mapping-model-bakeoff.md` explicitly remains `not run` until the real OVH measurements exist.

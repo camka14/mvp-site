@@ -35,6 +35,18 @@ describe('affiliate mapping VM deployment boundary', () => {
     expect(runner).toContain('exit 64');
   });
 
+  it('runs the held-out evaluator without the trusted controller environment', () => {
+    const compose = read('deploy/ai/compose.yml');
+    const evaluator = compose
+      .split('\n  evaluator:\n')[1]
+      .split('\nnetworks:\n')[0];
+
+    expect(evaluator).not.toContain('env_file:');
+    expect(evaluator).not.toMatch(/DATABASE_URL|DO_SPACES|SCRAPINGDOG|FIRECRAWL/);
+    expect(evaluator).toContain('- model_private');
+    expect(evaluator).not.toContain('- controller_egress');
+  });
+
   it('requires digest-pinned runtime images during host verification', () => {
     const verification = read('deploy/ai/bin/verify-host.sh');
 

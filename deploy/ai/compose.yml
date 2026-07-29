@@ -99,6 +99,37 @@ services:
     init: true
     logging: *default-logging
 
+  evaluator:
+    image: ${CONTROLLER_IMAGE:?Set a digest-pinned CONTROLLER_IMAGE in deployment.env}
+    profiles: ["evaluator"]
+    environment:
+      AFFILIATE_MAPPING_MODEL_ENDPOINT: http://model:8080
+      AFFILIATE_MAPPING_MODEL_ID: ${MODEL_ALIAS:?Set MODEL_ALIAS in deployment.env}
+      AFFILIATE_MAPPING_MODEL_MANIFEST: /run/config/model-manifest.json
+      AFFILIATE_MAPPING_MODEL_TIMEOUT_MS: ${MODEL_EVALUATION_TIMEOUT_MS:-5400000}
+    entrypoint:
+      - /workspace/deploy/ai/bin/run-evaluation.sh
+    volumes:
+      - ${AGENT_OUTPUT_DIRECTORY:-/var/lib/bracketiq-ai/output}:/workspace/output
+      - ${MODEL_MANIFEST_FILE:?Set MODEL_MANIFEST_FILE in deployment.env}:/run/config/model-manifest.json:ro
+    secrets:
+      - model_api_key
+    depends_on:
+      - model
+    networks:
+      - model_private
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    init: true
+    logging: *default-logging
+
 networks:
   model_private:
     internal: true

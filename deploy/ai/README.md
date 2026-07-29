@@ -77,6 +77,20 @@ capacity gate if it exceeds 22 GB resident memory, sustains more than 512 MB
 swap, leaves less than 1 GB available memory, or needs more than 90 minutes for
 a representative source.
 
+For the real held-out evaluation, place the private suite below the mounted
+output directory and run the credential-isolated evaluator profile:
+
+    docker compose --env-file deployment.env -f compose.yml \
+      --profile evaluator run --rm evaluator \
+      --suite=/workspace/output/private/held-out-v1.json \
+      --output=/workspace/output/bakeoff/<candidate>/evaluation.json
+
+Unlike `controller`, `evaluator` receives no database or object-storage
+environment and has only the internal model network. Fill
+`runtime-observation.example.json` from measurements on the same run, then use
+the repository bakeoff record and selection commands. Do not put the private
+suite or its gold drafts in Git.
+
 ## Controller modes
 
 `CONTROLLER_MODE=disabled` is the default and refuses to run.

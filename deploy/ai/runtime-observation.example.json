@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+  "host": {
+    "provider": "OVH",
+    "orderId": "REPLACE",
+    "region": "REPLACE",
+    "imageId": "REPLACE",
+    "cpuModel": "REPLACE",
+    "cpuFlags": [
+      "REPLACE"
+    ],
+    "onlineCores": 8,
+    "physicalMemoryBytes": 0,
+    "diskBytes": 0,
+    "monthlyPriceUsd": 0,
+    "renewalPriceUsd": 0,
+    "taxUsd": 0,
+    "dailyBackupIncluded": false
+  },
+  "serving": {
+    "runtimeImage": "REPLACE_WITH_IMAGE@sha256:DIGEST",
+    "runtimeRevision": "REPLACE",
+    "modelFileSha256": "REPLACE_WITH_64_HEX_SHA256",
+    "contextTokens": 8192,
+    "maximumOutputTokens": 2048,
+    "parallelSlots": 1,
+    "cacheTypeK": "q8_0",
+    "cacheTypeV": "q8_0",
+    "offlineColdStartPassed": false,
+    "coldStartMs": 0,
+    "peakResidentMemoryBytes": 0,
+    "peakSwapBytes": 0,
+    "minimumAvailableMemoryBytes": 0,
+    "representativeJobWallMs": 0,
+    "promptTokensPerSecond": 0,
+    "outputTokensPerSecond": 0
+  }
+}
