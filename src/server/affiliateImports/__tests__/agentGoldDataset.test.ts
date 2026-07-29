@@ -13,6 +13,10 @@ import {
   planAffiliateGoldTestCohort,
   type AffiliateGoldCohortCandidate,
 } from '../agentGoldCohort';
+import {
+  assertLockedGoldCaptureCohort,
+  planGoldCaptureBatches,
+} from '../agentGoldCaptureCohort';
 
 const HASH_HTML = 'a'.repeat(64);
 const HASH_ROBOTS = 'b'.repeat(64);
@@ -453,6 +457,39 @@ const cohortCandidate = (
 };
 
 describe('affiliate mapping gold cohort planning', () => {
+  it('requires a matching immutable lock before planning live capture batches', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'historical-commit',
+    });
+    const lock = {
+      schemaVersion: 1,
+      cohortId: proposal.cohortId,
+      proposalSha256: proposal.proposalSha256,
+      repositoryCommit: proposal.repositoryCommit,
+      approvedByUserId: 'admin-user-id',
+      lockedAt: '2026-07-29T20:00:00.000Z',
+      domainAssignments: proposal.lockedDomainAssignments,
+      platformFamilies: proposal.lockedPlatformFamilies,
+    };
+
+    expect(assertLockedGoldCaptureCohort(proposal, lock)).toEqual({ proposal, lock });
+    expect(() => assertLockedGoldCaptureCohort(proposal, {
+      ...lock,
+      proposalSha256: '0'.repeat(64),
+    })).toThrow('lock does not match');
+  });
+
+  it('keeps live capture runs within the ten-page intake limit', () => {
+    const pages = Array.from({ length: 23 }, (_, index) => ({
+      url: `https://capture-${index}.example/page`,
+      role: 'DETAIL',
+    }));
+
+    expect(planGoldCaptureBatches(pages).map((batch) => batch.length))
+      .toEqual([10, 10, 3]);
+  });
+
   it('verifies a saved proposal independently of the current repository commit', () => {
     const proposal = planAffiliateGoldTestCohort({
       candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
