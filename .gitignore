@@ -26,6 +26,8 @@ uploads-live-clubs/
 # misc
 .DS_Store
 *.pem
+__pycache__/
+*.pyc
 .idea
 tmp/
 .tmp/

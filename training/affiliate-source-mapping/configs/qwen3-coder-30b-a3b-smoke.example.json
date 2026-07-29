@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "experimentKind": "smoke",
+  "modelFamily": "qwen3-coder-30b-a3b-instruct",
+  "baseModelPath": "/workspace/base-model",
+  "baseModelManifestPath": "/workspace/base-model/model-manifest.json",
+  "baseModelRevision": "REPLACE_WITH_IMMUTABLE_REVISION",
+  "baseModelManifestSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "datasetDirectory": "/workspace/dataset",
+  "datasetManifestSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "outputDirectory": "/workspace/output/qwen3-coder-30b-a3b-smoke",
+  "loader": {
+    "mode": "bnb_nf4",
+    "attentionImplementation": "sdpa"
+  },
+  "lora": {
+    "rank": 8,
+    "alpha": 16,
+    "dropout": 0.0,
+    "targetModules": "all-linear",
+    "targetParameters": [
+      "REPLACE_AFTER_PINNED_MODEL_INSPECTION"
+    ],
+    "requiresReviewedTargetParameters": true
+  },
+  "training": {
+    "seed": 20260729,
+    "maxSequenceLength": 2048,
+    "learningRate": 0.0002,
+    "epochs": 1,
+    "maxSteps": 20,
+    "perDeviceBatchSize": 1,
+    "gradientAccumulationSteps": 8,
+    "warmupRatio": 0.03,
+    "loggingSteps": 1,
+    "saveSteps": 10,
+    "maxRuntimeSeconds": 7200
+  }
+}

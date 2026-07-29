@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "experimentKind": "full",
+  "modelFamily": "gpt-oss-20b",
+  "baseModelPath": "/workspace/base-model",
+  "baseModelManifestPath": "/workspace/base-model/model-manifest.json",
+  "baseModelRevision": "REPLACE_WITH_IMMUTABLE_REVISION",
+  "baseModelManifestSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "datasetDirectory": "/workspace/dataset",
+  "datasetManifestSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "outputDirectory": "/workspace/output/gpt-oss-20b-full",
+  "loader": {
+    "mode": "mxfp4_dequantize",
+    "attentionImplementation": "eager"
+  },
+  "lora": {
+    "rank": 8,
+    "alpha": 16,
+    "dropout": 0.0,
+    "targetModules": "all-linear",
+    "targetParameters": [
+      "REPLACE_AFTER_PINNED_MODEL_INSPECTION"
+    ],
+    "requiresReviewedTargetParameters": true
+  },
+  "training": {
+    "seed": 20260729,
+    "maxSequenceLength": 8192,
+    "learningRate": 0.0002,
+    "epochs": 3,
+    "maxSteps": -1,
+    "perDeviceBatchSize": 1,
+    "gradientAccumulationSteps": 16,
+    "warmupRatio": 0.03,
+    "loggingSteps": 1,
+    "saveSteps": 25,
+    "maxRuntimeSeconds": 42000
+  }
+}
