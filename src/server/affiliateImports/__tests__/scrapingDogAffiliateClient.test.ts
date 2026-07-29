@@ -91,6 +91,28 @@ describe('ScrapingDogAffiliateClient', () => {
     });
   });
 
+  it('retries a provider stealth-mode rejection with stealth enabled', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(new Response(
+        'Oops! Something went wrong. You can try enabling Stealth Mode using stealth_mode=true.',
+        { status: 400 },
+      ))
+      .mockResolvedValueOnce(new Response(usefulHtml, { status: 200 }));
+    const client = new ScrapingDogAffiliateClient(
+      new ScrapingDogTransport('key', fetchImpl, async () => {}),
+    );
+
+    const result = await client.captureSourcePage('https://club.example.test/events');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const stealthUrl = new URL(String(fetchImpl.mock.calls[1][0]));
+    expect(stealthUrl.searchParams.get('stealth_mode')).toBe('true');
+    expect(result).toMatchObject({
+      renderMode: 'STATIC',
+      warnings: [expect.stringContaining('stealth mode')],
+    });
+  });
+
   it('returns screenshot bytes without exposing the API key', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(new Response(
       new Uint8Array([137, 80, 78, 71]),

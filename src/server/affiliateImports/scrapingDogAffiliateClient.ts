@@ -63,6 +63,39 @@ export class ScrapingDogAffiliateClient implements AffiliateSourceSearchClient, 
     private readonly transport = new ScrapingDogTransport(),
   ) {}
 
+  private async requestScrape(
+    url: string,
+    params: Record<string, string | number | boolean>,
+  ): Promise<{
+    response: Awaited<ReturnType<ScrapingDogTransport['requestText']>>;
+    stealthModeUsed: boolean;
+  }> {
+    try {
+      return {
+        response: await this.transport.requestText({
+          endpoint: '/scrape',
+          targetUrl: url,
+          params,
+        }),
+        stealthModeUsed: false,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/stealth(?: mode)?|stealth_mode=true/i.test(message)) throw error;
+      return {
+        response: await this.transport.requestText({
+          endpoint: '/scrape',
+          targetUrl: url,
+          params: {
+            ...params,
+            stealth_mode: true,
+          },
+        }),
+        stealthModeUsed: true,
+      };
+    }
+  }
+
   async searchSources(
     query: string,
     options: AffiliateSourceSearchOptions = {},
@@ -114,15 +147,12 @@ export class ScrapingDogAffiliateClient implements AffiliateSourceSearchClient, 
 
   async captureSourcePage(url: string): Promise<AffiliateSourcePageCapture> {
     const attempts: AffiliateSourceCaptureAttempt[] = [];
-    const staticResponse = await this.transport.requestText({
-      endpoint: '/scrape',
-      targetUrl: url,
-      params: {
-        url,
-        dynamic: false,
-        formats: 'html',
-      },
+    const staticCapture = await this.requestScrape(url, {
+      url,
+      dynamic: false,
+      formats: 'html',
     });
+    const staticResponse = staticCapture.response;
     const staticQuality = evaluateAffiliateHtmlQuality(staticResponse.body, url);
     attempts.push({
       renderMode: 'STATIC',
@@ -147,22 +177,21 @@ export class ScrapingDogAffiliateClient implements AffiliateSourceSearchClient, 
         renderMode: 'STATIC',
         elapsedMs: staticResponse.elapsedMs,
         estimatedCredits: 1,
-        warnings: [],
+        warnings: staticCapture.stealthModeUsed
+          ? ['The standard ScrapingDog request failed; stealth mode was used.']
+          : [],
         providerJobId: staticResponse.headers['x-request-id'] ?? null,
         attempts,
       };
     }
 
-    const dynamicResponse = await this.transport.requestText({
-      endpoint: '/scrape',
-      targetUrl: url,
-      params: {
-        url,
-        dynamic: true,
-        formats: 'html',
-        wait: scrapingDogDynamicWaitMs(),
-      },
+    const dynamicCapture = await this.requestScrape(url, {
+      url,
+      dynamic: true,
+      formats: 'html',
+      wait: scrapingDogDynamicWaitMs(),
     });
+    const dynamicResponse = dynamicCapture.response;
     const dynamicQuality = evaluateAffiliateHtmlQuality(dynamicResponse.body, url);
     attempts.push({
       renderMode: 'JAVASCRIPT',
@@ -185,9 +214,14 @@ export class ScrapingDogAffiliateClient implements AffiliateSourceSearchClient, 
       renderMode: 'JAVASCRIPT',
       elapsedMs: staticResponse.elapsedMs + dynamicResponse.elapsedMs,
       estimatedCredits: 6,
-      warnings: dynamicQuality.accepted
-        ? ['Static HTML quality was insufficient; JavaScript rendering was used.']
-        : ['JavaScript-rendered HTML still failed the content-quality gate.'],
+      warnings: [
+        ...(staticCapture.stealthModeUsed || dynamicCapture.stealthModeUsed
+          ? ['The standard ScrapingDog request failed; stealth mode was used.']
+          : []),
+        dynamicQuality.accepted
+          ? 'Static HTML quality was insufficient; JavaScript rendering was used.'
+          : 'JavaScript-rendered HTML still failed the content-quality gate.',
+      ],
       providerJobId: dynamicResponse.headers['x-request-id'] ?? null,
       attempts,
     };
