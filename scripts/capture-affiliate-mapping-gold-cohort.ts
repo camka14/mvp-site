@@ -115,11 +115,15 @@ const main = async () => {
           );
           batchResult.prepareAttempts.push(prepare);
           const queueStatus = String(prepare.queueStatus ?? '');
-          if (!shouldApply || [
+          if (!shouldApply) {
+            batchResult.status = 'DRY_RUN_COMPLETE';
+            break;
+          }
+          if ([
             'EVIDENCE_ALREADY_CAPTURED',
             'BLOCKED_SOURCE_RECORDED',
           ].includes(queueStatus)) {
-            batchResult.status = queueStatus || 'DRY_RUN_COMPLETE';
+            batchResult.status = queueStatus;
             break;
           }
           if (queueStatus === 'COMPLIANCE_REVIEW_REQUIRED') {
