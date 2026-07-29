@@ -23,6 +23,7 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 21:12Z) Implemented and tested the deterministic, read-only 35-example test-cohort planner. The actual local proposal covers 35 distinct domains, one TEAM, five CLUB, five RENTAL, 24 EVENT, 12 selector, 22 manual, four detail/JavaScript, five refusal/insufficiency, two custom-extractor review, five evergreen, and 15 scheduled cases with zero deficits, public requests, or database writes.
 - [ ] Review and explicitly lock the proposed test domains and platform families before any live intake capture; the planner intentionally did not self-approve or lock its output.
 - [x] (2026-07-29 21:15Z) Implemented the immutable private gold-release writer. It validates approved JSONL before creating a directory, rejects unsafe release ids and tampered hashes, writes split JSONL plus per-example fixture manifests and `release.sha256`, and refuses to overwrite an existing release.
+- [x] (2026-07-29 21:17Z) Re-ran all affiliate-agent suites plus Prisma and TypeScript validation after the data-contract, planner, and release-writer changes: 17 suites and 69 tests passed; `prisma validate`, `tsc --noEmit`, and `git diff --check` exited successfully.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -468,6 +469,14 @@ The persisted redacted proposal records:
     blockedRecords = 1
     locked = false
 
+The broader post-implementation validation reported:
+
+    Test Suites: 17 passed, 17 total
+    Tests: 69 passed, 69 total
+    npx prisma validate: valid
+    npx tsc --noEmit: exited 0
+    git diff --check: exited 0
+
 A readiness result should resemble:
 
     {
@@ -588,3 +597,5 @@ Revised 2026-07-29 to record the completed deterministic cohort planner and its 
 Revised 2026-07-29 after persisting the redacted proposal. The revision records the immutable proposal identity, capture workload, intake/backfill counts, and continuing unapproved/unlocked state so a later operator can resume without recreating or accidentally treating the proposal as gold data.
 
 Revised 2026-07-29 after implementing the immutable gold-release writer. The revision records the additional integrity checks, private split/fixture output format, overwrite protection, and the fact that no real release can be built until the cohort is reviewed, locked, captured, and human-approved.
+
+Revised 2026-07-29 after broader validation to preserve the exact passing affiliate-agent, Prisma, TypeScript, and diff-check evidence at the stopping point before any live intake operation.
