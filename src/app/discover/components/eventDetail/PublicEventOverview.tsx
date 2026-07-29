@@ -2,6 +2,8 @@ import { Avatar, Text } from '@mantine/core';
 import { ShieldCheck } from 'lucide-react';
 
 import UserCard from '@/components/ui/UserCard';
+import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import type { Organization, UserData } from '@/types';
 import { getOrganizationAvatarUrl } from '@/types';
@@ -70,26 +72,37 @@ export function PublicEventOverview({
                     <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
                             {organization && hostedByHref ? (
-                                <a
-                                    href={hostedByHref}
-                                    target={hostedByHref.startsWith('http') ? '_blank' : undefined}
-                                    rel={hostedByHref.startsWith('http') ? 'noreferrer' : undefined}
-                                    className="group flex max-w-md items-center gap-3 rounded-md border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
-                                >
-                                    <Avatar
-                                        src={getOrganizationAvatarUrl(organization, 48)}
-                                        radius="md"
-                                        size={48}
-                                        alt={hostedByLabel}
-                                    />
-                                    <div className="min-w-0">
-                                        <Text size="sm" c="dimmed">Hosted by</Text>
-                                        <Text fw={800} className="truncate text-slate-950">{hostedByLabel}</Text>
-                                        <Text size="sm" c="dimmed" className="truncate group-hover:text-slate-700">
-                                            Open organization profile
-                                        </Text>
-                                    </div>
-                                </a>
+                                <div className="max-w-md space-y-2">
+                                    <a
+                                        href={hostedByHref}
+                                        target={hostedByHref.startsWith('http') ? '_blank' : undefined}
+                                        rel={hostedByHref.startsWith('http') ? 'noreferrer' : undefined}
+                                        className="group block rounded-md border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Avatar
+                                                src={getOrganizationAvatarUrl(organization, 48)}
+                                                radius="md"
+                                                size={48}
+                                                alt={hostedByLabel}
+                                            />
+                                            <div className="min-w-0">
+                                                <Text size="sm" c="dimmed">Hosted by</Text>
+                                                <Text fw={800} className="truncate text-slate-950">{hostedByLabel}</Text>
+                                                <Text size="sm" c="dimmed" className="truncate group-hover:text-slate-700">
+                                                    Open organization profile
+                                                </Text>
+                                            </div>
+                                        </div>
+                                        <div
+                                            className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
+                                            data-testid="event-host-ownership-badges"
+                                        >
+                                            <OrganizationOwnershipBadges organization={organization} compact />
+                                        </div>
+                                    </a>
+                                    <OrganizationClaimCallout organization={organization} compact />
+                                </div>
                             ) : hostUser ? (
                                 <UserCard
                                     user={hostUser}

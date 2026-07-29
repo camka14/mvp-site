@@ -27,6 +27,7 @@ import {
 import {
   acceptOrganizationClaim,
   createOrganizationClaim,
+  getOrganizationClaimPresentation,
 } from '@/server/organizationClaims/service';
 
 const now = new Date('2026-07-29T20:00:00.000Z');
@@ -61,6 +62,27 @@ describe('organization claim service', () => {
     jest.clearAllMocks();
     sendAdminOrganizationClaimNotificationMock.mockResolvedValue(undefined);
     ensureDefaultOrganizationRolesMock.mockResolvedValue(undefined);
+  });
+
+  it('returns a named privacy-safe public claim presentation', async () => {
+    const client: any = {
+      organizations: {
+        findUnique: jest.fn().mockResolvedValue(organization),
+      },
+      organizationDomains: {
+        findFirst: jest.fn().mockResolvedValue(domain),
+      },
+    };
+
+    await expect(getOrganizationClaimPresentation('org_1', null, client)).resolves.toEqual(
+      expect.objectContaining({
+        organizationId: 'org_1',
+        organizationName: 'River City Sports Club',
+        ownershipStatus: 'UNCLAIMED',
+        claimable: true,
+        displayDomain: 'rivercitysports.org',
+      }),
+    );
   });
 
   it('creates a manual initial claim, reserves the profile, and notifies the admin', async () => {

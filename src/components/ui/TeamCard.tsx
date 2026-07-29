@@ -2,6 +2,7 @@ import { extractDivisionTokenFromId, inferDivisionDetails, parseDivisionToken } 
 import { Team, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { Box, Paper, Group, Avatar, Text, Badge } from '@mantine/core';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 interface TeamCardProps {
   team: Team;
@@ -219,6 +220,17 @@ export default function TeamCard({
           ) : null}
         </Group>
       )}
+      {team.organization ? (
+        <Group
+          gap={8}
+          mt="sm"
+          pt="sm"
+          style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+          data-testid="team-card-ownership-badges"
+        >
+          <OrganizationOwnershipBadges organization={team.organization} compact />
+        </Group>
+      ) : null}
     </Paper>
   );
 }

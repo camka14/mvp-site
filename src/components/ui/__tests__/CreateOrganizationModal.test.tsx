@@ -6,12 +6,14 @@ import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
 const createOrganizationMock = jest.fn();
 const updateOrganizationMock = jest.fn();
+const findOrganizationMatchesMock = jest.fn();
 const originalFetch = globalThis.fetch;
 
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
     createOrganization: (...args: unknown[]) => createOrganizationMock(...args),
     updateOrganization: (...args: unknown[]) => updateOrganizationMock(...args),
+    findOrganizationMatches: (...args: unknown[]) => findOrganizationMatchesMock(...args),
   },
 }));
 
@@ -66,6 +68,14 @@ describe('CreateOrganizationModal', () => {
     }) as unknown as typeof fetch;
     createOrganizationMock.mockReset();
     updateOrganizationMock.mockReset();
+    findOrganizationMatchesMock.mockReset();
+    findOrganizationMatchesMock.mockResolvedValue({
+      matches: [],
+      matchToken: 'match-token',
+      expiresInSeconds: 600,
+      acknowledgedMatchIds: [],
+      canContinue: true,
+    });
     createOrganizationMock.mockResolvedValue({
       $id: 'org_1',
       name: 'Downtown Sports',
@@ -93,6 +103,8 @@ describe('CreateOrganizationModal', () => {
     );
 
     await user.type(await screen.findByPlaceholderText('Organization name'), 'Downtown Sports');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Tax settings');
     await user.click(screen.getByLabelText(/operates or rents out an athletic facility/i));
     await user.click(screen.getByLabelText(/responsible for determining taxability/i));
     await user.click(screen.getByRole('button', { name: 'Create Organization' }));
@@ -107,6 +119,7 @@ describe('CreateOrganizationModal', () => {
           defaultEventTaxHandling: 'STRIPE_TAX',
           defaultRentalTaxHandling: 'STRIPE_TAX',
           taxResponsibilityAgreementAccepted: true,
+          organizationMatchToken: 'match-token',
         }),
       );
     });
@@ -124,6 +137,8 @@ describe('CreateOrganizationModal', () => {
     );
 
     await user.type(await screen.findByPlaceholderText('Organization name'), 'Private Training Lab');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Tax settings');
     fireEvent.mouseDown(screen.getByRole('textbox', { name: /visibility/i }));
     const unlistedOption = await screen.findByText('Unlisted', { selector: '[data-combobox-option] span' });
     await user.click(unlistedOption);
@@ -198,6 +213,8 @@ describe('CreateOrganizationModal', () => {
     );
 
     await user.type(await screen.findByPlaceholderText('Organization name'), 'Northside Soccer Club');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Tax settings');
     expect(screen.getByLabelText(/club and team tools/i)).toBeChecked();
     expect(screen.getByLabelText(/event management tools/i)).toBeChecked();
     expect(await screen.findByText('Club')).toBeInTheDocument();
@@ -210,5 +227,96 @@ describe('CreateOrganizationModal', () => {
         tags: [expect.objectContaining({ $id: 'tag_club', slug: 'club' })],
       }));
     });
+  });
+
+  it('routes an exact unclaimed affiliate match into claiming instead of organization creation', async () => {
+    const user = userEvent.setup();
+    findOrganizationMatchesMock.mockResolvedValue({
+      matches: [{
+        organizationId: 'org_affiliate',
+        name: 'River City Sports Club',
+        logoUrl: null,
+        approximateLocation: 'Portland, OR',
+        profileUrl: '/organizations/org_affiliate',
+        claimUrl: '/organizations/org_affiliate/claim',
+        confidence: 'EXACT',
+        reasonCodes: ['EXACT_OFFICIAL_URL'],
+        originType: 'AFFILIATE_IMPORTED',
+        ownershipStatus: 'UNCLAIMED',
+        claimVerificationLevel: 'NONE',
+        recommendedAction: 'CLAIM_PROFILE',
+        availableActions: ['CLAIM_PROFILE', 'OPEN_PROFILE'],
+        submittedWebsiteDomain: 'rivercitysports.com',
+        blocksCreation: true,
+      }],
+      matchToken: 'blocked-match-token',
+      expiresInSeconds: 600,
+      acknowledgedMatchIds: [],
+      canContinue: false,
+    });
+
+    renderWithMantine(
+      <CreateOrganizationModal
+        isOpen
+        onClose={() => undefined}
+        currentUser={{ $id: 'user_1' } as any}
+      />,
+    );
+
+    await user.type(await screen.findByPlaceholderText('Organization name'), 'River City Sports Club');
+    expect(await screen.findByRole('link', { name: 'Claim this profile' })).toHaveAttribute(
+      'href',
+      '/organizations/org_affiliate/claim',
+    );
+    expect(screen.getByText('Unclaimed profile')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(createOrganizationMock).not.toHaveBeenCalled();
+  });
+
+  it('offers owner transfer and dispute paths for a claimed match without staff-access requests', async () => {
+    const user = userEvent.setup();
+    findOrganizationMatchesMock.mockResolvedValue({
+      matches: [{
+        organizationId: 'org_claimed',
+        name: 'River City Sports Club',
+        logoUrl: null,
+        approximateLocation: 'Portland, OR',
+        profileUrl: '/organizations/org_claimed',
+        claimUrl: '/organizations/org_claimed/claim',
+        confidence: 'EXACT',
+        reasonCodes: ['EXACT_OFFICIAL_URL'],
+        originType: 'AFFILIATE_IMPORTED',
+        ownershipStatus: 'CLAIMED',
+        claimVerificationLevel: 'SITE_CONTROL',
+        recommendedAction: 'OPEN_PROFILE',
+        availableActions: [
+          'OPEN_PROFILE',
+          'REQUEST_OWNERSHIP_TRANSFER',
+          'REPORT_OWNERSHIP_ISSUE',
+        ],
+        submittedWebsiteDomain: 'rivercitysports.com',
+        blocksCreation: true,
+      }],
+      matchToken: 'blocked-match-token',
+      expiresInSeconds: 600,
+      acknowledgedMatchIds: [],
+      canContinue: false,
+    });
+
+    renderWithMantine(
+      <CreateOrganizationModal
+        isOpen
+        onClose={() => undefined}
+        currentUser={{ $id: 'user_1' } as any}
+      />,
+    );
+
+    await user.type(await screen.findByPlaceholderText('Organization name'), 'River City Sports Club');
+    expect(await screen.findByRole('link', { name: 'Request ownership transfer' })).toHaveAttribute(
+      'href',
+      '/organizations/org_claimed/claim?requestType=OWNERSHIP_TRANSFER',
+    );
+    expect(screen.getByRole('link', { name: 'Report an ownership issue' })).toBeInTheDocument();
+    expect(screen.queryByText(/staff access/i)).not.toBeInTheDocument();
   });
 });

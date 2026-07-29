@@ -15,6 +15,7 @@ import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { buildEventDivisionDisplayLabels } from '@/lib/eventDivisionDisplay';
 import { trackEventOutboundClicked } from '@/lib/analytics/eventAnalytics';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 interface EventCardProps {
   event: Event;
@@ -406,6 +407,14 @@ export default function EventCard({
           </div>
           <span className="discover-details-pill">Details</span>
         </div>
+        {typeof event.organization === 'object' && event.organization ? (
+          <div
+            className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
+            data-testid="event-card-ownership-badges"
+          >
+            <OrganizationOwnershipBadges organization={event.organization} compact />
+          </div>
+        ) : null}
       </div>
     </div>
   );

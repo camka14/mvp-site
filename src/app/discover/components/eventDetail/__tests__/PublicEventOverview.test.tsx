@@ -8,6 +8,8 @@ import { PublicEventOverview } from '../PublicEventOverview';
 const organization = {
     $id: 'org-1',
     name: 'River City Sports Club',
+    ownershipStatus: 'CLAIMED',
+    claimVerificationLevel: 'SITE_CONTROL',
 } as Organization;
 
 const baseProps: React.ComponentProps<typeof PublicEventOverview> = {
@@ -37,11 +39,32 @@ describe('PublicEventOverview', () => {
 
         expect(screen.getByRole('link', { name: /River City Sports Club/ })).toHaveAttribute('href', '/organizations/river-city');
         expect(screen.getByText('Open organization profile')).toBeInTheDocument();
+        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Claimed profile');
+        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Website verified');
         expect(screen.getByText('Registration is open')).toBeInTheDocument();
         expect(screen.getByText('A welcoming local league.')).toBeInTheDocument();
         expect(screen.getByText('Starts')).toBeInTheDocument();
         expect(screen.getByText('Ends')).toBeInTheDocument();
         expect(screen.getByText('123 Main St')).toBeInTheDocument();
+    });
+
+    it('shows a claim callout for an unclaimed affiliate organization', () => {
+        renderWithMantine(
+            <PublicEventOverview
+                {...baseProps}
+                organization={{
+                    ...organization,
+                    ownershipStatus: 'UNCLAIMED',
+                    claimVerificationLevel: 'NONE',
+                }}
+            />,
+        );
+
+        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Unclaimed profile');
+        expect(screen.getByRole('link', { name: 'Claim this profile' })).toHaveAttribute(
+            'href',
+            '/organizations/org-1/claim',
+        );
     });
 
     it('keeps affiliate organization actions on the internal organization profile', () => {

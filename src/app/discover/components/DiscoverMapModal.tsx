@@ -57,6 +57,7 @@ import {
   GOOGLE_MAPS_SCRIPT_ID,
 } from '@/lib/googleMapsLoader';
 import { getNextRentalOccurrence } from '../utils/rentals';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 type MapCenter = { lat: number; lng: number };
 type MapSearchTarget = 'events' | 'organizations' | 'rentals';
@@ -1681,6 +1682,9 @@ export default function DiscoverMapModal({
                     </div>
                   </div>
                   <p>{getOrganizationSummary(selectedOrganization)}</p>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <OrganizationOwnershipBadges organization={selectedOrganization} compact />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1714,6 +1718,9 @@ export default function DiscoverMapModal({
                     </div>
                   </div>
                   <p>{getOrganizationSummary(selectedRental.organization)}</p>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <OrganizationOwnershipBadges organization={selectedRental.organization} compact />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {

@@ -6,6 +6,8 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
+import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
 import { Avatar, Badge, Checkbox, Chip, Container, Group, Title, Text, Button, Paper, ScrollArea, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
@@ -3572,7 +3574,6 @@ function OrganizationDetailContent() {
                 <div>
                   <Group gap="md" align="center" mb={2}>
                     <Title order={2} className="discover-title">{org.name}</Title>
-                    <OrganizationVerificationBadge organization={org} />
                     {canToggleHomePagePreference && (
                       <Checkbox
                         label="Set as home page"
@@ -3590,9 +3591,18 @@ function OrganizationDetailContent() {
                       <Text size="sm" c="dimmed">{org.location}</Text>
                     )}
                   </Group>
+                  <Group gap="xs" mt="xs" wrap="wrap">
+                    <OrganizationOwnershipBadges organization={org} compact />
+                    <OrganizationVerificationBadge organization={org} />
+                  </Group>
                 </div>
               </Group>
             </Group>
+            {org.ownershipStatus === 'UNCLAIMED' ? (
+              <div className="mb-4 max-w-2xl">
+                <OrganizationClaimCallout organization={org} />
+              </div>
+            ) : null}
 
             {/* Tabs */}
             <SegmentedControl

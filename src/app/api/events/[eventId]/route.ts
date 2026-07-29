@@ -1815,6 +1815,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
             website: true,
             publicSlug: true,
             publicPageEnabled: true,
+            originType: true,
+            ownershipStatus: true,
+            claimVerificationLevel: true,
+            claimedAt: true,
+            ownershipVerifiedAt: true,
           },
         })
       : Promise.resolve(null),

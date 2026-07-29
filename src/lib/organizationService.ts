@@ -29,6 +29,12 @@ import {
   normalizeRentalTaxHandling,
 } from '@/lib/taxPolicy';
 import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
+import {
+  getOrganizationOwnershipPresentation,
+  normalizeOrganizationClaimVerificationLevel,
+  normalizeOrganizationOriginType,
+  normalizeOrganizationOwnershipStatus,
+} from '@/lib/organizationOwnership';
 
 type AnyRow = Record<string, any> & { $id: string };
 type OrganizationDivisionInput = Omit<Division, 'id' | 'scope' | 'organizationId' | 'eventId' | 'maxParticipants'> & {
@@ -45,6 +51,51 @@ export type PublicSlugCheckResult = {
   valid: boolean;
   current: boolean;
   error?: string;
+};
+export type OrganizationMatchConfidence = 'EXACT' | 'RELATED' | 'POSSIBLE';
+export type OrganizationMatchAction =
+  | 'CLAIM_PROFILE'
+  | 'REQUEST_OWNERSHIP_TRANSFER'
+  | 'REPORT_OWNERSHIP_ISSUE'
+  | 'OPEN_PROFILE'
+  | 'CONTINUE_NEW_ORGANIZATION';
+export type OrganizationMatch = {
+  organizationId: string;
+  name: string;
+  logoUrl: string | null;
+  approximateLocation: string | null;
+  profileUrl: string;
+  claimUrl: string;
+  confidence: OrganizationMatchConfidence;
+  reasonCodes: string[];
+  originType: string;
+  ownershipStatus: string;
+  claimVerificationLevel: string;
+  recommendedAction: OrganizationMatchAction;
+  availableActions: OrganizationMatchAction[];
+  submittedWebsiteDomain: string | null;
+  blocksCreation: boolean;
+};
+export type OrganizationMatchInput = {
+  name?: string;
+  website?: string;
+  location?: string;
+  coordinates?: { lat: number; lng: number } | [number, number] | null;
+  acknowledgedMatchIds?: string[];
+};
+export type OrganizationMatchResult = {
+  matches: OrganizationMatch[];
+  matchToken: string;
+  expiresInSeconds: number;
+  acknowledgedMatchIds: string[];
+  canContinue: boolean;
+};
+export type OrganizationCreateInput = Partial<Organization> & {
+  name: string;
+  ownerId: string;
+  organizationMatchToken: string;
+  acknowledgedMatchIds?: string[];
+  organizationMatchOverrideReason?: string;
 };
 
 class OrganizationService {
@@ -290,6 +341,15 @@ class OrganizationService {
         : row.verificationReviewUpdatedAt instanceof Date
           ? row.verificationReviewUpdatedAt.toISOString()
           : undefined,
+      originType: normalizeOrganizationOriginType(row.originType),
+      ownershipStatus: normalizeOrganizationOwnershipStatus(row.ownershipStatus),
+      claimVerificationLevel: normalizeOrganizationClaimVerificationLevel(row.claimVerificationLevel),
+      claimedAt: row.claimedAt instanceof Date
+        ? row.claimedAt.toISOString()
+        : typeof row.claimedAt === 'string' ? row.claimedAt : undefined,
+      ownershipVerifiedAt: row.ownershipVerifiedAt instanceof Date
+        ? row.ownershipVerifiedAt.toISOString()
+        : typeof row.ownershipVerifiedAt === 'string' ? row.ownershipVerifiedAt : undefined,
       staffMembers,
       staffInvites,
       staffRoles,
@@ -348,10 +408,26 @@ class OrganizationService {
       products: [],
     };
 
-    return organization;
+    const ownershipPresentation = getOrganizationOwnershipPresentation(organization);
+    return {
+      ...organization,
+      ...ownershipPresentation,
+    };
   }
 
-  async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
+  async findOrganizationMatches(
+    input: OrganizationMatchInput,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<OrganizationMatchResult> {
+    return apiRequest<OrganizationMatchResult>('/api/organizations/matches', {
+      method: 'POST',
+      body: input,
+      signal: options.signal,
+      timeoutMs: 10_000,
+    });
+  }
+
+  async createOrganization(data: OrganizationCreateInput): Promise<Organization> {
     const payload = buildPayload(data);
     delete payload.productIds;
 

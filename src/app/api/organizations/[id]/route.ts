@@ -27,6 +27,13 @@ import {
 } from '@/server/organizationTags';
 import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
+import {
+  assertOrganizationWebsiteAvailableForUpdate,
+  isOrganizationMatchError,
+} from '@/server/organizationMatch';
+import { organizationDomainPolicyForUrl } from '@/server/organizationClaims/domainPolicy';
+import { createId } from '@/lib/id';
+import { getOrganizationOwnershipPresentation } from '@/lib/organizationOwnership';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,23 +85,34 @@ const ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'ownerId',
 ]);
 
-const toPublicOrganizationSummary = (organization: Record<string, any>) => ({
-  id: organization.id,
-  createdAt: organization.createdAt ?? null,
-  updatedAt: organization.updatedAt ?? null,
-  name: organization.name ?? null,
-  location: organization.location ?? null,
-  address: organization.address ?? null,
-  description: organization.description ?? null,
-  logoId: organization.logoId ?? null,
-  website: organization.website ?? null,
-  sports: Array.isArray(organization.sports) ? organization.sports : [],
-  enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
-  status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
-  coordinates: organization.coordinates ?? null,
-  publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
-  publicPageEnabled: organization.publicPageEnabled === true,
-});
+const toPublicOrganizationSummary = (organization: Record<string, any>) => {
+  const ownership = getOrganizationOwnershipPresentation(organization);
+  return {
+    id: organization.id,
+    createdAt: organization.createdAt ?? null,
+    updatedAt: organization.updatedAt ?? null,
+    name: organization.name ?? null,
+    location: organization.location ?? null,
+    address: organization.address ?? null,
+    description: organization.description ?? null,
+    logoId: organization.logoId ?? null,
+    website: organization.website ?? null,
+    sports: Array.isArray(organization.sports) ? organization.sports : [],
+    enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
+    status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
+    coordinates: organization.coordinates ?? null,
+    publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
+    publicPageEnabled: organization.publicPageEnabled === true,
+    originType: ownership.originType,
+    ownershipStatus: ownership.ownershipStatus,
+    claimVerificationLevel: ownership.claimVerificationLevel,
+    claimedAt: organization.claimedAt ?? null,
+    ownershipVerifiedAt: organization.ownershipVerifiedAt ?? null,
+    claimable: ownership.claimable,
+    claimUrl: ownership.claimUrl,
+    ownershipAction: ownership.ownershipAction,
+  };
+};
 
 const sanitizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
@@ -107,12 +125,13 @@ const sanitizeStringArray = (value: unknown): string[] => {
 };
 
 const updateOrganizationWithSchemaContract = async (
+  client: typeof prisma | any,
   id: string,
   updateData: Record<string, unknown>,
-) => requirePrismaSchemaContract('Organizations', () => prisma.organizations.update({
+) => requirePrismaSchemaContract('Organizations', () => client.organizations.update({
   where: { id },
   data: updateData as any,
-}));
+})) as Promise<Record<string, any> & { id: string }>;
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -232,6 +251,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: {
       id: true,
       ownerId: true,
+      name: true,
+      location: true,
+      website: true,
+      coordinates: true,
+      claimVerificationLevel: true,
       publicSlug: true,
       taxResponsibilityAcceptedAt: true,
     },
@@ -386,11 +410,109 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Public slug is already in use.' }, { status: 409 });
     }
   }
+  if (
+    Object.prototype.hasOwnProperty.call(updateData, 'website')
+    && typeof updateData.website === 'string'
+    && updateData.website.trim()
+    && updateData.website.trim() !== (existing.website ?? '').trim()
+  ) {
+    try {
+      await assertOrganizationWebsiteAvailableForUpdate(
+        id,
+        {
+          name: typeof updateData.name === 'string' ? updateData.name : existing.name,
+          website: updateData.website,
+          location: typeof updateData.location === 'string' ? updateData.location : existing.location,
+          coordinates: (updateData.coordinates ?? existing.coordinates) as [number, number] | null,
+        },
+        { userId: session.userId, isAdmin: session.isAdmin },
+      );
+    } catch (error) {
+      if (isOrganizationMatchError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, matches: error.matches },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+  }
+  let nextWebsitePolicy: ReturnType<typeof organizationDomainPolicyForUrl> | null = null;
+  let websiteDomainChanged = false;
+  if (
+    Object.prototype.hasOwnProperty.call(updateData, 'website')
+    && typeof updateData.website === 'string'
+    && updateData.website.trim()
+  ) {
+    nextWebsitePolicy = organizationDomainPolicyForUrl(updateData.website);
+    let existingWebsitePolicy: ReturnType<typeof organizationDomainPolicyForUrl> | null = null;
+    try {
+      existingWebsitePolicy = existing.website
+        ? organizationDomainPolicyForUrl(existing.website)
+        : null;
+    } catch {
+      existingWebsitePolicy = null;
+    }
+    websiteDomainChanged = existingWebsitePolicy?.registrableDomain !== nextWebsitePolicy.registrableDomain
+      || existingWebsitePolicy?.host !== nextWebsitePolicy.host;
+    if (
+      websiteDomainChanged
+      && (existing.claimVerificationLevel === 'SITE_CONTROL' || existing.claimVerificationLevel === 'AFFILIATION')
+    ) {
+      updateData.claimVerificationLevel = 'NONE';
+      updateData.ownershipVerifiedAt = null;
+      updateData.ownershipVerificationLastCheckedAt = null;
+    }
+  }
   updateData.updatedAt = new Date();
 
   let updated;
   try {
-    updated = await updateOrganizationWithSchemaContract(id, updateData);
+    updated = await prisma.$transaction(async (tx) => {
+      const organization = await updateOrganizationWithSchemaContract(tx, id, updateData);
+      if (nextWebsitePolicy) {
+        await tx.organizationDomains.updateMany({
+          where: {
+            organizationId: id,
+            isPrimary: true,
+            host: { not: nextWebsitePolicy.host },
+          },
+          data: { isPrimary: false },
+        });
+        await tx.organizationDomains.upsert({
+          where: {
+            organizationId_host: {
+              organizationId: id,
+              host: nextWebsitePolicy.host,
+            },
+          },
+          create: {
+            id: createId(),
+            organizationId: id,
+            url: nextWebsitePolicy.canonicalUrl,
+            host: nextWebsitePolicy.host,
+            registrableDomain: nextWebsitePolicy.registrableDomain,
+            source: 'OWNER_PROVIDED',
+            isPrimary: true,
+            isSharedPlatform: nextWebsitePolicy.isSharedPlatform,
+          },
+          update: {
+            url: nextWebsitePolicy.canonicalUrl,
+            registrableDomain: nextWebsitePolicy.registrableDomain,
+            source: 'OWNER_PROVIDED',
+            isPrimary: true,
+            isSharedPlatform: nextWebsitePolicy.isSharedPlatform,
+            ...(websiteDomainChanged
+              ? {
+                verifiedAt: null,
+                lastCheckedAt: null,
+              }
+              : {}),
+          },
+        });
+      }
+      return organization;
+    });
   } catch (error) {
     if (isPrismaSchemaContractError(error)) {
       return NextResponse.json(

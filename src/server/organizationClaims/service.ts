@@ -48,6 +48,7 @@ export type OrganizationClaimActor = {
 
 export type OrganizationClaimPresentation = {
   organizationId: string;
+  organizationName: string;
   originType: string;
   ownershipStatus: string;
   claimVerificationLevel: string;
@@ -499,6 +500,7 @@ export const getOrganizationClaimPresentation = async (
     where: { id: organizationId },
     select: {
       id: true,
+      name: true,
       website: true,
       originType: true,
       ownershipStatus: true,
@@ -531,6 +533,7 @@ export const getOrganizationClaimPresentation = async (
           : 'NONE';
   return {
     organizationId,
+    organizationName: organization.name,
     originType: organization.originType,
     ownershipStatus: organization.ownershipStatus,
     claimVerificationLevel: organization.claimVerificationLevel,

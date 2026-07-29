@@ -127,6 +127,28 @@ describe('TeamCard division label', () => {
   });
 });
 
+describe('TeamCard organization ownership', () => {
+  it('shows compact trust status without replacing affiliate registration', () => {
+    renderWithMantine(
+      <TeamCard
+        team={createTeam({
+          affiliateUrl: 'https://partner.example.com/register',
+          organization: {
+            $id: 'org_1',
+            name: 'River City Sports Club',
+            ownershipStatus: 'UNCLAIMED',
+            claimVerificationLevel: 'NONE',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('External registration')).toBeInTheDocument();
+    expect(screen.getByTestId('team-card-ownership-badges')).toHaveTextContent('Unclaimed profile');
+    expect(screen.queryByRole('link', { name: /claim/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('TeamCard members visibility', () => {
   it('excludes hidden members from the avatar list', () => {
     const visiblePlayer = createPlayer('player_visible', { fullName: 'Visible Player' });

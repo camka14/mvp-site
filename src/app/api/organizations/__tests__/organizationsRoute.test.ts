@@ -11,7 +11,13 @@ const authUserFindUniqueMock = jest.fn();
 const staffMembersFindManyMock = jest.fn();
 const productsFindManyMock = jest.fn();
 const divisionsFindManyMock = jest.fn();
+const organizationDomainCreateMock = jest.fn();
+const organizationClaimEventCreateMock = jest.fn();
+const assertOrganizationCreationAllowedMock = jest.fn();
+const acquireOrganizationMatchLockMock = jest.fn();
+const evaluateRazumlyAdminAccessMock = jest.fn();
 const prismaMock = {
+  $transaction: jest.fn(async (callback: (client: any) => unknown) => callback(prismaMock)),
   authUser: {
     findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
   },
@@ -34,6 +40,12 @@ const prismaMock = {
     findMany: (...args: any[]) => findManyMock(...args),
     create: (...args: any[]) => createMock(...args),
   },
+  organizationDomains: {
+    create: (...args: any[]) => organizationDomainCreateMock(...args),
+  },
+  organizationClaimEvents: {
+    create: (...args: any[]) => organizationClaimEventCreateMock(...args),
+  },
   products: {
     findMany: (...args: any[]) => productsFindManyMock(...args),
   },
@@ -46,8 +58,32 @@ jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/adminNotifications', () => ({
   sendAdminOrganizationCreatedNotification: (...args: any[]) => sendAdminOrganizationCreatedNotificationMock(...args),
 }));
+jest.mock('@/server/organizationMatch', () => {
+  class MockOrganizationMatchError extends Error {
+    code: string;
+    status: number;
+    matches: unknown[];
+
+    constructor(message: string, code: string, status = 409, matches: unknown[] = []) {
+      super(message);
+      this.code = code;
+      this.status = status;
+      this.matches = matches;
+    }
+  }
+  return {
+    acquireOrganizationMatchLock: (...args: any[]) => acquireOrganizationMatchLockMock(...args),
+    assertOrganizationCreationAllowed: (...args: any[]) => assertOrganizationCreationAllowedMock(...args),
+    isOrganizationMatchError: (error: unknown) => error instanceof MockOrganizationMatchError,
+    OrganizationMatchError: MockOrganizationMatchError,
+  };
+});
+jest.mock('@/server/razumlyAdmin', () => ({
+  evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
+}));
 
 import { GET as organizationsGet, POST as organizationsPost } from '@/app/api/organizations/route';
+import { OrganizationMatchError } from '@/server/organizationMatch';
 
 const ORIGIN_ENV_KEYS = ['PUBLIC_WEB_BASE_URL', 'NEXT_PUBLIC_SITE_URL', 'NEXT_PUBLIC_WEB_BASE_URL'] as const;
 
@@ -70,6 +106,14 @@ describe('/api/organizations', () => {
     staffMembersFindManyMock.mockResolvedValue([]);
     productsFindManyMock.mockResolvedValue([]);
     divisionsFindManyMock.mockResolvedValue([]);
+    organizationDomainCreateMock.mockResolvedValue({});
+    organizationClaimEventCreateMock.mockResolvedValue({});
+    acquireOrganizationMatchLockMock.mockResolvedValue(undefined);
+    assertOrganizationCreationAllowedMock.mockResolvedValue({
+      matches: [],
+      overrideReason: null,
+    });
+    evaluateRazumlyAdminAccessMock.mockResolvedValue({ allowed: false });
     sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
@@ -346,6 +390,9 @@ describe('/api/organizations', () => {
       status: 'LISTED',
       publicSlug: 'recs-pickleball',
       publicPageEnabled: false,
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
       ownerId: 'owner_1',
       hasStripeAccount: true,
     }]);
@@ -370,6 +417,11 @@ describe('/api/organizations', () => {
         name: 'RECS Pickleball',
         publicSlug: null,
         publicPageEnabled: false,
+        originType: 'AFFILIATE_IMPORTED',
+        ownershipStatus: 'UNCLAIMED',
+        claimable: true,
+        claimUrl: '/organizations/org_recs/claim',
+        ownershipAction: 'CLAIM',
       }),
     ]);
     expect(payload.organizations[0]).not.toHaveProperty('ownerId');
@@ -548,6 +600,11 @@ describe('/api/organizations', () => {
         ownerId: 'user_1',
         status: 'UNLISTED',
         hasStripeAccount: false,
+        originType: 'FIRST_PARTY',
+        ownershipStatus: 'CLAIMED',
+        claimedAt: expect.any(Date),
+        claimedByUserId: 'user_1',
+        claimVerificationLevel: 'NONE',
         taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
         operatesAthleticFacility: false,
         defaultEventTaxHandling: 'STRIPE_TAX',
@@ -568,6 +625,76 @@ describe('/api/organizations', () => {
     expect(createMock.mock.calls[0][0].data).not.toHaveProperty('productIds');
     expect(payload.hasStripeAccount).toBe(false);
     expect(payload.productIds).toEqual([]);
+  });
+
+  it('returns a structured conflict when a direct create request bypasses organization matching', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    assertOrganizationCreationAllowedMock.mockRejectedValueOnce(new OrganizationMatchError(
+      'An organization matching these details already exists.',
+      'ORGANIZATION_ALREADY_EXISTS',
+      409,
+      [{
+        organizationId: 'org_existing',
+        name: 'Existing Org',
+        confidence: 'EXACT',
+      } as any],
+    ));
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_new',
+        name: 'Existing Org',
+        ownerId: 'user_1',
+        taxResponsibilityAgreementAccepted: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'ORGANIZATION_ALREADY_EXISTS',
+      matches: [expect.objectContaining({ organizationId: 'org_existing' })],
+    }));
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('creates an unverified primary domain alongside a new first-party organization', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    createMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'New Org',
+      ownerId: 'user_1',
+      website: 'https://neworg.example/',
+    });
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        website: 'https://neworg.example',
+        organizationMatchToken: 'match-token',
+        taxResponsibilityAgreementAccepted: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(201);
+    expect(organizationDomainCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: 'org_1',
+        url: 'https://neworg.example/',
+        host: 'neworg.example',
+        registrableDomain: 'neworg.example',
+        source: 'OWNER_PROVIDED',
+        isPrimary: true,
+        isSharedPlatform: false,
+      }),
+    });
+    expect(organizationDomainCreateMock.mock.calls[0][0].data).not.toHaveProperty('verifiedAt');
   });
 
   it('uses the canonical origin for creation notifications when request host headers are hostile', async () => {

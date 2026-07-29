@@ -810,6 +810,7 @@ export interface Team {
   $createdAt?: string;
   $updatedAt?: string;
   // Expanded relationships
+  organization?: Organization | null;
   players?: UserData[];
   playerRegistrations?: TeamPlayerRegistration[];
   captain?: UserData;
@@ -998,6 +999,27 @@ export interface TournamentBracket {
 }
 
 // Organization interfaces
+export type OrganizationOriginType = 'FIRST_PARTY' | 'AFFILIATE_IMPORTED';
+export type OrganizationOwnershipStatus =
+  | 'UNCLAIMED'
+  | 'CLAIM_PENDING'
+  | 'CLAIMED'
+  | 'REVIEW_REQUIRED'
+  | 'DISPUTED'
+  | 'SUSPENDED';
+export type OrganizationClaimVerificationLevel =
+  | 'NONE'
+  | 'AFFILIATION'
+  | 'SITE_CONTROL'
+  | 'MANUAL_REVIEW';
+export type OrganizationOwnershipAction =
+  | 'CLAIM'
+  | 'VIEW_PENDING_CLAIM'
+  | 'REQUEST_OWNERSHIP_TRANSFER'
+  | 'REPORT_OWNERSHIP_ISSUE'
+  | 'CONTACT_SUPPORT'
+  | 'NONE';
+
 export interface Organization {
   $id: string;
   name: string;
@@ -1027,6 +1049,14 @@ export interface Organization {
   verificationReviewStatus?: OrganizationVerificationReviewStatus;
   verificationReviewNotes?: string;
   verificationReviewUpdatedAt?: string;
+  originType?: OrganizationOriginType;
+  ownershipStatus?: OrganizationOwnershipStatus;
+  claimVerificationLevel?: OrganizationClaimVerificationLevel;
+  claimedAt?: string;
+  ownershipVerifiedAt?: string;
+  claimable?: boolean;
+  claimUrl?: string;
+  ownershipAction?: OrganizationOwnershipAction;
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];
   staffRoles?: OrganizationRole[];

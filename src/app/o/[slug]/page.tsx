@@ -20,6 +20,8 @@ import {
 import PublicProductGrid from './PublicProductGrid';
 import { getOrganizationReviewsPayload } from '@/server/organizationReviews';
 import styles from './PublicOrganizationPage.module.css';
+import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 export const dynamic = 'force-dynamic';
 
@@ -244,6 +246,25 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
       </section>
 
       <div className={styles.content}>
+        <section className={styles.ownershipPanel} aria-label="Organization ownership">
+          <OrganizationOwnershipBadges
+            organization={{
+              $id: organization.id,
+              originType: organization.originType,
+              ownershipStatus: organization.ownershipStatus,
+              claimVerificationLevel: organization.claimVerificationLevel,
+            }}
+          />
+          <OrganizationClaimCallout
+            organization={{
+              $id: organization.id,
+              name: organization.name,
+              originType: organization.originType,
+              ownershipStatus: organization.ownershipStatus,
+              claimVerificationLevel: organization.claimVerificationLevel,
+            }}
+          />
+        </section>
         <section id="reviews" className={styles.section}>
           <div className={styles.sectionHeader}>
             <div>

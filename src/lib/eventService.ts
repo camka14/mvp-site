@@ -53,6 +53,12 @@ import type {
 } from "@/lib/eventTeamCompliance";
 import type { DeleteOrArchiveResult } from "@/lib/deleteOutcome";
 import { deleteOutcomeSucceeded } from "@/lib/deleteOutcome";
+import {
+  getOrganizationOwnershipPresentation,
+  normalizeOrganizationClaimVerificationLevel,
+  normalizeOrganizationOriginType,
+  normalizeOrganizationOwnershipStatus,
+} from "@/lib/organizationOwnership";
 
 const readApiEntityId = (value: unknown): string | undefined => {
   if (!value || typeof value !== "object") {
@@ -1289,7 +1295,9 @@ class EventService {
 
   private mapRowToEvent(row: any): Event {
     const state = this.normalizeEventState(row.state);
-    const organization = row.organization ?? row.organizationId;
+    const organization = row.organization && typeof row.organization === "object"
+      ? this.mapOrganizationRow(row.organization)
+      : row.organization ?? row.organizationId;
     const normalizedEventType =
       normalizeEnumValue(row.eventType) ??
       (typeof row.eventType === "string"
@@ -2603,7 +2611,7 @@ class EventService {
         ])
       : undefined;
 
-    return {
+    const organization: Organization = {
       $id: String(row.id ?? row.$id ?? ""),
       name: row.name ?? "",
       description: row.description ?? undefined,
@@ -2667,8 +2675,15 @@ class EventService {
             : undefined,
       publicSlug:
         typeof row.publicSlug === "string" ? row.publicSlug : null,
+      originType: normalizeOrganizationOriginType(row.originType),
+      ownershipStatus: normalizeOrganizationOwnershipStatus(row.ownershipStatus),
+      claimVerificationLevel: normalizeOrganizationClaimVerificationLevel(row.claimVerificationLevel),
       $createdAt: row.createdAt ?? row.$createdAt,
       $updatedAt: row.updatedAt ?? row.$updatedAt,
+    };
+    return {
+      ...organization,
+      ...getOrganizationOwnershipPresentation(organization),
     };
   }
 

@@ -3,6 +3,7 @@
 import { NextRequest } from 'next/server';
 
 const prismaMock = {
+  $transaction: jest.fn(async (callback: (client: any) => unknown) => callback(prismaMock)),
   organizations: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
@@ -41,14 +42,41 @@ const prismaMock = {
   products: {
     findMany: jest.fn(),
   },
+  organizationDomains: {
+    updateMany: jest.fn(),
+    upsert: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
+const assertOrganizationWebsiteAvailableForUpdateMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/organizationMatch', () => {
+  class MockOrganizationMatchError extends Error {
+    code: string;
+    status: number;
+    matches: unknown[];
+
+    constructor(message: string, code: string, status = 409, matches: unknown[] = []) {
+      super(message);
+      this.code = code;
+      this.status = status;
+      this.matches = matches;
+    }
+  }
+  return {
+    assertOrganizationWebsiteAvailableForUpdate: (...args: any[]) => (
+      assertOrganizationWebsiteAvailableForUpdateMock(...args)
+    ),
+    isOrganizationMatchError: (error: unknown) => error instanceof MockOrganizationMatchError,
+    OrganizationMatchError: MockOrganizationMatchError,
+  };
+});
 
 import { GET, PATCH } from '@/app/api/organizations/[id]/route';
+import { OrganizationMatchError } from '@/server/organizationMatch';
 
 describe('/api/organizations/[id]', () => {
   beforeEach(() => {
@@ -66,6 +94,9 @@ describe('/api/organizations/[id]', () => {
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.products.findMany.mockResolvedValue([]);
+    prismaMock.organizationDomains.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.organizationDomains.upsert.mockResolvedValue({});
+    assertOrganizationWebsiteAvailableForUpdateMock.mockResolvedValue(undefined);
   });
 
   it('does not expose an unlisted organization to an anonymous detail request', async () => {
@@ -93,6 +124,9 @@ describe('/api/organizations/[id]', () => {
       id: 'org_1',
       ownerId: 'owner_1',
       name: 'Test Org',
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
       hasStripeAccount: true,
       verificationReviewNotes: 'Internal review note',
       taxResponsibilityAcceptedByUserId: 'owner_1',
@@ -109,6 +143,11 @@ describe('/api/organizations/[id]', () => {
     expect(payload).toEqual(expect.objectContaining({
       id: 'org_1',
       name: 'Test Org',
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimable: true,
+      claimUrl: '/organizations/org_1/claim',
+      ownershipAction: 'CLAIM',
     }));
     expect(payload).not.toHaveProperty('ownerId');
     expect(payload).not.toHaveProperty('hasStripeAccount');
@@ -263,6 +302,114 @@ describe('/api/organizations/[id]', () => {
     expect(payload.error).toBe('Unknown organization patch fields.');
     expect(payload.unknownKeys).toEqual(['hasStripeAccount']);
     expect(prismaMock.organizations.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks a website change that conflicts with another organization profile', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      location: 'Portland, OR',
+      website: 'https://old.example',
+      coordinates: [-122.67, 45.52],
+      publicSlug: null,
+      taxResponsibilityAcceptedAt: new Date(),
+    });
+    assertOrganizationWebsiteAvailableForUpdateMock.mockRejectedValueOnce(new OrganizationMatchError(
+      'This website matches another organization profile.',
+      'ORGANIZATION_WEBSITE_CONFLICT',
+      409,
+      [{ organizationId: 'org_existing' } as any],
+    ));
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            website: 'https://existing.example',
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'ORGANIZATION_WEBSITE_CONFLICT',
+      matches: [expect.objectContaining({ organizationId: 'org_existing' })],
+    }));
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
+  });
+
+  it('replaces the primary domain and clears domain-bound trust when an owner changes websites', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      location: 'Portland, OR',
+      website: 'https://old-site.com',
+      coordinates: [-122.67, 45.52],
+      claimVerificationLevel: 'SITE_CONTROL',
+      publicSlug: null,
+      taxResponsibilityAcceptedAt: new Date(),
+    });
+    prismaMock.organizations.update.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      website: 'https://new-site.com/',
+      claimVerificationLevel: 'NONE',
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            website: 'https://new-site.com',
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
+      where: { id: 'org_1' },
+      data: expect.objectContaining({
+        website: 'https://new-site.com',
+        claimVerificationLevel: 'NONE',
+        ownershipVerifiedAt: null,
+        ownershipVerificationLastCheckedAt: null,
+      }),
+    });
+    expect(prismaMock.organizationDomains.updateMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        isPrimary: true,
+        host: { not: 'new-site.com' },
+      },
+      data: { isPrimary: false },
+    });
+    expect(prismaMock.organizationDomains.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        organizationId_host: {
+          organizationId: 'org_1',
+          host: 'new-site.com',
+        },
+      },
+      update: expect.objectContaining({
+        url: 'https://new-site.com/',
+        isPrimary: true,
+        verifiedAt: null,
+      }),
+    }));
   });
 
   it('rejects direct productIds patch attempts without writing the organization', async () => {

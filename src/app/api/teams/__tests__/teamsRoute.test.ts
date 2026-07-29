@@ -50,6 +50,7 @@ describe('/api/teams route', () => {
     delete prismaMock.canonicalTeams;
     delete prismaMock.teamRegistrations;
     delete prismaMock.teamStaffAssignments;
+    delete prismaMock.organizations.findMany;
     getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     syncTeamChatByTeamIdMock.mockResolvedValue(undefined);
@@ -126,6 +127,41 @@ describe('/api/teams route', () => {
 
     expect(payload.teams[0].affiliateUrl).toMatch(/^https:\/\/bracket-iq\.com\/out\/team\/team_affiliate\//);
     expect(JSON.stringify(payload)).not.toContain('partner.example.com');
+  });
+
+  it('adds privacy-safe organization ownership to public team rows', async () => {
+    findManyMock.mockResolvedValue([{
+      id: 'team_affiliate',
+      name: 'Partner Academy',
+      organizationId: 'org_1',
+      playerIds: [],
+      pending: [],
+      teamSize: 12,
+      affiliateUrl: 'https://partner.example.com/register',
+    }]);
+    prismaMock.organizations.findMany = jest.fn().mockResolvedValue([{
+      id: 'org_1',
+      name: 'Partner Academy',
+      logoId: null,
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
+      claimedAt: null,
+      ownershipVerifiedAt: null,
+    }]);
+
+    const response = await GET(new NextRequest('http://localhost/api/teams?limit=25'));
+    const payload = await response.json();
+
+    expect(payload.teams[0].organization).toEqual(expect.objectContaining({
+      id: 'org_1',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
+    }));
+    expect(payload.teams[0].organization).not.toHaveProperty('ownerId');
+    expect(prismaMock.organizations.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['org_1'] } },
+    }));
   });
 
   it('includes admin-only organization teams for users who can manage that organization', async () => {

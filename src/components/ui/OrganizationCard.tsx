@@ -4,6 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import type { Organization } from '@/types';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -57,11 +58,10 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
             className="w-14 h-14 rounded-full object-cover border-2 border-slate-200 group-hover:border-slate-300 transition-colors"
           />
           <div className="flex-1 min-w-0">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
+            <div className="mb-1">
               <h3 className="min-w-0 truncate text-lg font-semibold text-slate-900 transition-colors group-hover:text-slate-950">
                 {organization.name}
               </h3>
-              <OrganizationVerificationBadge organization={organization} />
             </div>
             {organization.website && (
               <a
@@ -82,15 +82,24 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
           <p className="text-slate-600 text-sm mb-3 line-clamp-2">{organization.description}</p>
         )}
 
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-200">
-          <div className="flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            {organization.location || '—'}
+        <div className="space-y-3 border-t border-slate-200 pt-2">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {organization.location || '—'}
+            </div>
+            <div className="text-right text-slate-500">{formatOrganizationDivisionSummary(organization)}</div>
           </div>
-          <div className="text-right text-slate-500">{formatOrganizationDivisionSummary(organization)}</div>
+          <div
+            className="flex min-h-6 flex-wrap items-center gap-2"
+            data-testid="organization-card-badges"
+          >
+            <OrganizationOwnershipBadges organization={organization} compact />
+            <OrganizationVerificationBadge organization={organization} />
+          </div>
         </div>
       </div>
     </div>

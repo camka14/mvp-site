@@ -308,6 +308,11 @@ describe('event template privacy routes', () => {
       website: 'https://recspickleball.com',
       publicSlug: 'recs-pickleball',
       publicPageEnabled: false,
+      originType: 'AFFILIATE',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
+      claimedAt: null,
+      ownershipVerifiedAt: null,
     });
 
     const res = await eventGet(
@@ -325,6 +330,11 @@ describe('event template privacy routes', () => {
         website: true,
         publicSlug: true,
         publicPageEnabled: true,
+        originType: true,
+        ownershipStatus: true,
+        claimVerificationLevel: true,
+        claimedAt: true,
+        ownershipVerifiedAt: true,
       },
     });
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
@@ -335,6 +345,11 @@ describe('event template privacy routes', () => {
         website: 'https://recspickleball.com',
         publicSlug: null,
         publicPageEnabled: false,
+        originType: 'AFFILIATE',
+        ownershipStatus: 'UNCLAIMED',
+        claimVerificationLevel: 'NONE',
+        claimedAt: null,
+        ownershipVerifiedAt: null,
       },
     }));
   });

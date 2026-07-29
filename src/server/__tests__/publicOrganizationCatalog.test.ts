@@ -146,6 +146,31 @@ describe('publicOrganizationCatalog', () => {
     }));
   });
 
+  it('publishes organization ownership status without exposing the owner', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'SCSoccer',
+      ownerId: 'internal_admin_1',
+      publicSlug: 'scsoccer',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
+    });
+
+    const organization = await getPublicOrganizationBySlug('scsoccer', { surface: 'page' });
+
+    expect(organization).toEqual(expect.objectContaining({
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimable: true,
+      claimUrl: '/organizations/org_1/claim',
+      ownershipAction: 'CLAIM',
+    }));
+    expect(organization).not.toHaveProperty('ownerId');
+  });
+
   it('lists only public event cards for an organization', async () => {
     prismaMock.events.findMany.mockResolvedValue([
       {

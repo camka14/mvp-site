@@ -124,6 +124,16 @@
   padding: 52px 0 72px;
 }
 
+.ownershipPanel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  border: 1px solid #d7e3dd;
+  border-radius: 8px;
+  padding: 18px;
+  background: white;
+}
+
 .section {
   padding: 34px 0;
   border-bottom: 1px solid #dbe6df;

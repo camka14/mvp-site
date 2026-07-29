@@ -16,7 +16,10 @@ import {
 } from '@/lib/organizationStatus';
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
-import { sendAdminOrganizationCreatedNotification } from '@/server/adminNotifications';
+import {
+  sendAdminOrganizationCreatedNotification,
+  type AdminOrganizationCreatedNotification,
+} from '@/server/adminNotifications';
 import {
   getOrganizationTagsForOrganizationIds,
   resolveSystemOrganizationTagIdsBySlugs,
@@ -24,8 +27,17 @@ import {
 } from '@/server/organizationTags';
 import { withDerivedOrganizationProductIds } from '@/server/organizationProductIds';
 import { normalizeOrganizationFeatures } from '@/lib/organizationFeatures';
+import { getOrganizationOwnershipPresentation } from '@/lib/organizationOwnership';
 import { buildDivisionDiscoveryWhere, summarizeOrganizationDivisions } from '@/server/divisionDiscovery';
 import { protectAffiliateRow } from '@/server/affiliateOutbound';
+import { createId } from '@/lib/id';
+import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
+import {
+  acquireOrganizationMatchLock,
+  assertOrganizationCreationAllowed,
+  isOrganizationMatchError,
+} from '@/server/organizationMatch';
+import { organizationDomainPolicyForUrl } from '@/server/organizationClaims/domainPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,12 +61,19 @@ const createSchema = z.object({
   defaultRentalTaxHandling: z.string().optional(),
   taxResponsibilityAgreementAccepted: z.boolean().optional(),
   tags: z.array(z.any()).optional(),
+  organizationMatchToken: z.string().trim().min(1).max(4000).optional(),
+  acknowledgedMatchIds: z.array(z.string().trim().min(1).max(200)).max(25).optional(),
+  organizationMatchOverrideReason: z.string().trim().min(10).max(500).optional(),
 }).passthrough();
 
-const createOrganizationWithSchemaContract = async (organizationData: Record<string, unknown>) =>
-  requirePrismaSchemaContract('Organizations', () => prisma.organizations.create({
+const createOrganizationWithSchemaContract = async (
+  client: typeof prisma | any,
+  organizationData: Record<string, unknown>,
+) => (
+  requirePrismaSchemaContract('Organizations', () => client.organizations.create({
     data: organizationData as any,
-  }));
+  })) as Promise<AdminOrganizationCreatedNotification & Record<string, any>>
+);
 
 const normalizeSearchQuery = (value: string | null): string => (value ?? '').trim();
 
@@ -135,25 +154,44 @@ type OrganizationListRow = {
   coordinates?: unknown;
   publicSlug?: string | null;
   publicPageEnabled?: boolean | null;
+  originType?: string | null;
+  ownershipStatus?: string | null;
+  claimVerificationLevel?: string | null;
+  claimedAt?: Date | string | null;
+  ownershipVerifiedAt?: Date | string | null;
+  claimable?: boolean;
+  claimUrl?: string;
+  ownershipAction?: string;
 };
 
-const toPublicOrganizationListRow = (organization: OrganizationListRow): OrganizationListRow => ({
-  id: organization.id,
-  createdAt: organization.createdAt ?? null,
-  updatedAt: organization.updatedAt ?? null,
-  name: organization.name ?? null,
-  location: organization.location ?? null,
-  address: organization.address ?? null,
-  description: organization.description ?? null,
-  logoId: organization.logoId ?? null,
-  website: organization.website ?? null,
-  sports: Array.isArray(organization.sports) ? organization.sports : [],
-  enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
-  status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
-  coordinates: organization.coordinates ?? null,
-  publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
-  publicPageEnabled: organization.publicPageEnabled === true,
-});
+const toPublicOrganizationListRow = (organization: OrganizationListRow): OrganizationListRow => {
+  const ownership = getOrganizationOwnershipPresentation(organization);
+  return {
+    id: organization.id,
+    createdAt: organization.createdAt ?? null,
+    updatedAt: organization.updatedAt ?? null,
+    name: organization.name ?? null,
+    location: organization.location ?? null,
+    address: organization.address ?? null,
+    description: organization.description ?? null,
+    logoId: organization.logoId ?? null,
+    website: organization.website ?? null,
+    sports: Array.isArray(organization.sports) ? organization.sports : [],
+    enabledFeatures: normalizeOrganizationFeatures(organization.enabledFeatures),
+    status: organization.status ?? DEFAULT_ORGANIZATION_STATUS,
+    coordinates: organization.coordinates ?? null,
+    publicSlug: organization.publicPageEnabled === true ? organization.publicSlug ?? null : null,
+    publicPageEnabled: organization.publicPageEnabled === true,
+    originType: ownership.originType,
+    ownershipStatus: ownership.ownershipStatus,
+    claimVerificationLevel: ownership.claimVerificationLevel,
+    claimedAt: organization.claimedAt ?? null,
+    ownershipVerifiedAt: organization.ownershipVerifiedAt ?? null,
+    claimable: ownership.claimable,
+    claimUrl: ownership.claimUrl,
+    ownershipAction: ownership.ownershipAction,
+  };
+};
 
 const buildWhereFromConditions = (conditions: Array<Record<string, unknown>>): Record<string, unknown> => {
   if (conditions.length === 0) return {};
@@ -482,33 +520,115 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const matchInput = {
+    name: data.name,
+    website: data.website,
+    location: data.location,
+    coordinates: data.coordinates,
+    acknowledgedMatchIds: data.acknowledgedMatchIds,
+    organizationMatchToken: data.organizationMatchToken,
+    organizationMatchOverrideReason: data.organizationMatchOverrideReason,
+  };
+  let viewerCanOverrideMatches = false;
+  if (data.organizationMatchOverrideReason) {
+    const adminStatus = await evaluateRazumlyAdminAccess(session.userId);
+    viewerCanOverrideMatches = adminStatus.allowed;
+    if (!viewerCanOverrideMatches) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
   let organization;
   try {
-    organization = await createOrganizationWithSchemaContract({
-      id: data.id,
-      name: data.name,
-      location: data.location ?? null,
-      address: data.address ?? null,
-      description: data.description ?? null,
-      logoId: data.logoId ?? null,
-      ownerId: data.ownerId,
-      website: data.website ?? null,
-      sports: Array.isArray(data.sports) ? data.sports : [],
-      enabledFeatures: normalizeOrganizationFeatures(data.enabledFeatures),
-      status,
-      hasStripeAccount: false,
-      coordinates: data.coordinates ?? null,
-      taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
-      operatesAthleticFacility: data.operatesAthleticFacility === true,
-      defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
-      defaultRentalTaxHandling: normalizeRentalTaxHandling(data.defaultRentalTaxHandling),
-      taxResponsibilityAcceptedAt: taxAcceptedAt,
-      taxResponsibilityAcceptedByUserId: session.userId,
-      taxResponsibilityAgreementVersion: ORG_TAX_AGREEMENT_VERSION,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    organization = await prisma.$transaction(async (tx): Promise<AdminOrganizationCreatedNotification & Record<string, any>> => {
+      await acquireOrganizationMatchLock(tx, matchInput);
+      const matchDecision = await assertOrganizationCreationAllowed(
+        matchInput,
+        {
+          userId: session.userId,
+          isAdmin: viewerCanOverrideMatches,
+        },
+        tx,
+      );
+
+      const created = await createOrganizationWithSchemaContract(tx, {
+        id: data.id,
+        name: data.name,
+        location: data.location ?? null,
+        address: data.address ?? null,
+        description: data.description ?? null,
+        logoId: data.logoId ?? null,
+        ownerId: data.ownerId,
+        website: data.website ?? null,
+        sports: Array.isArray(data.sports) ? data.sports : [],
+        enabledFeatures: normalizeOrganizationFeatures(data.enabledFeatures),
+        status,
+        hasStripeAccount: false,
+        coordinates: data.coordinates ?? null,
+        originType: 'FIRST_PARTY',
+        ownershipStatus: 'CLAIMED',
+        claimedAt: taxAcceptedAt,
+        claimedByUserId: data.ownerId,
+        claimVerificationLevel: 'NONE',
+        taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
+        operatesAthleticFacility: data.operatesAthleticFacility === true,
+        defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
+        defaultRentalTaxHandling: normalizeRentalTaxHandling(data.defaultRentalTaxHandling),
+        taxResponsibilityAcceptedAt: taxAcceptedAt,
+        taxResponsibilityAcceptedByUserId: session.userId,
+        taxResponsibilityAgreementVersion: ORG_TAX_AGREEMENT_VERSION,
+        createdAt: taxAcceptedAt,
+        updatedAt: taxAcceptedAt,
+      });
+
+      if (data.website?.trim()) {
+        const domainPolicy = organizationDomainPolicyForUrl(data.website);
+        await tx.organizationDomains.create({
+          data: {
+            id: createId(),
+            organizationId: created.id,
+            url: domainPolicy.canonicalUrl,
+            host: domainPolicy.host,
+            registrableDomain: domainPolicy.registrableDomain,
+            source: 'OWNER_PROVIDED',
+            isPrimary: true,
+            isSharedPlatform: domainPolicy.isSharedPlatform,
+          },
+        });
+      }
+
+      if (matchDecision.overrideReason) {
+        await tx.organizationClaimEvents.create({
+          data: {
+            id: createId(),
+            organizationId: created.id,
+            actorUserId: session.userId,
+            eventType: 'ORGANIZATION_MATCH_OVERRIDE',
+            metadata: {
+              reason: matchDecision.overrideReason,
+              overriddenMatches: matchDecision.matches.map((match) => ({
+                organizationId: match.organizationId,
+                confidence: match.confidence,
+                reasonCodes: match.reasonCodes,
+              })),
+            },
+          },
+        });
+      }
+
+      return created;
     });
   } catch (error) {
+    if (isOrganizationMatchError(error)) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+          matches: error.matches,
+        },
+        { status: error.status },
+      );
+    }
     if (isPrismaSchemaContractError(error)) {
       return NextResponse.json(
         { error: error.message, code: 'PRISMA_SCHEMA_CONTRACT_MISMATCH', field: error.field },

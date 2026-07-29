@@ -125,7 +125,7 @@ const resolveValidatedRequiredTemplateIds = async (
   return templateIds;
 };
 
-const withTeamRoleAliases = (team: Record<string, any>) => {
+const withTeamRoleAliases = (team: Record<string, any>): Record<string, any> => {
   const formatted = team;
   const assistantCoachIds = uniqueStrings(
     Array.isArray((formatted as any).assistantCoachIds)
@@ -208,7 +208,39 @@ export async function GET(req: NextRequest) {
     offset: normalizedOffset,
   }, prisma);
   const pageRows = teams.slice(0, normalizedLimit);
-  const responseTeams = withTeamRoleAliasesList(pageRows as Record<string, any>[])
+  const pageRecordRows = pageRows.filter(Boolean) as unknown as Record<string, any>[];
+  const organizationIds = Array.from(new Set(
+    pageRecordRows
+      .map((team) => (
+        typeof team.organizationId === 'string' ? team.organizationId.trim() : ''
+      ))
+      .filter(Boolean),
+  ));
+  const organizationRows = organizationIds.length && typeof (prisma as any).organizations?.findMany === 'function'
+    ? await (prisma as any).organizations.findMany({
+        where: { id: { in: organizationIds } },
+        select: {
+          id: true,
+          name: true,
+          logoId: true,
+          originType: true,
+          ownershipStatus: true,
+          claimVerificationLevel: true,
+          claimedAt: true,
+          ownershipVerifiedAt: true,
+        },
+      })
+    : [];
+  const organizationsById = new Map(
+    organizationRows.map((organization: Record<string, any>) => [organization.id, organization]),
+  );
+  const responseTeams = withTeamRoleAliasesList(pageRecordRows)
+    .map((team) => ({
+      ...team,
+      organization: typeof team.organizationId === 'string'
+        ? organizationsById.get(team.organizationId) ?? null
+        : null,
+    }))
     .map((team) => (includeAdminOnly ? team : protectAffiliateRow(team, 'team')));
   return NextResponse.json({
     teams: responseTeams,

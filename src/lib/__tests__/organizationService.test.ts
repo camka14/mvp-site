@@ -144,6 +144,7 @@ describe('organizationService', () => {
     await organizationService.createOrganization({
       name: 'Created',
       ownerId: 'owner_1',
+      organizationMatchToken: 'match-token',
       productIds: ['prod_stale'],
     });
     await organizationService.updateOrganization('org_1', {

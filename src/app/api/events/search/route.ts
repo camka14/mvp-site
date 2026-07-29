@@ -159,6 +159,11 @@ const loadEventOrganizationsById = async (
       logoId: true,
       publicSlug: true,
       publicPageEnabled: true,
+      originType: true,
+      ownershipStatus: true,
+      claimVerificationLevel: true,
+      claimedAt: true,
+      ownershipVerifiedAt: true,
     },
   });
   return new Map(organizations.map((organization) => [organization.id, organization]));

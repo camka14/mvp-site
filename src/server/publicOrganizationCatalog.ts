@@ -14,6 +14,7 @@ import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 import { buildAffiliateOutboundUrl, protectAffiliateRow } from '@/server/affiliateOutbound';
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
+import { getOrganizationOwnershipPresentation } from '@/lib/organizationOwnership';
 
 export type PublicCatalogSurface = 'page' | 'widget' | 'any';
 export type PublicWidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products' | 'standings' | 'brackets';
@@ -44,6 +45,12 @@ export type PublicOrganizationSummary = {
   publicPageEnabled: boolean;
   publicWidgetsEnabled: boolean;
   publicCompletionRedirectUrl: string | null;
+  originType?: Organization['originType'];
+  ownershipStatus?: Organization['ownershipStatus'];
+  claimVerificationLevel?: Organization['claimVerificationLevel'];
+  claimable?: boolean;
+  claimUrl?: string;
+  ownershipAction?: Organization['ownershipAction'];
 };
 
 export type PublicOrganizationEventCard = {
@@ -712,6 +719,7 @@ const buildWeeklyOccurrenceCards = (
 const publicOrgFromRow = (row: Record<string, any>): PublicOrganizationSummary => {
   const slug = String(row.publicSlug ?? '').trim();
   const name = String(row.name ?? 'Organization').trim() || 'Organization';
+  const ownership = getOrganizationOwnershipPresentation(row);
   return {
     id: String(row.id),
     slug,
@@ -738,6 +746,7 @@ const publicOrgFromRow = (row: Record<string, any>): PublicOrganizationSummary =
     publicCompletionRedirectUrl: typeof row.publicCompletionRedirectUrl === 'string' && row.publicCompletionRedirectUrl.trim()
       ? row.publicCompletionRedirectUrl.trim()
       : null,
+    ...ownership,
   };
 };
 
@@ -1719,6 +1728,12 @@ export const getPublicOrganizationEventForRegistration = async (
         $id: organization.id,
         name: organization.name,
         logoUrl: organization.logoUrl,
+        originType: organization.originType,
+        ownershipStatus: organization.ownershipStatus,
+        claimVerificationLevel: organization.claimVerificationLevel,
+        claimable: organization.claimable,
+        claimUrl: organization.claimUrl,
+        ownershipAction: organization.ownershipAction,
       },
       divisionDetails: divisionDetails.map((row: Record<string, any>) => ({ ...row, $id: row.id })),
       playoffDivisionDetails: playoffDivisionDetails.map((row: Record<string, any>) => ({ ...row, $id: row.id })),

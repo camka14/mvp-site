@@ -116,6 +116,8 @@ describe('EventCard affiliate schedule display', () => {
             $id: 'org_1',
             name: 'Rose City Volleyball',
             website: 'https://rosecityvolleyball.com',
+            ownershipStatus: 'CLAIMED',
+            claimVerificationLevel: 'SITE_CONTROL',
           } as any,
         })}
       />,
@@ -125,6 +127,9 @@ describe('EventCard affiliate schedule display', () => {
       'href',
       '/organizations/org_1',
     );
+    expect(screen.getByTestId('event-card-ownership-badges')).toHaveTextContent('Claimed profile');
+    expect(screen.getByTestId('event-card-ownership-badges')).toHaveTextContent('Website verified');
+    expect(screen.getByText('External registration')).toBeInTheDocument();
   });
 
   it('links BracketIQ organization hosts to their organization profile', () => {

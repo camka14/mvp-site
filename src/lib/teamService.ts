@@ -442,6 +442,18 @@ class TeamService {
             organizationId: typeof row.organizationId === 'string' && row.organizationId.trim().length > 0
                 ? row.organizationId
                 : null,
+              organization: row.organization && typeof row.organization === 'object'
+                ? {
+                    $id: String(row.organization.id ?? row.organization.$id ?? ''),
+                    name: String(row.organization.name ?? ''),
+                    logoId: typeof row.organization.logoId === 'string' ? row.organization.logoId : undefined,
+                    originType: row.organization.originType,
+                    ownershipStatus: row.organization.ownershipStatus,
+                    claimVerificationLevel: row.organization.claimVerificationLevel,
+                    claimable: row.organization.ownershipStatus === 'UNCLAIMED',
+                    claimUrl: `/organizations/${encodeURIComponent(String(row.organization.id ?? row.organization.$id ?? ''))}/claim`,
+                  }
+                : null,
               createdBy: typeof row.createdBy === 'string' && row.createdBy.trim().length > 0
                   ? row.createdBy
                   : null,
