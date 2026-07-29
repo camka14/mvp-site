@@ -31,7 +31,7 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 - [ ] Provision and harden the OVH VPS-4, deploy the CPU model server privately, and record its exact CPU flags, RAM, swap, image, model revision, measured throughput, and monthly price.
 - [ ] Run the fixed base-model bakeoff and select the worker model using the acceptance scorecard.
 - [ ] Connect the selected base model to the isolated mapping runner and complete a no-training pilot.
-- [ ] Add the Codex Sol reviewer and capture structured corrections without allowing automatic approval or publication.
+- [ ] Add the Codex Sol reviewer and capture structured corrections without allowing automatic approval or publication. (2026-07-29 19:49Z: structured review, redaction, hash binding, recommendation-only enforcement, stdin/stdout reviewer wrapper, and human teaching signals are implemented and tested; installing a working pinned Codex CLI/wrapper and running a real Sol review remain.)
 - [ ] Build the reviewed training dataset, run the first parameter-efficient adapter experiment, and promote an adapter only if it beats the frozen base model.
 - [ ] Run the staged shadow, assisted, and limited-production pilots and confirm that the steady-state OVH inference server remains reliable inside the 24 GB RAM ceiling.
 
@@ -63,6 +63,9 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 
 - Observation: the fixture control path now runs end to end without a model, public request, queue claim, or database write.
   Evidence: `node_modules/.bin/tsx scripts/run-affiliate-mapping-agent.ts --fixture=training/affiliate-source-mapping/fixtures/control-job-v1.json` created detached worktree `job-nPFyMt` at commit `9dc829171e2cc18ec3fc526d2f7af6ed8221ed67`, generated four allowlisted files with hashes, passed schema and focused Jest validation in 2.136 seconds, and correctly reported that review scraping was not executed.
+
+- Observation: the `codex` launcher installed on the current Mac cannot start its packaged native executable.
+  Evidence: both `codex --help` and `codex exec --help` failed with `spawn .../@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex/codex ENOENT`. This does not block the worker or structured review implementation; the OVH reviewer setup must install and pin a working CLI or API wrapper before a paid Sol review.
 
 - Observation: organization image work is mostly an asset-discovery and normalization problem, not a generative-image problem.
   Evidence: the source-builder rules require an official logo, official rendered brand mark, or a manually reviewed absence. They prohibit invented logos and random placeholders. Image generation is appropriate only for BracketIQ-owned illustrations or generic product art.
@@ -144,6 +147,10 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 
 - Decision: keep Codex Sol as an independent reviewer and teacher, not as an unrecorded fallback inside the worker prompt.
   Rationale: a separate review produces measurable correction data, prevents the worker from grading itself, and allows human-approved Sol corrections to become later training examples. Sol may be closed or externally hosted because it is an optional reviewer, but the trained open-weight worker must continue operating when Sol is unavailable. Sol review does not automatically approve a mapping, push code, touch the live database, publish candidates, or directly update model weights.
+  Date/Author: 2026-07-29 / Codex
+
+- Decision: integrate Codex review through a pinned stdin/stdout JSON wrapper rather than hard-code an unverified Codex CLI argument surface.
+  Rationale: the current local launcher is incomplete, while Codex CLI releases and authentication options can change. The controller supplies one bounded, redacted review object on stdin and accepts one schema-validated review object on stdout; the executable and arguments are operator configuration, never model output. This lets the OVH installation pin and test its actual Codex version without coupling affiliate business logic to one launcher syntax.
   Date/Author: 2026-07-29 / Codex
 
 - Decision: update training in reviewed batches rather than after every job.
@@ -678,3 +685,5 @@ Implementation update 2026-07-29: added `AffiliateAgentToolbox` and the isolated
 Implementation update 2026-07-29: added the named validation executor and fixture job CLI. The executor maps fixed test identifiers to fixed Jest paths and never accepts shell text; review scraping is disabled unless the controller explicitly grants the capability, and then it can invoke only the generated local setup path with `--scrape`. `scripts/run-affiliate-mapping-agent.ts` now creates a detached worktree, runs one versioned fixture job, retains its result and worktree for review, and refuses `--live`. This is the executable control path for validating isolation before a queue claim or paid model is introduced.
 
 Implementation update 2026-07-29: added the committed River City invented control fixture and exercised the detached-worktree CLI from the committed branch. The initial dependency-resolution failure led to an explicit pinned `node_modules` symlink inside temporary worktrees. The repeated run produced a reproducible `DRAFT_READY` result, four generated artifact hashes, passing focused tests, no scrape, and a retained worktree/result for review.
+
+Implementation update 2026-07-29: added the independent review module and CLI. Reviewer inputs are byte-bounded and redact credentials, signed URL values, direct email addresses, and phone numbers before leaving the controller. Reviews are schema-validated, bound to the exact worker-result hash and job id, and cannot recommend approval until schema, focused tests, and review scraping pass. Human approval or rejection creates a separate immutable teaching signal; Sol output by itself never becomes training data or changes operational state.
