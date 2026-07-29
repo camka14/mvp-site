@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "context": {
+    "jobId": "fixture_job_river_city",
+    "intakeId": "fixture_intake_river_city",
+    "sourceKey": "river-city-soccer",
+    "runId": "fixture_run_river_city",
+    "policyDisposition": "ALLOWED",
+    "targetKindHints": [
+      "EVENT"
+    ],
+    "artifacts": [
+      {
+        "kind": "PAGE_HTML",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pageUrl": "https://rivercity.example/events",
+        "byteLength": 1024
+      }
+    ],
+    "instructionsRevision": "affiliate-source-builder-v1"
+  },
+  "model": {
+    "family": "fixture",
+    "upstreamRepository": "bracketiq/fixture",
+    "upstreamRevision": "control-job-v1",
+    "artifactSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "adapterRevision": null,
+    "promptTemplateRevision": "prompt-v1"
+  },
+  "modelManifestSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "draft": {
+    "schemaVersion": 1,
+    "intakeId": "fixture_intake_river_city",
+    "sourceKey": "river-city-soccer",
+    "runId": "fixture_run_river_city",
+    "policyDisposition": "ALLOWED",
+    "implementationMode": "GENERIC_MAPPING",
+    "listingKind": "EVENT",
+    "evidence": [
+      {
+        "artifactKind": "PAGE_HTML",
+        "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pageUrl": "https://rivercity.example/events",
+        "supports": [
+          "title",
+          "officialActionUrl",
+          "venueName",
+          "address",
+          "city"
+        ]
+      }
+    ],
+    "organization": {
+      "name": "River City Sports Club",
+      "website": "https://rivercity.example",
+      "description": "An invented sports organization used only by the affiliate mapping control fixture.",
+      "city": "Portland",
+      "address": "100 Main Street"
+    },
+    "mapping": {
+      "kind": "EVENT",
+      "listUrl": "https://rivercity.example/events",
+      "renderJavascript": false,
+      "itemSelector": ".event-card",
+      "fields": {
+        "title": {
+          "selector": ".event-title"
+        },
+        "officialActionUrl": {
+          "selector": "a.register",
+          "mode": "attribute",
+          "attribute": "href",
+          "transform": "absoluteUrl"
+        },
+        "venueName": {
+          "selector": ".venue"
+        },
+        "address": {
+          "selector": ".address"
+        },
+        "city": {
+          "selector": ".city"
+        }
+      },
+      "dedupe": {
+        "fields": [
+          "officialActionUrl",
+          "title"
+        ]
+      }
+    },
+    "expectedCandidates": [
+      {
+        "listingKind": "EVENT",
+        "title": "River City Summer League",
+        "officialActionUrl": "https://rivercity.example/register",
+        "sourceUrl": "https://rivercity.example/events",
+        "sportName": "Soccer",
+        "tags": [
+          "League"
+        ],
+        "venueName": "River City Sports Complex",
+        "address": "100 Main Street",
+        "city": "Portland",
+        "startsAt": null,
+        "dateDisplayMode": "NO_FIXED_DATE",
+        "dateDisplayText": "Registration open",
+        "priceText": null,
+        "divisions": [
+          "Adult"
+        ]
+      }
+    ],
+    "logo": {
+      "disposition": "OFFICIAL_ASSET",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sourceUrl": "https://rivercity.example/logo.png"
+    },
+    "warnings": [
+      "Fixture-only organization and URLs; never run this setup against live."
+    ],
+    "unresolvedQuestions": []
+  }
+}

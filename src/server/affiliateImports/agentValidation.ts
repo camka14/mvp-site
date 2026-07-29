@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -69,6 +70,7 @@ export class AffiliateAgentValidationExecutor {
   private readonly toolchainRoot: string;
   private readonly commandRunner: AffiliateAgentCommandRunner;
   private readonly allowReviewScrape: boolean;
+  private readonly usesDefaultCommandRunner: boolean;
 
   constructor(input: {
     worktreeRoot: string;
@@ -80,6 +82,23 @@ export class AffiliateAgentValidationExecutor {
     this.toolchainRoot = path.resolve(input.toolchainRoot ?? process.cwd());
     this.commandRunner = input.commandRunner ?? defaultCommandRunner;
     this.allowReviewScrape = input.allowReviewScrape ?? false;
+    this.usesDefaultCommandRunner = !input.commandRunner;
+  }
+
+  private async ensurePinnedDependencies(): Promise<void> {
+    if (!this.usesDefaultCommandRunner) return;
+    const worktreeNodeModules = path.join(this.worktreeRoot, 'node_modules');
+    try {
+      await fs.lstat(worktreeNodeModules);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await fs.symlink(
+      path.join(this.toolchainRoot, 'node_modules'),
+      worktreeNodeModules,
+      'dir',
+    );
   }
 
   async runFocusedTest(testId: string): Promise<AffiliateAgentCommandResult & {
@@ -87,6 +106,7 @@ export class AffiliateAgentValidationExecutor {
     testPaths: string[];
   }> {
     const testPaths = focusedTestPaths(testId);
+    await this.ensurePinnedDependencies();
     const result = await this.commandRunner({
       executable: path.join(this.toolchainRoot, 'node_modules/.bin/jest'),
       args: ['--runInBand', ...testPaths],
