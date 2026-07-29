@@ -137,7 +137,7 @@ Install the tracked units and start one manual run before enabling the timer:
     sudo journalctl -u bracketiq-affiliate-intake-automation.service -n 200 --no-pager
     sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer
 
-The timer invokes the lock-protected job every 15 minutes. Campaign cadence controls whether the selected discovery provider actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
+The timer invokes the lock-protected job every 15 minutes. Each invocation processes up to five sequential discovery slices so an incomplete location search can continue without waiting for another timer interval. Campaign cadence controls whether the selected discovery provider actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
 
     systemctl status bracketiq-affiliate-intake-automation.timer
     systemctl list-timers bracketiq-affiliate-intake-automation.timer

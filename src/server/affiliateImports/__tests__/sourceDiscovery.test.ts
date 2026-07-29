@@ -120,11 +120,18 @@ const addPageMock = jest.fn(async () => ({}));
 const queueIntakeMock = jest.fn();
 const reviewPolicyMock = jest.fn();
 const processIntakeMock = jest.fn();
+const mockPgClient = {
+  connect: jest.fn(async () => undefined),
+  query: jest.fn(async (sql: string) => ({
+    rows: sql.includes('pg_try_advisory_lock') ? [{ locked: true }] : [],
+  })),
+  end: jest.fn(async () => undefined),
+};
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/id', () => ({ createId: () => `generated_${++idCounter}` }));
 jest.mock('@/lib/prismaConfig', () => ({ resolvePrismaPgPoolConfig: () => ({}) }));
-jest.mock('pg', () => ({ Client: jest.fn() }));
+jest.mock('pg', () => ({ Client: jest.fn(() => mockPgClient) }));
 jest.mock('@/server/email', () => ({ isEmailEnabled: () => false, sendEmail: jest.fn() }));
 jest.mock('@/server/affiliateImports/sourceIntake', () => ({
   createAffiliateSourceIntake: (...args: any[]) => createIntakeMock(...args),
@@ -138,6 +145,7 @@ import {
   applyAffiliateSourceDomainPolicy,
   processNextAffiliateSourceDiscoveryRun,
   queueDueAffiliateSourceDiscoveryRuns,
+  runAffiliateIntakeAutomation,
 } from '@/server/affiliateImports/sourceDiscovery';
 
 describe('affiliate source discovery orchestration', () => {
@@ -146,6 +154,9 @@ describe('affiliate source discovery orchestration', () => {
     idCounter = 0;
     currentResult = null;
     currentPolicy = null;
+    mockPgClient.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('pg_try_advisory_lock') ? [{ locked: true }] : [],
+    }));
     campaign.maxQueriesPerRun = 1;
     campaign.queryCursor = 0;
     campaign.sourceTypeHints = ['CLUB'];
@@ -294,6 +305,31 @@ describe('affiliate source discovery orchestration', () => {
     await expect(queueDueAffiliateSourceDiscoveryRuns(new Date('2026-07-21T12:00:00Z'))).resolves.toBe(1);
     expect(queuedRuns).toHaveLength(1);
     expect(queuedRuns[0].campaignId).toBe('campaign_1');
+  });
+
+  it('continues an incomplete due campaign within the same automation run', async () => {
+    queuedRuns.splice(0, queuedRuns.length);
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([campaign]);
+    const firecrawlClient = {
+      searchSources: jest.fn(async () => ({
+        request: {},
+        response: {},
+        rows: [],
+        providerJobId: null,
+      })),
+      mapSourceUrls: jest.fn(),
+      scrapeSourcePage: jest.fn(),
+    };
+    const now = new Date('2026-07-21T12:00:00Z');
+
+    const result = await runAffiliateIntakeAutomation(
+      { discoveryLimit: 3, intakeLimit: 1, sendSummary: false },
+      { firecrawlClient, now: () => now },
+    );
+
+    expect(result.queuedCampaigns).toBe(3);
+    expect(result.discoveryRuns).toHaveLength(3);
+    expect(firecrawlClient.searchSources).toHaveBeenCalledTimes(3);
   });
 
   it('makes an incomplete location query cycle immediately due again', async () => {
