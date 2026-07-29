@@ -981,9 +981,10 @@ export const runAffiliateIntakeAutomation = async (options: {
   const lock = await acquireAutomationLock();
   if (!lock) return { lockAcquired: false, startedAt, finishedAt: new Date(), queuedCampaigns: 0, discoveryRuns: [], intakeRuns: [], emailSent: false };
   try {
-    const queuedCampaigns = await queueDueAffiliateSourceDiscoveryRuns(startedAt);
+    let queuedCampaigns = 0;
     const discoveryRuns: any[] = [];
     for (let index = 0; index < Math.min(options.discoveryLimit ?? MAX_AUTOMATION_DISCOVERY_RUNS, 25); index += 1) {
+      queuedCampaigns += await queueDueAffiliateSourceDiscoveryRuns(dependencies.now?.() ?? new Date());
       const result = await processNextAffiliateSourceDiscoveryRun({}, dependencies);
       if (!result) break;
       discoveryRuns.push(result);
