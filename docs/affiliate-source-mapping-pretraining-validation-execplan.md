@@ -101,7 +101,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 Milestones 1 and the tooling/proposal portion of Milestone 2 are complete. The repository can now validate a private gold example, deterministically construct a release manifest, and propose a quota-complete held-out cohort from current historical inventory. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, records exact capture-page requirements, and performs no public request or database write.
 
-The current dataset state remains a read-only prioritization backlog: the 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts or planner.
+The redacted local proposal is persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record.
+
+The current dataset state remains a read-only prioritization backlog: all 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts, planner, or persisted proposal.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -451,6 +453,17 @@ The Milestone 2 focused validation and actual local dry run reported:
     publicRequests = 0
     databaseWrites = 0
 
+The persisted redacted proposal records:
+
+    cohortId = affiliate-mapping-test-d9de7ef53d2c82d1
+    proposalSha256 = d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53
+    repositoryCommit = b286dda30c03e372e1e3a3fd3014808c04f55b45
+    totalCapturePages = 137
+    existingIntakeMatches = 1
+    proposedIntakes = 33
+    blockedRecords = 1
+    locked = false
+
 A readiness result should resemble:
 
     {
@@ -567,3 +580,5 @@ Created 2026-07-29 after the user asked how to test the affiliate mapping model 
 Revised 2026-07-29 to record completion of Milestone 1. The revision adds the implemented contract guarantees, focused test evidence, and the continuing fact that no real approved gold examples or paid/live operations exist yet.
 
 Revised 2026-07-29 to record the completed deterministic cohort planner and its quota-complete local dry run. The revision also records why scarce TEAM coverage is reserved by whole registrable domain and separates proposal generation from explicit human locking.
+
+Revised 2026-07-29 after persisting the redacted proposal. The revision records the immutable proposal identity, capture workload, intake/backfill counts, and continuing unapproved/unlocked state so a later operator can resume without recreating or accidentally treating the proposal as gold data.
