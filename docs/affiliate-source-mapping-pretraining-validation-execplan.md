@@ -22,6 +22,7 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 21:02Z) Defined and tested the immutable gold-example, gold-release, execution-result, and training-readiness contracts in `agentGoldDataset.ts`; the focused suite passes 5 tests and TypeScript passes.
 - [x] (2026-07-29 21:12Z) Implemented and tested the deterministic, read-only 35-example test-cohort planner. The actual local proposal covers 35 distinct domains, one TEAM, five CLUB, five RENTAL, 24 EVENT, 12 selector, 22 manual, four detail/JavaScript, five refusal/insufficiency, two custom-extractor review, five evergreen, and 15 scheduled cases with zero deficits, public requests, or database writes.
 - [ ] Review and explicitly lock the proposed test domains and platform families before any live intake capture; the planner intentionally did not self-approve or lock its output.
+- [x] (2026-07-29 21:15Z) Implemented the immutable private gold-release writer. It validates approved JSONL before creating a directory, rejects unsafe release ids and tampered hashes, writes split JSONL plus per-example fixture manifests and `release.sha256`, and refuses to overwrite an existing release.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -54,6 +55,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: reserving a scarce TEAM source id is not enough to prevent test leakage when another source on the same organization domain is selected.
   Evidence: the first local dry run reserved `rose-city-futsal-community-teams` but selected a different `rosecityfutsal.com` source. The planner now excludes the entire reserved TEAM registrable domain from test, and the regression test asserts that the reserved domain is absent from locked test assignments.
+
+- Observation: structural parsing of a stored release is not enough to prove that its manifest still describes its examples.
+  Evidence: `assertAffiliateMappingGoldReleaseIntegrity` now recomputes example ids, source-envelope hashes, row hashes, fixture-manifest paths, fixture-manifest hashes, and total count. The regression test tampers with a row hash and verifies that the release fails before use.
 
 ## Decision Log
 
@@ -99,11 +103,11 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 ## Outcomes & Retrospective
 
-Milestones 1 and the tooling/proposal portion of Milestone 2 are complete. The repository can now validate a private gold example, deterministically construct a release manifest, and propose a quota-complete held-out cohort from current historical inventory. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, records exact capture-page requirements, and performs no public request or database write.
+Milestones 1, the tooling/proposal portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, propose a quota-complete held-out cohort, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, records exact capture-page requirements, and performs no public request or database write.
 
 The redacted local proposal is persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record.
 
-The current dataset state remains a read-only prioritization backlog: all 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts, planner, or persisted proposal.
+The current dataset state remains a read-only prioritization backlog: all 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples to pass into the release writer. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts, planner, persisted proposal, or release writer.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -439,7 +443,7 @@ The Milestone 1 focused validation reported:
 The Milestone 2 focused validation and actual local dry run reported:
 
     Test Suites: 1 passed, 1 total
-    Tests: 8 passed, 8 total
+    Tests: 9 passed, 9 total
     examples = 35
     registrableDomains = 35
     targetKinds = CLUB:5, EVENT:24, RENTAL:5, TEAM:1
@@ -582,3 +586,5 @@ Revised 2026-07-29 to record completion of Milestone 1. The revision adds the im
 Revised 2026-07-29 to record the completed deterministic cohort planner and its quota-complete local dry run. The revision also records why scarce TEAM coverage is reserved by whole registrable domain and separates proposal generation from explicit human locking.
 
 Revised 2026-07-29 after persisting the redacted proposal. The revision records the immutable proposal identity, capture workload, intake/backfill counts, and continuing unapproved/unlocked state so a later operator can resume without recreating or accidentally treating the proposal as gold data.
+
+Revised 2026-07-29 after implementing the immutable gold-release writer. The revision records the additional integrity checks, private split/fixture output format, overwrite protection, and the fact that no real release can be built until the cohort is reviewed, locked, captured, and human-approved.

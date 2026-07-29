@@ -33,6 +33,10 @@ const evidenceOriginSchema = z.enum([
   'DERIVED_EVIDENCE_ABLATION',
   'INVENTED_CONTROL',
 ]);
+const safeReleaseIdSchema = nonEmptyStringSchema.regex(
+  /^[a-z0-9][a-z0-9._-]*$/i,
+  'Release id may contain only letters, numbers, periods, underscores, and hyphens.',
+);
 
 const mappingJobContextSchema = z.object({
   jobId: nonEmptyStringSchema,
@@ -384,10 +388,24 @@ export type AffiliateMappingGoldExample = z.infer<
 
 const countMapSchema = z.record(z.string(), z.number().int().nonnegative());
 
+const fixtureManifestForExample = (example: AffiliateMappingGoldExample) => ({
+  schemaVersion: 1 as const,
+  exampleId: example.exampleId,
+  fixturePages: example.fixturePages,
+});
+
+const fixtureManifestFileFor = (
+  example: AffiliateMappingGoldExample,
+  index: number,
+): string => (
+  `fixture-manifests/${String(index).padStart(4, '0')}-`
+  + `${stableAgentArtifactSha256(fixtureManifestForExample(example)).slice(0, 16)}.json`
+);
+
 export const affiliateMappingGoldReleaseSchema = z.object({
   manifest: z.object({
     schemaVersion: z.literal(1),
-    releaseId: nonEmptyStringSchema,
+    releaseId: safeReleaseIdSchema,
     createdAt: isoDateTimeSchema,
     repositoryCommit: nonEmptyStringSchema,
     promptContractVersion: z.literal(1),
@@ -396,6 +414,8 @@ export const affiliateMappingGoldReleaseSchema = z.object({
     exampleIds: z.array(nonEmptyStringSchema),
     sourceEnvelopeSha256s: z.array(sha256Schema),
     rowSha256s: z.array(sha256Schema),
+    fixtureManifestFiles: z.array(nonEmptyStringSchema),
+    fixtureManifestSha256s: z.array(sha256Schema),
     counts: z.object({
       split: countMapSchema,
       target: countMapSchema,
@@ -483,7 +503,7 @@ export const buildAffiliateMappingGoldRelease = (
 ): AffiliateMappingGoldRelease => {
   const releaseId = options.releaseId.trim();
   const repositoryCommit = options.repositoryCommit.trim();
-  if (!releaseId) throw new Error('Gold release id is required.');
+  safeReleaseIdSchema.parse(releaseId);
   if (!repositoryCommit) throw new Error('Gold release repository commit is required.');
 
   const examples = values
@@ -545,12 +565,78 @@ export const buildAffiliateMappingGoldRelease = (
         fixturePages: example.fixturePages,
       })),
       rowSha256s: examples.map((example) => stableAgentArtifactSha256(example)),
+      fixtureManifestFiles: examples.map(fixtureManifestFileFor),
+      fixtureManifestSha256s: examples.map((example) => (
+        stableAgentArtifactSha256(fixtureManifestForExample(example))
+      )),
       counts,
     },
     examples,
   };
-  return affiliateMappingGoldReleaseSchema.parse(release);
+  return assertAffiliateMappingGoldReleaseIntegrity(release);
 };
+
+export const assertAffiliateMappingGoldReleaseIntegrity = (
+  value: unknown,
+): AffiliateMappingGoldRelease => {
+  const release = affiliateMappingGoldReleaseSchema.parse(value);
+  const { examples, manifest } = release;
+  const expectedExampleIds = examples.map((example) => example.exampleId);
+  const expectedSourceEnvelopeSha256s = examples.map((example) => (
+    stableAgentArtifactSha256({
+      context: example.context,
+      fixturePages: example.fixturePages,
+    })
+  ));
+  const expectedRowSha256s = examples.map((example) => stableAgentArtifactSha256(example));
+  const expectedFixtureManifestFiles = examples.map(fixtureManifestFileFor);
+  const expectedFixtureManifestSha256s = examples.map((example) => (
+    stableAgentArtifactSha256(fixtureManifestForExample(example))
+  ));
+  const assertArrayMatches = (
+    label: string,
+    actual: string[],
+    expected: string[],
+  ) => {
+    if (
+      actual.length !== expected.length
+      || actual.some((item, index) => item !== expected[index])
+    ) {
+      throw new Error(`Gold release ${label} do not match its examples.`);
+    }
+  };
+  assertArrayMatches('example ids', manifest.exampleIds, expectedExampleIds);
+  assertArrayMatches(
+    'source envelope hashes',
+    manifest.sourceEnvelopeSha256s,
+    expectedSourceEnvelopeSha256s,
+  );
+  assertArrayMatches('row hashes', manifest.rowSha256s, expectedRowSha256s);
+  assertArrayMatches(
+    'fixture manifest files',
+    manifest.fixtureManifestFiles,
+    expectedFixtureManifestFiles,
+  );
+  assertArrayMatches(
+    'fixture manifest hashes',
+    manifest.fixtureManifestSha256s,
+    expectedFixtureManifestSha256s,
+  );
+  if (manifest.counts.total !== examples.length) {
+    throw new Error('Gold release total count does not match its examples.');
+  }
+  return release;
+};
+
+export const renderAffiliateMappingGoldJsonLines = (
+  examples: AffiliateMappingGoldExample[],
+): string => (
+  examples.length ? `${examples.map((example) => JSON.stringify(example)).join('\n')}\n` : ''
+);
+
+export const affiliateMappingGoldFixtureManifest = (
+  example: AffiliateMappingGoldExample,
+): ReturnType<typeof fixtureManifestForExample> => fixtureManifestForExample(example);
 
 const runtimeEligibilityIssues = (
   observation: AffiliateModelRuntimeObservation | null,
@@ -590,7 +676,7 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
   };
   learnableErrorCategories?: string[];
 }): AffiliateMappingTrainingReadinessReport => {
-  const goldRelease = affiliateMappingGoldReleaseSchema.parse(input.goldRelease);
+  const goldRelease = assertAffiliateMappingGoldReleaseIntegrity(input.goldRelease);
   const countsForSplit = (split: AffiliateMappingGoldExample['split']) => (
     goldRelease.examples.filter((example) => example.split === split).length
   );

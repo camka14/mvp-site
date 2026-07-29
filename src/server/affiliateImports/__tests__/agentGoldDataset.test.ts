@@ -1,9 +1,12 @@
 /** @jest-environment node */
 
 import {
+  affiliateMappingGoldFixtureManifest,
   affiliateMappingGoldExampleSchema,
+  assertAffiliateMappingGoldReleaseIntegrity,
   buildAffiliateMappingGoldRelease,
   buildAffiliateMappingTrainingReadinessReport,
+  renderAffiliateMappingGoldJsonLines,
 } from '../agentGoldDataset';
 import {
   planAffiliateGoldTestCohort,
@@ -256,6 +259,33 @@ describe('affiliate mapping gold dataset contracts', () => {
       evidenceOrigin: { REAL_CAPTURE: 2 },
       total: 2,
     }));
+    expect(first.manifest.fixtureManifestFiles).toHaveLength(2);
+    expect(first.manifest.fixtureManifestSha256s).toHaveLength(2);
+    expect(
+      renderAffiliateMappingGoldJsonLines(first.examples).trim().split('\n'),
+    ).toHaveLength(2);
+    expect(affiliateMappingGoldFixtureManifest(first.examples[0])).toEqual({
+      schemaVersion: 1,
+      exampleId: first.examples[0].exampleId,
+      fixturePages: first.examples[0].fixturePages,
+    });
+  });
+
+  it('rejects unsafe release paths and detects manifest tampering', () => {
+    expect(() => buildAffiliateMappingGoldRelease([realExample()], {
+      releaseId: '../escape',
+      createdAt: new Date(),
+      repositoryCommit: 'abc123',
+    })).toThrow('Release id may contain only');
+
+    const release = buildAffiliateMappingGoldRelease([realExample()], {
+      releaseId: 'gold-v1',
+      createdAt: new Date('2026-07-29T21:00:00.000Z'),
+      repositoryCommit: 'abc123',
+    });
+    release.manifest.rowSha256s[0] = HASH_ROBOTS;
+    expect(() => assertAffiliateMappingGoldReleaseIntegrity(release))
+      .toThrow('row hashes do not match');
   });
 
   it('rejects missing approval, unknown evidence, invented dates, and unsafe logos or URLs', () => {
