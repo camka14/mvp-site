@@ -30,7 +30,7 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 - [ ] Build the deterministic mapping generator, isolated job worktree runner, and evaluation harness without connecting a model. (2026-07-29 19:45Z: constrained byte-stable generation, syntax validation, fixture model client, frozen evaluation scorecard, hash-verified evidence toolbox, detached-worktree runner, named focused tests, diff-scope validation, and an opt-in local review-scrape command are complete; the disposable-database scrape fixture remains.)
 - [ ] Provision and harden the OVH VPS-4, deploy the CPU model server privately, and record its exact CPU flags, RAM, swap, image, model revision, measured throughput, and monthly price.
 - [ ] Run the fixed base-model bakeoff and select the worker model using the acceptance scorecard.
-- [ ] Connect the selected base model to the isolated mapping runner and complete a no-training pilot.
+- [ ] Connect the selected base model to the isolated mapping runner and complete a no-training pilot. (2026-07-29 19:54Z: authenticated OpenAI-compatible `llama.cpp` client, complete export-hash verification, bounded Markdown/HTML/policy/repository context, dry-run source mode, atomic queue claim/finish mode, and package commands are implemented and tested with mocked inference; a real selected model and no-training pilot await OVH provisioning.)
 - [ ] Add the Codex Sol reviewer and capture structured corrections without allowing automatic approval or publication. (2026-07-29 19:49Z: structured review, redaction, hash binding, recommendation-only enforcement, stdin/stdout reviewer wrapper, and human teaching signals are implemented and tested; installing a working pinned Codex CLI/wrapper and running a real Sol review remain.)
 - [ ] Build the reviewed training dataset, run the first parameter-efficient adapter experiment, and promote an adapter only if it beats the frozen base model.
 - [ ] Run the staged shadow, assisted, and limited-production pilots and confirm that the steady-state OVH inference server remains reliable inside the 24 GB RAM ceiling.
@@ -139,6 +139,10 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 
 - Decision: preserve live intake evidence as the only primary website input.
   Rationale: stored HTML, Markdown, screenshots, links, branding, images, robots results, provider envelopes, and hashes make the work reproducible. If a required page is missing, the worker asks the trusted controller to queue an intake refresh. It does not silently browse around the evidence or bypass a policy decision.
+  Date/Author: 2026-07-29 / Codex
+
+- Decision: verify every exported artifact before inference, then send a bounded preference-ordered context of policy, Markdown, HTML, links, and current repository contracts.
+  Rationale: verifying only the chunks selected for a prompt would allow an unselected but later-cited artifact to escape integrity checks. The controller now hashes the complete export, while the prompt remains small by preferring robots/policy and Markdown before bounded HTML. This gives the model the user's requested Markdown context without loading an entire site into the 24 GB worker.
   Date/Author: 2026-07-29 / Codex
 
 - Decision: run the model server and the job controller as separate security principals.
@@ -687,3 +691,5 @@ Implementation update 2026-07-29: added the named validation executor and fixtur
 Implementation update 2026-07-29: added the committed River City invented control fixture and exercised the detached-worktree CLI from the committed branch. The initial dependency-resolution failure led to an explicit pinned `node_modules` symlink inside temporary worktrees. The repeated run produced a reproducible `DRAFT_READY` result, four generated artifact hashes, passing focused tests, no scrape, and a retained worktree/result for review.
 
 Implementation update 2026-07-29: added the independent review module and CLI. Reviewer inputs are byte-bounded and redact credentials, signed URL values, direct email addresses, and phone numbers before leaving the controller. Reviews are schema-validated, bound to the exact worker-result hash and job id, and cannot recommend approval until schema, focused tests, and review scraping pass. Human approval or rejection creates a separate immutable teaching signal; Sol output by itself never becomes training data or changes operational state.
+
+Implementation update 2026-07-29: added the authenticated OpenAI-compatible model client, verified export-to-job-context builder, and real queue mode in `scripts/run-affiliate-mapping-agent.ts`. The controller checks every stored artifact hash, retrieves bounded evidence and current contracts, requires a passing open-weight manifest with an offline cold-start record, and submits a strict JSON-schema request at temperature zero. Dry-run mode requires a source key and makes no queue write; non-dry mode uses the existing atomic claim and records either `REVIEW_REQUIRED` or `FAILED` without pushing or publishing. No real model endpoint or queue job was invoked during this implementation.

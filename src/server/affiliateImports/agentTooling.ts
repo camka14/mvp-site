@@ -145,6 +145,19 @@ export class AffiliateAgentToolbox {
       ));
   }
 
+  async verifyEvidenceBundle(): Promise<AffiliateEvidenceArtifactSummary[]> {
+    const manifest = await readExportManifest(this.evidenceDirectory);
+    for (const artifact of manifest.artifacts ?? []) {
+      const artifactPath = resolveWithin(this.evidenceDirectory, artifact.localPath);
+      const data = await fs.readFile(artifactPath);
+      const actualSha256 = createHash('sha256').update(data).digest('hex');
+      if (actualSha256 !== artifact.contentHash) {
+        throw new Error(`Evidence artifact hash mismatch for ${artifact.kind}.`);
+      }
+    }
+    return this.listEvidence();
+  }
+
   async readEvidenceArtifact(input: {
     artifactSha256: string;
     offset?: number;
