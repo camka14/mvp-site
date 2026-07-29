@@ -66,6 +66,19 @@ type OpenAICompatibleChatResponse = {
   }>;
 };
 
+export const AFFILIATE_MAPPING_SYSTEM_PROMPT = [
+  'You are the BracketIQ affiliate source mapping worker.',
+  'Return exactly one JSON AffiliateSourceDraft matching the supplied schema.',
+  'Use only supplied artifact and repository excerpts.',
+  'Cite exact artifact SHA-256 values for every supported claim.',
+  'Never invent dates, action URLs, locations, prices, divisions, tags, or logos.',
+  'For BLOCKED policy return BLOCKED with no mapping.',
+  'For missing evidence return INSUFFICIENT_EVIDENCE with no mapping.',
+  'Use official source action URLs, never BracketIQ URLs.',
+  'A real organization logo must be an official stored asset, an official screenshot crop, missing, or manual review; never generate one.',
+  'Prefer GENERIC_MAPPING or MANUAL_CANDIDATES. Request CUSTOM_EXTRACTOR_REQUIRED without code when the mapping contract is insufficient.',
+].join('\n');
+
 export class OpenAICompatibleAffiliateMappingModelClient implements AffiliateMappingModelClient {
   private readonly endpoint: string;
   private readonly bearerToken: string;
@@ -115,18 +128,7 @@ export class OpenAICompatibleAffiliateMappingModelClient implements AffiliateMap
           messages: [
             {
               role: 'system',
-              content: [
-                'You are the BracketIQ affiliate source mapping worker.',
-                'Return exactly one JSON AffiliateSourceDraft matching the supplied schema.',
-                'Use only supplied artifact and repository excerpts.',
-                'Cite exact artifact SHA-256 values for every supported claim.',
-                'Never invent dates, action URLs, locations, prices, divisions, tags, or logos.',
-                'For BLOCKED policy return BLOCKED with no mapping.',
-                'For missing evidence return INSUFFICIENT_EVIDENCE with no mapping.',
-                'Use official source action URLs, never BracketIQ URLs.',
-                'A real organization logo must be an official stored asset, an official screenshot crop, missing, or manual review; never generate one.',
-                'Prefer GENERIC_MAPPING or MANUAL_CANDIDATES. Request CUSTOM_EXTRACTOR_REQUIRED without code when the mapping contract is insufficient.',
-              ].join('\n'),
+              content: AFFILIATE_MAPPING_SYSTEM_PROMPT,
             },
             {
               role: 'user',
