@@ -122,7 +122,7 @@ const NON_SOURCE_HOSTS = new Set([
 ]);
 const UNSUPPORTED_EXTENSIONS = /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|dmg|exe)(?:$|\?)/i;
 const CLOSED_OR_ENDED_PATTERN = /\b(?:registration\s+(?:is\s+)?closed|registration\s+ended|event\s+is\s+over|event\s+over|sold\s+out|no\s+longer\s+accepting)\b/i;
-const EDITORIAL_PATTERN = /\b(?:news|press[\s-]+releases?|blog|article|recap|guide|top 10|best of)\b/i;
+const EDITORIAL_PATTERN = /\b(?:news|press[\s-]+releases?|blog|article|recap|guide|local resources?|top 10|best of)\b/i;
 const NON_PARTICIPATION_PATTERN = /\b(?:box office|broadcast live|buy tickets?|concert|tickets? (?:available|on sale)|watch live)\b/i;
 const PUBLIC_ACTION_PATTERN = /\b(?:register|registration|book|booking|reserve|reservation|tryout|sign[\s-]?up|join)\b/i;
 const ORGANIZATION_PATTERN = /\b(?:club|academy|association|league|sports|athletics|recreation|facility|center|centre|park district)\b/i;
@@ -426,10 +426,25 @@ export const evaluateAffiliateSourceDiscoveryResult = (
   const targetState = input.query.targetState;
   const localityExact = Boolean(targetCity && containsTerm(text, targetCity));
   const stateAbbreviation = targetState ? STATE_ABBREVIATIONS[targetState] : null;
-  const stateOnly = !localityExact && Boolean(
+  const targetStateEvidence = Boolean(
     (targetState && containsTerm(text, targetState))
     || (stateAbbreviation && containsTerm(text, stateAbbreviation)),
   );
+  const compactTargetCity = targetCity?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? '';
+  const urlLocationParts = `${host}/${url.pathname}`
+    .split(/[./]/)
+    .map((part) => part.toLowerCase().replace(/[^a-z0-9]/g, ''))
+    .filter(Boolean);
+  const cityInUrl = Boolean(
+    compactTargetCity
+    && urlLocationParts.some((part) => (
+      part === compactTargetCity
+      || part.startsWith(compactTargetCity)
+      || part.endsWith(compactTargetCity)
+    )),
+  );
+  const locationVerified = localityExact && (targetStateEvidence || cityInUrl);
+  const stateOnly = !localityExact && targetStateEvidence;
 
   let score = 15;
   if (localityExact) {
@@ -440,6 +455,14 @@ export const evaluateAffiliateSourceDiscoveryResult = (
     addReason(reasonCodes, reasons, 'STATE_ONLY', 'The result contains the state but not the target city.');
   } else {
     addReason(reasonCodes, reasons, 'NO_LOCALITY_EVIDENCE', 'The result does not contain the city targeted by this query.');
+  }
+  if (localityExact && !locationVerified) {
+    addReason(
+      reasonCodes,
+      reasons,
+      'AMBIGUOUS_LOCALITY',
+      'The result contains the target city name without matching state or URL evidence.',
+    );
   }
 
   const sportHints = input.selectedSports
@@ -553,7 +576,7 @@ export const evaluateAffiliateSourceDiscoveryResult = (
 
   const autoPromotionEligible = classification === 'DIRECT_SOURCE'
     && input.query.sourceType !== 'DIRECTORY'
-    && localityExact
+    && locationVerified
     && querySportAligned
     && profileAligned
     && actionAligned

@@ -180,6 +180,59 @@ describe('affiliate source discovery rules', () => {
     expect(wrongProfile.reasonCodes).toContain('PROFILE_MISMATCH');
   });
 
+  it('does not promote a city-named program without matching state or URL evidence', () => {
+    const query = {
+      query: 'Phoenix, Arizona Ultimate Frisbee clubs academies competitive programs official',
+      sportId: 'sport_ultimate',
+      sportName: 'Ultimate Frisbee',
+      sourceType: 'CLUB',
+      profileSourceTypes: ['CLUB'],
+      templateKey: 'PROFILE:clubs-programs',
+      targetCity: 'Phoenix',
+      targetState: 'Arizona',
+    };
+    const result = evaluateAffiliateSourceDiscoveryResult({
+      url: 'https://lowermerionpa.myrec.com/info/activities/program_details.aspx?ProgramID=29949',
+      title: 'Ultimate Frisbee, Phoenix Ultimate Academy, Summer Camp',
+      description: 'Phoenix Ultimate Academy summer camp covers ultimate strategies and skills.',
+      query,
+      campaignRegion: 'Phoenix metropolitan area, Arizona',
+      selectedSports: [{ id: 'sport_ultimate', name: 'Ultimate Frisbee' }],
+      currentYear: 2026,
+    });
+
+    expect(result.status).toBe('REVIEW_REQUIRED');
+    expect(result.autoPromotionEligible).toBe(false);
+    expect(result.reasonCodes).toContain('AMBIGUOUS_LOCALITY');
+  });
+
+  it('keeps local-resource articles in manual review', () => {
+    const query = {
+      query: 'Mesa, Arizona Tennis clubs academies competitive programs official',
+      sportId: 'sport_tennis',
+      sportName: 'Tennis',
+      sourceType: 'CLUB',
+      profileSourceTypes: ['CLUB'],
+      templateKey: 'PROFILE:clubs-programs',
+      targetCity: 'Mesa',
+      targetState: 'Arizona',
+    };
+    const result = evaluateAffiliateSourceDiscoveryResult({
+      url: 'https://example.test/local-resources/arizona-tennis-programs',
+      title: 'Arizona tennis programs for kids and teens',
+      description: 'Local resources for tennis lessons, tournaments, and camps in Mesa, Arizona.',
+      query,
+      campaignRegion: 'Phoenix metropolitan area, Arizona',
+      selectedSports: [{ id: 'sport_tennis', name: 'Tennis' }],
+      currentYear: 2026,
+    });
+
+    expect(result.status).toBe('REVIEW_REQUIRED');
+    expect(result.classification).toBe('INTERMEDIARY');
+    expect(result.autoPromotionEligible).toBe(false);
+    expect(result.reasonCodes).toContain('EDITORIAL_PAGE');
+  });
+
   it('recognizes official reservation-detail paths and fields for rent as rentals', () => {
     const selectedSports = [
       { id: 'sport_beach_volleyball', name: 'Beach Volleyball' },
