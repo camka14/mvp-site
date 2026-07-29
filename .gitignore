@@ -31,6 +31,8 @@ tmp/
 .tmp/
 .codex-artifacts/
 output/
+deploy/ai/deployment.env
+deploy/ai/controller.env
 .playwright-cli/
 
 # debug

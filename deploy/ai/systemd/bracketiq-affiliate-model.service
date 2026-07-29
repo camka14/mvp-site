@@ -1,0 +1,19 @@
+[Unit]
+Description=Run the private BracketIQ affiliate mapping model
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/bracketiq-ai/repository/deploy/ai
+Environment=COMPOSE_ENV_FILE=/opt/bracketiq-ai/repository/deploy/ai/deployment.env
+ExecStart=/usr/bin/docker compose --env-file ${COMPOSE_ENV_FILE} -f compose.yml up -d model
+ExecStartPost=/opt/bracketiq-ai/repository/deploy/ai/bin/verify-model.sh
+ExecStop=/usr/bin/docker compose --env-file ${COMPOSE_ENV_FILE} -f compose.yml stop model
+TimeoutStartSec=30m
+TimeoutStopSec=3m
+
+[Install]
+WantedBy=multi-user.target

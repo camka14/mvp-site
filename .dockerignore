@@ -27,3 +27,5 @@ uploads-live-clubs
 deploy/vm/*.env
 !deploy/vm/*.env.example
 deploy/vm/maintenance/enabled
+deploy/ai/*.env
+!deploy/ai/*.env.example

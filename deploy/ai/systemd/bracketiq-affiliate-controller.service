@@ -1,0 +1,15 @@
+[Unit]
+Description=Claim and prepare one BracketIQ affiliate mapping job
+Requires=docker.service bracketiq-affiliate-model.service
+After=docker.service network-online.target bracketiq-affiliate-model.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bracketiq-ai/repository/deploy/ai
+Environment=COMPOSE_ENV_FILE=/opt/bracketiq-ai/repository/deploy/ai/deployment.env
+ExecStart=/usr/bin/flock -n /run/lock/bracketiq-affiliate-controller.lock /usr/bin/docker compose --env-file ${COMPOSE_ENV_FILE} -f compose.yml --profile controller run --rm controller
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target

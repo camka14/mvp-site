@@ -55,6 +55,22 @@ const readJson = async (filePath: string) => JSON.parse(
   await fs.readFile(path.resolve(filePath), 'utf8'),
 );
 
+const readBoundedIntegerOption = (
+  name: string,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number => {
+  const raw = readOption(name);
+  if (!raw) return defaultValue;
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} must be an integer.`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return value;
+};
+
 const createValidation = (input: {
   worktreePath: string;
   sourceKey: string;
@@ -263,6 +279,12 @@ const runModelWorker = async () => {
       bearerToken: process.env.AFFILIATE_MAPPING_MODEL_TOKEN ?? '',
       model: modelId,
       revision: modelRevisionFromManifest(manifest, modelId),
+      timeoutMs: readBoundedIntegerOption(
+        '--model-timeout-ms',
+        20 * 60 * 1000,
+        1_000,
+        90 * 60 * 1000,
+      ),
     });
     const run = await runInWorktree({
       context,

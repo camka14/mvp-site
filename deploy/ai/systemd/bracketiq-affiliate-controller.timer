@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for one queued BracketIQ affiliate mapping job every ten minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+RandomizedDelaySec=45
+Unit=bracketiq-affiliate-controller.service
+
+[Install]
+WantedBy=timers.target

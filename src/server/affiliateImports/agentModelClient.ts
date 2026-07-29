@@ -135,11 +135,7 @@ export class OpenAICompatibleAffiliateMappingModelClient implements AffiliateMap
           ],
           response_format: {
             type: 'json_schema',
-            json_schema: {
-              name: 'affiliate_source_draft',
-              strict: true,
-              schema: z.toJSONSchema(affiliateSourceDraftSchema),
-            },
+            schema: z.toJSONSchema(affiliateSourceDraftSchema),
           },
         }),
       });

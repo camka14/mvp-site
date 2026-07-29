@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "upstreamRepository": "REPLACE_WITH_EXACT_MODEL_REPOSITORY",
+  "upstreamRevision": "REPLACE_WITH_IMMUTABLE_MODEL_REVISION",
+  "modelFamily": "REPLACE_WITH_MODEL_FAMILY",
+  "weightArtifacts": [
+    {
+      "filename": "REPLACE_WITH_MODEL_FILE.gguf",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "tokenizerRevision": "REPLACE_WITH_TOKENIZER_REVISION",
+  "promptTemplateRevision": "REPLACE_WITH_PROMPT_TEMPLATE_REVISION",
+  "license": {
+    "spdxId": "REPLACE_AFTER_LICENSE_REVIEW",
+    "textSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "notices": [
+      "REPLACE_WITH_REQUIRED_NOTICE_OR_LICENSE_PATH"
+    ],
+    "commercialUseApproved": false,
+    "modificationApproved": false,
+    "derivativeDeploymentApproved": false
+  },
+  "runtimeSourceRepository": "https://github.com/ggml-org/llama.cpp",
+  "runtimeRevision": "REPLACE_WITH_LLAMA_CPP_REVISION",
+  "trainingSourceRepository": "REPLACE_WITH_TRAINING_STACK_REPOSITORY",
+  "trainingStackRevision": "REPLACE_WITH_TRAINING_STACK_REVISION",
+  "quantization": {
+    "format": "REPLACE_WITH_EXACT_FORMAT",
+    "sourceCheckpointSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "offlineColdStartVerifiedAt": null,
+  "requiresVendorApi": false
+}

@@ -97,7 +97,10 @@ describe('OpenAI-compatible open-weight mapping client', () => {
     expect(body).toEqual(expect.objectContaining({
       model: 'gpt-oss-20b',
       temperature: 0,
-      response_format: expect.objectContaining({ type: 'json_schema' }),
+      response_format: {
+        type: 'json_schema',
+        schema: expect.objectContaining({ type: 'object' }),
+      },
     }));
     expect((requests[0].init?.headers as Record<string, string>).authorization).toBe(
       'Bearer private-token',
