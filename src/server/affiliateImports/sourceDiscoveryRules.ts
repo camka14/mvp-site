@@ -23,6 +23,9 @@ const TYPE_TERMS: Record<string, string[]> = {
   RENTAL: [
     'field rental', 'court rental', 'facility rental', 'facility reservation',
     'rent a field', 'rent a court', 'book a field', 'book a court',
+    'field for rent', 'fields for rent', 'court for rent', 'courts for rent',
+    'gym rental', 'gymnasium rental', 'athletic field reservation',
+    'reservation search',
   ],
   DIRECTORY: ['club directory', 'sports directory', 'find a club'],
 };
@@ -325,9 +328,15 @@ const sportMatches = (sportName: string, text: string): boolean => {
   return containsTerm(text, sportName);
 };
 
-const sourceTypeHintsForText = (text: string): string[] => Object.entries(TYPE_TERMS)
-  .filter(([, terms]) => terms.some((term) => containsTerm(text, term)))
-  .map(([type]) => type);
+const sourceTypeHintsForText = (text: string): string[] => {
+  const hints = new Set(Object.entries(TYPE_TERMS)
+    .filter(([, terms]) => terms.some((term) => containsTerm(text, term)))
+    .map(([type]) => type));
+  if (/(?:^|\/)(?:rentals?|reservations?|book(?:ing)?)(?:\/|$)/i.test(text)) {
+    hints.add('RENTAL');
+  }
+  return Array.from(hints);
+};
 
 const profileSourceTypes = (query: AffiliateSourceDiscoveryQuery): string[] => {
   if (query.profileSourceTypes?.length) return query.profileSourceTypes;

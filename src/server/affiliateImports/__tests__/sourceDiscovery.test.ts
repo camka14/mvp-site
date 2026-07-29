@@ -315,4 +315,49 @@ describe('affiliate source discovery orchestration', () => {
       data: expect.objectContaining({ queryCursor: 2, nextRunAt: now }),
     }));
   });
+
+  it('retains the strongest evaluation when one URL appears in multiple queries in the same run', async () => {
+    campaign.autoCreateIntakes = false;
+    campaign.maxQueriesPerRun = 2;
+    campaign.sourceTypeHints = ['RENTAL'];
+    campaign.sportIds = ['sport_grass_soccer', 'sport_hockey'];
+    campaign.metadata = {
+      coveredCities: [{ city: 'Portland', state: 'Oregon' }],
+    };
+    prismaMock.sports.findMany.mockResolvedValueOnce([
+      { id: 'sport_grass_soccer', name: 'Grass Soccer' },
+      { id: 'sport_hockey', name: 'Hockey' },
+    ]);
+    const searchClient = {
+      searchSources: jest.fn(async () => ({
+        request: {},
+        response: {},
+        rows: [{
+          url: 'https://rentals.example.test/portland/reservations/soccer-fields',
+          title: 'Soccer Fields For Rent In Portland, Oregon',
+          description: 'Reserve an outdoor soccer field online.',
+          category: 'web',
+        }],
+        providerJobId: null,
+      })),
+    };
+
+    await processNextAffiliateSourceDiscoveryRun({ runId: 'run_1' }, { searchClient });
+
+    expect(searchClient.searchSources).toHaveBeenCalledTimes(2);
+    expect(currentResult).toMatchObject({
+      status: 'NEW',
+      score: expect.any(Number),
+      sourceTypeHints: expect.arrayContaining(['RENTAL']),
+      sportHints: expect.arrayContaining(['sport_grass_soccer']),
+      latestQuery: expect.stringContaining('outdoor soccer'),
+      seenCount: 2,
+    });
+    expect(currentResult.score).toBeGreaterThanOrEqual(75);
+    expect(currentResult.reasonCodes).toEqual(expect.arrayContaining([
+      'SELECTED_SPORT',
+      'PROFILE_ALIGNED',
+      'AUTO_PROMOTION_ELIGIBLE',
+    ]));
+  });
 });

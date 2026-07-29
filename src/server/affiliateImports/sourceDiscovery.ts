@@ -573,16 +573,9 @@ const persistDiscoveryResult = async (input: {
   const existing = await db().results.findUnique({
     where: { campaignId_urlKey: { campaignId: campaign.id, urlKey } },
   });
-  const common = {
-    latestRunId: run.id,
-    originalUrl: row.url,
-    canonicalUrl: fallbackCanonical,
-    policyKey: evaluation.policyKey ?? 'invalid-source.invalid',
-    title: stringValue(row.title),
-    description: stringValue(row.description),
+  const incomingEvaluation = {
     latestQuery: query.query,
     latestRank: rank,
-    lastSeenAt: now,
     score: evaluation.score,
     sourceTypeHints: evaluation.sourceTypeHints,
     sportHints: evaluation.sportHints,
@@ -595,9 +588,6 @@ const persistDiscoveryResult = async (input: {
       queryProfile: query.templateKey ?? null,
       queryTarget: query.targetCity ?? campaign.location ?? campaign.region,
     },
-    matchingIntakeId: duplicate?.matchingIntakeId ?? siteIntake?.id ?? existing?.matchingIntakeId ?? null,
-    matchingSourceId: duplicate?.matchingSourceId ?? existing?.matchingSourceId ?? null,
-    matchingOrganizationId: duplicate?.matchingOrganizationId ?? existing?.matchingOrganizationId ?? null,
     metadata: {
       category: row.category ?? null,
       provider: stringValue(row.provider)?.toUpperCase() ?? null,
@@ -605,6 +595,49 @@ const persistDiscoveryResult = async (input: {
       classification: evaluation.classification,
       autoPromotionEligible: evaluation.autoPromotionEligible,
     },
+  };
+  const statusPriority: Record<string, number> = {
+    NEW: 3,
+    REVIEW_REQUIRED: 2,
+    REJECTED: 1,
+  };
+  const existingIsStrongerInThisRun = Boolean(
+    existing
+    && existing.latestRunId === run.id
+    && !duplicate
+    && (
+      existing.score > evaluation.score
+      || (
+        existing.score === evaluation.score
+        && (statusPriority[existing.status] ?? 0) > (statusPriority[status] ?? 0)
+      )
+    ),
+  );
+  const retainedEvaluation = existingIsStrongerInThisRun
+    ? {
+      latestQuery: existing.latestQuery,
+      latestRank: existing.latestRank,
+      score: existing.score,
+      sourceTypeHints: existing.sourceTypeHints,
+      sportHints: existing.sportHints,
+      status: existing.status,
+      reasonCodes: existing.reasonCodes,
+      reasonDetails: existing.reasonDetails,
+      metadata: existing.metadata,
+    }
+    : incomingEvaluation;
+  const common = {
+    latestRunId: run.id,
+    originalUrl: row.url,
+    canonicalUrl: fallbackCanonical,
+    policyKey: evaluation.policyKey ?? 'invalid-source.invalid',
+    title: stringValue(row.title),
+    description: stringValue(row.description),
+    lastSeenAt: now,
+    ...retainedEvaluation,
+    matchingIntakeId: duplicate?.matchingIntakeId ?? siteIntake?.id ?? existing?.matchingIntakeId ?? null,
+    matchingSourceId: duplicate?.matchingSourceId ?? existing?.matchingSourceId ?? null,
+    matchingOrganizationId: duplicate?.matchingOrganizationId ?? existing?.matchingOrganizationId ?? null,
   };
   const saved = existing
     ? await db().results.update({
@@ -625,7 +658,9 @@ const persistDiscoveryResult = async (input: {
     saved,
     isNew: !existing,
     duplicate: Boolean(duplicate),
-    autoPromotionEligible: evaluation.autoPromotionEligible,
+    autoPromotionEligible: Boolean(
+      recordValue(saved.reasonDetails).autoPromotionEligible,
+    ),
   };
 };
 

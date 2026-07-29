@@ -180,6 +180,46 @@ describe('affiliate source discovery rules', () => {
     expect(wrongProfile.reasonCodes).toContain('PROFILE_MISMATCH');
   });
 
+  it('recognizes official reservation-detail paths and fields for rent as rentals', () => {
+    const selectedSports = [
+      { id: 'sport_beach_volleyball', name: 'Beach Volleyball' },
+      { id: 'sport_grass_soccer', name: 'Grass Soccer' },
+    ];
+    const rentalQuery = (sportId: string, sportName: string) => ({
+      query: `Houston, Texas ${sportName} field court facility rentals reservations official`,
+      sportId,
+      sportName,
+      sourceType: 'RENTAL',
+      profileSourceTypes: ['RENTAL'],
+      templateKey: 'PROFILE:facilities-rentals',
+      targetCity: 'Houston',
+      targetState: 'Texas',
+    });
+    const reservation = evaluateAffiliateSourceDiscoveryResult({
+      url: 'https://anc.apm.activecommunities.com/houstonparks/reservation/search/detail/81',
+      title: 'Houston Memorial: Sand Volleyball Court #2',
+      description: 'View availability and reserve this public court.',
+      query: rentalQuery('sport_beach_volleyball', 'Beach Volleyball'),
+      campaignRegion: 'Houston, Texas metropolitan area',
+      selectedSports,
+      currentYear: 2026,
+    });
+    expect(reservation.sourceTypeHints).toContain('RENTAL');
+    expect(reservation.status).toBe('NEW');
+
+    const forRent = evaluateAffiliateSourceDiscoveryResult({
+      url: 'https://www.facilitron.com/tx/houston/soccer-field',
+      title: 'Soccer Fields For Rent In Houston, TX',
+      description: 'Browse Houston soccer field availability and book online.',
+      query: rentalQuery('sport_grass_soccer', 'Grass Soccer'),
+      campaignRegion: 'Houston, Texas metropolitan area',
+      selectedSports,
+      currentYear: 2026,
+    });
+    expect(forRent.sourceTypeHints).toContain('RENTAL');
+    expect(forRent.status).toBe('NEW');
+  });
+
   it('keeps spectator and editorial event pages out of automatic promotion', () => {
     const query = {
       ...generateAffiliateSourceDiscoveryQueries(campaign, sports, 0).queries[0],
