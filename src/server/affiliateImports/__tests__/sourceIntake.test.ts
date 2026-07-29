@@ -6,6 +6,7 @@ const prismaMock = {
     update: jest.fn(),
   },
   affiliateSourceIntakePages: {
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
     create: jest.fn(),
@@ -19,6 +20,13 @@ const prismaMock = {
     update: jest.fn(),
   },
   affiliateSourceIntakeArtifacts: {},
+  affiliateSourceDomainPolicies: {
+    findUnique: jest.fn(),
+    upsert: jest.fn(),
+  },
+  affiliateSourceDiscoveryResults: {
+    updateMany: jest.fn(),
+  },
   affiliateSourceMappingJobs: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -39,6 +47,7 @@ import {
   classifyAffiliateSourceEvidence,
   processNextAffiliateSourceIntakeRun,
   queueAffiliateSourceIntakeRun,
+  reviewAffiliateSourceIntakePolicy,
 } from '@/server/affiliateImports/sourceIntake';
 
 describe('affiliate source intake service', () => {
@@ -48,11 +57,41 @@ describe('affiliate source intake service', () => {
     prismaMock.affiliateSourceIntakes.update.mockImplementation(async ({ data }) => data);
     prismaMock.affiliateSourceIntakePages.update.mockImplementation(async ({ data }) => data);
     prismaMock.affiliateSourceIntakePages.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateSourceIntakePages.findFirst.mockResolvedValue(null);
     prismaMock.affiliateSourceIntakePages.create.mockImplementation(async ({ data }) => data);
     prismaMock.affiliateSourceIntakeRuns.update.mockImplementation(async ({ data }) => data);
     (prismaMock.affiliateSourceIntakeArtifacts as any).count = jest.fn().mockResolvedValue(2);
     prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue(null);
     prismaMock.affiliateSourceMappingJobs.create.mockResolvedValue({ id: 'mapping_job_1' });
+    prismaMock.affiliateSourceDomainPolicies.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateSourceDomainPolicies.upsert.mockResolvedValue({});
+    prismaMock.affiliateSourceDiscoveryResults.updateMany.mockResolvedValue({ count: 0 });
+  });
+
+  it('can record an allowed policy review without auto-queueing unrelated intake pages', async () => {
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1',
+      baseUrl: 'https://example.com',
+      complianceStatus: 'UNREVIEWED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({
+      id: 'intake_1',
+      complianceStatus: 'ALLOWED',
+    });
+
+    await reviewAffiliateSourceIntakePolicy(
+      'intake_1',
+      {
+        complianceStatus: 'ALLOWED',
+        notes: 'Approved existing mapping; robots will be checked during capture.',
+      },
+      'admin_1',
+      { queueCaptureOnAllow: false },
+    );
+
+    expect(prismaMock.affiliateSourceDomainPolicies.upsert).toHaveBeenCalled();
+    expect(prismaMock.affiliateSourceIntakeRuns.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateSourceIntakeRuns.create).not.toHaveBeenCalled();
   });
 
   it('does not queue an inspection until policy review allows the source', async () => {

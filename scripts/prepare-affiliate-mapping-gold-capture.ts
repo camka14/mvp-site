@@ -15,7 +15,9 @@ dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const shouldApply = process.argv.includes('--apply');
 const shouldQueue = process.argv.includes('--queue');
+const approveExisting = process.argv.includes('--approve-existing');
 if (shouldQueue && !shouldApply) throw new Error('--queue requires --apply.');
+if (approveExisting && !shouldApply) throw new Error('--approve-existing requires --apply.');
 
 const readOption = (name: string): string | undefined => {
   const equals = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -98,6 +100,7 @@ const main = async () => {
         listUrl: true,
         targetKind: true,
         status: true,
+        activeMappingId: true,
         metadata: true,
       },
     });
@@ -210,6 +213,29 @@ const main = async () => {
       summary.queueStatus = 'BLOCKED_SOURCE_RECORDED';
       console.log(JSON.stringify(summary, null, 2));
       return;
+    }
+
+    if (approveExisting && intake.complianceStatus !== 'ALLOWED') {
+      if (!source.activeMappingId) {
+        throw new Error(`Cannot inherit approval without an active mapping: ${sourceKey}`);
+      }
+      const activeMapping = await db.affiliateScrapeMappings.findFirst({
+        where: {
+          id: source.activeMappingId,
+          sourceId: source.id,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!activeMapping) {
+        throw new Error(`Active mapping identity is inconsistent for ${sourceKey}.`);
+      }
+      await intakeService.reviewAffiliateSourceIntakePolicy(intake.id, {
+        complianceStatus: 'ALLOWED',
+        notes: `Inherited the owner's explicit approval of the existing active scrape mapping while preparing locked cohort ${proposal.cohortId}. Every requested path is still checked against robots.txt before capture.`,
+      }, lock.approvedByUserId, {
+        queueCaptureOnAllow: false,
+      });
     }
 
     const refreshedIntake = await db.affiliateSourceIntakes.findUnique({

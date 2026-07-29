@@ -327,6 +327,7 @@ export const reviewAffiliateSourceIntakePolicy = async (
   intakeId: string,
   review: AffiliateSourcePolicyReview,
   userId: string,
+  options: { queueCaptureOnAllow?: boolean } = {},
 ) => {
   const { intakes, pages, runs, policies, discoveryResults } = intakePrisma();
   const complianceStatus = stringValue(review.complianceStatus)?.toUpperCase() ?? '';
@@ -413,7 +414,7 @@ export const reviewAffiliateSourceIntakePolicy = async (
       },
     });
   }
-  if (complianceStatus === 'ALLOWED') {
+  if (complianceStatus === 'ALLOWED' && options.queueCaptureOnAllow !== false) {
     const activeRun = await runs.findFirst({ where: { intakeId, status: { in: ['QUEUED', 'RUNNING'] } } });
     if (!activeRun) {
       const selectedPages = await pages.findMany({
