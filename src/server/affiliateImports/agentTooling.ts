@@ -12,6 +12,7 @@ import {
   writeAffiliateGeneratedFiles,
   type AffiliateGeneratedFile,
 } from './agentGenerator';
+import type { AffiliateAgentValidationExecutor } from './agentValidation';
 
 const execFileAsync = promisify(execFile);
 
@@ -56,6 +57,7 @@ export type AffiliateAgentToolboxOptions = {
   maxArtifactReadBytes?: number;
   maxRepositoryReadBytes?: number;
   maxSearchResults?: number;
+  validationExecutor?: AffiliateAgentValidationExecutor;
 };
 
 const isWithin = (rootDirectory: string, targetPath: string): boolean => {
@@ -106,6 +108,7 @@ export class AffiliateAgentToolbox {
   private readonly maxArtifactReadBytes: number;
   private readonly maxRepositoryReadBytes: number;
   private readonly maxSearchResults: number;
+  private readonly validationExecutor: AffiliateAgentValidationExecutor | null;
 
   constructor(options: AffiliateAgentToolboxOptions) {
     this.evidenceDirectory = path.resolve(options.evidenceDirectory);
@@ -122,6 +125,7 @@ export class AffiliateAgentToolbox {
     this.maxArtifactReadBytes = options.maxArtifactReadBytes ?? 256 * 1024;
     this.maxRepositoryReadBytes = options.maxRepositoryReadBytes ?? 128 * 1024;
     this.maxSearchResults = options.maxSearchResults ?? 50;
+    this.validationExecutor = options.validationExecutor ?? null;
   }
 
   async listEvidence(): Promise<AffiliateEvidenceArtifactSummary[]> {
@@ -304,5 +308,15 @@ export class AffiliateAgentToolbox {
       files,
     });
     return { files, ...result };
+  }
+
+  async runFocusedTest(testId: string) {
+    if (!this.validationExecutor) throw new Error('Focused test execution is disabled.');
+    return this.validationExecutor.runFocusedTest(testId);
+  }
+
+  async runReviewScrape(sourceKey: string) {
+    if (!this.validationExecutor) throw new Error('Review scrape execution is disabled.');
+    return this.validationExecutor.runReviewScrape(sourceKey);
   }
 }
