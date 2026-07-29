@@ -66,6 +66,14 @@ const retryDelayMs = (response: Response, attempt: number): number => {
   return Math.min(2_000, 500 * (2 ** attempt));
 };
 
+const isRetryableResponse = async (response: Response, attempt: number): Promise<boolean> => {
+  if (attempt >= MAX_RETRIES) return false;
+  if (response.status === 429 || response.status >= 500 || response.status === 202) return true;
+  if (response.status !== 400) return false;
+  const body = await response.clone().text().catch(() => '');
+  return /something went wrong[\s\S]*please try again/i.test(body);
+};
+
 const responseError = async (response: Response): Promise<Error> => {
   const body = await response.text().catch(() => '');
   const suffix = body.trim() ? `: ${body.trim().slice(0, 300)}` : '';
@@ -146,8 +154,7 @@ export class ScrapingDogTransport {
         clearTimeout(timeout);
       }
 
-      const canRetry = attempt < MAX_RETRIES
-        && (response.status === 429 || response.status >= 500 || response.status === 202);
+      const canRetry = await isRetryableResponse(response, attempt);
       if (!response.ok || response.status === 202) {
         if (canRetry) {
           await this.sleep(retryDelayMs(response, attempt));

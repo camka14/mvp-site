@@ -56,6 +56,46 @@ describe('ScrapingDogTransport', () => {
     expect(sleep).toHaveBeenCalledWith(1_000);
   });
 
+  it('retries ScrapingDog transient bad-request responses', async () => {
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message: 'Something went wrong, please try again',
+        status: 400,
+      }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ organic_results: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+    const transport = new ScrapingDogTransport('key', fetchImpl, sleep);
+
+    await expect(transport.requestJson({
+      endpoint: '/google',
+      params: { query: 'Mesa softball field rentals' },
+    })).resolves.toEqual(expect.objectContaining({
+      body: { organic_results: [] },
+    }));
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(500);
+  });
+
+  it('does not retry ordinary bad-request responses', async () => {
+    const sleep = jest.fn();
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: 'Invalid query',
+      status: 400,
+    }), { status: 400 }));
+    const transport = new ScrapingDogTransport('key', fetchImpl, sleep);
+
+    await expect(transport.requestJson({
+      endpoint: '/google',
+      params: { query: 'invalid' },
+    })).rejects.toThrow('HTTP 400');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it('does not retry authorization failures', async () => {
     const sleep = jest.fn();
     const fetchImpl = jest.fn().mockResolvedValue(new Response('not allowed', { status: 403 }));
