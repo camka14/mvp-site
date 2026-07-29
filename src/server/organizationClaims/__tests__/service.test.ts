@@ -2,6 +2,8 @@
 
 const sendAdminOrganizationClaimNotificationMock = jest.fn();
 const ensureDefaultOrganizationRolesMock = jest.fn();
+const isEmailEnabledMock = jest.fn();
+const sendEmailMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 jest.mock('@/server/adminNotifications', () => ({
@@ -10,8 +12,8 @@ jest.mock('@/server/adminNotifications', () => ({
   ),
 }));
 jest.mock('@/server/email', () => ({
-  isEmailEnabled: () => false,
-  sendEmail: jest.fn(),
+  isEmailEnabled: () => isEmailEnabledMock(),
+  sendEmail: (...args: unknown[]) => sendEmailMock(...args),
 }));
 jest.mock('@/server/organizationRoles', () => ({
   ensureDefaultOrganizationRoles: (...args: unknown[]) => ensureDefaultOrganizationRolesMock(...args),
@@ -22,11 +24,13 @@ import {
   OrganizationClaimRequestTypeEnum,
   OrganizationClaimStatusEnum,
   OrganizationClaimVerificationLevelEnum,
+  OrganizationOwnershipResolutionEnum,
   OrganizationOwnershipStatusEnum,
 } from '@/generated/prisma/client';
 import {
   acceptOrganizationClaim,
   createOrganizationClaim,
+  decideOrganizationClaim,
   getOrganizationClaimPresentation,
 } from '@/server/organizationClaims/service';
 
@@ -62,6 +66,8 @@ describe('organization claim service', () => {
     jest.clearAllMocks();
     sendAdminOrganizationClaimNotificationMock.mockResolvedValue(undefined);
     ensureDefaultOrganizationRolesMock.mockResolvedValue(undefined);
+    isEmailEnabledMock.mockReturnValue(false);
+    sendEmailMock.mockResolvedValue(undefined);
   });
 
   it('returns a named privacy-safe public claim presentation', async () => {
@@ -296,5 +302,282 @@ describe('organization claim service', () => {
       transactionClient,
       'org_1',
     );
+  });
+
+  it('emails the claimant after an administrator decision commits', async () => {
+    isEmailEnabledMock.mockReturnValue(true);
+    const pendingClaim = {
+      id: 'claim_1',
+      organizationId: 'org_1',
+      claimantUserId: 'user_1',
+      requestType: OrganizationClaimRequestTypeEnum.INITIAL_CLAIM,
+      status: OrganizationClaimStatusEnum.PENDING_MANUAL_REVIEW,
+      method: OrganizationClaimMethodEnum.MANUAL_REVIEW,
+      verificationLevel: OrganizationClaimVerificationLevelEnum.NONE,
+      verificationEmail: null,
+      roleTitle: 'Director',
+      explanation: 'I run the club.',
+      publicEvidenceUrl: null,
+      issueReason: null,
+      requestedOutcome: null,
+      resolution: null,
+      submittedAt: now,
+      expiresAt: now,
+      decidedAt: null,
+      userDecisionMessage: null,
+      acceptedAt: null,
+      currentOwnerResponseDueAt: null,
+      currentOwnerRespondedAt: null,
+      credibilityDecidedAt: null,
+      credibilityDecidedByUserId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const decidedClaim = {
+      ...pendingClaim,
+      status: OrganizationClaimStatusEnum.APPROVED_PENDING_ACCEPTANCE,
+      verificationLevel: OrganizationClaimVerificationLevelEnum.MANUAL_REVIEW,
+      decidedAt: now,
+      userDecisionMessage: 'Your public evidence confirms your role.',
+    };
+    const transactionClient: any = {
+      organizationClaims: {
+        update: jest.fn().mockResolvedValue(decidedClaim),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const client: any = {
+      organizationClaims: {
+        findUnique: jest.fn().mockResolvedValue(pendingClaim),
+      },
+      organizations: {
+        findUnique: jest.fn().mockResolvedValue(organization),
+      },
+      organizationDomains: {
+        findFirst: jest.fn().mockResolvedValue(domain),
+      },
+      organizationClaimEvidence: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      authUser: {
+        findUnique: jest.fn().mockResolvedValue({ email: 'claimant@test.com' }),
+      },
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(transactionClient)),
+    };
+
+    await expect(decideOrganizationClaim({
+      claimId: 'claim_1',
+      action: 'APPROVE',
+      verificationLevel: OrganizationClaimVerificationLevelEnum.MANUAL_REVIEW,
+      userDecisionMessage: 'Your public evidence confirms your role.',
+    }, {
+      userId: 'admin_1',
+      adminEmail: 'samuel.r@razumly.com',
+    }, client)).resolves.toEqual(expect.objectContaining({
+      status: OrganizationClaimStatusEnum.APPROVED_PENDING_ACCEPTANCE,
+    }));
+
+    expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'claimant@test.com',
+      subject: 'Update on your River City Sports Club ownership request',
+      text: expect.stringContaining('Your public evidence confirms your role.'),
+    }));
+    expect(client.organizationClaimEvents.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: 'CLAIMANT_DECISION_NOTIFICATION_SENT',
+      }),
+    });
+  });
+
+  it('keeps a committed administrator decision when claimant email delivery fails', async () => {
+    isEmailEnabledMock.mockReturnValue(true);
+    sendEmailMock.mockRejectedValueOnce(new Error('smtp down'));
+    const pendingClaim = {
+      id: 'claim_2',
+      organizationId: 'org_1',
+      claimantUserId: 'user_1',
+      requestType: OrganizationClaimRequestTypeEnum.INITIAL_CLAIM,
+      status: OrganizationClaimStatusEnum.PENDING_MANUAL_REVIEW,
+      method: OrganizationClaimMethodEnum.MANUAL_REVIEW,
+      verificationLevel: OrganizationClaimVerificationLevelEnum.NONE,
+      verificationEmail: null,
+      roleTitle: 'Director',
+      explanation: 'I run the club.',
+      publicEvidenceUrl: null,
+      issueReason: null,
+      requestedOutcome: null,
+      resolution: null,
+      submittedAt: now,
+      expiresAt: now,
+      decidedAt: null,
+      userDecisionMessage: null,
+      acceptedAt: null,
+      currentOwnerResponseDueAt: null,
+      currentOwnerRespondedAt: null,
+      credibilityDecidedAt: null,
+      credibilityDecidedByUserId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const rejectedClaim = {
+      ...pendingClaim,
+      status: OrganizationClaimStatusEnum.REJECTED,
+      verificationLevel: OrganizationClaimVerificationLevelEnum.MANUAL_REVIEW,
+      decidedAt: now,
+      userDecisionMessage: 'We could not confirm your authority.',
+    };
+    const transactionClient: any = {
+      organizationClaims: {
+        update: jest.fn().mockResolvedValue(rejectedClaim),
+      },
+      organizations: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const client: any = {
+      organizationClaims: {
+        findUnique: jest.fn().mockResolvedValue(pendingClaim),
+      },
+      organizations: {
+        findUnique: jest.fn().mockResolvedValue(organization),
+      },
+      organizationDomains: {
+        findFirst: jest.fn().mockResolvedValue(domain),
+      },
+      organizationClaimEvidence: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      authUser: {
+        findUnique: jest.fn().mockResolvedValue({ email: 'claimant@test.com' }),
+      },
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(transactionClient)),
+    };
+
+    await expect(decideOrganizationClaim({
+      claimId: 'claim_2',
+      action: 'REJECT',
+      userDecisionMessage: 'We could not confirm your authority.',
+    }, {
+      userId: 'admin_1',
+      adminEmail: 'samuel.r@razumly.com',
+    }, client)).resolves.toEqual(expect.objectContaining({
+      status: OrganizationClaimStatusEnum.REJECTED,
+    }));
+
+    expect(client.organizationClaimEvents.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: 'CLAIMANT_DECISION_NOTIFICATION_FAILED',
+        metadata: { message: 'smtp down' },
+      }),
+    });
+  });
+
+  it('notifies the current owner of a dispute resolution without claimant-only copy', async () => {
+    isEmailEnabledMock.mockReturnValue(true);
+    const disputedClaim = {
+      id: 'claim_3',
+      organizationId: 'org_1',
+      claimantUserId: 'user_1',
+      requestType: OrganizationClaimRequestTypeEnum.OWNERSHIP_DISPUTE,
+      status: OrganizationClaimStatusEnum.DISPUTED,
+      method: OrganizationClaimMethodEnum.MANUAL_REVIEW,
+      verificationLevel: OrganizationClaimVerificationLevelEnum.MANUAL_REVIEW,
+      verificationEmail: null,
+      roleTitle: 'Director',
+      explanation: 'I run the club.',
+      publicEvidenceUrl: null,
+      issueReason: null,
+      requestedOutcome: null,
+      resolution: null,
+      submittedAt: now,
+      expiresAt: now,
+      decidedAt: null,
+      userDecisionMessage: null,
+      acceptedAt: null,
+      currentOwnerResponseDueAt: now,
+      currentOwnerRespondedAt: now,
+      credibilityDecidedAt: now,
+      credibilityDecidedByUserId: 'admin_1',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const resolvedClaim = {
+      ...disputedClaim,
+      status: OrganizationClaimStatusEnum.REJECTED,
+      resolution: 'UPHOLD_CURRENT_OWNER',
+      decidedAt: now,
+      userDecisionMessage: 'Claimant-only explanation of the decision.',
+    };
+    const transactionClient: any = {
+      organizationClaims: {
+        update: jest.fn().mockResolvedValue(resolvedClaim),
+      },
+      organizations: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const client: any = {
+      organizationClaims: {
+        findUnique: jest.fn().mockResolvedValue(disputedClaim),
+      },
+      organizations: {
+        findUnique: jest.fn().mockResolvedValue(organization),
+      },
+      organizationDomains: {
+        findFirst: jest.fn().mockResolvedValue(domain),
+      },
+      organizationClaimEvidence: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      organizationClaimEvents: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      authUser: {
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => (
+          Promise.resolve({
+            email: where.id === 'user_1' ? 'claimant@test.com' : 'owner@test.com',
+          })
+        )),
+      },
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(transactionClient)),
+    };
+
+    await decideOrganizationClaim({
+      claimId: 'claim_3',
+      action: 'RESOLVE',
+      resolution: OrganizationOwnershipResolutionEnum.UPHOLD_CURRENT_OWNER,
+      userDecisionMessage: 'Claimant-only explanation of the decision.',
+    }, {
+      userId: 'admin_1',
+      adminEmail: 'samuel.r@razumly.com',
+    }, client);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(2);
+    const ownerEmail = sendEmailMock.mock.calls
+      .map(([payload]) => payload as { to: string; text: string })
+      .find((payload) => payload.to === 'owner@test.com');
+    expect(ownerEmail).toEqual(expect.objectContaining({
+      text: expect.stringContaining('uphold current owner'),
+    }));
+    expect(ownerEmail?.text).not.toContain('Claimant-only explanation');
+    expect(client.organizationClaimEvents.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: 'CURRENT_OWNER_DECISION_NOTIFICATION_SENT',
+      }),
+    });
   });
 });

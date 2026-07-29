@@ -57,7 +57,6 @@ export async function GET(
         verifiedAt: true,
         lastCheckedAt: true,
         failureReason: true,
-        metadata: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -75,6 +74,12 @@ export async function GET(
       select: { userId: true, types: true, roleId: true },
     }),
   ]);
+  const currentOwner = organization?.ownerId
+    ? await prisma.authUser.findUnique({
+        where: { id: organization.ownerId },
+        select: { id: true, email: true, name: true, emailVerifiedAt: true },
+      })
+    : null;
   return NextResponse.json({
     claim,
     organization,
@@ -82,6 +87,7 @@ export async function GET(
     evidence,
     events,
     claimant,
+    currentOwner,
     staff,
     reviewedBy: admin.adminEmail,
   }, { status: 200 });

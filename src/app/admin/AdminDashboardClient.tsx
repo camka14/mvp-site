@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import AdminAffiliateImportsPanel from './AdminAffiliateImportsPanel';
 import AdminBroadcastOverlaysPanel from './AdminBroadcastOverlaysPanel';
@@ -43,7 +44,7 @@ import {
 } from '@mantine/core';
 import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Search, Send, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports' | 'broadcastOverlays';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'claims' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports' | 'broadcastOverlays';
 type AdminUserSortField = 'name' | 'username' | 'email' | 'status' | 'dateJoined' | 'lastSeen';
 type SortDirection = 'asc' | 'desc';
 type AdminUserSort = {
@@ -170,6 +171,13 @@ type AdminNotificationState = {
 
 const DEFAULT_LIMIT = 50;
 
+const AdminOrganizationClaimsPanel = dynamic(
+  () => import('./AdminOrganizationClaimsPanel'),
+  {
+    loading: () => <Group justify="center" py="xl"><Loader size="sm" /></Group>,
+  },
+);
+
 const DEFAULT_NOTIFICATION_DRAFT: AdminNotificationDraft = {
   title: '',
   body: '',
@@ -267,6 +275,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
   const [broadcastOverlayRefreshKey, setBroadcastOverlayRefreshKey] = useState(0);
+  const [claimsRefreshKey, setClaimsRefreshKey] = useState(0);
+  const [claimsTotal, setClaimsTotal] = useState(0);
   const [notificationDraft, setNotificationDraft] =
     useState<AdminNotificationDraft>(() => ({ ...DEFAULT_NOTIFICATION_DRAFT }));
   const [notificationState, setNotificationState] = useState<AdminNotificationState>({
@@ -979,6 +989,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         query: '',
       };
     }
+    if (activeTab === 'claims') {
+      return {
+        items: [],
+        total: claimsTotal,
+        limit: DEFAULT_LIMIT,
+        offset: 0,
+        loading: false,
+        loaded: true,
+        error: null,
+        query: '',
+      };
+    }
     if (activeTab === 'affiliateImports') {
       return {
         items: [],
@@ -1004,7 +1026,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       };
     }
     return usersState;
-  }, [activeTab, chatsState, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
+  }, [activeTab, chatsState, claimsTotal, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
 
   const onRefreshActiveTab = useCallback(() => {
     if (activeTab === 'events') {
@@ -1023,6 +1045,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       void loadModeration(moderationState.offset, moderationState.query);
     } else if (activeTab === 'notifications') {
       void loadNotificationAudience(notificationDraft.deviceTypes);
+    } else if (activeTab === 'claims') {
+      setClaimsRefreshKey((previous) => previous + 1);
     } else if (activeTab === 'affiliateImports') {
       setAffiliateRefreshKey((previous) => previous + 1);
     } else if (activeTab === 'broadcastOverlays') {
@@ -1170,6 +1194,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <Tabs.Tab value="organizations">Organizations ({organizationsState.total})</Tabs.Tab>
                 <Tabs.Tab value="teams">Teams ({teamsState.total})</Tabs.Tab>
                 <Tabs.Tab value="verification">Verification ({verificationState.total})</Tabs.Tab>
+                <Tabs.Tab value="claims">Claims ({claimsTotal})</Tabs.Tab>
                 <Tabs.Tab value="fields">Fields ({fieldsState.total})</Tabs.Tab>
                 <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
                 <Tabs.Tab value="chats">Chats ({chatsState.total})</Tabs.Tab>
@@ -1301,6 +1326,16 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                   active={activeTab === 'affiliateImports'}
                   refreshKey={affiliateRefreshKey}
                 />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="claims">
+                {activeTab === 'claims' ? (
+                  <AdminOrganizationClaimsPanel
+                    active
+                    refreshKey={claimsRefreshKey}
+                    onTotalChange={setClaimsTotal}
+                  />
+                ) : null}
               </Tabs.Panel>
 
               <Tabs.Panel value="broadcastOverlays">

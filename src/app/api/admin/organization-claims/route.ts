@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   OrganizationClaimMethodEnum,
+  OrganizationClaimRequestTypeEnum,
   OrganizationClaimStatusEnum,
 } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -17,16 +18,29 @@ export async function GET(req: NextRequest) {
   await requireRazumlyAdmin(req);
   const status = req.nextUrl.searchParams.get('status');
   const method = req.nextUrl.searchParams.get('method');
+  const requestType = req.nextUrl.searchParams.get('requestType');
   const organizationId = req.nextUrl.searchParams.get('organizationId')?.trim() || undefined;
   const claimantUserId = req.nextUrl.searchParams.get('claimantUserId')?.trim() || undefined;
   const page = positiveInt(req.nextUrl.searchParams.get('page'), 1, 10_000);
   const pageSize = positiveInt(req.nextUrl.searchParams.get('pageSize'), 25, 100);
   const where = {
-    ...(status && Object.values(OrganizationClaimStatusEnum).includes(status as OrganizationClaimStatusEnum)
-      ? { status: status as OrganizationClaimStatusEnum }
-      : {}),
+    ...(status === 'NEEDS_REVIEW'
+      ? {
+          status: {
+            in: [
+              OrganizationClaimStatusEnum.PENDING_MANUAL_REVIEW,
+              OrganizationClaimStatusEnum.DISPUTED,
+            ],
+          },
+        }
+      : status && Object.values(OrganizationClaimStatusEnum).includes(status as OrganizationClaimStatusEnum)
+        ? { status: status as OrganizationClaimStatusEnum }
+        : {}),
     ...(method && Object.values(OrganizationClaimMethodEnum).includes(method as OrganizationClaimMethodEnum)
       ? { method: method as OrganizationClaimMethodEnum }
+      : {}),
+    ...(requestType && Object.values(OrganizationClaimRequestTypeEnum).includes(requestType as OrganizationClaimRequestTypeEnum)
+      ? { requestType: requestType as OrganizationClaimRequestTypeEnum }
       : {}),
     ...(organizationId ? { organizationId } : {}),
     ...(claimantUserId ? { claimantUserId } : {}),
@@ -56,17 +70,28 @@ export async function GET(req: NextRequest) {
     prisma.organizationClaims.count({ where }),
   ]);
   const organizationIds = Array.from(new Set(claims.map((claim) => claim.organizationId)));
-  const organizations = organizationIds.length
-    ? await prisma.organizations.findMany({
-        where: { id: { in: organizationIds } },
-        select: { id: true, name: true, ownershipStatus: true },
-      })
-    : [];
+  const claimantUserIds = Array.from(new Set(claims.map((claim) => claim.claimantUserId)));
+  const [organizations, claimants] = await Promise.all([
+    organizationIds.length
+      ? prisma.organizations.findMany({
+          where: { id: { in: organizationIds } },
+          select: { id: true, name: true, ownershipStatus: true },
+        })
+      : Promise.resolve([]),
+    claimantUserIds.length
+      ? prisma.authUser.findMany({
+          where: { id: { in: claimantUserIds } },
+          select: { id: true, name: true, email: true, emailVerifiedAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
+  const claimantById = new Map(claimants.map((claimant) => [claimant.id, claimant]));
   return NextResponse.json({
     claims: claims.map((claim) => ({
       ...claim,
       organization: organizationById.get(claim.organizationId) ?? null,
+      claimant: claimantById.get(claim.claimantUserId) ?? null,
     })),
     pagination: {
       page,

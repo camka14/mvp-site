@@ -491,6 +491,106 @@ const notifyCurrentOwner = async ({
   return true;
 };
 
+const notifyClaimDecision = async ({
+  client,
+  claim,
+  organization,
+  action,
+  message,
+  resolution,
+}: {
+  client: ClaimClient;
+  claim: any;
+  organization: { id: string; name: string; ownerId: string } | null;
+  action: DecideOrganizationClaimInput['action'];
+  message: string;
+  resolution: OrganizationOwnershipResolutionEnum | null;
+}): Promise<void> => {
+  if (!organization || !isEmailEnabled()) return;
+  const shouldNotifyCurrentOwner = (
+    action === 'MARK_DISPUTED'
+    || action === 'RESOLVE'
+    || (action === 'REVOKE' && claim.requestType !== OrganizationClaimRequestTypeEnum.INITIAL_CLAIM)
+  );
+  const [claimant, currentOwner] = await Promise.all([
+    client.authUser.findUnique({
+      where: { id: claim.claimantUserId },
+      select: { email: true },
+    }),
+    shouldNotifyCurrentOwner
+      ? client.authUser.findUnique({
+          where: { id: organization.ownerId },
+          select: { email: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const claimUrl = absoluteUrl(null, claimUrlFor(organization.id));
+  const deliveries: Array<{
+    audience: 'CLAIMANT' | 'CURRENT_OWNER';
+    send: Promise<void>;
+  }> = [];
+  if (claimant?.email) {
+    deliveries.push({
+      audience: 'CLAIMANT',
+      send: sendEmail({
+        to: claimant.email,
+        subject: `Update on your ${organization.name} ownership request`,
+        text: [
+          message,
+          '',
+          action === 'APPROVE' || action === 'RESTORE'
+            ? 'Your request is ready for MFA-protected acceptance.'
+            : `Decision: ${action.toLowerCase().replace(/_/g, ' ')}`,
+          resolution ? `Resolution: ${resolution.toLowerCase().replace(/_/g, ' ')}` : null,
+          '',
+          `Review your request: ${claimUrl}`,
+        ].filter((line): line is string => line !== null).join('\n'),
+      }),
+    });
+  }
+  if (
+    currentOwner?.email
+    && currentOwner.email.toLowerCase() !== claimant?.email?.toLowerCase()
+  ) {
+    const managementUrl = absoluteUrl(
+      null,
+      `/organizations/${encodeURIComponent(organization.id)}`,
+    );
+    deliveries.push({
+      audience: 'CURRENT_OWNER',
+      send: sendEmail({
+        to: currentOwner.email,
+        subject: `Ownership review update for ${organization.name}`,
+        text: [
+          action === 'MARK_DISPUTED'
+            ? `BracketIQ opened a formal ownership dispute for ${organization.name}.`
+            : `BracketIQ completed an ownership review for ${organization.name}.`,
+          resolution ? `Resolution: ${resolution.toLowerCase().replace(/_/g, ' ')}` : null,
+          '',
+          `Review the organization: ${managementUrl}`,
+          '',
+          'Internal administrator notes and claimant-only messages are not included in this email.',
+        ].filter((line): line is string => line !== null).join('\n'),
+      }),
+    });
+  }
+  const results = await Promise.allSettled(deliveries.map((delivery) => delivery.send));
+  await Promise.all(deliveries.map((delivery, index) => recordClaimEventSafe(client, {
+    organizationId: organization.id,
+    claimId: claim.id,
+    eventType: results[index]?.status === 'fulfilled'
+      ? `${delivery.audience}_DECISION_NOTIFICATION_SENT`
+      : `${delivery.audience}_DECISION_NOTIFICATION_FAILED`,
+    metadata: results[index]?.status === 'rejected'
+      ? {
+          message: results[index].reason instanceof Error
+            ? results[index].reason.message.slice(0, 500)
+            : 'Unknown error',
+        }
+      : { action, resolution },
+  })));
+};
+
 export const getOrganizationClaimPresentation = async (
   organizationId: string,
   viewer: OrganizationClaimActor | null,
@@ -1178,6 +1278,10 @@ export const decideOrganizationClaim = async (
       400,
     );
   }
+  const organization = await client.organizations.findUnique({
+    where: { id: claim.organizationId },
+    select: { id: true, name: true, ownerId: true },
+  });
   const now = new Date();
   let nextStatus = claim.status;
   let resolution = input.resolution ?? claim.resolution;
@@ -1321,7 +1425,16 @@ export const decideOrganizationClaim = async (
     });
     return decided;
   });
-  return loadClaimView(client, updated);
+  const view = await loadClaimView(client, updated);
+  await notifyClaimDecision({
+    client,
+    claim: updated,
+    organization,
+    action: input.action,
+    message,
+    resolution,
+  });
+  return view;
 };
 
 export const reconcileOrganizationReviewConflicts = async (
